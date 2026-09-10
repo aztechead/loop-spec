@@ -9,7 +9,7 @@
 # decision is one auditable line rather than a per-phase judgment call.
 #
 # The lightened profile never removes a gate that can still fail on the work: SPEC still
-# scores ambiguity and still gates on it, and a security signal still lengthens the path.
+# gates on unresolved intent questions, and a security signal still lengthens the path.
 # What it removes is gate OVERHEAD the classification has already ruled out — a seam, an
 # interface change, a security surface, a migration, a multi-repo blast radius, or scope
 # beyond a handful of files each disqualify it. The graph short path

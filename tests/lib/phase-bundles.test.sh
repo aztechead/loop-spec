@@ -28,33 +28,8 @@ bash "$DRV" init --dir "$REPO" --slug my-feature --title "my feature" --style au
 FD="$REPO/.loop-spec/features/my-feature"
 DOCS="$REPO/docs/loop-spec/features/my-feature"; mkdir -p "$DOCS"
 fj() { jq -r "$1" "$FD/feature.json"; }
-cat > "$DOCS/SPEC.md" <<'MD'
----
-ambiguity_scores:
-  ambiguity: 0.1
-  gate_passed: true
-  unresolved_dimensions: []
----
-# My Feature
-
-## Problem
-
-Something is broken.
-
-## Success criteria
-
-### Good Enough
-
-- [ ] `bash -n a.sh` exits 0
-
-### Exceptional
-
-- [ ] stretch
-
-## Grounding
-
-- none
-MD
+cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCS/SPEC.md"
+bash "$DRV" spec approve --feature-dir "$FD" --source human >/dev/null
 printf '# PLAN\n' > "$DOCS/PLAN.md"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands '{"prepare":"","test":"true","lint":"","typecheck":""}' >/dev/null
 printf 'echo ok\n' > a.sh; git add -A; git commit -q -m "feat: a.sh"

@@ -139,6 +139,9 @@ Usage:
         runs this before the exit gate. Prints {verification, ran:[{row, status, exit}],
         flags}. Exit 0 every row passed; 1 a row failed; 2 bad invocation.
 
+    cycle-driver.sh spec approve --feature-dir DIR --source human|autonomous|supervised
+        Freeze full-spec Goal and Boundary after approval; repeat calls only verify.
+
     cycle-driver.sh spec write --feature-dir DIR --file PATH
         Copy PATH (or stdin for `-`) to {docs}/SPEC.md, the only target this command
         accepts, and print the path. The lead never resolves the docs directory itself:
@@ -1177,13 +1180,43 @@ def cmd_next(argv):
         fset(feature_dir, "handoffSession", None)
         fset(feature_dir, "currentPhaseStartedAt", now())
         fset(feature_dir, "driverNext", {"phase": nxt, "at": now()})
-        print_next(nxt, node.get("label") or nxt, node.get("effort") or "system2")
+        print_next(nxt, node.get("label") or nxt, node.get("effort") or "system2", feature_dir)
         return 0
 
     if returned:
         answer = returned_checks(feature_dir, returned)
         if answer is not None:
             print(answer)
+            return 0
+        from phase_snapshot import verify
+        instructions = (feat.get("driverNext") or {}).get("instructions")
+        try:
+            if not instructions or (feat.get("driverNext") or {}).get("phase") != returned:
+                raise ValueError("returned phase has no matching instruction snapshot")
+            verify(instructions, REPO_ROOT, feature_dir)
+        except (OSError, ValueError, KeyError) as exc:
+            cmd_escalate(["--feature-dir", feature_dir, "--reason", "instruction snapshot verification failed: " + str(exc)], silent=True)
+            print("DONE status=escalated reason=instruction-hash-mismatch")
+            return 0
+        try:
+            recovery = review_recovery(feature_dir, returned)
+        except (Die, OSError, ValueError) as exc:
+            reason = exc.message if isinstance(exc, Die) else str(exc)
+            cmd_escalate(["--feature-dir", feature_dir, "--reason", "review recovery failed: " + reason], silent=True)
+            print("DONE status=escalated reason=review-recovery-failed")
+            return 0
+        if recovery == "rewind":
+            step_rc, descriptor = graph_step(feature_dir, returned)
+            target = "oneshot" if returned == "oneshot" else "discuss"
+            if step_rc != 0 or descriptor.get("node") != target:
+                raise Die("review recovery: graph did not route bad-spec to " + target)
+            fset(feature_dir, "reviewRouting.pending", False)
+            answer = record_transition(feature_dir, returned, target, "reverted implementation and amended spec", ws_mode)
+            print(answer or ("REDO phase=oneshot flags=1\nFLAG [review] implementation reverted and spec corrected; implement the amended spec and obtain a fresh review"
+                             if target == returned else "REWIND next=" + target))
+            return 0
+        if recovery:
+            print("DONE status=escalated reason=review-" + recovery)
             return 0
         answer = boundary_review(feature_dir, returned)
         if answer is not None:
@@ -1332,40 +1365,186 @@ def cmd_next(argv):
         "--branch", feat.get("branch") or "", "--base-branch", feat.get("baseBranch") or "",
         "--feature-dir", feature_dir, "--phase", nxt, "--autonomous", json_bool(feat.get("autonomous")))
     # cycle-result.sh reads this: a failure published over an answered NEXT must say why.
-    fset(feature_dir, "driverNext", {"phase": nxt, "at": now()})
-    print_next(nxt, label, effort)
+    active = feat.get("driverNext") or {}
+    if returned or active.get("phase") != nxt:
+        active = {"phase": nxt, "at": now()}
+    fset(feature_dir, "driverNext", active)
+    print_next(nxt, label, effort, feature_dir)
     return 0
 
 
-def print_next(nxt, label, effort):
-    """The NEXT answer and its EXT lines. The node may name a lighter skill than
-    loop-spec:<phase> (the spec node names the candidate skill, so the short route never
-    loads the full SPEC body): data on the graph, printed as an EXT line the cycle skill
-    acts on (port audit 3, N4)."""
+def instruction_record(feature_dir, phase):
+    from phase_snapshot import render, verify
+    from spec_intent import verify_intent
+    feat = state(feature_dir)
+    if feat.get("specApproval"):
+        try:
+            verify_intent(Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8"), feat["specApproval"])
+        except (OSError, ValueError) as exc:
+            cmd_escalate(["--feature-dir", feature_dir, "--reason", str(exc)], silent=True)
+            raise Die("phase entry refused: " + str(exc))
+    active = fget(feature_dir, "driverNext", {}) or {}
+    if active.get("phase") == phase and active.get("instructions"):
+        verify(active["instructions"], REPO_ROOT, feature_dir)
+        if Path(active["instructions"]["manifest"]).parent.parent.parent == Path(feature_dir):
+            return active["instructions"]
+    node = next(n for n in read_json(GRAPH, {})["nodes"] if n["id"] == phase)
+    root = feature_root(feature_dir, state(feature_dir))
+    prepend = lib("extension-points", "instructions", phase, "prepend", cwd=root)
+    append = lib("extension-points", "instructions", phase, "append", cwd=root)
+    facts = lib("extension-points", "facts", cwd=root)
+    for line in facts.splitlines():
+        if line.startswith("fact=file path="):
+            path = Path(line[len("fact=file path="):])
+            if not path.is_absolute():
+                path = Path(root) / path
+            prepend += "\n\nFact file %s:\n%s" % (path, path.read_text(encoding="utf-8"))
+        elif line.startswith("fact=literal text="):
+            prepend += "\n" + line[len("fact=literal text="):]
+    record = render(REPO_ROOT, feature_dir, phase, node.get("skill") or phase,
+                    lib("harness", "detect").strip(), {"prepend": prepend, "append": append})
+    active.update({"phase": phase, "instructions": record})
+    fset(feature_dir, "driverNext", active)
+    fappend(feature_dir, "instructionSnapshots", dict(record, phase=phase))
+    lib("events", "emit", feature_dir, "instructions-rendered", "--phase", phase,
+        "--data", json.dumps(record))
+    return record
+
+
+def print_next(nxt, label, effort, feature_dir):
+    record = instruction_record(feature_dir, nxt)
     print('NEXT phase=%s label="%s" effort=%s' % (nxt, label, effort))
     node_skill = next((n.get("skill") for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == nxt), None)
     if node_skill:
         print("EXT skill=%s" % node_skill)
-    ext = lib_run("extension-points", "instructions", nxt, "prepend", quiet=True).stdout
-    ext += "\n" + lib_run("extension-points", "facts", quiet=True).stdout
-    for line in ext.splitlines():
-        if line:
-            print("EXT " + line)
+    print("EXT instructions=%s sha256=%s" % (record["prompt"], record["promptSha256"]))
+
+
+def review_recovery(feature_dir, phase):
+    if phase not in ("verify", "oneshot"):
+        return None
+    from review_routes import findings, FROZEN
+    from spec_intent import verify_intent
+    feat = state(feature_dir)
+    docs = Path(docs_dir(feature_dir, feat))
+    report = docs / "VERIFICATION.md"
+    prior = feat.get("reviewRouting") or {}
+    if prior.get("pending"):
+        return "rewind" if prior.get("route") == "bad-spec" else "intent-gap"
+    if not report.is_file() or lib_run("review-triage-lint", str(report), quiet=True).returncode:
+        return None
+    groups = findings(report.read_text(encoding="utf-8"))
+    if not groups:
+        return None
+    root = feature_root(feature_dir, feat)
+    workspace = workspace_of(feat)
+    repositories = [(os.path.join(root, r["path"]), r["baseSha"]) for r in workspace["repos"]] if workspace else [(root, feat.get("baseSha"))]
+    prior = feat.get("reviewRouting") or {}
+    report_hash = hashlib.sha256(report.read_bytes()).hexdigest()
+    if prior.get("reportSha256") == report_hash and prior.get("pending"):
+        return "rewind" if prior.get("route") == "bad-spec" else "intent-gap"
+    for group in groups:
+        if group["route"] == "patch":
+            commit = group["fixCommit"]
+            owners = [(repo, base) for repo, base in repositories
+                      if base and git_ok("-C", repo, "merge-base", "--is-ancestor", commit, "HEAD")
+                      and not git_ok("-C", repo, "merge-base", "--is-ancestor", commit, base)]
+            if len(owners) != 1:
+                raise Die("review patch: fixCommit must identify one repository's change after baseSha: " + commit)
+            repo, _ = owners[0]
+            changes = git("-C", repo, "show", "--format=", "--numstat", commit).splitlines()
+            if len(changes) != 1 or not re.match(r"^\d+\t\d+\t", changes[0]):
+                raise Die("review patch: only a trivial one-file text fix can use patch")
+            added, removed, path = changes[0].split("\t", 2)
+            if int(added) + int(removed) > 10 or path.startswith(("docs/loop-spec/features/", ".loop-spec/")):
+                raise Die("review patch: fix exceeds the surface-free patch bound; classify its root cause")
+        elif group["route"] == "defer":
+            lib("backlog", "add", feat["slug"], "verify-deferred", group["finding"] + " — " + group["reason"],
+                cwd=root, env=dict(os.environ, CLAUDE_PROJECT_DIR=root))
+    recovery = [g for g in groups if g["route"] in ("intent-gap", "bad-spec")]
+    if not recovery:
+        return None
+    used = prior.get("used", 0)
+    if used >= 5:
+        cmd_escalate(["--feature-dir", feature_dir, "--reason", "review recovery limit reached (5)"], silent=True)
+        return "limit"
+    route = "intent-gap" if any(g["route"] == "intent-gap" for g in recovery) else "bad-spec"
+    spec = docs / "SPEC.md"
+    revised = spec.read_text(encoding="utf-8")
+    if route == "bad-spec":
+        for group in recovery:
+            section = group["section"]
+            match = re.search(r"^## " + re.escape(section) + r"\s*\n", revised, re.M)
+            if not match or section in FROZEN:
+                raise Die("review bad-spec: amendment must name an existing non-intent section: " + section)
+            end = re.search(r"^## ", revised[match.end():], re.M)
+            stop = match.end() + end.start() if end else len(revised)
+            revised = revised[:match.end()] + "\n" + group["replacement"].strip() + "\n\n" + revised[stop:]
+        if phase == "oneshot" and not feat.get("specApproval"):
+            pattern = r"(?ms)^<!-- intent: frozen[^\n]*\n.*?^<!-- /intent -->$"
+            original = re.search(pattern, spec.read_text(encoding="utf-8"))
+            amended = re.search(pattern, revised)
+            if not original or not amended or original.group() != amended.group():
+                raise Die("review bad-spec: preserve the frozen ONESHOT Intent block")
+        else:
+            verify_intent(revised, feat.get("specApproval"))
+        revised += "\n## Spec change log\n" + "".join("- Review correction: " + g["cause"] + "\n" for g in recovery)
+    plans = []
+    for repo, base in repositories:
+        if not base or not git_ok("-C", repo, "merge-base", "--is-ancestor", base, "HEAD"):
+            raise Die("review recovery: baseSha must be an ancestor of the reviewed branch")
+        paths = [p for p in git("-C", repo, "diff", "--name-only", "-z", base, "HEAD").split("\0")
+                 if p and not p.startswith(("docs/loop-spec/", ".loop-spec/"))]
+        untracked = [p for p in git("-C", repo, "ls-files", "--others", "-z").split("\0") if p]
+        if any(p == u or u.startswith(p + "/") or p.startswith(u + "/") for p in paths for u in untracked):
+            raise Die("review recovery: untracked files overlap the implementation to restore")
+        dirty = set(git("-C", repo, "diff", "--name-only", "-z", "HEAD").split("\0"))
+        if dirty.intersection(paths):
+            raise Die("review recovery: commit or preserve dirty implementation files before reverting")
+        plans.append((repo, base, paths))
+    for repo, base, paths in plans:
+        if paths:
+            git("-C", repo, "restore", "--source", base, "--staged", "--worktree", "--", *paths)
+            git("-C", repo, "commit", "-m", "fix: revert implementation for " + route, "--", *paths)
+    if route == "bad-spec":
+        spec.write_text(revised, encoding="utf-8")
+    record = {"route": route, "used": used + 1, "pending": True,
+              "reportSha256": report_hash, "findings": recovery}
+    fset(feature_dir, "reviewRouting", record)
+    lib("events", "emit", feature_dir, "review-routed", "--phase", phase, "--data", json.dumps(record))
+    if route == "intent-gap":
+        questions = "; ".join(g["question"] for g in recovery if g["route"] == "intent-gap")
+        cmd_escalate(["--feature-dir", feature_dir, "--reason", "intent-gap requires human decision: " + questions], silent=True)
+        return "intent-gap"
+    fset(feature_dir, "iterate.feedback", {"type": "spec", "description": "Review corrected the spec; re-plan and re-implement.",
+                                           "fix_first": "; ".join(g["cause"] for g in recovery)})
+    archive = Path(feature_dir) / "review-attempts" / (str(used + 1) + "-" + report_hash)
+    archive.mkdir(parents=True, exist_ok=True)
+    for path in (report, docs / "PLAN.md", Path(feature_dir) / "tasks.json"):
+        if path.is_file():
+            path.rename(archive / path.name)
+    for key in ("plan", "tasks", "verification", "iteration"):
+        fset(feature_dir, "artifacts." + key, None)
+    fset(feature_dir, "completedPhases", [p for p in feat.get("completedPhases", []) if p == "spec"])
+    return "rewind"
 
 
 def reviewer_dispatched(feature_dir, phase):
     events = os.path.join(feature_dir, "events.jsonl")
     if not os.path.isfile(events):
         return False
+    dispatched = False
     for line in open(events, encoding="utf-8", errors="replace"):
         try:
             e = json.loads(line)
         except ValueError:
             continue
-        if e.get("event") == "dispatch" and e.get("phase") == phase \
+        if e.get("event") == "review-routed" and e.get("phase") == phase:
+            dispatched = False
+        elif e.get("event") == "dispatch" and e.get("phase") == phase \
                 and "code-reviewer" in str((e.get("data") or {}).get("role") or ""):
-            return True
-    return False
+            dispatched = True
+    return dispatched
 
 
 def boundary_review(feature_dir, phase):
@@ -1418,9 +1597,17 @@ def boundary_review(feature_dir, phase):
 def returned_checks(feature_dir, phase):
     """What a returned phase may have left behind that ends the loop before any
     routing. Returns the answer line, or None to continue."""
+    feat = state(feature_dir)
+    if feat.get("specApproval"):
+        from spec_intent import verify_intent
+        try:
+            verify_intent(Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8"), feat["specApproval"])
+        except (OSError, ValueError) as exc:
+            cmd_escalate(["--feature-dir", feature_dir, "--reason", str(exc)], silent=True)
+            return "DONE status=escalated reason=frozen-intent-changed"
     result = read_json(os.path.join(feature_dir, "result.json"), {}) or {}
     if result.get("status") == "paused" and result.get("reason") in (
-            "spec-confirmation-declined", "spec-override-declined"):
+            "spec-confirmation-declined",):
         return "DONE status=paused reason=%s" % result["reason"]
     ceiling = os.environ.get("LOOP_SPEC_PHASE_TIMEOUT_MINS") or "60"
     if not re.match(r"^[1-9][0-9]*$", ceiling):
@@ -2064,9 +2251,9 @@ def cmd_spec(argv):
     if sub == "escalate":
         raise Die("spec escalate is not the lead's call: a gate escalates from evidence (a diff outside the footprint, "
                   "a reviewer BLOCK, or the third identical REDO), with the reason on record (port audit 5, R3)", 2)
-    if sub not in ("skeleton", "write", "drop", "fill"):
+    if sub not in ("skeleton", "write", "drop", "fill", "approve"):
         usage()
-    opts = {"write": ("--feature-dir", "--file"), "drop": ("--feature-dir", "--file", "--reason"),
+    opts = {"approve": ("--feature-dir", "--source"), "write": ("--feature-dir", "--file"), "drop": ("--feature-dir", "--file", "--reason"),
             "fill": ("--feature-dir", "--intent", "--file", "--note", "--criterion", "--command", "--expect", "--row", "--grounding", "--json"),
             "escalate": ("--feature-dir", "--reason")}.get(sub, ("--feature-dir",))
     o = parse_pairs(argv[1:], opts)
@@ -2079,6 +2266,28 @@ def cmd_spec(argv):
     target = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
     if sub in ("drop", "fill", "escalate") and not os.path.isfile(target):
         raise Die("spec %s: no SPEC.md at %s" % (sub, target), 2)
+    if sub == "approve":
+        from spec_questions import read_questions
+        from spec_intent import intent_digest, verify_intent
+        approval_source = o.get("source")
+        if approval_source not in ("human", "autonomous", "supervised"):
+            raise Die("spec approve needs --source human|autonomous|supervised", 2)
+        if approval_source == "autonomous" and not (feat.get("autonomous") or os.environ.get("LOOP_SPEC_NON_INTERACTIVE") == "1"):
+            raise Die("spec approve: autonomous approval requires an unattended run", 2)
+        try:
+            text = Path(target).read_text(encoding="utf-8")
+            if read_questions(text):
+                raise ValueError("resolve intent questions before approving SPEC.md")
+            if feat.get("specApproval"):
+                verify_intent(text, feat["specApproval"])
+            else:
+                approval = {"sha256": intent_digest(text), "source": approval_source, "approvedAt": now()}
+                fset(feature_dir, "specApproval", approval)
+                lib("events", "emit", feature_dir, "spec-approved", "--phase", "spec", "--data", json.dumps(approval))
+        except (OSError, ValueError) as exc:
+            raise Die("spec approve: %s" % exc, 1)
+        print(json.dumps({"spec": target, "approval": fget(feature_dir, "specApproval")}))
+        return 0
     if sub == "drop":
         if not source or not (o.get("reason") or "").strip():
             raise Die("spec footprint drop needs --file PATH and --reason TEXT", 2)
@@ -2135,7 +2344,11 @@ def cmd_spec(argv):
                     fh.write(render_skeleton(str(TEMPLATES / "SPEC-oneshot.md.template"), feat,
                                              footprint=footprint, read_only=read_only))
             spec = target
-        print(json.dumps({"route": route, "reason": reason, "footprint": footprint, "readOnly": read_only, "spec": spec}))
+        full_spec = None
+        if route == "full":
+            record = instruction_record(feature_dir, "spec")
+            full_spec = str(Path(record["manifest"]).parent / "skills/spec/SKILL.md")
+        print(json.dumps({"route": route, "reason": reason, "footprint": footprint, "readOnly": read_only, "spec": spec, "fullSpec": full_spec}))
         return 0
     if not source:
         raise Die("spec write needs --file PATH (or - for stdin)", 2)
@@ -2335,7 +2548,7 @@ def cmd_verification(argv):
     if not argv or argv[0] not in ("fill", "run", "review", "verdict"):
         usage()
     if argv[0] in ("review", "verdict"):
-        o = parse_pairs(argv[1:], ("--feature-dir", "--report", "--reviewer-model", "--finding", "--verdict", "--reason"))
+        o = parse_pairs(argv[1:], ("--feature-dir", "--report", "--reviewer-model", "--finding", "--verdict", "--reason", "--routing"))
         feature_dir, feat, docs, target, spec, root = verification_paths(o, argv[0])
         if argv[0] == "review":
             report = o.get("report") or os.path.join(feature_dir, "dispatch", "oneshot.review.md")
@@ -2344,17 +2557,26 @@ def cmd_verification(argv):
             model = o.get("reviewer_model") or (feat.get("models") or {}).get("codeReviewer") or "inherit"
             findings, verdict = verification_review(target, report, model)
             print(json.dumps({"verification": target, "report": report, "reviewerVerdict": verdict or None,
-                              "findings": findings, "flags": verification_lint_flags(root, target, spec)}))
+                              "findings": findings,
+                              "routingInstructions": str(Path(instruction_record(feature_dir, feat.get("currentPhase") or "oneshot")["manifest"]).parent / "skills/shared/review-routing.md") if findings else None,
+                              "flags": verification_lint_flags(root, target, spec)}))
             return 0
         finding, verdict, reason = o.get("finding") or "", o.get("verdict") or "", (o.get("reason") or "").strip()
         if verdict not in ("true", "false") or not finding or not reason:
             raise Die("verification verdict needs --finding FILE:LINE --verdict true|false --reason TEXT "
                       "(false: the disproof, what shows the finding wrong)", 2)
+        routing = ""
+        if verdict == "true":
+            from review_routes import validate
+            try:
+                routing = " | routing: " + json.dumps(validate(json.loads(o.get("routing") or "null")), sort_keys=True)
+            except ValueError as exc:
+                raise Die("verification verdict: " + str(exc), 2)
         text = open(target, encoding="utf-8").read()
         line = re.compile(r"^(- %s — .*?) \| verdict: pending$" % re.escape(finding), re.M)
         if not line.search(text):
             raise Die("verification verdict: no pending finding at %s in %s (verification review writes them from the report)" % (finding, target))
-        text = line.sub(lambda m: "%s | verdict: %s — %s" % (m.group(1), verdict, reason), text, count=1)
+        text = line.sub(lambda m: "%s | verdict: %s — %s%s" % (m.group(1), verdict, reason, routing), text, count=1)
         with open(target, "w", encoding="utf-8") as fh:
             fh.write(text)
         print(json.dumps({"verification": target, "finding": finding, "verdict": verdict,
@@ -2477,6 +2699,7 @@ def cmd_phase_begin(argv):
               % (handed.get("from"), phase, handoff_answer(feature_dir, handed)), file=sys.stderr)
         return 4
     node = next((n for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == phase), {})
+    instructions = instruction_record(feature_dir, phase)
     skeletons = write_skeletons(feature_dir, state(feature_dir), node)
     entry = subprocess.run(["bash", str(LIB_DIR / "phase-entry.sh"), phase, "--feature-dir", feature_dir],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
@@ -2505,7 +2728,7 @@ def cmd_phase_begin(argv):
         prepared = lib_run(phase + "-prepare", "run", "--feature-dir", feature_dir)
         extra_rc = prepared.returncode
         extra = json.loads(prepared.stdout) if prepared.stdout else {}
-    packet = {"phase": phase, "entry": {"fields": fields, "read": reads, "flags": flags}, "mode": mode}
+    packet = {"phase": phase, "instructions": instructions, "entry": {"fields": fields, "read": reads, "flags": flags}, "mode": mode}
     if skeletons:
         packet["skeletons"] = skeletons
     if phase in ("execute", "verify"):

@@ -90,11 +90,10 @@ ans="$(bash "$DRV" next --feature-dir "$featureDir")"
 Act on the first line of `ans`, then stop.
 
 - `NEXT phase=<p> label="..." effort=<system1|system2>` — print it, treat every
-  following `EXT ...` line as a standing directive or fact file for this phase, then
-  invoke `Skill(loop-spec:<p>)`, or `Skill(loop-spec:<name>)` when an `EXT skill=<name>`
-  line names a lighter skill for the phase. `effort=system1` means keep the phase
-  direct; `system2` means state assumptions and check their evidence first. When the
-  phase skill returns, close it:
+  following `EXT instructions=<path> sha256=<hash>` line as the phase's rendered
+  instruction file. Read and follow that snapshot for this phase. `EXT skill` names
+  its role; the snapshot already contains the selected body and harness contract.
+  When it returns, close it:
 
   ```bash
   ans="$(bash "$DRV" next --feature-dir "$featureDir" --returned-from "<p>" \
@@ -103,8 +102,8 @@ Act on the first line of `ans`, then stop.
 
   and act on that answer with the same list.
 - `REDO phase=<p> flags=<n>` followed by `FLAG ...` lines — `next` ran the phase's exit
-  gates (`lib/phase-exit.sh`) and the artifact is not ready. Invoke the phase skill
-  again with the FLAG lines; the phase fixes its artifact in place and returns; then call
+  gates (`lib/phase-exit.sh`) and the artifact is not ready. Follow the same instruction
+  snapshot again with the FLAG lines; the phase fixes its artifact in place and returns; then call
   `next --returned-from <p>` again. Phase skills never run the exit themselves.
 - `HANDOFF next=<p> model=<m>` or `REWIND next=<p>` — the phase is closed and the next
   one is ready in durable state. Print

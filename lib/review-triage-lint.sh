@@ -21,7 +21,7 @@ artifact="${1:-}"
 [[ -n "$artifact" && $# -eq 1 ]] || { echo "usage: review-triage-lint.sh <VERIFICATION.md>" >&2; exit 2; }
 [[ -f "$artifact" ]] || { echo "FLAG $artifact:0: artifact does not exist"; exit 1; }
 
-python3 - "$artifact" <<'PY'
+PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)${PYTHONPATH:+:$PYTHONPATH}" python3 - "$artifact" <<'PY'
 import re
 import sys
 
@@ -56,11 +56,16 @@ for no, line in enumerate(lines, 1):
     if verdict is None:
         flags.append((no, "finding has no verdict; %s" % SHAPE))
         continue
-    tail = verdict.group(2).strip()
+    tail = verdict.group(2).split(" | routing:", 1)[0].strip()
     if verdict.group(1) == "false" and len(tail.split()) < 5:
         flags.append((no, "verdict: false needs a disproof sentence (what you ran or read that shows the finding wrong)"))
     elif verdict.group(1) == "true" and not tail:
         flags.append((no, "verdict: true needs its evidence (the commit, the backlog id, or the fix)"))
+from review_routes import findings
+try:
+    findings("\n".join(lines))
+except ValueError as exc:
+    flags.append((0, str(exc)))
 for no, message in flags:
     print("FLAG %s:%d: %s" % (path, no, message))
 sys.exit(1 if flags else 0)

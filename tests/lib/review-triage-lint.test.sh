@@ -70,7 +70,7 @@ f="$(verification 'none')"
 ec=0; bash "$LINT" "$f" >/dev/null 2>&1 || ec=$?
 check "none under every severity is clean" "0" "$ec"
 
-f="$(verification '- src/a.py:12 — off by one in the range | verdict: true — fixed in 1a2b3c4')"
+f="$(verification '- src/a.py:12 — off by one in the range | verdict: true — fixed in 1a2b3c4 | routing: {"route":"patch","cause":"range endpoint","surface":"none","fixCommit":"1a2b3c4"}')"
 ec=0; out="$(bash "$LINT" "$f" 2>&1)" || ec=$?
 check "a located finding with an evidenced true verdict passes" "0" "$ec"
 
@@ -83,7 +83,7 @@ ec=0; out="$(bash "$LINT" "$f" 2>&1)" || ec=$?
 check "a false verdict without a disproof flags" "1" "$ec"
 check "the flag names the disproof" "1" "$(grep -c 'verdict: false needs a disproof sentence' <<<"$out")"
 
-f="$(verification '- off by one in the range | verdict: true — fixed in 1a2b3c4')"
+f="$(verification '- off by one in the range | verdict: true — fixed in 1a2b3c4 | routing: {"route":"patch","cause":"range endpoint","surface":"none","fixCommit":"1a2b3c4"}')"
 ec=0; out="$(bash "$LINT" "$f" 2>&1)" || ec=$?
 check "a finding without file:line flags" "1" "$ec"
 check "the flag names the location rule and the line" "1" "$(grep -c '^FLAG .*VERIFICATION.md:20: finding has no file:line' <<<"$out")"
@@ -98,12 +98,12 @@ ec=0; out="$(bash "$LINT" "$f" 2>&1)" || ec=$?
 check "a true verdict without evidence flags" "1" "$ec"
 check "the flag asks for the commit or backlog id" "1" "$(grep -c 'verdict: true needs its evidence' <<<"$out")"
 
-f="$(verification '- Makefile:7 — the lint target runs nothing | verdict: true — backlog 9f8e7d6c')"
+f="$(verification '- Makefile:7 — the lint target runs nothing | verdict: true — backlog 9f8e7d6c | routing: {"route":"defer","cause":"missing lint target","reason":"separate tooling repair"}')"
 ec=0; bash "$LINT" "$f" >/dev/null 2>&1 || ec=$?
 check "a file without an extension still counts as a location" "0" "$ec"
 # A bare word:number (a heading id, a time) is not a location; a bullet under any
 # subheading of the Code review section is a finding (port audit 1, F10).
-f="$(verification '- step:12 — the lint target runs nothing | verdict: true — backlog 9f8e7d6c')"
+f="$(verification '- step:12 — the lint target runs nothing | verdict: true — backlog 9f8e7d6c | routing: {"route":"defer","cause":"missing lint target","reason":"separate tooling repair"}')"
 ec=0; out="$(bash "$LINT" "$f" 2>&1)" || ec=$?
 check "a bare word:number is not a location" "1" "$ec"
 check "the flag asks for a path" "1" "$(grep -c 'finding has no file:line' <<<"$out")"

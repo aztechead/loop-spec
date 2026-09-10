@@ -27,7 +27,7 @@ flowchart LR
     user([User]) -->|"Skill(loop-spec:cycle)"| cycle[cycle skill<br/>orchestrator]
     cycle -->|"health-check + style"| init[feature.json<br/>schema v7]
     init --> spec[SPEC phase<br/>main-thread interview]
-    spec -->|SPEC.md + ambiguity_scores| discuss[DISCUSS team<br/>grill + challenger]
+    spec -->|SPEC.md + unresolved_questions| discuss[DISCUSS team<br/>grill + challenger]
     discuss -->|SPEC.md| plan[PLAN team<br/>planner + challenger]
     plan -->|PLAN.md + task DAG| execute[EXECUTE team<br/>lead + N implementers + R reviewers]
     execute -->|merged commits on feat/&lcub;slug&rcub;| verify[VERIFY team<br/>verifier + code-reviewer]

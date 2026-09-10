@@ -73,55 +73,19 @@ LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=1 \
 claude -p "/loop-spec:cycle autonomous ${TASK_PROMPT}"
 ```
 
-To switch the Claude Code main model as well as the phase’s subagents, the CLI
-supervisor must create a fresh process per handoff and pass the validated phase
-selector to `--model`. The plugin cannot mutate the model of an already-running
-main session:
+The bundled outer launcher selects the main model for each fresh phase and checks the
+child exit and durable result before relaunching:
 
 ```bash
-phase=spec
-result="${REPO_ROOT}/.loop-spec/last-result.json"
-for _ in $(seq 1 "${MAX_PHASE_INVOCATIONS:-12}"); do
-  phase_model="$(
-    bash "${LOOP_SPEC_PLUGIN}/lib/feature-init.sh" phase-model "$phase"
-  )"
-  claude_args=(-p "/loop-spec:cycle autonomous ${TASK_PROMPT}")
-  [[ -n "$phase_model" && "$phase_model" != "inherit" ]] \
-    && claude_args+=(--model "$phase_model")
-
-  # Check the child's status. A phase that dies -- OOM, a killed container, an
-  # expired credential, a crashed harness -- exits non-zero and may write nothing.
-  claude_rc=0
-  claude "${claude_args[@]}" || claude_rc=$?
-
-  # A missing or unparseable result is a FAILED run, not a finished one. Without
-  # this check the jq below errors, the "not a handoff" branch is taken, the loop
-  # breaks, and the supervisor exits 0 -- reporting success for a lost run.
-  if [[ "$claude_rc" -ne 0 ]] || ! jq -e . "$result" >/dev/null 2>&1; then
-    echo "loop-spec: phase '${phase}' failed (exit ${claude_rc}); reconciling" >&2
-    bash "${LOOP_SPEC_PLUGIN}/lib/cycle-reconcile.sh" --result-root "${REPO_ROOT}" || true
-    exit 1
-  fi
-
-  status_reason="$(jq -r '.status + ":" + (.reason // "")' "$result")"
-  [[ "$status_reason" == "paused:phase-handoff" ]] || break
-  phase="$(jq -r '.phaseReached' "$result")"
-done
-
-# Terminal state is whatever the last result says. `converged` is the single
-# authoritative success signal; `retryable` marks a delivery-only retry.
-jq -e '.converged == true' "$result" >/dev/null 2>&1 || exit 1
+bash "$LOOP_SPEC_PLUGIN/lib/cycle-launch.sh" --profile claude \
+  --cwd "$REPO_ROOT" --prompt-file task.txt --max-invocations 16 --timeout 3600
 ```
 
-The exit-status and result-existence checks are not optional. `claude -p` exiting
-non-zero, or exiting 0 having written no result, is precisely how an unattended run
-is lost silently — the supervisor has no other way to tell "finished" from "died".
-
-Regardless of whether handoff is enabled, cycle phase activation writes the
-effective map before it launches any explicit-team teammate, implicit named
-Agent, one-shot fallback, gate reviewer, or ITERATE judge. Thus continuous mode
-still honors phase routing for subagents; handoff is required only to change the
-main orchestrator model.
+Use `codex` or `opencode` for the other CLI profiles. The invocation cap bounds fresh
+sessions, including rewinds. Exit zero requires a fresh converged result; delivery
+stops, human gates, missing results, and exhausted limits remain nonzero with evidence
+in `.loop-spec/launcher-result.json`. A supervisor may still manage relaunches itself
+when it needs SDK callbacks or ADK sessions.
 
 ## Performance tuning without weaker outcomes
 

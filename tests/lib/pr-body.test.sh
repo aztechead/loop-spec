@@ -142,15 +142,7 @@ check "4: goal still present" "1" "$(grep -c '^\*\*Goal:\*\* Bare' "$OUT")"
 # ── Case 5: ambiguity_scores frontmatter → percentage table, no decimal leak ─
 cat > "$DOCS/SPEC.md" <<'EOF'
 ---
-ambiguity_scores:
-  goal_clarity: 0.85
-  boundary_clarity: 0.80
-  constraint_clarity: 0.45
-  acceptance_clarity: 0.80
-  ambiguity: 0.18
-  rounds_completed: 3
-  gate_passed: true
-  unresolved_dimensions: []
+unresolved_questions: []
 ---
 
 # Spec: Demo feature
@@ -169,16 +161,11 @@ check "5: no frontmatter delimiter leaks" "0" "$(grep -c '^---$' "$OUT")"
 check "5: spec quality section present" "1" "$(grep -c '^### Spec quality' "$OUT")"
 check "5: spec quality follows reviewer-facing verification" "1" \
   "$(awk '/^## Verification/{v=NR} /^### Spec quality/{q=NR} END{print (v && q && v<q)?1:0}' "$OUT")"
-check "5: percentages rendered" "1" "$(grep -c '| \*\*18%\*\* |' "$OUT")"
-check "5: per-dimension gate marks" "1" "$(grep -c '| Goal clarity | 85% | >= 60% | ✅ |' "$OUT")"
-check "5: rounds note rendered" "1" "$(grep -c 'Gate passed after 3 interview round' "$OUT")"
+check "5: resolved questions rendered" "1" "$(grep -c 'No unresolved intent questions' "$OUT")"
 check "5: summary fallback skips frontmatter" "1" "$(grep -c 'adds a demo capability' "$OUT")"
-
-# Failing dimension shows ❌ and 'not passed'.
-sed -i '' -e 's/gate_passed: true/gate_passed: false/' -e 's/ambiguity: 0.18/ambiguity: 0.35/' "$DOCS/SPEC.md"
+sed -i '' 's/unresolved_questions: .*/unresolved_questions: ["Which output format is required?"]/' "$DOCS/SPEC.md"
 bash "$LIB" render "$WORK/feature.json" "$WORK" "$OUT"
-check "5: failing ambiguity gets ❌" "1" "$(grep -c '| \*\*35%\*\* | <= 20% | ❌ |' "$OUT")"
-check "5: gate not passed note" "1" "$(grep -c 'not passed' "$OUT")"
+check "5: unresolved question is visible" "1" "$(grep -c 'Which output format is required?' "$OUT")"
 
 # Warnings render as a GFM alert.
 check "5: warnings as GFM alert" "1" "$(grep -c '> \[!WARNING\]' "$OUT")"

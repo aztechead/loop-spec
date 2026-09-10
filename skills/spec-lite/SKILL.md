@@ -13,7 +13,7 @@ are the entry packet and nothing else; a FLAG is a prior phase's failure, relay 
 DRV="${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh"
 pb="$(bash "$DRV" phase-begin spec --feature-dir "$feature_dir")"
 # .entry.fields (slug, feature_title, execStyle, greenfield, autonomous)
-# .entry.read[] (spec-draft.md, a prior transcript)  .entry.flags[]
+# .entry.read[] (spec-draft.md, prior decisions)  .entry.flags[]
 ```
 
 ## 1. Scout
@@ -41,7 +41,7 @@ sk="$(bash "$DRV" spec skeleton --feature-dir "$feature_dir")"
 ```
 
 `.route` is `full` (`.reason` says why: four files, a read-only file, a security
-signal): invoke `Skill(loop-spec:spec)` and continue there from its step 1; your cites
+signal): read the snapshot path in `.fullSpec` and continue from its step 1; your cites
 stand and it extends the scout. `.route` is `oneshot`: the driver wrote the skeleton
 at `.spec`, and the rest of SPEC is the list below. The route lengthens only, and a
 gate lengthens it: a fourth file in the diff, a reviewer BLOCK, or a held exit.

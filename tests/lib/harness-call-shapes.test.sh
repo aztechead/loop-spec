@@ -174,7 +174,6 @@ check "contract doc names the placeholder-question hook" "$v"
 
 grep -qF 'AskUserQuestion({' skills/spec/references/interview-prompts.md \
   && grep -qF 'header: "Spec gate"' skills/spec/references/interview-prompts.md \
-  && grep -qF 'header: "Max rounds"' skills/spec/references/interview-prompts.md \
   && grep -qF 'questions: [{' skills/spec/references/interview-prompts.md && v=1 || v=0
 check "SPEC gate prompts are questions-wrapper calls" "$v"
 grep -E '^allowed-tools:' skills/verify/SKILL.md | grep -q AskUserQuestion && v=0 || v=1

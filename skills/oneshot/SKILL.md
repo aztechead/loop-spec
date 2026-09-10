@@ -93,8 +93,10 @@ finding in the footprint and commit; one outside the footprint is an escalation
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verification verdict --feature-dir "$feature_dir" \
-  --finding <file>:<line> --verdict true --reason "<the fix or commit>"      # or --verdict false --reason "<disproof: what shows it wrong>"
+  --finding <file>:<line> --verdict true --reason "<the fix or commit>" --routing '<routing JSON>'      # or --verdict false --reason "<disproof: what shows it wrong>"
 ```
+
+Classify accepted findings using `.routingInstructions` from the review output.
 
 One review pass: a second BLOCK after your fix is an escalation, not a third round.
 

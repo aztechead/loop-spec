@@ -105,6 +105,8 @@ verifier FAIL regardless of green commands: pass `--verifier FAIL`. Then:
   wrong. A finding you cannot place at a `file:line` is not a finding yet: send it back
   to the reviewer. `lib/review-triage-lint.sh` at the exit rejects a bullet without a
   location, without a verdict, or a `false` without its disproof sentence.
+  Accepted findings also follow `skills/shared/review-routing.md`: append the routing
+  JSON with a root cause and the evidence for intent-gap, bad-spec, patch, or defer.
 - Second failure of the same criterion or finding across `gateHistory[]`: the call
   records the lesson once (`lib/rules.sh add "VERIFY repeat-fail on '<criterion>'
   ({slug}): ..." --check "<verify command>"`) and reports `.repeat`.

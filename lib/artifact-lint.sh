@@ -34,11 +34,17 @@ set -uo pipefail
 
 type="${1:-}"
 case "$type" in
-  spec|plan|patterns|verification|tasks) [[ $# -eq 2 ]] || { echo "usage: artifact-lint.sh $type <path|->" >&2; exit 2; } ;;
+  spec) [[ $# -eq 2 || ( $# -eq 4 && "$3" == "--feature-dir" ) ]] || { echo "usage: artifact-lint.sh spec <path|-> [--feature-dir DIR]" >&2; exit 2; } ;;
+  plan|patterns|verification|tasks) [[ $# -eq 2 ]] || { echo "usage: artifact-lint.sh $type <path|->" >&2; exit 2; } ;;
   json) [[ $# -ge 2 ]] || { echo "usage: artifact-lint.sh json <path> [<path>...]" >&2; exit 2; } ;;
   *) echo "usage: artifact-lint.sh <spec|plan|patterns|verification|tasks|json> <path> [...]" >&2; exit 2 ;;
 esac
 shift
+feature_dir=""
+if [[ "$type" == spec && $# -eq 3 ]]; then
+  feature_dir="$3"
+  set -- "$1"
+fi
 
 # The python script below is fed to the interpreter over stdin, so a `-` path cannot
 # also be read from stdin there. Slurp it into a temp file first.
@@ -55,13 +61,14 @@ for p in "$@"; do
 done
 trap '[[ -n "$stdin_tmp" ]] && rm -f "$stdin_tmp"' EXIT
 
-python3 - "$type" "${args[@]}" <<'PY'
+PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)${PYTHONPATH:+:$PYTHONPATH}" python3 - "$type" "$feature_dir" "${args[@]}" <<'PY'
 import json
 import re
 import sys
 
 atype = sys.argv[1]
-paths = sys.argv[2:]
+feature_dir = sys.argv[2]
+paths = sys.argv[3:]
 
 flags = 0
 
@@ -211,6 +218,24 @@ def require_frozen_intent(display, lines, mask, intent_no):
 
 
 def lint_spec(display, data):
+    from spec_questions import read_questions
+    try:
+        questions = read_questions(data.decode("utf-8"))
+        if questions:
+            flag(display, 0, "unresolved intent questions: " + "; ".join(questions))
+    except (ValueError, UnicodeDecodeError) as exc:
+        flag(display, 0, str(exc))
+    if feature_dir:
+        from feature_read import load_state
+        from spec_intent import verify_intent
+        try:
+            feature = load_state(feature_dir)
+            text = data.decode("utf-8")
+            if (feature.get("specApproval") or re.search(r"^route: *full\s*$", text, re.M)
+                    or not re.search(r"^## Intent$", text, re.M)):
+                verify_intent(text, feature.get("specApproval"))
+        except (OSError, ValueError) as exc:
+            flag(display, 0, str(exc))
     lines, mask = markdown_scan(display, data, allow_frontmatter=True)
     if lines is None:
         return

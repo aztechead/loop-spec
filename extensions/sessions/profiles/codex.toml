@@ -1,3 +1,5 @@
+cycle_entry = "$loop-spec-auto {task}"
+cycle_resume = "$loop-spec-cycle autonomous"
 # OpenAI Codex CLI: the headless entry skills/shared/codex-harness.md documents.
 # `codex exec` takes the prompt as its last argument. Without --bypass the sandbox
 # stays at workspace-write; with it Codex skips approvals and the sandbox.

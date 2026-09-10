@@ -236,6 +236,9 @@ while IFS=$'\t' read -r label path; do
   [[ -f "$path" ]] || flag "[$label] $path missing"
 done < <(nget '.required[]? | [.label, .path] | @tsv')
 run_bodies gates
+if [[ -f "$docs/SPEC.md" && ( "$(fget '.specApproval // null')" != null || "$(nget '.artifacts.spec // ""')" != "" ) ]]; then
+  run_gate intent bash "$SCRIPT_DIR/artifact-lint.sh" spec "$docs/SPEC.md" --feature-dir "$feature_dir"
+fi
 [[ "$(nget '.oracle // false')" != "true" ]] || oracle_gate
 
 if (( flags == 0 )); then

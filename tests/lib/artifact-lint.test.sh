@@ -42,8 +42,7 @@ check "missing file flags, does not crash" 1 spec "$WORK/does-not-exist.md"
 # --- spec ---
 cat > "$WORK/spec-good.md" <<'EOF'
 ---
-ambiguity_scores:
-  ambiguity: 0.1
+unresolved_questions: []
 ---
 # My Feature
 
@@ -67,6 +66,14 @@ Something is broken.
 - none
 EOF
 check "well-formed spec passes (frontmatter allowed)" 0 spec "$WORK/spec-good.md"
+sed 's/unresolved_questions: .*/unresolved_questions: ["Should empty input fail, or return nothing?"]/' "$WORK/spec-good.md" > "$WORK/spec-open.md"
+check "a concrete unanswered question blocks SPEC" 1 spec "$WORK/spec-open.md"
+check_output "question itself appears in the failure" "Should empty input fail, or return nothing?" spec "$WORK/spec-open.md"
+sed 's/unresolved_questions: .*/unresolved_questions: null/' "$WORK/spec-good.md" > "$WORK/spec-invalid.md"
+check "null questions cannot pass as resolved" 1 spec "$WORK/spec-invalid.md"
+sed '/unresolved_questions:/d' "$WORK/spec-good.md" > "$WORK/spec-missing-questions.md"
+check "missing question field fails closed" 1 spec "$WORK/spec-missing-questions.md"
+
 # Both shapes, from the fixtures: the full SPEC opens with Problem, the oneshot SPEC
 # with the ask in a frozen Intent block and Implementation notes.
 check "the full-shape fixture passes" 0 spec "$ROOT/tests/fixtures/real-SPEC.md"

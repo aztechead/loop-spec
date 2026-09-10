@@ -15,7 +15,8 @@
       "writes": [
         "artifacts",
         "currentPhase",
-        "warnings"
+        "warnings",
+        "specApproval"
       ],
       "effort": "system2",
       "body": "skills/spec/SKILL.md",
@@ -30,7 +31,7 @@
         ],
         "optional": [
           "{featureDir}/spec-draft.md",
-          "{featureDir}/spec-interview-transcript.md"
+          "{featureDir}/decisions.jsonl"
         ]
       },
       "egress": {
@@ -55,20 +56,16 @@
         "oracle": true,
         "writes": [
           "artifacts.spec",
-          "artifacts.specInterview"
+          "specApproval"
         ],
         "artifacts": {
           "spec": "{docs}/SPEC.md"
-        },
-        "artifactsIfPresent": {
-          "specInterview": "{featureDir}/spec-interview-transcript.md"
         },
         "commit": {
           "message": "spec: {slug}",
           "paths": [
             "{docs}/SPEC.md",
-            "{docs}/EVIDENCE.md",
-            "{featureDir}/spec-interview-transcript.md"
+            "{docs}/EVIDENCE.md"
           ]
         },
         "close": "always"
@@ -958,6 +955,32 @@
   ],
   "edges": [
     {
+      "from": "oneshot",
+      "to": "oneshot",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/review-route.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "review=bad-spec"
+      }
+    },
+    {
+      "from": "verify",
+      "to": "discuss",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/review-route.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "review=bad-spec"
+      }
+    },
+    {
       "from": "spec",
       "to": "human.after-spec",
       "kind": "chain"
@@ -1255,11 +1278,6 @@
     {
       "from": "human.after-execute",
       "to": "verify",
-      "kind": "chain"
-    },
-    {
-      "from": "verify",
-      "to": "verify.placeholder.gate",
       "kind": "chain"
     },
     {
@@ -1692,6 +1710,33 @@
       "ceiling": 2,
       "strategy": "unroll",
       "note": "bounds the delivery retry; exhausting it aborts resumably instead of looping forever"
+    },
+    {
+      "from": "verify",
+      "to": "verify.placeholder.gate",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/review-route.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "review=continue"
+      }
+    },
+    {
+      "from": "verify",
+      "to": "discuss",
+      "kind": "loop",
+      "ceiling": 5,
+      "strategy": "contain"
+    },
+    {
+      "from": "oneshot",
+      "to": "oneshot",
+      "kind": "loop",
+      "ceiling": 5,
+      "strategy": "contain"
     }
   ]
 }

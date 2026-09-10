@@ -1,7 +1,5 @@
 ---
-ambiguity_scores:
-  gate_passed: true
-  unresolved_dimensions: []
+unresolved_questions: []
 footprint:
   - {path/to/file-the-change-touches}
 ---

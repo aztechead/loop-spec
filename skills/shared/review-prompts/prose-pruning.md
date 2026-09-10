@@ -56,7 +56,7 @@ These are load-bearing for other machinery, whatever they look like to fresh eye
 - `### Good Enough` acceptance criteria and `## Decisions` entries — coverage gates match
   them verbatim; cutting one is a **scope change**, not a prune. If one genuinely looks
   like surplus, report it under `out-of-scope:` and let the maker escalate.
-- `ambiguity_scores` and `trust` frontmatter blocks, and `STALE` banners.
+- `unresolved_questions` and `trust` frontmatter blocks, and `STALE` banners.
 - `EVID-NNN` citations and `ASSUMPTION:` lines — grounding is never surplus.
 - Template-required section headings, even when their section is thin.
 - `simplicity:` markers and TODO/FIXME/NOTE/HACK/SAFETY markers.

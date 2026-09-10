@@ -245,8 +245,8 @@ check "SDK controller: resolves model inside the per-phase query loop" \
     && grep -Fq 'query_overrides["model"] = value' "$CLOUD" \
     && echo 1 || echo 0)"
 check "CLI controller: passes only an explicit phase selector to --model" \
-  "$(grep -Fq '&& "$phase_model" != "inherit"' "$CLOUD" \
-    && grep -Fq 'claude_args+=(--model "$phase_model")' "$CLOUD" \
+  "$(grep -Fq 'if model and model != "inherit"' "$REPO_ROOT/extensions/sessions/session_run.py" \
+    && grep -Fq '"--model", model.stdout.strip()' "$REPO_ROOT/extensions/sessions/cycle_run.py" \
     && echo 1 || echo 0)"
 
 echo ""

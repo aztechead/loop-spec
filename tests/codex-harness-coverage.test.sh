@@ -187,7 +187,7 @@ with tempfile.TemporaryDirectory() as tmp:
     (feature / 'feature.json').write_text('{"slug":"guarded","schemaVersion":7}')
     docs = project / 'docs/loop-spec/features/guarded'
     docs.mkdir(parents=True)
-    (docs / 'SPEC.md').write_text('---\nambiguity_scores:\n  gate_passed: true\n  unresolved_dimensions: []\nfootprint:\n  - app.py\n---\n# guarded\n')
+    (docs / 'SPEC.md').write_text('---\nunresolved_questions: []\nfootprint:\n  - app.py\n---\n# guarded\n')
     for artifact in ('SPEC.md', 'VERIFICATION.md'):
         payload.update(tool_name='apply_patch', tool_input={'command':
             '*** Begin Patch\n*** Update File: docs/loop-spec/features/guarded/' + artifact + '\n@@\n-x\n+y\n*** End Patch'})

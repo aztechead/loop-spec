@@ -38,6 +38,7 @@ root. `integration: none` requires a concrete reason.
 
 ### Findings
 
+Accepted findings append `| routing: <JSON>` per `skills/shared/review-routing.md`.
 One bullet per finding, or "none": `- <file>:<line> — <claim> | verdict: true — <commit,
 backlog id, or fix>` for a finding you accepted, `- <file>:<line> — <claim> | verdict:
 false — <disproof: what you ran or read that shows it wrong>` for one you rejected.

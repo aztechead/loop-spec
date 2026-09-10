@@ -87,16 +87,21 @@ jq '.slug = "wt-feature" | .feature_title = "wt feature" | .branch = "feat/wt-fe
 printf '# stale: not a spec at all\n' > "$REPO/docs/loop-spec/features/wt-feature/SPEC.md"
 cat > "$WDOCS/SPEC.md" <<'MD'
 ---
-ambiguity_scores:
-  ambiguity: 0.1
-  gate_passed: true
-  unresolved_dimensions: []
+unresolved_questions: []
 ---
 # wt feature
 
 ## Problem
 
 The worktree copy is the real one.
+
+## Goals
+
+Produce the requested behavior.
+
+## Boundaries (what NOT to do)
+
+Do not change unrelated behavior.
 
 ## Success criteria
 
@@ -108,6 +113,7 @@ The worktree copy is the real one.
 
 - none
 MD
+bash "$REPO_ROOT/lib/cycle-driver.sh" spec approve --feature-dir "$WFD" --source human >/dev/null
 ec=0; out="$(cd "$REPO" && bash "$EXIT" spec --feature-dir "$WFD" 2>&1)" || ec=$?
 check "exit spec from a worktree feature: the worktree copy is the one read (clean exit)" "phase-exit: ok (spec)" "$(tail -1 <<<"$out")"
 check "exit spec from a worktree feature: the stale parent copy is not named as misplaced" "0" "$(grep -c 'misplaced' <<<"$out")"
@@ -117,38 +123,12 @@ check "exit spec from a worktree feature: the artifact pointer is the worktree-r
 rm -rf "$REPO/docs/loop-spec/features/wt-feature"
 git worktree remove --force "$WORK/wt" >/dev/null 2>&1; git branch -q -D feat/wt-feature >/dev/null 2>&1
 
-cat > "$DOCS/SPEC.md" <<'MD'
----
-ambiguity_scores:
-  ambiguity: 0.1
-  gate_passed: true
-  unresolved_dimensions: []
----
-# My Feature
-
-## Problem
-
-Something is broken.
-
-## Success criteria
-
-### Good Enough
-
-- [ ] `bash -n a.sh` exits 0
-
-### Exceptional
-
-- [ ] stretch
-
-## Grounding
-
-- none
-MD
-printf '# transcript\n' > "$FD/spec-interview-transcript.md"
+cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCS/SPEC.md"
+bash "$REPO_ROOT/lib/cycle-driver.sh" spec approve --feature-dir "$FD" --source human >/dev/null
 ec=0; out="$(bash "$EXIT" spec --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit spec: well-formed SPEC.md passes" "0" "$ec"
 check "exit spec: artifact pointer recorded" "docs/loop-spec/features/my-feature/SPEC.md" "$(fj '.artifacts.spec')"
-check "exit spec: transcript pointer recorded" "1" "$([[ "$(fj '.artifacts.specInterview')" == *transcript.md ]] && echo 1 || echo 0)"
+check "exit spec: no interview transcript is recorded" "null" "$(fj '.artifacts.specInterview')"
 check "exit spec: phase closed" "spec" "$(fj '.completedPhases[-1]')"
 bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || true
 check "exit spec: a re-entered phase closes once" "1" "$(fj '[.completedPhases[] | select(. == "spec")] | length')"

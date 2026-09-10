@@ -9,7 +9,7 @@
 #
 # Three inputs, all deterministic, and ALL must hold for `route=oneshot`:
 #   1. SPEC.md's frontmatter `footprint:` names 1 to 3 files the change touches.
-#   2. `ambiguity_scores.unresolved_dimensions` is empty and `gate_passed` is true.
+#   2. `unresolved_questions` is empty.
 #   3. `lib/security-signal.sh` finds nothing in SPEC.md or the footprint files that
 #      exist: a change that touches a security surface takes the full path even when
 #      the spec never says so.
@@ -110,13 +110,13 @@ if (( candidate )); then
   targets=()
   while IFS= read -r t; do [[ -n "$t" ]] && targets+=("$t"); done < <(footprint_existing "${candidates[@]}")
   (( ${#targets[@]} )) && security_signal "${targets[@]}"
-  printf 'route=oneshot reason=candidate footprint of %d file(s) from the scout record with no security signal (the ambiguity gate is read after SPEC)\n' "${#candidates[@]}"
+  printf 'route=oneshot reason=candidate footprint of %d file(s) from the scout record with no security signal (the question gate is read after SPEC)\n' "${#candidates[@]}"
   exit 0
 fi
 [[ -f "$spec" ]] || full "no SPEC.md at $spec"
 
 # The frontmatter facts, one per line: route=, gate=, unresolved=<count>, footprint=<path>.
-facts="$(python3 - "$spec" <<'PY'
+facts="$(python3 - "$spec" "$SCRIPT_DIR/../.." <<'PY'
 import re, sys
 lines = open(sys.argv[1], encoding="utf-8", errors="replace").read().split("\n")
 if not lines or lines[0].strip() != "---":
@@ -136,26 +136,27 @@ for raw in body:
     indent = len(line) - len(line.lstrip())
     text = line.strip()
     m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$", text)
-    if m and (indent == 0 or section in ("ambiguity_scores",) and indent > 0):
+    if m and (indent == 0):
         key, val = m.group(1), m.group(2).strip()
         if indent == 0:
             section = key if val == "" else None
         if key == "route" and indent == 0:
             route = val.strip("'\"")
-        elif key == "gate_passed":
-            gate = val
-        elif key == "unresolved_dimensions":
-            unresolved = [] if val == "" else re.findall(r"[^\[\],\s'\"]+", val)
-            if val == "":
-                section = "unresolved_dimensions"
         elif key == "footprint" and indent == 0:
             footprint = [] if val == "" else [p.strip("'\"") for p in re.findall(r"[^\[\],\s'\"]+", val)]
             section = "footprint" if val == "" else None
         continue
     if text.startswith("- ") and section == "footprint" and footprint is not None:
         footprint.append(text[2:].strip().strip("'\""))
-    elif text.startswith("- ") and section == "unresolved_dimensions" and unresolved is not None:
-        unresolved.append(text[2:].strip())
+sys.path.insert(0, sys.argv[2])
+from spec_questions import read_questions
+try:
+    questions = read_questions("\n".join(lines))
+except ValueError:
+    print("frontmatter=invalid-questions"); sys.exit(0)
+if questions is not None:
+    unresolved = questions
+    gate = "true" if not questions else "false"
 print("route=%s" % (route or ""))
 print("gate=%s" % (gate or ""))
 print("unresolved=%s" % ("missing" if unresolved is None else len(unresolved)))
@@ -179,13 +180,13 @@ if (( after )); then
 fi
 
 grep -q '^footprint-key=missing' <<<"$facts" && full "SPEC.md frontmatter has no footprint: list"
-[[ "$(sed -n 's/^gate=//p' <<<"$facts")" == "true" ]] || full "ambiguity gate did not pass (gate_passed is not true)"
+[[ "$(sed -n 's/^gate=//p' <<<"$facts")" == "true" ]] || full "unresolved intent questions remain"
 unresolved="$(sed -n 's/^unresolved=//p' <<<"$facts")"
-[[ "$unresolved" == "0" ]] || full "unresolved_dimensions is ${unresolved/missing/absent}, not empty"
+[[ "$unresolved" == "0" ]] || full "unresolved_questions is ${unresolved/missing/absent}, not empty"
 footprint=()
 while IFS= read -r p; do [[ -n "$p" ]] && footprint+=("$p"); done < <(sed -n 's/^footprint=//p' <<<"$facts")
 footprint_shape ${footprint[@]+"${footprint[@]}"}
 targets=("$spec")
 while IFS= read -r t; do [[ -n "$t" ]] && targets+=("$t"); done < <(footprint_existing "${footprint[@]}")
 security_signal "${targets[@]}"
-printf 'route=oneshot reason=footprint of %d file(s), ambiguity gate passed with no unresolved dimension, no security signal\n' "${#footprint[@]}"
+printf 'route=oneshot reason=footprint of %d file(s), no unresolved intent question, no security signal\n' "${#footprint[@]}"

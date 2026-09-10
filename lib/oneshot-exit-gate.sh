@@ -112,7 +112,10 @@ if (( ! escalated )); then
   # One review pass, and it happened: the dispatch event the skill emits when it launches
   # the reviewer (skills/shared/dispatch.md). The first slugify run on the route wrote
   # "No findings" under Code review with nobody dispatched.
-  if ! jq -e 'select(.event == "dispatch" and .phase == "oneshot" and ((.data.role // "") | test("code-reviewer")))' \
+  if ! jq -se 'reduce .[] as $e (false;
+      if $e.event == "review-routed" and $e.phase == "oneshot" then false
+      elif $e.event == "dispatch" and $e.phase == "oneshot" and (($e.data.role // "") | test("code-reviewer")) then true
+      else . end)' \
       "$feature_dir/events.jsonl" >/dev/null 2>&1; then
     flag "[review] no code-reviewer dispatch recorded for oneshot in $feature_dir/events.jsonl: dispatch loop-spec:code-reviewer once and emit the dispatch event (skills/oneshot/SKILL.md, One review pass)"
   fi

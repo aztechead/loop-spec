@@ -172,7 +172,7 @@ variables. They configure that published recipe, not plugin internals:
 | `LOOP_SPEC_EXTENSIONS` | path; `.loop-spec/extensions.json` | Project extension declarations read by `lib/extension-points.sh`: additional review layers, per-phase prepend/append instructions, and standing facts. Extensions add only — a declared layer can never disable, reorder, or shadow a built-in gate, and no authority script reads this file. Read paths fail open; `extension-points.sh validate` fails closed. |
 | `LOOP_SPEC_ARTIFACTS_IN_PR` | `0`/`1`; `1` | `0` copies `docs/loop-spec/features/<slug>/` and feature state to the artifact store during candidate finalization, then restores that document directory to its base image so run documents do not enter the PR diff. |
 | `LOOP_SPEC_ARTIFACT_DIR` | directory outside the working tree; Git private storage | Store root used when `LOOP_SPEC_ARTIFACTS_IN_PR=0`. The default is the repository's private Git path under `loop-spec/artifacts`; set an external mounted directory for ephemeral jobs. A working-tree path is rejected because it would reintroduce the audit payload into the candidate. |
-| `LOOP_SPEC_PR_BODY_VERBOSE` | `0`/`1`; `0` | `0` keeps reviewer-facing summary and verification sections expanded while putting spec scores, convergence prose, and artifact metadata in a collapsed Run details block. `1` expands those sections. |
+| `LOOP_SPEC_PR_BODY_VERBOSE` | `0`/`1`; `0` | `0` keeps reviewer-facing summary and verification sections expanded while putting unresolved questions, convergence prose, and artifact metadata in a collapsed Run details block. `1` expands those sections. |
 | `LOOP_SPEC_DELIVERY_RECONCILE` | `0`/`1`; `1` | `0` skips `lib/delivery-reconcile.sh`, so a GitHub PR opened outside `lib/deliver.sh` is not written into `delivery.json`. Default `1` observes required checks once (no long poll) and writes the sidecar when the PR is SHA-bound and green. |
 | `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | integer `0..86400`; `900` | Total DELIVER wait for required PR checks. `0` performs no extended wait. |
 | `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | integer `0..3600`; `10` | Required-check polling interval. `0` polls again without sleeping. |
@@ -199,8 +199,7 @@ variables. They configure that published recipe, not plugin internals:
 | `LOOP_SPEC_ANSWER_STYLE` | `auto`/`step`/`interactive`/`review-only`; `auto` | Supplies the cycle style when questions are disabled. |
 | `LOOP_SPEC_ANSWER_TITLE` | text; unset | Supplies the feature description. Required in non-interactive mode unless the spec file supplies one. |
 | `LOOP_SPEC_ANSWER_REPOS` | comma-separated repo names; all | Supplies workspace repo selection. |
-| `LOOP_SPEC_ANSWER_SPEC_CONFIRM` | `yes`/`no`; `yes` | After a passing synthesized gate, `yes` writes SPEC.md; `no` leaves the phase at SPEC and returns a durable `spec-confirmation-declined` pause. |
-| `LOOP_SPEC_ANSWER_SPEC_OVERRIDE` | `yes`/`no`; `yes` | After a failing synthesized gate, `yes` writes SPEC.md with failing dimensions recorded; `no` leaves the phase at SPEC and returns a durable `spec-override-declined` pause. |
+| `LOOP_SPEC_ANSWER_SPEC_CONFIRM` | `yes`/`no`; `yes` | After resolving the synthesized question list, `yes` writes SPEC.md; `no` leaves the phase at SPEC and returns a durable `spec-confirmation-declined` pause. |
 | `LOOP_SPEC_ANSWER_ITERATE_SPEC` | `reopen`/`ship`; `reopen` | On a non-interactive SPEC-level iteration gap, `reopen` returns to DISCUSS refinement; `ship` advances to DELIVER and records the accepted gap. |
 | `LOOP_SPEC_ANSWER_*` | family | Namespace used by non-interactive answers. Unknown suffixes are ignored. |
 
@@ -450,3 +449,36 @@ They are listed to remove ambiguity in wrappers and integrations.
 When integrating loop-spec, depend only on the supported inputs and documented
 machine-result files/lines. Internal variables may change without compatibility
 guarantees.
+
+## Outer CLI launcher and phase evidence
+
+Run `bash lib/cycle-launch.sh --profile codex --cwd /path/to/project --prompt-file task.txt`
+from a terminal outside the model session. Profiles `claude`, `codex`, and `opencode`
+use the session layer and require Python 3.11. Install the plugin for the selected CLI;
+Claude also receives this checkout through its profile's plugin argument. ADK and SDK
+hosts retain their native supervisor integration.
+
+`--max-invocations` defaults to 16 and `--timeout` to 3600 seconds per invocation.
+The launcher preserves autonomous settings, selects the model for each phase, and
+relaunches only after a fresh `paused` result whose reason is `phase-handoff`.
+A stale or missing result, CLI failure, timeout, human pause, or exhausted cap exits
+nonzero. `.loop-spec/launcher-result.json` records the stop and session log paths.
+The lower-level session adapter's `--lead --plugin-root PATH` enables this lead mode;
+ordinary task sessions retain their isolated environment and tool scope.
+
+`cycle-driver.sh spec approve --feature-dir DIR --source human|autonomous|supervised`
+records the full spec's Goal and Boundary digest. No source can replace an existing
+approval. Later edits to either section fail phase entry and artifact lint even if committed.
+
+Each phase receives an immutable instruction snapshot with a SHA-256 manifest.
+`feature.json.instructionSnapshots` and the `instructions-rendered` event retain the
+hashes; `phase-begin` returns the active record. The driver verifies it at the boundary,
+and eval records compare source hashes with the pristine plugin tree. Project prepend,
+append, and persistent facts are resolved when rendering, so later edits cannot alter
+the running phase's brief.
+State checkpoints retain the snapshots and review evidence. A restored checkout
+verifies those historical hashes and renders a new active snapshot for its own paths.
+
+`verification verdict --routing JSON` accompanies an accepted finding. The JSON
+selects `intent-gap`, `bad-spec`, `patch`, or `defer` and records the root cause and
+route-specific evidence; see `skills/shared/review-routing.md`.

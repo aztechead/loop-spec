@@ -115,7 +115,7 @@ Or mount it yourself: `from loop_spec_adk import build_app`. Differences:
 
 1. Startup probes cache to `.loop-spec/runtime.json`.
 2. Claude Code creates a feature worktree at `.claude/worktrees/{slug}` on `feat/{slug}`. OpenCode, Codex, and ADK create the branch in place on a clean checkout — none of them has a session-root switch, so `executionRootMode` records the difference rather than faking it.
-3. SPEC interviews you (up to 6 rounds) until the ambiguity gate passes, then writes `docs/loop-spec/features/{slug}/SPEC.md`.
+3. SPEC investigates, asks one consolidated list of intent questions, records decisions, then writes `docs/loop-spec/features/{slug}/SPEC.md`.
 4. DISCUSS critiques the spec. PLAN writes `PATTERNS.md` + `PLAN.md` (task DAG with verify commands).
 5. EXECUTE implements tasks in parallel where the DAG allows, one commit per task.
 6. VERIFY runs marker/tamper scans, acceptance criteria, and a blocking code review.
@@ -158,7 +158,7 @@ Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills 
 
 | Phase | Produces | Gates |
 |---|---|---|
-| SPEC | `SPEC.md` with `ambiguity_scores` | Interview (max 6); ambiguity ≤ 0.20 |
+| SPEC | `SPEC.md` with `unresolved_questions` and decisions | No unresolved intent questions |
 | ONESHOT | one commit, `VERIFICATION.md` | Footprint ≤ 3 files, no open question, no security signal (`lib/graph/probes/oneshot.sh`); one review; scans and the converged floor at exit |
 | DISCUSS | revised SPEC.md | Challenger critique (skipped when the spec is already gated) |
 | PLAN | `PATTERNS.md` + `PLAN.md` | Critique + feasibility + criteria coverage |

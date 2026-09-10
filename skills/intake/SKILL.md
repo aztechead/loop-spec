@@ -8,7 +8,7 @@ allowed-tools: Bash Read Write Glob Grep Skill AskUserQuestion
 # Intake — anything → SPEC draft → cycle
 
 The cycle already knows how to run from a pre-authored spec file (`/loop-spec:cycle
-path/to/spec.md` → SPEC phase spec-file ingest: graph-ground, score the ambiguity gate,
+path/to/spec.md` → SPEC phase spec-file ingest: graph-ground, resolve concrete intent questions,
 normalize). What it cannot eat is a Slack thread, a Jira ticket, or a rambling prompt.
 This skill is the converter in front of that path — and ONLY the converter (ponytail:
 the ingest machinery already exists; do not rebuild it here). Scoring, normalization,
@@ -16,9 +16,8 @@ interviews, and gates all stay in the SPEC phase.
 
 **The fidelity rule (CRITICAL): restructure, never invent.** Every requirement,
 constraint, and decision in the draft must be traceable to the source text. Where the
-source is silent, the draft stays silent — the ambiguity gate and DISCUSS exist
-precisely to catch and resolve those holes (`gate_passed: false` +
-`unresolved_dimensions` is the designed outcome for a thin source, not a failure of
+source is silent, the draft stays silent — the question gate and DISCUSS exist
+precisely to catch and resolve those holes (a non-empty `unresolved_questions` list is the designed outcome for a thin source, not a failure of
 this skill). An intake that pads a two-line Slack message into a confident 10-requirement
 spec has fabricated a goal the user never stated — worse than useless, because
 downstream gates will faithfully verify the fabrication.
@@ -44,7 +43,7 @@ inv="$(bash "${CLAUDE_SKILL_DIR}/../../lib/parse-invocation.sh" parse -- "$ARGUM
    cannot self-answer an empty intake: abort with usage guidance
    (`skills/shared/autonomous-mode.md`, bare-invocation rule).
 
-**Already SPEC-shaped?** If the source begins with an `ambiguity_scores` YAML
+**Already SPEC-shaped?** If the source begins with an `unresolved_questions` YAML
 frontmatter block, or is a file that already carries the SPEC.md section skeleton
 (`## Requirements` + `## Boundaries`), skip conversion entirely — go straight to Step 4
 with the file path (write pasted text to the Step 3 path first). Converting a spec into
@@ -133,7 +132,7 @@ Skill(loop-spec:cycle) with arguments: "{pass-through tokens} .loop-spec/intake/
 - Pass-through tokens (`autonomous`, `new`, `style:...`) go through verbatim — a Slack
   message describing a brand-new app runs `new autonomous .loop-spec/intake/{slug}.md`.
 - The cycle's Step 3 branch 3 takes it from here: title from the draft's `# ` heading,
-  SPEC phase in spec-file ingest mode, ambiguity gate scored on the draft itself. A
+  SPEC phase in spec-file ingest mode, unresolved questions recorded from the draft itself. A
   thin source (most Slack messages) fails dimensions and lands in the designed
   resolution path: targeted questions in `step`/`interactive`, graph-grounded recorded
   assumptions in `auto`/autonomous.
@@ -145,7 +144,7 @@ Skill(loop-spec:cycle) with arguments: "{pass-through tokens} .loop-spec/intake/
 - Never invents requirements, constraints, or acceptance criteria absent from the source.
 - Never answers the source's open questions (SPEC/DISCUSS own resolution; autonomous
   self-answers happen THERE, with the decision record).
-- Never runs the interview, scores ambiguity, or normalizes format — that is the SPEC
+- Never resolves intent questions or normalizes format — that is the SPEC
   phase's spec-file ingest mode, already built and gated.
 - Never fetches remote content (offline by design, like the rest of the plugin): a Jira
   ticket or Slack thread arrives as pasted text or a saved file, not a URL.

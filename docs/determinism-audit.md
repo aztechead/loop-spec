@@ -18,19 +18,15 @@ everywhere it is not selecting a branch. Ordered by how much still rides on pros
 | oracle tampering | `lib/test-tamper-scan.sh` |
 | artifact well-formedness at handoffs | `lib/artifact-lint.sh` |
 | pre-existing vs introduced failures | `lib/verification-baseline.sh` |
-| PR body composition and score formatting | `lib/pr-body.sh` (percentage table, GFM, frontmatter never leaks) |
+| PR body composition and question rendering | `lib/pr-body.sh` (question list, GFM, frontmatter never leaks) |
 | "the loop has converged" | `lib/converged-floor.sh` — the judge's `converged: true` is vetoed unless every SPEC Good Enough criterion has a VERIFICATION grounding row and no acceptance-table row is FAIL |
 
 ## Remaining judgment-selected branches (probe candidates)
 
-1. **SPEC ambiguity scores gate the design exit** (`skills/spec/SKILL.md`). The four
-   clarity dimensions are model-authored numbers, and `ambiguity <= 0.20` selects
-   pass/iterate. Probe candidate: a deterministic FLOOR cross-check — e.g.
-   `acceptance_clarity` may not clear its minimum unless `### Good Enough` carries at
-   least N `- [ ]` checkboxes and every requirement block has a Current/Target/
-   Acceptance triple (artifact-lint already proves structure; the cross-check would
-   bind score to structure). The score itself stays judgment; the probe would only
-   catch a score the artifact cannot support.
+1. **SPEC intent decisions** (`skills/spec/SKILL.md`). Recommended answers remain
+   judgment, recorded with reasons in the decisions ledger. The exit now checks the
+   concrete `unresolved_questions` array through `lib/spec_questions.py`; missing,
+   malformed, or non-empty lists fail. There is no numeric score selecting the exit.
 
 2. **`gap.type` routing** (`skills/iterate/SKILL.md` Step 3): the judge's
    classification (`execute|plan|spec|discuss`) selects the rewind target. Probe

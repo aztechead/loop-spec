@@ -74,7 +74,10 @@
         "driverNext",
         "driverRedo",
         "handoffSession",
-        "artifactSink"
+        "artifactSink",
+        "specApproval",
+        "instructionSnapshots",
+        "reviewRouting"
       ]
     },
     "effort": {

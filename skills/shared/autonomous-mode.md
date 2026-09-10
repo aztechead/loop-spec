@@ -11,7 +11,7 @@ the cycle persists it as `feature.json.autonomous = true` so phases and resumes 
 
 `execStyle: auto` is not this mode. Auto is the default style: the cycle does not pause
 between phases, but a human is attached and grill, SPEC, and DISCUSS questions still
-fire (the SPEC interview is an AskUserQuestion loop (`auto` included)).
+fire (the SPEC checkpoint uses consolidated AskUserQuestion questions (`auto` included)).
 
 Do not ask for permission to perform work the original request already authorizes;
 carry out the next step and keep going until the work is complete. Human gates,
@@ -28,8 +28,9 @@ input. Per harness: `claude -p "/loop-spec:auto <description>"` (or the Claude A
 `adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run: <description>" --jsonl`,
 and `LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write '$loop-spec-auto <description>'`.
 All stamp `CLAUDE_CODE_ENTRYPOINT`, so `lib/harness.sh headless` detects the profile.
-Every phase returns with a paused `phase-handoff` result; the supervisor relaunches the
-cycle and the next phase starts in a fresh context.
+Every phase returns with a paused `phase-handoff` result. `lib/cycle-launch.sh` owns
+CLI relaunches; SDK and ADK supervisors may retain their native relaunch loop. The next
+phase starts in a fresh context.
 
 The compact route (`/loop-spec:auto` classifier) writes an auditable per-gate run/skip
 plan; every skip has a reason, a malformed or unbounded proposal promotes to the full
@@ -83,7 +84,7 @@ On that answer, at every self-answer site in SPEC and DISCUSS:
 
 1. Formulate the question exactly as the self-answer rule would, and ask it through the
    native question tool with the recommended option FIRST and labeled `(Recommended)`.
-   One call per interview round; the placeholder guard still applies, so every question
+   One consolidated call per checkpoint; the placeholder guard still applies, so every question
    is a real one.
 2. The answer is recorded for you on Claude Code and the Agent SDK:
    `hooks/team/oracle-record.sh` writes kind `supervised` from the question tool's

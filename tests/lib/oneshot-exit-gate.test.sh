@@ -47,10 +47,7 @@ spec() {
   # spec [<extra top-level frontmatter line>]
   cat > "$DOCS/SPEC.md" <<MD
 ---
-ambiguity_scores:
-  ambiguity: 0.1
-  gate_passed: true
-  unresolved_dimensions: []
+unresolved_questions: []
 footprint:
   - src/slugify.py
 ${1:-}
@@ -103,7 +100,7 @@ sed 's/^- \[ \] \\`python3 -c[^`]*\\` exits 0$/- [ ] the tests pass/; s/^- \[ \]
 check "a Good Enough line without a backticked command flags" "1" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/bare.md" 2>&1 | grep -c 'carries no backticked command')"
 sed 's/^footprint:$/footprint: [a.py, b.py, c.py, d.py]/; /^  - src\/slugify.py$/d' "$WORK/long.md" > "$WORK/full.md"
 check "a full-shape spec (four files) passes the lint untouched" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/full.md" >/dev/null 2>&1; echo $?)"
-check "a spec without a footprint passes the lint" "0" "$(printf -- '---\nambiguity_scores:\n  gate_passed: true\n---\n# x\n' > "$WORK/nofp.md"; bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nofp.md" >/dev/null 2>&1; echo $?)"
+check "a spec without a footprint passes the lint" "0" "$(printf -- '---\nunresolved_questions: []\n---\n# x\n' > "$WORK/nofp.md"; bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nofp.md" >/dev/null 2>&1; echo $?)"
 check "the oneshot template is under 60 lines" "1" "$([[ $(wc -l < "$REPO_ROOT/skills/shared/artifact-templates/SPEC-oneshot.md.template") -lt 60 ]] && echo 1 || echo 0)"
 # The driver's skeleton, with the lead's values filled by a blunt substitution, passes
 # both lints: a shape the driver wrote that a gate flags is a driver bug, not a REDO.

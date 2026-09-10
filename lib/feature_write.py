@@ -92,6 +92,11 @@ def main(args):
                 value = (current or []) + [value]
             target[keys[-1]] = value
 
+        if previous is not None:
+            approved = parse_json(previous).get("specApproval")
+            if approved is not None and state.get("specApproval") != approved:
+                raise ValueError("specApproval is immutable; restore approved intent and request a new intent decision")
+
         content = (json.dumps(state, indent=2, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
         if previous is not None:
             publish(directory / "feature.json.bak", previous)

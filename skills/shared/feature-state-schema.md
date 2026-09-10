@@ -40,6 +40,9 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "currentPhase": "a phase id of lib/graph/phases.sh list (spec | oneshot | discuss | plan | execute | verify | iterate | deliver) | completed",
   "currentPhaseStartedAt": "ISO-8601 timestamp or null; set by cycle-driver.sh next when it answers NEXT for a phase (the watchdog reads it)",
   "completedPhases": ["array of phase names"],
+  "specApproval": {"sha256":"approved Goal and Boundary digest", "source":"human | supervised | autonomous", "approvedAt":"ISO-8601 timestamp"},
+  "instructionSnapshots": [{"phase":"phase id", "manifest":"absolute path", "sha256":"manifest digest", "prompt":"absolute path", "promptSha256":"rendered body digest"}],
+  "reviewRouting": {"route":"intent-gap | bad-spec", "used":0, "pending":false, "reportSha256":"review digest", "findings":[]},
   "branch": "string (feat/{slug})",
   "worktreePath": "string (absolute path of the created feature worktree, .claude/worktrees/{slug} by default) in single-repo mode; null in workspace mode",
   "executionRootMode": "worktree | in-place | workspace",
@@ -68,7 +71,6 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "deliver": "Claude selector | null"
   },
   "artifacts": {
-    "specInterview": "path or null (.loop-spec/features/{slug}/spec-interview-transcript.md)",
     "spec": "path or null",
     "patterns": "path or null (docs/loop-spec/features/{slug}/PATTERNS.md, written at PLAN Step 0)",
     "patternsSource": "gsd-ingest | pattern-mapper | manual | null",
@@ -206,7 +208,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   classification (or an explicit operator override): SPEC synthesizes its spec instead of
   interviewing, and the graph short path skips DISCUSS, spec-critique, and the
   code-review agent when `lib/security-signal.sh` reports no match. PLAN critique skip is
-  `plan-critique.sh` / the skill fast-path, not that short path. The ambiguity gate, the
+  `plan-critique.sh` / the skill fast-path, not that short path. The question gate, the
   feasibility check, and the deterministic VERIFY gates stay; code review is the one
   quality gate the short path drops, and only behind this classification.
 - `compact` is a separate, classifier-authored ladder. Bootstrap records the normalized
@@ -343,3 +345,12 @@ documents. Never write the file directly.
 ## Resume
 
 On `cycle` skill startup, candidate `feature.json` files are enumerated, filtered (completed/stale skip, `TaskList({team: currentTeamName})` live-team probe — explicit teams mode only), and routed back into their phase. The full algorithm, the orphan/stale-team handling, worktree/workspace re-entry, and `currentGate` transcript reload are documented authoritatively in `lib/cycle-driver.sh` (resume).
+
+## Approved full-spec intent
+
+`specApproval` records `sha256`, `source` (`human`, `supervised`, or `autonomous`),
+and `approvedAt`. `cycle-driver.sh spec approve --feature-dir DIR --source SOURCE`
+creates it after the questions are resolved and the Goal and Boundary are approved.
+The state writer refuses replacement or deletion. Phase exit passes the feature dir
+to artifact lint, which compares those sections with the approved digest even after
+intervening commits. Implementation and acceptance details remain editable.

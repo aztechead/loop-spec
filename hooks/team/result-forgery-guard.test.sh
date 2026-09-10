@@ -38,7 +38,7 @@ ONE="$WORK/one"; mkdir -p "$ONE/.loop-spec/features/one" "$ONE/docs/loop-spec/fe
 git -C "$ONE" init -q >/dev/null 2>&1
 printf '{"slug":"one","schemaVersion":7}\n' > "$ONE/.loop-spec/features/one/feature.json"
 printf '{"slug":"big","schemaVersion":7}\n' > "$ONE/.loop-spec/features/big/feature.json"
-printf -- '---\nambiguity_scores:\n  gate_passed: true\n  unresolved_dimensions: []\nfootprint:\n  - a.py\n---\n# one\n\n## Intent\n\nx\n<!-- /intent -->\n\n## Implementation notes\n\n- a.py: x\n' > "$ONE/docs/loop-spec/features/one/SPEC.md"
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - a.py\n---\n# one\n\n## Intent\n\nx\n<!-- /intent -->\n\n## Implementation notes\n\n- a.py: x\n' > "$ONE/docs/loop-spec/features/one/SPEC.md"
 printf -- '---\nfootprint: [a.py, b.py, c.py, d.py]\n---\n# big\n\n## Problem\n\nx\n' > "$ONE/docs/loop-spec/features/big/SPEC.md"
 check "a redirect into a oneshot feature's SPEC.md is denied" 2 'cat > docs/loop-spec/features/one/SPEC.md <<EOF2
 # x

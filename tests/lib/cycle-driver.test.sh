@@ -46,34 +46,8 @@ drv() {
 write_spec() {
   local root="$1" fd="$2" slug docs
   slug="$(jq -r '.slug' "$fd/feature.json")"; docs="$root/docs/loop-spec/features/$slug"; mkdir -p "$docs"
-  cat > "$docs/SPEC.md" <<'MD'
----
-ambiguity_scores:
-  ambiguity: 0.1
-  gate_passed: true
-  unresolved_dimensions: []
----
-# A feature
-
-## Problem
-
-Something is broken.
-
-## Success criteria
-
-### Good Enough
-
-- [ ] `bash -n a.sh` exits 0
-
-### Exceptional
-
-- [ ] stretch
-
-## Grounding
-
-- none
-MD
-  printf '# transcript\n' > "$fd/spec-interview-transcript.md"
+  cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$docs/SPEC.md"
+  drv spec approve --feature-dir "$fd" --source human >/dev/null
 }
 # --- usage ---------------------------------------------------------------------
 ec=0; bash "$SCRIPT" >/dev/null 2>&1 || ec=$?
@@ -148,7 +122,7 @@ check "next: the feature branch carries no state commit" "0" "$(git -C "$REPO" l
 check "next: the project .gitignore is never written" "0" "$([[ -f "$REPO/.gitignore" ]] && grep -c 'loop-spec' "$REPO/.gitignore" || echo 0)"
 
 out="$(cd "$REPO" && drv next --feature-dir "$FD" 2>/dev/null)"
-check "next: re-invoke after pause continues to discuss" 'NEXT phase=discuss label="Challenge and refine the specification" effort=system2' "$out"
+check "next: re-invoke after pause continues to discuss" 'NEXT phase=discuss label="Challenge and refine the specification" effort=system2' "$(head -1 <<<"$out")"
 
 # declined SPEC gate is terminal for the invocation
 jq -n '{status:"paused", reason:"spec-confirmation-declined"}' > "$FD/result.json"
@@ -412,10 +386,7 @@ ec=0; (cd "$REPO7" && drv spec write --feature-dir "$FD7" --to "$WORK/elsewhere.
 check "spec write: any other target is a bad invocation" "2" "$ec"
 cat > "$DOCS7/SPEC.md" <<'MD'
 ---
-ambiguity_scores:
-  ambiguity: 0.1
-  gate_passed: true
-  unresolved_dimensions: []
+unresolved_questions: []
 footprint:
   - slugify.py
 ---
@@ -539,10 +510,10 @@ check "verification review: a pending finding is a flag until answered" "1" "$(j
 ec=0; (cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding slugify.py:2 --verdict maybe --reason x >/dev/null 2>&1) || ec=$?
 check "verification verdict: true or false only" "2" "$ec"
 out="$(cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding slugify.py:2 --verdict false --reason "lower() never adds a dot, so the order cannot change the result" 2>/dev/null)"
-out="$(cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding tests/test_slugify.py:1 --verdict true --reason "added the dotted case in the fix commit" 2>/dev/null)"
+out="$(cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding tests/test_slugify.py:1 --verdict true --reason "added the dotted case in the fix commit" --routing '{"route":"patch","cause":"missing dotted case","surface":"none","fixCommit":"1a2b3c4"}' 2>/dev/null)"
 check "verification verdict: the answers replace pending" "0" "$(grep -c '| verdict: pending$' "$DOCS7/VERIFICATION.md")"
 check "verification verdict: a false carries its disproof" "1" "$(grep -c '^- slugify.py:2 — .* | verdict: false — lower() never adds a dot' "$DOCS7/VERIFICATION.md")"
-ec=0; (cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding nope.py:9 --verdict true --reason x >/dev/null 2>&1) || ec=$?
+ec=0; (cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding nope.py:9 --verdict true --reason x --routing '{"route":"defer","cause":"unknown","reason":"separate cleanup"}' >/dev/null 2>&1) || ec=$?
 check "verification verdict: an unknown finding is refused" "1" "$ec"
 printf 'Verdict: PASS\nNo findings.\n' > "$FD7/dispatch/oneshot.review.md"
 out="$(cd "$REPO7" && drv verification review --feature-dir "$FD7" --reviewer-model haiku 2>/dev/null)"
@@ -668,34 +639,8 @@ check "next: the escalation names the gate" "1" "$(head -1 <<<"$out" | grep -c '
 check "next: an escalated result is published" "escalated" "$(jq -r '.status' "$FD6/result.json")"
 rm -f "$FD6/result.json"; bash "$REPO_ROOT/lib/feature-write.sh" set "$FD6" driverRedo null >/dev/null
 DOCS6="$REPO6/docs/loop-spec/features/$(jq -r '.slug' "$FD6/feature.json")"; mkdir -p "$DOCS6"
-cat > "$DOCS6/SPEC.md" <<'MD'
----
-ambiguity_scores:
-  ambiguity: 0.1
-  gate_passed: true
-  unresolved_dimensions: []
----
-# Add a flag
-
-## Problem
-
-Something is broken.
-
-## Success criteria
-
-### Good Enough
-
-- [ ] `bash -n a.sh` exits 0
-
-### Exceptional
-
-- [ ] stretch
-
-## Grounding
-
-- none
-MD
-printf '# transcript\n' > "$FD6/spec-interview-transcript.md"
+cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCS6/SPEC.md"
+drv spec approve --feature-dir "$FD6" --source human >/dev/null
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec 2>/dev/null)"
 check "next: a clean exit hands the successor to a fresh session" "HANDOFF next=discuss model=" "${out:0:27}"
 check "next: the handoff wrote the paused result" "phase-handoff" "$(jq -r '.reason' "$FD6/result.json")"

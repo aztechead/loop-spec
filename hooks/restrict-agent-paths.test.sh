@@ -222,8 +222,8 @@ git -C "$XREPO" init -q && git -C "$XREPO" commit -q --allow-empty -m seed
 mkdir -p "$XREPO/.loop-spec/features/one" "$XREPO/docs/loop-spec/features/one" "$XREPO/.loop-spec/features/big" "$XREPO/docs/loop-spec/features/big"
 printf '{"slug":"one","schemaVersion":7}\n' > "$XREPO/.loop-spec/features/one/feature.json"
 printf '{"slug":"big","schemaVersion":7}\n' > "$XREPO/.loop-spec/features/big/feature.json"
-printf -- '---\nambiguity_scores:\n  gate_passed: true\n  unresolved_dimensions: []\nfootprint:\n  - a.py\n---\n# one\n\n## Intent\n\nx\n<!-- /intent -->\n\n## Implementation notes\n\n- a.py: x\n' > "$XREPO/docs/loop-spec/features/one/SPEC.md"
-printf -- '---\nambiguity_scores:\n  gate_passed: true\n  unresolved_dimensions: []\nfootprint: [a.py, b.py, c.py, d.py]\n---\n# big\n\n## Problem\n\nx\n' > "$XREPO/docs/loop-spec/features/big/SPEC.md"
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - a.py\n---\n# one\n\n## Intent\n\nx\n<!-- /intent -->\n\n## Implementation notes\n\n- a.py: x\n' > "$XREPO/docs/loop-spec/features/one/SPEC.md"
+printf -- '---\nunresolved_questions: []\nfootprint: [a.py, b.py, c.py, d.py]\n---\n# big\n\n## Problem\n\nx\n' > "$XREPO/docs/loop-spec/features/big/SPEC.md"
 export CLAUDE_PROJECT_DIR="$XREPO"
 check "X1: main-thread Edit of a oneshot-route SPEC.md DENY (the driver fills it)" 2 \
   "$(payload "Edit" "$XREPO/docs/loop-spec/features/one/SPEC.md" "$FIXTURES/main-thread.jsonl")"

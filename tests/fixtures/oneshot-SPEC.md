@@ -1,13 +1,5 @@
 ---
-ambiguity_scores:
-  goal_clarity: 0.95
-  boundary_clarity: 0.9
-  constraint_clarity: 0.9
-  acceptance_clarity: 0.95
-  ambiguity: 0.08
-  rounds_completed: 0
-  gate_passed: true
-  unresolved_dimensions: []
+unresolved_questions: []
 footprint:
   - src/slugify.py
   - tests/test_slugify.py

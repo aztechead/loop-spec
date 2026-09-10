@@ -1,3 +1,5 @@
+cycle_entry = "Load the loop-spec-auto skill and run: {task}"
+cycle_resume = "Load the loop-spec-cycle skill and resume autonomously."
 # opencode: the headless entry skills/shared/opencode-harness.md documents. `opencode
 # run` has no permission flag; the project's opencode config decides.
 name = "opencode"

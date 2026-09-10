@@ -22,12 +22,18 @@ pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin discuss -
 
 ## 1. Consume what SPEC left open
 
-Read SPEC.md's `ambiguity_scores` frontmatter. Each entry in `unresolved_dimensions[]`
-is an open ask that would otherwise ship unmet. **`auto` / `step` / `interactive`:** ask ONE targeted
-`AskUserQuestion` for it before anything else; autonomous, `review-only`, and
-non-interactive resolve it as an explicit, code-grounded assumption (`ASSUMPTION (<dimension>): <claim> | verify:
-<command>`). Either way it becomes a concrete requirement with a testable
-`### Good Enough` criterion and leaves the list (`gate_passed: true` once empty).
+Read SPEC.md's `unresolved_questions` list. Any new intent gaps are one consolidated
+checkpoint, resolved through recorded decisions before implementation. Autonomous and
+non-interactive runs use the recommended-answer contract in
+`skills/shared/autonomous-mode.md`; an unresolved authorization boundary escalates.
+Each resolution becomes a concrete requirement and a testable `### Good Enough`
+criterion before it leaves the list.
+
+When ONESHOT promoted this build (`route: full` with only an Intent section), expand
+the draft into the full SPEC template while preserving that intent. Resolve concrete
+questions, then obtain and record approval through SPEC's "Approval and exit"
+instructions in `skills/spec/SKILL.md` before returning. Use the run's existing human,
+autonomous, or supervised approval source; promotion never grants human approval.
 
 `reentry=true` (ITERATE sent the cycle back for a `spec`-type gap): read
 `iterate.feedback`, refine SPEC.md toward the ORIGINAL goal (`feature_title`) for that
@@ -66,13 +72,12 @@ cite `EVID-NNN`, or write an ASSUMPTION; `skills/shared/grounding-protocol.md`).
   "The supervised path" and records answers as `supervised` (`phase-exit.sh` flags a
   named supervisor that was never asked); otherwise answered by you from the code,
   each recorded with `bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" discuss "<q>" "<a>" "<why>"`.
-- **`skip`** (`review-only` or non-interactive): only the unresolved-dimension
+- **`skip`** (`review-only` or non-interactive): only the unresolved-question
   assumptions above.
 
 Save the transcript to `feature_dir/discuss-transcript.md`. If `docs/loop-spec/features/{slug}/SPEC.md` exists,
-edit it in place: resolved dimensions, design decisions, boundaries under
-`## Boundaries (what NOT to do)`. Preserve `ambiguity_scores` except the dimensions you
-resolved. Spawn `spec-writer-1` (`loop-spec:spec-writer`) only when SPEC.md is missing
+edit its design decisions in place and preserve the approved Goal and Boundary.
+Record resolved questions and their reasons in the decisions ledger. Spawn `spec-writer-1` (`loop-spec:spec-writer`) only when SPEC.md is missing
 entirely, with `spec_path` and the transcript path absolute (`$(git -C "$feature_dir" rev-parse --show-toplevel)/docs/loop-spec/features/{slug}/SPEC.md`, never relative: agents share your cwd, and the exit gate reads the feature's checkout). Never spawn `advocate-1`.
 
 **PATTERNS.md prefetch (background, best effort).** Unless greenfield, workspace mode,

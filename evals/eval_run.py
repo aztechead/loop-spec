@@ -362,6 +362,17 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, ti
     delivery_status = (delivery or (feature or {}).get("delivery") or {}).get("status")
     events, redo = read_gate_events(fdir)
     passed = sum(1 for c in checks.values() if c["pass"])
+    sys.path.insert(0, str(REPO / "lib"))
+    from phase_snapshot import verify as verify_snapshot
+    instruction_snapshots = (feature or {}).get("instructionSnapshots") or []
+    instruction_errors = []
+    if feature and not instruction_snapshots:
+        instruction_errors.append("cycle has no recorded instruction snapshots")
+    for snapshot in instruction_snapshots:
+        try:
+            verify_snapshot(snapshot, run_dir / "plugin-pristine", fdir)
+        except (OSError, ValueError, KeyError) as exc:
+            instruction_errors.append(str(exc))
     record = {
         "task": task_id, "size": task.get("size"), "kind": task.get("kind"),
         "model": model, "run_id": run_id, "plugin_version": plugin_version(),
@@ -407,7 +418,9 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, ti
             capture_output=True, text=True).stdout.splitlines() if line.strip()],
         "workarounds": workarounds(project, env),
         "checks": checks, "checks_passed": passed, "checks_total": len(checks),
-        "accepted": bool(checks) and passed == len(checks) and not protected_touched,
+        "instruction_snapshots": instruction_snapshots,
+        "instruction_errors": instruction_errors,
+        "accepted": bool(checks) and passed == len(checks) and not protected_touched and not instruction_errors,
         "rounds_detail": [{k: v for k, v in r.items() if k not in ("result_text", "stderr_tail")}
                           for r in rounds],
         "last_result_text": rounds[-1]["result_text"] if rounds else "",

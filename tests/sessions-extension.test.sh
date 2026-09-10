@@ -156,7 +156,7 @@ print(argv[-2])
 PY
 )"
 check "the claude profile grants the implementer's tools without bypass" "1" \
-  "$(grep -c 'guarded_args = .*--allowedTools' "$ROOT/extensions/sessions/profiles/claude.toml")"
+  "$(grep -c '^guarded_args = .*--allowedTools' "$ROOT/extensions/sessions/profiles/claude.toml")"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

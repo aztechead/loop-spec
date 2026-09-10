@@ -24,8 +24,7 @@ whole word). Both bounds read through the tuning overlay.
 **Maintenance profile** (decided before any phase by `lib/cycle-profile.sh select` from
 a validated low-risk classification, or an explicit `profile:` / `LOOP_SPEC_CYCLE_PROFILE`
 override; persisted as `feature.json.executionProfile`): SPEC synthesizes instead of
-interviewing (the ambiguity gate still scores and falls back to the interview when a
-dimension misses its minimum); the graph short path (`lib/graph/probes/short-path.sh`)
+interviewing (the unresolved-question gate blocks until concrete intent questions are resolved); the graph short path (`lib/graph/probes/short-path.sh`)
 routes around `discuss`, the spec critique, and the `verify.code-review` agent when no
 security signal appears in the written artifacts. Same graph, same ledger, same terminal
 result; the signal is re-read from the artifacts that exist now, so a change that turns

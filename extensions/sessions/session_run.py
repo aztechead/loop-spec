@@ -43,7 +43,7 @@ except ImportError:
 PROFILES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles")
 TAIL_BYTES = 64 * 1024
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
-LIST_KEYS = ("launch_args", "guarded_args", "bypass_args", "seed_files", "env_fault_patterns")
+LIST_KEYS = ("launch_args", "guarded_args", "bypass_args", "seed_files", "env_fault_patterns", "lead_args", "lead_guarded_args")
 SESSION_IDENTITY = ("CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION",
                     "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_REMOTE_SESSION_ID",
                     "CLAUDE_CODE_SYNC_SESSION_REFS")
@@ -105,7 +105,7 @@ def build_argv(profile, prompt, model, bypass):
     return argv
 
 
-def child_env(profile_env):
+def child_env(profile_env, lead=False):
     # The session is an implementer, not a member of the cycle that dispatched it: the
     # plugin bindings and every LOOP_SPEC_* setting would make it act as the lead, and
     # the lead's session identity (id and remote-session plumbing) would make the child
@@ -113,7 +113,7 @@ def child_env(profile_env):
     # writes CLAUDE_CODE_ENTRYPOINT only when it is unset: the child's own launch is the
     # fact, not the lead's.
     env = {k: v for k, v in os.environ.items()
-           if not k.startswith("LOOP_SPEC_")
+           if (lead or not k.startswith("LOOP_SPEC_"))
            and k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT")
            and k not in SESSION_IDENTITY and k != "CLAUDE_CODE_ENTRYPOINT"}
     env.update(profile_env)
@@ -158,6 +158,8 @@ def main(argv):
     parser.add_argument("--cwd", required=True)
     parser.add_argument("--prompt-file", required=True)
     parser.add_argument("--model", default="inherit")
+    parser.add_argument("--lead", action="store_true")
+    parser.add_argument("--plugin-root", default="")
     parser.add_argument("--bypass", action="store_true")
     parser.add_argument("--seed-from", default="")
     parser.add_argument("--log-dir", default="")
@@ -188,6 +190,12 @@ def main(argv):
     profile = load_profile(args.profile)
     if shutil.which(profile["binary"]) is None:
         die("%s is not on PATH (profile %s)" % (profile["binary"], profile["path"]), 3)
+    if args.lead:
+        if not args.plugin_root or not os.path.isdir(args.plugin_root):
+            die("--lead requires --plugin-root pointing to the plugin checkout")
+        profile["launch_args"] += [arg.replace("{plugin_root}", args.plugin_root) for arg in profile["lead_args"]]
+        if profile["lead_guarded_args"]:
+            profile["guarded_args"] = profile["lead_guarded_args"]
     command = build_argv(profile, prompt, args.model, args.bypass)
     seed(profile, args.seed_from, args.cwd)
 
@@ -200,18 +208,24 @@ def main(argv):
     started = time.time()
     status, code = "completed", None
     with open(out_path, "wb") as out, open(err_path, "wb") as err:
-        proc = subprocess.Popen(command, cwd=args.cwd, env=child_env(profile["env"]),
+        proc = subprocess.Popen(command, cwd=args.cwd, env=child_env(profile["env"], args.lead),
                                 stdin=subprocess.DEVNULL, stdout=out, stderr=err, start_new_session=True)
+        previous_term = signal.getsignal(signal.SIGTERM)
+        def interrupted(signum, frame):
+            raise KeyboardInterrupt
+        signal.signal(signal.SIGTERM, interrupted)
         try:
             code = proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
+        except (subprocess.TimeoutExpired, KeyboardInterrupt) as exc:
             # CLI tools spawn test and shell processes that can outlive the CLI.
             try:
                 os.killpg(proc.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
             proc.wait()
-            status = "timeout"
+            status = "interrupted" if isinstance(exc, KeyboardInterrupt) else "timeout"
+        finally:
+            signal.signal(signal.SIGTERM, previous_term)
     fault = None
     if status == "completed" and code != 0:
         status = "failed"
@@ -222,7 +236,7 @@ def main(argv):
     print(json.dumps({"status": status, "exit": code, "argv": command, "stdout": out_path,
                       "stderr": err_path, "durationSeconds": round(time.time() - started, 3),
                       "envFault": fault}))
-    return {"completed": 0, "failed": 1, "env-fault": 4, "timeout": 5}[status]
+    return {"completed": 0, "failed": 1, "env-fault": 4, "timeout": 5, "interrupted": 130}[status]
 
 
 if __name__ == "__main__":

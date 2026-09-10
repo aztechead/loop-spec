@@ -493,7 +493,7 @@ printf '{"slug":"os","artifacts":{}}' > "$OS_REPO/.loop-spec/features/os/feature
 OS_FD="$OS_REPO/.loop-spec/features/os"; OS_SPEC="$OS_REPO/docs/loop-spec/features/os/SPEC.md"
 oneshot_spec() {
   # oneshot_spec <footprint-yaml-lines> [<extra top-level line>] -- a gated spec
-  printf -- '---\nambiguity_scores:\n  ambiguity: 0.1\n  gate_passed: true\n  unresolved_dimensions: []\n%s\n%s\n---\n# os\n\n## Problem\n\nA slug keeps its dots.\n' "$1" "${2:-}" > "$OS_SPEC"
+  printf -- '---\nunresolved_questions: []\n%s\n%s\n---\n# os\n\n## Problem\n\nA slug keeps its dots.\n' "$1" "${2:-}" > "$OS_SPEC"
 }
 check_output "oneshot: no SPEC.md is the full path" "route=full reason=no SPEC.md" "$ONESHOT" --feature-dir "$OS_FD"
 oneshot_spec 'footprint:
@@ -511,12 +511,12 @@ oneshot_spec 'footprint:
 check_output "oneshot: four files is the full path" "route=full reason=footprint names 4 files" "$ONESHOT" --feature-dir "$OS_FD"
 oneshot_spec 'footprint: []'
 check_output "oneshot: an empty footprint is the full path" "route=full reason=footprint names no file" "$ONESHOT" --feature-dir "$OS_FD"
-printf -- '---\nambiguity_scores:\n  ambiguity: 0.1\n  gate_passed: true\n  unresolved_dimensions: []\n---\n# os\n' > "$OS_SPEC"
+printf -- '---\nunresolved_questions: []\n---\n# os\n' > "$OS_SPEC"
 check_output "oneshot: no footprint key is the full path" "route=full reason=SPEC.md frontmatter has no footprint" "$ONESHOT" --feature-dir "$OS_FD"
-printf -- '---\nambiguity_scores:\n  ambiguity: 0.4\n  gate_passed: false\n  unresolved_dimensions: [boundary_clarity]\nfootprint:\n  - src/slugify.py\n---\n# os\n' > "$OS_SPEC"
-check_output "oneshot: a failed gate is the full path" "route=full reason=ambiguity gate did not pass" "$ONESHOT" --feature-dir "$OS_FD"
-printf -- '---\nambiguity_scores:\n  ambiguity: 0.1\n  gate_passed: true\n  unresolved_dimensions:\n    - boundary_clarity\nfootprint:\n  - src/slugify.py\n---\n# os\n' > "$OS_SPEC"
-check_output "oneshot: an unresolved dimension is the full path" "route=full reason=unresolved_dimensions is 1" "$ONESHOT" --feature-dir "$OS_FD"
+printf -- '---\nunresolved_questions: ["Which behavior is required?"]\nfootprint:\n  - src/slugify.py\n---\n# os\n' > "$OS_SPEC"
+check_output "oneshot: a failed gate is the full path" "route=full reason=unresolved intent questions remain" "$ONESHOT" --feature-dir "$OS_FD"
+printf -- '---\nunresolved_questions: ["Which behavior is required?"]\nfootprint:\n  - src/slugify.py\n---\n# os\n' > "$OS_SPEC"
+check_output "oneshot: an unresolved dimension is the full path" "route=full reason=unresolved intent questions remain" "$ONESHOT" --feature-dir "$OS_FD"
 oneshot_spec 'footprint:
   - src/slugify.py' 'route: full'
 check_output "oneshot: route: full in the frontmatter escalates" "route=full reason=SPEC.md frontmatter says route: full" "$ONESHOT" --feature-dir "$OS_FD"
@@ -528,7 +528,7 @@ printf 'def slugify(s):\n    # strip the auth token first\n    return s\n' > "$O
 check_output "oneshot: a security signal in a footprint file is the full path" "route=full reason=security signal in SPEC.md or the footprint" "$ONESHOT" --feature-dir "$OS_FD"
 check_output "oneshot --after: the footprint's own edits do not reroute" "route=oneshot" "$ONESHOT" --feature-dir "$OS_FD" --after
 printf 'def slugify(s):\n    return s\n' > "$OS_REPO/src/slugify.py"
-printf -- '---\nambiguity_scores:\n  ambiguity: 0.1\n  gate_passed: true\n  unresolved_dimensions: []\nfootprint:\n  - src/slugify.py\n---\n# os\n\nRotate the credentials on save.\n' > "$OS_SPEC"
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - src/slugify.py\n---\n# os\n\nRotate the credentials on save.\n' > "$OS_SPEC"
 check_output "oneshot: a security signal in SPEC.md is the full path" "route=full reason=security signal" "$ONESHOT" --feature-dir "$OS_FD"
 oneshot_spec 'footprint:
   - src/slugify.py'
@@ -621,17 +621,10 @@ check "discuss-critique needs a feature dir" 2 "$DISCUSS_CRITIQUE"
 
 write_spec() {
   local path="$1" gate="$2" unresolved="$3"
+  [[ "$gate" != false ]] || unresolved='["Which behavior is required?"]'
   cat > "$path" <<EOF
 ---
-ambiguity_scores:
-  goal_clarity: 0.90
-  boundary_clarity: 0.90
-  constraint_clarity: 0.90
-  acceptance_clarity: 0.90
-  ambiguity: 0.10
-  rounds_completed: 2
-  gate_passed: $gate
-  unresolved_dimensions: $unresolved
+unresolved_questions: $unresolved
 ---
 
 # Spec
@@ -655,7 +648,7 @@ write_spec "$DC/SPEC.md" false '[]'
 check_output "an ungated spec runs critique" \
   "gate=run reason=spec not already gated" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
 
-write_spec "$DC/SPEC.md" true '[goal_clarity]'
+write_spec "$DC/SPEC.md" true '["Which behavior is required?"]'
 check_output "unresolved dimensions force critique" \
   "gate=run reason=spec not already gated" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
 
@@ -664,7 +657,7 @@ jq -n --arg spec "$DC/SPEC.md" \
   '{slug:"dc",executionProfile:"standard",autonomous:true,iterate:{feedback:null},artifacts:{spec:$spec}}' \
   > "$DC/feature.json"
 check_output "a self-scored gate in an autonomous run still runs critique" \
-  "gate=run reason=self-scored gate" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+  "gate=run reason=self-answered questions" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
 # The driver splits a mode line on spaces and `=`; a reason carrying `oracle=self`
 # once became a field of its own and cut the reason short.
 reason_text="$(bash "$DISCUSS_CRITIQUE" --feature-dir "$DC" | sed 's/^gate=[a-z]* reason=//')"

@@ -73,7 +73,7 @@ if bash "$ROOT/lib/graph/validate.sh" "$ROOT/graph/cycle.graph.json" >/dev/null 
   # A gated SPEC.md with a footprint of one file takes the oneshot route (WP1): SPEC,
   # ONESHOT, DELIVER, and none of the five phases between.
   mkdir -p "$WORK/cyclerepo/docs/loop-spec/features/cyclecheck"
-  printf -- '---\nambiguity_scores:\n  gate_passed: true\n  unresolved_dimensions: []\nfootprint:\n  - a.txt\n---\n# cyclecheck\n' \
+  printf -- '---\nunresolved_questions: []\nfootprint:\n  - a.txt\n---\n# cyclecheck\n' \
     > "$WORK/cyclerepo/docs/loop-spec/features/cyclecheck/SPEC.md"
   set +e
   os_out="$(cd "$WORK/cyclerepo" && bash "$SCRIPT" --dry-run \
@@ -93,7 +93,7 @@ if bash "$ROOT/lib/graph/validate.sh" "$ROOT/graph/cycle.graph.json" >/dev/null 
   # The spec to oneshot edge does not hand off: the short route is one session
   # (port audit 1, F2), and the exception is data on the edge.
   check "the edge into oneshot carries sameSession" "true" \
-    "$(jq -r '[.edges[] | select(.to == "oneshot")] | all(.sameSession == true)' "$ROOT/graph/cycle.graph.json")"
+    "$(jq -r '[.edges[] | select(.to == "oneshot" and .from != "oneshot")] | all(.sameSession == true)' "$ROOT/graph/cycle.graph.json")"
   check "the oneshot to deliver edge carries sameSession too (the short route is one session end to end)" "true" \
     "$(jq -r '[.edges[] | select(.from == "oneshot" and .to == "deliver")] | all(.sameSession == true)' "$ROOT/graph/cycle.graph.json")"
   check "no other edge carries sameSession" "0" \
