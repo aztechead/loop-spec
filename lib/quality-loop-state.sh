@@ -30,20 +30,67 @@
 # State file: $LOOP_SPEC_QL_STATE else .loop-spec/quality-loop.json
 # Atomic writes: tmp + rename (mirror of lib/feature-write.sh pattern).
 #
+# Cycle participation: when the state file lives inside a feature state directory
+# (<root>/.loop-spec/features/<slug>/quality-loop.json -- its parent holds
+# feature.json and that parent's parent is `features` under `.loop-spec`), or
+# when $LOOP_SPEC_QL_FEATURE_DIR names a feature directory directly, the mutating
+# subcommands (scope, record-round, mark-clean) publish the sidecar through the
+# feature's publication contract (lib/artifact_publication.py) instead of writing
+# it directly: $LOOP_SPEC_PUBLICATION_TOKEN (a file holding the caller's held
+# token, immutable) is adopted at ingress and $LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT
+# (a file, if set) receives the accepted refresh. A stale token exits 1 with
+# "stale publication token" and leaves the sidecar unchanged. Read-only
+# subcommands (status, systemic) never touch publication. Standalone use (no
+# feature directory resolvable) is unaffected by any of this.
+#
 # Exit codes:
 #   0  success
-#   1  bad invocation / state error
+#   1  bad invocation / state error / stale publication token
 #   2  mark-clean refused (blocking findings present)
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
 # State file resolution
 # ---------------------------------------------------------------------------
-_state_file() {
+
+# The standalone-only path: $LOOP_SPEC_QL_STATE, else the project default. Used
+# both directly (no feature dir resolves) and as the input to feature-dir
+# path-shape detection below, so detection never depends on the cycle-aware
+# result it is computing.
+_raw_state_file() {
   if [[ -n "${LOOP_SPEC_QL_STATE:-}" ]]; then
     printf '%s' "$LOOP_SPEC_QL_STATE"
   else
     printf '%s' ".loop-spec/quality-loop.json"
+  fi
+}
+
+# Print the feature directory and return 0 when the sidecar belongs to a
+# feature's publication contract; return 1 (standalone) otherwise.
+_feature_dir() {
+  local dir gp ggp
+  if [[ -n "${LOOP_SPEC_QL_FEATURE_DIR:-}" ]]; then
+    dir="$LOOP_SPEC_QL_FEATURE_DIR"
+  else
+    dir="$(dirname "$(_raw_state_file)")"
+    gp="$(dirname "$dir")"
+    ggp="$(dirname "$gp")"
+    [[ "$(basename "$gp")" == features && "$(basename "$ggp")" == .loop-spec ]] || return 1
+  fi
+  [[ -f "$dir/feature.json" ]] || return 1
+  printf '%s' "$dir"
+}
+
+# The path every subcommand reads and writes. In cycle mode this is always
+# <feature dir>/quality-loop.json -- the exact target publish_locked registers
+# -- so a caller cannot point LOOP_SPEC_QL_STATE somewhere the publication
+# transaction does not actually write.
+_state_file() {
+  local feature_dir
+  if feature_dir="$(_feature_dir)"; then
+    printf '%s/quality-loop.json' "$feature_dir"
+  else
+    _raw_state_file
   fi
 }
 
@@ -59,6 +106,85 @@ _atomic_write() {
   printf '%s\n' "$json" > "$tmp"
   sync 2>/dev/null || true
   mv "$tmp" "$state"
+}
+
+# ---------------------------------------------------------------------------
+# Cycle participation: publish the sidecar through the feature's publication
+# contract instead of writing it directly. Falls back to _atomic_write when
+# the feature has no active contract to join (e.g. a completed feature).
+# ---------------------------------------------------------------------------
+_write_state() {
+  local json="$1" feature_dir out rc=0
+  if feature_dir="$(_feature_dir)"; then
+    out="$(_publish_state "$feature_dir" "$json")" || rc=$?
+    [[ $rc -eq 0 ]] || return 1
+    [[ "$out" == SKIP ]] && _atomic_write "$json"
+    return 0
+  fi
+  _atomic_write "$json"
+}
+
+_publish_state() {
+  local feature_dir="$1" json="$2"
+  local lib_dir; lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  PYTHONPATH="${lib_dir}${PYTHONPATH:+:$PYTHONPATH}" python3 - "$feature_dir" "$json" <<'PY'
+# Publish the sidecar as one registered artifact target (registry
+# {"quality_loop": "quality-loop.json"}, a bare filename that
+# lib/artifact_publication.py's artifact_paths() resolves inside the feature
+# directory), never as a feature.json state update.
+import json
+import os
+from pathlib import Path
+import sys
+import uuid
+
+from artifact_publication import capture_locked, locked_feature, publish_locked, stage
+from feature_write import begin_operation, parse_json, participant_registry, publish, read_bounded
+
+feature_dir = Path(sys.argv[1])
+content = sys.argv[2].encode("utf-8")
+token_in_path = os.environ.get("LOOP_SPEC_PUBLICATION_TOKEN")
+token_out_path = os.environ.get("LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT")
+if token_out_path and token_in_path and Path(token_out_path).resolve() == Path(token_in_path).resolve():
+    print("quality-loop-state: LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT must not be the immutable input token", file=sys.stderr)
+    sys.exit(1)
+token_in = parse_json(read_bounded(Path(token_in_path))) if token_in_path else None
+
+try:
+    # begin_operation validates a held token against the feature's generic
+    # registry (the same one its holder captured against) and bootstraps the
+    # contract on a feature's first participant; refuse_pending inside it is
+    # what makes an active migration or an unfinished publication refuse here.
+    ingress = begin_operation(feature_dir, token_in)
+    if ingress is None:
+        # No schema-7 contract to join (e.g. the feature is already delivered):
+        # not this module's decision to make one, so the caller writes plainly.
+        print("SKIP")
+        sys.exit(0)
+    generic = participant_registry(feature_dir)
+    registry = dict(generic or {})
+    registry["quality_loop"] = "quality-loop.json"
+    with locked_feature(feature_dir):
+        if ingress != capture_locked(feature_dir, generic):
+            raise ValueError("stale publication token; discard the pending operation")
+        expanded = capture_locked(feature_dir, registry)
+        source = stage(feature_dir, "quality-loop-" + uuid.uuid4().hex, content)
+        publish_locked(feature_dir, expanded,
+            {"version": 1, "files": [{"source": source, "target": "quality_loop"}], "updates": []},
+            registry=registry)
+        # quality_loop is not part of the generic registry other participants
+        # capture against; hand the next holder a token shaped like theirs, the
+        # way lib/artifact_sink.py's store() collapses back after its own
+        # sink-specific keys, so a later generic capture still compares equal.
+        refreshed = capture_locked(feature_dir, generic)
+except ValueError as exc:
+    print("quality-loop-state: {}".format(exc), file=sys.stderr)
+    sys.exit(1)
+
+if token_out_path:
+    publish(Path(token_out_path), (json.dumps(refreshed, sort_keys=True) + "\n").encode())
+print("PUBLISHED")
+PY
 }
 
 # ---------------------------------------------------------------------------
@@ -123,7 +249,7 @@ cmd_scope() {
     '
   )"
 
-  _atomic_write "$new_state"
+  _write_state "$new_state"
   printf '%d\n' "$count"
 }
 
@@ -179,7 +305,7 @@ cmd_record_round() {
     '
   )"
 
-  _atomic_write "$new_state"
+  _write_state "$new_state"
 }
 
 # ---------------------------------------------------------------------------
@@ -303,7 +429,7 @@ cmd_mark_clean() {
     '
   )"
 
-  _atomic_write "$new_state"
+  _write_state "$new_state"
 }
 
 # ---------------------------------------------------------------------------

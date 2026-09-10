@@ -20,6 +20,28 @@ Environment variables:
 
 - `LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS` -- maximum review rounds before escalating (default: 3).
 - `LOOP_SPEC_QL_STATE` -- override path for the quality-loop state file (default: `.loop-spec/quality-loop.json`).
+- `LOOP_SPEC_QL_FEATURE_DIR` -- names the feature directory when running inside a cycle (see "Cycle participation" below).
+
+### Cycle participation
+
+Standalone runs (no `feature.json` in scope) need none of this: the state CLI writes its
+own JSON directly, exactly as always.
+
+When the loop runs inside a cycle, the findings and clean state belong to the feature and
+require its publication ingress token, the same contract every other cycle participant
+follows (`lib/artifact_publication.py`). The state CLI detects this itself when the state
+file already lives at `<feature dir>/quality-loop.json` (the shape `bash lib/cycle-driver.sh`
+produces); set `LOOP_SPEC_QL_FEATURE_DIR` only when the feature directory needs to be named
+explicitly. Either way, the skill does nothing extra to opt in -- it just passes through the
+env pair it received from its caller unchanged:
+
+- `LOOP_SPEC_PUBLICATION_TOKEN` -- the held ingress token file, if the caller handed one in.
+- `LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT` -- where the state CLI writes its accepted refresh,
+  if the caller wants one back.
+
+`scope`, `record-round`, and `mark-clean` each publish through the feature's contract when
+in cycle mode; a stale token exits 1 with "stale publication token" and leaves the sidecar
+untouched. `status` and `systemic` are read-only and never touch publication.
 
 Resolve the round limit once at entry and fail before dispatch on invalid input:
 

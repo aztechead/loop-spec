@@ -3,6 +3,18 @@
 
 store receives the caller's original token and returns its own accepted refresh.
 recover resolves journal keys within received roots; journals cannot grant roots.
+
+store's manifest.json records stateCapturedAtGeneration: the feature's generation
+at ingress, before this transaction's own publish bumps it and records
+artifactSink. The archived state/feature.json under the sink destination is that
+pre-publication snapshot, one generation behind the live feature.json once store
+is accepted.
+
+Both store and recover take Git's own index lock (index_lock) before touching the
+index, and refuse rather than clear a lock they do not own: a lock left behind by
+a Git process that died mid-write makes every later store/recover exit 1 with
+"Git index is locked" until an operator confirms no Git process still owns it and
+removes the file themselves (`git`'s own guidance for a stale index.lock).
 """
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -150,7 +162,7 @@ def store(directory, root, sink_root=None, token=None, failure=None):
       if kind != b"blob" or mode not in (b"100644", b"100755"):
         raise ValueError("artifact sink baseline contains a non-regular document")
       relative = os.fsdecode(name)[len(docs_rel) + 1:]
-      baseline[relative] = oid.decode()
+      baseline[relative] = {"oid": oid.decode(), "executable": mode == b"100755"}
       if len(baseline) > 256:
         raise ValueError("artifact sink baseline exceeds 256 documents")
     doc_files = files_under(docs)
@@ -190,13 +202,18 @@ def store(directory, root, sink_root=None, token=None, failure=None):
     for relative in set(str(path.relative_to(docs)) for path in doc_files) | set(baseline):
       desired["sink_doc:" + relative] = None
     manifest = {"schema":1, "slug":slug, "baseSha":base, "sourceHead":head,
-          "createdAt":datetime.now(timezone.utc).isoformat(), "artifactsInPr":False, "files":hashes}
+          "createdAt":datetime.now(timezone.utc).isoformat(), "artifactsInPr":False, "files":hashes,
+          # The archived state/feature.json is read (via state_files above) before this
+          # transaction's own publish_locked call bumps the generation and records
+          # artifactSink, so it is always one generation behind the live file once
+          # accepted. Recorded explicitly rather than left to be inferred from a diff.
+          "stateCapturedAtGeneration": ingress["generation"]}
     desired["sink_file:" + head + "/manifest.json"] = (json.dumps(manifest, sort_keys=True) + "\n").encode()
     desired["sink_index"] = None
     registry = registered_targets(directory, root, sink_root, index, slug, desired)
     expanded = capture_locked(directory, registry, external_roots=[sink_root, common])
-  for relative, oid in baseline.items():
-    desired["sink_doc:" + relative] = git(root, "cat-file", "blob", oid)
+  for relative, entry in baseline.items():
+    desired["sink_doc:" + relative] = git(root, "cat-file", "blob", entry["oid"])
   with tempfile.TemporaryDirectory(prefix="sink-index-", dir=str(staging)) as temporary:
     prepared = Path(temporary) / "index"
     if index.exists():
@@ -220,6 +237,15 @@ def store(directory, root, sink_root=None, token=None, failure=None):
     publish_locked(directory, expanded, {"version":1, "files":files,
             "updates":[{"path":"artifactSink", "value":{"mode":"store", "manifest":slug + "/" + head + "/manifest.json"}}]},
             registry=registry, external_roots=[sink_root, common], allowed_updates={"artifactSink"}, failure=failure)
+    # publish_locked carries a replaced target's permission bits forward from
+    # whatever was already on disk (or the tempfile default when nothing was
+    # there), never from Git: an ls-tree mode is not a manifest concept it
+    # knows about. Restore the baseline's own executable bit here so a
+    # mode-755 document does not silently come back non-executable, whether it
+    # was merely stale (candidate had dropped +x) or deleted outright.
+    for relative, entry in baseline.items():
+      if entry["executable"]:
+        os.chmod(safe_path(docs, relative), 0o755)
     return destination, capture_locked(directory, generic)
 
 
