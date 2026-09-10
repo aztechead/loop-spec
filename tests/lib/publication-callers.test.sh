@@ -134,4 +134,35 @@ loop_spec_publication_run bash -eu "$2/child.sh" "$1" "$2"
     assert result.returncode != 0 and "stale publication token" in result.stderr
     assert (shell_feature / "feature.json").read_bytes() == accepted
     print("PASS: shell parent adopts only accepted child refresh and never overwrites original ingress")
+
+    # loop_spec_publication_begin must refuse to alias the immutable input token onto
+    # the output slot a caller reads its own refresh from.
+    guard_feature = directory.parent / "guard"
+    guard_feature.mkdir()
+    (guard_feature / "feature.json").write_text(json.dumps({"schemaVersion":7,"slug":"guard","currentPhase":"spec","artifacts":{},"warnings":[]}))
+    same_token = guard_feature / "same.json"
+    same_token.write_text(json.dumps({"version":1,"generation":0}))
+    guard_script = 'source "$1/lib/feature-write.sh"\nloop_spec_publication_begin "$2"\n'
+    result = subprocess.run(["bash","-euc",guard_script,"guard",sys.argv[1],str(guard_feature)],
+                            env=dict(os.environ, LOOP_SPEC_PUBLICATION_TOKEN=str(same_token),
+                                      LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT=str(same_token)),
+                            text=True, capture_output=True)
+    assert result.returncode != 0, result.stdout
+    assert "must not be the input token" in result.stderr, result.stderr
+    assert same_token.read_text() == json.dumps({"version":1,"generation":0})
+    print("PASS: loop_spec_publication_begin refuses an output slot that names the immutable input token")
+
+    # Token files are small JSON; a bound stops a corrupted or hostile file from being
+    # read whole into memory or shell variables.
+    read_script = 'source "$1/lib/feature-write.sh"\nLOOP_SPEC_PUBLICATION_WRITER="$1/lib/feature_write.py"\nloop_spec_publication_read "$2"\n'
+    big_token = guard_feature / "big.json"
+    big_token.write_bytes(b"x" * (1024 * 1024 + 10))
+    result = subprocess.run(["bash","-euc",read_script,"bound",sys.argv[1],str(big_token)], text=True, capture_output=True)
+    assert result.returncode != 0, result.stdout
+    assert "loop_spec_publication_read" in result.stderr, result.stderr
+    small_token = guard_feature / "small.json"
+    small_token.write_text(json.dumps({"ok":True}))
+    result = subprocess.run(["bash","-euc",read_script,"bound",sys.argv[1],str(small_token)], text=True, capture_output=True)
+    assert result.returncode == 0 and json.loads(result.stdout) == {"ok":True}, (result.returncode, result.stdout, result.stderr)
+    print("PASS: loop_spec_publication_read refuses token files over 1 MiB and returns small ones unchanged")
 PYTEST

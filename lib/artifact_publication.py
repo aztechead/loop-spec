@@ -127,6 +127,7 @@ def artifact_paths(directory, state, registry=None, external_roots=None):
       if registry and key in registry:
         roots.extend(extra_roots)
       path = None
+      real_value = None
       for allowed in roots:
         for alias in (allowed, allowed.resolve()):
           try:
@@ -136,6 +137,22 @@ def artifact_paths(directory, state, registry=None, external_roots=None):
           path = safe_path(alias, str(name))
           external_target = allowed not in internal_roots
           break
+        if path is None:
+          # A persisted absolute pointer can predate a symlinked ancestor (macOS
+          # /var -> /private/var): the textual and .resolve() aliases above both
+          # miss, but the real filesystem locations agree. Rebuild inside the
+          # root's own real location so the trusted registry, not token content,
+          # still decides which paths are reachable.
+          if real_value is None:
+            real_value = Path(os.path.realpath(str(relative)))
+          real_allowed = Path(os.path.realpath(str(allowed)))
+          try:
+            name = real_value.relative_to(real_allowed)
+          except ValueError:
+            pass
+          else:
+            path = safe_path(real_allowed, str(name))
+            external_target = allowed not in internal_roots
         if path is not None:
           break
       if path is None:
@@ -181,6 +198,18 @@ def stage(directory, name, content):
 
 def journal_write(path, value):
   publish(path, (json.dumps(value, sort_keys=True) + "\n").encode())
+
+
+def persist_deferred(directory, failures):
+  """Try the store mirror but never let it block the local commit: the mirror is
+  best-effort (docs/loop-spec/supervisor-interface.md), so a persist failure is
+  recorded here and raised only once the local transaction is durably committed.
+  A `failure()` crash-injection still raises immediately at its own call site,
+  right after this returns, and is unaffected by this deferral."""
+  try:
+    persist(directory)
+  except OSError as exc:
+    failures.append(exc)
 
 
 def publish_locked(directory, token, manifest, registry=None, failure=None, allowed_updates=None, external_roots=None):
@@ -256,7 +285,8 @@ def publish_locked(directory, token, manifest, registry=None, failure=None, allo
     raise ValueError("publication inputs changed during staging")
   journal = {"version": 1, "id": transaction, "generation": current["generation"], "entries": entries}
   journal_write(base / "active.json", journal)
-  persist(directory)
+  persist_failures = []
+  persist_deferred(directory, persist_failures)
   if failure:
     failure("staging")
   for index, (target, content) in enumerate(replacements):
@@ -267,17 +297,21 @@ def publish_locked(directory, token, manifest, registry=None, failure=None, allo
     else:
       target.parent.mkdir(parents=True, exist_ok=True)
       publish(target, content)
-    persist(directory)
+    persist_deferred(directory, persist_failures)
     if failure:
       failure(str(index + 1))
   write_state_locked(directory, state, previous)
-  persist(directory)
+  persist_deferred(directory, persist_failures)
   if failure:
     failure("state")
   os.replace(base / "active.json", backup / "committed.json")
   sync_directory(backup)
   sync_directory(base)
-  persist(directory)
+  persist_deferred(directory, persist_failures)
+  if persist_failures:
+    # The local transaction is already committed above; only the best-effort
+    # mirror is behind, matching feature_write.persist's own contract.
+    raise persist_failures[0]
   return capture_locked(directory, registry, external_roots)
 
 

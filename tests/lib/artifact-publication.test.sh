@@ -258,4 +258,80 @@ with tempfile.TemporaryDirectory() as work:
             capture_locked(participant, registry={'archive':str(Path(work)/'unregistered')},
                            external_roots=[external])
     print('PASS: external registration rejects symlink roots, escaping files and live-state aliases')
+
+    # A store persist failure must not strand the local transaction: everything local
+    # (replacement, state write, journal commit) completes durably, and only then does
+    # the caller learn the mirror is behind.
+    os.environ.pop('LOOP_SPEC_STORE', None)
+    strand = Path(work)/'strand'
+    strand.mkdir()
+    strand_state = {'slug':'strand','artifacts':{'spec':'SPEC.md'},'artifactPublication':{'version':1,'generation':0,'evidenceEpoch':0,'migration':None,'participantsVersion':1}}
+    (strand/'feature.json').write_text(json.dumps(strand_state))
+    (strand/'SPEC.md').write_text('original spec')
+    failing_store = Path(work)/'strand-failing-store.sh'
+    failing_store.write_text('#!/usr/bin/env bash\necho "injected store failure" >&2\nexit 2\n')
+    failing_store.chmod(0o755)
+    def strand_run(*args, code=0, env=None):
+        result = subprocess.run(['bash', str(root/'lib/artifact-publication.sh'), *args, '--feature-dir', str(strand)],
+                                 capture_output=True, text=True, env=env)
+        assert result.returncode == code, (args, result.returncode, result.stdout, result.stderr)
+        return result
+    with locked_feature(strand):
+        ingress = capture_locked(strand)
+        source = stage(strand, 'spec', b'new spec')
+    (strand/'strand-token.json').write_text(json.dumps(ingress))
+    (strand/'strand-manifest.json').write_text(json.dumps({'version':1,'files':[{'source':source,'target':'spec'}],'updates':[]}))
+    failing_env = dict(os.environ, LOOP_SPEC_STORE=str(failing_store))
+    result = strand_run('publish', '--token', str(strand/'strand-token.json'), '--manifest', str(strand/'strand-manifest.json'), code=2, env=failing_env)
+    assert 'store persist failed' in result.stderr, result.stderr
+    assert (strand/'SPEC.md').read_text() == 'new spec'
+    assert json.loads((strand/'feature.json').read_text())['artifactPublication']['generation'] == 1
+    assert not (strand/'publication-generations/active.json').exists()
+    with locked_feature(strand):
+        ingress = capture_locked(strand)
+        source = stage(strand, 'spec-final', b'final spec')
+    (strand/'strand-token.json').write_text(json.dumps(ingress))
+    (strand/'strand-manifest.json').write_text(json.dumps({'version':1,'files':[{'source':source,'target':'spec'}],'updates':[]}))
+    strand_run('publish', '--token', str(strand/'strand-token.json'), '--manifest', str(strand/'strand-manifest.json'), code=0)
+    assert (strand/'SPEC.md').read_text() == 'final spec'
+    assert json.loads((strand/'feature.json').read_text())['artifactPublication']['generation'] == 2
+    print('PASS: a store persist failure still commits the local transaction and reports itself only afterward')
+
+    # An absolute pointer persisted through a symlinked ancestor (macOS /var -> /private/var)
+    # must resolve the same as one stored in the real form -- the feature_dir callers pass
+    # in is always the realpath (execute-prepare.sh's `cd ... && pwd -P`), but the pointer
+    # a controller persisted earlier can still name the pre-resolution alias.
+    sym_real_root = Path(work)/'sym-real'
+    sym_real_feature = sym_real_root/'.loop-spec/features/x'
+    sym_real_feature.mkdir(parents=True)
+    sym_alias_root = Path(work)/'sym-alias'
+    sym_alias_root.symlink_to(sym_real_root, target_is_directory=True)
+    sym_alias_feature = sym_alias_root/'.loop-spec/features/x'
+    sym_state = {'slug':'x','artifacts':{'tasks':str(sym_real_feature/'tasks.json')},
+                 'artifactPublication':{'version':1,'generation':0,'evidenceEpoch':0,'migration':None,'participantsVersion':1}}
+    (sym_real_feature/'feature.json').write_text(json.dumps(sym_state))
+    (sym_real_feature/'tasks.json').write_text('[]')
+    with locked_feature(sym_real_feature):
+        ingress_via_real_pointer = capture_locked(sym_real_feature)
+    assert ingress_via_real_pointer['inputs']['tasks']['path'] == str(sym_real_feature/'tasks.json')
+    aliased_state = dict(sym_state, artifacts={'tasks':str(sym_alias_feature/'tasks.json')})
+    (sym_real_feature/'feature.json').write_text(json.dumps(aliased_state))
+    with locked_feature(sym_real_feature):
+        ingress_via_alias_pointer = capture_locked(sym_real_feature)
+    assert ingress_via_alias_pointer['inputs']['tasks']['path'] == str(sym_real_feature/'tasks.json')
+    assert ingress_via_alias_pointer['inputs']['tasks']['hash'] == ingress_via_real_pointer['inputs']['tasks']['hash']
+    print('PASS: an absolute pointer stored in its real form or through a symlinked ancestor both resolve to the real path')
+
+    sym_escape_target = Path(work)/'sym-escape-target'
+    sym_escape_target.mkdir()
+    (sym_escape_target/'tasks.json').write_text('[]')
+    sym_escape_link = sym_real_root/'escape-link'
+    sym_escape_link.symlink_to(sym_escape_target, target_is_directory=True)
+    escaping_state = dict(sym_state, artifacts={'tasks':str(sym_escape_link/'tasks.json')})
+    (sym_real_feature/'feature.json').write_text(json.dumps(escaping_state))
+    with locked_feature(sym_real_feature):
+        with assertions.assertRaisesRegex(ValueError, 'escapes'):
+            capture_locked(sym_real_feature)
+    (sym_real_feature/'feature.json').write_text(json.dumps(sym_state))
+    print('PASS: a symlink that genuinely escapes the feature roots is still rejected')
 PYTEST

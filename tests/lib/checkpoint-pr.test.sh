@@ -124,6 +124,8 @@ chmod +x "$REFRESH_HOOK"
 # no gh (for cases 2, 3, 6). The private dir is the WHOLE path: re-appending
 # /usr/bin would silently reintroduce gh on hosts that install it there, and the
 # three gh-precondition checks would pass the probe they exist to stop at.
+# lib/feature-write.sh's helpers reach this PATH first (loop_spec_publication_begin
+# in checkpoint-pr.sh's Step 2); mktemp and rm are the only coreutils they still need.
 NOGH_BIN="$WORK/nogh-bin"
 mkdir -p "$NOGH_BIN"
 ln -sf "$(command -v git)" "$NOGH_BIN/git"
@@ -132,6 +134,8 @@ ln -sf "$(command -v jq)"  "$NOGH_BIN/jq"
 ln -sf "$(python3 -c 'import sys; print(sys.executable)')" "$NOGH_BIN/python3"
 ln -sf "$(command -v bash)" "$NOGH_BIN/bash"
 ln -sf "$(command -v dirname)" "$NOGH_BIN/dirname"
+ln -sf "$(command -v mktemp)" "$NOGH_BIN/mktemp"
+ln -sf "$(command -v rm)" "$NOGH_BIN/rm"
 NOGH_PATH="$NOGH_BIN"
 
 # Feature dir + fixture
