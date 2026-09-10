@@ -1,7 +1,5 @@
 # {feature_title} - Verification
 
-**Spec:** `docs/loop-spec/features/{slug}/SPEC.md`
-
 ## Repository grounding
 
 - criterion: GE-001 | implementation: {path}:{line} - {what it proves} | integration: {path}:{line} - {what it proves}
@@ -11,8 +9,6 @@
 | # | Criterion | Status | Evidence |
 |---|-----------|--------|----------|
 | 1 | {from SPEC} |  | `{verify command}` -> {output summary} |
-
-## Verify command outputs
 
 ### Criterion 1
 

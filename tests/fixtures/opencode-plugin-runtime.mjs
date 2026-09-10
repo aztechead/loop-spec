@@ -177,6 +177,21 @@ try {
     },
   );
 
+  for (const [tool, args] of [
+    ["bash", { command: "codex exec nested" }],
+    ["write", { filePath: ".loop-spec/last-result.json", content: "{}" }],
+    ["apply_patch", { patchText: "*** Begin Patch\n*** Add File: safe.txt\n+x\n*** Update File: .loop-spec/last-result.json\n@@\n-x\n+y\n*** End Patch" }],
+  ]) {
+    let denied = false;
+    try {
+      await hooks["tool.execute.before"]({ sessionID: "ses_openai", tool }, { args });
+    } catch (error) {
+      denied = /DENY|nested harness/.test(error.message);
+    }
+    if (!denied) fail(`tool guard did not deny ${tool}`);
+  }
+  await hooks["tool.execute.before"]({ sessionID: "ses_openai", tool: "write" },
+    { args: { filePath: "src/app.py", content: "pass" } });
   console.log("runtime-ok");
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });

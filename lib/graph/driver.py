@@ -1797,6 +1797,21 @@ def cmd_deliver(argv):
 TEMPLATES = REPO_ROOT / "skills" / "shared" / "artifact-templates"
 
 
+def compact_artifact(text):
+    """Headings already separate short records; preserve whitespace inside evidence fences."""
+    lines = text.splitlines()
+    out, fenced = [], False
+    for i, line in enumerate(lines):
+        if line.startswith("```"):
+            fenced = not fenced
+        if not fenced and not line and (
+                (out and out[-1].startswith("#")) or
+                (i + 1 < len(lines) and lines[i + 1].startswith("#"))):
+            continue
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
 def feature_root(feature_dir, feat):
     """The checkout that holds feature.json (the workspace root in workspace mode): the
     root lib/exit-gate-prelude.sh reads artifacts from, never the lead's cwd."""
@@ -1862,7 +1877,7 @@ def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=No
             text = text.replace(
                 "### Criterion 1\n\n```\n{full output of verify command}\n```\n\n(repeat per criterion)\n",
                 "".join("### Criterion %d\n\n```\n{full output of verify command}\n```\n\n" % (i + 1) for i in range(len(criteria))))
-    return text
+    return compact_artifact(text) if template.endswith("-oneshot.md.template") else text
 
 
 def write_skeletons(feature_dir, feat, node):
@@ -1921,7 +1936,7 @@ def footprint_drop(feature_dir, feat, target, path, reason):
                   lambda m: m.group(1) + ", ".join(p for p in re.split(r"\s*,\s*", m.group(2)) if p and p != path) + m.group(3),
                   text, count=1, flags=re.M)
     note = "- %s: dropped from the footprint by cycle-driver.sh spec footprint drop: %s\n" % (path, reason)
-    text = text.replace("## Implementation notes\n\n", "## Implementation notes\n\n" + note, 1)
+    text = text.replace("## Implementation notes\n", "## Implementation notes\n" + note, 1)
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(text)
     print(json.dumps({"spec": target, "dropped": path, "reason": reason, "footprint": remaining}))
@@ -2020,6 +2035,7 @@ def spec_fill(target, o):
         text = text[:span[0]] + "\n" + "\n".join(kept) + "\n" + text[span[1]:]
     if not filled:
         raise Die("spec fill: nothing to fill (--intent, --file/--note, --command/--expect, or --grounding)", 2)
+    text = compact_artifact(text)
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(text)
     flags = []
@@ -2034,7 +2050,7 @@ def spec_escalate(target, reason):
     text = open(target, encoding="utf-8").read()
     if not re.search(r"^route: *full\s*$", text, flags=re.M):
         text = re.sub(r"^---\n(.*?)^---\n", lambda m: "---\n" + m.group(1) + "route: full\n---\n", text, count=1, flags=re.M | re.S)
-    text = text.replace("## Implementation notes\n\n", "## Implementation notes\n\n- escalated (route: full): %s\n" % reason, 1)
+    text = text.replace("## Implementation notes\n", "## Implementation notes\n- escalated (route: full): %s\n" % reason, 1)
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(text)
     print(json.dumps({"spec": target, "route": "full", "reason": reason}))
@@ -2201,13 +2217,19 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
     criteria = good_enough_criteria(spec)
     commands = criteria_commands(spec)
     written = []
+    observed = {}
     for i, criterion in enumerate(criteria):
         row = "GE-%03d" % (i + 1)
         if only_row and row != only_row:
             continue
         command = commands.get(row)
         if command:
-            code, block = observe(command, root)
+            if command in observed:
+                source, code, _ = observed[command]
+                block = "Same command and result as Criterion %d (exit %d)." % (source, code)
+            else:
+                code, block = observe(command, root)
+                observed[command] = (i + 1, code, block)
             evidence = "`%s` -> exit %d" % (command.replace("|", "\\|"), code)
         else:
             # A criterion the driver never wrote has no command on record: a FAIL the
@@ -2246,15 +2268,19 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
         if span is None:
             raise Die("verification run: %s has no ## Final test suite section" % target)
         if test_cmd:
-            code, out_block = observe(test_cmd, root)
-            block = "$ %s\n%s\n(exit %d)" % (test_cmd, out_block, code)
+            if test_cmd in observed:
+                source, code, _ = observed[test_cmd]
+                block = "Same command and result as Criterion %d (exit %d)." % (source, code)
+            else:
+                code, out_block = observe(test_cmd, root)
+                block = "$ %s\n%s\n(exit %d)" % (test_cmd, out_block, code)
             written.append({"row": "tests", "status": "PASS" if code == 0 else "FAIL", "exit": code})
         else:
             block = "(no commands.test is configured for this feature)"
             written.append({"row": "tests", "status": "N/A", "exit": None})
         text = text[:span[0]] + "\n```\n" + block + "\n```\n" + text[span[1]:]
     with open(target, "w", encoding="utf-8") as fh:
-        fh.write(text)
+        fh.write(compact_artifact(text))
     return written
 
 
@@ -2285,7 +2311,7 @@ def verification_review(target, report, model):
     text = re.sub(r"^\*\*Reviewer:\*\* code-reviewer \(.*\)(?::.*)?$",
                   "**Reviewer:** code-reviewer (%s)%s" % (model, (": " + verdict) if verdict else ""), text, count=1, flags=re.M)
     with open(target, "w", encoding="utf-8") as fh:
-        fh.write(text)
+        fh.write(compact_artifact(text))
     return [{"finding": f[0], "claim": f[1]} for f in findings], verdict
 
 

@@ -139,7 +139,7 @@ fi
 
 # Run the registered hooks from outside the payload cwd, as a plugin host can.
 if python3 - <<'PY'
-import json, os, pathlib, subprocess, tempfile
+import json, os, pathlib, re, subprocess, tempfile
 root = pathlib.Path.cwd()
 config = json.loads((root / 'hooks/codex-hooks.json').read_text())['hooks']
 env = dict(os.environ, PLUGIN_ROOT=str(root))
@@ -151,6 +151,8 @@ with tempfile.TemporaryDirectory() as tmp:
     def run(event, active=False):
         results = []
         for group in config.get(event, []):
+            if event == 'PreToolUse' and not re.fullmatch(group.get('matcher', '.*'), payload['tool_name']):
+                continue
             for hook in group['hooks']:
                 results.append(subprocess.run(
                     hook['command'], shell=True, env=env, cwd=tmp,
@@ -169,6 +171,27 @@ with tempfile.TemporaryDirectory() as tmp:
     probe.write_text('echo "unaccounted ageSeconds=0 autonomous=true"\n')
     env['LOOP_SPEC_CYCLE_RESULT_BIN'] = str(probe)
     assert any(p.returncode == 2 and 'terminal result' in p.stderr for p in run('Stop'))
+    for tool, args, expected in [
+        ('Bash', {'command': 'codex exec nested'}, 2),
+        ('apply_patch', {'command': '*** Begin Patch\n*** Add File: safe.txt\n+x\n*** Update File: .loop-spec/last-result.json\n@@\n-x\n+y\n*** End Patch'}, 2),
+        ('apply_patch', {'command': '*** Begin Patch\n*** Update File: safe.txt\n*** Move to: .loop-spec/result.json\n@@\n-x\n+y\n*** End Patch'}, 2),
+        ('apply_patch', {'command': '*** Begin Patch\n*** Add File: app.py\n+pass\n*** End Patch'}, 0),
+    ]:
+        payload.update(tool_name=tool, tool_input=args)
+        results = run('PreToolUse')
+        assert results, tool
+        assert any(p.returncode == expected for p in results) if expected else all(p.returncode == 0 for p in results)
+    subprocess.run(['git', 'init', '-q', str(project)], check=True)
+    feature = project / '.loop-spec/features/guarded'
+    feature.mkdir(parents=True)
+    (feature / 'feature.json').write_text('{"slug":"guarded","schemaVersion":7}')
+    docs = project / 'docs/loop-spec/features/guarded'
+    docs.mkdir(parents=True)
+    (docs / 'SPEC.md').write_text('---\nambiguity_scores:\n  gate_passed: true\n  unresolved_dimensions: []\nfootprint:\n  - app.py\n---\n# guarded\n')
+    for artifact in ('SPEC.md', 'VERIFICATION.md'):
+        payload.update(tool_name='apply_patch', tool_input={'command':
+            '*** Begin Patch\n*** Update File: docs/loop-spec/features/guarded/' + artifact + '\n@@\n-x\n+y\n*** End Patch'})
+        assert any(p.returncode == 2 and 'driver writes' in p.stderr for p in run('PreToolUse')), artifact
 PY
 then
   PASS=$((PASS+1)); echo "PASS: registered Codex prompt and Stop hooks enforce driver state"

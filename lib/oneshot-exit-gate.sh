@@ -86,7 +86,7 @@ text = open(path, encoding="utf-8").read()
 if not re.search(r"^route: *full\s*$", text, flags=re.M):
     text = re.sub(r"^---\n(.*?)^---\n", lambda m: "---\n" + m.group(1) + "route: full\n---\n", text, count=1, flags=re.M | re.S)
 note = "- escalated by lib/oneshot-exit-gate.sh: the diff touches %s, outside the footprint; the run takes the full path\n" % files
-text = text.replace("## Implementation notes\n\n", "## Implementation notes\n\n" + note, 1)
+text = text.replace("## Implementation notes\n", "## Implementation notes\n" + note, 1)
 open(path, "w", encoding="utf-8").write(text)
 PY
     echo "NOTE [footprint] the diff touches ${outside% } outside SPEC.md's footprint: route: full written to $spec; the run continues on the full path (DISCUSS)"

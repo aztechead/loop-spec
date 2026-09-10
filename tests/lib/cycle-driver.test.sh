@@ -346,7 +346,7 @@ check "spec skeleton: the oneshot spec lint accepts the shape" "0" "$(bash "$REP
 # The driver is the only writer of the shape (port audit 3, N1): the lead fills values
 # one call at a time and each answer carries the gate's flags so far.
 out="$(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --intent "Dots survive slugify." 2>/dev/null)"
-check "spec fill: the intent lands inside the frozen block" "Dots survive slugify." "$(sed -n '/^## Intent$/,/^<!-- \/intent -->$/p' "$DOCS7/SPEC.md" | sed -n 3p)"
+check "spec fill: the intent lands inside the frozen block" "Dots survive slugify." "$(sed -n '/^## Intent$/,/^<!-- \/intent -->$/p' "$DOCS7/SPEC.md" | sed '1d;$d;/^$/d')"
 check "spec fill: the answer names what it filled and the flags so far" "intent" "$(jq -r '.filled[0]' <<<"$out")"
 out="$(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --file slugify.py --note "strip dots in slugify()" 2>/dev/null)"
 check "spec fill: a footprint file's bullet is replaced in place" "1" "$(grep -c '^- slugify.py: strip dots in slugify()$' "$DOCS7/SPEC.md")"
@@ -515,7 +515,7 @@ for p in sys.argv[1:]:
     s = open(p).read()
     s = s.replace("- [ ] all tests pass\n\n", "", 1)
     s = re.sub(r"^\| GE-003 \|.*\n", "", s, flags=re.M)
-    s = re.sub(r"\n### Criterion 3\n\n```\n.*?\n```\n", "\n", s, flags=re.S)
+    s = re.sub(r"\n### Criterion 3\n+```\n.*?\n```\n", "\n", s, flags=re.S)
     open(p, "w").write(s)
 PY
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" commands.test '"python3 -c \"print(\\\"2 passed\\\")\""' >/dev/null

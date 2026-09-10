@@ -6,10 +6,11 @@
     active skill directory    after_tool_callback on the `load_skill` tool
     SessionStart              first on_user_message_callback of a session
     UserPromptSubmit          on_user_message_callback (every message)
+    PreToolUse                before_tool_callback (shared tool guards)
     Stop                      not bridged — see below
 
-Every hook fails open: a bundled script that is missing, slow, or broken must
-degrade the injection, never the run. The Stop event has no ADK counterpart that
+Context injection fails open. Pre-tool guards block on denial or execution failure;
+returning an error result prevents ADK from executing the tool. The Stop event has no ADK counterpart that
 can veto termination (`after_run_callback` observes, it cannot continue), so
 ambient verification enforcement here is directive-only — the same position
 opencode is in, and the reason `lib/cycle-reconcile.sh` carries the route-exit
@@ -31,21 +32,22 @@ from .bridge import PACKAGE_ROOT, SESSION_START_HOOKS, LoopSpecBridge
 HOOK_TIMEOUT_S = 15.0
 
 
-async def run_hook(script_rel: str, payload: Optional[dict], bridge: LoopSpecBridge) -> Optional[str]:
+async def run_hook(script_rel: str, payload: Optional[dict], bridge: LoopSpecBridge,
+                   enforce: bool = False) -> Optional[str]:
     """Run a bundled hook and return its additionalContext, or None."""
     try:
         proc = await asyncio.create_subprocess_exec(
-            "bash", str(PACKAGE_ROOT / script_rel),
+            "python3" if script_rel.endswith(".py") else "bash", str(PACKAGE_ROOT / script_rel),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
             cwd=str(bridge.project_dir),
             env={**os.environ, **bridge.env_vars},
         )
     except OSError:
-        return None
+        return "loop-spec could not start the tool guard" if enforce else None
     try:
-        stdout, _ = await asyncio.wait_for(
+        stdout, stderr = await asyncio.wait_for(
             proc.communicate(json.dumps(payload or {}).encode()), timeout=HOOK_TIMEOUT_S)
     except (asyncio.TimeoutError, BrokenPipeError):
         try:
@@ -53,9 +55,11 @@ async def run_hook(script_rel: str, payload: Optional[dict], bridge: LoopSpecBri
         except ProcessLookupError:
             pass
         await proc.communicate()
-        return None
+        return "loop-spec tool guard timed out or lost its input" if enforce else None
+    if enforce and proc.returncode == 2:
+        return (stderr or b"loop-spec denied this tool call").decode("utf-8", "replace").strip()
     if proc.returncode != 0:
-        return None
+        return "loop-spec tool guard failed: " + stderr.decode("utf-8", "replace") if enforce else None
     text = (stdout or b"").decode("utf-8", "replace").strip()
     if not text:
         return None
@@ -110,6 +114,14 @@ class LoopSpecPlugin(BasePlugin):
             role=user_message.role or "user",
             parts=[types.Part.from_text(text=injected), *(user_message.parts or [])],
         )
+
+    async def before_tool_callback(self, *, tool: Any, tool_args: dict[str, Any],
+                                   tool_context: Any) -> Optional[dict[str, Any]]:
+        denial = await run_hook("hooks/pre-tool-guard.py", {
+            "tool_name": getattr(tool, "name", ""), "tool_input": tool_args,
+            "cwd": str(self._bridge.project_dir),
+        }, self._bridge, enforce=True)
+        return {"status": "error", "error": denial} if denial else None
 
     async def after_tool_callback(self, *, tool: Any, tool_args: dict[str, Any],
                                   tool_context: Any,

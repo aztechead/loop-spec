@@ -75,6 +75,13 @@ a plain terminal.
 
 ## Read the results
 
+`tests/oneshot-artifact-budget.test.sh` checks the filled short-route records
+against the task files' 50-line and 100-line limits using real local test output.
+The driver omits repeated metadata, uses compact heading spacing, and records
+an identical command once per verification pass; other rows and the final suite
+refer to that result. Output inside evidence fences is preserved. This offline
+check measures artifact size, not model cost, latency, or live delivery.
+
 - `accepted` is true only when every `check.sh` line passed and no protected file
   changed. A green cycle with `accepted: false` is the failure this eval exists to find.
 - `overbuild_ratio` above about 3x on a trivial task means the cycle wrote far more

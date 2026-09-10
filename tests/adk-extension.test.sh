@@ -159,6 +159,17 @@ async def main():
     out["session_hooks_once"] = sum(p in hook_calls for p in plugin_module.SESSION_START_HOOKS)
     out["prompt_hook_each_time"] = hook_calls.count("hooks/team/done-criteria.sh")
 
+    with tempfile.TemporaryDirectory() as guarded_dir:
+        os.mkdir(os.path.join(guarded_dir, ".loop-spec"))
+        guarded = LoopSpecPlugin(LoopSpecBridge(guarded_dir))
+        for name, args in [("Execute", {"command": "codex exec nested"}),
+                           ("WriteFile", {"path": ".loop-spec/last-result.json", "content": "{}"})]:
+            response = await guarded.before_tool_callback(
+                tool=type("T", (), {"name": name})(), tool_args=args, tool_context=None)
+            assert response and response["status"] == "error", (name, response)
+        assert await guarded.before_tool_callback(
+            tool=type("T", (), {"name": "WriteFile"})(),
+            tool_args={"path": "app.py", "content": "pass"}, tool_context=None) is None
     print(json.dumps(out))
 
 asyncio.run(main())

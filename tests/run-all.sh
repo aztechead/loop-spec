@@ -205,6 +205,7 @@ run_suite "codex-harness-coverage"    "bash tests/codex-harness-coverage.test.sh
 run_suite "supervisor-interface-coverage" "bash tests/supervisor-interface-coverage.test.sh"
 run_suite "adk-extension"             "bash tests/adk-extension.test.sh"
 run_suite "sessions-extension"        "bash tests/sessions-extension.test.sh"
+run_suite "oneshot-artifact-budget"   "bash tests/oneshot-artifact-budget.test.sh"
 run_suite "session-start-hook-parity" "bash tests/session-start-hook-parity.test.sh"
 run_suite "cycle-worktree-policy"     "bash tests/cycle-worktree-policy.test.sh"
 run_suite "graph-conformance"         "bash tests/graph-conformance.test.sh"

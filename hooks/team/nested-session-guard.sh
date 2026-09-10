@@ -18,8 +18,8 @@
 # Stands down (exit 0) when LOOP_SPEC_NESTED_SESSION_GUARD=0, when the project has no
 # .loop-spec/ directory (never hijack an unrelated project), when the tool is not Bash,
 # and on any unreadable payload (fail-open, like every guard here). Registered for
-# Claude Code in hooks/hooks.json; Codex, opencode, and ADK have no Bash PreToolUse
-# wired to it, so there the cycle skill's sentence is the only rule.
+# Claude Code in hooks/hooks.json; hooks/pre-tool-guard.py adapts Codex,
+# OpenCode, and ADK pre-tool callbacks to the same guard.
 set -euo pipefail
 
 if [[ "${LOOP_SPEC_NESTED_SESSION_GUARD:-1}" == "0" ]]; then

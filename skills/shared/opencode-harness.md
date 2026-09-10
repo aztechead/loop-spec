@@ -84,6 +84,11 @@ the one-message close follow `skills/shared/report-style.md`. Do not expect
 
 ## Ambient verification enforcement
 
+`tool.execute.before` runs `hooks/pre-tool-guard.py` and throws on a shared
+guard's denial or execution failure. Shell commands and file writes therefore
+use the same nested-session, result, worktree, and path checks as Claude.
+Patch calls check every target, including move destinations.
+
 OpenCode receives the harness-specific micro SessionStart directive
 (`/loop-spec/micro`, `/loop-spec/intake`), but its ambient enforcement is directive-only:
 `session.idle` cannot veto termination, so `adhoc-verify-guard.sh` is not bridged.

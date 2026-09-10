@@ -156,6 +156,11 @@ the one-message close follow `skills/shared/report-style.md`. Do not expect
 
 ## Ambient verification enforcement
 
+PreToolUse runs `hooks/pre-tool-guard.py` for shell, agent, and file-write
+tools. It applies the shared nested-session, result, worktree, and path
+guards, including every target and move destination in `apply_patch`.
+Guard failures block the tool; ordinary context injection still fails open.
+
 Codex Stop supports the shared guards: exit 2 with stderr continues the
 turn, as it does in Claude Code. `decision: "block"` also continues the
 turn; `continue: false` takes precedence and ends it.

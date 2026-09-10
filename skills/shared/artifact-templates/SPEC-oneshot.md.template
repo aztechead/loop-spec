@@ -7,9 +7,7 @@ footprint:
 ---
 # {feature_title}
 
-**Slug:** `{slug}`
-
-<!-- intent: frozen. The ask as SPEC understood it; ONESHOT, the reviewer, and the verifier read it as the goal and no later phase edits this block. -->
+<!-- intent: frozen -->
 ## Intent
 
 {One paragraph: what is broken or missing, and the outcome the change must produce, in the requester's terms.}
@@ -24,7 +22,6 @@ footprint:
 ### Good Enough
 
 - [ ] `{check command}` exits 0: {what that proves}
-- [ ] `{check command}` prints {expected}: {what that proves}
 
 ## Grounding
 

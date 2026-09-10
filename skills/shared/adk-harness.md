@@ -58,6 +58,10 @@ vector).
 
 ## Tool substitution table
 
+`before_tool_callback` runs `hooks/pre-tool-guard.py` before Execute and
+file writes. Shared nested-session, result, worktree, and path guards return
+an error result to ADK on denial or guard failure, preventing the tool call.
+
 | Claude Code tool | Under ADK |
 |---|---|
 | Bash | session-aware `Execute` over `LocalEnvironment` — a REAL shell via `create_subprocess_shell`, so pipes, `&&`, and `$( )` all work |
