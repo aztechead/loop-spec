@@ -134,8 +134,78 @@ LOOP_SPEC_STORE="$WORK/failing-store.sh" bash "$LIB" set "$WORK/feat" slug '"loc
 check "writer: store persistence failure remains exit 2" "2" "$exit_code"
 check "writer: store failure retains the existing local-written contract" "locally-written" "$(jq -r '.slug' "$WORK/feat/feature.json")"
 
-python3 "$(dirname "$0")/feature-write-concurrency.py" "$LIB" || FAIL=$((FAIL + 1))
+PYTHONPATH="$(dirname "$LIB")" python3 "$(dirname "$0")/feature-write-concurrency.py" "$LIB" || FAIL=$((FAIL + 1))
 
 echo ""
+PYTHONPATH="$(dirname "$LIB")" python3 - "$WORK" <<'PYTEST' || FAIL=$((FAIL + 1))
+import copy, json, subprocess, sys
+from pathlib import Path
+from requirements import initialize_contract, reconcile_inventory
+root = Path(__import__('requirements').__file__).parent
+folder = Path(sys.argv[1]) / 'identity'
+folder.mkdir()
+owner = {'repository':'repo','feature':'fixture'}
+c = initialize_contract(owner, 'v1')
+i = {'version':1,'owner':owner,'requirements':[{'id':'GE-001','revision':'a'*64,'scenarios':[{'id':'SC-001'},{'id':'SC-002'}]}],'obligations':[]}
+c = reconcile_inventory(c, i)
+i['requirements'][0]['scenarios'].pop()
+c = reconcile_inventory(c, i)
+state = {'requirementsContract':c}
+def write(args):
+    return subprocess.run(['bash',str(root/'feature-write.sh')] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+assert write([str(folder),json.dumps(state)]).returncode == 0
+assert write(['reconcile-inventory',str(folder),json.dumps(i)]).returncode == 0
+original = (folder/'feature.json').read_bytes()
+changes = [({}, 'removal')]
+for key, value in [('owner',dict(owner,repository='other')),('format','legacy'),('version',True),('nextRequirementId',1),('retiredScenarios',{}),('issued',{}),('unknown',1)]:
+    candidate = copy.deepcopy(state)
+    candidate['requirementsContract'][key] = value
+    changes.append((candidate,key))
+for candidate, label in changes:
+    result = write([str(folder),json.dumps(candidate)])
+    assert result.returncode == 1, (label,result.stderr)
+    assert (folder/'feature.json').read_bytes() == original
+    if candidate:
+        result = write(['set',str(folder),'requirementsContract',json.dumps(candidate['requirementsContract'])])
+        assert result.returncode == 1, (label,result.stderr)
+        assert (folder/'feature.json').read_bytes() == original
+advanced = copy.deepcopy(state)
+advanced['requirementsContract']['nextRequirementId'] = 9
+advanced['requirementsContract']['issued']['GE-001']['nextScenarioId'] = 9
+assert write([str(folder),json.dumps(advanced)]).returncode == 0
+for path in [('nextRequirementId',), ('issued','GE-001','nextScenarioId')]:
+    candidate = copy.deepcopy(advanced)
+    target = candidate['requirementsContract']
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = 5
+    original = (folder/'feature.json').read_bytes()
+    for args in [[str(folder),json.dumps(candidate)],
+                 ['set',str(folder),'requirementsContract',json.dumps(candidate['requirementsContract'])]]:
+        result = write(args)
+        assert result.returncode == 1, (path,result.stderr)
+        assert 'history cannot roll back' in result.stderr, (path,result.stderr)
+        assert (folder/'feature.json').read_bytes() == original
+assert write(['reconcile-inventory',str(folder),json.dumps(dict(i, requirements=[]))]).returncode == 0
+retired = json.loads((folder/'feature.json').read_text())
+assert retired['requirementsContract']['retired'] == ['GE-001']
+resurrected = copy.deepcopy(retired)
+resurrected['requirementsContract']['retired'] = []
+original = (folder/'feature.json').read_bytes()
+for args in [[str(folder),json.dumps(resurrected)],
+             ['set',str(folder),'requirementsContract.retired','[]'],
+             ['reconcile-inventory',str(folder),json.dumps(i)]]:
+    result = write(args)
+    assert result.returncode == 1, result.stderr
+    assert (folder/'feature.json').read_bytes() == original
+print('PASS: writer rejects retired GE resurrection and independently valid counter rollback')
+legacy = Path(sys.argv[1]) / 'legacy-identity'
+legacy.mkdir()
+(legacy/'feature.json').write_text('{"slug":"old"}')
+for args in [[str(legacy),json.dumps(state)],['set',str(legacy),'requirementsContract',json.dumps(c)]]:
+    assert write(args).returncode == 1
+print('PASS: ordinary and replacement writes preserve identity histories and legacy boundary')
+PYTEST
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

@@ -1,5 +1,7 @@
 # Feature State Schema
 
+Reader: maintainers changing feature-state readers, writers, and phase contracts.
+
 Per-feature runtime state lives at `.loop-spec/features/{slug}/feature.json`.
 The driver saves resume snapshots, including `PROGRESS.md`, on `refs/loop-spec/state/{slug}` through `lib/state-ref.sh`.
 Do not commit runtime state on the feature branch.
@@ -21,11 +23,44 @@ Never bypass the writer with raw jq.
 
 Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet`) per phase team, not in `feature.json`. See "Harness task list usage" below.
 
+## Identity and publication fields
+
+Feature schema remains 7. `requirementsContract` and `artifactPublication` are optional
+on historical states; when present, their complete nested shapes are checked by
+`validate_state` in `lib/requirements.py` on reads and before writes. Unknown keys,
+missing members, noncanonical IDs, invalid hashes, and booleans used as counters fail.
+The graph enum declares top-level names; it does not validate these nested objects.
+
+`requirementsContract` contains version 1, format (`legacy` or `v1`), immutable
+`owner` (`repository`, `feature`), nullable SHA-256 `inventoryDigest`, positive
+`nextRequirementId`, `issued`, `retired`, and `retiredScenarios`. Each issued GE ID
+retains its SHA-256 `revision`, positive `nextScenarioId`, and all issued SC IDs in
+`scenarios`; `retiredScenarios` records removed SC IDs per GE ID. Retirement never
+deletes issued history. Counters exceed all issued IDs and never decrease.
+
+`artifactPublication` contains version 1, nonnegative `generation` and `evidenceEpoch`,
+`participantsVersion` 1, and nullable `migration`. A migration records nonempty `id`
+and `phase`, SHA-256 `previewDigest`, nonnegative `originalGeneration` no greater
+than the current generation, and `publishedHashes` mapping artifact paths to SHA-256.
+Both counters are monotonic. Publication transaction enforcement is a separate boundary.
+
+`initialize_contract`, `bootstrap_state`, and `reconcile_inventory` in
+`lib/requirements.py` return candidates without writing files. Trusted bootstrap
+records legacy explicitly for incomplete product-6.x cycles with feature schema 7;
+unsupported or missing feature schema versions fail. Completed historical states stay
+unchanged, without inferring a migration. Fixture opt-in can initialize v1; ordinary single/workspace initialization
+retains its existing behavior. `feature-write.sh reconcile-inventory <dir> <inventory-json>` reconciles against the
+accepted ledger while holding the state lock. Existing legacy
+state cannot become v1 through ordinary writes. Recorded format, version, and owner
+cannot be removed or changed, including by whole-state replacement.
+
 ## Schema (v7)
 
 ```json
 {
   "schemaVersion": 7,
+  "requirementsContract": "optional; complete identity contract described above",
+  "artifactPublication": "optional; complete publication contract described above",
   "slug": "string (kebab-case)",
   "feature_title": "immutable original goal in the user's words",
   "createdAt": "ISO-8601 timestamp",

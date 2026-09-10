@@ -16,7 +16,9 @@
         "artifacts",
         "currentPhase",
         "warnings",
-        "specApproval"
+        "specApproval",
+        "artifactPublication",
+        "requirementsContract"
       ],
       "effort": "system2",
       "body": "skills/spec/SKILL.md",
@@ -27,7 +29,9 @@
           "execStyle",
           "greenfield",
           "autonomous",
-          "artifacts.spec"
+          "artifacts.spec",
+          "requirementsContract",
+          "artifactPublication"
         ],
         "optional": [
           "{featureDir}/spec-draft.md",
@@ -56,7 +60,9 @@
         "oracle": true,
         "writes": [
           "artifacts.spec",
-          "specApproval"
+          "specApproval",
+          "artifactPublication",
+          "requirementsContract"
         ],
         "artifacts": {
           "spec": "{docs}/SPEC.md"
@@ -69,7 +75,11 @@
           ]
         },
         "close": "always"
-      }
+      },
+      "optionalReads": [
+        "requirementsContract",
+        "artifactPublication"
+      ]
     },
     {
       "id": "human.after-spec",
@@ -104,7 +114,8 @@
       "writes": [
         "artifacts",
         "currentPhase",
-        "warnings"
+        "warnings",
+        "artifactPublication"
       ],
       "effort": "system2",
       "body": "skills/oneshot/SKILL.md",
@@ -118,7 +129,9 @@
           "baseSha",
           "commands",
           "artifacts.spec",
-          "models.codeReviewer"
+          "models.codeReviewer",
+          "requirementsContract",
+          "artifactPublication"
         ],
         "required": [
           {
@@ -146,7 +159,8 @@
         ],
         "writes": [
           "artifacts.spec",
-          "artifacts.verification"
+          "artifacts.verification",
+          "artifactPublication"
         ],
         "artifactsIfPresent": {
           "verification": "{docs}/VERIFICATION.md"
@@ -161,7 +175,11 @@
         },
         "checkpoint": "post-oneshot",
         "close": "always"
-      }
+      },
+      "optionalReads": [
+        "requirementsContract",
+        "artifactPublication"
+      ]
     },
     {
       "id": "discuss",
@@ -174,7 +192,9 @@
       "writes": [
         "artifacts",
         "currentPhase",
-        "warnings"
+        "warnings",
+        "artifactPublication",
+        "requirementsContract"
       ],
       "effort": "system2",
       "body": "skills/discuss/SKILL.md",
@@ -185,7 +205,9 @@
           "execStyle",
           "autonomous",
           "iterate.feedback",
-          "currentGate"
+          "currentGate",
+          "requirementsContract",
+          "artifactPublication"
         ],
         "required": [
           {
@@ -216,7 +238,9 @@
         "oracle": true,
         "writes": [
           "artifacts.spec",
-          "artifacts.patternsPrefetch"
+          "artifacts.patternsPrefetch",
+          "artifactPublication",
+          "requirementsContract"
         ],
         "artifacts": {
           "spec": "{docs}/SPEC.md"
@@ -230,7 +254,11 @@
         },
         "checkpoint": "post-discuss",
         "close": "always"
-      }
+      },
+      "optionalReads": [
+        "requirementsContract",
+        "artifactPublication"
+      ]
     },
     {
       "id": "discuss.critique.gate",
@@ -293,7 +321,8 @@
       "writes": [
         "artifacts",
         "currentPhase",
-        "warnings"
+        "warnings",
+        "artifactPublication"
       ],
       "effort": "system2",
       "body": "skills/plan/SKILL.md",
@@ -306,7 +335,9 @@
           "currentGate",
           "artifacts",
           "models.planner",
-          "models.challenger"
+          "models.challenger",
+          "requirementsContract",
+          "artifactPublication"
         ],
         "required": [
           {
@@ -358,7 +389,8 @@
           "artifacts.patternsSource",
           "artifacts.patterns",
           "artifacts.plan",
-          "artifacts.tasks"
+          "artifacts.tasks",
+          "artifactPublication"
         ],
         "artifacts": {
           "plan": "{docs}/PLAN.md",
@@ -378,7 +410,11 @@
         },
         "checkpoint": "post-plan",
         "close": "always"
-      }
+      },
+      "optionalReads": [
+        "requirementsContract",
+        "artifactPublication"
+      ]
     },
     {
       "id": "plan.critique.gate",
@@ -446,7 +482,8 @@
         "currentPhase",
         "mergeQueue",
         "pendingRemediationTasks",
-        "currentTeammates"
+        "currentTeammates",
+        "artifactPublication"
       ],
       "effort": "system2",
       "body": "skills/execute/SKILL.md",
@@ -464,7 +501,9 @@
           "artifacts.tasks",
           "pendingRemediationTasks",
           "models.implementer",
-          "models.specComplianceReviewer"
+          "models.specComplianceReviewer",
+          "requirementsContract",
+          "artifactPublication"
         ],
         "required": [
           {
@@ -499,7 +538,8 @@
           "artifacts.tasks",
           "artifacts.execution",
           "artifacts.remediationReceipt",
-          "workspace"
+          "workspace",
+          "artifactPublication"
         ],
         "onOk": [
           {
@@ -517,7 +557,11 @@
           "pendingRemediationTasks": []
         },
         "close": "always"
-      }
+      },
+      "optionalReads": [
+        "requirementsContract",
+        "artifactPublication"
+      ]
     },
     {
       "id": "execute.worker",
@@ -577,13 +621,16 @@
         "commands"
       ],
       "optionalReads": [
-        "verificationBaseline"
+        "verificationBaseline",
+        "requirementsContract",
+        "artifactPublication"
       ],
       "writes": [
         "artifacts",
         "currentPhase",
         "pendingRemediationTasks",
-        "warnings"
+        "warnings",
+        "artifactPublication"
       ],
       "effort": "system2",
       "body": "skills/verify/SKILL.md",
@@ -597,7 +644,9 @@
           "artifacts.spec",
           "artifacts.plan",
           "models.verifier",
-          "models.codeReviewer"
+          "models.codeReviewer",
+          "requirementsContract",
+          "artifactPublication"
         ],
         "required": [
           {
@@ -654,7 +703,8 @@
           "artifacts.verification",
           "artifacts.reviewOrder",
           "verificationBaseline",
-          "workspace"
+          "workspace",
+          "artifactPublication"
         ],
         "artifacts": {
           "verification": "{docs}/VERIFICATION.md"
@@ -820,7 +870,9 @@
         "artifacts",
         "currentPhase",
         "warnings",
-        "pendingRemediationTasks"
+        "pendingRemediationTasks",
+        "artifactPublication",
+        "requirementsContract"
       ],
       "effort": "system2",
       "body": "skills/iterate/SKILL.md",
@@ -833,7 +885,9 @@
           "backlogEntryId",
           "iterate",
           "artifacts",
-          "models.iterateJudge"
+          "models.iterateJudge",
+          "requirementsContract",
+          "artifactPublication"
         ],
         "required": [
           {
@@ -871,7 +925,9 @@
           "iterate",
           "artifacts.iteration",
           "pendingRemediationTasks",
-          "backlogEntryId"
+          "backlogEntryId",
+          "artifactPublication",
+          "requirementsContract"
         ],
         "artifacts": {
           "iteration": "{docs}/ITERATION.md"
@@ -884,7 +940,11 @@
           ]
         },
         "close": "terminal"
-      }
+      },
+      "optionalReads": [
+        "requirementsContract",
+        "artifactPublication"
+      ]
     },
     {
       "id": "human.iterate-spec-approval",
@@ -921,7 +981,8 @@
         "delivery",
         "currentPhase",
         "prUrl",
-        "warnings"
+        "warnings",
+        "artifactPublication"
       ],
       "effort": "system2",
       "authorizesDelivery": true,
@@ -932,12 +993,18 @@
           "branch",
           "baseBranch",
           "workspace",
-          "artifacts"
+          "artifacts",
+          "requirementsContract",
+          "artifactPublication"
         ],
         "optional": [
           "{featureDir}/delivery.json"
         ]
-      }
+      },
+      "optionalReads": [
+        "requirementsContract",
+        "artifactPublication"
+      ]
     },
     {
       "id": "completed",

@@ -8,7 +8,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from requirements import parse_spec, inventory_digest, load_inventory
+from requirements import parse_spec, inventory_digest, load_inventory, initialize_contract
 base = '\n'.join(['---', 'requirements_version: 1', 'requirements_owner: {"repository":"repo","feature":"feature"}', 'scenario_checks: {}', '---', '# Example', '### Good Enough', '- [ ] GE-001: Required outcome', '  - SC-001: Observed result', '    ```text', '    expected', '    ```', '- [ ] GE-002: Other outcome', '  - SC-001: Other result', '### Exceptional', '- [ ] optional'])
 def inventory(text):
     return parse_spec(text, 'fixture.md', None)
@@ -69,7 +69,7 @@ assert inventory_digest(inventory(base)) == inventory_digest(inventory(base.repl
 with tempfile.TemporaryDirectory() as directory:
     spec = Path(directory) / 'SPEC.md'
     state = Path(directory) / 'feature.json'
-    contract = {'version': 1, 'format': 'v1', 'owner': {'repository': 'repo', 'feature': 'feature'}}
+    contract = initialize_contract({'repository': 'repo', 'feature': 'feature'}, 'v1')
     state.write_text(json.dumps({'requirementsContract': contract}))
     spec.write_text(base)
     command = ['bash', str(Path(os.environ['PYTHONPATH']) / 'requirements.sh'), 'inventory', '--spec', str(spec), '--feature-dir', directory]
@@ -87,3 +87,66 @@ with tempfile.TemporaryDirectory() as directory:
     assert result.returncode == 1 and '16 MiB' in result.stderr
 print('PASS: inventory grammar, revisions, CLI diagnostics and size bound')
 TEST
+PYTHONPATH="$ROOT/lib" python3 - <<'PY'
+from requirements import initialize_contract, reconcile_inventory, validate_state, validate_transition
+owner = {'repository': 'repo', 'feature': 'feature'}
+c = initialize_contract(owner, 'v1')
+i = {'version': 1, 'owner': owner, 'requirements': [{'id': 'GE-001', 'revision': 'a'*64, 'scenarios': [{'id': 'SC-001'}]}], 'obligations': []}
+c = reconcile_inventory(c, i)
+assert c['nextRequirementId'] == 2
+assert c['issued']['GE-001']['nextScenarioId'] == 2
+empty = dict(i, requirements=[])
+retired = reconcile_inventory(c, empty)
+assert retired['retired'] == ['GE-001']
+try:
+    reconcile_inventory(retired, i)
+except ValueError:
+    pass
+else:
+    raise AssertionError('retired requirement reused')
+validate_state({'requirementsContract': retired})
+two = dict(i, requirements=[dict(i['requirements'][0], scenarios=[{'id':'SC-001'}, {'id':'SC-002'}])])
+expanded = reconcile_inventory(c, two)
+removed = reconcile_inventory(expanded, i)
+try:
+    reconcile_inventory(removed, two)
+except ValueError:
+    pass
+else:
+    raise AssertionError('retired scenario reused')
+for old, candidate in [({'requirementsContract':retired}, {'requirementsContract':c}),
+                       ({'artifactPublication':{'version':1,'generation':2,'evidenceEpoch':1,'migration':None,'participantsVersion':1}},
+                        {'artifactPublication':{'version':1,'generation':1,'evidenceEpoch':1,'migration':None,'participantsVersion':1}})]:
+    try:
+        validate_transition(old, candidate)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('accepted history rollback')
+assert expanded['retiredScenarios']['GE-001'] == []
+assert removed['retiredScenarios']['GE-001'] == ['SC-002']
+import copy
+publication = {'version':1,'generation':0,'evidenceEpoch':0,'migration':None,'participantsVersion':1}
+for field, value in [('version',True), ('generation',True), ('evidenceEpoch',-1), ('participantsVersion',2), ('migration',{}), ('unknown',None)]:
+    bad = dict(publication, **{field:value})
+    try:
+        validate_state({'artifactPublication':bad})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('invalid publication accepted: '+field)
+for mutate in [lambda x: x['issued']['GE-001'].update(nextScenarioId=True),
+               lambda x: x.update(retired=['GE-999']),
+               lambda x: x['issued']['GE-001'].update(revision='A'*64),
+               lambda x: x.update(retiredScenarios={'GE-001':['SC-999']}),
+               lambda x: x['owner'].update(unknown='x')]:
+    bad = copy.deepcopy(c)
+    mutate(bad)
+    try:
+        validate_state({'requirementsContract':bad})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('malformed nested ledger accepted')
+print('PASS: identity reconciliation retains retired histories')
+PY

@@ -120,5 +120,24 @@ PY
 missing=""
 while IFS= read -r k; do grep -qx "$k" <<<"$keys" || missing="$missing $k"; done <<<"$doc_keys"
 check "every documented v7 key is a state key" "" "$missing"
+PYTHONPATH="$ROOT/lib" python3 - "$FD" <<'PYTEST' || FAIL=$((FAIL + 1))
+import json, subprocess, sys
+from pathlib import Path
+from requirements import bootstrap_state
+folder = Path(sys.argv[1])
+root = Path(__import__('requirements').__file__).parent
+state = bootstrap_state({'schemaVersion':7}, {'repository':'repo','feature':'fixture'}, 'v1')
+for field in ('requirementsContract','artifactPublication'):
+    (folder/'feature.json').write_text(json.dumps(state))
+    result = subprocess.run(['bash',str(root/'feature-read.sh'),str(folder),field],capture_output=True,text=True)
+    assert result.returncode == 0, result.stderr
+    state[field]['unknown'] = 1
+    (folder/'feature.json').write_text(json.dumps(state))
+    result = subprocess.run(['bash',str(root/'feature-read.sh'),str(folder),'--all'],capture_output=True,text=True)
+    assert result.returncode == 1 and field in result.stderr
+    del state[field]['unknown']
+print('PASS: typed identity fields reject unknown nested state')
+PYTEST
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

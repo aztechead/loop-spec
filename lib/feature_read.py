@@ -49,6 +49,8 @@ import re
 import subprocess
 import sys
 
+from requirements import validate_state
+
 SCHEMA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "graph", "schema.json")
 PATH_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*|\[[0-9]+\])*$")
 # A root-level key in a jq filter: `.name` not preceded by a path character, a quote,
@@ -90,6 +92,7 @@ def load_state(target):
         raise IOError("{} is not JSON: {}".format(file_path, exc))
     if not isinstance(state, dict):
         raise IOError("{} is not a JSON object".format(file_path))
+    validate_state(state)
     return state
 
 

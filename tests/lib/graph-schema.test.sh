@@ -129,5 +129,26 @@ else
 fi
 
 echo ""
+python3 - "$ROOT" <<'PYTEST'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+keys = json.loads((root/'graph/schema.json').read_text())['definitions']['stateKey']['enum']
+graph = json.loads((root/'graph/cycle.graph.json').read_text())
+for node in graph['nodes']:
+    if 'ingress' not in node:
+        continue
+    for field in ('requirementsContract','artifactPublication'):
+        assert field in keys and field in node['optionalReads']
+        assert field in node['ingress']['fields']
+    assert 'artifactPublication' in node['writes']
+    if 'egress' in node:
+        assert 'artifactPublication' in node['egress']['writes']
+    if node['id'] in ('spec','discuss','iterate'):
+        assert 'requirementsContract' in node['writes']
+        assert 'requirementsContract' in node['egress']['writes']
+print('PASS: identity field phase declarations are typed and cover publication egress')
+PYTEST
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

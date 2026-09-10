@@ -77,6 +77,8 @@
         "artifactSink",
         "specApproval",
         "instructionSnapshots",
+        "requirementsContract",
+        "artifactPublication",
         "reviewRouting"
       ]
     },

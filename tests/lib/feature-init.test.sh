@@ -99,7 +99,7 @@ mkdir -p "$activate_root/feature"
 printf '%s\n' \
   '{"models":{"implementer":"old-model","extraRole":"keep"},"preset":"balanced","slug":"x"}' \
   > "$activate_root/feature/feature.json"
-LOOP_SPEC_PHASE_MODEL_EXECUTE=opus \
+LOOP_SPEC_HARNESS=claude LOOP_SPEC_PHASE_MODEL_EXECUTE=opus \
   bash "$LIB" activate "$activate_root/feature" execute
 normalized="$(cat "$activate_root/feature/feature.json")"
 check "normalize restores iterateJudge" "$(echo "$normalized" | jq -e '.models.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -111,6 +111,29 @@ rm -rf "$activate_root"
 # --- invalid invocation ---
 bash "$LIB" skeleton --mode bogus --slug x --now N --style auto >/dev/null 2>&1
 check "bad mode exits non-zero" "$([[ $? -ne 0 ]] && echo 1 || echo 0)"
+
+check "ordinary single keeps legacy-compatible fields absent" "$(echo "$single" | jq -e 'has("requirementsContract") or has("artifactPublication") | not' >/dev/null && echo 1 || echo 0)"
+check "ordinary workspace keeps legacy-compatible fields absent" "$(echo "$ws" | jq -e 'has("requirementsContract") or has("artifactPublication") | not' >/dev/null && echo 1 || echo 0)"
+PYTHONPATH="$(dirname "$LIB")" python3 - <<'PYTEST' || FAIL=$((FAIL + 1))
+from requirements import bootstrap_state
+owner = {'repository':'stable-repo','feature':'fixture'}
+old = {'schemaVersion':7,'currentPhase':'plan'}
+legacy = bootstrap_state(old, owner)
+assert legacy['requirementsContract']['format'] == 'legacy'
+assert 'requirementsContract' not in old
+fixture = bootstrap_state({'schemaVersion':7}, owner, 'v1')
+assert bootstrap_state(fixture, {'repository':'moved','feature':'other'}) == fixture
+completed = {'schemaVersion':6,'currentPhase':'completed','artifacts':{'verification':'historical'}}
+assert bootstrap_state(completed, owner) == completed
+for incomplete in [{}, {'schemaVersion':6,'currentPhase':'spec'}, {'schemaVersion':True}]:
+    try:
+        bootstrap_state(incomplete, owner)
+    except ValueError as exc:
+        assert 'schemaVersion' in str(exc)
+    else:
+        raise AssertionError('bootstrap accepted unsupported/missing schemaVersion')
+print('PASS: explicit bootstrap preserves owners and completed legacy state')
+PYTEST
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

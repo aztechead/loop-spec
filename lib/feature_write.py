@@ -10,6 +10,8 @@ import subprocess
 import sys
 import tempfile
 
+from requirements import reconcile_inventory, validate_transition
+
 
 def parse_json(value):
     try:
@@ -53,7 +55,7 @@ def main(args):
         keys = dot_path.split(".")
         if keys[0] in ("currentGate", "gateHistory") and os.environ.get("LOOP_SPEC_GATE_WRITE") != "1":
             raise ValueError("{} is written only by lib/graph/gate.sh; use gate.sh open|round|fail|pass".format(keys[0]))
-    elif len(args) == 3 and args[0] == "ack-remediation":
+    elif len(args) == 3 and args[0] in ("ack-remediation", "reconcile-inventory"):
         operation, directory, raw = args
     elif len(args) == 2:
         directory, raw = args
@@ -94,8 +96,12 @@ def main(args):
                     raise ValueError("ack-remediation requires a non-empty receipt")
                 state["pendingRemediationTasks"] = queue[len(snapshot):]
                 artifacts["remediationReceipt"] = receipt
+            if operation == "reconcile-inventory":
+                if "requirementsContract" not in state:
+                    raise ValueError("reconcile-inventory requires an initialized requirementsContract")
+                state["requirementsContract"] = reconcile_inventory(state["requirementsContract"], value)
             target = state
-            if operation != "ack-remediation":
+            if operation not in ("ack-remediation", "reconcile-inventory"):
                 for key in keys[:-1]:
                     if not isinstance(target, dict):
                         raise ValueError("{} crosses a non-object value".format(dot_path))
@@ -115,6 +121,12 @@ def main(args):
             approved = parse_json(previous).get("specApproval")
             if approved is not None and state.get("specApproval") != approved:
                 raise ValueError("specApproval is immutable; restore approved intent and request a new intent decision")
+
+        old_state = parse_json(previous) if previous is not None else {}
+        validate_transition(old_state, state)
+        if (previous is not None and "requirementsContract" not in old_state
+                and state.get("requirementsContract", {}).get("format") == "v1"):
+            raise ValueError("existing legacy state requires explicit migration before v1")
 
         content = (json.dumps(state, indent=2, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
         if previous is not None:
