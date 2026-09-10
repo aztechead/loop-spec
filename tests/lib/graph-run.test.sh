@@ -91,7 +91,7 @@ if bash "$ROOT/lib/graph/validate.sh" "$ROOT/graph/cycle.graph.json" >/dev/null 
   done
   rm -f "$WORK/cyclerepo/docs/loop-spec/features/cyclecheck/SPEC.md"
   # The spec to oneshot edge does not hand off: the short route is one session
-  # (orchestrator-port-followup.md, F2), and the exception is data on the edge.
+  # (port audit 1, F2), and the exception is data on the edge.
   check "the edge into oneshot carries sameSession" "true" \
     "$(jq -r '[.edges[] | select(.to == "oneshot")] | all(.sameSession == true)' "$ROOT/graph/cycle.graph.json")"
   check "the oneshot to deliver edge carries sameSession too (the short route is one session end to end)" "true" \

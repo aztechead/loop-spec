@@ -2,7 +2,7 @@
 
 For the agent driving PR 94, to read before any decision the plan and the follow-up did
 not anticipate. `docs/loop-spec/orchestrator-port-plan.md` says what to build and
-`docs/loop-spec/orchestrator-port-followup.md` says what is still open. This document
+`port audit 1` says what is still open. This document
 says why. Each rule below names the BMad file that shows the behavior, the loop-spec
 behavior it replaces, and the rule loop-spec must satisfy. BMad's files are cited by the
 path under its `skills/` directory at commit `abe4eb1`; bmad-loop at `c47333d`.

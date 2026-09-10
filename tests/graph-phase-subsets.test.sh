@@ -5,7 +5,7 @@
 # hooks/team/placeholder-question-guard.sh treats as late or as the lead's own. A phase
 # renamed or removed on the graph would leave a literal behind that no probe reads, so
 # this pin reads every literal subset back against the graph
-# (docs/loop-spec/orchestrator-port-followup.md, F9).
+# (port audit 1, F9).
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

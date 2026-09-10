@@ -132,7 +132,7 @@ check "init: refuses a second feature on a dirty/branched checkout" "1" "$ec"
 
 out="$(cd "$REPO" && drv next --feature-dir "$FD" 2>/dev/null)"
 check "next: first step names spec" 'NEXT phase=spec label="Write the specification" effort=system2' "$(head -1 <<<"$out")"
-# The spec node names the lite skill (graph data, followup-3 N4): an EXT line the
+# The spec node names the lite skill (graph data, port audit 3 N4): an EXT line the
 # cycle skill acts on, never a change to the NEXT line's shape.
 check "next: the spec node's skill is an EXT line" "EXT skill=spec-lite" "$(grep '^EXT skill=' <<<"$out")"
 check "next: activation persisted models" "true" "$(jq '.models | length > 0' "$FD/feature.json")"
@@ -167,7 +167,7 @@ check "next: the handoff records the session" "s1" "$(jq -r '.handoffSession.id'
 out="$(cd "$REPO" && SESSION=s1 drv next --feature-dir "$FD" 2>/dev/null)"
 check "next: the same session gets the handoff answer again" "HANDOFF next=plan" "${out:0:17}"
 # The repeat answers from the record: no second phase_end/phase_start pair lands in the
-# ledger (a sink counting phase ends read two on the f0959f6 run; followup-3, N7).
+# ledger (a sink counting phase ends read two on the f0959f6 run; port audit 3, N7).
 pairs_before="$(grep -c '"event":"phase_\(start\|end\)"' "$FD/events.jsonl")"
 (cd "$REPO" && AUTONOMOUS=1 SESSION=s1 drv next --feature-dir "$FD" >/dev/null 2>&1)
 check "next: a repeated handoff answer emits no phase event pair" "$pairs_before" "$(grep -c '"event":"phase_\(start\|end\)"' "$FD/events.jsonl")"
@@ -286,7 +286,7 @@ ec=0; out="$(cd "$REPO10" && drv decline --dir "$REPO10" --reason "a harness err
 check "decline: refused once a feature has begun in the checkout" "1" "$ec"
 check "decline: the refusal names the feature and the way out" "1" "$(grep -c 'has begun (phase .*); a run past begin finishes through the cycle or escalates' <<<"$out")"
 
-# --- a cycle never runs in the plugin's own repository (followup-3, N6) ---------------
+# --- a cycle never runs in the plugin's own repository (port audit 3, N6) ---------------
 # The checkout carries this plugin's manifest and is not the project the harness opened.
 REPO8="$(new_repo plugin-home)"; mkdir -p "$REPO8/.claude-plugin"
 printf '{"name":"loop-spec","version":"0.0.0"}\n' > "$REPO8/.claude-plugin/plugin.json"
@@ -324,7 +324,7 @@ bash "$REPO_ROOT/lib/footprint.sh" cite "$FD7" slugify.py:2 "lower() drops nothi
 bash "$REPO_ROOT/lib/footprint.sh" cite "$FD7" README.md:1 --read-only "docs are not the change"
 out="$(cd "$WORK" && drv spec skeleton --feature-dir "$FD7" 2>/dev/null)"
 check "spec skeleton: one cited file is the oneshot route" "oneshot" "$(jq -r '.route' <<<"$out")"
-# Read-only is the task's word (followup-4, item 1): README.md was marked read-only by
+# Read-only is the task's word (port audit 4, item 1): README.md was marked read-only by
 # the scout but the task protects nothing, so it stays in the footprint.
 check "spec skeleton: a read-only mark on an unprotected file is not honored" '["slugify.py","README.md"]' "$(jq -c '.footprint' <<<"$out")"
 check "spec skeleton: nothing is read-only without a protected list" '[]' "$(jq -c '.readOnly' <<<"$out")"
@@ -342,7 +342,7 @@ check "spec skeleton: a read-only bullet per read-only cite" "1" "$(grep -c '^- 
 check "spec skeleton: no score to fill, only the two keys the probe reads" "0" "$(grep -c 'goal_clarity\|{0.00-1.00}' "$DOCS7/SPEC.md")"
 check "spec skeleton: the frozen Intent block is in place" "2" "$(grep -c '^<!-- intent: frozen\|^<!-- /intent -->' "$DOCS7/SPEC.md")"
 check "spec skeleton: the oneshot spec lint accepts the shape" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$DOCS7/SPEC.md" >/dev/null 2>&1; echo $?)"
-# The driver is the only writer of the shape (followup-3, N1): the lead fills values
+# The driver is the only writer of the shape (port audit 3, N1): the lead fills values
 # one call at a time and each answer carries the gate's flags so far.
 out="$(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --intent "Dots survive slugify." 2>/dev/null)"
 check "spec fill: the intent lands inside the frozen block" "Dots survive slugify." "$(sed -n '/^## Intent$/,/^<!-- \/intent -->$/p' "$DOCS7/SPEC.md" | sed -n 3p)"
@@ -352,7 +352,7 @@ check "spec fill: a footprint file's bullet is replaced in place" "1" "$(grep -c
 ec=0; (cd "$REPO7" && drv spec fill --feature-dir "$FD7" --file nope.py --note "x" >/dev/null 2>&1) || ec=$?
 check "spec fill: a file with no bullet is refused" "1" "$ec"
 # A criterion is two fields the driver writes, never a sentence the lead composes; the
-# command also lands in the frontmatter map `verification run` executes (followup-5, R1).
+# command also lands in the frontmatter map `verification run` executes (port audit 5, R1).
 ec=0; (cd "$REPO7" && drv spec fill --feature-dir "$FD7" --criterion 'python3 -m unittest exits 0: all pass' >/dev/null 2>&1) || ec=$?
 check "spec fill: a criterion sentence is refused" "2" "$ec"
 ec=0; (cd "$REPO7" && drv spec fill --feature-dir "$FD7" --command 'true' >/dev/null 2>&1) || ec=$?
@@ -364,7 +364,7 @@ check "spec fill: the answer names the row" "criterion:GE-001" "$(jq -r '.filled
 check "spec fill: the command lands in the frontmatter criteria map" "1" "$(sed -n '1,/^---$/!d; /^  GE-001: "python3 -c /p' "$DOCS7/SPEC.md" | grep -c .)"
 (cd "$REPO7" && drv spec fill --feature-dir "$FD7" --command 'python3 -c "from slugify import slugify; assert slugify(\x27a.b\x27) == \x27ab\x27"' --expect "dots are gone" >/dev/null 2>&1)
 check "spec fill: a repeated criterion is not appended twice" "1" "$(grep -c '^- \[ \] `python3 -c' "$DOCS7/SPEC.md")"
-# --row replaces (followup-5, R2): the same row, a new command, still one criterion.
+# --row replaces (port audit 5, R2): the same row, a new command, still one criterion.
 out="$(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --command 'python3 -c "from slugify import slugify; assert slugify(\x27a.b\x27) == \x27ab\x27"' --expect "dots are gone, checked again" --row GE-001 2>/dev/null)"
 check "spec fill --row: the criterion is replaced, not appended" "1" "$(grep -c '^- \[ \] ' "$DOCS7/SPEC.md")"
 check "spec fill --row: the new expectation stands" "1" "$(grep -c 'exits 0: dots are gone, checked again$' "$DOCS7/SPEC.md")"
@@ -375,7 +375,7 @@ check "spec fill: a grounding bullet replaces none" "0" "$(grep -c '^- none$' "$
 check "spec fill: the filled skeleton passes both spec lints" "[]" "$(jq -c '.flags' <<<"$out")"
 ec=0; (cd "$REPO7" && drv spec fill --feature-dir "$FD7" >/dev/null 2>&1) || ec=$?
 check "spec fill: nothing to fill is a bad invocation" "2" "$ec"
-# One call for the whole spec (followup-4, item 5): the same fills from a JSON object.
+# One call for the whole spec (port audit 4, item 5): the same fills from a JSON object.
 cp "$DOCS7/SPEC.md" "$WORK/spec7.filled"; rm -f "$DOCS7/SPEC.md"
 (cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" >/dev/null 2>&1)
 out="$(cd "$REPO7" && printf '%s' '{"intent":"Dots survive slugify.","notes":{"slugify.py":"strip dots in slugify()"},"criteria":[{"command":"true","expect":"it runs"}],"grounding":["slugify.py:2 is the one transform"]}' | drv spec fill --feature-dir "$FD7" --json - 2>/dev/null)"
@@ -393,7 +393,7 @@ printf '# a draft\n' > "$WORK/draft7.md"
 ec=0; (cd "$REPO7" && drv spec write --feature-dir "$FD7" --file "$WORK/draft7.md" >/dev/null 2>&1) || ec=$?
 check "spec write: refused over the oneshot skeleton" "1" "$ec"
 check "spec write: the skeleton is untouched" "1" "$(grep -c '^## Intent$' "$DOCS7/SPEC.md")"
-# Escalation is a gate's decision from evidence, never the lead's (followup-5, R3).
+# Escalation is a gate's decision from evidence, never the lead's (port audit 5, R3).
 ec=0; (cd "$REPO7" && drv spec escalate --feature-dir "$FD7" --reason "needs a fourth file" >/dev/null 2>&1) || ec=$?
 check "spec escalate: not the lead's call" "2" "$ec"
 check "spec escalate: nothing was written" "0" "$(grep -c '^route: full$' "$DOCS7/SPEC.md")"
@@ -469,14 +469,14 @@ check "phase-begin oneshot: the second criterion gets its own rows" "2" "$(grep 
 # floor would read the wrong cell (live run 3 paid a REDO and ten edits for it).
 check "phase-begin oneshot: a pipe in the criterion is escaped in the table row" "1" "$(grep -c '^| GE-002 | `python3 -m unittest discover -s tests -v 2>&1 \\| grep -c .* |  | ' "$DOCS7/VERIFICATION.md")"
 check "phase-begin oneshot: an empty status cell is a flag until the driver runs the criterion" "2" "$(bash "$REPO_ROOT/lib/artifact-lint.sh" verification "$DOCS7/VERIFICATION.md" 2>&1 | grep -c 'empty Status cell')"
-# The oneshot skeleton is the sections the gates read and nothing more (followup-3, N1).
+# The oneshot skeleton is the sections the gates read and nothing more (port audit 3, N1).
 check "phase-begin oneshot: the skeleton carries no section the gates do not read" "0" "$(grep -c '^## Security review summary\|^## Branch state\|^#### Performance' "$DOCS7/VERIFICATION.md")"
 check "phase-begin oneshot: the skeleton is under 50 lines" "1" "$(( $(wc -l < "$DOCS7/VERIFICATION.md") < 50 ))"
 # verification fill: one criterion per call, the review, the tests; each answer carries
 # the four exit lints' flags over the file as it stands.
 # The lead fills what it knows (grounding rows, the review); the driver observes the
 # rest: `verification run` executes each criterion's command and writes the status from
-# its exit, the evidence, and the output, then commands.test (followup-4, items 2 and 4).
+# its exit, the evidence, and the output, then commands.test (port audit 4, items 2 and 4).
 out="$(cd "$REPO7" && drv verification fill --feature-dir "$FD7" --row GE-001 --implementation slugify.py:2 --proof "replace strips dots" 2>/dev/null)"
 check "verification fill: the grounding row is filled with integration none by default" "1" "$(grep -c '^- criterion: GE-001 | implementation: slugify.py:2 - replace strips dots | integration: none - ' "$DOCS7/VERIFICATION.md")"
 check "verification fill: GE-002's placeholder row is still a flag" "1" "$(jq -r '.flags[]' <<<"$out" | grep -c 'implementation must be')"
@@ -527,7 +527,7 @@ ec=0; out="$(cd "$REPO7" && drv verification run --feature-dir "$FD7" 2>/dev/nul
 check "verification run: every row passing is exit 0" "0" "$ec"
 check "verification run: the test suite block is the command's output with its exit" "1" "$(grep -c '^2 passed$' "$DOCS7/VERIFICATION.md")"
 # The Code review section comes from the reviewer's report, never the lead's hand
-# (followup-4, item 3): findings become pending bullets the lead answers; none is none.
+# (port audit 4, item 3): findings become pending bullets the lead answers; none is none.
 mkdir -p "$FD7/dispatch"
 printf 'Verdict: PASS_WITH_MINOR\n\n- slugify.py:2 — replace runs before lower(), order is fine but undocumented\n- tests/test_slugify.py:1 — the suite has no dotted case.\n' > "$FD7/dispatch/oneshot.review.md"
 out="$(cd "$REPO7" && drv verification review --feature-dir "$FD7" --reviewer-model haiku 2>/dev/null)"
@@ -563,7 +563,7 @@ out="$(cd "$REPO7" && drv oneshot review --feature-dir "$FD7" 2>/dev/null)"
 check "oneshot review: attended is in-harness" "in-harness" "$(jq -r '.action' <<<"$out")"
 SBIN7="$WORK/sbin7"; SPROF7="$WORK/sprof7"; mkdir -p "$SBIN7" "$SPROF7"
 # The stub reviewer writes its report when asked to; a reviewer that completes with
-# no report, or fails, leaves no dispatch event (orchestrator-port-followup-3.md, N5).
+# no report, or fails, leaves no dispatch event (port audit 3, N5).
 printf '#!/usr/bin/env bash\nif [[ -n "${STUB_REPORT:-}" ]]; then echo "verdict: PASS" > "$STUB_REPORT"; fi\n[[ "${STUB_FAIL:-0}" == "1" ]] && { echo "Error: the stub refused" >&2; exit 1; }\necho "{\"ok\":true}"\n' > "$SBIN7/codex"; chmod +x "$SBIN7/codex"
 printf 'name = "codex"\nbinary = "codex"\nlaunch_args = ["exec"]\nguarded_args = []\nbypass_args = []\nmodel_flag = "--model"\nprompt_template = "{prompt}"\n' > "$SPROF7/codex.toml"
 printf 'def slugify(s):\n    return s.lower().replace(".", "")\n' > "$REPO7/slugify.py"; git -C "$REPO7" -c commit.gpgsign=false commit -qam "fix: strip dots"
@@ -573,7 +573,7 @@ check "oneshot review: the withheld event is named in the answer" "1" "$(jq -r '
 out="$(cd "$REPO7" && PATH="$SBIN7:$PATH" STUB_FAIL=1 STUB_REPORT="$FD7/dispatch/oneshot.review.md" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv oneshot review --feature-dir "$FD7" 2>/dev/null)"
 check "oneshot review: a failed reviewer session leaves no dispatch event even with a report" "0" "$(jq -c 'select(.event == "dispatch" and .data.launchedBy == "driver")' "$FD7/events.jsonl" 2>/dev/null | wc -l | tr -d ' ')"
 # The session leaves a durable log next to the report, and the answer quotes stderr's
-# last line, so a failed reviewer is readable after the run ends (followup-5, R6).
+# last line, so a failed reviewer is readable after the run ends (port audit 5, R6).
 check "oneshot review: the session log is kept next to the report" "1" "$([[ -s "$FD7/dispatch/oneshot.reviewer.log" ]] && echo 1 || echo 0)"
 check "oneshot review: the log records the session's status" "1" "$(grep -c '^=== .* stderr (failed)' "$FD7/dispatch/oneshot.reviewer.log")"
 # At the boundary a failed session is handed to the lead once, in-harness; the driver
@@ -611,7 +611,7 @@ check "next from oneshot again: no second review; the exit gate answers" "0" "$(
 check "next from oneshot again: one dispatch event, not two" "1" "$(jq -c 'select(.event == "dispatch" and .data.launchedBy == "driver")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
 check "next from oneshot in-harness: the driver launches nothing and the gate names the missing dispatch" "0" "$(grep -c 'the driver ran the one review pass' <<<"$out")"
-# The third identical REDO is the gate's escalation (followup-5, R3): route: full with
+# The third identical REDO is the gate's escalation (port audit 5, R3): route: full with
 # the flag classes on record, and the run continues on the full path from DISCUSS.
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" driverRedo 'null' >/dev/null
 out1="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
@@ -697,7 +697,7 @@ check "next: the handoff wrote the paused result" "phase-handoff" "$(jq -r '.rea
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" 2>/dev/null)"
 check "next: the fresh session enters the handed phase" "NEXT phase=discuss" "${out:0:18}"
 # From the record, never a second graph step: one phase_start for DISCUSS, the handoff
-# record consumed (the full-route runs entered DISCUSS and PLAN twice; followup-5, R5).
+# record consumed (the full-route runs entered DISCUSS and PLAN twice; port audit 5, R5).
 check "next: the fresh session's entry adds no second phase_start" "1" "$(jq -c 'select(.event == "phase_start" and .phase == "discuss")' "$FD6/events.jsonl" | wc -l | tr -d ' ')"
 check "next: the handoff record is consumed by the entry" "null" "$(jq -r '.handoffSession' "$FD6/feature.json")"
 check "next: the exit committed the artifact" "1" "$(git -C "$REPO6" log --oneline | grep -c 'spec: ')"

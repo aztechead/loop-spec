@@ -291,7 +291,7 @@
         "skill": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9-]*$",
-          "description": "The skill the cycle invokes to run this agent node when it is not `loop-spec:<id>`: the driver prints `EXT skill=<name>` under NEXT and the cycle skill invokes `Skill(loop-spec:<name>)`. The spec node names the lite candidate skill so the short route never loads the full SPEC body (orchestrator-port-followup-3.md, N4)."
+          "description": "The skill the cycle invokes to run this agent node when it is not `loop-spec:<id>`: the driver prints `EXT skill=<name>` under NEXT and the cycle skill invokes `Skill(loop-spec:<name>)`. The spec node names the lite candidate skill so the short route never loads the full SPEC body (port audit 3, N4)."
         },
         "bodyArgs": {
           "type": "array",

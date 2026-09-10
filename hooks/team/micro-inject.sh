@@ -19,7 +19,7 @@
 #     passes `autonomous` as a prompt token), so the check above never fired, this
 #     directive landed on top of the cycle skill, and the lead followed the one that
 #     needs no driver call: it edited in place and never began a cycle (the dda2cca
-#     wc-json run, docs/loop-spec/orchestrator-port-followup.md F1). The probe fails
+#     wc-json run, port audit 1 F1). The probe fails
 #     safe: an unknown launch answers false. `ENABLED=1` in micro.conf is the
 #     project's word and outranks an unknown launch, never a proven headless one, OR
 #   - the project has no .loop-spec/ dir (never hijack unrelated projects).

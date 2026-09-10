@@ -29,7 +29,7 @@ path = sys.argv[1]
 lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
 SEVERITY = re.compile(r"^#### (Critical|Important|Minor|Performance)\b")
 # A location is a path (a separator, or a known source extension) and a line; a bare
-# `word:12` (a heading id, a time) is not one (orchestrator-port-followup.md, F10).
+# `word:12` (a heading id, a time) is not one (port audit 1, F10).
 LOCATION = re.compile(r"(?<![\w/.-])((?:[\w.-]+/)+[\w.-]+|[\w.-]+\.(?:py|pyi|js|jsx|ts|tsx|mjs|cjs|sh|bash|go|rs|java|kt|rb|php|cs|c|h|cc|cpp|hpp|swift|m|sql|md|json|jsonl|yaml|yml|toml|ini|cfg|html|css|scss|vue|svelte|tf|proto|graphql)|Makefile|Dockerfile|Justfile|Rakefile|Gemfile|Procfile|LICENSE|NOTICE|README|CHANGELOG):(\d+)\b")
 VERDICT = re.compile(r"\|\s*verdict:\s*(true|false)\b\s*(?:[—:-]\s*)?(.*)$")
 SHAPE = ("expected `- <file>:<line> — <claim> | verdict: true — <commit, backlog id, or fix>` "

@@ -3,7 +3,7 @@
 #
 # Why: on the short route the lead read about 1,850 lines of skill and contract prose
 # for a two-line fix, against BMad's 475 for the same job, and every line is paid for
-# on every turn (docs/loop-spec/orchestrator-port-followup.md, F3). Nothing measured
+# on every turn (port audit 1, F3). Nothing measured
 # it, so nothing could bound it. This probe sums the body and every file the body tells
 # the lead to read, so a test can hold a path under a number.
 #

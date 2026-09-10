@@ -6,7 +6,7 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [6.5.0] - 2026-09-09
 
-The orchestrator port's follow-up (`docs/loop-spec/orchestrator-port-followup.md`,
+The orchestrator port's follow-up (`port audit 1`,
 F1 to F11) and the rules behind it (`docs/loop-spec/orchestrator-port-principles.md`).
 The landing record at the end of the follow-up says what each item became.
 
@@ -30,7 +30,7 @@ The landing record at the end of the follow-up says what each item became.
   `LOOP_SPEC_PHASE_TIMEOUT_MINS`). The deny names the driver call through the `DRV`
   the cycle skill binds, never a path to retype. It has no switch of its own;
   `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the first deny.
-- **The driver observes what the lead used to assert** (`docs/loop-spec/orchestrator-port-followup-4.md`).
+- **The driver observes what the lead used to assert** (`port audit 4`).
   Read-only is the task's word: the invocation token `protected:a,b` lands in
   `feature.json.protected`, `lib/footprint.sh list` honors a read-only mark only for a
   protected file (a mark on any other file is a plain cite, with a notice) and adds a
@@ -52,7 +52,7 @@ The landing record at the end of the follow-up says what each item became.
   module of a file that changed in the diff cannot be dropped; the eval records
   `first_turn_input_tokens` from the session transcript and reads `bar.rounds`.
 - **A criterion is two fields, escalation is a gate's, and the four other fifth-audit
-  items** (`docs/loop-spec/orchestrator-port-followup-5.md`). `spec fill --command
+  items** (`port audit 5`). `spec fill --command
   <shell> --expect <text>` writes the Good Enough line and the command into the
   frontmatter `criteria:` map that `verification run` executes; a sentence is refused,
   `--row GE-NNN` replaces (a grounding bullet by index), a repeat is never appended,
@@ -81,7 +81,7 @@ The landing record at the end of the follow-up says what each item became.
   on the same head read 0.42 USD, 3.5 minutes, 68 lines, 47 turns): delivered in one
   round at 0.41 USD, 3.8 minutes, 74 artifact lines, 39 turns, zero REDO rounds; run 3 on the same fixture
   before this work was 0.80 USD, 79 turns, 124 lines. The bar (0.25 USD, 50 lines, 3
-  minutes) is still missed; `docs/loop-spec/orchestrator-port-followup-3.md` records
+  minutes) is still missed; `port audit 3` records
   where the rest sits.
 - **The small pins the third audit asked for.** A repeated handoff answer (`next` or
   `begin` in the session that handed off) adds no phase event pair, pinned in the
@@ -91,7 +91,7 @@ The landing record at the end of the follow-up says what each item became.
   instead. The state-ref commit count on a driver-delivered branch was already pinned
   (`tests/lib/cycle-driver.test.sh`, "carries no state commit", in place and in a
   worktree). PR 93's four variables and three guards stay as merged, each recorded
-  with its observed failure in `docs/loop-spec/orchestrator-port-followup-3.md`.
+  with its observed failure in `port audit 3`.
 - **The short route's reading list is bounded as a path.** `skills/spec-lite/SKILL.md`
   is SPEC's entry on every cycle (the graph's `spec` node names it with the new node
   key `skill`, printed as `EXT skill=spec-lite` under `NEXT`): the scout, the oneshot

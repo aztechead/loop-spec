@@ -30,7 +30,7 @@
 # directory, or test/) is in the footprint by construction, protected ones read-only, and
 # leaves only through `cycle-driver.sh spec footprint drop`. The b5008b4 and d17da82
 # feature runs shipped without a test because the lead marked the test module read-only
-# in its own words (orchestrator-port-followup-4.md, item 1).
+# in its own words (port audit 4, item 1).
 #   footprint.sh show <feature_dir>              every cite, one JSON object per line
 #
 # Ledger: <feature_dir>/footprint.jsonl, append-only, {path, line, readOnly, why, at}.

@@ -96,7 +96,7 @@ check "a footprint file whose test module the spec never names flags" "1" "$ec"
 check "the flag names the module" "1" "$(grep -c 'src/slugify.py has a test module tests/test_slugify.py' <<<"$out")"
 check "a oneshot spec without the Intent block flags" "1" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nointent.md" 2>&1 | grep -c 'no .## Intent. block')"
 # A Good Enough line with no backticked command is flagged at SPEC's exit, before the
-# oneshot boundary can ever meet it (followup-5, R1).
+# oneshot boundary can ever meet it (port audit 5, R1).
 sed 's/^- \[ \] \\`python3 -c[^`]*\\` exits 0$/- [ ] the tests pass/; s/^- \[ \] `python3 -c[^`]*` exits 0$/- [ ] the tests pass/' "$DOCS/SPEC.md" > "$WORK/bare.md"
 check "a Good Enough line without a backticked command flags" "1" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/bare.md" 2>&1 | grep -c 'carries no backticked command')"
 sed 's/^footprint:$/footprint: [a.py, b.py, c.py, d.py]/; /^  - src\/slugify.py$/d' "$WORK/long.md" > "$WORK/full.md"
@@ -215,7 +215,7 @@ ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "a rejected finding with its disproof passes" "0" "$ec"
 # The footprint is a promise with no prose exit: an untouched file it names is a flag
 # whatever Implementation notes say, and the one way out is the driver's recorded drop,
-# which refuses a test module of a file that stays (followup-3, N2).
+# which refuses a test module of a file that stays (port audit 3, N2).
 DRV="$REPO_ROOT/lib/cycle-driver.sh"
 sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - tests/test_slugify.py|' "$DOCS/SPEC.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
@@ -239,7 +239,7 @@ check "the decision is a ruling in decisions.jsonl" "1" "$(jq -c 'select(.kind =
 check "the Intent block is untouched by the drop" "Dots survive slugify." "$(sed -n '/^## Intent$/,/^<!-- \/intent -->$/p' "$DOCS/SPEC.md" | sed -n 3p)"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "after the recorded drop the gate passes" "0" "$ec"
-# The order hole (followup-4, N2): dropping the changed source first does not free its
+# The order hole (port audit 4, N2): dropping the changed source first does not free its
 # test module; a test module of a file in the diff cannot be dropped.
 spec; sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - tests/test_slugify.py|' "$DOCS/SPEC.md"
 bash "$DRV" spec footprint drop --feature-dir "$FD" --file src/slugify.py --reason "try to free the test" >/dev/null 2>&1

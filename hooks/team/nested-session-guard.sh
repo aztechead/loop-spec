@@ -42,7 +42,7 @@ import sys
 LAUNCH = re.compile(r"(?:^|[\s;&|(`])(claude\s+(?:-p|--print)\b|codex\s+exec\b|opencode\s+run\b|adk\s+run\b)")
 # The bundled launchers, matched as the path token the command runs, never as a
 # substring anywhere in the line: a comment naming session_run.py next to a `claude -p`
-# was a pass (orchestrator-port-followup.md, F8).
+# was a pass (port audit 1, F8).
 LAUNCHERS = re.compile(r"(?:^|[\s\"\x27=])(?:[\w.~-]*/)*(?:extensions/sessions/session_run\.py|skills/loop-runner/scripts/[\w.-]+\.py|evals/eval_run\.py)(?=$|[\s\"\x27])")
 
 try:

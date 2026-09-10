@@ -25,7 +25,7 @@
 # three verification lints when VERIFICATION.md exists; only the footprint, intent,
 # review, and floor checks are the oneshot's own. A SPEC.md the probe cannot read as
 # either shape is a flag, never a pass: a gate that passes on an unreadable input is
-# the failure class the determinism audit exists to remove (orchestrator-port-followup.md, F6).
+# the failure class the determinism audit exists to remove (port audit 1, F6).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -47,7 +47,7 @@ run_gate tamper lib feature-scan-each "$SCRIPT_DIR/test-tamper-scan.sh" --featur
 # on the route named the test file, never touched it, and shipped without the test the
 # spec's own footprint had committed to; the b5008b4 run did it again through the
 # gate's own "or say why" wording, and a gate an Implementation notes bullet could talk
-# out of its check was a judgment selecting a branch (orchestrator-port-followup-3.md,
+# out of its check was a judgment selecting a branch (port audit 3,
 # N2). An untouched footprint file is a flag, whatever the notes say; the one way out
 # is `cycle-driver.sh spec footprint drop`, which records the decision and refuses a
 # test module of a file that stays.

@@ -32,7 +32,7 @@ check() {
   local actual_exit=0
   # From the fixture, never from the checkout that runs the suite: the probe scans the
   # working directory's repository too, and a feature leaked into the plugin checkout
-  # (the f0959f6 eval run) made this suite stand down (followup-3, N6).
+  # (the f0959f6 eval run) made this suite stand down (port audit 3, N6).
   (cd "$PROJ" && env CLAUDE_PROJECT_DIR="$PROJ" "$@" bash "$HOOK" >/dev/null 2>&1 <<<"$payload") || actual_exit=$?
   if [[ "$actual_exit" -eq "$expected_exit" ]]; then
     echo "PASS: $name"; ((PASS++)) || true

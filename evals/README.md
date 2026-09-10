@@ -105,7 +105,7 @@ REDO answer, with the bracketed class of each FLAG line. The record sums them as
 driver-written shape makes impossible (`artifact-lint`, `verification-grounding`,
 `misplaced`, `oneshot-shape`, `review-triage`, `converged-floor`); the summary prints
 the same per task. A live bug-fix run on the short route is at its done condition for
-`docs/loop-spec/orchestrator-port-followup-3.md` N1 when `format_redo` is zero.
+`port audit 3` N1 when `format_redo` is zero.
 
 `first_turn_input_tokens` is the context the first assistant turn read (cache creation,
 cache read, and input tokens from the CLI's transcript of the session): what every later

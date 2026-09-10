@@ -52,7 +52,7 @@ ec=0; bash "$LIB" bogus >/dev/null 2>&1 || ec=$?
 check "bad invocation is exit 2" "2" "$ec"
 # The driver's own branch: a feature the driver began and closed through its first
 # phase carries the artifact commit and no state commit; the ref holds the state
-# (orchestrator-port-followup-3.md, N7, as F10 asked).
+# (port audit 3, N7, as F10 asked).
 DREPO="$WORK/driven"; mkdir -p "$DREPO"
 git -C "$DREPO" init -q -b main
 printf 'def slugify(s):\n    return s.lower()\n' > "$DREPO/slugify.py"

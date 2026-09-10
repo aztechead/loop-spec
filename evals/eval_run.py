@@ -299,7 +299,7 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, ti
     # continuous session, 71 percent of that run's cost.
     # The task's protected files ride as the invocation token the driver reads
     # (feature.json.protected): read-only is a fact from the task, never the lead's
-    # word (orchestrator-port-followup-4.md, item 1).
+    # word (port audit 4, item 1).
     protected = ",".join(task.get("protected") or [])
     prompt = f"/loop-spec:cycle autonomous {'protected:' + protected + ' ' if protected else ''}{task['prompt']}"
     for n in range(1, MAX_ROUNDS + 1):
@@ -348,7 +348,7 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, ti
             except ValueError:
                 continue
             # The driver emits one per REDO answer, with the bracketed label of every
-            # FLAG line (orchestrator-port-followup-3.md, N1): the record says which
+            # FLAG line (port audit 3, N1): the record says which
             # gate bounced the lead, not just how often.
             if e.get("event") == "redo":
                 redo["rounds"] += 1
@@ -438,7 +438,7 @@ def bar_verdict(bar, cost, artifacts, minutes, rounds):
 def first_turn_input_tokens(session_id):
     """The context the first assistant turn read (cache creation + cache read + input),
     from the CLI's own transcript of the session: what every later turn re-reads, the
-    number the bill is made of (orchestrator-port-followup-4.md, item 5). None when the
+    number the bill is made of (port audit 4, item 5). None when the
     transcript is not on this machine."""
     if not session_id:
         return None

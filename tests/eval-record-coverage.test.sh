@@ -2,7 +2,7 @@
 # Pin the eval record's reading of the driver's redo events: the driver emits one per
 # REDO answer with the flag classes, and evals/eval_run.py counts them into the record
 # and the summary, so a live run says which gate bounced the lead
-# (docs/loop-spec/orchestrator-port-followup-3.md, N1).
+# (port audit 3, N1).
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.sh"
 
 checks=(
@@ -20,7 +20,7 @@ checks=(
 check_fixed_strings "${checks[@]}"
 
 # The pass bar in each task is the plan's figure (orchestrator-port-plan.md, WP1 done
-# condition), not a copy that can drift from it (followup-3, N7).
+# condition), not a copy that can drift from it (port audit 3, N7).
 PLAN="docs/loop-spec/orchestrator-port-plan.md"
 plan_done="$(tr '\n' ' ' < "$PLAN")"
 for row in "slugify-bug 0.25 50 3" "wc-json 0.60 100 5"; do

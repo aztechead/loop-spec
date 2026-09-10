@@ -68,7 +68,7 @@ bash "$LIB" "$tmp/SPEC.md" "$tmp/V-fail.md" >/dev/null 2>&1
 check "FAIL table row vetoes convergence" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
 
 # An empty Status cell (the oneshot skeleton before `verification run` observes the
-# command) is a criterion nobody ran: a veto, never a pass (followup-4, item 2).
+# command) is a criterion nobody ran: a veto, never a pass (port audit 4, item 2).
 sed 's/| 2 | output contains marker | PASS |/| 2 | output contains marker |  |/' "$tmp/V.md" > "$tmp/V-empty.md"
 bash "$LIB" "$tmp/SPEC.md" "$tmp/V-empty.md" >/dev/null 2>&1
 check "an empty Status cell vetoes convergence" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
@@ -128,7 +128,7 @@ out="$(bash "$LIB" "$tmp/SPEC.md" "$tmp/V-wide-fail.md" 2>/dev/null)"; rc=$?
 check "FAIL prefix in the Result column vetoes" "$([[ $rc -eq 1 ]] && echo 1 || echo 0)"
 check "FAIL veto names the row key" "$(grep -q 'FLOOR acceptance table row still FAIL: GE-001' <<<"$out" && echo 1 || echo 0)"
 # lib/iterate-judged.sh routes a floor veto to VERIFY or EXECUTE by this literal; the
-# two files share it and neither may drift alone (orchestrator-port-followup.md, F10).
+# two files share it and neither may drift alone (port audit 1, F10).
 check "the judge reads the same literal the floor emits" "$([[ "$(grep -c "still FAIL" "$REPO_ROOT/lib/iterate-judged.sh")" -ge 1 && "$(grep -c "row still FAIL" "$REPO_ROOT/lib/converged-floor.sh")" -ge 1 ]] && echo 1 || echo 0)"
 printf '| GE-002 | dup | `run` | PASS |\n' >> "$tmp/V-wide.md"
 out="$(bash "$LIB" "$tmp/SPEC.md" "$tmp/V-wide.md" 2>/dev/null)"

@@ -85,7 +85,7 @@ Usage:
         in decisions.jsonl (kind ruling) and as a line under Implementation notes, and
         the frontmatter list loses the file. The footprint is a promise the ONESHOT exit
         gate checks against the diff, and this is the only way out of it (the gate has
-        no prose exit, orchestrator-port-followup-3.md, N2). Refused (exit 1) when the
+        no prose exit, port audit 3, N2). Refused (exit 1) when the
         file is the test module of a file that stays in the footprint: the change gets
         its test, or the run escalates. Prints {spec, dropped, footprint}. Exit 0; 1
         refused (not in the footprint, or a test module); 2 bad invocation.
@@ -102,7 +102,7 @@ Usage:
         frozen Intent block, the Implementation notes bullet of one footprint file, one
         Good Enough criterion (the text after `- [ ] `, the first real one replacing the
         placeholders), or one Grounding bullet (replacing `- none`). The driver is the
-        only writer of the shape (orchestrator-port-followup-3.md, N1): the lead never
+        only writer of the shape (port audit 3, N1): the lead never
         has the file open, so the exit gate cannot see a heading it typed. Every write
         re-runs the two spec lints and prints {spec, flags:[...]}; exit 0 written (flags
         are the gate's findings so far), 1 nothing to fill or the field is not in the
@@ -764,7 +764,7 @@ def plugin_home_refusal(directory, plugin_home, project_dir):
     from a copy inside that checkout (the eval's layout: its plugin snapshot lives under
     the repository the eval launched from). The f0959f6 wc-json run initialized the
     plugin checkout itself and left a feature worktree there that two guard suites
-    later read as an in-flight cycle (orchestrator-port-followup-3.md, N6)."""
+    later read as an in-flight cycle (port audit 3, N6)."""
     directory = os.path.realpath(directory)
     plugin_home = os.path.realpath(plugin_home)
     manifest = os.path.join(directory, ".claude-plugin", "plugin.json")
@@ -925,7 +925,7 @@ def cmd_init(argv):
     protected = json.loads(o.get("protected") or "[]")
     if protected:
         # The task's own list (`protected:a,b`), the one source of a read-only footprint
-        # file (lib/footprint.sh; orchestrator-port-followup-4.md, item 1).
+        # file (lib/footprint.sh; port audit 4, item 1).
         fset(feature_dir, "protected", protected)
     if spec_file:
         shutil.copy(spec_file, os.path.join(feature_dir, "spec-draft.md"))
@@ -1171,7 +1171,7 @@ def cmd_next(argv):
             and rec.get("next") not in (None, "", "completed"):
         # The fresh session the handoff asked for: the phase it enters is already on
         # record, so it is answered from the record, never stepped again (the full-route
-        # runs entered DISCUSS and PLAN twice and one ended with no result; followup-5, R5).
+        # runs entered DISCUSS and PLAN twice and one ended with no result; port audit 5, R5).
         nxt = rec["next"]
         node = next((n for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == nxt), {})
         fset(feature_dir, "handoffSession", None)
@@ -1191,7 +1191,7 @@ def cmd_next(argv):
             return 0
         if returned == "oneshot":
             # Observe before judging: every criterion's command and the test suite run
-            # here, by the driver, and the rows say what happened (followup-4, items 2, 4).
+            # here, by the driver, and the rows say what happened (port audit 4, items 2, 4).
             docs = docs_dir(feature_dir, feat)
             vpath, spath = os.path.join(docs, "VERIFICATION.md"), os.path.join(docs, "SPEC.md")
             if os.path.isfile(vpath) and os.path.isfile(spath) and \
@@ -1229,7 +1229,7 @@ def cmd_next(argv):
                             not re.search(r"^route: *full\s*$", open(spath, encoding="utf-8").read(), flags=re.M):
                         # The one escalation the short route has, and it is the gate's, never
                         # the lead's: the deadlock's flag classes go on record and the run
-                        # takes the full path from DISCUSS (followup-5, R3).
+                        # takes the full path from DISCUSS (port audit 5, R3).
                         classes = sorted({(re.match(r"^FLAG \[([^\]]+)\]", f) or [None, "unlabeled"])[1] for f in flags})
                         capture(lambda a: spec_escalate(a[0], a[1]),
                                 [spath, "the exit gate held after %d attempts on %s" % (redo_count, ", ".join(classes))])
@@ -1338,7 +1338,7 @@ def print_next(nxt, label, effort):
     """The NEXT answer and its EXT lines. The node may name a lighter skill than
     loop-spec:<phase> (the spec node names the candidate skill, so the short route never
     loads the full SPEC body): data on the graph, printed as an EXT line the cycle skill
-    acts on (followup-3, N4)."""
+    acts on (port audit 3, N4)."""
     print('NEXT phase=%s label="%s" effort=%s' % (nxt, label, effort))
     node_skill = next((n.get("skill") for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == nxt), None)
     if node_skill:
@@ -1490,7 +1490,7 @@ def record_transition(feature_dir, phase, nxt, note, ws_mode):
     # The graph names the one exception to one phase per session: an edge carrying
     # sameSession (spec -> oneshot, oneshot -> deliver: the short route is one session end
     # to end). It paid a session's fixed cost per phase for a two-line fix, and each session
-    # loaded its whole context (orchestrator-port-followup.md, F2; live run 2 paid the DELIVER
+    # loaded its whole context (port audit 1, F2; live run 2 paid the DELIVER
     # handoff). hooks/team/phase-handoff-guard.sh reads the same edge.
     if lib_run("graph/phases", "same-session", phase, nxt, quiet=True).returncode == 0:
         return None
@@ -1579,7 +1579,7 @@ def cmd_finish(argv):
     # The completion report, rendered from the record (outcome first, then each target,
     # the warnings, the elapsed time, the backlog). The lead prints it: a report built
     # from data carries no self-authored deferral to lint and needs no style contract
-    # in the lead's context (followup-3, N4).
+    # in the lead's context (port audit 3, N4).
     started = iso_epoch(feat.get("createdAt") or "") if feat.get("createdAt") else None
     lines = [summary]
     for t in targets:
@@ -1648,7 +1648,7 @@ def cmd_decline(argv):
     """The one honest way past the driver for a request that is not repository work:
     the protocol-mismatch terminal result, written before the tree changes. The cycle
     skill used to carry the write-terminal call as a nine-line snippet cited from the
-    route-exit contract; the call is the driver's (followup-3, N4)."""
+    route-exit contract; the call is the driver's (port audit 3, N4)."""
     o = parse_pairs(argv, ("--dir", "--title", "--reason", "--summary", "--autonomous"))
     reason = (o.get("reason") or "").strip()
     if not reason:
@@ -1687,7 +1687,7 @@ def cmd_begin(argv):
     st = json.loads(capture(cmd_start, ["--dir", directory, "--"] + args))
     if st.get("decisions"):
         # The commands the lead runs once a human has answered, rendered here with every
-        # value start already holds; the placeholders are the answers (followup-3, N4).
+        # value start already holds; the placeholders are the answers (port audit 3, N4).
         inv = st["invocation"]
         init_cmd = ('bash "$DRV" init --dir %s --slug <slug> --title "<title>" --style %s --profile %s '
                     '--classification %s --autonomous %s --greenfield <0|1> --spec-file "%s" '
@@ -1827,7 +1827,7 @@ def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=No
     """A template with the facts the driver holds filled in and every value the lead
     owns left as a {placeholder}. The shape is the gates' business, so it is written
     here once instead of retyped by the lead per run (six REDO rounds on the dda2cca
-    bug fix were format rounds; orchestrator-port-followup.md, F4)."""
+    bug fix were format rounds; port audit 1, F4)."""
     text = open(template, encoding="utf-8").read()
     text = text.replace("{feature_title}", feat.get("feature_title") or feat.get("slug") or "")
     text = text.replace("{slug}", feat.get("slug") or "")
@@ -1851,7 +1851,7 @@ def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=No
             # run 3 paid a REDO and ten edits for one).
             # The Status cell stays empty until `verification run` observes the command's
             # exit: a PASS written before anyone ran anything is the self-graded gate one
-            # layer down (orchestrator-port-followup-4.md, item 2).
+            # layer down (port audit 4, item 2).
             text = text.replace(
                 "| 1 | {from SPEC} |  | `{verify command}` -> {output summary} |\n",
                 "".join("| GE-%03d | %s |  | `{verify command}` -> {output summary} |\n" % (i + 1, c.replace("|", "\\|"))
@@ -1901,7 +1901,7 @@ def footprint_drop(feature_dir, feat, target, path, reason):
         raise Die("spec footprint drop: %s is not in the footprint of %s (%s)" % (path, target, ", ".join(footprint) or "empty"))
     remaining = [p for p in footprint if p != path]
     # A test module of a file that changed in the diff stays whatever the footprint says
-    # now: dropping the source first and its test second was accepted (followup-4, N2).
+    # now: dropping the source first and its test second was accepted (port audit 4, N2).
     root = feature_root(feature_dir, feat)
     base = feat.get("baseSha") or ""
     changed = run(["git", "-C", root, "diff", "--name-only", base, "HEAD", "--"], quiet=True).stdout.splitlines() if base else []
@@ -1959,7 +1959,7 @@ def spec_fill(target, o):
         filled.append("note:" + o["file"])
     if o.get("criterion"):
         raise Die("spec fill: a criterion is two fields, --command <shell> and --expect <what exit 0 proves>; "
-                  "the driver writes the line (orchestrator-port-followup-5.md, R1)", 2)
+                  "the driver writes the line (port audit 5, R1)", 2)
     if o.get("command") or o.get("expect"):
         command, expect = (o.get("command") or "").strip(), (o.get("expect") or "").strip()
         if not command or not expect:
@@ -2044,7 +2044,7 @@ def cmd_spec(argv):
         sub, argv = "drop", argv[1:]
     if sub == "escalate":
         raise Die("spec escalate is not the lead's call: a gate escalates from evidence (a diff outside the footprint, "
-                  "a reviewer BLOCK, or the third identical REDO), with the reason on record (followup-5, R3)", 2)
+                  "a reviewer BLOCK, or the third identical REDO), with the reason on record (port audit 5, R3)", 2)
     if sub not in ("skeleton", "write", "drop", "fill"):
         usage()
     opts = {"write": ("--feature-dir", "--file"), "drop": ("--feature-dir", "--file", "--reason"),
@@ -2067,7 +2067,7 @@ def cmd_spec(argv):
     if sub == "fill":
         if o.get("json"):
             # Every field in one call, one Bash turn: each fill was a turn that re-read the
-            # whole context (followup-4, item 5). {intent, notes: {path: text}, criteria:
+            # whole context (port audit 4, item 5). {intent, notes: {path: text}, criteria:
             # [text], grounding: [text]}; `-` reads stdin.
             raw = sys.stdin.read() if o["json"] == "-" else open(o["json"], encoding="utf-8").read()
             try:
@@ -2084,7 +2084,7 @@ def cmd_spec(argv):
                 calls.append({"file": path, "note": note})
             for c in batch.get("criteria") or []:
                 if not isinstance(c, dict):
-                    raise Die("spec fill --json: each criterion is {command, expect}, never a sentence (followup-5, R1)", 2)
+                    raise Die("spec fill --json: each criterion is {command, expect}, never a sentence (port audit 5, R1)", 2)
                 calls.append({"command": c.get("command"), "expect": c.get("expect"), "row": c.get("row")})
             for g in batch.get("grounding") or []:
                 calls.append({"grounding": g})
@@ -2122,7 +2122,7 @@ def cmd_spec(argv):
         raise Die("spec write needs --file PATH (or - for stdin)", 2)
     # On the oneshot route the skeleton the driver wrote is the spec, filled through
     # `spec fill`; a whole-file write over it was the one writer the hook could not
-    # see (orchestrator-port-followup-4.md, N1's remaining writers).
+    # see (port audit 4, N1's remaining writers).
     if os.path.isfile(target):
         route = lib_run("graph/probes/oneshot", "--feature-dir", feature_dir, quiet=True).stdout.strip()
         if route.startswith("route=oneshot"):
@@ -2192,7 +2192,7 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
     backticked span of its line) in the feature root and write the exit as the row's
     status, the command and exit as its evidence, and the output as its block; then
     commands.test into the Final test suite block. The lead supplies no status
-    (orchestrator-port-followup-4.md, items 2 and 4). Returns the rows written."""
+    (port audit 4, items 2 and 4). Returns the rows written."""
     root = feature_root(feature_dir, feat)
     text = open(target, encoding="utf-8").read()
     criteria = good_enough_criteria(spec)
@@ -2208,7 +2208,7 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
             evidence = "`%s` -> exit %d" % (command.replace("|", "\\|"), code)
         else:
             # A criterion the driver never wrote has no command on record: a FAIL the
-            # row says out loud, never a crash that leaves every row empty (followup-5, R1).
+            # row says out loud, never a crash that leaves every row empty (port audit 5, R1).
             code, block = 1, "(no command on record for this criterion: the frontmatter criteria map has no %s)" % row
             evidence = "no command on record: `spec fill --command --expect --row %s` writes one" % row
         status = "PASS" if code == 0 else "FAIL"
@@ -2262,7 +2262,7 @@ def verification_review(target, report, model):
     transcription: one bullet per `- <file>:<line> — <claim>` line with `verdict:
     pending`, or `none` when the report holds no finding. The d17da82 bug-fix run
     carried an invented finding because the lead thought the lint wanted one
-    (orchestrator-port-followup-4.md, item 3). Returns the findings written."""
+    (port audit 4, item 3). Returns the findings written."""
     text = open(target, encoding="utf-8").read()
     span = section_span(text, "Findings")
     if span is None:
@@ -2404,7 +2404,7 @@ def cmd_oneshot(argv):
     line = json.loads(proc.stdout.strip() or "{}")
     line.update({"report": report, "package": package})
     # A durable log next to the report: the run that gave up on three failed reviewer
-    # sessions took their stderr with it when the feature directory went (followup-5, R6).
+    # sessions took their stderr with it when the feature directory went (port audit 5, R6).
     log = os.path.join(dispatch, "oneshot.reviewer.log")
     tail = ""
     for key in ("stdout", "stderr"):
@@ -2421,7 +2421,7 @@ def cmd_oneshot(argv):
     # The event is the exit gate's proof that the review ran, so a session that ended
     # any other way, or completed without writing its report, leaves no event: the gate
     # then names the missing review instead of passing on a reviewer that never spoke
-    # (orchestrator-port-followup-3.md, N5).
+    # (port audit 3, N5).
     if proc.returncode == 0 and (line.get("status") or "") == "completed" and os.path.isfile(report):
         lib("events", "emit", feature_dir, "dispatch", "--phase", "oneshot",
             "--data", json.dumps({"role": "code-reviewer", "model": model, "rung": "session", "launchedBy": "driver"}))

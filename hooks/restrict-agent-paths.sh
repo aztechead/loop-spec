@@ -211,7 +211,7 @@ CALLER="${CALLER#loop-spec-}"
 # SPEC.md next to the lead while phase-exit.sh read the worktree, and the 6.3.0 fastapi
 # bug-fix run escalated after four blind REDO attempts. The lead did the same on the
 # dda2cca run, on the short route, where it writes the spec itself, so the rule holds
-# for every caller (orchestrator-port-followup.md, F5); the driver's `spec skeleton`
+# for every caller (port audit 1, F5); the driver's `spec skeleton`
 # and `spec write` are the path that cannot miss. No feature.json anywhere means
 # nothing to compare, so the write stays allowed.
 feature_checkout_deny() {
@@ -243,7 +243,7 @@ fi
 # driver_owned_deny: on the oneshot route the driver is the only writer of SPEC.md and
 # VERIFICATION.md. Five format REDO rounds on a live bug fix came from a lead that
 # filled the driver-written skeleton by hand and left the shape the gates read
-# (orchestrator-port-followup-3.md, N1). The route is the probe's answer over the
+# (port audit 3, N1). The route is the probe's answer over the
 # feature's own SPEC.md, so a full-route spec (no footprint, four files, `route: full`,
 # or no SPEC.md yet) stays the lead's to write.
 driver_owned_deny() {
@@ -259,7 +259,7 @@ driver_owned_deny() {
   # Fail closed once the feature is known: the file opens to the lead only on a probe
   # answer of route=full for a reason that is not an unreadable spec (a spec the
   # probe cannot read may be what a hand write just broke); anything else, an empty
-  # answer included, is a deny (followup-4, N1's writers).
+  # answer included, is a deny (port audit 4, N1's writers).
   route="$(bash "$(dirname "${BASH_SOURCE[0]}")/../lib/graph/probes/oneshot.sh" --feature-dir "$fd" 2>/dev/null || true)"
   if [[ "${route%% *}" == "route=full" ]]; then
     case "$route" in

@@ -33,7 +33,7 @@ LOOP_SPEC_FORGERY_GUARD=0 check "kill switch allows" 0 'cat > .loop-spec/last-re
 
 # The driver-owned artifacts of a feature on the oneshot route: a shell write into
 # SPEC.md or VERIFICATION.md is denied, a read or a full-route feature is not
-# (followup-4, N1's remaining writers).
+# (port audit 4, N1's remaining writers).
 ONE="$WORK/one"; mkdir -p "$ONE/.loop-spec/features/one" "$ONE/docs/loop-spec/features/one" "$ONE/.loop-spec/features/big" "$ONE/docs/loop-spec/features/big"
 git -C "$ONE" init -q >/dev/null 2>&1
 printf '{"slug":"one","schemaVersion":7}\n' > "$ONE/.loop-spec/features/one/feature.json"
@@ -49,7 +49,7 @@ check "reading the artifact is allowed" 0 'cat docs/loop-spec/features/one/SPEC.
 check "a full-route feature's spec is the lead's" 0 'cat > docs/loop-spec/features/big/SPEC.md <<< "# big"' "$ONE"
 check "a feature the project does not hold is not this guard's" 0 'cat > docs/loop-spec/features/none/SPEC.md <<< "# x"' "$ONE"
 # The same rule as the path hook: an unreadable spec keeps both files the driver's
-# (followup-5, R7 closed the inversion where the shell path opened here).
+# (port audit 5, R7 closed the inversion where the shell path opened here).
 printf -- '---\nfootprint:\n  - a.py\n# no closing marker\n' > "$ONE/docs/loop-spec/features/one/SPEC.md"
 check "an unreadable spec denies the shell write too (fail closed)" 2 'cat > docs/loop-spec/features/one/VERIFICATION.md <<< "# v"' "$ONE"
 ec=0; CLAUDE_PROJECT_DIR="$WORK/proj" bash "$HOOK" >/dev/null 2>&1 <<<"not json" || ec=$?

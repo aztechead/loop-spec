@@ -34,7 +34,7 @@
 #                            list, "do not change the tests"). The one source of a
 #                            read-only footprint file (lib/footprint.sh); a read-only
 #                            mark the lead writes on any other file is not honored
-#                            (orchestrator-port-followup-4.md, item 1)
+#                            (port audit 4, item 1)
 #   tier:X, preset:X      -> ignored, listed in .legacy[] (caller prints the notice)
 #   any other -flag       -> refused (exit 1) while it LEADS the arguments; after the
 #                            first description word it is description text

@@ -14,7 +14,7 @@
 #      the cycle skill and never called the driver. The dda2cca wc-json eval run did
 #      that: the ambient micro directive and the cycle skill both loaded, the lead
 #      followed the one that needs no driver call, edited in place, and stopped with no
-#      branch, no result, and no `begin` (docs/loop-spec/orchestrator-port-followup.md,
+#      branch, no result, and no `begin` (port audit 1,
 #      F1). From inside the session that looks like success; the caller reads a run
 #      with no cycle.
 #   2. An open phase. lib/graph/engine.py emits phase_start when a phase opens and
@@ -23,8 +23,8 @@
 #      after that. A feature whose newest phase_start has no later phase_end and no
 #      later result is a phase the lead walked out of: the f0959f6 wc-json run ended
 #      its second round on `phase_start oneshot` after the exit gate refused it, by
-#      declaring the phase complete (orchestrator-port-followup-2.md, F1 point 2;
-#      followup-3, N5). The driver's `next --returned-from <phase>` is the only close.
+#      declaring the phase complete (port audit 2, F1 point 2;
+#      port audit 3, N5). The driver's `next --returned-from <phase>` is the only close.
 #
 # Stands down (exit 0) when:
 #   - the project has no .loop-spec/ dir (never hijack unrelated projects)

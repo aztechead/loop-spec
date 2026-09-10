@@ -288,3 +288,12 @@ that as the base, and prompted `Use the bmad-build skill for this work: <task pr
 The control prompt was the task prompt plus "run the tests, then commit". If you rebuild
 that driver, keep it out of the tree, or add it under `evals/` behind the same spend
 guard as `evals/run.sh`.
+
+## Where the port audits live
+
+The five audits of this port ("port audit 1" through "port audit 5" in code comments,
+the changelog, and the tests: items F1 to F12, N1 to N7, the fourth audit's five items,
+and R1 to R7) are records on the branch `claude/loop-spec-bmad-eval-w7odpb`, under that branch's
+`docs/loop-spec/` as the five `orchestrator-port-followup` files, with each audit's
+landing record appended there. They are not in this tree: they change nothing the
+plugin does, and the branch that judges outcomes carries only the plugin.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for lib/context-load.sh: the lines a phase skill makes the lead read, and the
-# bound on the short route (docs/loop-spec/orchestrator-port-followup.md, F3).
+# bound on the short route (port audit 1, F3).
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -59,7 +59,7 @@ check "no entry exits 2" "2" "$(bash "$LIB" sum --root "$WORK" >/dev/null 2>&1; 
 # --- the bound: the short route's reading list ------------------------------------------
 # The short route loads three bodies, the cycle skill, the lite spec skill the spec node
 # names, and the oneshot skill, each with what it cites. The bound is the audit's, over
-# the path and not one skill (followup-3, N4): 600 lines. The full SPEC body is loaded
+# the path and not one skill (port audit 3, N4): 600 lines. The full SPEC body is loaded
 # only when the lite skill hands to it, and is bounded on its own so it cannot creep.
 ONESHOT_PATH_MAX=600
 SPEC_BODY_MAX=230

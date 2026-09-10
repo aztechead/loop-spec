@@ -19,7 +19,7 @@
 # when lib/graph/probes/oneshot.sh answers route=oneshot for that feature: the driver
 # fills them (`spec fill`, `verification fill|run|review|verdict`); a shell write was
 # the writer hooks/restrict-agent-paths.sh could not see
-# (orchestrator-port-followup-4.md, N1's remaining writers).
+# (port audit 4, N1's remaining writers).
 #
 # Stands down (exit 0) when the project has no .loop-spec/ dir, when python3 is
 # missing, or when the payload is malformed. Kill switch: LOOP_SPEC_FORGERY_GUARD=0.
@@ -75,7 +75,7 @@ if [[ "$VERDICT" == artifact\ * ]]; then
   done
   [[ -n "$fd" ]] || exit 0
   # The same rule as hooks/restrict-agent-paths.sh: the file opens only on a readable
-  # route=full; an unreadable spec keeps it the driver's (followup-5, R7).
+  # route=full; an unreadable spec keeps it the driver's (port audit 5, R7).
   route="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/probes/oneshot.sh" --feature-dir "$fd" 2>/dev/null || true)"
   if [[ "${route%% *}" == "route=full" ]]; then
     case "$route" in

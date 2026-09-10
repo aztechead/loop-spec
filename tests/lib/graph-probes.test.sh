@@ -477,7 +477,7 @@ check_output "oneshot --candidate: no scout cite is the full path" "route=full r
 bash "$ROOT/lib/footprint.sh" cite "$CAND/.loop-spec/features/c" src/x.py:1 >/dev/null
 check_output "oneshot --candidate: one cited file is a oneshot candidate" "route=oneshot reason=candidate footprint of 1 file(s) from the scout record" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
 # Read-only is the task's word (feature.json.protected), never the scout's mark alone
-# (followup-4, item 1): the unprotected mark counts, the protected file does not.
+# (port audit 4, item 1): the unprotected mark counts, the protected file does not.
 bash "$ROOT/lib/footprint.sh" cite "$CAND/.loop-spec/features/c" src/big.py:1 --read-only >/dev/null
 check_output "oneshot --candidate: a read-only mark on an unprotected file counts" "footprint of 2 file(s)" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
 printf '{"slug":"c","protected":["src/big.py"]}\n' > "$CAND/.loop-spec/features/c/feature.json"

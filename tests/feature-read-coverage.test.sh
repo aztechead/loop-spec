@@ -7,7 +7,7 @@
 #
 # Two passes per file, because the first version of this pin needed the reader and the
 # path on one line and five scripts slipped past it by binding the path to a variable
-# first (orchestrator-port-followup.md, F7): pass one collects every variable bound to a
+# first (port audit 1, F7): pass one collects every variable bound to a
 # path ending in feature.json; pass two flags any code line that hands the literal or
 # one of those variables to jq, python3, cat, awk, sed, grep, a redirect, or a file open.
 #

@@ -102,7 +102,7 @@ f="$(verification '- Makefile:7 — the lint target runs nothing | verdict: true
 ec=0; bash "$LINT" "$f" >/dev/null 2>&1 || ec=$?
 check "a file without an extension still counts as a location" "0" "$ec"
 # A bare word:number (a heading id, a time) is not a location; a bullet under any
-# subheading of the Code review section is a finding (orchestrator-port-followup.md, F10).
+# subheading of the Code review section is a finding (port audit 1, F10).
 f="$(verification '- step:12 — the lint target runs nothing | verdict: true — backlog 9f8e7d6c')"
 ec=0; out="$(bash "$LINT" "$f" 2>&1)" || ec=$?
 check "a bare word:number is not a location" "1" "$ec"

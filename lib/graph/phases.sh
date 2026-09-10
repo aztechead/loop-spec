@@ -22,7 +22,7 @@
 #                                             driver and hooks/team/phase-handoff-guard.sh
 #                                             read the same answer, so the one exception
 #                                             to one phase per invocation is graph data
-#                                             (orchestrator-port-followup.md, F2: the short
+#                                             (port audit 1, F2: the short
 #                                             route paid two sessions' fixed cost).
 #
 # LOOP_SPEC_GRAPH names another graph for every caller (an embedding that ships its own

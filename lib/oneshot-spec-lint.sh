@@ -58,7 +58,7 @@ if not any(l.strip() == "## Implementation notes" for l in body):
 # Every Good Enough line carries its command in backticks: the driver writes it from
 # `spec fill --command --expect`, and `verification run` executes it; a sentence with no
 # command stalled three live runs on empty Status cells before the boundary could
-# ever see it (orchestrator-port-followup-5.md, R1). Checked here, at SPEC's exit.
+# ever see it (port audit 5, R1). Checked here, at SPEC's exit.
 inside = False
 for idx, l in enumerate(body):
     if l.startswith("### "):

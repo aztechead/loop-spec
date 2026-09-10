@@ -91,7 +91,7 @@
 #   differs per caller. A directive injected into a headless cycle run competed
 #   with the cycle skill and won (the dda2cca wc-json run: the lead followed the
 #   ad-hoc micro protocol, edited in place, and never began a cycle;
-#   docs/loop-spec/orchestrator-port-followup.md, F1), so a directive meant for a
+#   port audit 1, F1), so a directive meant for a
 #   person is injected only when a person is proven. Evidence, strongest first:
 #     1. LOOP_SPEC_NON_INTERACTIVE=1 / EXECUTION_PROFILE=headless -> false
 #     2. a headless entrypoint stamp -> false (a fact; it outranks the claim below)

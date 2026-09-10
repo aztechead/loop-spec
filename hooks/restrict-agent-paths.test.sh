@@ -214,7 +214,7 @@ fi
 unset CLAUDE_PROJECT_DIR; rm -rf "$WREPO"
 
 # Cases X: on the oneshot route the driver is the only writer of SPEC.md and
-# VERIFICATION.md (followup-3, N1); the full route and a spec not yet written stay open.
+# VERIFICATION.md (port audit 3, N1); the full route and a spec not yet written stay open.
 XREPO="$(mktemp -d)"
 git -C "$XREPO" init -q && git -C "$XREPO" commit -q --allow-empty -m seed
 mkdir -p "$XREPO/.loop-spec/features/one" "$XREPO/docs/loop-spec/features/one" "$XREPO/.loop-spec/features/big" "$XREPO/docs/loop-spec/features/big"

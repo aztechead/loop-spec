@@ -20,7 +20,7 @@ WORK="${TMPDIR:-/tmp}/footprint-test.$$"; FD="$WORK/repo/.loop-spec/features/fd"
 trap 'rm -rf "$WORK"' EXIT
 # Read-only is the task's word: feature.json.protected names the files the change may
 # not touch; a cited source file's existing test module is in the footprint by
-# construction (followup-4, item 1).
+# construction (port audit 4, item 1).
 git -C "$WORK/repo" init -q -b main
 printf '{"slug":"fd","protected":["tests/test_a.py"]}\n' > "$FD/feature.json"
 : > "$WORK/repo/tests/test_a.py"; : > "$WORK/repo/tests/test_b.py"
