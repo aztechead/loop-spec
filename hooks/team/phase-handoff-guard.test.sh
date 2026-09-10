@@ -2,7 +2,7 @@
 # Tests for hooks/team/phase-handoff-guard.sh.
 set -euo pipefail
 
-HOOK="$(dirname "$0")/phase-handoff-guard.sh"
+HOOK="$(cd "$(dirname "$0")" && pwd)/phase-handoff-guard.sh"
 PASS=0
 FAIL=0
 
@@ -10,7 +10,8 @@ check() {
   local name="$1" expected="$2" payload="$3"
   shift 3
   local actual=0
-  env "$@" bash "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual=$?
+  # A real cycle in the calling checkout must not outrank the fixture.
+  env "$@" bash -c 'cd "$CLAUDE_PROJECT_DIR" && exec bash "$1"' _ "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual=$?
   if [[ "$actual" -eq "$expected" ]]; then
     echo "PASS: $name"
     ((PASS++)) || true

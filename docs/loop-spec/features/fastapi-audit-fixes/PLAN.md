@@ -236,6 +236,10 @@ Each implementer runs the required indirection-scan, duplication-scan, house-sty
 
 GE-005 is a lead-owned VERIFY/DELIVER gate after all three implementation tasks, not another implementation dispatch. Inspect the actual PR 94 head/base and branch before publishing. Commit and push the verified fixes to that PR's branch, update its title/description to describe the final behavior, enumerate observed offline validation, and state that the audited FastAPI application was not delivered and no paid rerun was performed. Read back the PR description, head SHA, remote branch SHA, and required-check state. Delivery requires equal local/remote/PR SHAs and the repository's passed-or-none required-check gate; report pending or failing checks as observed and keep working.
 
+## Verification repair
+
+The full offline run exposed an existing fixture-isolation defect in hooks/team/phase-handoff-guard.test.sh: the current checkout's active cycle outranked the fixture state. Resolve the hook path absolutely and execute it from each fixture project directory. Preserve every assertion and leave the production guard unchanged. The isolated proof passed all 16 checks; rerun the full suite after committing this correction.
+
 ## Rollback plan
 
 If VERIFY exposes a defect, fix the owning task and rerun its regressions plus affected coupling tests before delivery. If a committed fix must be withdrawn, revert that task's commit; retain the pending queue and its durable sidecar so recovery remains possible. Never clear pending tasks or rewrite approved intent to make rollback pass. The three tasks have no logical dependencies; file-overlap serialization is left to EXECUTE.
