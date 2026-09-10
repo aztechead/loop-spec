@@ -152,6 +152,12 @@ ledger. This pass does not invent a transcript or score.
 
 ## 4. Approval and exit
 
+Before approval, write Goal and Boundary as outcomes and constraints: for example,
+return all accepted strings. Put revisable choices such as path-versus-query input
+in an implementation section outside Goal and Boundary, unless the user explicitly
+required that interface. After approval, moving that choice out of a frozen section
+is itself an intent change; return the gap to the human.
+
 After the human approves the written Goal and Boundary, record the freeze:
 
 ```bash

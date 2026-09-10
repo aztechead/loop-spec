@@ -110,7 +110,11 @@ paths, and the exact commands needed to resume.
 
 Self-answering collapses preference questions, never safety aborts: dirty-repo aborts,
 schema guards, the iteration ceiling, VERIFY's code-review HARD-GATE and tamper scan,
-and DELIVER's exact-SHA, required-check, and unique-PR gates stay hard failures. Sites
+and DELIVER's exact-SHA, required-check, and unique-PR gates stay hard failures.
+Approved Goal and Boundary remain frozen (`lib/spec_intent.py`). Self-answering
+cannot change them or rewrite the approval digest: return genuine post-approval
+intent gaps to the human. Implementation choices outside those sections can change
+within the approved outcomes and constraints. Subject to that freeze, sites
 that normally reach a human only in one style (DISCUSS unresolved dimensions and
 intent findings: AskUserQuestion in `auto`/`step`/`interactive`; ITERATE's spec-rewind
 approval in `step`/`interactive`) take the grounded assumption here.

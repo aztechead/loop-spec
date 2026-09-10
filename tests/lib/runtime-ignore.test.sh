@@ -19,6 +19,30 @@ trap 'rm -rf "$WORK"' EXIT
 git -C "$WORK" init -q
 git -C "$WORK" -c user.name=Test -c user.email=test@example.com commit --allow-empty -qm init
 
+for policy in root managed; do
+  policy_repo="$WORK/$policy"
+  git init -q "$policy_repo"
+  git -C "$policy_repo" config core.excludesFile /dev/null
+  : > "$policy_repo/.git/info/exclude"
+  if [[ "$policy" == root ]]; then
+    cp "$ROOT/.gitignore" "$policy_repo/.gitignore"
+  else
+    bash "$SCRIPT" ensure "$policy_repo"
+  fi
+  mkdir -p "$policy_repo/.loop-spec/sessions/run" "$policy_repo/.loop-spec/features/demo" "$policy_repo/lib"
+  for path in .loop-spec/sessions/run/state.json .loop-spec/launcher-result.json \
+    .loop-spec/launcher.lock .loop-spec/features/demo/feature.json .loop-spec/features/demo/PROGRESS.md; do
+    touch "$policy_repo/$path"
+    check "$policy policy ignores $path" "ignored" \
+      "$(git -C "$policy_repo" check-ignore -q "$path" && echo ignored || echo not-ignored)"
+  done
+  for path in lib/cycle-result.sh .loop-spec/RULES.md; do
+    touch "$policy_repo/$path"
+    check "$policy policy keeps $path visible" "not-ignored" \
+      "$(git -C "$policy_repo" check-ignore -q "$path" && echo ignored || echo not-ignored)"
+  done
+done
+
 bash "$SCRIPT" ensure "$WORK"
 exclude="$(git -C "$WORK" rev-parse --git-path info/exclude)"
 [[ "$exclude" == /* ]] || exclude="$WORK/$exclude"

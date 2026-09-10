@@ -17,7 +17,7 @@ pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin execut
 # .entry.fields .entry.read[] .entry.flags[] (a missing ingress; relay and return)
 # .execute = lib/execute-prepare.sh: branch, sidecar, sidecarOk, sidecarFlags, done[], remaining[], tasks[],
 #            conflicts{rows,stops,rulings}, width, rung{}, maxRetries, featureRoot, worktreeBase, greenfield,
-#            remediationRegistered, stop
+#            remediationRegistered, remediationError (string|null), stop
 ```
 
 ## 1. Branch check
@@ -35,13 +35,18 @@ Use `.execute.tasks[]` as the dispatch list. The preparation call already perfor
 1. Reads `artifacts.tasks` from `feature_dir/tasks.json`.
 2. Registers `pendingRemediationTasks[]` from VERIFY, ITERATE, or DELIVER.
    Missing fields default to `blockedBy: []`, `files: []`, `acceptanceCriteria: [subject]`, and `verifyCommand: feature.commands.test`.
-   The preparation call omits tasks without a verify command and prints a warning.
+   A missing usable verify command fails intake; it never silently omits the task.
 3. Applies `lib/task-batch.sh collapse`.
 4. Removes completed IDs. `mergedSet` is `.execute.done[]`, initialized from `lib/task-progress.sh done`.
 5. Adds a `blockedBy` dependency from the lower ID to the higher ID when their `files[]` overlap.
    This excludes overlaps fully covered by `feature.json.fileConflictExcludeGlobs[]` or `.loop-spec/file-conflict-exclude.txt`.
 
 Never dispatch an already-published ID again.
+If `.execute.remediationError` is non-null, stop and report that error before checking
+`.execute.sidecarOk` or the remaining task list. Retain the remediation queue and
+sidecar, repair the reported intake problem, then call `phase-begin execute` again.
+Never rebuild tasks from PLAN.md to resolve a remediation intake error or claim the
+queued work executed.
 If `.execute.sidecarOk` is false, parse PLAN.md task blocks into the sidecar.
 Then call `phase-begin execute` again.
 If `.execute.remaining[]` is empty, go to step 5.

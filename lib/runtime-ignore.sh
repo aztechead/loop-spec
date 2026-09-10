@@ -35,6 +35,9 @@ ensure_line "# loop-spec managed local artifacts"
 patterns=(
   '/.loop-spec/features/*/*'
   '/.loop-spec/runtime.json'
+  '/.loop-spec/sessions/'
+  '/.loop-spec/launcher-result.json'
+  '/.loop-spec/launcher.lock'
   '/.loop-spec/active-run.json'
   '/.loop-spec/profile.json'
   '/.loop-spec/invocation-stamp.json'
