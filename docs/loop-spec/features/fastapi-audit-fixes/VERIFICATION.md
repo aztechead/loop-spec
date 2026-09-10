@@ -1,10 +1,10 @@
 # Address real-run audit findings in PR 94 - Verification
 
-For maintainers reviewing the four audit repairs and the remaining publication blocker.
+For maintainers reviewing the four audit repairs and the completed publication evidence.
 
 **Spec:** `docs/loop-spec/features/fastapi-audit-fixes/SPEC.md`
 **Plan:** `docs/loop-spec/features/fastapi-audit-fixes/PLAN.md`
-**Status:** BLOCKED — GE-001 through GE-004 pass; GE-005 awaits authorized publication.
+**Status:** PASS — GE-001 through GE-005 are verified. The user explicitly approved publication.
 
 ## Repository grounding
 
@@ -24,7 +24,7 @@ The audited source delta is `c6f9374..2c7eef5`. Initial `rtk git status --porcel
 | GE-002 | Early autonomous and explicit non-autonomous results preserve their modes without feature state. | PASS | `rtk proxy bash tests/lib/cycle-result.test.sh`, `tests/lib/cycle-driver.test.sh`, and `tests/terminal-result-coverage.test.sh`: 233/0, 261/0, 59/0. Final mode matrix covers absent state, explicit false, stored false, and delivered-alias forwarding. |
 | GE-003 | Runtime artifacts are ignored while source remains visible. | PASS | `rtk proxy bash tests/lib/runtime-ignore.test.sh`: 34/0. Independent temporary repositories exercise root ignore and managed excludes with global excludes disabled, source visibility, and byte-idempotency. |
 | GE-004 | Guidance separates outcome intent from implementation choices and preserves hard post-approval checks. | PASS | `rtk proxy bash tests/lib/spec-intent.test.sh`: approval, tamper, state protection, autonomous source, and idempotency pass. Recorded direct `spec_intent.verify_intent` check under `LOOP_SPEC_AUTONOMOUS=1` rejected Boundary mutation and accepted implementation-only mutation, exit 0; see the 2026-09-10T18:28:20Z verification-evidence event. |
-| GE-005 | Full offline suite and repository probes are assessed; fixes are committed and pushed to PR 94 with accurate description and observed checks. | BLOCKED | Offline adapter accepted; 241 suites pass, 0 fail, 0 skip. Fixes are committed locally. Automatic approval review rejected the checkpoint push because it did not recognize authorization to export to GitHub. PR 94 was not updated. Operator action: provide publication approval, then push, update/read back the PR description, compare local/remote/PR SHAs, and observe required checks. Those delivery checks are not claimed as complete. |
+| GE-005 | Full offline suite and repository probes are assessed; fixes are committed and pushed to PR 94 with accurate description and observed checks. | PASS | Offline adapter accepted: 241 suites pass, 0 fail, 0 skip. After explicit user approval, the lead pushed commit 2fc8d38391296de60bb0f1ba5bd14e9d68dadd6e to the existing PR branch and applied inbox/pr-94-audit-update.md. Readback matched the local SHA and exact description. GitHub reported no checks and no review decision; no CI success is claimed. |
 
 Exceptional criterion: PASS. The registered intake regression injects failure after sidecar publication, retries without duplicates or progress reset, and preserves work appended before acknowledgment. This is offline interruption coverage.
 
@@ -85,11 +85,11 @@ none
 
 ### Resolution
 
-The lead supplied a PASS review with no findings for the audit delta and a PASS review of the final handoff isolation repair. No new code finding arose in this acceptance audit. Probe dispositions above remain explicit; publication remains blocked independently of code review.
+The lead supplied a PASS review with no findings for the audit delta and a PASS review of the final handoff isolation repair. No new code finding arose in this acceptance audit. Probe dispositions above remain explicit; the publication blocker was resolved by explicit user approval and verified GitHub readback.
 
 ## Security review summary
 
-Approved Goal/Boundary validation and immutable approval writes remain enforced. Autonomous mode cannot rewrite the approval digest. No new scan shortcut or dependency bypass was introduced. The rejected GitHub export was not retried by this verifier.
+Approved Goal/Boundary validation and immutable approval writes remain enforced. Autonomous mode cannot rewrite the approval digest. No new scan shortcut or dependency bypass was introduced. The verifier did not retry the rejected export; the lead published only after explicit user approval.
 
 ## Final test suite
 
@@ -114,6 +114,6 @@ Complete runner output: `logs/full-run-final.log`. The adapter has `baselineMiss
 - Branch: `claude/cycle-dispatch-auto-mode-q9mpcs`
 - Final audited source commit: `2c7eef5ed1552f83c3c91f2a4399359c14a2a7ec`
 - Audit base: `c6f93744816de19140a267f731324c90b50d95d8`
-- Pushed: no — checkpoint push rejected by automatic approval review.
+- Pushed: yes — user-approved publication to the existing PR branch.
 - PR URL: https://github.com/aztechead/loop-spec/pull/94
-- PR description/head/check state: not updated or revalidated as completed delivery; publication approval is required.
+- PR description/head/check state: exact description and local/PR SHA match verified at 2fc8d38391296de60bb0f1ba5bd14e9d68dadd6e; no checks or review decision reported. This documentation follow-up records that completed publication.
