@@ -88,7 +88,7 @@ for pair in "spec:discuss" "discuss:plan" "plan:execute" "execute:verify" "verif
   fi
 done
 
-# The oneshot route (orchestrator-port-plan.md, WP1): the FIRST edge out of
+# The oneshot route (the port plan, WP1): the FIRST edge out of
 # human.after-spec, since the engine takes the first satisfied route; the phase then
 # routes to DELIVER, or to DISCUSS when the spec was escalated. The probe is one script
 # answering both readings so the decision never lives in prose.

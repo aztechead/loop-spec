@@ -7,7 +7,7 @@ model-map activation, completion, escalation) was two thousand lines of prose wi
 embedded shell that the lead model re-executed by hand at every boundary, then a Bash
 script that called the graph engine as a subprocess at every step. This module IS
 that loop, in the same process as the engine (lib/graph/engine.py), so the cycle's
-loop and the graph's loop are one program (orchestrator-port-plan.md, WP4). The
+loop and the graph's loop are one program (the port plan, WP4). The
 skill keeps only what needs a harness tool or a human: AskUserQuestion answers,
 EnterWorktree/ExitWorktree, Agent dispatch, and Skill(loop-spec:<phase>).
 
@@ -75,7 +75,7 @@ Usage:
         written by lib/dispatch-files.sh, the reviewer runs as its own headless CLI
         session with a one-line prompt (the package, the spec, the report path), and
         the dispatch event the exit gate reads is emitted here, driver-observed, never
-        self-reported (orchestrator-port-principles.md, rule 6). Prints the runner's
+        self-reported (the port principles, rule 6). Prints the runner's
         JSON line plus {report, package}. In-harness (an attended session, no profile)
         it prints {action: "in-harness"} and the lead dispatches the reviewer through
         the harness tool. Exit 0; 1 the session failed; 2 bad invocation.
@@ -1370,7 +1370,7 @@ def boundary_review(feature_dir, phase):
     session layer answers and no reviewer dispatch is on record. The live followup-haiku
     run implemented the fix, wrote a dispatch event by hand in the wrong shape, and
     escalated on the gate that could not find it: the lead's step was the failure, so
-    the step is the driver's (orchestrator-port-principles.md, rules 6 and 12). Returns
+    the step is the driver's (the port principles, rules 6 and 12). Returns
     the one REDO that hands the lead the report, or None."""
     if phase != "oneshot" or reviewer_dispatched(feature_dir, phase):
         return None
@@ -1467,7 +1467,7 @@ def record_transition(feature_dir, phase, nxt, note, ws_mode):
 
     # State lives on refs/loop-spec/state/<slug> (lib/state-ref.sh), never on the feature
     # branch: ten of seventeen commits on a delivered branch were state commits, and the
-    # driver had edited the project's .gitignore to make them (orchestrator-port-plan.md,
+    # driver had edited the project's .gitignore to make them (the port plan,
     # defects 3 and 4). The ref is shared by every worktree of the repository, so the
     # snapshot lands wherever the feature lives.
     root = run(["git", "-C", feature_dir, "rev-parse", "--show-toplevel"], quiet=True).stdout
@@ -2099,7 +2099,7 @@ def cmd_spec(argv):
         return spec_fill(target, o)
     if sub == "skeleton":
         # The route is a function of the scout's record, and the model may lengthen it,
-        # never shorten it (orchestrator-port-principles.md, rule 1). The probe reads the
+        # never shorten it (the port principles, rule 1). The probe reads the
         # same ledger this reads, so the two cannot disagree about the footprint.
         footprint = lib("footprint", "list", feature_dir).splitlines()
         read_only = lib("footprint", "list", feature_dir, "--read-only").splitlines()

@@ -54,7 +54,7 @@ check "the engine keeps no literal phase list (tests/lib/graph-run.test.sh prove
   "$(grep -c '"spec", "discuss", "plan"' "$ROOT/lib/graph/engine.py")"
 
 # The phase's door and exit are data on its node: phase-entry.sh and phase-exit.sh run
-# the new phase from the copy with nothing else edited (orchestrator-port-plan.md, WP2).
+# the new phase from the copy with nothing else edited (the port plan, WP2).
 jq '(.nodes[] | select(.id == "triage")) += {
       "ingress": {"fields": ["slug", "execStyle"], "required": [{"writer": "SPEC", "path": "{docs}/SPEC.md"}],
                   "optional": ["{featureDir}/triage-notes.md"]},

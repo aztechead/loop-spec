@@ -2,7 +2,7 @@
 # cycle-driver.sh - The cycle's mechanical loop: launcher for lib/graph/driver.py.
 #
 # The loop itself is Python, in the same process as the graph engine
-# (orchestrator-port-plan.md, WP4); this file owns only the path. Every subcommand,
+# (the port plan, WP4); this file owns only the path. Every subcommand,
 # answer line, and exit code is documented in lib/graph/driver.py's header, and
 # `cycle-driver.sh` with no arguments prints it.
 #

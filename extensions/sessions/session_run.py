@@ -4,7 +4,7 @@
 Why: the in-harness rungs dispatch through the harness's own subagent tool and share
 the lead's process; a headless run (`claude -p`, `codex exec`, `opencode run`) has no
 persistent session to keep a fleet alive, so EXECUTE's `session` rung runs each task as
-its own CLI process instead (docs/loop-spec/orchestrator-port-plan.md, WP5). The launch
+its own CLI process instead (the port plan, WP5). The launch
 line for each CLI is data in profiles/<cli>.toml, never a branch here. The process
 exit is the completion signal: print mode has no terminal to observe, so no hook relay
 is wired.

@@ -4,7 +4,7 @@
 # Why: the oneshot route is decided from the footprint, and at dda2cca the footprint
 # was prose the lead retyped into SPEC.md's frontmatter: it named a protected test
 # file, and the exit gate bounced the lead twice for not editing a file the task forbade
-# it to touch. The rule (docs/loop-spec/orchestrator-port-principles.md, rule 1): the
+# it to touch. The rule (the port principles, rule 1): the
 # route is computed by a probe from facts the scout wrote to disk, and the footprint is
 # the set of files the scout cited with file:line minus the files marked read-only. The
 # model may lengthen the route; it never types the inputs the probe reads. This ledger

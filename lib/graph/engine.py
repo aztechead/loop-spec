@@ -8,7 +8,7 @@ It is harness-neutral: node bodies, not graph traversal, adapt dispatch.
 Two callers: run.sh (main(), one process per traversal or --step) and
 lib/graph/driver.py, which configure()s the module and calls step_once() in
 process, so the cycle's loop and the graph's loop are one program
-(docs/loop-spec/orchestrator-port-plan.md, WP4). Every early exit is an EngineExit
+(the port plan, WP4). Every early exit is an EngineExit
 carrying the run.sh exit code; main() turns it back into a process exit.
 """
 

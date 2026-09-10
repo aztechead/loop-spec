@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # feature.json has one reader: lib/feature_read.py (launched by lib/feature-read.sh),
 # whose key space is graph/schema.json's stateKey enum. Every other `jq ... feature.json`
-# was its own untyped reader (docs/loop-spec/orchestrator-port-plan.md, WP3). This pin
+# was its own untyped reader (the port plan, WP3). This pin
 # fails on a feature.json read anywhere under lib/, hooks/, or the skills' prose outside
 # the two state modules, so a new reader cannot come back once a script is migrated.
 #

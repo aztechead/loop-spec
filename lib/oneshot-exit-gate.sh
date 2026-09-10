@@ -2,7 +2,7 @@
 # oneshot-exit-gate.sh - ONESHOT's exit: an escalated spec closes with nothing to
 # check; otherwise the change is scanned and VERIFICATION.md proves every criterion.
 #
-# Why: the oneshot route (docs/loop-spec/orchestrator-port-plan.md, WP1) folds
+# Why: the oneshot route (the port plan, WP1) folds
 # EXECUTE's scans and VERIFY's record into one phase, so its exit has two readings that
 # phase-exit.sh's data cannot key on: `route: full` lives in SPEC.md's frontmatter, not
 # feature.json. This script reads it once. The `oneshot` node of graph/cycle.graph.json

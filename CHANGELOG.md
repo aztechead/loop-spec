@@ -7,7 +7,7 @@ All notable changes documented here. Format follows Keep a Changelog.
 ## [6.5.0] - 2026-09-09
 
 The orchestrator port's follow-up (`port audit 1`,
-F1 to F11) and the rules behind it (`docs/loop-spec/orchestrator-port-principles.md`).
+F1 to F11) and the rules behind it (the port principles).
 The landing record at the end of the follow-up says what each item became.
 
 ### Before you update
@@ -83,6 +83,12 @@ The landing record at the end of the follow-up says what each item became.
   before this work was 0.80 USD, 79 turns, 124 lines. The bar (0.25 USD, 50 lines, 3
   minutes) is still missed; `port audit 3` records
   where the rest sits.
+- **The port's records live on the audit branch.** The port plan, the port principles,
+  and the five port audits (items F1 to F12, N1 to N7, the fourth audit's five items,
+  and R1 to R7, each with its landing record) are the `docs/loop-spec/orchestrator-port`
+  files on `claude/loop-spec-bmad-eval-w7odpb`; code comments, the tests, and this
+  changelog cite them by those names. They change nothing the plugin does, so the
+  branch that judges outcomes carries only the plugin.
 - **The small pins the third audit asked for.** A repeated handoff answer (`next` or
   `begin` in the session that handed off) adds no phase event pair, pinned in the
   driver test; each eval task's pass bar is checked against the plan's figures
@@ -197,7 +203,7 @@ The landing record at the end of the follow-up says what each item became.
   `lib/cycle-reconcile.sh`, `skills/pause/SKILL.md`, and
   `skills/shared/execute-loop-fleet.md` read feature.json through the typed reader;
   `tests/feature-read-coverage.test.sh` is a two-pass scan with a reasoned allow-list.
-- `docs/loop-spec/orchestrator-port-plan.md` records the WP4 shim and the cycle
+- the port plan records the WP4 shim and the cycle
   skill's launcher steps, the WP5 vendoring decision and its partial state, and the
   attribution exception to the BMad non-goal.
 
@@ -517,7 +523,7 @@ touches, and what to do.
   reason to re-dispatch, the three peer harness contracts drop the key, and
   `tests/lib/harness-call-shapes.test.sh` case 8 now requires the key on every one-shot
   template instead of forbidding it.
-- `docs/loop-spec/orchestrator-port-plan.md` is the ordered plan from the head-to-head
+- the port plan is the ordered plan from the head-to-head
   against BMad; this release lands its WP0 (the defects that run showed) and WP1 (the
   oneshot route).
 - `lib/converged-floor.sh` reads the acceptance table the verifier writes: the header

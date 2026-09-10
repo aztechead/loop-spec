@@ -4,7 +4,7 @@
 # Why: the seven phase ids were spelled out in twelve files (the engine, the entry and
 # exit gates, the driver, feature-init, the extension points, two hooks, three tests,
 # and a doc), so adding a phase was a twelve-file edit and a missed one was a phase
-# the harness could not enter (docs/loop-spec/orchestrator-port-plan.md, WP2). A phase
+# the harness could not enter (the port plan, WP2). A phase
 # is an agent node of graph/cycle.graph.json whose body is a phase skill
 # (`skills/<id>/SKILL.md`); this is the only place that rule is written down.
 #

@@ -5,7 +5,7 @@
 # Why: a reviewer's finding is a claim, and the lead's answer to it used to be prose the
 # next reader could not check. A head-to-head run wrote a false off-by-one to its
 # backlog because nobody had to say where the line was or why the finding was wrong
-# (docs/loop-spec/orchestrator-port-plan.md, WP6). The `verify` and `oneshot` exits run
+# (the port plan, WP6). The `verify` and `oneshot` exits run
 # this over every bullet under `## Code review`, whatever subheading: one bullet per finding, shaped
 #   - <file>:<line> — <claim> | verdict: true — <commit, backlog id, or fix>
 #   - <file>:<line> — <claim> | verdict: false — <disproof: what shows the finding wrong>

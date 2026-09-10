@@ -380,7 +380,7 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, ti
         # never entered a phase, whatever the lead edited (the dda2cca wc-json run
         # followed the ad-hoc micro directive instead and stopped with nothing).
         "cycle_begun": feature_file is not None,
-        # The pass bar (orchestrator-port-plan.md, WP1): a delivered run at or under
+        # The pass bar (the port plan, WP1): a delivered run at or under
         # every figure. Recorded so the stopping rule is read, not argued.
         "bar": bar_verdict(task.get("bar"), spent, artifacts, sum(r["seconds"] for r in rounds) / 60, len(rounds)),
         "phase": (feature or {}).get("currentPhase"),

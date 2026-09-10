@@ -4,7 +4,7 @@
 # Why: these checks lived as a case branch inside lib/phase-exit.sh, which meant the
 # exit gate of a phase was code in a shared script rather than data on the phase's
 # graph node. graph/cycle.graph.json's `plan` node names this script in its
-# `egress.gates`; phase-exit.sh runs it like any other gate (orchestrator-port-plan.md,
+# `egress.gates`; phase-exit.sh runs it like any other gate (the port plan,
 # WP2). The checks themselves are unchanged: tasks.json must exist and mirror PLAN.md's
 # task ids, every task needs a parseable verify command that checks rather than
 # installs, at least one acceptance criterion, an acyclic DAG, and (in workspace mode)

@@ -4,7 +4,7 @@
 # Why: the driver committed feature.json and PROGRESS.md to feat/<slug> at every phase
 # transition and negated two paths in the project's .gitignore to do it. Ten of the
 # seventeen commits on a delivered branch were state commits, and they landed in the
-# PR (docs/loop-spec/orchestrator-port-plan.md, defects 3 and 4). State still has to
+# PR (the port plan, defects 3 and 4). State still has to
 # outlive a worktree: this keeps every top-level file of the feature directory in a
 # commit chain under refs/loop-spec/state/<slug>, which every worktree of the
 # repository shares and a checkpoint push carries to the remote.

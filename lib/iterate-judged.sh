@@ -105,7 +105,7 @@ PY
         first="$(jq -r '.[0] // "verification record does not support the verdict"' <<<"$floor")"
         # A FAIL row is code work; anything else (a missing grounding row, a non-PASS
         # result) is a verification record VERIFY has to complete. Rewinding those to
-        # EXECUTE dispatched an implementer with nothing to do (orchestrator-port-plan.md,
+        # EXECUTE dispatched an implementer with nothing to do (the port plan,
         # defect 2).
         floor_type=verify
         grep -q 'still FAIL' <<<"$fout" && floor_type=execute

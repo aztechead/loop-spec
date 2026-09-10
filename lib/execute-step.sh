@@ -29,7 +29,7 @@
 #       Prints {published, reason, detail, sha, blocked}.
 #   execute-step.sh run       --feature-dir DIR --task ID --role implementer|reviewer
 #       The session rung's launch, in the driver and never in the lead
-#       (docs/loop-spec/orchestrator-port-principles.md, rule 12). On rung=session it
+#       (the port principles, rule 12). On rung=session it
 #       writes the prompt, one line and the paths (the brief and the report for the
 #       implementer; the package, the spec, and the report for the reviewer, after
 #       `package`), runs extensions/sessions/session_run.py with the harness's profile
@@ -148,7 +148,7 @@ case "$cmd" in
     report="$(lib dispatch-files report-path --feature-dir "$feature_dir" --task-id "$task_id")"
     spec="$(fget '.artifacts.spec // ""')"; [[ "$spec" == /* || -z "$spec" ]] || spec="$root/$spec"
     prompt="$feature_dir/dispatch/$task_id.$role.md"
-    # A dispatch is a path and one line (orchestrator-port-principles.md, rule 5).
+    # A dispatch is a path and one line (the port principles, rule 5).
     if [[ "$role" == "implementer" ]]; then
       brief="$(lib dispatch-files brief --feature-dir "$feature_dir" --task-id "$task_id")" || { echo "execute-step: brief failed" >&2; exit 2; }
       cwd="$(sget '.worktree')"; [[ -n "$cwd" && "$cwd" != "null" ]] || cwd="$root"

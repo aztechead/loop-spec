@@ -4,7 +4,7 @@
 #
 # Why: the check and the squash lived as a case branch inside lib/phase-exit.sh; the
 # `execute` node of graph/cycle.graph.json now names them in its `egress` block and
-# phase-exit.sh runs them like any other gate (orchestrator-port-plan.md, WP2).
+# phase-exit.sh runs them like any other gate (the port plan, WP2).
 #
 # Usage:
 #   execute-exit-gate.sh check  <feature-dir>   FLAG lines; exit 1 when any task is

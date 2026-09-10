@@ -158,7 +158,7 @@ lead-created task worktrees (`subagentIsolation=lead-worktree`), the same ff-mer
 Only the launch differs, and the driver owns it: each implementer and each reviewer is
 its own headless CLI process that the driver starts, so nothing it reads or writes
 lands in the lead's context, and the lead never sees a launch command
-(`docs/loop-spec/orchestrator-port-principles.md`, rule 12).
+(the port principles, rule 12).
 
 Per task, after `cycle-driver.sh task dispatch` returns the packet:
 

@@ -4,7 +4,7 @@
 # Why: after a HANDOFF the cycle skill says "print the marker and stop; the caller
 # re-invokes". A live sonnet run did not stop: it wrote a round script around
 # `claude -p /loop-spec:cycle` and spent its own budget a second time, and the
-# handoff guard then denied the nested phase (docs/loop-spec/orchestrator-port-plan.md,
+# handoff guard then denied the nested phase (the port plan,
 # WP4 finding). The prose rule is in skills/cycle/SKILL.md; this is its enforcement.
 #
 # Denies (exit 2, reason on stderr) a Bash command that launches a headless harness CLI

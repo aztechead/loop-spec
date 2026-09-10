@@ -72,7 +72,7 @@ fi
 
 # Determine the feature dir from the path (needed for writing artifacts).
 RESOLVED_FEATURE_DIR="$(dirname "$FEATURE_JSON_PATH")"
-# Every read goes through the typed reader (orchestrator-port-plan.md, WP3); a key the
+# Every read goes through the typed reader (the port plan, WP3); a key the
 # schema does not declare (completedTasks, blockers, decisions) is read from --strays.
 FEATURE_READ="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/feature-read.sh"
 

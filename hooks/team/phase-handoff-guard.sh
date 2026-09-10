@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse hook: enforce one durable loop-spec phase per main-agent invocation.
 #
-# Every phase hands off (orchestrator-port-plan.md, WP4): cycle invokes one phase skill,
+# Every phase hands off (the port plan, WP4): cycle invokes one phase skill,
 # the driver answers HANDOFF, and the next phase starts in a fresh session. A second,
 # different phase skill in the same transcript means a phase tried to chain directly
 # instead of returning to cycle. The one exception is graph data: an edge carrying

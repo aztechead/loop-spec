@@ -45,7 +45,7 @@ if [[ ! -f "$FEATURE_JSON" ]]; then
   exit 2
 fi
 
-# Reads go through the typed reader (orchestrator-port-plan.md, WP3).
+# Reads go through the typed reader (the port plan, WP3).
 read -r SLUG TASK_COUNT <<< "$(bash "$FEATURE_READ" "$FEATURE_DIR" -r --filter '"\(.slug // "unknown") \(.pendingRemediationTasks // [] | length)"')"
 
 LOG_FILE="${TMPDIR:-/tmp}/ralph-remediation-${SLUG}.log"

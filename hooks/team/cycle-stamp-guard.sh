@@ -43,7 +43,7 @@
 # Fail-open: missing python3, an unreadable stamp or ledger, or a malformed payload
 # -> exit 0.
 #
-# No kill switch of its own: a guard adds no variable (orchestrator-port-principles.md,
+# No kill switch of its own: a guard adds no variable (the port principles,
 # rule 9). LOOP_SPEC_INVOCATION_STAMP=0 stops the stamp, and with it deny 1; deny 2
 # reads the driver's own ledger and has no switch, because a phase the driver opened
 # is closed by the driver or not at all.

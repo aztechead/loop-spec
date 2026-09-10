@@ -4,7 +4,7 @@
 # Why: every run walked DISCUSS, PLAN, EXECUTE, VERIFY, and ITERATE, so a two-line bug
 # fix paid the whole cycle (the 6.4.0 haiku slugify-bug run: 1.99 USD, 16 minutes, 384
 # artifact lines for 2 lines of code). The route is the cycle's single largest lever
-# (docs/loop-spec/orchestrator-port-plan.md, WP1), and it is decided here, from facts
+# (the port plan, WP1), and it is decided here, from facts
 # SPEC wrote, never by the model picking a phase.
 #
 # Three inputs, all deterministic, and ALL must hold for `route=oneshot`:
@@ -27,7 +27,7 @@
 # `--candidate` is the reading SPEC takes before its interview, with no SPEC.md yet:
 # inputs 1 and 3 over the footprint the scout wrote to disk (`lib/footprint.sh list`,
 # the cited files minus the read-only ones). The lead never types the files the probe
-# reads (docs/loop-spec/orchestrator-port-principles.md, rule 1). `route=oneshot`
+# reads (the port principles, rule 1). `route=oneshot`
 # selects the lite spec path (skills/spec/SKILL.md, "The oneshot candidate"); the graph's
 # own reading after SPEC still decides the route, from the spec as written.
 #
