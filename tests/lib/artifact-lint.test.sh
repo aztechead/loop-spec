@@ -74,6 +74,28 @@ check "null questions cannot pass as resolved" 1 spec "$WORK/spec-invalid.md"
 sed '/unresolved_questions:/d' "$WORK/spec-good.md" > "$WORK/spec-missing-questions.md"
 check "missing question field fails closed" 1 spec "$WORK/spec-missing-questions.md"
 
+sed '/^unresolved_questions:/a\
+requirements_version: 999
+' "$WORK/spec-good.md" > "$WORK/spec-unknown-version.md"
+check "explicit unknown requirements version cannot use legacy" 1 spec "$WORK/spec-unknown-version.md"
+
+sed -e '/^unresolved_questions:/a\
+requirements_version: 1\
+requirements_owner: {"repository":"repo","feature":"feature"}
+' -e 's/^- \[ \] `bash tests\/run-all.sh` exits 0/- [ ] GE-001: The suite passes.\
+  - SC-001: The suite exits zero./' -e 's/^- \[x\] a done criterion/- [x] GE-002: Other behavior works.\
+  - SC-001: Its result is visible./' "$WORK/spec-good.md" > "$WORK/spec-v1.md"
+check "well-formed explicit v1 passes" 0 spec "$WORK/spec-v1.md"
+sed 's/GE-002/GE-001/' "$WORK/spec-v1.md" > "$WORK/spec-v1-duplicate.md"
+check "explicit v1 duplicate identities fail" 1 spec "$WORK/spec-v1-duplicate.md"
+python3 - "$WORK/spec-oversized.md" <<'PYTEST'
+import sys
+with open(sys.argv[1], 'wb') as stream:
+    stream.write(b'x' * (16 * 1024 * 1024 + 1))
+PYTEST
+check "oversized SPEC fails before parsing" 1 spec "$WORK/spec-oversized.md"
+check_output "oversized SPEC names the limit" "SPEC exceeds 16 MiB" spec "$WORK/spec-oversized.md"
+
 # Both shapes, from the fixtures: the full SPEC opens with Problem, the oneshot SPEC
 # with the ask in a frozen Intent block and Implementation notes.
 check "the full-shape fixture passes" 0 spec "$ROOT/tests/fixtures/real-SPEC.md"

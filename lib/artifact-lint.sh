@@ -85,7 +85,15 @@ def read_artifact(path):
     if path.startswith('--stdin:'):
         display, path = '<stdin>', path[len('--stdin:'):]
     try:
-        data = open(path, 'rb').read()
+        with open(path, 'rb') as stream:
+            if atype == 'spec':
+                from requirements import MAX_BYTES
+                data = stream.read(MAX_BYTES + 1)
+                if len(data) > MAX_BYTES:
+                    flag(display, 1, 'SPEC exceeds 16 MiB')
+                    return display, None
+            else:
+                data = stream.read()
     except OSError as exc:
         flag(display, 0, 'artifact is unreadable: %s' % exc)
         return display, None
@@ -218,6 +226,15 @@ def require_frozen_intent(display, lines, mask, intent_no):
 
 
 def lint_spec(display, data):
+    from requirements import parse_spec
+    try:
+        contract = None
+        if feature_dir:
+            from feature_read import load_state
+            contract = load_state(feature_dir).get("requirementsContract")
+        parse_spec(data.decode("utf-8"), display, contract)
+    except (OSError, ValueError) as exc:
+        flag(display, 1, str(exc))
     from spec_questions import read_questions
     try:
         questions = read_questions(data.decode("utf-8"))
