@@ -14,11 +14,12 @@
 #    tasks[]           the dispatch list: collapsed batches, synthetic blockedBy edges added
 #    conflicts:{rows, stops:[{summary,reason,matched}], rulings:[summary]},
 #    width, rung:{...lib/execute-rung.sh...}, maxRetries, featureRoot, worktreeBase,
-#    greenfield, remediationRegistered, stop:bool}
+#    greenfield, remediationRegistered, remediationError:string|null, stop:bool}
 #
 # Side effects: pendingRemediationTasks[] are normalized to full shape, appended to the
-# sidecar, and cleared; dispatch/conflict-table.json, dispatch/tasks-collapsed.json, and
-# dispatch/prepare.json (this answer, read by lib/execute-step.sh) are written; each
+# sidecar, and acknowledged only after publication; dispatch/conflict-table.json,
+# dispatch/tasks-collapsed.json, and dispatch/prepare.json (read by execute-step.sh) are
+# written; each
 # conflict ruling is recorded with lib/decisions.sh.
 #
 # Exit: 0 ready to dispatch; 1 not ready (branch mismatch, unreadable sidecar, or a
@@ -69,39 +70,18 @@ sidecar_ok=true; sidecar_flags='[]'
 if lint_out="$(lib artifact-lint tasks "$sidecar" 2>&1)"; then :; else
   sidecar_ok=false; sidecar_flags="$(grep '^FLAG' <<<"$lint_out" | jq -R . | jq -cs .)"
 fi
-remediation_registered=0
+remediation_registered=0; remediation_error=null
 if [[ "$sidecar_ok" == true ]]; then
-  registered="$(python3 - "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all --drop-strays)" "$sidecar" <<'PY'
-import json, sys
-feature, sidecar = json.loads(sys.argv[1]), sys.argv[2]
-tasks = json.load(open(sidecar))
-tasks = tasks.get("tasks") if isinstance(tasks, dict) and "tasks" in tasks else tasks
-ids = {t.get("id") for t in tasks}
-default_verify = ((feature.get("commands") or {}).get("test") or "")
-added = 0
-for raw in feature.get("pendingRemediationTasks") or []:
-    t = dict(raw)
-    t.setdefault("blockedBy", []); t.setdefault("files", [])
-    if not t.get("acceptanceCriteria"): t["acceptanceCriteria"] = [t.get("subject") or t.get("id") or "remediation"]
-    if not t.get("verifyCommand"): t["verifyCommand"] = default_verify
-    if not t["verifyCommand"]:
-        print("execute-prepare: dropped remediation task %s: no verify command" % t.get("id"), file=sys.stderr); continue
-    if t.get("id") in ids: continue
-    t.setdefault("retries", 0); t.pop("status", None)
-    tasks.append(t); ids.add(t.get("id")); added += 1
-if added:
-    json.dump(tasks, open(sidecar, "w"), indent=2)
-print(added)
-PY
-)" || registered=0
-  remediation_registered="${registered:-0}"
-  if (( remediation_registered > 0 )) || [[ "$(fget '(.pendingRemediationTasks // []) | length')" != "0" ]]; then
-    lib feature-write set "$feature_dir" pendingRemediationTasks '[]' >/dev/null
+  if intake="$(python3 "$SCRIPT_DIR/execute_remediation.py" "$feature_dir" "$sidecar")"; then
+    remediation_registered="$(jq -r '.registered' <<<"$intake")"
+  else
+    remediation_error="$(jq -Rsc 'try (fromjson | .error // "remediation intake failed; retry preparation") catch "remediation intake failed; retry preparation"' <<<"$intake")"
   fi
 fi
 
 done_json='[]'; remaining_json='[]'; dispatch='[]'; conflicts='{"rows":0,"stops":[],"rulings":[]}'; width=0; stop=false
-if [[ "$sidecar_ok" == true ]]; then
+[[ "$remediation_error" == null ]] || stop=true
+if [[ "$sidecar_ok" == true && "$stop" == false ]]; then
   done_json="$(lib task-progress done "$sidecar" | jq -R . | jq -cs .)"
   remaining_json="$(lib task-progress remaining "$sidecar" | jq -R . | jq -cs .)"
   mkdir -p "$feature_dir/dispatch"
@@ -228,10 +208,10 @@ mkdir -p "$feature_dir/dispatch"
 answer="$(jq -cn --argjson b "$branch_json" --arg sidecar "$sidecar" --argjson sok "$sidecar_ok" --argjson sflags "$sidecar_flags" \
   --argjson done "$done_json" --argjson remaining "$remaining_json" --argjson tasks "$dispatch" \
   --argjson conflicts "$conflicts" --argjson width "${width:-0}" --argjson rung "$rung" --argjson retries "$max_retries" \
-  --arg root "$root" --arg wtb "$worktree_base" --argjson gf "$greenfield" --argjson reg "$remediation_registered" --argjson stop "$stop" \
+  --arg root "$root" --arg wtb "$worktree_base" --argjson gf "$greenfield" --argjson reg "$remediation_registered" --argjson error "$remediation_error" --argjson stop "$stop" \
   '{branch:$b, sidecar:$sidecar, sidecarOk:$sok, sidecarFlags:$sflags, done:$done, remaining:$remaining, tasks:$tasks,
     conflicts:$conflicts, width:$width, rung:$rung, maxRetries:$retries, featureRoot:$root,
-    worktreeBase:(if $wtb == "" then null else $wtb end), greenfield:$gf, remediationRegistered:$reg, stop:$stop}')"
+    worktreeBase:(if $wtb == "" then null else $wtb end), greenfield:$gf, remediationRegistered:$reg, remediationError:$error, stop:$stop}')"
 # lib/execute-step.sh reads the rung and roots from here per task instead of re-measuring.
 printf '%s\n' "$answer" > "$feature_dir/dispatch/prepare.json"
 printf '%s\n' "$answer"

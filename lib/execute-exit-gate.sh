@@ -23,10 +23,28 @@ gate_usage="check|finish <feature-dir>"
 
 case "$cmd" in
   check)
-    tasks="$(fget '.artifacts.tasks // ""')"
-    if [[ -n "$tasks" && -f "$tasks" ]]; then
-      remaining="$(lib task-progress remaining "$tasks" | paste -sd, -)"
-      [[ -z "$remaining" ]] || flag "[plan-adherence] tasks not published: $remaining (dispatch them again, or for a task whose commit is already on the feature branch run: bash lib/cycle-driver.sh task integrate --feature-dir $feature_dir --task <id>, or bash lib/task-progress.sh mark-done $(fget '.artifacts.tasks // "tasks.json"') <id>)"
+    if pending="$(fget '.pendingRemediationTasks')"; then
+      if ! jq -e 'type == "array"' <<<"$pending" >/dev/null 2>&1; then
+        flag "[plan-adherence] pendingRemediationTasks must be an array; repair the queue before leaving EXECUTE"
+      elif [[ "$(jq 'length' <<<"$pending")" != "0" ]]; then
+        flag "[plan-adherence] pendingRemediationTasks still contains work; run execute-prepare and dispatch every finding"
+      fi
+    else
+      flag "[plan-adherence] cannot read pendingRemediationTasks; repair feature state before leaving EXECUTE"
+    fi
+    if ! tasks="$(fget '.artifacts.tasks // ""')"; then
+      flag "[plan-adherence] cannot read artifacts.tasks; repair feature state before leaving EXECUTE"
+    elif [[ -n "$tasks" && -f "$tasks" ]]; then
+      if lint_out="$(lib artifact-lint tasks "$tasks" 2>&1)"; then
+        if remaining="$(lib task-progress remaining "$tasks" 2>&1)"; then
+          remaining="$(printf '%s' "$remaining" | paste -sd, -)"
+          [[ -z "$remaining" ]] || flag "[plan-adherence] tasks not published: $remaining (dispatch them again, or for a task whose commit is already on the feature branch run: bash lib/cycle-driver.sh task integrate --feature-dir $feature_dir --task <id>)"
+        else
+          flag "[plan-adherence] cannot read task progress: $remaining"
+        fi
+      else
+        flag "[plan-adherence] invalid artifacts.tasks sidecar: $lint_out"
+      fi
     else
       flag "[plan-adherence] artifacts.tasks sidecar missing; cannot prove every PLAN task landed"
     fi

@@ -107,6 +107,33 @@ err=$(bash "$LIB" set "$WORK/feat" 'workspace.repos[0]' '"x"' 2>&1 >/dev/null) &
 check "L: array-index dot_path rejected" "1" "$exit_code"
 check "L: error names the limitation" "1" "$(grep -c 'array indices are not' <<<"$err")"
 
+# Acknowledgment removes only the published prefix under the writer's lock.
+bash "$LIB" "$WORK/feat" '{"slug":"ack","pendingRemediationTasks":[{"id":"a"},{"id":"b"}],"artifacts":{"tasks":"tasks.json"},"warnings":["keep"],"specApproval":{"digest":"immutable"}}' >/dev/null
+ack='{"snapshot":[{"id":"a"}],"generation":null,"receipt":"first"}'
+exit_code=0
+bash "$LIB" ack-remediation "$WORK/feat" "$ack" >/dev/null 2>&1 || exit_code=$?
+check "ack: exact prefix acknowledged" "0" "$exit_code"
+check "ack: concurrent suffix remains" '[{"id":"b"}]' "$(jq -c '.pendingRemediationTasks' "$WORK/feat/feature.json")"
+check "ack: unrelated artifacts retained" "tasks.json" "$(jq -r '.artifacts.tasks' "$WORK/feat/feature.json")"
+check "ack: unrelated warnings retained" '["keep"]' "$(jq -c '.warnings' "$WORK/feat/feature.json")"
+check "ack: approval unchanged" '{"digest":"immutable"}' "$(jq -c '.specApproval' "$WORK/feat/feature.json")"
+before="$(cat "$WORK/feat/feature.json")"
+exit_code=0
+bash "$LIB" ack-remediation "$WORK/feat" "$ack" >/dev/null 2>&1 || exit_code=$?
+check "ack: stale snapshot rejected" "1" "$exit_code"
+check "ack: stale snapshot changes nothing" "$before" "$(cat "$WORK/feat/feature.json")"
+
+exit_code=0
+bash "$LIB" set "$WORK/feat" specApproval '{"digest":"changed"}' >/dev/null 2>&1 || exit_code=$?
+check "ack: later writes still cannot change approval" "1" "$exit_code"
+check "ack: rejected approval edit changes nothing" "$before" "$(cat "$WORK/feat/feature.json")"
+printf '#!/usr/bin/env bash\necho "injected store persistence failure" >&2\nexit 2\n' > "$WORK/failing-store.sh"
+chmod +x "$WORK/failing-store.sh"
+exit_code=0
+LOOP_SPEC_STORE="$WORK/failing-store.sh" bash "$LIB" set "$WORK/feat" slug '"locally-written"' >/dev/null 2>&1 || exit_code=$?
+check "writer: store persistence failure remains exit 2" "2" "$exit_code"
+check "writer: store failure retains the existing local-written contract" "locally-written" "$(jq -r '.slug' "$WORK/feat/feature.json")"
+
 python3 "$(dirname "$0")/feature-write-concurrency.py" "$LIB" || FAIL=$((FAIL + 1))
 
 echo ""

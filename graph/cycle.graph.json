@@ -498,6 +498,7 @@
           "greenfield",
           "artifacts.tasks",
           "artifacts.execution",
+          "artifacts.remediationReceipt",
           "workspace"
         ],
         "onOk": [
@@ -979,6 +980,26 @@
         ],
         "expects": "review=bad-spec"
       }
+    },
+    {
+      "from": "verify",
+      "to": "execute",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/review-route.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "review=remediate"
+      }
+    },
+    {
+      "from": "verify",
+      "to": "execute",
+      "kind": "loop",
+      "ceiling": 5,
+      "strategy": "contain"
     },
     {
       "from": "spec",

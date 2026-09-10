@@ -59,11 +59,155 @@ check "run: quoted pattern fragments are not probed as programs" "0" "$(grep -c 
 
 # --- remediation intake ------------------------------------------------------------
 bash "$REPO_ROOT/lib/feature-write.sh" append "$FD" pendingRemediationTasks '{"id":"task-001+remediate-1","subject":"Fix: a"}' >/dev/null
+bash "$REPO_ROOT/lib/feature-write.sh" append "$FD" pendingRemediationTasks '{"id":"task-001+remediate-2","subject":"Fix: b"}' >/dev/null
 out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
 check "remediation: the task is registered in the sidecar" "1" "$(jq '[.[] | select(.id == "task-001+remediate-1")] | length' "$FD/tasks.json")"
 check "remediation: it takes the project test command" "true" "$(jq -r '.[] | select(.id == "task-001+remediate-1") | .verifyCommand' "$FD/tasks.json")"
 check "remediation: the pending array is cleared" "0" "$(jq '.pendingRemediationTasks | length' "$FD/feature.json")"
-check "remediation: the count is reported" "1" "$(jq -r '.remediationRegistered' <<<"$out")"
+check "remediation: the count is reported" "2" "$(jq -r '.remediationRegistered' <<<"$out")"
+check "remediation: both queued findings appear in dispatch" "2" "$(jq '[.tasks[] | select(.id | startswith("task-001+remediate-"))] | length' <<<"$out")"
+
+
+# --- invalid intake must leave every queued task available for repair ---------------
+for pending in '[{"id":"bad-verify","subject":"repair verification"}]' '[{"id":"bad-shape","subject":"repair shape","files":"a.py","verifyCommand":"true"}]' 'false' 'null' '[null]' '[{"id":"valid-prefix","subject":"keep this too","verifyCommand":"true"},{"id":"invalid-suffix","subject":"cannot verify"}]'; do
+  bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands.test '""' >/dev/null
+  bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks "$pending" >/dev/null
+  before="$(cat "$FD/tasks.json")"
+  ec=0; out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>"$WORK/intake.err")" || ec=$?
+  check "invalid remediation $pending: preparation stops" "1" "$ec"
+  check "invalid remediation $pending: readable sidecar stays valid" "true" "$(jq -r '.sidecarOk' <<<"$out")"
+  check "invalid remediation $pending: intake failure names its own error" "true" "$(jq '.remediationError | type == "string" and length > 0' <<<"$out")"
+  check "invalid remediation $pending: dispatch is stopped" "true:0" "$(jq -r '(.stop | tostring) + ":" + (.tasks | length | tostring)' <<<"$out")"
+
+  check "invalid remediation $pending: diagnostic identifies repair" "1" "$(grep -Ec 'verifyCommand|commands.test|files|pendingRemediationTasks|object' "$WORK/intake.err")"
+  check "invalid remediation $pending: queue unchanged" "$(jq -c . <<<"$pending")" "$(jq -c '.pendingRemediationTasks' "$FD/feature.json")"
+  check "invalid remediation $pending: sidecar unchanged" "$before" "$(cat "$FD/tasks.json")"
+done
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands.test '"true"' >/dev/null
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks '[]' >/dev/null
+saved_sidecar="$(cat "$FD/tasks.json")"
+printf '{' > "$FD/tasks.json"
+ec=0; out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)" || ec=$?
+check "malformed sidecar: failure is distinct from remediation intake" "false:null" "$(jq -r '(.sidecarOk | tostring) + ":" + (.remediationError | tostring)' <<<"$out")"
+check "malformed sidecar: preparation stops" "1" "$ec"
+printf '%s\n' "$saved_sidecar" > "$FD/tasks.json"
+
+# --- recovery after publication must distinguish replay from recurrence -------------
+python3 - "$REPO_ROOT" "$WORK" <<'PYREMEDIATION'
+import json
+from pathlib import Path
+import subprocess
+import sys
+from unittest.mock import patch
+
+root, work = map(Path, sys.argv[1:])
+sys.path.insert(0, str(root / "lib"))
+try:
+    import execute_remediation as intake
+except ImportError as exc:
+    print("FAIL: remediation transaction module is unavailable: %s" % exc)
+    sys.exit(1)
+
+feature = work / "transaction"
+feature.mkdir()
+sidecar = feature / "tasks.json"
+original = {"id":"original", "subject":"already published", "files":[], "blockedBy":[],
+            "verifyCommand":"true", "acceptanceCriteria":["published"], "status":"done"}
+queued = [{"id":"task-verify-code-review-1", "subject":"repair review"},
+          {"id":"task-verify-marker-1", "subject":"repair marker"}]
+def reset():
+    sidecar.write_text(json.dumps([original]))
+    (feature / "feature.json").write_text(json.dumps({"slug":"transaction", "commands":{"test":"true"},
+        "pendingRemediationTasks":queued, "artifacts":{"tasks":str(sidecar)},
+        "specApproval":{"digest":"unchanged"}, "warnings":["keep"]}))
+def state():
+    return json.loads((feature / "feature.json").read_text())
+def writer(args):
+    subprocess.run(["bash", str(root / "lib/feature-write.sh")] + args, check=True)
+def failed_writer(args):
+    raise OSError("injected acknowledgment failure")
+def expect_failure(call, label):
+    try:
+        call()
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        print("PASS: " + label)
+    else:
+        raise AssertionError(label)
+
+reset()
+old = sidecar.read_bytes()
+with patch("feature_write.os.replace", side_effect=OSError("injected replacement failure")):
+    expect_failure(lambda: intake.register(feature, sidecar), "failed atomic publication is visible")
+assert sidecar.read_bytes() == old and state()["pendingRemediationTasks"] == queued
+print("PASS: failed publication preserves readable sidecar and entire queue")
+expect_failure(lambda: intake.register(feature, sidecar, writer=failed_writer), "failed acknowledgment is visible")
+assert state()["pendingRemediationTasks"] == queued
+published = json.loads(sidecar.read_text())
+assert len(published) == 3
+published[1]["status"] = "done"
+published[1]["retries"] = 2
+sidecar.write_text(json.dumps(published))
+assert intake.register(feature, sidecar) == 0
+assert json.loads(sidecar.read_text()) == published
+assert state()["pendingRemediationTasks"] == []
+print("PASS: replay adds zero duplicates and preserves recorded progress")
+writer(["set", str(feature), "pendingRemediationTasks", json.dumps(queued)])
+assert intake.register(feature, sidecar) == 2
+republished = json.loads(sidecar.read_text())
+assert len(republished) == 5 and all(t.get("status") != "done" for t in republished[-2:])
+assert len({t["id"] for t in republished}) == 5
+print("PASS: completed fallback IDs recur as executable work")
+reset()
+collision = dict(queued[0], subject="different work sharing an ID")
+writer(["set", str(feature), "pendingRemediationTasks", json.dumps([queued[0], collision])])
+assert intake.register(feature, sidecar) == 2
+assert [t["subject"] for t in json.loads(sidecar.read_text())[1:]] == ["repair review", "different work sharing an ID"]
+print("PASS: ID collision retains both distinct findings")
+reset()
+late = {"id":"late", "subject":"arrived during publication"}
+def concurrent_writer(args):
+    writer(["append", str(feature), "pendingRemediationTasks", json.dumps(late)])
+    writer(args)
+assert intake.register(feature, sidecar, writer=concurrent_writer) == 2
+assert state()["pendingRemediationTasks"] == [late]
+assert state()["specApproval"] == {"digest":"unchanged"} and state()["warnings"] == ["keep"]
+print("PASS: concurrent append survives acknowledgment with unrelated state intact")
+reset()
+expect_failure(lambda: intake.register(feature, sidecar, writer=failed_writer), "publication before crash leaves replay evidence")
+writer(["append", str(feature), "pendingRemediationTasks", json.dumps(late)])
+assert intake.register(feature, sidecar) == 1
+assert len(json.loads(sidecar.read_text())) == 4 and state()["pendingRemediationTasks"] == []
+print("PASS: appended work after failed acknowledgment does not duplicate the published prefix")
+PYREMEDIATION
+[[ $? == 0 ]] || FAIL=$((FAIL + 1))
+
+# Store failure must not turn a durable sidecar into a ready response.
+printf '#!/usr/bin/env bash\necho "injected store failure" >&2\nexit 2\n' > "$WORK/failing-store.sh"
+chmod +x "$WORK/failing-store.sh"
+bash "$REPO_ROOT/lib/feature-write.sh" append "$FD" pendingRemediationTasks '{"id":"store-failure","subject":"repair persisted work"}' >/dev/null
+ec=0; out="$(LOOP_SPEC_STORE="$WORK/failing-store.sh" bash "$SCRIPT" run --feature-dir "$FD" 2>"$WORK/store.err")" || ec=$?
+check "failed acknowledgment: store failure never reports ready" "1" "$ec"
+check "failed acknowledgment: store failure diagnostic survives" "1" "$(grep -c 'store persist failed' "$WORK/store.err")"
+check "failed acknowledgment: published work remains dispatchable" "1" "$(jq '[.[] | select(.id == "store-failure" and .status != "done")] | length' "$FD/tasks.json")"
+ec=0; out="$(LOOP_SPEC_STORE="$WORK/failing-store.sh" bash "$SCRIPT" run --feature-dir "$FD" 2>"$WORK/store-retry.err")" || ec=$?
+check "failed acknowledgment: retry remains blocked until store persistence succeeds" "1" "$ec"
+ec=0; out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>"$WORK/store-recovered.err")" || ec=$?
+check "failed acknowledgment: successful store recovery makes preparation ready" "0" "$ec"
+check "failed acknowledgment: recovered work is dispatched" "1" "$(jq '[.tasks[] | select(.id == "store-failure")] | length' <<<"$out")"
+
+
+
+# A real marker scan reuses its fallback ID on every VERIFY visit.
+printf 'def unfinished():\n    raise NotImplementedError\n' > "$REPO/stub.py"
+git -C "$REPO" add stub.py; git -C "$REPO" commit -q -m "test: marker fixture"
+for attempt in 1 2; do
+  ec=0; scanned="$(bash "$REPO_ROOT/lib/verify-prepare.sh" run --feature-dir "$FD" 2>/dev/null)" || ec=$?
+  check "marker recurrence $attempt: real VERIFY intake reports remediation" "remediate" "$(jq -r '.route' <<<"$scanned")"
+  out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
+  check "marker recurrence $attempt: fallback task is executable" "1" "$(jq '[.tasks[] | select(.id | startswith("task-verify-marker-1"))] | length' <<<"$out")"
+  marker_id="$(jq -r '.tasks[] | select(.id | startswith("task-verify-marker-1")) | .id' <<<"$out")"
+  bash "$REPO_ROOT/lib/task-progress.sh" mark-done "$FD/tasks.json" "$marker_id" >/dev/null
+done
 
 # --- progress ----------------------------------------------------------------------
 bash "$REPO_ROOT/lib/task-progress.sh" mark-done "$FD/tasks.json" task-001 >/dev/null

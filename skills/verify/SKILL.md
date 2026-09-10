@@ -122,8 +122,13 @@ recorded the `gateHistory[]` fail entry (`phase: verify`, `gate: <acceptance|cod
 emitted `verify_failure`, and cleared `currentTeamName`/`currentTeammates`. Discard the
 reviewer's output when the verifier failed, tear the team down (explicit mode
 `TeamDelete`), and return to the cycle. The remediation route declared in
-`graph/cycle.graph.json` (`lib/ralph-remediation.sh`) selects the bounded fix loop or a
-full EXECUTE re-entry from the recorded tasks; VERIFY re-enters at step 1 afterwards.
+`graph/cycle.graph.json` returns queued findings to EXECUTE before ITERATE, with a
+five-traversal recovery ceiling. Pending bad-spec recovery keeps priority and returns
+to DISCUSS. EXECUTE publishes the complete intake before acknowledging it; malformed
+tasks or missing verification commands stop preparation and retain the queue for
+repair. Fix the named intake error and retry preparation. VERIFY re-enters at step 1
+after the remediation tasks are published. Approved Goal/Boundary checks remain hard
+failures throughout recovery.
 
 ## 4. After both gates pass
 

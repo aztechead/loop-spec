@@ -122,9 +122,12 @@ done
 chan="$(jq -r '
   ([.nodes[] | select(.id=="verify") | .writes[]?] | index("pendingRemediationTasks") != null) and
   ([.nodes[] | select(.id=="execute") | .reads[]?] | index("pendingRemediationTasks") != null) and
-  ([.edges[] | select(.from=="iterate" and .kind=="route" and .to=="execute")] | length > 0)
+  ([.edges[] | select(.from=="verify" and .kind=="route" and .to=="execute" and .condition.expects=="review=remediate")] | length > 0)
 ' "$GRAPH")"
 check "verify->execute remediation channel declared" "true" "$chan"
+check "verify->execute remediation loop is bounded by five contained traversals" "1" \
+  "$(jq '[.edges[] | select(.from=="verify" and .to=="execute" and .kind=="loop" and .ceiling==5 and .strategy=="contain")] | length' "$GRAPH")"
+
 
 # DELIVER's CI-failure re-entry and its bounded retry loop
 d="$(jq -r '[.edges[] | select(.from=="deliver" and .to=="execute" and .kind=="route")] | length' "$GRAPH")"

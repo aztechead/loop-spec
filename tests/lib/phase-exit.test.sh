@@ -257,6 +257,40 @@ check "exit execute: all published passes" "0" "$ec"
 check "exit execute: merge queue cleared" "0" "$(fj '.mergeQueue | length')"
 check "exit execute: checkpoint tagged" "1" "$(git tag | grep -c 'post-execute')"
 
+# Every exit refusal below must occur even though the published task is done.
+for pending in '[{"id":"still-queued","subject":"not dispatched"}]' 'false' '{}'; do
+  bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks "$pending" >/dev/null
+  ec=0; out="$(bash "$EXIT" execute --feature-dir "$FD" 2>&1)" || ec=$?
+  check "exit execute: pending remediation $pending blocks exit" "1" "$ec"
+  check "exit execute: pending remediation diagnostic" "1" "$(grep -c 'pendingRemediationTasks' <<<"$out")"
+done
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks '[]' >/dev/null
+cp "$FD/tasks.json" "$WORK/published-tasks.json"
+for broken in '{' '[{}]' '[]' '{"tasks":[]}'; do
+  printf '%s' "$broken" > "$FD/tasks.json"
+  ec=0; out="$(bash "$EXIT" execute --feature-dir "$FD" 2>&1)" || ec=$?
+  check "exit execute: malformed sidecar $broken blocks exit" "1" "$ec"
+done
+rm "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" execute --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit execute: unreadable sidecar blocks exit" "1" "$ec"
+cp "$WORK/published-tasks.json" "$FD/tasks.json"
+mkdir -p "$WORK/unreadable-progress"
+real_python="$(python3 -c 'import sys; print(sys.executable)')"
+cat > "$WORK/unreadable-progress/python3" <<SH
+#!/usr/bin/env bash
+if [[ "\${1:-}" == - && "\${2:-}" == remaining ]]; then
+  echo 'task-progress: injected unreadable task sidecar' >&2
+  exit 1
+fi
+exec "$real_python" "\$@"
+SH
+chmod +x "$WORK/unreadable-progress/python3"
+ec=0; out="$(PATH="$WORK/unreadable-progress:$PATH" bash "$EXIT" execute --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit execute: unreadable task progress blocks exit after successful lint" "1" "$ec"
+check "exit execute: task-progress error is an actionable flag" "1" "$(grep -c 'cannot read task progress' <<<"$out")"
+
+
 # --- verify -------------------------------------------------------------------------
 printf 'echo ok\n' > a.sh; git add a.sh; git commit -q -m "feat: a.sh"
 cat > "$DOCS/VERIFICATION.md" <<'MD'
