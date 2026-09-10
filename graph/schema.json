@@ -76,6 +76,7 @@
         "handoffSession",
         "artifactSink",
         "specApproval",
+        "specIntentSeen",
         "instructionSnapshots",
         "reviewRouting"
       ]

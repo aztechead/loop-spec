@@ -114,6 +114,9 @@ Handle the first line of `ans` using these rules. Stop when the selected rule re
   feature, `ExitWorktree({action:"keep"})` first.
 - `PAUSED node=...` — a human gate (`style:step|interactive`). Print `loop-spec: paused
   at <node>; re-invoke /loop-spec:cycle to continue.`, exit a Claude worktree, stop.
+  `PAUSED node=human.after-discuss intent=changed` means DISCUSS rewrote Goal or
+  Boundary since the SPEC gate: print those two sections of SPEC.md before the pause
+  line, because PLAN freezes them as they stand.
 - `DONE status=completed` — step 4. `DONE ... reason=already-satisfied` — print the
   result summary, exit the worktree, stop. `DONE status=escalated|paused ...` — print
   the reason, exit the worktree, stop. `ABORT ...` (exit 1) — relay stderr and stop.

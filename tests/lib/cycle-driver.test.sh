@@ -42,12 +42,12 @@ drv() {
 }
 
 # write_spec ROOT FEATURE_DIR: the smallest SPEC.md the spec exit accepts, because
-# `next --returned-from spec` now runs that exit and answers REDO without one.
+# `next --returned-from spec` now runs that exit and answers REDO without one. No
+# approval: the driver records that itself when the cycle enters PLAN.
 write_spec() {
   local root="$1" fd="$2" slug docs
   slug="$(jq -r '.slug' "$fd/feature.json")"; docs="$root/docs/loop-spec/features/$slug"; mkdir -p "$docs"
   cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$docs/SPEC.md"
-  drv spec approve --feature-dir "$fd" --source human >/dev/null
 }
 # --- usage ---------------------------------------------------------------------
 ec=0; bash "$SCRIPT" >/dev/null 2>&1 || ec=$?
@@ -116,6 +116,10 @@ check "next: currentPhaseStartedAt stamped" "true" "$(jq '.currentPhaseStartedAt
 write_spec "$REPO" "$FD"
 out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from spec --note "wrote SPEC" 2>/dev/null)"
 check "next: style=step pauses at the human gate" "PAUSED node=human.after-spec" "$out"
+check "next: SPEC exit records the intent the human saw, not an approval" "true" "$(jq '.specIntentSeen.sha256 != null and .specApproval == null' "$FD/feature.json")"
+ec=0; err="$(cd "$REPO" && drv phase-begin plan --feature-dir "$FD" 2>&1 >/dev/null)" || ec=$?
+check "phase-begin: PLAN without the recorded approval is refused" "1" "$ec"
+check "phase-begin: the refusal names the record" "1" "$(grep -c 'PLAN needs the recorded Goal and Boundary approval' <<<"$err")"
 check "next: journal records the real successor" "1" "$(grep -c 'spec → human.after-spec' "$FD/PROGRESS.md")"
 check "next: state snapshot on the ref at the boundary" "state @ human.after-spec" "$(git -C "$REPO" log -1 --format=%s refs/loop-spec/state/add-a-json-flag)"
 check "next: the feature branch carries no state commit" "0" "$(git -C "$REPO" log --oneline | grep -c 'state @')"
@@ -123,6 +127,15 @@ check "next: the project .gitignore is never written" "0" "$([[ -f "$REPO/.gitig
 
 out="$(cd "$REPO" && drv next --feature-dir "$FD" 2>/dev/null)"
 check "next: re-invoke after pause continues to discuss" 'NEXT phase=discuss label="Challenge and refine the specification" effort=system2' "$(head -1 <<<"$out")"
+
+# DISCUSS may still rewrite Goal and Boundary (the run that froze them at SPEC exit died
+# when the human answered DISCUSS's follow-ups); the human gate says so, PLAN freezes.
+DOCS1="$REPO/docs/loop-spec/features/$(jq -r '.slug' "$FD/feature.json")"
+sed -i 's/^Produce the requested behavior\.$/Produce the requested behavior and log it./' "$DOCS1/SPEC.md"
+out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from discuss 2>/dev/null)"
+check "next: a Goals edit in DISCUSS pauses at the human gate instead of escalating" "PAUSED node=human.after-discuss intent=changed" "$out"
+check "next: nothing is frozen before PLAN" "null" "$(jq -r '.specApproval' "$FD/feature.json")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" currentPhase '"discuss"' >/dev/null
 
 # declined SPEC gate is terminal for the invocation
 jq -n '{status:"paused", reason:"spec-confirmation-declined"}' > "$FD/result.json"
@@ -141,6 +154,11 @@ check "next: handoff writes a paused result" "phase-handoff" "$(jq -r '.reason' 
 check "next: the handoff records the session" "s1" "$(jq -r '.handoffSession.id' "$FD/feature.json")"
 out="$(cd "$REPO" && SESSION=s1 drv next --feature-dir "$FD" 2>/dev/null)"
 check "next: the same session gets the handoff answer again" "HANDOFF next=plan" "${out:0:17}"
+check "next: entering PLAN recorded the approval from the run, not a lead" "human" "$(jq -r '.specApproval.source' "$FD/feature.json")"
+check "next: the approval digests the DISCUSS-edited text" "1" "$(python3 -c "
+import sys, json; sys.path.insert(0, '$REPO_ROOT/lib'); from spec_intent import intent_digest
+print(int(intent_digest(open('$DOCS1/SPEC.md').read()) == json.load(open('$FD/feature.json'))['specApproval']['sha256']))")"
+check "next: the spec-approved event names PLAN" "plan" "$(jq -r 'select(.event == "spec-approved") | .phase' "$FD/events.jsonl")"
 # The repeat answers from the record: no second phase_end/phase_start pair lands in the
 # ledger (a sink counting phase ends read two on the f0959f6 run; port audit 3, N7).
 pairs_before="$(grep -c '"event":"phase_\(start\|end\)"' "$FD/events.jsonl")"
@@ -640,7 +658,6 @@ check "next: an escalated result is published" "escalated" "$(jq -r '.status' "$
 rm -f "$FD6/result.json"; bash "$REPO_ROOT/lib/feature-write.sh" set "$FD6" driverRedo null >/dev/null
 DOCS6="$REPO6/docs/loop-spec/features/$(jq -r '.slug' "$FD6/feature.json")"; mkdir -p "$DOCS6"
 cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCS6/SPEC.md"
-drv spec approve --feature-dir "$FD6" --source human >/dev/null
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec 2>/dev/null)"
 check "next: a clean exit hands the successor to a fresh session" "HANDOFF next=discuss model=" "${out:0:27}"
 check "next: the handoff wrote the paused result" "phase-handoff" "$(jq -r '.reason' "$FD6/result.json")"
