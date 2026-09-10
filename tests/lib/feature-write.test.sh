@@ -207,5 +207,65 @@ for args in [[str(legacy),json.dumps(state)],['set',str(legacy),'requirementsCon
 print('PASS: ordinary and replacement writes preserve identity histories and legacy boundary')
 PYTEST
 
+PYTHONPATH="$(dirname "$LIB")" python3 - "$WORK" "$LIB" <<'PYRACE' || FAIL=$((FAIL + 1))
+import json, subprocess, sys, time
+from pathlib import Path
+from artifact_publication import capture_locked, locked_feature
+folder = Path(sys.argv[1]) / 'publication-race'
+folder.mkdir()
+state = {'slug':'race','warnings':[],'artifacts':{'spec':'SPEC.md'},'artifactPublication':{'version':1,'generation':0,'evidenceEpoch':0,'migration':None,'participantsVersion':1}}
+(folder/'feature.json').write_text(json.dumps(state))
+(folder/'SPEC.md').write_text('before')
+(folder/'publication-staging').mkdir()
+(folder/'publication-staging/spec').write_text('after')
+with locked_feature(folder):
+    token = capture_locked(folder)
+(folder/'token.json').write_text(json.dumps(token))
+(folder/'manifest.json').write_text(json.dumps({'version':1,'files':[{'source':'publication-staging/spec','target':'spec'}],'updates':[{'path':'currentPhase','value':'plan'}]}))
+script = """
+import artifact_publication as a, subprocess, sys, time
+from pathlib import Path
+folder = Path(sys.argv[1])
+original = subprocess.run
+def guarded(command, *args, **kwargs):
+    assert not any('feature-write' in str(part) and str(part).endswith(('.sh','.py')) for part in command), command
+    return original(command, *args, **kwargs)
+subprocess.run = guarded
+def barrier(point):
+    if point == 'staging':
+        (folder/'ready').touch()
+        deadline = time.monotonic() + 10
+        while not (folder/'release').exists():
+            assert time.monotonic() < deadline, 'barrier timeout'
+            time.sleep(.01)
+a.main(['publish','--feature-dir',str(folder),'--token',str(folder/'token.json'),'--manifest',str(folder/'manifest.json')], failure=barrier, allowed_updates={'currentPhase'})
+"""
+publisher = subprocess.Popen([sys.executable,'-c',script,str(folder)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+deadline = time.monotonic() + 10
+while not (folder/'ready').exists():
+    assert publisher.poll() is None, publisher.communicate()
+    assert time.monotonic() < deadline
+    time.sleep(.01)
+writer = subprocess.Popen(['bash',sys.argv[2],'append',str(folder),'warnings','"concurrent"'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+(folder/'release').touch()
+output, error = publisher.communicate(timeout=15)
+assert publisher.returncode == 0, error
+assert writer.communicate(timeout=15) == ('','') and writer.returncode == 0
+state = json.loads((folder/'feature.json').read_text())
+assert state['warnings'] == ['concurrent'] and state['currentPhase'] == 'plan'
+assert state['artifactPublication']['generation'] == 2 and state['artifactPublication']['evidenceEpoch'] == 0
+assert (folder/'SPEC.md').read_text() == 'after'
+print('PASS: publication then queued ordinary writer completes without recursive acquisition or lost updates')
+result = subprocess.run(['bash',sys.argv[2],'set',str(folder),'currentPhase','"execute"','--token',str(folder/'token.json')],capture_output=True,text=True)
+assert result.returncode == 1 and state == json.loads((folder/'feature.json').read_text())
+with locked_feature(folder):
+    token = capture_locked(folder)
+(folder/'token.json').write_text(json.dumps(token))
+result = subprocess.run(['bash',sys.argv[2],'append',str(folder),'warnings','"own"','--token',str(folder/'token.json')],capture_output=True,text=True)
+assert result.returncode == 0, result.stderr
+assert json.loads(result.stdout)['generation'] == 3
+print('PASS: explicit state tokens reject stale writes and refresh only their accepted write')
+PYRACE
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

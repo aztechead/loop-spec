@@ -47,6 +47,12 @@ check "mirror without LOOP_SPEC_STORE_DIR exits 2" "2" "$ec"
 check "mirror names the missing variable" "yes" "$(grep -q LOOP_SPEC_STORE_DIR <<<"$out" && echo yes || echo no)"
 
 export LOOP_SPEC_STORE="$MIRROR" LOOP_SPEC_STORE_DIR="$WORK/mirror"
+mkdir -p "$feat/observations" "$feat/migration-generations/txn" "$feat/publication-generations/txn"
+printf 'observation bytes' > "$feat/observations/check.output"
+printf 'original bytes' > "$feat/migration-generations/txn/original"
+printf 'journal bytes' > "$feat/publication-generations/txn/journal.json"
+chmod 400 "$feat/migration-generations/txn/original"
+chmod 640 "$feat/observations/check.output"
 # persist keeps the previous mirror until the new copy is complete: after a
 # persist the mirror has exactly one directory for the slug and no temp leftovers
 bash "$STORE" persist "$feat" first >/dev/null
@@ -54,6 +60,16 @@ bash "$STORE" persist "$feat" second >/dev/null
 check "mirror holds one copy, no temp dirs" "alpha" "$(ls "$WORK/mirror" | tr '\n' ' ' | sed 's/ $//')"
 check "mirror copy matches" "spec" "$(jq -r .currentPhase "$WORK/mirror/alpha/feature.json")"
 
+check "mirror retains observation bytes" "observation bytes" "$(cat "$WORK/mirror/alpha/observations/check.output")"
+check "mirror retains immutable original bytes" "original bytes" "$(cat "$WORK/mirror/alpha/migration-generations/txn/original")"
+check "mirror retains recovery journal" "journal bytes" "$(cat "$WORK/mirror/alpha/publication-generations/txn/journal.json")"
+check "mirror retains file permissions" "0o400 0o640" "$(python3 - "$WORK/mirror/alpha" <<'PYMODES'
+import stat, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+print(*(oct(stat.S_IMODE((root / name).stat().st_mode)) for name in ('migration-generations/txn/original', 'observations/check.output')))
+PYMODES
+)"
 # feature-write.sh persists through the port on every write
 bash "$REPO_ROOT/lib/feature-write.sh" set "$feat" currentPhase '"plan"' >/dev/null
 check "feature-write persisted to the mirror" "plan" "$(jq -r .currentPhase "$WORK/mirror/alpha/feature.json")"

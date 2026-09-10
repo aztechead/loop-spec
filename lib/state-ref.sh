@@ -58,12 +58,28 @@ case "$cmd" in
       for path in "$feature_dir"/*; do
         if [[ -f "$path" && ! -L "$path" ]]; then printf '%s\0' "$path"; fi
       done
-      for name in instruction-snapshots review-attempts; do
+      for name in instruction-snapshots review-attempts observations migration-generations publication-generations; do
         if [[ -d "$feature_dir/$name" && ! -L "$feature_dir/$name" ]]; then
           find "$feature_dir/$name" -type f -print0
         fi
       done
     )
+    modes="$(python3 - "$feature_dir" <<'PYMODES'
+import json, os, stat, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+paths = [p for p in root.iterdir() if p.is_file() and not p.is_symlink() and not p.name.startswith('.')]
+for name in ('instruction-snapshots', 'review-attempts', 'observations', 'migration-generations', 'publication-generations'):
+    base = root / name
+    if base.is_dir() and not base.is_symlink():
+        for directory, folders, files in os.walk(base, followlinks=False):
+            folders[:] = [n for n in folders if not (Path(directory) / n).is_symlink()]
+            paths.extend(Path(directory) / n for n in files if not (Path(directory) / n).is_symlink())
+print(json.dumps({str(p.relative_to(root)): stat.S_IMODE(p.stat().st_mode) for p in paths}, sort_keys=True))
+PYMODES
+)"
+    blob="$(printf '%s' "$modes" | git -C "$root" hash-object -w --stdin)"
+    GIT_INDEX_FILE="$index" git -C "$root" update-index --add --cacheinfo "100644,$blob,.state-ref-modes.json"
     (( count > 0 )) || { echo "state-ref: nothing to snapshot in $feature_dir" >&2; exit 1; }
     tree="$(GIT_INDEX_FILE="$index" git -C "$root" write-tree)"
     parent="$(git -C "$root" rev-parse -q --verify "$ref^{commit}" 2>/dev/null || true)"
@@ -88,12 +104,42 @@ case "$cmd" in
     mkdir -p "$feature_dir"
     while IFS= read -r -d '' name; do
       [[ -n "$name" ]] || continue
+      python3 - "$feature_dir" "$name" <<'PYSAFE'
+import sys
+from pathlib import Path
+root, name = Path(sys.argv[1]), Path(sys.argv[2])
+if name.is_absolute() or '..' in name.parts:
+    raise SystemExit('state-ref: unsafe snapshot path')
+path = root
+for part in name.parts:
+    path = path / part
+    if path.is_symlink():
+        raise SystemExit('state-ref: refusing symlink restore path')
+PYSAFE
       mkdir -p "$(dirname "$feature_dir/$name")"
       temporary="$(mktemp "$feature_dir/.restore.XXXXXX")"
       git -C "$repo" cat-file -p "$ref:$name" > "$temporary"
       if [[ "$name" == instruction-snapshots/* ]]; then chmod 444 "$temporary"; fi
       mv -f "$temporary" "$feature_dir/$name"
     done < <(git -C "$repo" ls-tree -r -z --name-only "$ref")
+    if [[ -f "$feature_dir/.state-ref-modes.json" ]]; then
+      python3 - "$feature_dir" <<'PYRESTORE'
+import json, os, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+for name, mode in json.loads((root / '.state-ref-modes.json').read_text()).items():
+    path = Path(name)
+    if path.is_absolute() or '..' in path.parts or not isinstance(mode, int) or not 0 <= mode <= 0o777:
+        raise SystemExit('state-ref: invalid permission manifest')
+    target = root
+    for part in path.parts:
+        target = target / part
+        if target.is_symlink():
+            raise SystemExit('state-ref: unsafe permission target')
+    os.chmod(target, mode)
+(root / '.state-ref-modes.json').unlink()
+PYRESTORE
+    fi
     echo "$sha"
     ;;
   show)

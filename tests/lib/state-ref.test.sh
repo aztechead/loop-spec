@@ -26,7 +26,7 @@ sha1="$(bash "$LIB" commit "$FD" "state @ discuss")"
 check "commit: creates the ref" "$sha1" "$(git -C "$REPO" rev-parse refs/loop-spec/state/demo)"
 check "commit: the branch gets no commit" "1" "$(git -C "$REPO" rev-list --count main)"
 check "commit: the checkout index is untouched" "" "$(git -C "$REPO" diff --cached --name-only)"
-check "commit: top-level files only" "PROGRESS.md feature.json" "$(git -C "$REPO" ls-tree --name-only refs/loop-spec/state/demo | tr '\n' ' ' | sed 's/ $//')"
+check "commit: top-level files only" ".state-ref-modes.json PROGRESS.md feature.json" "$(git -C "$REPO" ls-tree --name-only refs/loop-spec/state/demo | tr '\n' ' ' | sed 's/ $//')"
 check "commit: message kept" "state @ discuss" "$(git -C "$REPO" log -1 --format=%s refs/loop-spec/state/demo)"
 sha_same="$(bash "$LIB" commit "$FD" "state @ discuss again")"
 check "commit: an unchanged tree writes nothing" "$sha1" "$sha_same"
@@ -34,6 +34,12 @@ printf '{"slug":"demo","currentPhase":"plan"}\n' > "$FD/feature.json"
 mkdir -p "$FD/instruction-snapshots/attempt/skills" "$FD/review-attempts/1"
 printf 'captured instructions\n' > "$FD/instruction-snapshots/attempt/skills/SKILL.md"
 printf 'review evidence\n' > "$FD/review-attempts/1/VERIFICATION.md"
+mkdir -p "$FD/observations" "$FD/migration-generations/txn" "$FD/publication-generations/txn"
+printf 'output bytes' > "$FD/observations/run.output"
+printf 'original bytes' > "$FD/migration-generations/txn/original"
+printf 'journal bytes' > "$FD/publication-generations/txn/journal.json"
+chmod 400 "$FD/migration-generations/txn/original"
+chmod 640 "$FD/observations/run.output"
 sha2="$(bash "$LIB" commit "$FD" "state @ plan")"
 check "commit: a change chains onto the parent" "$sha1" "$(git -C "$REPO" rev-parse "$sha2^")"
 check "show: prints the latest feature.json" '{"slug":"demo","currentPhase":"plan"}' "$(bash "$LIB" show "$REPO" demo)"
@@ -45,6 +51,15 @@ check "restore: writes feature.json into the worktree" "plan" "$(jq -r '.current
 check "restore: writes PROGRESS.md" "# Progress" "$(cat "$WORK/wt/.loop-spec/features/demo/PROGRESS.md")"
 check "restore: keeps nested instruction snapshots" "captured instructions" "$(cat "$WORK/wt/.loop-spec/features/demo/instruction-snapshots/attempt/skills/SKILL.md")"
 check "restore: keeps review recovery evidence" "review evidence" "$(cat "$WORK/wt/.loop-spec/features/demo/review-attempts/1/VERIFICATION.md")"
+python3 - "$FD" "$WORK/wt/.loop-spec/features/demo" <<'PYPARITY' || FAIL=$((FAIL+1))
+import hashlib, stat, sys
+from pathlib import Path
+for name in ('observations/run.output', 'migration-generations/txn/original', 'publication-generations/txn/journal.json'):
+    left, right = [Path(root) / name for root in sys.argv[1:]]
+    assert hashlib.sha256(left.read_bytes()).digest() == hashlib.sha256(right.read_bytes()).digest()
+    assert stat.S_IMODE(left.stat().st_mode) == stat.S_IMODE(right.stat().st_mode)
+print('PASS: state ref restores observation and recovery bytes and permissions')
+PYPARITY
 printf '{"slug":"demo","currentPhase":"execute"}\n' > "$WORK/wt/.loop-spec/features/demo/feature.json"
 sha3="$(bash "$LIB" commit "$WORK/wt/.loop-spec/features/demo" "state @ execute")"
 check "commit from a worktree: same ref advances" "$sha3" "$(git -C "$REPO" rev-parse refs/loop-spec/state/demo)"
