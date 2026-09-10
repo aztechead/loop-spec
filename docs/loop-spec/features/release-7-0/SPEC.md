@@ -176,5 +176,168 @@ readiness, not while the implementation remains incomplete.
 ## Open questions
 
 No unresolved outcome question.
-Exact grammar, parser interface, migration publication mechanism, and working-tree
-identity remain implementation decisions for DISCUSS and PLAN within this contract.
+The design below resolves the implementation questions for PLAN. Goals and Boundaries
+remain the approved outcome; the implementation choices remain revisable against evidence.
+
+## Design decisions
+
+### One requirement reader, with an explicit format boundary
+
+Add a stdlib module behind the existing shell interfaces. It returns a versioned
+inventory with owner, requirement ID, revision, text, scenarios, retired identities,
+and source locations. All driver writers, coverage checks, grounding, and convergence
+use that inventory. The alternative, patching each positional parser independently,
+would leave multiple definitions of identity and multiline parsing (EVID-002).
+
+New specs declare `requirements_version: 1` and an explicit owner in frontmatter.
+Use one-line JSON values for structured metadata, following the current unresolved
+question reader. The owner is fixed when the cycle starts and includes repository
+identity plus feature slug; a renamed file does not change the owner. Missing version
+means legacy only when the cycle is recorded as legacy. An unknown, duplicate, malformed,
+or removed declaration in a new-format cycle fails closed.
+
+In the Good Enough section, each top-level checkbox starts with an explicit local
+GE identity, followed by the requirement text. IDs are monotonically allocated and
+never inferred from current order. Each requirement owns stable scenario identities
+and observable scenario text. A command is associated with the scenario separately;
+changing a command invalidates its execution evidence without inventing a new outcome.
+The inventory sorts by identity when hashing so document reordering is harmless.
+
+Define revisions as SHA-256 of a canonical JSON representation of the requirement's
+text and its scenario identity/text pairs. Normalize line endings, checkbox state, and
+prose line wrapping only; preserve executable examples byte-for-byte apart from line
+endings. Ignore code-fenced examples when discovering headings and identities. Duplicate
+sections and ambiguous parsing are errors. Tests fix these normalization rules.
+
+Persist the issued/retired ID history in driver-owned, versioned feature state. The
+spec is the authority for current behavior; the ledger only prevents identity reuse
+and detects rollback or deletion of its version marker. Each acceptance of a changed
+inventory reconciles that history under the existing state lock. No new standalone
+database or independently editable requirement document is introduced.
+
+### Coverage is a relation to the actual dispatch plan
+
+Extend PLAN task blocks with explicit requirement/scenario references, parsed into
+the existing tasks representation. For new-format cycles, validate references against
+the current inventory and compare the derived task representation with what EXECUTE
+will dispatch. A dangling reference, a missing required scenario, or a stale requirement
+revision blocks PLAN. Notes and a disconnected coverage summary cannot satisfy it.
+
+Supporting work references the outcomes it enables or a named obligation declared in
+the spec's constraints. Do not accept free-text task exemptions. One task may name
+several references, and several tasks may name the same reference. Keep the human
+coverage section as a derived explanation. Do not infer links by semantic similarity.
+
+Keep the legacy reader for existing cycles through 7.x. Add the demonstrated dangling
+mapping regression before changing the new-format gate, and test the real PLAN egress
+with both formats. Legacy format support does not allow a new cycle to choose weaker
+validation by removing metadata.
+
+### The driver owns execution observations
+
+Extend the current observed-command producer (EVID-006). New-format records contain an
+execution ID, spec owner, requirement revision, scenario ID, command, exit status,
+output digest, code identity, and execution-environment identity. They reference the
+captured output rather than accept caller-supplied PASS. Markdown verification rows
+reference these records; gates cross-check them and reject extra unknown references.
+
+Use a clean examined source revision for 7.0 rather than add a general filesystem
+fingerprinting engine. Before and after a command, require the same HEAD and no changed
+tracked or non-ignored untracked inputs. Exempt only the exact driver-owned output
+files and feature-state storage; never exempt an arbitrary directory containing source.
+Fingerprint authoritative spec, plan, and command inputs separately, including any
+permitted uncommitted authoring artifacts. Output paths may not overlap those inputs.
+Commands that change source or tracked test inputs leave failed evidence and an
+actionable instruction to commit or restore the inputs and rerun verification.
+
+Environment identity records the explicitly configured toolchain versions and declared
+external input identities without storing secrets. Lockfiles describe intended dependency
+resolution, not installed bytes. Each command's declared input contract also covers
+installed dependency trees, ignored generated executables, and ignored local configuration
+that the command reads. Hash declared local runtime inputs before and after execution,
+streaming file contents in a deterministic path order. Resolve symlinks against declared
+roots; reject escapes, unreadable inputs, and changes during observation. An input-set
+declaration is part of the reviewed plan and its digest is bound into the observation.
+
+For an isolated prepared environment, a trusted preparation receipt plus validation of
+the actual installed inputs may supply these identities. A receipt or lockfile alone
+cannot stand in for that validation. External services require an observable immutable
+identity appropriate to the check; otherwise report the unsupported input and block a
+current verified result. Sensitive configuration requires a trusted non-secret version
+identity; do not log its contents or a guessable secret digest. There is no claim that
+the driver can infer arbitrary shell dependencies: supported checks must declare their
+inputs, the review checks completeness, and undeclared or unknown required inputs block
+publication. Test changed ignored dependencies with an unchanged lockfile, changed
+ignored configuration, an escaping symlink, and an unavailable external identity.
+
+Capture output as a bounded stream instead of buffering subprocess.PIPE to completion.
+Incrementally hash and spool output while retaining a bounded display tail; configure a
+finite byte ceiling and execution timeout. On overflow or timeout, terminate and reap
+the command process group and publish a non-PASS observation with the reason. A partial
+output digest is explicitly labeled partial. Test a verbose child process and ensure
+bounded memory, no orphaned child, and no passing result after truncation by the ceiling.
+
+Observed records are driver-owned and protected by the existing tool-write guards;
+extend each harness adapter's coverage of this boundary. Hashes detect changed content,
+not the identity of a writer with unrestricted host access. The guarantee applies to
+the supported guarded driver path, not an adversary who can replace both the runtime
+and its records. Final verification observes the integrated revision; this release
+does not reuse old evidence to avoid executing checks.
+
+### Migration preserves originals and publishes under a transaction gate
+
+Provide preview, apply, status/resume, and rollback operations for incomplete legacy
+cycles. Preview writes no repository state, assigns IDs in original source order,
+derives scenario candidates only from explicit existing criteria/examples, and reports
+unresolved relationships instead of inventing them. Output a digest of every source
+artifact and relevant feature-state field plus the proposed changes. Applying requires
+that preview digest and matching current inputs.
+
+Before replacing any active artifact, acquire the shared feature publication lock,
+validate the whole candidate, preserve exact originals and their hashes in an immutable
+generation, and publish a migration-in-progress marker. All cycle entry, phase exit,
+verification, and delivery consumers reject an unfinished migration. Replace the working SPEC and
+PLAN only after the marker is durable, then publish the versioned state and completed
+receipt last. Keep old verification as historical output and require fresh new-format
+observations. Preserve Goal/Boundary bytes and specApproval exactly; if conversion
+cannot do that, refuse it rather than rewrite the approval.
+
+A marker check at phase start is insufficient. Each consumer records an artifact
+generation and input hashes on entry. Producers stage outputs outside the authoritative
+paths; publication takes the shared lock, rechecks that generation and those hashes,
+and fails without replacing artifacts or state if either changed. Every accepted
+artifact/state mutation and phase acknowledgement uses that check, including legacy
+consumers participating in migration. Migration advances the generation before releasing
+the lock, so a consumer started earlier cannot later acknowledge or publish stale work.
+
+Coordinate the publication lock with the existing feature-state lock using one lock
+order: publication first, state second. Centralize the locked write primitive rather
+than recursively acquiring the same lock through a subprocess. Do not hold the
+publication lock across model or command execution. Unsupported legacy participants
+without the generation-aware publication path must stop before migration is permitted.
+Test an old-generation reader that starts before the marker and attempts to publish
+after migration, simultaneous apply attempts, and ordinary state updates at the boundary.
+
+Resume uses the recorded generation and expected hashes to finish or restore the same
+transaction. It does not reallocate IDs. Rollback restores originals only if the current
+files still match the migration's published versions; later edits require an explicit
+conflict resolution rather than destructive overwrite. A completed-cycle check rejects
+migration before any write. Backup generations and journals travel with durable feature
+state so a resumed checkout does not lose recovery material.
+
+The existing atomic state publisher is a reusable single-file primitive (EVID-007),
+not proof that a multi-file migration is atomic. Failure injection must cover every
+publication boundary and concurrent phase readers. Bound preview memory by artifact
+size, stream file hashing, and reject unsupported input shapes with file/line diagnostics.
+
+### Corner test and implementation sequence
+
+The likely next change is a scenario format or a capability-owned requirement. A shared
+inventory interface contains that change in the parser and owner resolver; gates consume
+the same identity/revision objects. Do not build the 7.1 capability store now.
+
+PLAN should separate parser/format tests, producer updates, coverage integration,
+observation integration, migration, and release documentation into dependent tasks.
+Retain the current feature-state schema number if its declared extension points can
+express the required fields; every new field still needs graph-schema declarations
+and validation. Update release version files only after the implementation and gates pass.
