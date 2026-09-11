@@ -454,7 +454,8 @@
     "interfaces": {
       "consumes": "task-008",
       "produces": "Guarded publication participant coverage required before migration can be enabled."
-    }
+    },
+    "status": "done"
   },
   {
     "id": "task-010",
@@ -487,7 +488,8 @@
     "interfaces": {
       "consumes": "task-009",
       "produces": "Canonical preview JSON, approved digest and candidate validation for transaction apply."
-    }
+    },
+    "status": "done"
   },
   {
     "id": "task-011",
