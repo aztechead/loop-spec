@@ -85,3 +85,30 @@ file/line diagnostic; repair that source and retry. Bad invocation exits 2.
 SPEC input is limited to 16 MiB before decoding. Parsing uses memory proportional to
 that bounded artifact, with identity sets for duplicate detection. No dependencies
 beyond the repository's Python standard library runtime are required.
+
+## Authoring commands (lib/graph/driver.py)
+
+A feature never edits SPEC.md itself: `cycle-driver.sh spec skeleton|write|fill`
+stage a candidate and publish it (and, under a v1 contract, the reconciled
+`requirementsContract`) in one transaction -- `cmd_spec`, `publish_spec`. A driver-
+rendered skeleton (`render_skeleton`, `apply_requirements_shape`) is unfilled
+scaffolding, published plainly with no reconciliation attempted; the first real
+`write` or `fill` is what reconciles the ledger.
+
+`spec write --file DRAFT` (and `-` for stdin) under a v1 contract parses the draft
+as-is when it already declares `requirements_version`/`requirements_owner`
+(`declares_requirements_metadata`); a draft that declares neither is normalized only
+-- the frontmatter declarations are added and each undated Good Enough item is
+assigned the next stable `GE-NNN` from the contract's ledger, in document order, with
+a synthesized `SC-001` carrying its own prose when it names no scenario itself
+(`normalize_v1_draft`). An item that already carries a `GE-NNN:` prefix keeps it.
+
+`spec fill --command/--expect` allocates a fresh stable ID from the same ledger
+(`fill_requirement`); `--row` names an existing requirement by its `GE-NNN` identity
+and never a document position -- a numeric alias (`--row 1`, `--row GE-9`) is refused
+with exit 2. A `spec fill --json` batch reconciles in memory between the criteria in
+one call so two new requirements never race for the same fresh ID.
+
+`LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1` (`lib/feature-init.sh`) is a transitional,
+fixture-only opt-in read once at cycle creation: it is not a user-facing downgrade
+switch, and ordinary cycles stay on legacy until v1 activation.

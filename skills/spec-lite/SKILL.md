@@ -68,6 +68,15 @@ module the task does not need leaves it in one call,
 `bash "$DRV" spec footprint drop --feature-dir "$feature_dir" --file <test module> --reason "<why>"`,
 which is refused while the file it tests changes.
 
+When the entry packet's `requirementsContract.format` is `v1` (transitional,
+fixture-only until v1 activation, `docs/loop-spec/requirements-format.md`), the
+skeleton's Good Enough rows are already `- [ ] GE-NNN: outcome` with a nested
+`  - SC-NNN: observable scenario` line, and its frontmatter already carries
+`requirements_version`/`requirements_owner`/`scenario_checks`: nothing to type there.
+Every `--command`/`--expect` fill still allocates its own fresh `GE-NNN` from the
+driver's ledger; `--row` still names a requirement by that stable ID, never a
+position.
+
 An intent gap is a choice the user would notice in the result that the code cannot
 settle; everything else you decide and record
 (`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" spec "<q>" "<a>" "<why>"`).

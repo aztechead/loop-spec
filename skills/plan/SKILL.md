@@ -51,6 +51,13 @@ Include these fields and instructions in the planner brief:
   Use `EVID-NNN` or an `ASSUMPTION`. Fetch current documentation with an available web tool, or report the missing evidence.
 - Cite PATTERNS.md analogs in each task's steps.
 - Include every field that `lib/plan-tasks.sh` reads, including `**BlockedBy:**`. Do not compute waves.
+- When SPEC.md's frontmatter declares `requirements_version: 1` (transitional,
+  fixture-only until v1 activation, `docs/loop-spec/requirements-format.md`), each task
+  also carries `**Requirements:**` single-line JSON bullets
+  (`{"owner":{...},"requirement":"GE-NNN","revision":"<sha256>","scenarios":["SC-NNN"]}`)
+  or `**Obligations:**` naming `OBL-` ids from `## Constraints`, taken from
+  `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/requirements.sh" inventory --spec <spec_path> --feature-dir "$feature_dir"`.
+  Authoring only; no gate reads these fields yet. Under a legacy contract, omit both.
 - Check the draft against `agents/planner.md` before submission.
 - Copy `## Global constraints` verbatim, or write `- none`.
 

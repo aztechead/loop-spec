@@ -141,6 +141,18 @@ While waiting for an answer, use for example
 Record the answer and rationale before removing a question.
 Do not include ambiguity scores or an interview transcript. Spec-lite owns the oneshot skeleton.
 
+When the entry packet's `requirementsContract.format` is `v1` (transitional, fixture-only
+until v1 activation, `docs/loop-spec/requirements-format.md`), `## Success criteria`
+requirements are `- [ ] GE-NNN: outcome` with a nested `  - SC-NNN: observable scenario`
+line, and the frontmatter's `{requirements_frontmatter}` placeholder becomes the
+`requirements_version`/`requirements_owner`/`scenario_checks` declarations, single-line
+JSON, from the packet's own contract owner -- never retyped by hand. IDs are allocated
+by the driver, never by hand and never renumbered on reorder; a criterion's command
+lives in `scenario_checks`, keyed `GE-NNN/SC-NNN`. Under a legacy contract, delete both
+the `{requirements_frontmatter}` line and the GE/SC row and keep the existing shape.
+Only the driver writes SPEC.md: draft it anywhere else and land it with `spec write`
+below, never by opening the target path directly.
+
 A draft written anywhere but `docs/loop-spec/features/{slug}/SPEC.md` in the checkout
 that holds `feature.json` lands through `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh"
 spec write --feature-dir "$feature_dir" --file <draft>`, which accepts no other target.

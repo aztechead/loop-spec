@@ -755,6 +755,138 @@ check "migration: finish names the reason" "1" "$(grep -c 'migration' <<<"$err")
 cmp -s "$WORK/migration-before.json" "$FDMIG/feature.json"
 check "migration: finish changed nothing" "0" "$?"
 
+# --- v1 requirements fixture switch (LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1, task-009 removes it) ---
+REPOV1="$(new_repo v1fixture)"
+printf 'def slugify(s):\n    return s.lower()\n' > "$REPOV1/slugify.py"
+git -C "$REPOV1" add -A && git -C "$REPOV1" -c commit.gpgsign=false commit -q -m "add slugify"
+outv1="$(cd "$REPOV1" && LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 AUTONOMOUS=1 drv begin -- "autonomous fix slugify dots" 2>/dev/null)"
+FDV1="$(jq -r '.featureDir' <<<"$outv1")"
+DOCSV1="$REPOV1/docs/loop-spec/features/$(jq -r '.slug' "$FDV1/feature.json")"
+check "v1 fixture: creation records a v1 contract" "v1" "$(jq -r '.requirementsContract.format' "$FDV1/feature.json")"
+bash "$REPO_ROOT/lib/footprint.sh" cite "$FDV1" slugify.py:1 "the transform"
+outv1="$(cd "$REPOV1" && drv spec skeleton --feature-dir "$FDV1" 2>/dev/null)"
+check "v1 skeleton: oneshot route" "oneshot" "$(jq -r '.route' <<<"$outv1")"
+check "v1 skeleton: v1 frontmatter declared" "1" "$(grep -c '^requirements_version: 1$' "$DOCSV1/SPEC.md")"
+check "v1 skeleton: owner declared as single-line JSON" "1" "$(grep -c '^requirements_owner: {' "$DOCSV1/SPEC.md")"
+check "v1 skeleton: the GE/SC placeholder shape, never the legacy row" "0" "$(grep -c '{check command}' "$DOCSV1/SPEC.md")"
+check "v1 skeleton: the GE/SC placeholder is present" "1" "$(grep -c '{GE-001: outcome}' "$DOCSV1/SPEC.md")"
+
+cp "$DOCSV1/SPEC.md" "$WORK/v1-skeleton-filled.md"
+# A suffix argument (even empty-named via .bak, removed after) keeps this -i portable:
+# BSD sed requires one, GNU sed accepts one the same way.
+sed -e 's/{One paragraph:[^}]*}/Dots survive slugify./' \
+    -e 's/{what changes here[^}]*}/strips dots/' \
+    -e 's/{GE-001: outcome}/GE-001: The user sees the fix/' \
+    -e 's/{SC-001: observable scenario}/SC-001: Reload shows the fix/' \
+    -i.bak "$WORK/v1-skeleton-filled.md"
+rm -f "$WORK/v1-skeleton-filled.md.bak"
+check "v1 skeleton once filled: parse_spec accepts it" "0" "$(PYTHONPATH="$REPO_ROOT/lib" python3 -c "
+from requirements import parse_spec
+import json
+contract = json.load(open('$FDV1/feature.json'))['requirementsContract']
+parse_spec(open('$WORK/v1-skeleton-filled.md').read(), 'x.md', contract)
+" >/dev/null 2>&1; echo $?)"
+
+owner_json="$(jq -c '.requirementsContract.owner' "$FDV1/feature.json")"
+# Both drafts below share this body; only the frontmatter and the plain draft's one
+# extra undated item differ, so it is written once.
+cat > "$WORK/draftv1-body.md" <<'MD'
+# fix slugify dots
+
+<!-- intent: frozen -->
+## Intent
+
+Dots survive slugify.
+<!-- /intent -->
+
+## Implementation notes
+
+- slugify.py: strip dots in slugify().
+
+## Success criteria
+
+### Good Enough
+
+- [ ] GE-001: Dots are stripped.
+  - SC-001: Reloading shows no dots.
+MD
+{
+  printf -- '---\nunresolved_questions: []\nrequirements_version: 1\nrequirements_owner: %s\nscenario_checks: {}\nfootprint:\n  - slugify.py\n---\n' "$owner_json"
+  cat "$WORK/draftv1-body.md"
+  printf -- '\n## Grounding\n\n- none\n'
+} > "$WORK/draftv1.md"
+rm -f "$DOCSV1/SPEC.md"
+out="$(cd "$REPOV1" && drv spec write --feature-dir "$FDV1" --file "$WORK/draftv1.md" 2>/dev/null)"
+check "v1 write: an already-declared draft parses and lands" "$DOCSV1/SPEC.md" "$out"
+check "v1 write: the declared GE-001 keeps its own id" "1" "$(grep -c '^- \[ \] GE-001: Dots are stripped.$' "$DOCSV1/SPEC.md")"
+rm -f "$DOCSV1/SPEC.md"
+out="$(cd "$REPOV1" && drv spec write --feature-dir "$FDV1" --file - < "$WORK/draftv1.md" 2>/dev/null)"
+check "v1 write: stdin normalizes and lands the same as --file" "$DOCSV1/SPEC.md" "$out"
+check "v1 write: stdin draft's GE-001 kept its own id" "1" "$(grep -c '^- \[ \] GE-001: Dots are stripped.$' "$DOCSV1/SPEC.md")"
+
+# ingest: a draft with NO v1 declarations gets format added and stable IDs allocated,
+# in document order, from the ledger -- never renumbering GE-001 above.
+{
+  printf -- '---\nunresolved_questions: []\nfootprint:\n  - slugify.py\n---\n'
+  cat "$WORK/draftv1-body.md"
+  printf -- '- [ ] A second outcome with no id at all.\n\n## Grounding\n\n- none\n'
+} > "$WORK/draftv1-plain.md"
+rm -f "$DOCSV1/SPEC.md"
+out="$(cd "$REPOV1" && drv spec write --feature-dir "$FDV1" --file "$WORK/draftv1-plain.md" 2>/dev/null)"
+check "v1 ingest: a plain draft is normalized and lands" "$DOCSV1/SPEC.md" "$out"
+check "v1 ingest: the driver's frontmatter declaration was added" "1" "$(grep -c '^requirements_version: 1$' "$DOCSV1/SPEC.md")"
+check "v1 ingest: existing GE-001 kept its own id" "1" "$(grep -c '^- \[ \] GE-001: Dots are stripped.$' "$DOCSV1/SPEC.md")"
+check "v1 ingest: the undeclared item was allocated the next stable id" "1" "$(grep -c '^- \[ \] GE-002: A second outcome with no id at all.$' "$DOCSV1/SPEC.md")"
+check "v1 ingest: the allocated item got its own SC-001 scenario carrying its prose" "1" "$(grep -c '^  - SC-001: A second outcome with no id at all.$' "$DOCSV1/SPEC.md")"
+
+# Batch fill: two new criteria in one call must not reuse the same fresh id.
+inputs='{"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}'
+out="$(cd "$REPOV1" && printf '{"criteria":[{"command":"true","expect":"third outcome","executionInputs":%s},{"command":"true","expect":"fourth outcome","executionInputs":%s}]}' "$inputs" "$inputs" | drv spec fill --feature-dir "$FDV1" --json - 2>/dev/null)"
+check "v1 batch fill: two new criteria in one call get consecutive stable ids" "criterion:GE-003 criterion:GE-004" "$(jq -r '.filled | join(" ")' <<<"$out")"
+check "v1 batch fill: both rows are on disk, never one reused id" "1" "$(grep -c '^- \[ \] GE-003: third outcome$' "$DOCSV1/SPEC.md")"
+check "v1 batch fill: the fourth row is on disk too" "1" "$(grep -c '^- \[ \] GE-004: fourth outcome$' "$DOCSV1/SPEC.md")"
+
+# Numeric positional aliases are refused for v1; a stable GE-ID replaces by identity.
+ec=0; (cd "$REPOV1" && drv spec fill --feature-dir "$FDV1" --command true --expect x --row 1 --execution-inputs "$inputs" >/dev/null 2>&1) || ec=$?
+check "v1 --row: a bare position is refused" "2" "$ec"
+ec=0; (cd "$REPOV1" && drv spec fill --feature-dir "$FDV1" --command true --expect x --row GE-9 --execution-inputs "$inputs" >/dev/null 2>&1) || ec=$?
+check "v1 --row: an unpadded numeric alias is refused" "2" "$ec"
+out="$(cd "$REPOV1" && drv spec fill --feature-dir "$FDV1" --command true --expect "third outcome, replaced" --row GE-003 --scenario SC-001 --execution-inputs "$inputs" 2>/dev/null)"
+check "v1 --row: a stable id replaces the same row" "criterion:GE-003" "$(jq -r '.filled[0]' <<<"$out")"
+check "v1 --row: the row keeps its id after replacement" "1" "$(grep -c '^- \[ \] GE-003: third outcome, replaced$' "$DOCSV1/SPEC.md")"
+check "v1 --row: the untouched fourth row is unchanged" "1" "$(grep -c '^- \[ \] GE-004: fourth outcome$' "$DOCSV1/SPEC.md")"
+
+# Route escalation preserves owner and the issued ledger, and the SPEC still parses.
+issued_before="$(jq -cS '.requirementsContract.issued' "$FDV1/feature.json")"
+owner_before="$(jq -cS '.requirementsContract.owner' "$FDV1/feature.json")"
+escout="$(PYTHONPATH="$REPO_ROOT/lib:$REPO_ROOT/lib/graph" python3 - "$FDV1" "$DOCSV1/SPEC.md" <<'PYESC'
+import re
+import sys
+from pathlib import Path
+feature_dir, spec_path = sys.argv[1], sys.argv[2]
+import driver
+import publication_participant as pub
+from requirements import parse_spec
+
+pub.begin(feature_dir)
+feat = driver.state(feature_dir)
+staged = Path(feature_dir) / "publication-staging" / "spec-escalate-test"
+staged.parent.mkdir(parents=True, exist_ok=True)
+staged.write_bytes(Path(spec_path).read_bytes())
+driver.spec_escalate(str(staged), "the exit gate held after 3 attempts on FLAG")
+driver.publish_spec(feature_dir, feat, staged.read_bytes())
+pub.finish()
+text = Path(spec_path).read_text()
+assert re.search(r"^route: *full\s*$", text, re.M), "escalation did not write route: full"
+parse_spec(text, spec_path, driver.state(feature_dir).get("requirementsContract"))
+print("PASS: escalated SPEC still parses under its own contract")
+PYESC
+)"
+check "v1 escalation: driver.spec_escalate + publish_spec ran clean" "1" "$(grep -c 'PASS: escalated SPEC still parses under its own contract' <<<"$escout")"
+check "v1 escalation: route: full is on record" "1" "$(grep -c '^route: full$' "$DOCSV1/SPEC.md")"
+check "v1 escalation: the issued ledger is unchanged" "$issued_before" "$(jq -cS '.requirementsContract.issued' "$FDV1/feature.json")"
+check "v1 escalation: the owner is unchanged" "$owner_before" "$(jq -cS '.requirementsContract.owner' "$FDV1/feature.json")"
+
 echo
 echo "cycle-driver: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

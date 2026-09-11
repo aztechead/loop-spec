@@ -40,6 +40,14 @@
 #          (top-level branch/baseSha/baseBranch/worktreePath null; commands empty;
 #           per-repo commands live in workspace.repos[].commands).
 #
+# LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 (transitional, fixture-only until v1 activation
+# at task-009 -- docs/loop-spec/requirements-format.md): `skeleton` also bootstraps a v1
+# requirementsContract and artifactPublication into the printed feature.json, so a
+# feature carries them from the one write that creates it. Owner.repository resolves,
+# in order: the workspace's own first repo name (workspace mode; never a path), else
+# LOOP_SPEC_REPOSITORY_ID (an explicit operator id), else a generated uuid4. Without the
+# switch, `skeleton` prints exactly what it prints today.
+#
 # Exit codes: 0 success; 1 bad invocation.
 set -euo pipefail
 
@@ -395,6 +403,46 @@ no_extra_args() {
   [[ $# -eq 1 ]] || { echo "usage: feature-init.sh $sub" >&2; exit 1; }
 }
 
+# requirements_v1_owner <mode> <repos-json>
+#
+# Repository identity, never a checkout path or a remote URL (they move; this must
+# not). Workspace identity outranks the operator id, which outranks a generated one,
+# because a declared repo name is the most specific fact a caller can offer.
+requirements_v1_owner() {
+  local mode="$1" repos_json="$2" repository=""
+  if [[ "$mode" == workspace ]]; then
+    repository="$(jq -r '.[0].name // empty' <<<"$repos_json")"
+  fi
+  [[ -n "$repository" ]] || repository="${LOOP_SPEC_REPOSITORY_ID:-}"
+  [[ -n "$repository" ]] || repository="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+  printf '%s' "$repository"
+}
+
+# requirements_v1_bootstrap <feature-json>
+#
+# Merges a fresh v1 requirementsContract and artifactPublication into a just-built
+# schema-7 skeleton, before it is ever written: the caller's one create-if-absent
+# feature-write.sh call is still the only write (docs/loop-spec/requirements-format.md).
+# requirements.bootstrap_state is the same primitive every other v1 participant uses.
+requirements_v1_bootstrap() {
+  local feature_json="$1" owner_repository="$2"
+  local slug owner_json
+  slug="$(jq -r '.slug' <<<"$feature_json")"
+  owner_json="$(jq -cn --arg r "$owner_repository" --arg f "$slug" '{repository:$r, feature:$f}')"
+  python3 -c '
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from requirements import bootstrap_state
+state = json.loads(sys.argv[2])
+owner = json.loads(sys.argv[3])
+try:
+    print(json.dumps(bootstrap_state(state, owner, "v1")))
+except ValueError as exc:
+    print("feature-init: v1 bootstrap failed: {}".format(exc), file=sys.stderr)
+    sys.exit(1)
+' "$SCRIPT_DIR" "$feature_json" "$owner_json"
+}
+
 case "${1:-}" in
   models)
     shift
@@ -486,7 +534,7 @@ case "${1:-}" in
 
     case "$mode" in
       single)
-        echo "$base" | jq \
+        result="$(echo "$base" | jq \
           --arg branch "$branch" --arg sha "$base_sha" --arg bb "$base_branch" \
           --arg wt "$worktree" \
           --arg prepare "$prepare_cmd" --arg test "$test_cmd" --arg lint "$lint_cmd" --arg tc "$typecheck_cmd" \
@@ -496,11 +544,11 @@ case "${1:-}" in
             executionRootMode: (if $wt == "" then "in-place" else "worktree" end),
             workspace: null,
             commands: {prepare: $prepare, test: $test, lint: $lint, typecheck: $tc}
-          }'
+          }')"
         ;;
       workspace)
         [[ -z "$ws_root" ]] && { echo "feature-init: --ws-root required in workspace mode" >&2; exit 1; }
-        echo "$base" | jq \
+        result="$(echo "$base" | jq \
           --arg wsroot "$ws_root" --argjson repos "$repos_json" \
           '. + {
             branch: null, baseSha: null, baseBranch: null, worktreePath: null,
@@ -517,11 +565,15 @@ case "${1:-}" in
               ))
             },
             commands: {prepare: "", test: "", lint: "", typecheck: ""}
-          }'
+          }')"
         ;;
       *)
         echo "feature-init: --mode must be 'single' or 'workspace'" >&2; exit 1;;
     esac
+    if [[ "${LOOP_SPEC_REQUIREMENTS_V1_FIXTURE:-0}" == "1" ]]; then
+      result="$(requirements_v1_bootstrap "$result" "$(requirements_v1_owner "$mode" "$repos_json")")" || exit 1
+    fi
+    printf '%s\n' "$result"
     ;;
   *)
     echo "usage: feature-init.sh models [--phase PHASE] | phase-model PHASE | phase-models | all-models | validate | activate FEATURE_DIR PHASE | skeleton --mode single|workspace ..." >&2

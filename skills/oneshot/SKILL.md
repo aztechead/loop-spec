@@ -39,6 +39,13 @@ open is a decision you record (`decisions.sh add`). A oneshot never turns a full
 into a oneshot, and you never pick the next phase. The driver is the only writer of
 SPEC.md and VERIFICATION.md on this route.
 
+When the entry packet's `requirementsContract.format` is `v1` (transitional,
+fixture-only until v1 activation, `docs/loop-spec/requirements-format.md`), `GE-NNN`
+is the same stable identity everywhere: SPEC's checkbox, its nested `SC-NNN` scenario,
+and the `scenario_checks` frontmatter key `GE-NNN/SC-NNN` that names the command. The
+driver allocates every ID; `--row GE-NNN` replaces that requirement by identity even
+after the document reorders, and a bare position (`--row 1`) is refused.
+
 ## 2. Implement
 
 Make the change in the footprint files, every one of them: the footprint is a promise

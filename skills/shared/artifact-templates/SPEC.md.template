@@ -1,6 +1,7 @@
 ---
 route: full
 unresolved_questions: []
+{requirements_frontmatter}
 ---
 # {feature_title}
 
@@ -45,6 +46,8 @@ unresolved_questions: []
 
 - [ ] {Testable criterion 1 - minimum shippable bar}
 - [ ] {Testable criterion 2 - minimum shippable bar}
+- [ ] {GE-001: outcome}
+  - {SC-001: observable scenario}
 
 ### Exceptional
 

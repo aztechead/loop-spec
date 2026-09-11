@@ -114,6 +114,25 @@ check "bad mode exits non-zero" "$([[ $? -ne 0 ]] && echo 1 || echo 0)"
 
 check "ordinary single keeps legacy-compatible fields absent" "$(echo "$single" | jq -e 'has("requirementsContract") or has("artifactPublication") | not' >/dev/null && echo 1 || echo 0)"
 check "ordinary workspace keeps legacy-compatible fields absent" "$(echo "$ws" | jq -e 'has("requirementsContract") or has("artifactPublication") | not' >/dev/null && echo 1 || echo 0)"
+
+# --- LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 (transitional, task-009 removes it) ---
+fixture_single="$(LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 bash "$LIB" skeleton --mode single \
+  --slug demo --now N --style auto --branch feat/demo --base-sha abc --base-branch main --worktree wt)"
+check "fixture switch records a v1 contract" "$(echo "$fixture_single" | jq -e '.requirementsContract.format == "v1"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "fixture switch owner.feature is the slug" "$(echo "$fixture_single" | jq -e '.requirementsContract.owner.feature == "demo"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "fixture switch records artifactPublication generation 0" "$(echo "$fixture_single" | jq -e '.artifactPublication.generation == 0' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "fixture switch owner is a generated uuid without an operator id" \
+  "$(echo "$fixture_single" | jq -e '.requirementsContract.owner.repository | test("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")' >/dev/null 2>&1 && echo 1 || echo 0)"
+fixture_single_op="$(LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 LOOP_SPEC_REPOSITORY_ID=op-repo bash "$LIB" skeleton --mode single \
+  --slug demo --now N --style auto --branch feat/demo --base-sha abc --base-branch main --worktree wt)"
+check "operator id wins over a generated uuid" "$(echo "$fixture_single_op" | jq -e '.requirementsContract.owner.repository == "op-repo"' >/dev/null 2>&1 && echo 1 || echo 0)"
+fixture_ws="$(LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 LOOP_SPEC_REPOSITORY_ID=op-repo bash "$LIB" skeleton --mode workspace \
+  --slug demo --now N --style auto --ws-root /ws \
+  --repos '[{"name":"fe","path":"fe"},{"name":"be","path":"be"}]')"
+check "workspace identity wins over the operator id" "$(echo "$fixture_ws" | jq -e '.requirementsContract.owner.repository == "fe"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "fixture switch never records format legacy" \
+  "$(printf '%s\n%s\n' "$fixture_single" "$fixture_ws" | jq -es 'all(.[]; .requirementsContract.format != "legacy")' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "no switch: single still carries no contract" "$(echo "$single" | jq -e 'has("requirementsContract") | not' >/dev/null 2>&1 && echo 1 || echo 0)"
 PYTHONPATH="$(dirname "$LIB")" python3 - <<'PYTEST' || FAIL=$((FAIL + 1))
 from requirements import bootstrap_state
 owner = {'repository':'stable-repo','feature':'fixture'}

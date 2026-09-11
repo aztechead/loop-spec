@@ -2188,11 +2188,14 @@ def good_enough_criteria(spec_path):
     return out
 
 
-def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=None):
+def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=None, contract=None):
     """A template with the facts the driver holds filled in and every value the lead
     owns left as a {placeholder}. The shape is the gates' business, so it is written
     here once instead of retyped by the lead per run (six REDO rounds on the dda2cca
-    bug fix were format rounds; port audit 1, F4)."""
+    bug fix were format rounds; port audit 1, F4). `contract` selects the SPEC
+    templates' v1-or-legacy Good Enough/frontmatter placeholder (apply_requirements_shape
+    below); every other template carries neither placeholder, so the substitution is a
+    no-op for them, and an absent contract always yields today's legacy shape."""
     text = open(template, encoding="utf-8").read()
     text = text.replace("{feature_title}", feat.get("feature_title") or feat.get("slug") or "")
     text = text.replace("{slug}", feat.get("slug") or "")
@@ -2224,7 +2227,35 @@ def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=No
             text = text.replace(
                 "### Criterion 1\n\n```\n{full output of verify command}\n```\n\n(repeat per criterion)\n",
                 "".join("### Criterion %d\n\n```\n{full output of verify command}\n```\n\n" % (i + 1) for i in range(len(criteria))))
+    text = apply_requirements_shape(text, contract)
     return compact_artifact(text) if template.endswith("-oneshot.md.template") else text
+
+
+# The two placeholders every SPEC template carries so ONE file renders both contract
+# shapes (docs/loop-spec/requirements-format.md): `{requirements_frontmatter}\n` is a
+# whole frontmatter line the v1 declarations replace or that vanishes for legacy, and
+# REQUIREMENTS_V1_GE_ROW is the GE/SC placeholder that stands next to the legacy
+# criterion placeholder until one of the two is stripped. On the full route nothing
+# calls this (author_spec still writes no full-route skeleton); the same two literal
+# placeholders in SPEC.md.template guide the human/agent lead who copies it by hand
+# (skills/spec/SKILL.md, agents/spec-writer.md).
+REQUIREMENTS_V1_GE_ROW = "- [ ] {GE-001: outcome}\n  - {SC-001: observable scenario}\n"
+
+
+def apply_requirements_shape(text, contract):
+    """Select the v1 or legacy Good Enough placeholder and frontmatter declaration in a
+    freshly rendered spec skeleton. Harmless no-op against render_skeleton's own
+    "GE-001" VERIFICATION-template substitution above: that block only replaces
+    `- criterion: GE-001 | ...`/`| 1 | ...` spans, which this template never contains."""
+    if contract and contract.get("format") == "v1":
+        declaration = "requirements_version: 1\nrequirements_owner: %s\nscenario_checks: {}\n" % (
+            json.dumps(contract["owner"], sort_keys=True, separators=(",", ":")))
+        text = text.replace("{requirements_frontmatter}\n", declaration)
+        text = text.replace("- [ ] `{check command}` exits 0: {what that proves}\n", "")
+    else:
+        text = text.replace("{requirements_frontmatter}\n", "")
+        text = text.replace(REQUIREMENTS_V1_GE_ROW, "")
+    return text
 
 
 SKELETON_ARTIFACT_KEYS = {"SPEC.md": "spec", "PLAN.md": "plan", "VERIFICATION.md": "verification", "PATTERNS.md": "patterns"}
@@ -2355,6 +2386,63 @@ def fill_requirement(text, source, options, contract):
         text = text.replace("---\n", "---\n" + declaration + "\n", 1)
     parse_spec(text, source, contract)
     return text, row
+
+
+def declares_requirements_metadata(text):
+    """True when the frontmatter names any `requirements_*` key, mirroring parse_spec's
+    own `explicit` test (lib/requirements.py) without importing its private frontmatter
+    scanner: a supplied draft that already speaks v1 is left to parse_spec's full
+    validation untouched, never rewritten under it."""
+    lines = text.replace("\r\n", "\n").split("\n")
+    if not lines or lines[0] != "---":
+        return False
+    try:
+        end = lines.index("---", 1)
+    except ValueError:
+        return False
+    return any(re.match(r"^requirements_[A-Za-z0-9_]*\s*:", line) for line in lines[1:end])
+
+
+def normalize_v1_draft(text, contract):
+    """A supplied draft that declares no v1 metadata: add the frontmatter declarations
+    and allocate stable GE/SC IDs to Good Enough items in document order, from the
+    contract's ledger -- ingest preserves the supplied requirement text verbatim and
+    normalizes format only (docs/loop-spec/requirements-format.md). A draft that
+    already declares v1 metadata is returned untouched; parse_spec alone is its judge."""
+    if declares_requirements_metadata(text):
+        return text
+    declaration = "requirements_version: 1\nrequirements_owner: %s\n" % (
+        json.dumps(contract["owner"], sort_keys=True, separators=(",", ":")))
+    if not re.search(r"^scenario_checks:", text, re.M):
+        declaration += "scenario_checks: {}\n"
+    if not re.match(r"^---\n", text):
+        raise Die("spec write: v1 ingest requires YAML frontmatter to declare the contract into", 1)
+    text = re.sub(r"^---\n", "---\n" + declaration, text, count=1)
+    span = section_span(text, "Good Enough")
+    if span is None:
+        raise Die("spec write: v1 ingest requires a ### Good Enough section", 1)
+    body = text[span[0]:span[1]]
+    lines = body.splitlines(keepends=True)
+    out = []
+    next_id = contract["nextRequirementId"]
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        item = re.match(r"^- \[([ xX])\] (?:(GE-\d{3,}): )?(.*)\n?$", line)
+        if item and item.group(2) is None:
+            mark, _, rest = item.groups()
+            out.append("- [%s] GE-%03d: %s\n" % (mark, next_id, rest))
+            next_id += 1
+            i += 1
+            if i < len(lines) and re.match(r"^  - ", lines[i]):
+                out.append(lines[i])
+                i += 1
+            else:
+                out.append("  - SC-001: %s\n" % rest)
+        else:
+            out.append(line)
+            i += 1
+    return text[:span[0]] + "".join(out) + text[span[1]:]
 
 
 def spec_fill(target, o, contract=None):
@@ -2504,7 +2592,14 @@ def cmd_spec(argv):
         staged.write_bytes(read_bounded(target))
     output = capture(lambda args: author_spec(args, str(staged)), argv)
     if staged.exists():
-        publish_spec(str(directory), feat, read_bounded(staged))
+        if argv[:1] == ["skeleton"]:
+            # A driver-rendered skeleton is scaffolding the lead has not filled yet
+            # (a `{GE-001: outcome}` placeholder under v1 satisfies no grammar); publish
+            # it plainly, the same as legacy, and leave the ledger for the first real
+            # `spec write`/`spec fill` to reconcile.
+            publish_artifact(str(directory), "spec", read_bounded(staged))
+        else:
+            publish_spec(str(directory), feat, read_bounded(staged))
     print(output.replace(str(staged), str(target)), end="")
     return 0
 
@@ -2589,9 +2684,20 @@ def author_spec(argv, target_override=None, publication_token=None):
             if not calls:
                 raise Die("spec fill --json: nothing to fill", 2)
             out = None
+            contract = feat.get("requirementsContract")
             for call in calls:
-                out = json.loads(capture(lambda a: spec_fill(a[0], a[1], contract=feat.get("requirementsContract")), [target, call]))
+                out = json.loads(capture(lambda a: spec_fill(a[0], a[1], contract=contract), [target, call]))
                 filled += out["filled"]
+                if contract and contract.get("format") == "v1" and call.get("command"):
+                    # A criterion fill can issue a fresh GE-ID (fill_requirement reads
+                    # contract["nextRequirementId"]): reconcile in-memory after each call
+                    # so two new requirements in one batch get consecutive IDs, never the
+                    # same one reused. This candidate is never persisted here -- cmd_spec's
+                    # publish_spec reconciles and persists the real ledger once, from the
+                    # batch's final text.
+                    from requirements import parse_spec, reconcile_inventory
+                    text = open(target, encoding="utf-8").read()
+                    contract = reconcile_inventory(contract, parse_spec(text, target, contract))
             print(json.dumps({"spec": target, "filled": filled, "flags": out["flags"]}))
             return 0
         return spec_fill(target, o, contract=feat.get("requirementsContract"))
@@ -2612,7 +2718,8 @@ def author_spec(argv, target_override=None, publication_token=None):
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 with open(target, "w", encoding="utf-8") as fh:
                     fh.write(render_skeleton(str(TEMPLATES / "SPEC-oneshot.md.template"), feat,
-                                             footprint=footprint, read_only=read_only))
+                                             footprint=footprint, read_only=read_only,
+                                             contract=feat.get("requirementsContract")))
             spec = target
         full_spec = None
         if route == "full":
@@ -2639,6 +2746,14 @@ def author_spec(argv, target_override=None, publication_token=None):
         if not os.path.isfile(source):
             raise Die("spec write: no such file: %s" % source, 2)
         body = open(source, encoding="utf-8", errors="replace").read()
+    contract = feat.get("requirementsContract")
+    if contract and contract.get("format") == "v1":
+        from requirements import parse_spec
+        body = normalize_v1_draft(body, contract)
+        try:
+            parse_spec(body, target, contract)
+        except ValueError as exc:
+            raise Die("spec write: %s" % exc, 1)
     os.makedirs(os.path.dirname(target), exist_ok=True)
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(body)

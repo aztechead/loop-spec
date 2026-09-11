@@ -191,6 +191,20 @@ outside the group. Omit the field when any member needs independent judgment
 Each task carries `interfaces: { "consumes": "...", "produces": "..." }` (or
 `"none"`). EXECUTE's pre-flight table flags a consume with no producer.
 
+### Requirements traceability (v1, authoring only)
+
+When `spec_path`'s frontmatter declares `requirements_version: 1` (transitional,
+fixture-only until v1 activation, `docs/loop-spec/requirements-format.md`), read
+`bash lib/requirements.sh inventory --spec <spec_path> --feature-dir <feature_dir>`
+and give each task a `requirements` array naming exactly which of that inventory it
+satisfies: `{"owner": <the inventory's own owner object>, "requirement": "GE-NNN",
+"revision": "<its sha256 revision>", "scenarios": ["SC-NNN", ...]}` per entry, one
+task field, rendered as `**Requirements:**` single-line-JSON bullets in the PLAN.md
+task block. A task that closes a `## Constraints` obligation instead carries
+`obligations: ["OBL-..."]`, rendered `**Obligations:**`. This is authoring only: no
+gate reads these fields yet (a later task wires PLAN-gate validation). Under a legacy
+contract, omit both fields exactly as today.
+
 ## What NOT to do
 
 - Do NOT skip TDD for code tasks.
