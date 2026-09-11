@@ -122,6 +122,14 @@ if [[ "$(jq -r '.rung.subagentIsolation' "$FD2/dispatch/prepare.json")" == "lead
   check "integrate worktree: a new .loop-spec file is never dirt and never tracked" "0" "$(git -C "$ROOT2" ls-files .loop-spec/BACKLOG.md | grep -c BACKLOG)"
   check "integrate worktree: feature branch carries the commit" "1" "$(git -C "$ROOT2" log --oneline feat/my-feature | grep -c 'change a')"
   check "integrate worktree: marked done" "task-001" "$(bash "$REPO_ROOT/lib/task-progress.sh" done "$FD2/tasks.json")"
+  # The implementer never commits; a task worktree left dirty is the driver's to commit
+  # (a live session-rung run read zero-commit and the lead committed by hand).
+  out="$(bash "$STEP" dispatch --feature-dir "$FD2" --task task-002)"
+  WT2="$(jq -r '.worktreePath' <<<"$out")"
+  printf 'print("b")\n' > "$WT2/b.py"
+  ec=0; out="$(bash "$STEP" integrate --feature-dir "$FD2" --task task-002 2>/dev/null)" || ec=$?
+  check "integrate worktree: an uncommitted task.files change is committed by the driver" "true" "$(jq -r '.published' <<<"$out")"
+  check "integrate worktree: the driver's commit names the task" "1" "$(git -C "$ROOT2" log --oneline feat/my-feature | grep -c 'add b')"
 else
   echo "SKIP: worktree mode not selected on this host ($(jq -r '.rung.reason' "$FD2/dispatch/prepare.json"))"
 fi

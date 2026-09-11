@@ -63,6 +63,11 @@ mkdir -p "$DIR"
 printf '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n' > "$DIR/pyproject.toml"
 got=$(cd "$DIR" && bash "$LIB")
 check "D: pyproject.toml -> python -m pytest" "python -m pytest" "$got"
+DIR="$WORK/pyproject-bound"
+mkdir -p "$DIR"
+printf '[project]\nname = "x"\nversion = "0"\nrequires-python = ">=3.14"\n' > "$DIR/pyproject.toml"
+got=$(bash "$LIB" "$DIR")
+check "D2: pyproject.toml with requires-python -> the venv the prepare command builds" ".venv/bin/python -m pytest" "$got"
 
 # E: setup.py -> python -m pytest
 DIR="$WORK/setup-py"

@@ -62,7 +62,7 @@ Top-2 analogs per concept with rationale.
 
 ### Step 1 - Read inputs and produce PLAN.md
 
-Read SPEC.md and the PATTERNS.md just produced (or pre-existing). Then produce PLAN.md in the shape of `template_path` (the lead's absolute path to `PLAN.md.template`) for the prose sections, and leave `## Task DAG` and `## Tasks` as bare headings: the lead renders both from your `tasks[]` with `lib/plan-render.sh`, so every task field (`goal`, `read_first`, `interfaces`, `steps`, `expected`, `files`, `verifyCommand`, `acceptanceCriteria`, `blockedBy`) belongs in the JSON, once.
+Read SPEC.md and the PATTERNS.md just produced (or pre-existing). Then produce PLAN.md in the shape of `template_path`, including the `## Task DAG` table with one `| task-NNN | ... |` row per task (artifact-lint refuses a plan whose table has no rows; two live planners left it empty) (the lead's absolute path to `PLAN.md.template`) for the prose sections, and leave `## Task DAG` and `## Tasks` as bare headings: the lead renders both from your `tasks[]` with `lib/plan-render.sh`, so every task field (`goal`, `read_first`, `interfaces`, `steps`, `expected`, `files`, `verifyCommand`, `acceptanceCriteria`, `blockedBy`) belongs in the JSON, once.
 
 ## Navigation (required)
 

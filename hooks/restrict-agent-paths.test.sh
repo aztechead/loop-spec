@@ -113,6 +113,12 @@ check "PS5: pattern-mapper Write to .loop-spec/features/foo/publication-staging/
   "$(payload "Write" ".loop-spec/features/foo/publication-staging/PATTERNS.md" "$FIXTURES/pattern-mapper.jsonl")"
 check "PS6: pattern-mapper Write to .loop-spec/features/bar/publication-staging/PATTERNS.md (another feature) DENY" 2 \
   "$(payload "Write" ".loop-spec/features/bar/publication-staging/PATTERNS.md" "$FIXTURES/pattern-mapper.jsonl")"
+# A planner resumed with a fix list (SendMessage to its agent id) keeps its role: the
+# subagent meta file next to the transcript names the dispatch that spawned it.
+check "PS7: a planner resumed by SendMessage may Edit its own staged PLAN.md ALLOW" 0 \
+  "$(payload "Edit" ".loop-spec/features/foo/publication-staging/PLAN.md" "$FIXTURES/planner-resumed.jsonl")"
+check "PS8: the resumed planner is still scoped (src/foo.py) DENY" 2 \
+  "$(payload "Write" "src/foo.py" "$FIXTURES/planner-resumed.jsonl")"
 unset CLAUDE_PROJECT_DIR; rm -rf "$NOFEAT"
 
 # Case I: spec-writer with absolute path to allowed location -> ALLOW (exit 0)

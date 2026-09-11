@@ -73,7 +73,9 @@ while IFS=$'\t' read -r tid crit; do
     exempt=1
   fi
   if [[ "$exempt" -eq 0 ]]; then
-    echo "FLAG ${tid}: bare-substring grep acceptance -> $crit"
+    # The remedy rides the FLAG line itself: phase-exit forwards FLAG lines and drops
+    # this script's stderr, and two live leads read this file to learn what passes.
+    echo "FLAG ${tid}: bare-substring grep acceptance -> $crit -- name a test that must pass, or anchor the grep (-w, or -E with ^ or \\b), or strip comments with grep -v first"
     flagged=$((flagged+1))
   fi
 done < <(echo "$input" | jq -r '.[] | .id as $id | (.acceptanceCriteria // [])[] | "\($id)\t\(.)"')

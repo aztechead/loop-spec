@@ -253,7 +253,7 @@ def write_operation(directory, operation, value, keys=(), token=None, registry=N
             # point a mutation without the ingress token that began it is refused --
             # the create-if-absent replace above (previous is None) is the only
             # token-less write left, and only because there is no prior state to lose.
-            raise ValueError("missing publication token; begin an operation first: `. lib/feature-write.sh; loop_spec_publication_begin <feature_dir>; loop_spec_feature_write set <feature_dir> <dot.path> '<json>'` (a live run tried a bare feature-write.sh set from a phase lead and found no way in)")
+            raise ValueError("missing publication token; begin an operation first: `. lib/feature-write.sh; loop_spec_publication_begin <feature_dir>; loop_spec_feature_write set <feature_dir> <dot.path> '<json>'` -- the helper mints the token itself; a phase lead needs nothing else (two live leads escalated saying they held no token)")
         state = prepare_state(directory, previous, operation, value, keys)
         publication = state.get("artifactPublication")
         if previous is not None and publication:

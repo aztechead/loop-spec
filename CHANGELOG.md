@@ -124,6 +124,18 @@ below; each task's own SPEC/PLAN/VERIFICATION is the durable record of what it p
   planner's or pattern-mapper's staged draft and re-dispatches with a fix list instead;
   and the critique protocol sends version and documentation claims through
   `lib/docs-probe.sh` rather than hand-rolled fetches.
+- A second live Sonnet cycle on the fixed plugin reached VERIFY with the service built
+  (seven of seven acceptance checks, five fresh sessions, about a third of the first
+  run's cost) and showed the next layer: a planner resumed by `SendMessage` with a fix
+  list now keeps its role in the path hook (the subagent meta file names its dispatch);
+  the Task DAG lint says the row shape it wants and the planner is told the table is
+  mandatory; the acceptance lint's flag carries its own remedy; the challenger names
+  `lib/docs-probe.sh` as the probe for a dependency claim; `task integrate` commits
+  `task.files` in a task worktree the implementer left dirty, as the in-place path
+  always did; a plain PEP 621 project is prepared into `.venv` under an interpreter
+  that satisfies `requires-python`, with its test extras, and its test command targets
+  that venv, so a 3.14 project is no longer installed under the default 3.11; and the
+  token refusals say the helper mints the token itself.
 
 No comparative measurement of repair rounds, cost, or latency accompanies this release;
 that evaluation is out of scope for 7.0 (SPEC "Exceptional": comparative live

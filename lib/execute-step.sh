@@ -199,6 +199,15 @@ case "$cmd" in
     verify_cmd="$(jq -r '.verifyCommand' <<<"$task_json")"
     if [[ "$(sget '.inPlace')" != "true" ]]; then
       worktree="$(sget '.worktree')"; branch="$(sget '.branch')"
+      # The implementer never commits (skills/shared/execute-subagent.md); in place this
+      # step stages task.files itself below, and a task worktree got no such commit: a
+      # live session-rung run left its files untracked, read zero-commit, and the lead
+      # committed by hand. Stage exactly task.files here when the branch is still at its
+      # base, so integrate-task sees the same commit the in-place path makes.
+      if [[ -d "$worktree" && "$(git -C "$worktree" rev-parse HEAD 2>/dev/null)" == "$(sget '.taskBaseSha')" ]]; then
+        while IFS= read -r f; do [[ -n "$f" ]] && git -C "$worktree" add -- "$f" 2>/dev/null; done < <(jq -r '.files // [] | .[]' <<<"$task_json")
+        git -C "$worktree" commit -q -m "feat: NO_JIRA $(jq -r '.subject' <<<"$task_json")" >/dev/null 2>&1 || true
+      fi
       res="$(lib integrate-task --feature-root "$root" --feature-branch "feat/$slug" --task-worktree "$worktree" \
         --task-branch "$branch" --verify "$verify_cmd" --cleanup)" || true
       published="$(jq -r '.published // false' <<<"$res")"

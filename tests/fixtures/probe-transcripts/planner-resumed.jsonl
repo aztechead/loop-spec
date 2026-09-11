@@ -1,0 +1,3 @@
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_plan1", "name": "Agent", "input": {"subagent_type": "loop-spec:planner", "prompt": "Plan implementation of feature foo. spec_path: /repo/docs/loop-spec/features/foo/SPEC.md draft_path: /repo/.loop-spec/features/foo/publication-staging/PLAN.md"}}]}}
+{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_plan1", "content": "PLAN.md written"}]}}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_msg1", "name": "SendMessage", "input": {"to": "abc123", "message": "Fix-list: add the Task DAG rows"}}]}}

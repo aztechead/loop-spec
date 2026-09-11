@@ -156,7 +156,7 @@ fi
 # (different outputs: caller name here, open/phase there); extract a shared walker when a
 # third hook needs one.
 CALLER_INFO=$(python3 - "$TRANSCRIPT_PATH" <<'PY' 2>/dev/null
-import json, re, sys
+import json, os, re, sys
 
 transcript_path = sys.argv[1] if len(sys.argv) > 1 else ""
 if not transcript_path:
@@ -164,6 +164,7 @@ if not transcript_path:
 
 dispatches = []          # (tool_use_id or None, subagent_type, prompt) in order
 result_ids = set()
+messages = []            # (tool_use_id, agent id) of every SendMessage, in order
 
 try:
     with open(transcript_path) as f:
@@ -190,6 +191,10 @@ try:
                         subtype = tool_input.get("subagent_type", "")
                         if subtype:
                             dispatches.append((part.get("id"), subtype, tool_input.get("prompt", "")))
+                    elif part.get("type") == "tool_use" and part.get("name") == "SendMessage":
+                        to = (part.get("input") or {}).get("to", "")
+                        if isinstance(to, str) and to:
+                            messages.append((part.get("id"), to))
             elif entry.get("type") == "user":
                 for part in content:
                     if not isinstance(part, dict):
@@ -206,6 +211,28 @@ for tid, subtype, prompt in dispatches:
         continue  # dispatch finished; not the active caller
     caller = subtype
     caller_prompt = prompt
+
+# A SendMessage to a finished subagent resumes it with its dispatch's role: the
+# harness keeps `<transcript>/subagents/agent-<id>.meta.json` naming the agent type
+# and the Agent tool_use that spawned it. Without this, a planner resumed with a
+# fix list read as the main thread and was denied its own staged draft (the
+# fastapi-echo live run, round 3).
+if not caller:
+    for tid, to in messages:
+        if tid is not None and tid in result_ids:
+            continue
+        meta_path = os.path.join(os.path.splitext(transcript_path)[0], "subagents", "agent-%s.meta.json" % to)
+        try:
+            with open(meta_path) as f:
+                meta = json.load(f)
+        except (OSError, ValueError):
+            continue
+        spawned = meta.get("toolUseId")
+        for dtid, subtype, prompt in dispatches:
+            if dtid is not None and dtid == spawned:
+                caller, caller_prompt = subtype, prompt
+        if not caller and meta.get("agentType"):
+            caller = meta["agentType"]
 
 # The slug of the feature this dispatch is FOR, mined from the brief's own
 # absolute paths (agents/planner.md's Input names spec_path/patterns_path under

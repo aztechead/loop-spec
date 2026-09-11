@@ -412,7 +412,9 @@ def lint_plan(display, data):
 
     vis = visible(lines, mask)
     if not any(re.match(r'^\|\s*task-', line.strip()) for _, line in vis):
-        flag(display, 0, "'## Task DAG' table has no '| task-...' rows")
+        flag(display, 0, "'## Task DAG' table has no '| task-...' rows (one row per task: "
+                         "`| task-001 | <subject> | <blockedBy ids or -> | <files> | <scope> |`; "
+                         "two live planners left the section empty)")
 
     # Collect task blocks: from each `### task-<id>` heading to the next ##/### heading.
     blocks = []

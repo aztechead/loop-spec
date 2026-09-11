@@ -306,5 +306,20 @@ while IFS= read -r line; do
   esac
 done <<<"$receipt_py_out"
 
+# A PEP 621 project with no lock installs itself editable into .venv under an interpreter
+# that satisfies requires-python (a live 3.14 project was prepared under 3.11 and VERIFY
+# could not install it).
+PYP="$WORK/pyproject-plain"; mkdir -p "$PYP"; git -C "$PYP" init -q
+printf '[project]\nname = "x"\nversion = "0"\nrequires-python = ">=3.8"\n' > "$PYP/pyproject.toml"
+git -C "$PYP" -c user.email=t@t -c user.name=t add -A; git -C "$PYP" -c user.email=t@t -c user.name=t commit -q -m seed
+out="$(bash "$SCRIPT" resolve --root "$PYP")"
+check "a plain pyproject installs editable into .venv" "python3 -m venv .venv && .venv/bin/python -m pip install -e '.'" "$(jq -r '.command' <<<"$out")"
+check "a plain pyproject reports its source" "root:pyproject" "$(jq -r '.reason' <<<"$out" | sed -n 's/.*python=\([^ ]*\).*/\1/p')"
+printf '[project]\nname = "x"\nversion = "0"\nrequires-python = ">=3.14"\n\n[project.optional-dependencies]\ntest = ["pytest"]\n' > "$PYP/pyproject.toml"
+git -C "$PYP" -c user.email=t@t -c user.name=t commit -q -am bump
+out="$(bash "$SCRIPT" resolve --root "$PYP")"
+check "requires-python names an interpreter that satisfies it" "1" "$(jq -r '.command' <<<"$out" | grep -c '3\.14')"
+check "declared test extras are installed" "1" "$(jq -r '.command' <<<"$out" | grep -c -- "-e '\.\[test\]'")"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]
