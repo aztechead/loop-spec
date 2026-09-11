@@ -484,7 +484,11 @@ FDC="$(make_feature "$WORK/cycle-c")"
 TOK_C1="$WORK/cycle-c/tok1.json"
 LOOP_SPEC_QL_STATE="$FDC/quality-loop.json" LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT="$TOK_C1" \
   bash "$SCRIPT" record-round "app/main.py" 1 '[]' >/dev/null
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FDC" warnings '["x"]' >/dev/null
+# The unrelated write is its own participant (task-009 strict enforcement): it begins
+# its own operation rather than bypassing the ingress token entirely.
+TOK_C_BUMP="$WORK/cycle-c/tok-bump.json"
+python3 "$REPO_ROOT/lib/feature_write.py" ingress "$FDC" > "$TOK_C_BUMP"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FDC" warnings '["x"]' --token "$TOK_C_BUMP" >/dev/null
 before_sidecar_c="$(cat "$FDC/quality-loop.json")"
 rc=0
 out_c="$(LOOP_SPEC_QL_STATE="$FDC/quality-loop.json" LOOP_SPEC_PUBLICATION_TOKEN="$TOK_C1" \

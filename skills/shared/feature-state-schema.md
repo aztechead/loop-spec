@@ -25,9 +25,12 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 
 ## Identity and publication fields
 
-Feature schema remains 7. `requirementsContract` and `artifactPublication` are optional
-on historical states; when present, their complete nested shapes are checked by
-`validate_state` in `lib/requirements.py` on reads and before writes. Unknown keys,
+Feature schema remains 7. `requirementsContract` and `artifactPublication` are present
+on every new cycle from the one create-if-absent write that starts it (`format: "v1"`)
+and legacy-bootstrapped on the first participant to touch a resumed pre-7 cycle that
+never carried them (`format: "legacy"`); they stay absent only on completed historical
+states nothing ever bootstraps. When present, their complete nested shapes are checked
+by `validate_state` in `lib/requirements.py` on reads and before writes. Unknown keys,
 missing members, noncanonical IDs, invalid hashes, and booleans used as counters fail.
 The graph enum declares top-level names; it does not validate these nested objects.
 
@@ -48,19 +51,28 @@ Both counters are monotonic. Publication transaction enforcement is a separate b
 `lib/requirements.py` return candidates without writing files. Trusted bootstrap
 records legacy explicitly for incomplete product-6.x cycles with feature schema 7;
 unsupported or missing feature schema versions fail. Completed historical states stay
-unchanged, without inferring a migration. Fixture opt-in can initialize v1; ordinary single/workspace initialization
-retains its existing behavior. `feature-write.sh reconcile-inventory <dir> <inventory-json>` reconciles against the
+unchanged, without inferring a migration. `lib/feature-init.sh skeleton` bootstraps v1
+into every ordinary single/workspace initialization's one create-if-absent write; there
+is no operator switch to select legacy for a new cycle.
+`feature-write.sh reconcile-inventory <dir> <inventory-json>` reconciles against the
 accepted ledger while holding the state lock. Existing legacy
 state cannot become v1 through ordinary writes. Recorded format, version, and owner
 cannot be removed or changed, including by whole-state replacement.
+
+Once a feature carries `artifactPublication`, every mutation needs the ingress token
+that began its operation (`lib/feature_write.py begin_operation`/`ingress`) -- the only
+token-less write left is the create-if-absent `replace` of a not-yet-existing
+`feature.json`. `feature-write.sh set|append|batch|replace|ack-remediation|
+reconcile-inventory` without `--token` against such a feature exits 1 and changes
+nothing.
 
 ## Schema (v7)
 
 ```json
 {
   "schemaVersion": 7,
-  "requirementsContract": "optional; complete identity contract described above",
-  "artifactPublication": "optional; complete publication contract described above",
+  "requirementsContract": "present on every new cycle (v1) and every legacy-bootstrapped resumed cycle; absent only on a completed historical state",
+  "artifactPublication": "present on every new cycle and every legacy-bootstrapped resumed cycle; absent only on a completed historical state",
   "slug": "string (kebab-case)",
   "feature_title": "immutable original goal in the user's words",
   "createdAt": "ISO-8601 timestamp",

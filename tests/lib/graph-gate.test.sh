@@ -147,9 +147,13 @@ check "raw append to gateHistory refused" "1" "$rc"
 rc=0
 bash "$ROOT/lib/feature-write.sh" set "$WORK/feature" currentGate.round '9' >/dev/null 2>&1 || rc=$?
 check "raw set of a currentGate subkey refused" "1" "$rc"
-# Every other key still writes normally.
+# Every other key still writes normally, with its own ingress token (task-009
+# strict enforcement: this feature carries artifactPublication from creation).
 rc=0
-bash "$ROOT/lib/feature-write.sh" set "$WORK/feature" currentPhase '"verify"' >/dev/null 2>&1 || rc=$?
+tok="$(mktemp "${TMPDIR:-/tmp}/graph-gate-fw-token.XXXXXX")"
+python3 "$ROOT/lib/feature_write.py" ingress "$WORK/feature" > "$tok"
+bash "$ROOT/lib/feature-write.sh" set "$WORK/feature" currentPhase '"verify"' --token "$tok" >/dev/null 2>&1 || rc=$?
+rm -f "$tok"
 check "unrelated key still writable" "0" "$rc"
 
 # --- next: the delta-round probe ---------------------------------------------
@@ -233,7 +237,11 @@ for sub in open fail pass; do
   seed
   t0="$WORK/ac5-$sub-t0.json"
   python3 "$FW" ingress "$WORK/feature" > "$t0"
-  bash "$ROOT/lib/feature-write.sh" append "$WORK/feature" warnings "\"ac5-$sub-bump\"" >/dev/null
+  # The unrelated bump is its own participant (task-009 strict enforcement): it
+  # begins its own operation rather than bypassing the ingress token entirely.
+  t_bump="$WORK/ac5-$sub-tbump.json"
+  python3 "$FW" ingress "$WORK/feature" > "$t_bump"
+  bash "$ROOT/lib/feature-write.sh" append "$WORK/feature" warnings "\"ac5-$sub-bump\"" --token "$t_bump" >/dev/null
   cp "$WORK/feature/feature.json" "$WORK/ac5-$sub-before.json"
   rc=0
   case "$sub" in

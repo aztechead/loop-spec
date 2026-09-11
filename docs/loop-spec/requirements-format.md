@@ -2,9 +2,12 @@
 
 For maintainers editing SPEC requirements or consuming the pure inventory reader.
 
-The v1 grammar is available for integration fixtures. Ordinary cycles retain their
-legacy format until every producer and consumer supports v1. An explicit unknown or
-malformed version fails; a persisted v1 contract cannot lose its metadata.
+v1 is the format every new cycle records from creation. A cycle resumed from a
+pre-7 checkout that never carried this contract stays on legacy once the first
+participant bootstraps it (`lib/requirements.py bootstrap_state`); there is no
+operator switch to choose legacy for a new cycle. An explicit unknown or malformed
+version fails; a persisted contract's format, version and owner cannot be removed
+or downgraded by ordinary writes, including whole-state replacement.
 
 SPEC begins with frontmatter containing exactly one of each declaration:
 
@@ -108,10 +111,6 @@ a synthesized `SC-001` carrying its own prose when it names no scenario itself
 and never a document position -- a numeric alias (`--row 1`, `--row GE-9`) is refused
 with exit 2. A `spec fill --json` batch reconciles in memory between the criteria in
 one call so two new requirements never race for the same fresh ID.
-
-`LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1` (`lib/feature-init.sh`) is a transitional,
-fixture-only opt-in read once at cycle creation: it is not a user-facing downgrade
-switch, and ordinary cycles stay on legacy until v1 activation.
 
 ## Execution inputs (lib/execution_inputs.py)
 

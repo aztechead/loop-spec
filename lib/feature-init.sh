@@ -40,13 +40,13 @@
 #          (top-level branch/baseSha/baseBranch/worktreePath null; commands empty;
 #           per-repo commands live in workspace.repos[].commands).
 #
-# LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 (transitional, fixture-only until v1 activation
-# at task-009 -- docs/loop-spec/requirements-format.md): `skeleton` also bootstraps a v1
-# requirementsContract and artifactPublication into the printed feature.json, so a
-# feature carries them from the one write that creates it. Owner.repository resolves,
-# in order: the workspace's own first repo name (workspace mode; never a path), else
-# LOOP_SPEC_REPOSITORY_ID (an explicit operator id), else a generated uuid4. Without the
-# switch, `skeleton` prints exactly what it prints today.
+# `skeleton` always bootstraps a v1 requirementsContract and artifactPublication into
+# the printed feature.json, so a feature carries them from the one write that creates
+# it (docs/loop-spec/requirements-format.md). Owner.repository resolves, in order: the
+# workspace's own first repo name (workspace mode; never a path), else
+# LOOP_SPEC_REPOSITORY_ID (an explicit operator id), else a generated uuid4. There is no
+# operator switch to select legacy at creation; legacy only exists on resumed pre-7
+# cycles bootstrapped by lib/feature-bootstrap.sh.
 #
 # Exit codes: 0 success; 1 bad invocation.
 set -euo pipefail
@@ -570,9 +570,7 @@ case "${1:-}" in
       *)
         echo "feature-init: --mode must be 'single' or 'workspace'" >&2; exit 1;;
     esac
-    if [[ "${LOOP_SPEC_REQUIREMENTS_V1_FIXTURE:-0}" == "1" ]]; then
-      result="$(requirements_v1_bootstrap "$result" "$(requirements_v1_owner "$mode" "$repos_json")")" || exit 1
-    fi
+    result="$(requirements_v1_bootstrap "$result" "$(requirements_v1_owner "$mode" "$repos_json")")" || exit 1
     printf '%s\n' "$result"
     ;;
   *)

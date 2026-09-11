@@ -289,6 +289,12 @@ new_fd() {
     --branch feat/rt --base-sha "$BASE_SHA" --base-branch main --worktree "" \
     --prepare "" --test "true" --lint "" --typecheck "" > "$FD/feature.json"
   rm -f "$FD"/.*.lock "$FD"/*.lock "$FD/graph-checkpoints.jsonl" "$FD/events.jsonl" "$FD/graph-pause.json"
+  # This fixture's SPEC.md is deliberately legacy-shaped (tests/fixtures/minimal-
+  # SPEC.md, no requirements_version): strip the v1 contract a new cycle otherwise
+  # carries so the first participant bootstraps legacy, same pattern as
+  # tests/lib/cycle-driver.test.sh's AC6.
+  jq 'del(.artifactPublication) | del(.requirementsContract)' "$FD/feature.json" > "$FD/feature.json.tmp"
+  mv "$FD/feature.json.tmp" "$FD/feature.json"
 }
 
 # assert_stale_refusal NAME RC ERR: the one "was this refusal the token check, not
@@ -335,9 +341,12 @@ publication_case() {
     check "$name: valid token write lands and generation advances" "advanced past $gen0" "$gen1"
   fi
 
-  local t1="$WORK/pc-$$-t1.json" o1="$WORK/pc-$$-o1.json" rc1=0
+  local t1="$WORK/pc-$$-t1.json" o1="$WORK/pc-$$-o1.json" tbump="$WORK/pc-$$-tbump.json" rc1=0
   python3 "$FW" ingress "$FD" > "$t1" 2>"$WORK/pc-$$-err1"
-  bash "$ROOT/lib/feature-write.sh" append "$FD" warnings "\"$name-bump\"" >/dev/null 2>"$WORK/pc-$$-bump.err"
+  # The unrelated bump is its own participant (task-009 strict enforcement): it
+  # begins its own operation rather than bypassing the ingress token entirely.
+  python3 "$FW" ingress "$FD" > "$tbump" 2>"$WORK/pc-$$-tbumperr"
+  bash "$ROOT/lib/feature-write.sh" append "$FD" warnings "\"$name-bump\"" --token "$tbump" >/dev/null 2>"$WORK/pc-$$-bump.err"
   cp "$FD/feature.json" "$WORK/pc-$$-before.json"
   err="$(LOOP_SPEC_PUBLICATION_TOKEN="$t1" LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT="$o1" "$@" 2>&1 1>/dev/null)" || rc1=$?
   assert_stale_refusal "$name" "$rc1" "$err"
@@ -416,7 +425,9 @@ fi
 new_fd
 spec_approve_t1="$WORK/spec-approve.t1.json"
 python3 "$FW" ingress "$FD" > "$spec_approve_t1"
-bash "$ROOT/lib/feature-write.sh" append "$FD" warnings '"spec-approve-bump"' >/dev/null
+spec_approve_tbump="$WORK/spec-approve.tbump.json"
+python3 "$FW" ingress "$FD" > "$spec_approve_tbump"
+bash "$ROOT/lib/feature-write.sh" append "$FD" warnings '"spec-approve-bump"' --token "$spec_approve_tbump" >/dev/null
 cp "$FD/feature.json" "$WORK/spec-approve.before.json"
 spec_approve_rc=0
 spec_approve_err="$(LOOP_SPEC_PUBLICATION_TOKEN="$spec_approve_t1" env LOOP_SPEC_HARNESS=codex \
@@ -487,7 +498,9 @@ jq '.currentPhase="deliver" | .delivery={status:"pending",attemptedAt:null,finis
 mv "$DELIVER_RT_DIR/feature.json.tmp" "$DELIVER_RT_DIR/feature.json"
 deliver_rt_t1="$WORK/deliver-rt-t1.json"
 python3 "$FW" ingress "$DELIVER_RT_DIR" > "$deliver_rt_t1"
-bash "$ROOT/lib/feature-write.sh" append "$DELIVER_RT_DIR" warnings '"deliver-rt-bump"' >/dev/null
+deliver_rt_tbump="$WORK/deliver-rt-tbump.json"
+python3 "$FW" ingress "$DELIVER_RT_DIR" > "$deliver_rt_tbump"
+bash "$ROOT/lib/feature-write.sh" append "$DELIVER_RT_DIR" warnings '"deliver-rt-bump"' --token "$deliver_rt_tbump" >/dev/null
 cp "$DELIVER_RT_DIR/feature.json" "$WORK/deliver-rt-before.json"
 deliver_rt_rc1=0
 deliver_rt_err1="$(LOOP_SPEC_PUBLICATION_TOKEN="$deliver_rt_t1" LOOP_SPEC_PR_DELIVERY_BIN="$DELIVER_RT_SHIM" \
@@ -555,6 +568,12 @@ new_verify_rt_fd() {
     --branch feat/rt --base-sha "$VERIFY_RT_BASE" --base-branch main --worktree "" \
     --prepare "" --test "true" --lint "" --typecheck "" > "$VERIFY_RT_FD/feature.json"
   rm -f "$VERIFY_RT_FD"/.*.lock "$VERIFY_RT_FD"/*.lock "$VERIFY_RT_FD/graph-checkpoints.jsonl" "$VERIFY_RT_FD/events.jsonl" "$VERIFY_RT_FD/graph-pause.json"
+  # This fixture's SPEC.md is deliberately legacy-shaped (the criteria: frontmatter
+  # map, not requirements_version): strip the v1 contract a new cycle otherwise
+  # carries so the first participant bootstraps legacy, same pattern as
+  # tests/lib/cycle-driver.test.sh's AC6.
+  jq 'del(.artifactPublication) | del(.requirementsContract)' "$VERIFY_RT_FD/feature.json" > "$VERIFY_RT_FD/feature.json.tmp"
+  mv "$VERIFY_RT_FD/feature.json.tmp" "$VERIFY_RT_FD/feature.json"
 }
 
 new_verify_rt_fd
@@ -579,7 +598,9 @@ new_verify_rt_fd
 verify_rt_verification_skeleton
 verify_rt_t1="$WORK/verify-rt-t1.json"
 python3 "$FW" ingress "$VERIFY_RT_FD" > "$verify_rt_t1"
-bash "$ROOT/lib/feature-write.sh" append "$VERIFY_RT_FD" warnings '"verify-rt-bump"' >/dev/null
+verify_rt_tbump="$WORK/verify-rt-tbump.json"
+python3 "$FW" ingress "$VERIFY_RT_FD" > "$verify_rt_tbump"
+bash "$ROOT/lib/feature-write.sh" append "$VERIFY_RT_FD" warnings '"verify-rt-bump"' --token "$verify_rt_tbump" >/dev/null
 cp "$VERIFY_RT_FD/feature.json" "$WORK/verify-rt-before.json"
 cp "$VERIFY_RT_DOCS/VERIFICATION.md" "$WORK/verify-rt-verification-before.md"
 verify_rt_rc1=0

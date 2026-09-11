@@ -15,6 +15,17 @@ trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/feat" "$WORK/bin"
 PASS=0; FAIL=0
 
+# fw_set FEATURE_DIR DOT_PATH JSON_VALUE: a plain `set` against a feature that already
+# carries artifactPublication needs its own ingress token (task-009 strict
+# enforcement) -- this begins one throwaway operation and writes through it.
+fw_set() {
+  local dir="$1" path="$2" value="$3" tok
+  tok="$(mktemp "${TMPDIR:-/tmp}/graph-run-fw-token.XXXXXX")"
+  python3 "$ROOT/lib/feature_write.py" ingress "$dir" > "$tok"
+  bash "$ROOT/lib/feature-write.sh" set "$dir" "$path" "$value" --token "$tok" >/dev/null
+  rm -f "$tok"
+}
+
 check() {
   local name="$1" expected="$2" actual="$3"
   if [[ "$expected" == "$actual" ]]; then
@@ -215,6 +226,12 @@ git -C "$remrepo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m in
 rfd="$remrepo/.loop-spec/features/remediation"
 rdocs="$remrepo/docs/loop-spec/features/remediation"
 mkdir -p "$rdocs"
+# This fixture covers remediation-dispatch mechanics, not requirements-format
+# semantics -- strip the v1 contract a new cycle otherwise carries so the first
+# participant (spec approve) bootstraps legacy, keeping minimal-SPEC.md's legacy
+# shape meaningful (same pattern as tests/lib/cycle-driver.test.sh's AC6).
+jq 'del(.artifactPublication) | del(.requirementsContract)' "$rfd/feature.json" > "$rfd/feature.json.tmp"
+mv "$rfd/feature.json.tmp" "$rfd/feature.json"
 cp "$ROOT/tests/fixtures/minimal-SPEC.md" "$rdocs/SPEC.md"
 (
   cd "$remrepo"
@@ -233,9 +250,9 @@ cat > "$rdocs/VERIFICATION.md" <<'MD'
 | 1 | it works | PASS | `bash -n a.sh` -> ok |
 MD
 printf '[{"id":"original","subject":"original work","files":[],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["done"],"status":"done"}]' > "$rfd/tasks.json"
-bash "$ROOT/lib/feature-write.sh" set "$rfd" artifacts.tasks "\"$rfd/tasks.json\"" >/dev/null
-bash "$ROOT/lib/feature-write.sh" set "$rfd" commands.test '"true"' >/dev/null
-bash "$ROOT/lib/feature-write.sh" set "$rfd" currentPhase '"verify"' >/dev/null
+fw_set "$rfd" artifacts.tasks "\"$rfd/tasks.json\""
+fw_set "$rfd" commands.test '"true"'
+fw_set "$rfd" currentPhase '"verify"'
 out="$(bash "$SCRIPT" --step --feature-dir "$rfd" "$ROOT/graph/cycle.graph.json")"
 check "remediation: real graph starts at VERIFY boundary" "verify" "$(jq -r '.node' <<<"$out")"
 rc=0
@@ -276,7 +293,7 @@ done
 cp -R "$WORK/remediation-boundary" "$remrepo/.loop-spec/features/bad-spec-priority"
 bfd="$remrepo/.loop-spec/features/bad-spec-priority"
 retarget_tasks_pointer "$bfd"
-bash "$ROOT/lib/feature-write.sh" set "$bfd" reviewRouting '{"route":"bad-spec","pending":true}' >/dev/null
+fw_set "$bfd" reviewRouting '{"route":"bad-spec","pending":true}'
 out="$(bash "$SCRIPT" --step --completed-node verify --feature-dir "$bfd" "$ROOT/graph/cycle.graph.json")"
 check "remediation: bad-spec keeps priority over queued work" "discuss" "$(jq -r '.node' <<<"$out")"
 check "remediation: bad-spec leaves queued findings intact" "$queued" "$(jq -c '.pendingRemediationTasks' "$bfd/feature.json")"
@@ -306,7 +323,7 @@ for invalid in false '{}' null; do
   invalid_dir="$remrepo/.loop-spec/features/invalid-queue-$invalid"
   cp -R "$WORK/remediation-boundary" "$invalid_dir"
   retarget_tasks_pointer "$invalid_dir"
-  bash "$ROOT/lib/feature-write.sh" set "$invalid_dir" pendingRemediationTasks "$invalid" >/dev/null
+  fw_set "$invalid_dir" pendingRemediationTasks "$invalid"
   rc=0; out="$(bash "$SCRIPT" --step --completed-node verify --feature-dir "$invalid_dir" "$ROOT/graph/cycle.graph.json" 2>"$WORK/invalid-route.err")" || rc=$?
   check "remediation: invalid queue $invalid aborts routing" "5" "$rc"
   check "remediation: invalid queue $invalid retains VERIFY phase" "verify" "$(jq -r '.currentPhase' "$invalid_dir/feature.json")"

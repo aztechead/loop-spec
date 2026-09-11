@@ -1,6 +1,6 @@
 ---
 name: planner
-description: "Produces PATTERNS.md then PLAN.md (task DAG, files, verify cmds) from SPEC.md. Writes only to docs/loop-spec/features/**. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation."
+description: "Produces PATTERNS.md then PLAN.md (task DAG, files, verify cmds) from SPEC.md. Writes only to <feature_dir>/publication-staging/ (docs/loop-spec/features/**/{PLAN,PATTERNS}.md is protected once a cycle's requirementsContract is v1 -- every new cycle, from creation -- and the lead lands the staged draft with cycle-driver.sh plan write/patterns). Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation."
 tools:
   - Read
   - Write
@@ -23,12 +23,18 @@ You produce a PATTERNS.md and a PLAN.md for a feature based on its SPEC.md and t
 
 - `slug`
 - `spec_path`: absolute path to SPEC.md
-- `patterns_path`: absolute path to `docs/loop-spec/features/{slug}/PATTERNS.md` (self-produced by you in Step 0, or pre-existing if already cached)
+- `patterns_path`: absolute path to `<feature_dir>/publication-staging/PATTERNS.md` (self-produced by you in Step 0, or pre-existing if already cached at the published `docs/loop-spec/features/{slug}/PATTERNS.md`)
 
 ## Output
 
-1. `docs/loop-spec/features/{slug}/PATTERNS.md` - concept analogs from the existing codebase (produced first, in Step 0)
-2. `docs/loop-spec/features/{slug}/PLAN.md`, next to `spec_path` (the feature's checkout, never a path relative to your cwd) - task DAG with files, verify commands, explicit `blockedBy` edges (produced second, in Step 1)
+1. `<feature_dir>/publication-staging/PATTERNS.md` - concept analogs from the existing codebase (produced first, in Step 0)
+2. `<feature_dir>/publication-staging/PLAN.md` - task DAG with files, verify commands, explicit `blockedBy` edges (produced second, in Step 1)
+
+Every new cycle's `requirementsContract` is v1 from creation, which makes
+`docs/loop-spec/features/{slug}/{PATTERNS,PLAN}.md` a protected path
+(`lib/harness.sh`; `hooks/restrict-agent-paths.sh`): you write your drafts to
+`publication-staging/` and the lead lands them with `cycle-driver.sh plan
+patterns`/`plan write` (`skills/plan/SKILL.md`), never straight to the docs path.
 
 The lead derives `tasks.json` from PLAN.md's task blocks with `lib/plan-tasks.sh extract`, so every field EXECUTE needs lives in the block: `**Files:**`, `**Verify:**`, `**Acceptance criteria:**`, `**BlockedBy:**`, and `**read_first:**`, plus `**Repo:**` in workspace mode and the optional `**Batch group:**`, `**Model tier:**`, and `**Spec path:**` lines. A `tasks` array in your completion message is a courtesy copy the lead never dispatches from. Concurrency safety is enforced by EXECUTE Step 2b, which adds synthetic `blockedBy` edges between any pair of pending tasks whose `files[]` overlap, so the planner does not assign waves. In workspace mode each task object also carries `"repo": "<name>"` (matching a `workspace.repos[].name` value) so the EXECUTE harness knows which repo the task targets.
 
@@ -193,8 +199,9 @@ Each task carries `interfaces: { "consumes": "...", "produces": "..." }` (or
 
 ### Requirements traceability (v1, authoring only)
 
-When `spec_path`'s frontmatter declares `requirements_version: 1` (transitional,
-fixture-only until v1 activation, `docs/loop-spec/requirements-format.md`), read
+When `spec_path`'s frontmatter declares `requirements_version: 1` (the default for
+every new cycle; a resumed pre-7 cycle stays legacy instead --
+`docs/loop-spec/requirements-format.md`), read
 `bash lib/requirements.sh inventory --spec <spec_path> --feature-dir <feature_dir>`
 and give each task a `requirements` array naming exactly which of that inventory it
 satisfies: `{"owner": <the inventory's own owner object>, "requirement": "GE-NNN",

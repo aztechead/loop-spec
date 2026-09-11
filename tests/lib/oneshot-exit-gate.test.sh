@@ -40,6 +40,12 @@ FD="$REPO/.loop-spec/features/fix-slug"
 DOCS="$REPO/docs/loop-spec/features/fix-slug"
 mkdir -p "$DOCS"
 fj() { jq -r "$1" "$FD/feature.json"; }
+# This shared fixture drives the oneshot exit gate generically with legacy-shaped
+# SPEC/VERIFICATION content throughout (the separate REPO2 fixture below covers the
+# v1 ONESHOT contract). Strip the v1 contract a new cycle otherwise carries so the
+# first participant bootstraps legacy (same pattern as tests/lib/cycle-driver.test.sh's
+# AC6 and tests/lib/phase-exit.test.sh).
+jq 'del(.artifactPublication) | del(.requirementsContract)' "$FD/feature.json" > "$WORK/fd-legacy.json" && mv "$WORK/fd-legacy.json" "$FD/feature.json"
 
 check "usage: no feature dir is a bad invocation" "2" "$(bash "$GATE" >/dev/null 2>&1; echo $?)"
 
@@ -313,7 +319,7 @@ git -C "$REPO2" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 printf 'echo ok\n' > "$REPO2/a.sh"
 git -C "$REPO2" add -A && git -C "$REPO2" -c user.email=t@t -c user.name=t commit -q -m "feat: a.sh"
 bash "$REPO_ROOT/lib/cycle-driver.sh" start --dir "$REPO2" -- v1 oneshot check >/dev/null 2>&1
-LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 bash "$REPO_ROOT/lib/cycle-driver.sh" init --dir "$REPO2" \
+bash "$REPO_ROOT/lib/cycle-driver.sh" init --dir "$REPO2" \
   --slug v1-oneshot-check --title "v1 oneshot check" --style auto --profile standard --autonomous 1 >/dev/null 2>&1
 FD2="$REPO2/.loop-spec/features/v1-oneshot-check"
 DOCS2="$REPO2/docs/loop-spec/features/v1-oneshot-check"

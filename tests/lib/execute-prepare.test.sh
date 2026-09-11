@@ -13,6 +13,23 @@ check() {
     echo "FAIL: $name (expected '$expected', got '$actual')"; ((FAIL++)) || true
   fi
 }
+# fw_set/fw_append FEATURE_DIR DOT_PATH JSON_VALUE: a plain set/append against a
+# feature that already carries artifactPublication (every new cycle, from creation)
+# needs its own ingress token (task-009 strict enforcement).
+fw_set() {
+  local dir="$1" path="$2" value="$3" tok
+  tok="$(mktemp "${TMPDIR:-/tmp}/execute-prepare-fw-token.XXXXXX")"
+  python3 "$REPO_ROOT/lib/feature_write.py" ingress "$dir" > "$tok"
+  bash "$REPO_ROOT/lib/feature-write.sh" set "$dir" "$path" "$value" --token "$tok" >/dev/null
+  rm -f "$tok"
+}
+fw_append() {
+  local dir="$1" path="$2" value="$3" tok
+  tok="$(mktemp "${TMPDIR:-/tmp}/execute-prepare-fw-token.XXXXXX")"
+  python3 "$REPO_ROOT/lib/feature_write.py" ingress "$dir" > "$tok"
+  bash "$REPO_ROOT/lib/feature-write.sh" append "$dir" "$path" "$value" --token "$tok" >/dev/null
+  rm -f "$tok"
+}
 WORK="${TMPDIR:-/tmp}"; WORK="${WORK%/}/execute-prepare-test.$$"
 trap 'rm -rf "$WORK"' EXIT
 REPO="$WORK/repo"; mkdir -p "$REPO"
@@ -35,8 +52,8 @@ cat > "$FD/tasks.json" <<'JSON'
  {"id":"task-003","subject":"third","files":["c.py"],"blockedBy":[],"verifyCommand":"jq -e . c.json && ! grep -E '(apply|\\bdestroy)' c.json","acceptanceCriteria":["c"]}
 ]
 JSON
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" artifacts.tasks "\"$FD/tasks.json\"" >/dev/null
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands '{"prepare":"","test":"true","lint":"","typecheck":""}' >/dev/null
+fw_set "$FD" artifacts.tasks "\"$FD/tasks.json\""
+fw_set "$FD" commands '{"prepare":"","test":"true","lint":"","typecheck":""}'
 
 # --- usage -------------------------------------------------------------------------
 ec=0; bash "$SCRIPT" >/dev/null 2>&1 || ec=$?
@@ -58,8 +75,8 @@ check "run: the toolchain is probed once for the briefs" "1" "$(grep -c '^jq: jq
 check "run: quoted pattern fragments are not probed as programs" "0" "$(grep -c 'apply\|\\b' "$FD/dispatch/environment.txt")"
 
 # --- remediation intake ------------------------------------------------------------
-bash "$REPO_ROOT/lib/feature-write.sh" append "$FD" pendingRemediationTasks '{"id":"task-001+remediate-1","subject":"Fix: a"}' >/dev/null
-bash "$REPO_ROOT/lib/feature-write.sh" append "$FD" pendingRemediationTasks '{"id":"task-001+remediate-2","subject":"Fix: b"}' >/dev/null
+fw_append "$FD" pendingRemediationTasks '{"id":"task-001+remediate-1","subject":"Fix: a"}'
+fw_append "$FD" pendingRemediationTasks '{"id":"task-001+remediate-2","subject":"Fix: b"}'
 out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
 check "remediation: the task is registered in the sidecar" "1" "$(jq '[.[] | select(.id == "task-001+remediate-1")] | length' "$FD/tasks.json")"
 check "remediation: it takes the project test command" "true" "$(jq -r '.[] | select(.id == "task-001+remediate-1") | .verifyCommand' "$FD/tasks.json")"
@@ -70,8 +87,8 @@ check "remediation: both queued findings appear in dispatch" "2" "$(jq '[.tasks[
 
 # --- invalid intake must leave every queued task available for repair ---------------
 for pending in '[{"id":"bad-verify","subject":"repair verification"}]' '[{"id":"bad-shape","subject":"repair shape","files":"a.py","verifyCommand":"true"}]' 'false' 'null' '[null]' '[{"id":"valid-prefix","subject":"keep this too","verifyCommand":"true"},{"id":"invalid-suffix","subject":"cannot verify"}]'; do
-  bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands.test '""' >/dev/null
-  bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks "$pending" >/dev/null
+  fw_set "$FD" commands.test '""'
+  fw_set "$FD" pendingRemediationTasks "$pending"
   before="$(cat "$FD/tasks.json")"
   ec=0; out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>"$WORK/intake.err")" || ec=$?
   check "invalid remediation $pending: preparation stops" "1" "$ec"
@@ -83,8 +100,8 @@ for pending in '[{"id":"bad-verify","subject":"repair verification"}]' '[{"id":"
   check "invalid remediation $pending: queue unchanged" "$(jq -c . <<<"$pending")" "$(jq -c '.pendingRemediationTasks' "$FD/feature.json")"
   check "invalid remediation $pending: sidecar unchanged" "$before" "$(cat "$FD/tasks.json")"
 done
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands.test '"true"' >/dev/null
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks '[]' >/dev/null
+fw_set "$FD" commands.test '"true"'
+fw_set "$FD" pendingRemediationTasks '[]'
 saved_sidecar="$(cat "$FD/tasks.json")"
 printf '{' > "$FD/tasks.json"
 ec=0; out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)" || ec=$?
@@ -184,7 +201,7 @@ PYREMEDIATION
 # Store failure must not turn a durable sidecar into a ready response.
 printf '#!/usr/bin/env bash\necho "injected store failure" >&2\nexit 2\n' > "$WORK/failing-store.sh"
 chmod +x "$WORK/failing-store.sh"
-bash "$REPO_ROOT/lib/feature-write.sh" append "$FD" pendingRemediationTasks '{"id":"store-failure","subject":"repair persisted work"}' >/dev/null
+fw_append "$FD" pendingRemediationTasks '{"id":"store-failure","subject":"repair persisted work"}'
 ec=0; out="$(LOOP_SPEC_STORE="$WORK/failing-store.sh" bash "$SCRIPT" run --feature-dir "$FD" 2>"$WORK/store.err")" || ec=$?
 check "failed acknowledgment: store failure never reports ready" "1" "$ec"
 check "failed acknowledgment: store failure diagnostic survives" "1" "$(grep -c 'store persist failed' "$WORK/store.err")"

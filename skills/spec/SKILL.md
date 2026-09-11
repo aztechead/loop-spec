@@ -141,8 +141,7 @@ While waiting for an answer, use for example
 Record the answer and rationale before removing a question.
 Do not include ambiguity scores or an interview transcript. Spec-lite owns the oneshot skeleton.
 
-When the entry packet's `requirementsContract.format` is `v1` (transitional, fixture-only
-until v1 activation, `docs/loop-spec/requirements-format.md`), `## Success criteria`
+When the entry packet's `requirementsContract.format` is `v1` (the default for every new cycle; a resumed pre-7 cycle stays legacy instead -- `docs/loop-spec/requirements-format.md`), `## Success criteria`
 requirements are `- [ ] GE-NNN: outcome` with a nested `  - SC-NNN: observable scenario`
 line, and the frontmatter's `{requirements_frontmatter}` placeholder becomes the
 `requirements_version`/`requirements_owner`/`scenario_checks` declarations, single-line

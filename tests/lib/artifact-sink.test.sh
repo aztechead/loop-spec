@@ -118,7 +118,7 @@ from pathlib import Path
 from unittest import TestCase
 import artifact_sink
 from artifact_publication import capture_locked, locked_feature
-from feature_write import write_operation
+from feature_write import begin_operation, write_operation
 
 check = TestCase()
 
@@ -174,7 +174,9 @@ with tempfile.TemporaryDirectory() as temporary:
     docs = root / 'docs/loop-spec/features/demo'
     def competing_write(point):
         if point == 'prepared':
-            write_operation(feature, 'set', ['new warning'], keys=('warnings',))
+            # Its own participant (task-009 strict enforcement), not a token-less
+            # bypass.
+            write_operation(feature, 'set', ['new warning'], keys=('warnings',), token=begin_operation(feature))
     before_index = (root / '.git/index').read_bytes()
     with check.assertRaisesRegex(ValueError, 'stale'):
         artifact_sink.store(feature, root, sink, token=token, failure=competing_write)
@@ -292,7 +294,10 @@ print('PASS: a retry with the token captured before an already-accepted store fa
 with tempfile.TemporaryDirectory() as temporary:
     root, feature, sink, token = build_fixture(Path(temporary))
     docs = root / 'docs/loop-spec/features/demo'
-    write_operation(feature, 'set', ['unrelated'], keys=('warnings',))
+    # The unrelated write is its own participant (task-009 strict enforcement): it
+    # begins its own operation rather than bypassing the ingress token entirely.
+    unrelated_token = begin_operation(feature)
+    write_operation(feature, 'set', ['unrelated'], keys=('warnings',), token=unrelated_token)
     before_index = (root / '.git/index').read_bytes()
     before_spec = (docs / 'SPEC.md').read_text()
     with check.assertRaisesRegex(ValueError, 'stale'):

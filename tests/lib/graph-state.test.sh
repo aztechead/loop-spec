@@ -18,6 +18,17 @@ check() {
   fi
 }
 
+# fw_set FEATURE_DIR DOT_PATH JSON_VALUE: a plain `set` against a feature that already
+# carries artifactPublication needs its own ingress token (task-009 strict
+# enforcement) -- this begins one throwaway operation and writes through it.
+fw_set() {
+  local dir="$1" path="$2" value="$3" tok
+  tok="$(mktemp "${TMPDIR:-/tmp}/graph-state-fw-token.XXXXXX")"
+  python3 "$ROOT/lib/feature_write.py" ingress "$dir" > "$tok"
+  bash "$ROOT/lib/feature-write.sh" set "$dir" "$path" "$value" --token "$tok" >/dev/null
+  rm -f "$tok"
+}
+
 [[ -f "$SCRIPT" ]] || { echo "FAIL: missing $SCRIPT"; exit 1; }
 
 # Minimal graph with one node declaration
@@ -77,13 +88,19 @@ check "bak rotated via feature-write" "0" "$?"
 
 # --- assert-reads fails when key null/absent ---
 # slug is present; remove it via feature-write to null
-bash "$ROOT/lib/feature-write.sh" set "$WORK/feature" slug 'null'
+# A null slug can never round-trip through feature-write.sh (artifact_publication.py
+# requires a safe slug to refresh a publication token), so this scratch mutation for
+# a read-only assertion check edits the file directly rather than through a write
+# operation -- assert-reads never needs a token, only feature.json's bytes.
+jq '.slug = null' "$WORK/feature/feature.json" > "$WORK/feature/feature.json.tmp"
+mv "$WORK/feature/feature.json.tmp" "$WORK/feature/feature.json"
 rc=0
 bash "$SCRIPT" assert-reads --feature-dir "$WORK/feature" --node spec "${GRAPH_FLAG[@]}" 2>/dev/null || rc=$?
 check "unsatisfied read non-zero" "1" "$rc"
 
 # restore slug
-bash "$ROOT/lib/feature-write.sh" set "$WORK/feature" slug '"gdd-state"'
+jq '.slug = "gdd-state"' "$WORK/feature/feature.json" > "$WORK/feature/feature.json.tmp"
+mv "$WORK/feature/feature.json.tmp" "$WORK/feature/feature.json"
 rc=0
 bash "$SCRIPT" assert-reads --feature-dir "$WORK/feature" --node spec "${GRAPH_FLAG[@]}" || rc=$?
 check "satisfied reads exit 0" "0" "$rc"
@@ -108,7 +125,7 @@ cat > "$WORK/graph/optional.graph.json" <<'EOF'
   "edges": []
 }
 EOF
-bash "$ROOT/lib/feature-write.sh" set "$WORK/feature" verificationBaseline 'null'
+fw_set "$WORK/feature" verificationBaseline 'null'
 rc=0
 bash "$SCRIPT" assert-reads --feature-dir "$WORK/feature" --node verify \
   --graph "$WORK/graph/optional.graph.json" || rc=$?
@@ -164,12 +181,12 @@ check "workspace execute fails when repos[] is empty" "1" "$rc"
 
 # Single-mode still requires the top-level key. The existing fixture has a
 # branch; null it and the shipped execute node must fail.
-bash "$ROOT/lib/feature-write.sh" set "$WORK/feature" branch 'null'
+fw_set "$WORK/feature" branch 'null'
 rc=0
 bash "$SCRIPT" assert-reads --feature-dir "$WORK/feature" --node execute \
   --graph "$SHIPPED" 2>/dev/null || rc=$?
 check "single-mode execute still fails when top-level branch is null" "1" "$rc"
-bash "$ROOT/lib/feature-write.sh" set "$WORK/feature" branch '"feat/gdd-state"'
+fw_set "$WORK/feature" branch '"feat/gdd-state"'
 
 # Only branch/baseSha/baseBranch are relocated. A non-relocated null key still
 # blocks in workspace mode, exactly as it does in single mode.
@@ -178,7 +195,10 @@ bash "$ROOT/lib/feature-init.sh" skeleton --mode workspace \
   --ws-root /ws \
   --repos '[{"name":"fe","path":"fe","branch":"feat/ws-wt","baseSha":"abc","baseBranch":"main"}]' \
   > "$WORK/ws-feature/feature.json"
-bash "$ROOT/lib/feature-write.sh" set "$WORK/ws-feature" slug 'null'
+# Same as above: a null slug never round-trips through feature-write.sh, so this
+# scratch mutation for a read-only assertion edits the file directly.
+jq '.slug = null' "$WORK/ws-feature/feature.json" > "$WORK/ws-feature/feature.json.tmp"
+mv "$WORK/ws-feature/feature.json.tmp" "$WORK/ws-feature/feature.json"
 rc=0
 bash "$SCRIPT" assert-reads --feature-dir "$WORK/ws-feature" --node spec \
   --graph "$WORK/graph/cycle.graph.json" 2>/dev/null || rc=$?

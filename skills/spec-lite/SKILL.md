@@ -68,8 +68,7 @@ module the task does not need leaves it in one call,
 `bash "$DRV" spec footprint drop --feature-dir "$feature_dir" --file <test module> --reason "<why>"`,
 which is refused while the file it tests changes.
 
-When the entry packet's `requirementsContract.format` is `v1` (transitional,
-fixture-only until v1 activation, `docs/loop-spec/requirements-format.md`), the
+When the entry packet's `requirementsContract.format` is `v1` (the default for every new cycle; a resumed pre-7 cycle stays legacy instead -- `docs/loop-spec/requirements-format.md`), the
 skeleton's Good Enough rows are already `- [ ] GE-NNN: outcome` with a nested
 `  - SC-NNN: observable scenario` line, and its frontmatter already carries
 `requirements_version`/`requirements_owner`/`scenario_checks`: nothing to type there.

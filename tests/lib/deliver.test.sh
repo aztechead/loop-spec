@@ -41,9 +41,15 @@ done
 cp "$body" "${FAKE_DELIVERY_BODY:?}"
 # Simulates a write racing the parent's publication token: this shim runs as an
 # ordinary subprocess deliver.sh never wraps with the token env, exactly like a
-# stray process would, so its feature-write call is genuinely unparticipating.
+# stray process would, so its feature-write call is genuinely unparticipating in
+# THIS operation -- but once a feature carries artifactPublication (task-009 strict
+# enforcement), even a stray writer must begin its own operation, never bypass the
+# token check entirely.
 if [[ -n "${FAKE_DELIVERY_INTRUDE:-}" ]]; then
-  bash "${FAKE_DELIVERY_LIB:?}" set "$FAKE_DELIVERY_INTRUDE" warnings '["intruder"]' >/dev/null
+  intrude_tok="$(mktemp "${TMPDIR:-/tmp}/deliver-intrude-token.XXXXXX")"
+  python3 "$(dirname "${FAKE_DELIVERY_LIB:?}")/feature_write.py" ingress "$FAKE_DELIVERY_INTRUDE" > "$intrude_tok"
+  bash "$FAKE_DELIVERY_LIB" set "$FAKE_DELIVERY_INTRUDE" warnings '["intruder"]' --token "$intrude_tok" >/dev/null
+  rm -f "$intrude_tok"
 fi
 # Distinct URL per repo so workspace aggregates can be checked.
 url="https://github.com/test/$(basename "$repo")/pull/7"

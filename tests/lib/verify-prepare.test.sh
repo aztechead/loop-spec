@@ -28,7 +28,12 @@ bash "$REPO_ROOT/lib/cycle-driver.sh" init --dir "$REPO" --slug my-feature --tit
 FD="$REPO/.loop-spec/features/my-feature"
 DOCS="$REPO/docs/loop-spec/features/my-feature"; mkdir -p "$DOCS"
 printf '# SPEC\n' > "$DOCS/SPEC.md"; printf '# PLAN\n' > "$DOCS/PLAN.md"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands '{"prepare":"","test":"true","lint":"","typecheck":""}' >/dev/null
+# FD now carries a v1 artifactPublication from creation: a plain `set` needs the
+# ingress token that begins an operation (task-009 strict enforcement).
+tok="$(mktemp "${TMPDIR:-/tmp}/verify-prepare-fw-token.XXXXXX")"
+python3 "$REPO_ROOT/lib/feature_write.py" ingress "$FD" > "$tok"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands '{"prepare":"","test":"true","lint":"","typecheck":""}' --token "$tok" >/dev/null
+rm -f "$tok"
 # The cycle's state commit keeps the tree clean for the validation baseline; stand in for it.
 git -C "$REPO" add -A >/dev/null 2>&1; git -C "$REPO" commit -q -m "chore: state" >/dev/null 2>&1
 

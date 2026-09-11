@@ -41,6 +41,18 @@ drv() {
     bash "$SCRIPT" "$@"
 }
 
+# fw_set FEATURE_DIR DOT_PATH JSON_VALUE: a fixture mutation against a feature that
+# already carries artifactPublication (every feature this file builds, once bootstrap
+# has run) now needs its own ingress token (task-009 strict enforcement) -- this begins
+# one throwaway operation and writes through it, standing in for a real participant.
+fw_set() {
+  local dir="$1" path="$2" value="$3" tok
+  tok="$(mktemp "${TMPDIR:-/tmp}/cycle-driver-fw-token.XXXXXX")"
+  python3 "$REPO_ROOT/lib/feature_write.py" ingress "$dir" > "$tok"
+  bash "$REPO_ROOT/lib/feature-write.sh" set "$dir" "$path" "$value" --token "$tok" >/dev/null
+  rm -f "$tok"
+}
+
 # write_small_plan DOCS_DIR FEATURE_DIR: the smallest PLAN.md/PATTERNS.md/tasks.json
 # the plan exit accepts (one small task, `bash -n a.sh`), shared by every fixture below
 # that walks the full route through PLAN -- both bodies were byte-identical duplication-scan
@@ -100,12 +112,38 @@ MD
 phase_enter() { (cd "$1" && AUTONOMOUS=1 drv next --feature-dir "$2" >/dev/null 2>&1); }
 phase_exit() { (cd "$1" && AUTONOMOUS=1 drv next --feature-dir "$2" --returned-from "$3" >/dev/null 2>&1); }
 
+# stamp_v1_spec SPEC_PATH FEATURE_DIR: minimal-SPEC.md is deliberately legacy-shaped
+# (AC6's legacy-resume fixture needs it to stay that way), but every new cycle now
+# carries a v1 contract from creation -- so any other fixture that copies it in must
+# declare the v1 frontmatter and reshape its one Good Enough bullet into a stable
+# GE-001/SC-001 pair before `spec approve`/`next` will accept it. A no-op on a legacy
+# feature (AC6 strips the contract before calling this pattern, so it never applies).
+stamp_v1_spec() {
+  local spec="$1" fd="$2" fmt owner
+  fmt="$(jq -r '.requirementsContract.format // empty' "$fd/feature.json")"
+  [[ "$fmt" == "v1" ]] || return 0
+  owner="$(jq -c '.requirementsContract.owner' "$fd/feature.json")"
+  python3 - "$spec" "$owner" <<'PY'
+import sys
+path, owner = sys.argv[1], sys.argv[2]
+text = open(path).read()
+text = text.replace(
+    "---\nunresolved_questions: []\n---",
+    "---\nunresolved_questions: []\nrequirements_version: 1\nrequirements_owner: %s\n---" % owner, 1)
+text = text.replace(
+    "- [ ] `bash -n a.sh` exits 0\n",
+    "- [ ] GE-001: `bash -n a.sh` exits 0\n  - SC-001: Observed directly.\n", 1)
+open(path, "w").write(text)
+PY
+}
+
 # write_spec ROOT FEATURE_DIR: the smallest SPEC.md the spec exit accepts, because
 # `next --returned-from spec` now runs that exit and answers REDO without one.
 write_spec() {
   local root="$1" fd="$2" slug docs
   slug="$(jq -r '.slug' "$fd/feature.json")"; docs="$root/docs/loop-spec/features/$slug"; mkdir -p "$docs"
   cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$docs/SPEC.md"
+  stamp_v1_spec "$docs/SPEC.md" "$fd"
   drv spec approve --feature-dir "$fd" --source human >/dev/null
 }
 # --- usage ---------------------------------------------------------------------
@@ -190,7 +228,7 @@ check "next: declined SPEC gate ends the loop" "DONE status=paused reason=spec-c
 rm -f "$FD/result.json"
 
 # every phase boundary hands off after bookkeeping (style auto: no human gate)
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"auto"' >/dev/null
+fw_set "$FD" execStyle '"auto"'
 out="$(cd "$REPO" && SESSION=s1 drv next --feature-dir "$FD" --returned-from discuss 2>/dev/null)"
 check "next: handoff answer names the successor" "HANDOFF next=" "${out:0:13}"
 check "next: handoff writes a paused result" "phase-handoff" "$(jq -r '.reason' "$FD/result.json")"
@@ -294,6 +332,11 @@ check "begin: an autonomous run initializes without a second call" "init" "$(jq 
 check "begin: the feature dir is created" "1" "$([[ -d "$(jq -r '.featureDir' <<<"$out")" ]] && echo 1 || echo 0)"
 check "begin: start's notices ride along" "1" "$(jq '.notices | length > 0' <<<"$out" | grep -c true)"
 FD6="$(jq -r '.featureDir' <<<"$out")"
+# REPO6 covers driver mechanics (redo, handoff, rewind, phase-begin), not
+# requirements-format semantics -- strip the v1 contract a new cycle otherwise
+# carries so the first participant (spec approve, below) bootstraps legacy, same
+# as AC6/REPO7/REPORR, keeping minimal-SPEC.md's legacy shape meaningful.
+jq 'del(.artifactPublication) | del(.requirementsContract)' "$FD6/feature.json" > "$WORK/repo6.json" && mv "$WORK/repo6.json" "$FD6/feature.json"
 out="$(cd "$REPO6" && drv begin -- "add a flag to the tool" 2>/dev/null)"
 check "begin: a human decision is handed back" "decisions" "$(jq -r '.action' <<<"$out")"
 check "begin: the init command the lead runs next is rendered with start's values" "1" "$(jq -r '.next.init' <<<"$out" | grep -c '^bash "\$DRV" init --dir .* --slug <slug> --title "<title>" --style .* --greenfield <0|1> ')"
@@ -346,6 +389,12 @@ git -C "$REPO7" add -A && git -C "$REPO7" -c commit.gpgsign=false commit -q -m "
 out="$(cd "$REPO7" && AUTONOMOUS=1 drv begin -- "autonomous fix slugify dots" 2>/dev/null)"
 FD7="$(jq -r '.featureDir' <<<"$out")"
 DOCS7="$REPO7/docs/loop-spec/features/$(jq -r '.slug' "$FD7/feature.json")"
+# This fixture covers ONESHOT/driver mechanics (footprint, escalation, handoff), not
+# requirements-format semantics -- those are v1fixture's/REPOVR's/REPO2's job above and
+# in tests/lib/oneshot-exit-gate.test.sh. Strip the v1 contract this new cycle would
+# otherwise carry so the first participant (spec skeleton) bootstraps legacy, same as
+# AC6, keeping every legacy `--row 1`/free-text assertion below meaningful.
+jq 'del(.artifactPublication) | del(.requirementsContract)' "$FD7/feature.json" > "$WORK/repo7.json" && mv "$WORK/repo7.json" "$FD7/feature.json"
 # The driver decides the oneshot candidate from the scout's record and writes the
 # skeleton where the exit gate reads it, with the facts it holds filled and the lead's
 # values left as placeholders. The lead never types the footprint into the driver.
@@ -365,7 +414,7 @@ check "spec skeleton: one cited file is the oneshot route" "oneshot" "$(jq -r '.
 # the scout but the task protects nothing, so it stays in the footprint.
 check "spec skeleton: a read-only mark on an unprotected file is not honored" '["slugify.py","README.md"]' "$(jq -c '.footprint' <<<"$out")"
 check "spec skeleton: nothing is read-only without a protected list" '[]' "$(jq -c '.readOnly' <<<"$out")"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" protected '["README.md"]' >/dev/null
+fw_set "$FD7" protected '["README.md"]'
 rm -f "$DOCS7/SPEC.md"
 out="$(cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" 2>/dev/null)"
 check "spec skeleton: the footprint is the record minus the protected file" '["slugify.py"]' "$(jq -c '.footprint' <<<"$out")"
@@ -551,8 +600,8 @@ for p in sys.argv[1:]:
     s = re.sub(r"\n### Criterion 3\n+```\n.*?\n```\n", "\n", s, flags=re.S)
     open(p, "w").write(s)
 PY
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" commands.test '"python3 -c \"print(\\\"2 passed\\\")\""' >/dev/null
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" protected '[]' >/dev/null
+fw_set "$FD7" commands.test '"python3 -c \"print(\\\"2 passed\\\")\""'
+fw_set "$FD7" protected '[]'
 # Fix the failing criterion's command in the spec and run again: the row turns PASS.
 (cd "$REPO7" && drv spec fill --feature-dir "$FD7" --command 'python3 -c "print(1)" | grep -c 1' --expect "prints 1" --row GE-002 >/dev/null 2>&1)
 check "the fixture's second criterion now runs a passing pipeline, replaced by row" "1" "$(grep -c 'print(1)" | grep -c 1` exits 0: prints 1' "$DOCS7/SPEC.md")"
@@ -681,7 +730,7 @@ out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --re
 check "next from oneshot in-harness: the driver launches nothing and the gate names the missing dispatch" "0" "$(grep -c 'the driver ran the one review pass' <<<"$out")"
 # The third identical REDO is the gate's escalation (port audit 5, R3): route: full with
 # the flag classes on record, and the run continues on the full path from DISCUSS.
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" driverRedo 'null' >/dev/null
+fw_set "$FD7" driverRedo 'null'
 out1="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
 out2="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
 out3="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
@@ -699,13 +748,13 @@ check "spec write: allowed over an escalated spec (the full shape is the lead's)
 # The port made every earlier phase a rewind (iterate to verify prints REWIND where it
 # did not before); the record of that protocol change is this pin, through the driver's
 # own replay of a recorded handoff.
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD6" handoffSession '{"id":"s9","from":"iterate","next":"verify","at":"2026-09-09T00:00:00Z"}' >/dev/null
+fw_set "$FD6" handoffSession '{"id":"s9","from":"iterate","next":"verify","at":"2026-09-09T00:00:00Z"}'
 out="$(cd "$REPO6" && AUTONOMOUS=1 SESSION=s9 drv next --feature-dir "$FD6" 2>/dev/null)"
 check "next: iterate to verify is a REWIND (verify precedes iterate on the graph)" "REWIND next=verify" "$out"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD6" handoffSession '{"id":"s9","from":"verify","next":"iterate","at":"2026-09-09T00:00:00Z"}' >/dev/null
+fw_set "$FD6" handoffSession '{"id":"s9","from":"verify","next":"iterate","at":"2026-09-09T00:00:00Z"}'
 out="$(cd "$REPO6" && AUTONOMOUS=1 SESSION=s9 drv next --feature-dir "$FD6" 2>/dev/null)"
 check "next: verify to iterate is a HANDOFF (forward on the graph)" "HANDOFF next=iterate" "${out:0:20}"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD6" handoffSession null >/dev/null
+fw_set "$FD6" handoffSession null
 
 # --- phase-begin: one ingress call per phase ------------------------------------------
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv phase-begin spec --feature-dir "$FD6" 2>/dev/null)"
@@ -731,9 +780,10 @@ out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from
 check "next: the third identical REDO escalates" "DONE status=escalated" "${out:0:21}"
 check "next: the escalation names the gate" "1" "$(head -1 <<<"$out" | grep -c 'spec exit gate unsatisfied')"
 check "next: an escalated result is published" "escalated" "$(jq -r '.status' "$FD6/result.json")"
-rm -f "$FD6/result.json"; bash "$REPO_ROOT/lib/feature-write.sh" set "$FD6" driverRedo null >/dev/null
+rm -f "$FD6/result.json"; fw_set "$FD6" driverRedo null
 DOCS6="$REPO6/docs/loop-spec/features/$(jq -r '.slug' "$FD6/feature.json")"; mkdir -p "$DOCS6"
 cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCS6/SPEC.md"
+stamp_v1_spec "$DOCS6/SPEC.md" "$FD6"
 drv spec approve --feature-dir "$FD6" --source human >/dev/null
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec 2>/dev/null)"
 check "next: a clean exit hands the successor to a fresh session" "HANDOFF next=discuss model=" "${out:0:27}"
@@ -863,6 +913,10 @@ FDRR="$(jq -r '.featureDir' <<<"$out")"
 SLUGRR="$(jq -r '.slug' "$FDRR/feature.json")"
 DOCSRR="$REPORR/docs/loop-spec/features/$SLUGRR"
 mkdir -p "$DOCSRR"
+# This fixture is deliberately the legacy-format full route (see the comment above):
+# strip the v1 contract a new cycle otherwise carries so the first participant
+# (spec approve) bootstraps legacy, same as AC6/REPO7.
+jq 'del(.artifactPublication) | del(.requirementsContract)' "$FDRR/feature.json" > "$WORK/reporr.json" && mv "$WORK/reporr.json" "$FDRR/feature.json"
 phase_enter "$REPORR" "$FDRR"
 cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCSRR/SPEC.md"
 (cd "$REPORR" && drv spec approve --feature-dir "$FDRR" --source human >/dev/null)
@@ -906,7 +960,8 @@ cp "$DOCSRR/PLAN.md" "$WORK/rr-plan-before.md"
 cp "$FDRR/tasks.json" "$WORK/rr-tasks-before.json"
 cp "$DOCSRR/VERIFICATION.md" "$WORK/rr-verification-before.md"
 python3 "$REPO_ROOT/lib/feature_write.py" ingress "$FDRR" > "$WORK/rr-t0.json"
-bash "$REPO_ROOT/lib/feature-write.sh" append "$FDRR" warnings '"rr-bump"' >/dev/null
+python3 "$REPO_ROOT/lib/feature_write.py" ingress "$FDRR" > "$WORK/rr-t-bump.json"
+bash "$REPO_ROOT/lib/feature-write.sh" append "$FDRR" warnings '"rr-bump"' --token "$WORK/rr-t-bump.json" >/dev/null
 cp "$FDRR/feature.json" "$WORK/rr-before-stale-call.json"
 ec=0; err="$(cd "$REPORR" && LOOP_SPEC_PUBLICATION_TOKEN="$WORK/rr-t0.json" AUTONOMOUS=1 \
   drv next --feature-dir "$FDRR" --returned-from verify 2>&1 1>/dev/null)" || ec=$?
@@ -1011,31 +1066,183 @@ check "AC6 verify: no v1 metadata was written to SPEC.md" "0" "$(grep -Ec '^(rou
 
 phase_enter "$REPOAC6" "$FDAC6"
 printf '# Iteration\n' > "$DOCSAC6/ITERATION.md"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FDAC6" iterate.lastVerdict '{"converged":true}' >/dev/null
+fw_set "$FDAC6" iterate.lastVerdict '{"converged":true}'
 phase_exit "$REPOAC6" "$FDAC6" iterate
 check "AC6 iterate: exit is acknowledged" "iterate" "$(jq -r '.completedPhases[-1]' "$FDAC6/feature.json")"
 check "AC6 iterate: contract is still legacy, never v1" "legacy" "$(jq -r '.requirementsContract.format' "$FDAC6/feature.json")"
 check "AC6 iterate: no v1 metadata ever appeared in SPEC.md" "0" "$(grep -Ec '^(route|footprint):' "$DOCSAC6/SPEC.md")"
 
-# An ordinary new cycle (no fixture switch) records no v1 contract at all and runs next.
-REPOORD="$(new_repo ordinary-legacy)"
-out="$(cd "$REPOORD" && AUTONOMOUS=1 drv begin -- "autonomous ordinary cycle" 2>/dev/null)"
+# --- Activation AC: an ordinary new cycle carries v1 from creation and drives every
+# phase end to end -- authoring, PLAN (Requirements bullets from the live inventory),
+# execution observations (verification run binding scenario_checks) and actual egress
+# (phase-exit verify). No switch is set anywhere in this block: v1 is the default.
+REPOORD="$(new_repo ordinary-v1)"
+printf 'echo original\n' > "$REPOORD/a.sh"
+git -C "$REPOORD" add -A && git -C "$REPOORD" -c commit.gpgsign=false commit -q -m "add a.sh"
+out="$(cd "$REPOORD" && AUTONOMOUS=1 drv begin -- "autonomous ordinary v1 cycle" 2>/dev/null)"
 FDORD="$(jq -r '.featureDir' <<<"$out")"
-DOCSORD="$REPOORD/docs/loop-spec/features/$(jq -r '.slug' "$FDORD/feature.json")"
+SLUGORD="$(jq -r '.slug' "$FDORD/feature.json")"
+DOCSORD="$REPOORD/docs/loop-spec/features/$SLUGORD"
 mkdir -p "$DOCSORD"
-(cd "$REPOORD" && AUTONOMOUS=1 drv next --feature-dir "$FDORD" >/dev/null 2>&1)
-cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCSORD/SPEC.md"
-(cd "$REPOORD" && drv spec approve --feature-dir "$FDORD" --source human >/dev/null)
-check "ordinary cycle: no v1 contract without the fixture switch" "true" "$(jq -r '(.requirementsContract // {}).format != "v1"' "$FDORD/feature.json")"
-(cd "$REPOORD" && AUTONOMOUS=1 drv next --feature-dir "$FDORD" --returned-from spec >/dev/null 2>&1)
-check "ordinary cycle: next runs through SPEC" "spec" "$(jq -r '.completedPhases[-1]' "$FDORD/feature.json")"
-check "ordinary cycle: still no v1 contract after SPEC" "true" "$(jq -r '(.requirementsContract // {}).format != "v1"' "$FDORD/feature.json")"
+check "ordinary cycle: v1 contract recorded from creation, no switch needed" "v1" "$(jq -r '.requirementsContract.format' "$FDORD/feature.json")"
+ownerord="$(jq -c '.requirementsContract.owner' "$FDORD/feature.json")"
 
-# --- v1 requirements fixture switch (LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1, task-009 removes it) ---
+phase_enter "$REPOORD" "$FDORD"
+cat > "$DOCSORD/SPEC.md" <<EOF
+---
+unresolved_questions: []
+requirements_version: 1
+requirements_owner: $ownerord
+---
+# ordinary v1 cycle
+
+## Problem
+
+Something is broken.
+
+## Goals
+
+Produce the requested result.
+
+## Boundaries (what NOT to do)
+
+Do not change unrelated behavior.
+
+## Success criteria
+
+### Good Enough
+
+- [ ] GE-001: The user sees the result.
+  - SC-001: Reload shows the result.
+
+## Constraints
+
+- none
+
+## Grounding
+
+- none
+EOF
+(cd "$REPOORD" && drv spec approve --feature-dir "$FDORD" --source human >/dev/null)
+check "ordinary v1: SPEC approval keeps format v1" "v1" "$(jq -r '.requirementsContract.format' "$FDORD/feature.json")"
+phase_exit "$REPOORD" "$FDORD" spec
+check "ordinary v1 spec: exit is acknowledged" "spec" "$(jq -r '.completedPhases[-1]' "$FDORD/feature.json")"
+
+phase_enter "$REPOORD" "$FDORD"
+phase_exit "$REPOORD" "$FDORD" discuss
+check "ordinary v1 discuss: exit is acknowledged" "discuss" "$(jq -r '.completedPhases[-1]' "$FDORD/feature.json")"
+
+phase_enter "$REPOORD" "$FDORD"
+# Requirements bullet cites the inventory's own revision digest -- never hand-typed
+# (docs/loop-spec/requirements-format.md; lib/requirements.sh inventory is the one
+# authoritative source of a requirement's revision).
+ge001_revision_ord="$(bash "$REPO_ROOT/lib/requirements.sh" inventory --spec "$DOCSORD/SPEC.md" --feature-dir "$FDORD" \
+  | jq -r '.requirements[0].revision')"
+# Once requirementsContract.format is v1, docs/loop-spec/features/<slug>/*.md is a
+# protected path (lib/harness.sh) -- the planner writes its drafts under
+# publication-staging/ and the lead lands them with `plan write`/`plan patterns`/
+# `plan tasks` (skills/plan/SKILL.md), never a direct write or shell redirection.
+STAGING_ORD="$FDORD/publication-staging"; mkdir -p "$STAGING_ORD"
+cat > "$STAGING_ORD/PLAN.md" <<EOF
+# ordinary v1 cycle - Implementation Plan
+
+**Spec:** \`SPEC.md\`
+
+## Architecture overview
+
+One task.
+
+## Task DAG
+
+| ID | Subject | BlockedBy | Files | Est scope |
+|----|---------|-----------|-------|-----------|
+| task-001 | do a thing | - | a.sh | small |
+
+## Tasks
+
+### task-001: do a thing
+
+**Goal:** one sentence.
+
+**Files:**
+- \`a.sh\`
+
+**Requirements:**
+- {"owner":$ownerord,"requirement":"GE-001","revision":"$ge001_revision_ord","scenarios":["SC-001"]}
+
+**Execution inputs:** {"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}
+
+**Verify:** \`bash -n a.sh\`
+
+**Acceptance criteria:**
+- [ ] \`bash -n a.sh\` exits 0
+
+## Grounding
+
+- none
+EOF
+printf '# PATTERNS.md\n\n## Concept: writer\n\ndetail\n' > "$STAGING_ORD/PATTERNS.md"
+plan_landed="$(cd "$REPOORD" && drv plan write --feature-dir "$FDORD" --file "$STAGING_ORD/PLAN.md" 2>&1)"
+check "ordinary v1 plan: plan write lands PLAN.md" "$DOCSORD/PLAN.md" "$plan_landed"
+patterns_landed="$(cd "$REPOORD" && drv plan patterns --feature-dir "$FDORD" --file "$STAGING_ORD/PATTERNS.md" 2>&1)"
+check "ordinary v1 plan: plan patterns lands PATTERNS.md" "$DOCSORD/PATTERNS.md" "$patterns_landed"
+tasks_landed="$(cd "$REPOORD" && drv plan tasks --feature-dir "$FDORD" 2>&1)"
+check "ordinary v1 plan: plan tasks lands tasks.json" "$FDORD/tasks.json" "$tasks_landed"
+phase_exit "$REPOORD" "$FDORD" plan
+check "ordinary v1 plan: exit is acknowledged" "plan" "$(jq -r '.completedPhases[-1]' "$FDORD/feature.json")"
+check "ordinary v1 plan: contract is still v1" "v1" "$(jq -r '.requirementsContract.format' "$FDORD/feature.json")"
+
+phase_enter "$REPOORD" "$FDORD"
+printf 'echo updated\n' > "$REPOORD/a.sh"
+git -C "$REPOORD" add -A && git -C "$REPOORD" -c commit.gpgsign=false commit -q -m "feat: task-001"
+bash "$REPO_ROOT/lib/task-progress.sh" mark-done "$FDORD/tasks.json" task-001 >/dev/null
+phase_exit "$REPOORD" "$FDORD" execute
+check "ordinary v1 execute: exit is acknowledged" "execute" "$(jq -r '.completedPhases[-1]' "$FDORD/feature.json")"
+
+phase_enter "$REPOORD" "$FDORD"
+cat > "$DOCSORD/VERIFICATION.md" <<EOF
+# ordinary v1 cycle - Verification
+
+## Repository grounding
+
+- criterion: GE-001/SC-001 | implementation: a.sh:1 - proves it | integration: none - covered by unit scope
+
+## Acceptance criteria
+
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+
+## Code review
+
+**Reviewer:** code-reviewer (inherit)
+
+### Findings
+
+none
+EOF
+# Bind scenario_checks the same way spec authoring would, so 'verification run' has an
+# execution observation to record against GE-001/SC-001 -- never a document-position row.
+inputs='{"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}'
+python3 - "$DOCSORD/SPEC.md" "$inputs" <<'PYSC'
+import re, sys
+path, inputs = sys.argv[1], sys.argv[2]
+text = open(path).read()
+declaration = 'scenario_checks: {"GE-001/SC-001":{"command":"bash -n a.sh","executionInputs":%s}}\n' % inputs
+text = re.sub(r"^requirements_owner:.*\n", lambda m: m.group(0) + declaration, text, count=1, flags=re.M)
+open(path, "w").write(text)
+PYSC
+(cd "$REPOORD" && drv verification run --feature-dir "$FDORD" >/dev/null 2>&1)
+check "ordinary v1 verify: verification run recorded an observation" "1" \
+  "$(grep -c '^| GE-001/SC-001 | ' "$DOCSORD/VERIFICATION.md")"
+phase_exit "$REPOORD" "$FDORD" verify
+check "ordinary v1 verify: exit is acknowledged" "verify" "$(jq -r '.completedPhases[-1]' "$FDORD/feature.json")"
+check "ordinary v1 verify: contract is still v1 at actual egress" "v1" "$(jq -r '.requirementsContract.format' "$FDORD/feature.json")"
+
+# --- v1 activation: an ordinary new cycle always records v1 (no operator switch) ---
 REPOV1="$(new_repo v1fixture)"
 printf 'def slugify(s):\n    return s.lower()\n' > "$REPOV1/slugify.py"
 git -C "$REPOV1" add -A && git -C "$REPOV1" -c commit.gpgsign=false commit -q -m "add slugify"
-outv1="$(cd "$REPOV1" && LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 AUTONOMOUS=1 drv begin -- "autonomous fix slugify dots" 2>/dev/null)"
+outv1="$(cd "$REPOV1" && AUTONOMOUS=1 drv begin -- "autonomous fix slugify dots" 2>/dev/null)"
 FDV1="$(jq -r '.featureDir' <<<"$outv1")"
 DOCSV1="$REPOV1/docs/loop-spec/features/$(jq -r '.slug' "$FDV1/feature.json")"
 check "v1 fixture: creation records a v1 contract" "v1" "$(jq -r '.requirementsContract.format' "$FDV1/feature.json")"
@@ -1169,7 +1376,7 @@ check "v1 escalation: the owner is unchanged" "$owner_before" "$(jq -cS '.requir
 REPOVR="$(new_repo verify-v1)"
 printf 'tracked\n' > "$REPOVR/tracked.txt"
 git -C "$REPOVR" add -A && git -C "$REPOVR" -c user.email=t@t -c user.name=t commit -q -m "add tracked.txt"
-outvr="$(cd "$REPOVR" && LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 AUTONOMOUS=1 drv begin -- "autonomous verify v1 rows" 2>/dev/null)"
+outvr="$(cd "$REPOVR" && AUTONOMOUS=1 drv begin -- "autonomous verify v1 rows" 2>/dev/null)"
 FDVR="$(jq -r '.featureDir' <<<"$outvr")"
 DOCSVR="$REPOVR/docs/loop-spec/features/$(jq -r '.slug' "$FDVR/feature.json")"
 mkdir -p "$DOCSVR"

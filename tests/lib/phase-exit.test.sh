@@ -38,6 +38,21 @@ FD="$REPO/.loop-spec/features/my-feature"
 DOCS="$REPO/docs/loop-spec/features/my-feature"
 mkdir -p "$DOCS"
 fj() { jq -r "$1" "$FD/feature.json"; }
+# fw_set FEATURE_DIR DOT_PATH JSON_VALUE: a plain `set` against a feature that already
+# carries artifactPublication (bootstrapped legacy once phase-exit.sh first touches
+# FD) needs its own ingress token (task-009 strict enforcement).
+fw_set() {
+  local dir="$1" path="$2" value="$3" tok
+  tok="$(mktemp "${TMPDIR:-/tmp}/phase-exit-fw-token.XXXXXX")"
+  python3 "$REPO_ROOT/lib/feature_write.py" ingress "$dir" > "$tok"
+  bash "$REPO_ROOT/lib/feature-write.sh" set "$dir" "$path" "$value" --token "$tok" >/dev/null
+  rm -f "$tok"
+}
+# This shared fixture drives phase-exit.sh generically, with legacy-shaped SPEC/PLAN/
+# VERIFICATION fixtures throughout (the separate REPOV1 fixture below covers the v1
+# relation gate). Strip the v1 contract a new cycle otherwise carries so the first
+# participant bootstraps legacy, same pattern as tests/lib/cycle-driver.test.sh's AC6.
+jq 'del(.artifactPublication) | del(.requirementsContract)' "$FD/feature.json" > "$WORK/fd-legacy.json" && mv "$WORK/fd-legacy.json" "$FD/feature.json"
 
 # --- usage ------------------------------------------------------------------------
 ec=0; bash "$EXIT" >/dev/null 2>&1 || ec=$?
@@ -137,11 +152,11 @@ check "exit spec: SPEC.md committed" "1" "$(git log --oneline | grep -c 'spec: m
 # repository) must not read as workspace mode: the haiku re-run of todo-due carried one
 # and phase-exit committed nothing. Re-run the exit over an edited SPEC.md and expect a
 # second commit.
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" workspace "{\"root\":\"$REPO\",\"mode\":\"single\",\"repos\":[]}" >/dev/null
+fw_set "$FD" workspace "{\"root\":\"$REPO\",\"mode\":\"single\",\"repos\":[]}"
 printf '\nA line the second commit carries.\n' >> "$DOCS/SPEC.md"
 bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1
 check "exit spec: a single-mode workspace record still commits" "2" "$(git log --oneline | grep -c 'spec: my-feature')"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" workspace null >/dev/null
+fw_set "$FD" workspace null
 
 # --- discuss ------------------------------------------------------------------------
 out="$(bash "$MODE" discuss --feature-dir "$FD")"
@@ -151,10 +166,10 @@ out="$(LOOP_SPEC_AUTONOMOUS=1 bash "$MODE" discuss --feature-dir "$FD")"
 check "mode discuss: autonomous self-answers the grill" "grill=self-answer" "${out%% *}"
 out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$MODE" discuss --feature-dir "$FD")"
 check "mode discuss: a supervisor rides on the grill line" "oracle=supervisor" "$(cut -d' ' -f2 <<<"$out")"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"review-only"' >/dev/null
+fw_set "$FD" execStyle '"review-only"'
 out="$(bash "$MODE" discuss --feature-dir "$FD")"
 check "mode discuss: review-only skips the grill" "grill=skip" "${out%% *}"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"auto"' >/dev/null
+fw_set "$FD" execStyle '"auto"'
 
 # the oracle gate: a named supervisor that no discuss question reached keeps the phase open
 ec=0; out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" discuss --feature-dir "$FD" 2>&1)" || ec=$?
@@ -248,14 +263,12 @@ check "exit plan: patterns source defaulted" "pattern-mapper" "$(fj '.artifacts.
 check "exit plan: PLAN.md committed" "1" "$(git log --oneline | grep -c 'plan: my-feature')"
 
 # --- plan (v1 contract): the reviewed task relation replaces positional coverage ----
-# A v1 feature, built the way tests/lib/cycle-driver.test.sh and
-# tests/lib/feature-init.test.sh do (LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 at creation --
-# a transitional, fixture-only switch; not a downgrade a real cycle can choose).
+# A v1 feature: every ordinary new cycle records v1 by default (no operator switch).
 REPOV1="$WORK/repov1"; mkdir -p "$REPOV1"
 git -C "$REPOV1" init -q -b main
 git -C "$REPOV1" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 bash "$REPO_ROOT/lib/cycle-driver.sh" start --dir "$REPOV1" -- v1 relation check >/dev/null 2>&1
-LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 bash "$REPO_ROOT/lib/cycle-driver.sh" init --dir "$REPOV1" \
+bash "$REPO_ROOT/lib/cycle-driver.sh" init --dir "$REPOV1" \
   --slug v1-relation-check --title "v1 relation check" --style auto --profile standard --autonomous 0 >/dev/null 2>&1
 FDV1="$REPOV1/.loop-spec/features/v1-relation-check"
 DOCSV1="$REPOV1/docs/loop-spec/features/v1-relation-check"
@@ -430,12 +443,12 @@ check "exit execute: checkpoint tagged" "1" "$(git tag | grep -c 'post-execute')
 
 # Every exit refusal below must occur even though the published task is done.
 for pending in '[{"id":"still-queued","subject":"not dispatched"}]' 'false' '{}'; do
-  bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks "$pending" >/dev/null
+  fw_set "$FD" pendingRemediationTasks "$pending"
   ec=0; out="$(bash "$EXIT" execute --feature-dir "$FD" 2>&1)" || ec=$?
   check "exit execute: pending remediation $pending blocks exit" "1" "$ec"
   check "exit execute: pending remediation diagnostic" "1" "$(grep -c 'pendingRemediationTasks' <<<"$out")"
 done
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks '[]' >/dev/null
+fw_set "$FD" pendingRemediationTasks '[]'
 cp "$FD/tasks.json" "$WORK/published-tasks.json"
 for broken in '{' '[{}]' '[]' '{"tasks":[]}'; do
   printf '%s' "$broken" > "$FD/tasks.json"
@@ -503,31 +516,31 @@ check "exit iterate: rewind pass leaves the phase open" "verify" "$(fj '.complet
 ec=0; bash "$EXIT" iterate --feature-dir "$FD" --terminal >/dev/null 2>&1 || ec=$?
 check "exit iterate: terminal pass closes the phase" "iterate" "$(fj '.completedPhases[-1]')"
 
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" iterate.lastVerdict '{"converged":true}' >/dev/null
+fw_set "$FD" iterate.lastVerdict '{"converged":true}'
 cp "$DOCS/VERIFICATION.md" "$WORK/verification.good"
 sed 's/| PASS |/| PENDING |/' "$WORK/verification.good" > "$DOCS/VERIFICATION.md"
 ec=0; bash "$EXIT" iterate --feature-dir "$FD" --terminal >/dev/null 2>&1 || ec=$?
 check "exit iterate: convergence with pending acceptance is rejected" "1" "$ec"
 cp "$WORK/verification.good" "$DOCS/VERIFICATION.md"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" iterate.lastVerdict null >/dev/null
+fw_set "$FD" iterate.lastVerdict null
 
 # --- egress guard -------------------------------------------------------------------
 # ITERATION.md is present, so the only thing left to judge is what the phase wrote.
 ENTRY="$REPO_ROOT/lib/phase-entry.sh"
 bash "$ENTRY" iterate --feature-dir "$FD" >/dev/null
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" iterate.used 1 >/dev/null
+fw_set "$FD" iterate.used 1
 ec=0; out="$(bash "$EXIT" iterate --feature-dir "$FD" 2>&1)" || ec=$?
 check "egress: a key the phase owns raises nothing" "0" "$(grep -c '\[egress\]' <<<"$out")"
 check "egress: the snapshot is consumed on ok" "missing" "$([[ -f "$FD/.phase-entry.json" ]] && echo present || echo missing)"
 
 bash "$ENTRY" iterate --feature-dir "$FD" >/dev/null
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" scratch.note '"left behind"' >/dev/null
+fw_set "$FD" scratch.note '"left behind"'
 ec=0; out="$(bash "$EXIT" iterate --feature-dir "$FD" 2>&1)" || ec=$?
 check "egress: a stray key warns by default and does not block" "0" "$ec"
 check "egress: the warning names the path" "1" "$(grep -c '^WARN \[egress\] scratch.note ' <<<"$out")"
 
 bash "$ENTRY" iterate --feature-dir "$FD" >/dev/null
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" scratch.note '"changed again"' >/dev/null
+fw_set "$FD" scratch.note '"changed again"'
 ec=0; out="$(LOOP_SPEC_EGRESS_GUARD=deny bash "$EXIT" iterate --feature-dir "$FD" 2>&1)" || ec=$?
 check "egress: deny mode flags the stray key" "1" "$ec"
 check "egress: deny mode names the path as a FLAG" "1" "$(grep -c '^FLAG \[egress\] scratch.note ' <<<"$out")"

@@ -164,6 +164,21 @@ Usage:
         a spec written next to the lead in the main checkout while the feature lived in
         a worktree was the misplaced-artifact REDO on two runs. Exit 0; 2 bad invocation.
 
+    cycle-driver.sh plan write --feature-dir DIR --file PATH
+    cycle-driver.sh plan patterns --feature-dir DIR --file PATH
+        Lint PATH (or stdin for `-`) as PLAN.md/PATTERNS.md and publish it to
+        {docs}/PLAN.md or PATTERNS.md under this operation's held token -- once a
+        feature's requirementsContract is v1 that path is protected and the planner
+        agent writes its draft to `<feature_dir>/publication-staging/` instead
+        (skills/plan/SKILL.md). Prints the published path. Exit 0; 1 artifact-lint
+        rejected the draft; 2 bad invocation.
+
+    cycle-driver.sh plan tasks --feature-dir DIR
+        Extract tasks.json from the already-published PLAN.md (`plan write` must land
+        first) and publish it under this operation's held token. Prints the published
+        path. Exit 0; 1 no PLAN.md published yet, or the extracted tasks failed
+        artifact-lint; 2 bad invocation.
+
     cycle-driver.sh task dispatch|package|verdict|integrate --feature-dir DIR --task ID ...
         One EXECUTE task step per call; lib/execute-step.sh owns the contract.
 
@@ -2652,6 +2667,61 @@ def cmd_spec(argv):
     return 0
 
 
+def cmd_plan(argv):
+    """Land the planner's PLAN.md/PATTERNS.md drafts and derive tasks.json, through the
+    same staged-then-publish_artifact seam cmd_spec uses (task-009 follow-up): once a
+    feature's requirementsContract is v1, docs/loop-spec/features/<slug>/*.md is a
+    protected path (lib/harness.sh; hooks/restrict-agent-paths.sh) and the planner
+    agent cannot write there directly. The planner writes its draft to
+    `<feature_dir>/publication-staging/PLAN.md`/`PATTERNS.md` (a path every harness
+    role scope already allows) and the lead runs `plan write`/`plan patterns` to land
+    it, then `plan tasks` to extract tasks.json from the PUBLISHED PLAN.md -- never a
+    shell redirection a hook cannot see land."""
+    sub = argv[0] if argv else ""
+    if sub not in ("write", "patterns", "tasks"):
+        usage()
+    opts = {"write": ("--feature-dir", "--file"), "patterns": ("--feature-dir", "--file"),
+            "tasks": ("--feature-dir",)}[sub]
+    o = parse_pairs(argv[1:], opts)
+    feature_dir = o.get("feature_dir") or ""
+    if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
+        usage()
+    feature_dir = os.path.realpath(feature_dir)
+    from feature_write import read_bounded
+    pub.begin(feature_dir)
+    feat = state(feature_dir)
+    docs = docs_dir(feature_dir, feat)
+    if sub in ("write", "patterns"):
+        file_path = o.get("file") or ""
+        if not file_path:
+            raise Die("plan %s: --file is required" % sub, 2)
+        content = sys.stdin.buffer.read() if file_path == "-" else read_bounded(Path(file_path))
+        key, name = ("plan", "PLAN.md") if sub == "write" else ("patterns", "PATTERNS.md")
+        lint_args = [key, "-"] + (["--feature-dir", feature_dir] if key == "plan" else [])
+        lint = lib_run("artifact-lint", *lint_args, stdin_text=content.decode("utf-8"))
+        if lint.returncode != 0:
+            raise Die("plan %s: artifact-lint rejected the draft:\n%s" % (sub, lint.stdout), 1)
+        publish_artifact(feature_dir, key, content)
+        print(os.path.join(docs, name))
+        return 0
+    # tasks: extracted from the ALREADY-PUBLISHED PLAN.md, never a draft -- `plan
+    # write` must land first so the DAG the extractor reads is the accepted one.
+    plan_path = (feat.get("artifacts") or {}).get("plan") or os.path.join(docs, "PLAN.md")
+    if not os.path.isabs(plan_path):
+        plan_path = os.path.join(feature_root(feature_dir, feat), plan_path)
+    if not os.path.isfile(plan_path):
+        raise Die("plan tasks: PLAN.md has not been published yet; run 'plan write' first", 1)
+    extracted = lib_run("plan-tasks", "extract", plan_path)
+    if extracted.returncode != 0:
+        raise Die("plan tasks: %s" % extracted.stdout, 1)
+    lint = lib_run("artifact-lint", "tasks", "-", "--feature-dir", feature_dir, stdin_text=extracted.stdout)
+    if lint.returncode != 0:
+        raise Die("plan tasks: artifact-lint rejected the extracted tasks:\n%s" % lint.stdout, 1)
+    publish_artifact(feature_dir, "tasks", extracted.stdout.encode("utf-8"))
+    print(os.path.join(feature_dir, "tasks.json"))
+    return 0
+
+
 def author_spec(argv, target_override=None, publication_token=None):
     sub = argv[0] if argv else ""
     if sub == "footprint" and argv[1:2] == ["drop"]:
@@ -3589,8 +3659,8 @@ def main(argv):
     handlers = {
         "deliver": cmd_deliver, "begin": cmd_begin, "phase-begin": cmd_phase_begin, "start": cmd_start,
         "init": cmd_init, "resume": cmd_resume, "next": cmd_next, "finish": cmd_finish,
-        "escalate": cmd_escalate, "spec": cmd_spec, "oneshot": cmd_oneshot, "verification": cmd_verification,
-        "decline": cmd_decline,
+        "escalate": cmd_escalate, "spec": cmd_spec, "plan": cmd_plan, "oneshot": cmd_oneshot,
+        "verification": cmd_verification, "decline": cmd_decline,
     }
     if command not in handlers:
         usage()

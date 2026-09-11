@@ -46,7 +46,7 @@ If no binding decisions were made during DISCUSS, return `NEEDS_CONTEXT` and ask
 ## Requirements grammar
 
 When the orchestrator's brief says `requirementsContract.format` is `v1`
-(transitional, fixture-only until v1 activation, `docs/loop-spec/requirements-format.md`),
+(the default for every new cycle; a resumed pre-7 cycle stays legacy instead -- `docs/loop-spec/requirements-format.md`),
 write `## Success criteria` requirements as `- [ ] GE-NNN: outcome` with a nested
 `  - SC-NNN: observable scenario` line, and fill the template's
 `{requirements_frontmatter}` placeholder with the `requirements_version`/

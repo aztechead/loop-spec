@@ -6,6 +6,18 @@ LIB="$(cd "$(dirname "$0")/../.." && pwd)/lib/feature-write.sh"
 PASS=0
 FAIL=0
 
+# fw_set DIR DOT_PATH JSON_VALUE: a plain `set` against a feature that already carries
+# artifactPublication now requires its ingress token (task-009 strict enforcement) --
+# this fixture helper begins one throwaway operation and writes through it, standing
+# in for a real participant whenever a test only needs the mutation to land.
+fw_set() {
+  local dir="$1" path="$2" value="$3" tok
+  tok="$(mktemp "${TMPDIR:-/tmp}/fw-token.XXXXXX")"
+  python3 "$(dirname "$LIB")/feature_write.py" ingress "$dir" > "$tok"
+  bash "$LIB" set "$dir" "$path" "$value" --token "$tok" >/dev/null
+  rm -f "$tok"
+}
+
 check() {
   local name="$1"
   local expected="$2"
@@ -185,8 +197,9 @@ with locked_feature(folder):
     token = capture_locked(folder)
 Path(sys.argv[2]).write_text(json.dumps(token))
 PYBATCH2
-# advance the generation behind the captured token's back
-bash "$LIB" set "$WORK/batch-feat" warnings '["moved-on"]' >/dev/null
+# advance the generation behind the captured token's back (a different participant's
+# own operation, not a token-less bypass)
+fw_set "$WORK/batch-feat" warnings '["moved-on"]'
 before_stale="$(cat "$WORK/batch-feat/feature.json")"
 exit_code=0
 bash "$LIB" batch "$WORK/batch-feat" '[{"op":"set","path":"currentPhase","value":"iterate"}]' --token "$WORK/batch-token.json" >/dev/null 2>&1 || exit_code=$?
@@ -289,7 +302,13 @@ legacy = Path(sys.argv[1]) / 'legacy-identity'
 legacy.mkdir()
 (legacy/'feature.json').write_text('{"slug":"old"}')
 for args in [[str(legacy),json.dumps(state)],['set',str(legacy),'requirementsContract',json.dumps(c)]]:
-    assert write(args).returncode == 1
+    result = write(args)
+    assert result.returncode == 1
+    # A state with no requirementsContract cannot be handed v1 metadata by an
+    # ordinary write -- only requirements.bootstrap_state may introduce the first
+    # contract, so removing v1 from a v1 feature can never "select legacy" by simply
+    # writing a state that never had a contract to begin with (task-009 AC).
+    assert 'existing legacy state requires explicit migration before v1' in result.stderr, result.stderr
 print('PASS: ordinary and replacement writes preserve identity histories and legacy boundary')
 PYTEST
 
@@ -332,11 +351,27 @@ while not (folder/'ready').exists():
     assert publisher.poll() is None, publisher.communicate()
     assert time.monotonic() < deadline
     time.sleep(.01)
-writer = subprocess.Popen(['bash',sys.argv[2],'append',str(folder),'warnings','"concurrent"'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+writer_script = """
+import json, subprocess, sys
+folder, lib = sys.argv[1], sys.argv[2]
+token_path = folder + '/writer-token.json'
+# A queued ordinary writer is still a publication participant once the feature
+# carries artifactPublication (task-009 strict enforcement): it begins its own
+# operation -- blocking on the same file lock the publish holds -- then writes
+# through the token that ingress hands back, exactly like any other caller.
+ingress = subprocess.run(['bash', lib, 'ingress', folder], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+open(token_path, 'w').write(ingress.stdout)
+result = subprocess.run(['bash', lib, 'append', folder, 'warnings', '"concurrent"', '--token', token_path],
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+sys.stderr.write(result.stderr)
+sys.exit(result.returncode)
+"""
+writer = subprocess.Popen([sys.executable,'-c',writer_script,str(folder),sys.argv[2]],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
 (folder/'release').touch()
 output, error = publisher.communicate(timeout=15)
 assert publisher.returncode == 0, error
-assert writer.communicate(timeout=15) == ('','') and writer.returncode == 0
+writer_out, writer_err = writer.communicate(timeout=15)
+assert writer_err == '' and writer.returncode == 0, (writer_out, writer_err)
 state = json.loads((folder/'feature.json').read_text())
 assert state['warnings'] == ['concurrent'] and state['currentPhase'] == 'plan'
 assert state['artifactPublication']['generation'] == 2 and state['artifactPublication']['evidenceEpoch'] == 0

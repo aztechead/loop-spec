@@ -416,12 +416,11 @@ printf '[{"id": "task-001", "brief": "x", "files": [], "blockedBy": [], "verifyC
 check "unknown modelTier flags" 1 tasks "$WORK/tasks-bad-tier.json"
 
 # --- task-005: Requirements/Obligations/Execution inputs structural shape ----------
-# A minimal v1 feature dir (LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1, the same transitional
-# switch tests/lib/cycle-driver.test.sh and tests/lib/feature-init.test.sh use) --
+# A minimal v1 feature dir (skeleton always bootstraps v1 by default) --
 # feature_read.load_state only reads feature.json, so no git checkout is needed here.
 V1DIR="$WORK/v1-feature"
 mkdir -p "$V1DIR"
-LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 bash "$ROOT/lib/feature-init.sh" skeleton --mode single \
+bash "$ROOT/lib/feature-init.sh" skeleton --mode single \
   --slug demo --now N --style auto --branch feat/demo --base-sha abc --base-branch main --worktree wt \
   > "$V1DIR/feature.json"
 if jq -e '.requirementsContract.format == "v1"' "$V1DIR/feature.json" >/dev/null 2>&1; then
@@ -434,6 +433,10 @@ mkdir -p "$LEGACYDIR"
 bash "$ROOT/lib/feature-init.sh" skeleton --mode single \
   --slug legacy --now N --style auto --branch feat/legacy --base-sha abc --base-branch main --worktree wt \
   > "$LEGACYDIR/feature.json"
+# skeleton always bootstraps v1 now; strip it to model a legacy fixture (a resumed
+# pre-7 cycle bootstraps this way itself, via begin_operation, never a switch).
+jq 'del(.requirementsContract) | del(.artifactPublication)' "$LEGACYDIR/feature.json" > "$LEGACYDIR/feature.json.tmp"
+mv "$LEGACYDIR/feature.json.tmp" "$LEGACYDIR/feature.json"
 if jq -e 'has("requirementsContract") | not' "$LEGACYDIR/feature.json" >/dev/null 2>&1; then
   echo "PASS: legacy fixture: feature.json carries no requirementsContract"; PASS=$((PASS + 1))
 else

@@ -237,6 +237,13 @@ def write_operation(directory, operation, value, keys=(), token=None, registry=N
                 raise ValueError("stale publication token; discard the pending state update")
         path = directory / "feature.json"
         previous = state_snapshot(directory)
+        if previous is not None and token is None and parse_json(previous).get("artifactPublication"):
+            # Every new cycle carries artifactPublication from creation, and every
+            # resumed legacy cycle gains it at begin_operation's bootstrap. Past that
+            # point a mutation without the ingress token that began it is refused --
+            # the create-if-absent replace above (previous is None) is the only
+            # token-less write left, and only because there is no prior state to lose.
+            raise ValueError("missing publication token; begin an operation first")
         state = prepare_state(directory, previous, operation, value, keys)
         publication = state.get("artifactPublication")
         if previous is not None and publication:
