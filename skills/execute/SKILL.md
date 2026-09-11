@@ -16,7 +16,7 @@ Use only the entry packet as input. Prepare dispatch with this call:
 pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin execute --feature-dir "$feature_dir")"
 # .entry.fields .entry.read[] .entry.flags[] (a missing ingress; relay and return)
 # .execute = lib/execute-prepare.sh: branch, sidecar, sidecarOk, sidecarFlags, done[], remaining[], tasks[],
-#            conflicts{rows,stops,rulings}, width, rung{}, maxRetries, featureRoot, worktreeBase, greenfield,
+#            conflicts{rows,stops,rulings}, width, rung{}, maxRetries, featureRoot, worktreeBase, workspace{}|null, greenfield,
 #            remediationRegistered, remediationError (string|null), stop
 ```
 
