@@ -525,7 +525,8 @@
     "interfaces": {
       "consumes": "task-010",
       "produces": "Explicit recoverable migration available only to generation-aware guarded participants."
-    }
+    },
+    "status": "done"
   },
   {
     "id": "task-012",
@@ -567,6 +568,7 @@
     "interfaces": {
       "consumes": "task-011",
       "produces": "Locally verified 7.0.0 readiness, documentation and synchronized declarations."
-    }
+    },
+    "status": "done"
   }
 ]
