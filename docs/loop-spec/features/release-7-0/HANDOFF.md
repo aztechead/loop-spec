@@ -1,6 +1,6 @@
 # 7.0 implementation handoff
 
-For the agent continuing `feat/7.x.x` (work is on branch `claude/7-0-release-handoff-0biuqi`, to be merged into `feat/7.x.x`). **This checkpoint completes all twelve EXECUTE tasks. The cycle stands at the EXECUTE-to-VERIFY boundary.**
+For the agent continuing `feat/7.x.x` (work is on branch `claude/7-0-release-handoff-0biuqi`; pull request 96 proposes its merge into `feat/7.x.x`). **This checkpoint completes all twelve EXECUTE tasks. The cycle stands at the EXECUTE-to-VERIFY boundary.**
 
 ## Completed work
 
