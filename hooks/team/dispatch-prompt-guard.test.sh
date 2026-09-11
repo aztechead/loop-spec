@@ -33,6 +33,10 @@ check "empty prompt denied" 2 "$(agent '')"
 check "one-line stub denied" 2 "$(agent 'do task-001')"
 check "a brief with a line that is only a substitution denied" 2 "$(agent $'Follow the directive verbatim (fresh-eyes prose pruning):\n\n---\n$(cat contents below)\n---\nArtifact: /repo/docs/loop-spec/features/x/SPEC.md and the template at /plugin/skills/shared/artifact-templates/SPEC.md.template. Return the pruning list.')"
 
+# A backticked line inside a real brief is prose, not an unexpanded substitution.
+check "a brief with a line that is only a backticked path allowed" 0 "$(agent $'The lead verified against\n`/Users/dev/loop-spec/6.6.1/lib/profile.sh:53-70`\nthat the cloud preset does set LOOP_SPEC_EXECUTE_LOOPS to 0. Confirm the same file still sets it before you continue with the review and report DONE with your findings.')"
+check "a brief with a line that is only a backticked command allowed" 0 "$(agent $'You are reviewing task-004 for spec compliance. Read the SPEC at /repo/docs/loop-spec/features/x/SPEC.md and confirm every acceptance criterion is met. Acceptance criterion:\n`bash tests/run-all.sh`\nRun it, confirm it passes, and report DONE with the output.')"
+
 # Real briefs pass, including ones that mention a substitution inside prose.
 BRIEF='You are an implementer agent for task task-001. Read the brief at /repo/.loop-spec/features/x/dispatch/task-001-brief.md, then run the verify command `$(cat cmd.txt)` exactly as written and report DONE.'
 check "a full brief is allowed" 0 "$(agent "$BRIEF")"

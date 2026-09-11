@@ -4,6 +4,44 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.6.3] - 2026-09-11
+
+### Fixed
+
+Five findings from a 6.6.1 user's 29-task `full` cycle in workspace mode.
+
+- **The nested-session guard scans only scripts the command runs.**
+  `hooks/team/nested-session-guard.sh` read every existing file a Bash command named
+  and denied the command when the file's text mentioned `claude -p`, so a Python
+  module whose docstring quoted the launcher made `grep`, `wc`, `sed`, and `head` on
+  that file fail for the rest of the run. The guard now scans a named file only when
+  it sits in command position or is the first argument to an interpreter word
+  (`bash`, `python3`, ...), strips `#` comments from the scanned script the way it
+  already did for the command text, and resolves a relative path against the project
+  root before the hook's cwd, so the same command gets the same verdict from any
+  directory.
+- **The dispatch-prompt guard no longer denies a brief over a backticked line.**
+  `hooks/team/dispatch-prompt-guard.sh` denied any Agent prompt with one line that
+  was wholly a backtick span, which a wrapped file path or a quoted acceptance
+  criterion produces in an ordinary brief. The per-line check now fires only on a
+  line that is wholly `$(...)`, and the denial names the line.
+- **A planner-declared reverse edge no longer becomes a 2-cycle.**
+  `lib/execute-prepare.sh` added a synthetic lower-id-first `blockedBy` edge between
+  tasks that share a file without checking whether the plan already declared the
+  opposite edge, so `task-003 blockedBy task-010` plus the synthetic reverse made
+  `dag-width` exit 3 before EXECUTE could start. The declared edge now wins.
+- **`lib/graph/driver.py` runs clean under `python3 -W error`.** An invalid `\``
+  escape in the usage docstring raised `SyntaxWarning` and `datetime.utcnow()`
+  raised `DeprecationWarning` on Python 3.12+ on every driver call, interleaved with the protocol
+  lines a lead parses. Both are gone (`lib/cycle-result.sh` had the same `utcnow()`);
+  `tests/lib/driver-warnings.test.sh` pins it.
+- **Subagent-rung dispatches are nameless and blocking.**
+  `skills/shared/execute-subagent.md` said "your final message IS the return value"
+  without saying the lead must not pass `name`: a named Agent is a background teammate
+  whose final message never returns as a tool result, and the reviewer personas have
+  no `SendMessage`, so a live spec-compliance verdict was lost. The dispatch
+  convention now states the call shape and cites `skills/shared/dispatch.md`.
+
 ## [6.6.2] - 2026-09-11
 
 ### Fixed

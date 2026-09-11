@@ -57,6 +57,35 @@ check "run: dispatch files are written" "2" "$(ls "$FD/dispatch" | grep -cE 'con
 check "run: the toolchain is probed once for the briefs" "1" "$(grep -c '^jq: jq-' "$FD/dispatch/environment.txt")"
 check "run: quoted pattern fragments are not probed as programs" "0" "$(grep -c 'apply\|\\b' "$FD/dispatch/environment.txt")"
 
+# --- a planner-declared reverse edge wins over the synthetic one -------------------
+# Built by hand rather than cycle-driver: my-feature is already the checkout's active
+# feature, and cycle-driver refuses a second one in the same checkout.
+FDR="$REPO/.loop-spec/features/reverse-edge"
+mkdir -p "$FDR" "$REPO/docs/loop-spec/features/reverse-edge"
+printf '# PLAN\n' > "$REPO/docs/loop-spec/features/reverse-edge/PLAN.md"
+git -C "$REPO" branch -q feat/reverse-edge main
+cat > "$FDR/feature.json" <<JSON
+{"schemaVersion":7,"slug":"reverse-edge","currentPhase":"execute","artifacts":{},
+ "pendingRemediationTasks":[],"fileConflictExcludeGlobs":[],"branch":"feat/reverse-edge",
+ "workspace":null,"commands":{"prepare":"","test":"true","lint":"","typecheck":""}}
+JSON
+cat > "$FDR/tasks.json" <<'JSON'
+[
+ {"id":"task-001","subject":"first","files":["shared.py"],"blockedBy":["task-002"],"verifyCommand":"true","acceptanceCriteria":["a"]},
+ {"id":"task-002","subject":"second","files":["shared.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["b"]}
+]
+JSON
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FDR" artifacts.tasks "\"$FDR/tasks.json\"" >/dev/null
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FDR" commands '{"prepare":"","test":"true","lint":"","typecheck":""}' >/dev/null
+# LOOP_SPEC_TASK_BATCH_AUTO=0: the two tasks' blockedBy chain of local verify commands
+# would otherwise collapse them into one dispatch entry, hiding the per-task blockedBy
+# this test is checking.
+out="$(LOOP_SPEC_TASK_BATCH_AUTO=0 bash "$SCRIPT" run --feature-dir "$FDR" 2>/dev/null)"
+check "reverse edge: planner's declared blockedBy is kept" "true" "$(jq -r '.tasks[] | select(.id == "task-001") | .blockedBy | index("task-002") != null' <<<"$out")"
+check "reverse edge: no synthetic edge is added in the opposite direction" "false" "$(jq -r '.tasks[] | select(.id == "task-002") | (.blockedBy | index("task-001") != null)' <<<"$out")"
+check "reverse edge: task-002 has no syntheticBlockedBy" "null" "$(jq -r '.tasks[] | select(.id == "task-002") | .syntheticBlockedBy // null' <<<"$out")"
+check "reverse edge: dag-width is not a cycle" "0" "$(jq -r '.stop' <<<"$out" | grep -c true)"
+
 # --- remediation intake ------------------------------------------------------------
 bash "$REPO_ROOT/lib/feature-write.sh" append "$FD" pendingRemediationTasks '{"id":"task-001+remediate-1","subject":"Fix: a"}' >/dev/null
 bash "$REPO_ROOT/lib/feature-write.sh" append "$FD" pendingRemediationTasks '{"id":"task-001+remediate-2","subject":"Fix: b"}' >/dev/null

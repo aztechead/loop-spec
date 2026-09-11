@@ -58,6 +58,8 @@ checks=(
   $'lib/verify-gate.sh\t@path'
   $'skills/verify/SKILL.md\t--minors @'
   $'skills/cycle/SKILL.md\t--completed <N>'
+  $'skills/shared/execute-subagent.md\tno `name` key'
+  $'lib/graph/driver.py\tdatetime.timezone.utc'
 )
 
 check_fixed_strings "${checks[@]}"

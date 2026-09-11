@@ -210,6 +210,7 @@ run_suite "session-start-hook-parity" "bash tests/session-start-hook-parity.test
 run_suite "cycle-worktree-policy"     "bash tests/cycle-worktree-policy.test.sh"
 run_suite "graph-conformance"         "bash tests/graph-conformance.test.sh"
 run_suite "graph-docs-coverage"       "bash tests/graph-docs-coverage.test.sh"
+run_suite "lib/driver-warnings"       "bash tests/lib/driver-warnings.test.sh"
 run_suite "lib/graph-schema"          "bash tests/lib/graph-schema.test.sh"
 run_suite "lib/graph-validate"        "bash tests/lib/graph-validate.test.sh"
 run_suite "lib/graph-probes"      "bash tests/lib/graph-probes.test.sh"

@@ -57,6 +57,59 @@ check "kill switch stands down" 0 "$(bash_cmd 'claude -p hi')" CLAUDE_PROJECT_DI
 check "a non-Bash tool is allowed" 0 '{"tool_name":"Write","tool_input":{"file_path":"x","content":"claude -p hi"}}' CLAUDE_PROJECT_DIR="$ROOT"
 check "malformed payload fails open" 0 "not json" CLAUDE_PROJECT_DIR="$ROOT"
 
+# 6.6.1 live-run finding: a file the command only reads (not runs) must never be
+# scanned, even when its content mentions a launcher in prose.
+printf '"""The top-level ``claude -p`` entry point."""\ndef main():\n    pass\n' > "$ROOT/docmod.py"
+printf '# Notes\n\nRun the top-level `claude -p` entry point.\n' > "$ROOT/notes.md"
+check "grep on a file whose docstring mentions a launcher is allowed" 0 "$(bash_cmd "grep -n X $ROOT/docmod.py")" CLAUDE_PROJECT_DIR="$ROOT"
+check "wc on a file whose docstring mentions a launcher is allowed" 0 "$(bash_cmd "wc -l $ROOT/docmod.py")" CLAUDE_PROJECT_DIR="$ROOT"
+check "sed on a file whose docstring mentions a launcher is allowed" 0 "$(bash_cmd "sed -n 1,5p $ROOT/docmod.py")" CLAUDE_PROJECT_DIR="$ROOT"
+check "head on a file whose docstring mentions a launcher is allowed" 0 "$(bash_cmd "head $ROOT/docmod.py")" CLAUDE_PROJECT_DIR="$ROOT"
+check "wc on a markdown file quoting a launcher in prose is allowed" 0 "$(bash_cmd "wc -l $ROOT/notes.md")" CLAUDE_PROJECT_DIR="$ROOT"
+# The guard errs strict for a script it would actually run: only `#` comments are
+# stripped, so a launcher inside a docstring is still denied when the module is
+# the interpreter's argument (the docstring is still text the interpreter reads).
+check "python3 on the same module is still denied" 2 "$(bash_cmd "python3 $ROOT/docmod.py")" CLAUDE_PROJECT_DIR="$ROOT"
+
+printf '#!/usr/bin/env bash\n# claude -p is mentioned here only, never run\necho hi\n' > "$ROOT/commented.sh"
+check "a launcher only inside a # comment, run as bash <file>, is allowed" 0 "$(bash_cmd "bash $ROOT/commented.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+
+cp "$ROOT/round.sh" "$ROOT/exe.sh"
+chmod +x "$ROOT/exe.sh"
+check "a script at command position (./exe.sh) is denied" 2 "$(bash_cmd "$ROOT/exe.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+
+# Relative path stability: resolves against the project root first, regardless of the
+# hook's own cwd, so the same command's verdict does not depend on the shell's cwd.
+mkdir -p "$ROOT/sub"
+CASE_CWD="$ROOT/sub" check "relative bash round.sh resolves under the project root" 2 "$(bash_cmd 'bash round.sh')" CLAUDE_PROJECT_DIR="$ROOT"
+CASE_CWD="$ROOT/sub" check "relative grep x round.sh is allowed from any cwd" 0 "$(bash_cmd 'grep x round.sh')" CLAUDE_PROJECT_DIR="$ROOT"
+check "relative grep x round.sh is allowed from the root too" 0 "$(bash_cmd 'grep x round.sh')" CLAUDE_PROJECT_DIR="$ROOT"
+
+check "a script after && is denied" 2 "$(bash_cmd "true && bash $ROOT/round.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+check "a script after a pipe is denied" 2 "$(bash_cmd "echo x | bash $ROOT/round.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+check "a script on a second line is denied" 2 "$(bash_cmd "cd $ROOT
+bash round.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+check "a script after a backgrounding & is denied" 2 "$(bash_cmd "sleep 1 & bash $ROOT/round.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+check "a redirection does not hide a read-only target" 0 "$(bash_cmd "grep -n x $ROOT/docmod.py 2>&1 | head")" CLAUDE_PROJECT_DIR="$ROOT"
+# Review findings on the 6.6.3 fix: data after a stdin/string/module flag is not a
+# script, both roots are scanned, an unbalanced quote does not switch the scan off, a
+# quoted `#` is not a comment, and wrapper prefixes pass the command position through.
+printf '{"note":"run claude -p to reproduce"}\n' > "$ROOT/data.json"
+check "python3 - data.json reads data, not a script" 0 "$(bash_cmd "python3 - $ROOT/data.json <<'PY'
+import sys
+PY")" CLAUDE_PROJECT_DIR="$ROOT"
+check "bash -s -- data.json reads data, not a script" 0 "$(bash_cmd "bash -s -- $ROOT/data.json < /dev/null")" CLAUDE_PROJECT_DIR="$ROOT"
+check "python3 -c with a data file argument is allowed" 0 "$(bash_cmd "python3 -c 'pass' $ROOT/data.json")" CLAUDE_PROJECT_DIR="$ROOT"
+mkdir -p "$ROOT/sub"; cp "$ROOT/round.sh" "$ROOT/sub/x.sh"; cp "$ROOT/tests.sh" "$ROOT/x.sh"
+CASE_CWD="$ROOT/sub" check "a launcher shadowed by a benign root script is still denied" 2 "$(bash_cmd 'bash x.sh')" CLAUDE_PROJECT_DIR="$ROOT"
+check "an unbalanced quote does not switch the script scan off" 2 "$(bash_cmd "bash $ROOT/round.sh && echo it's fine")" CLAUDE_PROJECT_DIR="$ROOT"
+printf 'echo " # note"; claude -p "/loop-spec:cycle x"\n' > "$ROOT/hash.sh"
+check "a quoted # is not a comment" 2 "$(bash_cmd "bash $ROOT/hash.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+check "timeout wraps the command position" 2 "$(bash_cmd "timeout 60 bash $ROOT/round.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+check "stdbuf wraps the command position" 2 "$(bash_cmd "stdbuf -o0 bash $ROOT/round.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+check "xargs -I wraps the command position" 2 "$(bash_cmd "echo x | xargs -I{} bash $ROOT/round.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+check "for loop bodies are command positions" 2 "$(bash_cmd "for f in x; do bash $ROOT/round.sh; done")" CLAUDE_PROJECT_DIR="$ROOT"
+
 msg="$((cd "$ROOT" && env CLAUDE_PROJECT_DIR="$ROOT" bash "$HOOK") 2>&1 >/dev/null <<<"$(bash_cmd 'claude -p x')" || true)"
 if grep -q 'claude -p in the command' <<<"$msg" && grep -q 'session_run.py' <<<"$msg"; then
   echo "PASS: the denial names the launch and the sanctioned launcher"; ((PASS++)) || true

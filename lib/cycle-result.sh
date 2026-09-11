@@ -280,8 +280,8 @@ try:
     with open(sys.argv[1]) as handle:
         record = json.load(handle)
     stamp = record.get("updatedAt") or record.get("startedAt") or ""
-    armed = datetime.datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")
-    delta = (datetime.datetime.utcnow() - armed).total_seconds()
+    armed = datetime.datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+    delta = (datetime.datetime.now(datetime.timezone.utc) - armed).total_seconds()
     print(max(0, int(delta)))
 except Exception:
     print(0)
