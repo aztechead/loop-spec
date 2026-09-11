@@ -181,10 +181,21 @@ try {
     },
   );
 
+  // task-009: a native "write" payload onto a task-009 driver-owned publication
+  // path (an execution observation record) must deny the same way the Write
+  // tool does under Claude Code -- lib/harness.sh protected-path is the one
+  // policy every harness adapter reaches through hooks/pre-tool-guard.py.
+  const guardedFeature = path.join(projects[1], ".loop-spec", "features", "guarded");
+  fs.mkdirSync(guardedFeature, { recursive: true });
+  fs.writeFileSync(path.join(guardedFeature, "feature.json"),
+    JSON.stringify({ slug: "guarded", schemaVersion: 7 }));
+
   for (const [tool, args] of [
     ["bash", { command: "codex exec nested" }],
     ["write", { filePath: ".loop-spec/last-result.json", content: "{}" }],
     ["apply_patch", { patchText: "*** Begin Patch\n*** Add File: safe.txt\n+x\n*** Update File: .loop-spec/last-result.json\n@@\n-x\n+y\n*** End Patch" }],
+    ["write", { filePath: ".loop-spec/features/guarded/observations/exec-1.json", content: "{}" }],
+    ["write", { filePath: ".loop-spec/features/guarded/tasks.json", content: "[]" }],
   ]) {
     let denied = false;
     try {
@@ -192,10 +203,13 @@ try {
     } catch (error) {
       denied = /DENY|nested harness/.test(error.message);
     }
-    if (!denied) fail(`tool guard did not deny ${tool}`);
+    if (!denied) fail(`tool guard did not deny ${tool} ${JSON.stringify(args)}`);
   }
   await hooks["tool.execute.before"]({ sessionID: "ses_openai", tool: "write" },
     { args: { filePath: "src/app.py", content: "pass" } });
+  // A legitimate staged publication write stays allowed.
+  await hooks["tool.execute.before"]({ sessionID: "ses_openai", tool: "write" },
+    { args: { filePath: ".loop-spec/features/guarded/publication-staging/spec-abc.md", content: "# x" } });
   console.log("runtime-ok");
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });

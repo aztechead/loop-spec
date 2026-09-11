@@ -162,15 +162,29 @@ async def main():
 
     with tempfile.TemporaryDirectory() as guarded_dir:
         os.mkdir(os.path.join(guarded_dir, ".loop-spec"))
+        # task-009: a native ADK WriteFile call onto a driver-owned publication
+        # path denies the same way, through the one shared policy
+        # (lib/harness.sh protected-path) hooks/pre-tool-guard.py's callees read.
+        feature_dir = os.path.join(guarded_dir, ".loop-spec", "features", "guarded")
+        os.makedirs(feature_dir)
+        with open(os.path.join(feature_dir, "feature.json"), "w") as fh:
+            json.dump({"slug": "guarded", "schemaVersion": 7}, fh)
         guarded = LoopSpecPlugin(LoopSpecBridge(guarded_dir))
         for name, args in [("Execute", {"command": "codex exec nested"}),
-                           ("WriteFile", {"path": ".loop-spec/last-result.json", "content": "{}"})]:
+                           ("WriteFile", {"path": ".loop-spec/last-result.json", "content": "{}"}),
+                           ("WriteFile", {"path": ".loop-spec/features/guarded/observations/exec-1.json", "content": "{}"}),
+                           ("WriteFile", {"path": ".loop-spec/features/guarded/tasks.json", "content": "[]"})]:
             response = await guarded.before_tool_callback(
                 tool=type("T", (), {"name": name})(), tool_args=args, tool_context=None)
-            assert response and response["status"] == "error", (name, response)
+            assert response and response["status"] == "error", (name, args, response)
         assert await guarded.before_tool_callback(
             tool=type("T", (), {"name": "WriteFile"})(),
             tool_args={"path": "app.py", "content": "pass"}, tool_context=None) is None
+        # A legitimate staged publication write stays allowed.
+        assert await guarded.before_tool_callback(
+            tool=type("T", (), {"name": "WriteFile"})(),
+            tool_args={"path": ".loop-spec/features/guarded/publication-staging/spec-abc.md",
+                       "content": "# x"}, tool_context=None) is None
     print(json.dumps(out))
 
 asyncio.run(main())

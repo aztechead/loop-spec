@@ -182,6 +182,30 @@ the micro protocol, and `adhoc-verify-guard.sh` is unbridged because its
 transcript reader targets Claude's format. Full cycles also use
 `lib/verification-grounding-lint.sh`.
 
+### Protected publication paths
+
+Codex's `PreToolUse` runs `hooks/pre-tool-guard.py` for the same
+`Bash|Agent|apply_patch|Write|Edit` matcher as Claude Code, so a Codex tool
+call (`apply_patch`, native `Write`/`Edit`, or a shell redirect) onto a
+driver-owned publication path denies exactly as it does there: SPEC.md,
+PLAN.md, VERIFICATION.md, and PATTERNS.md under
+`docs/loop-spec/features/<slug>/` on the oneshot route or the v1 requirements
+format; `feature.json[.bak]`; `tasks.json`; and `observations/**`,
+`publication-generations/**`, and `migration-generations/**` under the
+feature's runtime state. `publication-staging/**`, `dispatch/**`, and
+`review-attempts/**` stay open for a maker's legitimate work. See
+`skills/shared/claude-harness.md` "Protected publication paths" for the full
+list and the `bash lib/harness.sh protected-path` contract this and every
+other adapter reads instead of reimplementing the rule.
+
+This is a supported-guarded-driver-path guarantee, not a guarantee against an
+adversary with unrestricted host access: Codex's plugin-bundled hooks stay
+skipped until `/hooks` trusts them, and `--dangerously-bypass-hook-trust`
+removes this protection along with every other bundled guard — it is
+operator-invoked automation, never the default, and a host outside that trust
+boundary is not this guard's to enforce (SPEC "The driver owns execution
+observations").
+
 Plugin-bundled hooks remain skipped until the user reviews and trusts the
 current definition (`/hooks`). `--dangerously-bypass-hook-trust` exists for
 already-vetted automation and is never the default.

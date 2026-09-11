@@ -240,38 +240,51 @@ if path_allowed "docs/loop-spec/features"; then
   feature_checkout_deny
 fi
 
-# driver_owned_deny: on the oneshot route the driver is the only writer of SPEC.md and
-# VERIFICATION.md. Five format REDO rounds on a live bug fix came from a lead that
-# filled the driver-written skeleton by hand and left the shape the gates read
-# (port audit 3, N1). The route is the probe's answer over the
-# feature's own SPEC.md, so a full-route spec (no footprint, four files, `route: full`,
-# or no SPEC.md yet) stays the lead's to write.
-driver_owned_deny() {
-  local rel slug checkout fd route
-  case "$(basename "$FILE_PATH")" in SPEC.md|VERIFICATION.md) ;; *) return 0 ;; esac
-  rel="${FILE_PATH#*docs/loop-spec/features/}"
-  [[ "$rel" != "$FILE_PATH" && "$rel" == */* ]] || return 0
-  slug="${rel%%/*}"
-  checkout="${FILE_PATH%docs/loop-spec/features/*}"
-  [[ -n "$checkout" ]] || checkout="${CLAUDE_PROJECT_DIR:-$PWD}/"
-  fd="${checkout}.loop-spec/features/$slug"
+# publication_protected_deny: the ONE protected-path policy (lib/harness.sh
+# protected-path) covers driver-owned authoritative markdown (SPEC/PLAN/
+# VERIFICATION/PATTERNS on the oneshot route or the v1 requirements format),
+# feature.json[.bak], tasks.json, observations/**, publication-generations/**,
+# and migration-generations/** -- never publication-staging/**, dispatch/**, or
+# review-attempts/**, which stay a maker's to write (SPEC "The driver owns
+# execution observations" / "Migration preserves originals..."). Five format
+# REDO rounds on a live bug fix came from a lead that filled the driver-written
+# SPEC/VERIFICATION skeleton by hand (port audit 3, N1); this
+# extends that same lesson to every driver-owned path task-009 adds instead of
+# reimplementing the route/format check here.
+publication_protected_deny() {
+  local rel slug checkout fd target verdict reason
+  case "$FILE_PATH" in
+    .loop-spec/features/*|*/.loop-spec/features/*)
+      rel="${FILE_PATH#*.loop-spec/features/}"
+      [[ "$rel" == */* ]] || return 0
+      slug="${rel%%/*}"
+      checkout="${FILE_PATH%.loop-spec/features/*}"
+      [[ -n "$checkout" ]] || checkout="${CLAUDE_PROJECT_DIR:-$PWD}/"
+      fd="${checkout}.loop-spec/features/$slug"
+      ;;
+    docs/loop-spec/features/*|*/docs/loop-spec/features/*)
+      rel="${FILE_PATH#*docs/loop-spec/features/}"
+      [[ "$rel" == */* ]] || return 0
+      slug="${rel%%/*}"
+      checkout="${FILE_PATH%docs/loop-spec/features/*}"
+      [[ -n "$checkout" ]] || checkout="${CLAUDE_PROJECT_DIR:-$PWD}/"
+      fd="${checkout}.loop-spec/features/$slug"
+      ;;
+    *) return 0 ;;
+  esac
+  # No feature state yet means nothing this policy protects exists to compare
+  # against (feature_checkout_deny above already made this call for the docs tree).
   [[ -f "$fd/feature.json" ]] || return 0
-  # Fail closed once the feature is known: the file opens to the lead only on a probe
-  # answer of route=full for a reason that is not an unreadable spec (a spec the
-  # probe cannot read may be what a hand write just broke); anything else, an empty
-  # answer included, is a deny (port audit 4, N1's writers).
-  route="$(bash "$(dirname "${BASH_SOURCE[0]}")/../lib/graph/probes/oneshot.sh" --feature-dir "$fd" 2>/dev/null || true)"
-  if [[ "${route%% *}" == "route=full" ]]; then
-    case "$route" in
-      *"frontmatter missing"*|*"frontmatter unterminated"*|*"could not be read"*|*"not readable"*) ;;
-      *) return 0 ;;
-    esac
-  fi
-  [[ "${route%% *}" == "route=oneshot" ]] || route="route=oneshot reason=the route probe did not answer full for a readable spec (${route:-no answer}); a driver-owned file stays the driver's"
-  echo "DENY: $TOOL_NAME targets $FILE_PATH, which the driver writes on the oneshot route (${route#route=oneshot reason=}). Fill it through the driver: cycle-driver.sh spec fill --feature-dir $fd (--intent, --file/--note, --criterion, --grounding), spec escalate --reason, spec footprint drop --file --reason, or verification fill --feature-dir $fd (--row/--implementation/--proof/--evidence/--output, --review, --tests). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
+  target="$FILE_PATH"
+  [[ "$target" == /* ]] || target="${CLAUDE_PROJECT_DIR:-$PWD}/$target"
+  verdict="$(bash "$(dirname "${BASH_SOURCE[0]}")/../lib/harness.sh" protected-path --path "$target" --feature-dir "$fd" 2>/dev/null)" \
+    || verdict="protected=yes reason=the protected-path probe failed to answer"
+  [[ "${verdict%% *}" == "protected=yes" ]] || return 0
+  reason="${verdict#*reason=}"
+  echo "DENY: $TOOL_NAME targets $FILE_PATH ($reason). Fill it through the driver: cycle-driver.sh spec fill --feature-dir $fd (--intent, --file/--note, --criterion, --grounding), spec escalate --reason, spec footprint drop --file --reason, or verification fill --feature-dir $fd (--row/--implementation/--proof/--evidence/--output, --review, --tests) for docs artifacts; lib/feature-write.sh set|reconcile-inventory for feature state; or lib/artifact-publication.sh capture|publish for a staged artifact/observation/migration record. (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
   exit 2
 }
-driver_owned_deny
+publication_protected_deny
 
 case "$CALLER" in
   spec-writer|planner)

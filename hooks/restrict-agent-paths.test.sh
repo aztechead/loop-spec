@@ -257,7 +257,46 @@ check "X9: an unreadable spec denies (fail closed once the feature is known)" 2 
   "$(payload "Write" "$XREPO/docs/loop-spec/features/one/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")"
 check "X10: and the spec itself stays the driver's" 2 \
   "$(payload "Edit" "$XREPO/docs/loop-spec/features/one/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+check "X11: PLAN.md is driver-owned on the oneshot route too" 2 \
+  "$(payload "Write" "$XREPO/docs/loop-spec/features/one/PLAN.md" "$FIXTURES/main-thread.jsonl")"
+check "X12: PATTERNS.md is driver-owned on the oneshot route too" 2 \
+  "$(payload "Write" "$XREPO/docs/loop-spec/features/one/PATTERNS.md" "$FIXTURES/main-thread.jsonl")"
+check "X13: a full-route PLAN.md stays the lead's" 0 \
+  "$(payload "Edit" "$XREPO/docs/loop-spec/features/big/PLAN.md" "$FIXTURES/main-thread.jsonl")"
 unset CLAUDE_PROJECT_DIR; rm -rf "$XREPO"
+
+# Cases Y: task-009's driver-owned state -- feature.json.bak, tasks.json,
+# observations/**, publication-generations/**, migration-generations/** are
+# never Write/Edit targets; publication-staging/**, dispatch/**, and
+# review-attempts/** are a maker's to write (SPEC "The driver owns execution
+# observations" / "Migration preserves originals...").
+YREPO="$(mktemp -d)"
+YREPO="$(cd "$YREPO" && pwd -P)"
+git -C "$YREPO" init -q && git -C "$YREPO" commit -q --allow-empty -m seed
+mkdir -p "$YREPO/.loop-spec/features/y" "$YREPO/docs/loop-spec/features/y"
+printf '{"slug":"y","schemaVersion":7}\n' > "$YREPO/.loop-spec/features/y/feature.json"
+export CLAUDE_PROJECT_DIR="$YREPO"
+check "Y1: feature.json.bak DENY" 2 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/feature.json.bak" "$FIXTURES/main-thread.jsonl")"
+check "Y2: tasks.json DENY" 2 \
+  "$(payload "Edit" "$YREPO/.loop-spec/features/y/tasks.json" "$FIXTURES/main-thread.jsonl")"
+check "Y3: an observation record DENY" 2 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/observations/exec-1.json" "$FIXTURES/main-thread.jsonl")"
+check "Y4: a final observation projection DENY" 2 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/observations/final/deadbeef/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")"
+check "Y5: the publication generation journal DENY" 2 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/publication-generations/active.json" "$FIXTURES/main-thread.jsonl")"
+check "Y6: the migration generation journal DENY" 2 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/migration-generations/t1/backup.json" "$FIXTURES/main-thread.jsonl")"
+check "Y7: a staged publication file (relative path) ALLOW" 0 \
+  "$(payload "Write" ".loop-spec/features/y/publication-staging/spec-abc.md" "$FIXTURES/main-thread.jsonl")"
+check "Y8: a dispatch record ALLOW" 0 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/dispatch/round-1.json" "$FIXTURES/main-thread.jsonl")"
+check "Y9: a review-attempts record ALLOW" 0 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/review-attempts/1.json" "$FIXTURES/main-thread.jsonl")"
+check "Y10: an implementer hits the same feature-state denial" 2 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/observations/exec-2.json" "$FIXTURES/implementer.jsonl")"
+unset CLAUDE_PROJECT_DIR; rm -rf "$YREPO"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

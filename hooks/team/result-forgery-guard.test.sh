@@ -54,6 +54,38 @@ printf -- '---\nfootprint:\n  - a.py\n# no closing marker\n' > "$ONE/docs/loop-s
 check "an unreadable spec denies the shell write too (fail closed)" 2 'cat > docs/loop-spec/features/one/VERIFICATION.md <<< "# v"' "$ONE"
 ec=0; CLAUDE_PROJECT_DIR="$WORK/proj" bash "$HOOK" >/dev/null 2>&1 <<<"not json" || ec=$?
 check_m() { [[ "$ec" -eq 0 ]] && { echo "PASS: malformed payload allows"; ((PASS++)) || true; } || { echo "FAIL: malformed payload allows"; ((FAIL++)) || true; }; }; check_m
+
+# task-009: the same driver-owned publication set as hooks/restrict-agent-paths.sh,
+# reached by shell instead of the Write tool (feature.json[.bak], tasks.json,
+# observations/**, publication-generations/**, migration-generations/** are always
+# protected; publication-staging/** stays a maker's; PLAN.md/PATTERNS.md join
+# SPEC.md/VERIFICATION.md as driver-owned on the oneshot route).
+mkdir -p "$ONE/.loop-spec/features/one/observations/final/deadbeef" \
+  "$ONE/.loop-spec/features/one/migration-generations/t1" \
+  "$ONE/.loop-spec/features/one/publication-generations" \
+  "$ONE/.loop-spec/features/one/publication-staging"
+check "a redirect into feature.json.bak is denied" 2 \
+  'cat > .loop-spec/features/one/feature.json.bak <<< "{}"' "$ONE"
+check "rm of tasks.json is denied" 2 \
+  'rm .loop-spec/features/one/tasks.json' "$ONE"
+check "tee into an observation record is denied" 2 \
+  'printf "{}" | tee .loop-spec/features/one/observations/exec-1.json' "$ONE"
+check "cp over a final observation projection is denied" 2 \
+  'cp /tmp/v.md .loop-spec/features/one/observations/final/deadbeef/VERIFICATION.md' "$ONE"
+check "sed -i on the migration journal is denied" 2 \
+  'sed -i "s/x/y/" .loop-spec/features/one/migration-generations/t1/backup.json' "$ONE"
+check "patch onto the publication generation journal is denied" 2 \
+  'patch .loop-spec/features/one/publication-generations/active.json < x.diff' "$ONE"
+check "git apply onto the publication generation journal is denied" 2 \
+  'git apply --include=.loop-spec/features/one/publication-generations/active.json x.diff' "$ONE"
+check "a redirect into staged publication content is allowed" 0 \
+  'cat > .loop-spec/features/one/publication-staging/spec-abc.md <<< "# x"' "$ONE"
+check "a redirect into a oneshot feature's PLAN.md is denied" 2 \
+  'cat > docs/loop-spec/features/one/PLAN.md <<< "# x"' "$ONE"
+check "a redirect into a oneshot feature's PATTERNS.md is denied" 2 \
+  'cat > docs/loop-spec/features/one/PATTERNS.md <<< "# x"' "$ONE"
+check "a full-route feature's PLAN.md stays the lead's" 0 \
+  'cat > docs/loop-spec/features/big/PLAN.md <<< "# big"' "$ONE"
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

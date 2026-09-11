@@ -52,6 +52,7 @@ hooks/team/result-forgery-guard.test.sh
 lib/cycle-result.sh
 lib/execution_observation.py
 lib/greenfield-bootstrap.sh
+lib/harness.sh
 lib/phase-entry.sh
 lib/quality-loop-state.sh
 "
