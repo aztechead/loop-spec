@@ -162,7 +162,8 @@ case "$cmd" in
       exit 0
     fi
     report="$(lib dispatch-files report-path --feature-dir "$feature_dir" --task-id "$task_id")"
-    spec="$(fget '.artifacts.spec // ""')"; [[ "$spec" == /* || -z "$spec" ]] || spec="$root/$spec"
+    # Artifacts are rooted at featureRoot (the workspace root in workspace mode), not the task's repo.
+    spec="$(fget '.artifacts.spec // ""')"; [[ "$spec" == /* || -z "$spec" ]] || spec="$(pget '.featureRoot')/$spec"
     prompt="$feature_dir/dispatch/$task_id.$role.md"
     # A dispatch is a path and one line (the port principles, rule 5).
     if [[ "$role" == "implementer" ]]; then
@@ -220,21 +221,38 @@ case "$cmd" in
       answer="$(jq -c --arg sha "$sha" '{published:(.published // false), reason:(.reason // null), detail:(.detail // null), sha:$sha, blocked:null}' <<<"$res")"
     else
       mkdir -p "$feature_dir/logs"
-      vrc=0; lib output-digest run --log "$feature_dir/logs/verify-$task_id.log" --label "verify $task_id" -- bash -c "cd '$root' && $verify_cmd" >&2 || vrc=$?
-      if (( vrc != 0 )); then
+      # A batch collapsed across repos (lib/task-batch.sh keys on batchGroup, not repo) would
+      # stage only the files under this repo and publish the rest as done. Refuse it first.
+      foreign=""
+      [[ -z "$repo_name" ]] || foreign="$(jq -r --arg n "$repo_name" --argjson fs "$(jq -c '.files // []' <<<"$task_json")" \
+        '[.workspace.repos[] | select(.name != $n) | (.name + "/"), (.path + "/")] as $ps | [$fs[] | . as $f | select(any($ps[]; . as $p | $f | startswith($p)))] | join(", ")' "$prep")"
+      vrc=0
+      if [[ -n "$foreign" ]]; then
+        answer="$(jq -cn --arg d "$foreign" '{published:false, reason:"files-outside-repo", detail:("task.files name another workspace repo: " + $d), sha:null, blocked:null}')"
+      else
+        lib output-digest run --log "$feature_dir/logs/verify-$task_id.log" --label "verify $task_id" -- bash -c "cd '$root' && $verify_cmd" >&2 || vrc=$?
+      fi
+      if [[ -n "$foreign" ]]; then :
+      elif (( vrc != 0 )); then
         answer="$(jq -cn --argjson rc "$vrc" '{published:false, reason:"verify-failed", detail:("verify command exited " + ($rc | tostring)), sha:null, blocked:null}')"
       else
         before="$(git -C "$root" rev-parse HEAD)"
         files_json="$(jq -c '.files // []' <<<"$task_json")"
         # Workspace files are written `<repo>/<path>` (skills/plan/SKILL.md); git in the repo wants `<path>`.
         [[ -z "$repo_name" ]] || files_json="$(jq -c --arg n "$repo_name/" --arg p "$repo_rel/" 'map(if startswith($n) then ltrimstr($n) else ltrimstr($p) end)' <<<"$files_json")"
-        while IFS= read -r f; do [[ -n "$f" ]] && git -C "$root" add -- "$f" 2>/dev/null; done < <(jq -r '.[]' <<<"$files_json")
+        while IFS= read -r f; do
+          [[ -n "$f" ]] || continue
+          git -C "$root" add -- "$f" 2>/dev/null || echo "execute-step: $task_id lists $f but nothing at that path could be staged in $root" >&2
+        done < <(jq -r '.[]' <<<"$files_json")
         git -C "$root" commit -q -m "feat: NO_JIRA $(jq -r '.subject' <<<"$task_json")" >/dev/null 2>&1 || true
         after="$(git -C "$root" rev-parse HEAD)"
         outside="$(git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude).loop-spec' ':(exclude)docs/loop-spec' ':(exclude).claude/agent-memory' 2>/dev/null)"
-        # Published means HEAD advanced from the recorded base (execute-subagent.md, in-place
-        # step 4), not from this call's own commit: a workspace implementer commits itself.
-        base_sha="$(sget '.taskBaseSha')"; [[ -n "$base_sha" && "$base_sha" != "null" ]] || base_sha="$before"
+        # A workspace implementer commits itself (execute-subagent.md, workspace Step 4), so
+        # there published means HEAD advanced from the recorded base. A single-repo in-place
+        # implementer must not commit; there only this call's own commit counts, so a replayed
+        # integrate is still commit-missing rather than a second success.
+        base_sha="$before"
+        [[ -z "$repo_name" ]] || { base_sha="$(sget '.taskBaseSha')"; [[ -n "$base_sha" && "$base_sha" != "null" ]] || base_sha="$before"; }
         if [[ "$base_sha" == "$after" ]]; then
           answer="$(jq -cn '{published:false, reason:"commit-missing", detail:"nothing to commit under task.files", sha:null, blocked:"commit-missing"}')"
         elif [[ -n "$outside" ]]; then

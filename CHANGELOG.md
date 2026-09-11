@@ -16,10 +16,14 @@ All notable changes documented here. Format follows Keep a Changelog.
   now carries `featureRoot` (the workspace root) and `workspace{root, repos}`;
   `execute-step` resolves each task's `repo` to its repo path, runs dispatch, package,
   verify, and the commit in that repo, and strips the `<repo>/` prefix from
-  `task.files` before staging. In-place `integrate` now reports `published` when HEAD
-  advanced from the recorded base SHA, as `skills/shared/execute-subagent.md` says, so a
-  workspace implementer's own commit is not read as `commit-missing`. A workspace task
-  with no `repo`, or a repo the feature does not list, is refused with exit 2.
+  `task.files` before staging. In workspace mode `integrate` reports `published` when
+  HEAD advanced from the recorded base SHA, as `skills/shared/execute-subagent.md` says,
+  so the implementer's own commit is not read as `commit-missing`; single-repo in-place
+  mode keeps counting only the call's own commit, so a replayed `integrate` stays
+  `commit-missing`. A task whose `files` name another workspace repo (a batch collapsed
+  across repos) is refused as `files-outside-repo` before verify runs, and a file git
+  cannot stage is named on stderr instead of dropped. A workspace task with no `repo`,
+  or a repo the feature does not list, is refused with exit 2.
 
 ## [6.6.0] - 2026-09-10
 
