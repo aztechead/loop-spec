@@ -208,14 +208,24 @@ case "$cmd" in
         while IFS= read -r f; do [[ -n "$f" ]] && git -C "$worktree" add -- "$f" 2>/dev/null; done < <(jq -r '.files // [] | .[]' <<<"$task_json")
         git -C "$worktree" commit -q -m "feat: NO_JIRA $(jq -r '.subject' <<<"$task_json")" >/dev/null 2>&1 || true
       fi
+      # commands.prepare is what makes verifyCommand runnable (lib/plan-exit-gate.sh sends
+      # every install there); a live run's `pytest -q` failed in the task worktree until
+      # the lead prepared it by hand, because nothing here passed the command on.
       res="$(lib integrate-task --feature-root "$root" --feature-branch "feat/$slug" --task-worktree "$worktree" \
-        --task-branch "$branch" --verify "$verify_cmd" --cleanup)" || true
+        --task-branch "$branch" --prepare "$(fget '.commands.prepare // ""')" --verify "$verify_cmd" --cleanup)" || true
       published="$(jq -r '.published // false' <<<"$res")"
       sha="$(git -C "$root" rev-parse "feat/$slug" 2>/dev/null || true)"
       answer="$(jq -c --arg sha "$sha" '{published:(.published // false), reason:(.reason // null), detail:(.detail // null), sha:$sha, blocked:null}' <<<"$res")"
     else
       mkdir -p "$feature_dir/logs"
-      vrc=0; lib output-digest run --log "$feature_dir/logs/verify-$task_id.log" --label "verify $task_id" -- bash -c "cd '$root' && $verify_cmd" >&2 || vrc=$?
+      prep_cmd="$(fget '.commands.prepare // ""')"; prc=0
+      [[ -z "$prep_cmd" ]] || (cd "$root" && bash -o pipefail -c "$prep_cmd") >&2 || prc=$?
+      if (( prc != 0 )); then
+        answer="$(jq -cn --argjson rc "$prc" '{published:false, reason:"prepare-failed", detail:("prepare command exited " + ($rc | tostring)), sha:null, blocked:null}')"
+      else
+      # A prepared checkout's .venv/bin is on PATH for its verify command, the way
+      # `uv run` and `poetry run` would put it there: the planner writes `pytest -q`.
+      vrc=0; lib output-digest run --log "$feature_dir/logs/verify-$task_id.log" --label "verify $task_id" -- bash -c "cd '$root' && { [ -d .venv/bin ] && export PATH=\"\$PWD/.venv/bin:\$PATH\"; } ; $verify_cmd" >&2 || vrc=$?
       if (( vrc != 0 )); then
         answer="$(jq -cn --argjson rc "$vrc" '{published:false, reason:"verify-failed", detail:("verify command exited " + ($rc | tostring)), sha:null, blocked:null}')"
       else
@@ -232,6 +242,7 @@ case "$cmd" in
         else
           answer="$(jq -cn --arg sha "$after" '{published:true, reason:null, detail:null, sha:$sha, blocked:null}')"
         fi
+      fi
       fi
     fi
     if [[ "$(jq -r '.published' <<<"$answer")" == "true" ]]; then

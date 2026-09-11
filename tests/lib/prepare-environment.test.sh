@@ -321,5 +321,13 @@ out="$(bash "$SCRIPT" resolve --root "$PYP")"
 check "requires-python names an interpreter that satisfies it" "1" "$(jq -r '.command' <<<"$out" | grep -c '3\.14')"
 check "declared test extras are installed" "1" "$(jq -r '.command' <<<"$out" | grep -c -- "-e '\.\[test\]'")"
 
+# The venv, egg-info and pytest cache a prepare command creates are excluded before it
+# runs, so a greenfield project with no .gitignore is not "dirty" after its own setup.
+mkdir -p "$PYP/.loop-spec"; printf '# Backlog\n' > "$PYP/.loop-spec/BACKLOG.md"
+out="$(bash "$SCRIPT" run --root "$PYP" --command "mkdir -p .venv/bin x.egg-info .pytest_cache && touch .venv/bin/python")"
+check "run: untracked plugin state under .loop-spec is not setup dirt" "1" "$([[ -f "$PYP/.loop-spec/BACKLOG.md" ]] && echo 1)"
+check "run: build artifacts of a prepare command are not worktree dirt" "prepared" "$(jq -r '.status' <<<"$out")"
+check "run: the artifacts are excluded in the common exclude file" "3" "$(grep -c -e '^/\.venv/$' -e '^/\*\.egg-info/$' -e '^/\.pytest_cache/$' "$(git -C "$PYP" rev-parse --absolute-git-dir)/info/exclude")"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

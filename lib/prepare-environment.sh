@@ -23,8 +23,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "$subcommand" == "resolve" || "$subcommand" == "run" ]] \
-  || die2 "usage: prepare-environment.sh {resolve|run} --root ROOT [--command COMMAND] [--reuse-from ROOT]"
+[[ "$subcommand" == "resolve" || "$subcommand" == "run" || "$subcommand" == "exclude-artifacts" ]] \
+  || die2 "usage: prepare-environment.sh {resolve|run|exclude-artifacts} --root ROOT [--command COMMAND] [--reuse-from ROOT]"
 [[ -n "$root" && -d "$root" ]] || die2 "--root must name a directory"
 root="$(cd "$root" && pwd -P)"
 git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
@@ -103,6 +103,25 @@ node_install_command() {
       fi
       printf '%s' "$yarn_command" ;;
   esac
+}
+
+exclude_build_artifacts() {
+  # What a prepare command leaves behind is not the worktree's dirt: the venv the
+  # resolver builds, an editable install's egg-info, and pytest's cache all landed as
+  # "setup left non-ignored worktree changes" on a live greenfield run with no
+  # .gitignore yet. They go in the repository's common info/exclude, the file this
+  # script and lib/runtime-ignore.sh already own, never in the project's own
+  # .gitignore; a line is appended only when absent, so a repository that ignores
+  # them itself sees nothing.
+  local common_dir exclude_file line
+  common_dir="$(git -C "$root" rev-parse --git-common-dir)"
+  [[ "$common_dir" == /* ]] || common_dir="$(cd "$root" && cd "$common_dir" && pwd -P)"
+  exclude_file="$common_dir/info/exclude"
+  mkdir -p "$(dirname "$exclude_file")"
+  touch "$exclude_file"
+  for line in "/.venv/" "/*.egg-info/" "/.pytest_cache/" "__pycache__/"; do
+    grep -qxF "$line" "$exclude_file" 2>/dev/null || printf '%s\n' "$line" >> "$exclude_file"
+  done
 }
 
 pyproject_install_command() {
@@ -326,7 +345,9 @@ PY
 }
 
 read_worktree_status() {
-  git -C "$root" status --porcelain --untracked-files=all 2>/dev/null
+  # Plugin state is never setup dirt: lib/execute-step.sh reads dirt with the same
+  # exclusions, and a live VERIFY escalated on an untracked .loop-spec/BACKLOG.md.
+  git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude).loop-spec' ':(exclude).claude/agent-memory' 2>/dev/null
 }
 
 state_unreadable() {
@@ -343,6 +364,10 @@ resolve_command
 key=""
 [[ -z "$command" ]] || key="$(preparation_key)"
 
+if [[ "$subcommand" == "exclude-artifacts" ]]; then
+  exclude_build_artifacts
+  exit 0
+fi
 if [[ "$subcommand" == "resolve" ]]; then
   jq -cn --arg command "$command" --arg source "$source" --arg key "$key" \
     --arg reason "$reason" \
@@ -438,6 +463,7 @@ if [[ -n "$reuse_from" && "${LOOP_SPEC_SHARE_DEPENDENCIES:-1}" != "0" \
   fi
 fi
 
+exclude_build_artifacts
 watchdog="$script_dir/run-with-watchdog.sh"
 prepare_timeout="${LOOP_SPEC_PREPARE_TIMEOUT_SECS:-1800}"
 prepare_idle_timeout="${LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS:-300}"

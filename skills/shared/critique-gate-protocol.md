@@ -68,7 +68,10 @@ declares `currentGate` in the `reads[]` of both critique subgraph nodes, and
 spawn kind (`skills/shared/dispatch.md`) this and every later message is a nameless
 `Agent({description, subagent_type: "loop-spec:challenger", run_in_background: false,
 model: <open's .model>, prompt})` with the prior gate-logs inlined; omit `model` only
-when `open` answered null:
+when `open` answered null. `prompt` is the brief's own text, pasted after you Read the
+brief file: the Agent tool runs no shell, so a `$(cat ...)` reaches the agent as literal
+text and `hooks/team/dispatch-prompt-guard.sh` denies it (three live runs each lost a
+dispatch to this).
 
 ```
 SendMessage({

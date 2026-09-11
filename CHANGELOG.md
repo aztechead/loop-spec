@@ -136,6 +136,13 @@ below; each task's own SPEC/PLAN/VERIFICATION is the durable record of what it p
   that satisfies `requires-python`, with its test extras, and its test command targets
   that venv, so a 3.14 project is no longer installed under the default 3.11; and the
   token refusals say the helper mints the token itself.
+- A third live cycle built the service again and escalated at VERIFY on its own setup:
+  `task integrate` now passes `commands.prepare` to the task worktree and runs it in
+  place before verify, a prepared checkout's `.venv/bin` is on the verify command's
+  PATH, the venv, egg-info and pytest cache a prepare command creates are excluded in
+  the repository's common exclude file before it runs, plugin state under `.loop-spec`
+  is never setup dirt, and the critique protocol says the challenger's prompt is the
+  brief's text read with Read, since the Agent tool runs no shell.
 
 No comparative measurement of repair rounds, cost, or latency accompanies this release;
 that evaluation is out of scope for 7.0 (SPEC "Exceptional": comparative live

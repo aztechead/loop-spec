@@ -47,6 +47,7 @@ checks=(
   $'skills/cycle/SKILL.md\tDo not call `init` again'
   $'skills/shared/critique-gate-protocol.md\tthe lead does not inline it'
   $'skills/shared/critique-gate-protocol.md\tlib/docs-probe.sh latest|docs <name>'
+  $'skills/shared/critique-gate-protocol.md\tthe Agent tool runs no shell'
   $'hooks/restrict-agent-paths.sh\tthe lead does not edit a maker\'s staged draft'
   $'skills/plan/SKILL.md\t`lib/plan-conflicts.sh edges`'
   $'skills/shared/review-prompts/prose-pruning.md\tprose-lines'
