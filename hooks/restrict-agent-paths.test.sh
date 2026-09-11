@@ -94,6 +94,33 @@ check "R4: main thread Write to .loop-spec/profile.json ALLOW" 0 \
 check "R5: a feature.json outside .loop-spec is not a contract file ALLOW" 0 \
   "$(payload "Write" "src/feature.json" "$FIXTURES/main-thread.jsonl")"
 
+# Cases PS: v1 is the default now, so the docs tree is publication_protected_deny's
+# to guard; the maker's own copy is the staged draft under the feature's state dir,
+# scoped to the single feature its own dispatch brief named (task item 1).
+NOFEAT="$(mktemp -d)"
+export CLAUDE_PROJECT_DIR="$NOFEAT"
+check "PS1: planner Write to .loop-spec/features/foo/publication-staging/PLAN.md (own feature) ALLOW" 0 \
+  "$(payload "Write" ".loop-spec/features/foo/publication-staging/PLAN.md" "$FIXTURES/planner.jsonl")"
+check "PS2: planner Write to .loop-spec/features/bar/publication-staging/PLAN.md (another feature) DENY" 2 \
+  "$(payload "Write" ".loop-spec/features/bar/publication-staging/PLAN.md" "$FIXTURES/planner.jsonl")"
+check "PS3: spec-writer Write to .loop-spec/features/foo/publication-staging/SPEC.md (own feature) ALLOW" 0 \
+  "$(payload "Write" ".loop-spec/features/foo/publication-staging/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+check "PS4: spec-writer Write to .loop-spec/features/bar/publication-staging/SPEC.md (another feature) DENY" 2 \
+  "$(payload "Write" ".loop-spec/features/bar/publication-staging/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+# The plan skill names the staged PATTERNS.md as the mapper's target; a live sonnet run
+# had the mapper denied there and the planner wrote PATTERNS.md itself.
+check "PS5: pattern-mapper Write to .loop-spec/features/foo/publication-staging/PATTERNS.md (own feature) ALLOW" 0 \
+  "$(payload "Write" ".loop-spec/features/foo/publication-staging/PATTERNS.md" "$FIXTURES/pattern-mapper.jsonl")"
+check "PS6: pattern-mapper Write to .loop-spec/features/bar/publication-staging/PATTERNS.md (another feature) DENY" 2 \
+  "$(payload "Write" ".loop-spec/features/bar/publication-staging/PATTERNS.md" "$FIXTURES/pattern-mapper.jsonl")"
+# A planner resumed with a fix list (SendMessage to its agent id) keeps its role: the
+# subagent meta file next to the transcript names the dispatch that spawned it.
+check "PS7: a planner resumed by SendMessage may Edit its own staged PLAN.md ALLOW" 0 \
+  "$(payload "Edit" ".loop-spec/features/foo/publication-staging/PLAN.md" "$FIXTURES/planner-resumed.jsonl")"
+check "PS8: the resumed planner is still scoped (src/foo.py) DENY" 2 \
+  "$(payload "Write" "src/foo.py" "$FIXTURES/planner-resumed.jsonl")"
+unset CLAUDE_PROJECT_DIR; rm -rf "$NOFEAT"
+
 # Case I: spec-writer with absolute path to allowed location -> ALLOW (exit 0)
 check "I: spec-writer Write to /abs/path/docs/loop-spec/features/bar/SPEC.md ALLOW" 0 \
   "$(payload "Write" "/abs/path/docs/loop-spec/features/bar/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
@@ -198,6 +225,17 @@ check "W4: a slug with no feature.json anywhere stays ALLOW" 0 \
 # main checkout again): the rule holds for the main thread and for every other caller.
 check "W4b: main-thread Write of SPEC.md relative to the main checkout DENY" 2 \
   "$(payload "Write" "docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+
+# Cases WV: a v1 feature's PLAN.md/SPEC.md are publication_protected_deny's, not the
+# role case's -- the planner/spec-writer's own copy is the staged draft (task item 1).
+mkdir -p "$WREPO/.loop-spec/features/v1feat"
+printf '{"slug":"v1feat","requirementsContract":{"format":"v1"}}\n' > "$WREPO/.loop-spec/features/v1feat/feature.json"
+check "WV1: planner Write to docs/.../v1feat/PLAN.md under a v1 feature DENY" 2 \
+  "$(payload "Write" "$WREPO/docs/loop-spec/features/v1feat/PLAN.md" "$FIXTURES/planner.jsonl")"
+check "WV2: spec-writer Write to docs/.../v1feat/SPEC.md under a v1 feature DENY" 2 \
+  "$(payload "Write" "$WREPO/docs/loop-spec/features/v1feat/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+check "WV3: planner Write to v1feat's staged draft (own feature dispatch names foo, not v1feat) DENY" 2 \
+  "$(payload "Write" "$WREPO/.loop-spec/features/v1feat/publication-staging/PLAN.md" "$FIXTURES/planner.jsonl")"
 check "W4c: main-thread Edit of the stale parent copy DENY" 2 \
   "$(payload "Edit" "$WREPO/docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/main-thread.jsonl")"
 check "W4d: main-thread Write under the feature worktree ALLOW" 0 \
@@ -257,7 +295,64 @@ check "X9: an unreadable spec denies (fail closed once the feature is known)" 2 
   "$(payload "Write" "$XREPO/docs/loop-spec/features/one/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")"
 check "X10: and the spec itself stays the driver's" 2 \
   "$(payload "Edit" "$XREPO/docs/loop-spec/features/one/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+check "X11: PLAN.md is driver-owned on the oneshot route too" 2 \
+  "$(payload "Write" "$XREPO/docs/loop-spec/features/one/PLAN.md" "$FIXTURES/main-thread.jsonl")"
+check "X12: PATTERNS.md is driver-owned on the oneshot route too" 2 \
+  "$(payload "Write" "$XREPO/docs/loop-spec/features/one/PATTERNS.md" "$FIXTURES/main-thread.jsonl")"
+check "X13: a full-route PLAN.md stays the lead's" 0 \
+  "$(payload "Edit" "$XREPO/docs/loop-spec/features/big/PLAN.md" "$FIXTURES/main-thread.jsonl")"
+
+# Case X14/X15 (security hardening): a maker allowed to write under
+# publication-staging could plant a symlink there pointing at the feature's
+# protected SPEC.md and write through it under a literal path this hook would
+# otherwise see as plain staging. FILE_PATH_REAL resolves it first, so the
+# resolved target -- not the literal staging-looking path -- is what gets judged.
+mkdir -p "$XREPO/.loop-spec/features/one/publication-staging"
+ln -s "$XREPO/docs/loop-spec/features/one/SPEC.md" "$XREPO/.loop-spec/features/one/publication-staging/sneaky.md"
+check "X14: a staging symlink resolving to the protected SPEC.md is DENY" 2 \
+  "$(payload "Write" "$XREPO/.loop-spec/features/one/publication-staging/sneaky.md" "$FIXTURES/main-thread.jsonl")"
+check "X15: a plain (non-symlink) staging file stays ALLOW" 0 \
+  "$(payload "Write" "$XREPO/.loop-spec/features/one/publication-staging/plain.md" "$FIXTURES/main-thread.jsonl")"
+check "X16: a lead's edit of the planner's staged PLAN.md is DENY (re-dispatch with a fix list)" 2 \
+  "$(payload "Edit" "$XREPO/.loop-spec/features/one/publication-staging/PLAN.md" "$FIXTURES/main-thread.jsonl")"
+check "X17: a lead's write of the mapper's staged PATTERNS.md is DENY" 2 \
+  "$(payload "Write" "$XREPO/.loop-spec/features/one/publication-staging/PATTERNS.md" "$FIXTURES/main-thread.jsonl")"
+check "X18: the planner's own staged PLAN.md stays ALLOW" 0 \
+  "$(payload "Write" "$XREPO/.loop-spec/features/foo/publication-staging/PLAN.md" "$FIXTURES/planner.jsonl")"
 unset CLAUDE_PROJECT_DIR; rm -rf "$XREPO"
+
+# Cases Y: task-009's driver-owned state -- feature.json.bak, tasks.json,
+# observations/**, publication-generations/**, migration-generations/** are
+# never Write/Edit targets; publication-staging/**, dispatch/**, and
+# review-attempts/** are a maker's to write (SPEC "The driver owns execution
+# observations" / "Migration preserves originals...").
+YREPO="$(mktemp -d)"
+YREPO="$(cd "$YREPO" && pwd -P)"
+git -C "$YREPO" init -q && git -C "$YREPO" commit -q --allow-empty -m seed
+mkdir -p "$YREPO/.loop-spec/features/y" "$YREPO/docs/loop-spec/features/y"
+printf '{"slug":"y","schemaVersion":7}\n' > "$YREPO/.loop-spec/features/y/feature.json"
+export CLAUDE_PROJECT_DIR="$YREPO"
+check "Y1: feature.json.bak DENY" 2 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/feature.json.bak" "$FIXTURES/main-thread.jsonl")"
+check "Y2: tasks.json DENY" 2 \
+  "$(payload "Edit" "$YREPO/.loop-spec/features/y/tasks.json" "$FIXTURES/main-thread.jsonl")"
+check "Y3: an observation record DENY" 2 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/observations/exec-1.json" "$FIXTURES/main-thread.jsonl")"
+check "Y4: a final observation projection DENY" 2 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/observations/final/deadbeef/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")"
+check "Y5: the publication generation journal DENY" 2 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/publication-generations/active.json" "$FIXTURES/main-thread.jsonl")"
+check "Y6: the migration generation journal DENY" 2 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/migration-generations/t1/backup.json" "$FIXTURES/main-thread.jsonl")"
+check "Y7: a staged publication file (relative path) ALLOW" 0 \
+  "$(payload "Write" ".loop-spec/features/y/publication-staging/spec-abc.md" "$FIXTURES/main-thread.jsonl")"
+check "Y8: a dispatch record ALLOW" 0 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/dispatch/round-1.json" "$FIXTURES/main-thread.jsonl")"
+check "Y9: a review-attempts record ALLOW" 0 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/review-attempts/1.json" "$FIXTURES/main-thread.jsonl")"
+check "Y10: an implementer hits the same feature-state denial" 2 \
+  "$(payload "Write" "$YREPO/.loop-spec/features/y/observations/exec-2.json" "$FIXTURES/implementer.jsonl")"
+unset CLAUDE_PROJECT_DIR; rm -rf "$YREPO"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

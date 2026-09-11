@@ -45,8 +45,14 @@ check "reuse fills empty test command" "lein test" "$(jq -r '.commands.test' "$f
 check "reuse preserves title" "keep me" "$(jq -r '.feature_title' "$fj")"
 check "reuse preserves iterate.used" "1" "$(jq -r '.iterate.used' "$fj")"
 
-# Existing test command is left alone.
-bash "$ROOT/lib/feature-write.sh" set "$(dirname "$fj")" commands.test '"make test"'
+# Existing test command is left alone. The prior `ensure` call above already
+# bootstrapped a legacy artifactPublication on first touch (task-009: begin_operation
+# bootstraps an incomplete pre-existing schema-7 state); this direct mutation needs
+# its own ingress token now that the contract exists.
+tok="$(mktemp "${TMPDIR:-/tmp}/revise-state-fw-token.XXXXXX")"
+python3 "$ROOT/lib/feature_write.py" ingress "$(dirname "$fj")" > "$tok"
+bash "$ROOT/lib/feature-write.sh" set "$(dirname "$fj")" commands.test '"make test"' --token "$tok"
+rm -f "$tok"
 out="$(bash "$LIB" ensure "$WORK" demo --branch feat/demo)"
 check "reuse does not overwrite a set test command" "make test" \
   "$(jq -r '.commands.test' "$fj")"

@@ -43,6 +43,22 @@ The SPEC.md must include a populated `<decisions>` block near the top, before Go
 
 If no binding decisions were made during DISCUSS, return `NEEDS_CONTEXT` and ask the orchestrator to clarify the design choices instead of writing the spec.
 
+## Requirements grammar
+
+When the orchestrator's brief says `requirementsContract.format` is `v1`
+(the default for every new cycle; a resumed pre-7 cycle stays legacy instead -- `docs/loop-spec/requirements-format.md`),
+write `## Success criteria` requirements as `- [ ] GE-NNN: outcome` with a nested
+`  - SC-NNN: observable scenario` line, and fill the template's
+`{requirements_frontmatter}` placeholder with the `requirements_version`/
+`requirements_owner`/`scenario_checks` declarations from the brief's own contract
+owner, single-line JSON. Never invent or renumber a `GE-`/`SC-` ID yourself: the
+driver's `spec write`/`spec fill` allocate them, so hand the orchestrator a draft with
+requirement prose only where an ID is not yet known. Under a legacy contract (the
+default), delete both the `{requirements_frontmatter}` line and the GE/SC row and
+keep today's shape. Either way, SPEC.md is committed through the driver's
+staged-then-published path, never left as your own direct file write to be trusted
+verbatim.
+
 ## Required content (each is a spec defect if missing)
 
 - Populate every template section. No TBD, no TODO, no placeholders.

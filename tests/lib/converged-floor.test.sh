@@ -170,5 +170,138 @@ sed 's/| 2 | output contains marker | PASS | `run` -> marker |/| 2 | output cont
 bash "$LIB" "$tmp/SPEC.md" "$tmp/V-word.md" >/dev/null 2>&1
 check "the word unblocked in evidence is not a blocked check" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
 
+# --- task-008 v1 route: rows keyed GE-ID/SC-ID, eligibility via a real
+# execution_observation.observe() record on both --shape and the full floor ---------
+PYTHONPATH="$REPO_ROOT/lib" python3 - "$LIB" "$tmp" <<'PY'
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+from execution_observation import observe
+
+lib, tmp = sys.argv[1], Path(sys.argv[2]) / "v1"
+tmp.mkdir()
+fail = []
+
+# simplicity: check()/git_repo() repeat tests/lib/verification-grounding-lint.test.sh's
+# own v1 fixture helpers almost verbatim. Every suite in this tree keeps its fixture
+# self-contained (no shared cross-file fixture library exists here to lift them into --
+# see tests/lib/cycle-driver.test.sh's write_small_plan comment for the same call made
+# once already), so this stays local rather than adding one for two callers.
+
+
+def check(name, condition):
+    if condition:
+        print("PASS: " + name)
+    else:
+        print("FAIL: " + name)
+        fail.append(name)
+
+
+def git_repo():
+    root = tmp / "repo"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "a@a.com"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.name", "a"], cwd=root, check=True)
+    (root / "tracked.txt").write_text("hello\n")
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+    subprocess.run(["git", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "init"], cwd=root, check=True)
+    return root
+
+
+root = git_repo()
+owner = {"repository": "repo", "feature": "fixture"}
+contract = {"version": 1, "format": "v1", "owner": owner, "inventoryDigest": None,
+            "nextRequirementId": 3, "issued": {}, "retired": [], "retiredScenarios": {}}
+# converged-floor.sh's v1 route (no --repo option, unlike verification-grounding-lint.sh)
+# derives root from `git -C feature_dir rev-parse --show-toplevel`, so feature_dir must
+# sit inside the repo the way a real feature.json always does.
+fd = root / ".loop-spec" / "features" / "fixture"
+fd.mkdir(parents=True)
+(fd / "feature.json").write_text(json.dumps({
+    "slug": "fixture", "currentPhase": "oneshot", "requirementsContract": contract,
+    "artifactPublication": {"version": 1, "generation": 0, "evidenceEpoch": 0, "migration": None, "participantsVersion": 1},
+}))
+owner_line = json.dumps(owner, sort_keys=True, separators=(",", ":"))
+empty_inputs = {"version": 1, "toolchains": [], "localInputs": [], "externalInputs": [], "sensitiveInputs": []}
+checks = {"GE-001/SC-001": {"command": "exit 0", "executionInputs": empty_inputs},
+          "GE-002/SC-001": {"command": "exit 0", "executionInputs": empty_inputs}}
+spec_path = fd / "SPEC.md"
+checks_line = json.dumps(checks, separators=(",", ":"))
+spec_path.write_text(
+    "---\nrequirements_version: 1\nrequirements_owner: %s\nscenario_checks: %s\n---\n"
+    "# fixture\n\n### Good Enough\n\n"
+    "- [ ] GE-001: First requirement.\n  - SC-001: First scenario.\n"
+    "- [ ] GE-002: Second requirement.\n  - SC-001: Second scenario.\n" % (owner_line, checks_line))
+
+from requirements import parse_spec
+inventory = parse_spec(spec_path.read_text(), str(spec_path), contract)
+revisions = {r["id"]: r["revision"] for r in inventory["requirements"]}
+record1 = observe(fd, root, {"owner": owner, "requirement": "GE-001", "revision": revisions["GE-001"], "scenario": "SC-001"},
+                   "exit 0", empty_inputs)
+record2 = observe(fd, root, {"owner": owner, "requirement": "GE-002", "revision": revisions["GE-002"], "scenario": "SC-001"},
+                   "exit 0", empty_inputs)
+check("v1 setup: both scenarios observe PASS", record1["status"] == "PASS" and record2["status"] == "PASS")
+
+verification = fd / "VERIFICATION.md"
+
+
+def evidence_for(req, record):
+    return "owner=repo/fixture revision=%s scenario=SC-001 `exit 0` -> exit 0 (execution:%s)" % (
+        revisions[req], record["executionId"])
+
+
+def write_verification(rows):
+    body = "".join("| %s | text | %s | %s |\n" % row for row in rows)
+    verification.write_text(
+        "# fixture - Verification\n\n## Repository grounding\n\n"
+        "- criterion: GE-001/SC-001 | implementation: tracked.txt:1 - proves it | integration: none - standalone check\n"
+        "- criterion: GE-002/SC-001 | implementation: tracked.txt:1 - proves it | integration: none - standalone check\n\n"
+        "## Acceptance criteria\n\n| # | Criterion | Status | Evidence |\n|---|---|---|---|\n" + body)
+
+
+def run_floor(shape=False):
+    args = [lib]
+    if shape:
+        args.append("--shape")
+    args += [str(spec_path), str(verification), "--feature-dir", str(fd)]
+    return subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+
+write_verification([("GE-001/SC-001", "PASS", evidence_for("GE-001", record1)),
+                     ("GE-002/SC-001", "PASS", evidence_for("GE-002", record2))])
+result = run_floor()
+check("v1: full coverage with fresh eligible records holds (exit 0)", result.returncode == 0)
+check("v1: the answer line names both criteria" , "ok (2 criteria verified)" in result.stdout)
+result = run_floor(shape=True)
+check("v1: --shape also holds on the same fixture", result.returncode == 0)
+
+# Uncovered scenario: drop GE-002's row entirely.
+write_verification([("GE-001/SC-001", "PASS", evidence_for("GE-001", record1))])
+result = run_floor()
+check("v1: an uncovered required scenario vetoes convergence", result.returncode == 1)
+check("v1: the veto names the missing scenario", "GE-002/SC-001 acceptance result is missing" in result.stdout)
+
+# Stale record: rewrite GE-001's scenario text (changes its revision) without a fresh run.
+write_verification([("GE-001/SC-001", "PASS", evidence_for("GE-001", record1)),
+                     ("GE-002/SC-001", "PASS", evidence_for("GE-002", record2))])
+spec_path.write_text(
+    "---\nrequirements_version: 1\nrequirements_owner: %s\nscenario_checks: %s\n---\n"
+    "# fixture\n\n### Good Enough\n\n"
+    "- [ ] GE-001: First requirement.\n  - SC-001: First scenario, reworded.\n"
+    "- [ ] GE-002: Second requirement.\n  - SC-001: Second scenario.\n" % (owner_line, checks_line))
+result = run_floor()
+check("v1: a stale record (changed revision) vetoes convergence on the full floor", result.returncode == 1)
+check("v1: the veto names the stale execution", "not current evidence" in result.stdout)
+result = run_floor(shape=True)
+check("v1: --shape does not recheck freshness (still holds)", result.returncode == 0)
+
+if fail:
+    sys.exit(1)
+PY
+if [[ $? -eq 0 ]]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); fi
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

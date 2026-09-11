@@ -73,6 +73,25 @@ Codex also registers the cycle and route Stop guards.
 OpenCode and ADK rely on explicit driver gates and terminal-result validation.
 Run `lib/cycle-reconcile.sh` on every route, on every harness.
 
+### Protected publication paths
+
+`PreToolUse` denies (exit 2) a Write/Edit/`NotebookEdit` or Bash write onto a
+driver-owned publication path: SPEC.md, PLAN.md, VERIFICATION.md, and
+PATTERNS.md under `docs/loop-spec/features/<slug>/` once the feature is on the
+oneshot route or the v1 requirements format; `feature.json`,
+`feature.json.bak`, and `tasks.json`; and `observations/**`,
+`publication-generations/**`, and `migration-generations/**` under the
+feature's runtime state. `publication-staging/**`, `dispatch/**`, and
+`review-attempts/**` stay open for a maker's legitimate work. The denial
+names the driver command to use instead (`cycle-driver.sh`, `lib/feature-write.sh`,
+`lib/artifact-publication.sh`). `hooks/restrict-agent-paths.sh` and
+`hooks/team/result-forgery-guard.sh` both ask the one policy this decides
+through, `bash lib/harness.sh protected-path --path PATH --feature-dir DIR`; an
+unreadable feature directory or a failed probe answers `protected=yes` —
+fail safe, never a claim that evidence exists. This guards the tool boundary a
+normal cycle runs through, not a host an attacker already controls (SPEC "The
+driver owns execution observations").
+
 ## Model routing
 
 Per-dispatch models use the `Agent` tool's ALIAS ENUM (`sonnet`, `opus`,

@@ -46,6 +46,13 @@
 # On ok: records artifacts.* and completedPhases, clears currentTeamName and
 # currentTeammates, commits the phase artifacts (single-repo only; a workspace root
 # is orchestration state, never a delivery target), and tags the checkpoint.
+#
+# This script is a publication participant (lib/feature-write.sh, lib/artifact_publication.py):
+# it captures one ingress token before any gate runs, every gate and child runs under
+# it, and every state change the ok path makes lands in ONE feature-write batch,
+# rechecked fresh immediately beforehand -- a write that raced in between (an
+# uncooperative gate body, a plain writer skipping the contract) FLAGs and blocks
+# instead of silently overwriting it.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,9 +78,14 @@ node="$(jq -c --arg p "$phase" '.nodes[] | select(.id == $p) | .egress // empty'
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
 
-lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
+# One ingress token for the whole exit: captured before any gate runs or side effect
+# (also refuses an active migration or an unfinished publication), kept across gates,
+# and adopted back from every child so the final batch below writes with it, not a
+# fresher one a child already consumed.
+. "$SCRIPT_DIR/feature-write.sh"
+loop_spec_publication_begin "$feature_dir" || exit 1
+lib() { loop_spec_publication_lib "$SCRIPT_DIR" "$@"; }
 fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
-fset() { lib feature-write set "$feature_dir" "$1" "$2" >/dev/null; }
 # nget FILTER: a field of the node's egress block, raw.
 nget() { jq -r "$1" <<<"$node"; }
 
@@ -112,7 +124,7 @@ misplaced_hint() {
 run_gate() {
   local label="$1"; shift
   local out rc=0
-  out="$("$@" 2>&1)" || rc=$?
+  out="$(loop_spec_publication_run "$@" 2>&1)" || rc=$?
   if (( rc != 0 )); then
     printf '%s\n' "$out" | grep -E '^(FLAG|FLOOR)|^[^ ]|^ +- ' \
       | sed -E "/^FLAG \[/! s/^/FLAG [$label] /" | grep -Ev '^(FLAG \[[^]]*\] )?phase-exit:' || true
@@ -217,13 +229,22 @@ egress_check() {
   done
 }
 
-close_phase() {
+# batch_entries accumulates the ok path's own feature.json writes (artifacts.* pointers,
+# the node's `set` resets, completedPhases/team-state close bookkeeping) as one
+# {op,path,value} array, so they land through ONE feature-write batch call under the
+# token captured at ingress instead of the many separate writes that each used to
+# incur their own lock/token/generation round trip.
+batch_entries='[]'
+batch_set() { batch_entries="$(jq -c --arg p "$1" --argjson v "$2" '. + [{op:"set",path:$p,value:$v}]' <<<"$batch_entries")"; }
+batch_append() { batch_entries="$(jq -c --arg p "$1" --argjson v "$2" '. + [{op:"append",path:$p,value:$v}]' <<<"$batch_entries")"; }
+
+queue_close() {
   # A phase re-entered after an interrupted round closes again; a live feature.json
   # read "spec,discuss,plan,plan,plan". Record each phase once.
   bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter ".completedPhases | index(\"$phase\") != null" >/dev/null 2>&1 \
-    || lib feature-write append "$feature_dir" completedPhases "\"$phase\"" >/dev/null
-  fset currentTeamName null
-  fset currentTeammates '[]'
+    || batch_append completedPhases "\"$phase\""
+  batch_set currentTeamName null
+  batch_set currentTeammates '[]'
 }
 
 egress_check
@@ -244,38 +265,59 @@ fi
 if (( flags == 0 )); then
   while IFS=$'\t' read -r key path; do
     [[ -n "$key" ]] || continue
-    fset "artifacts.$key" "\"$(resolve "$path")\""
+    batch_set "artifacts.$key" "\"$(resolve "$path")\""
   done < <(nget '.artifacts // {} | to_entries[] | [.key, .value] | @tsv')
   while IFS=$'\t' read -r key path; do
     [[ -n "$key" ]] || continue
     path="$(resolve "$path")"
-    [[ -f "$path" ]] && fset "artifacts.$key" "\"$path\""
+    [[ -f "$path" ]] && batch_set "artifacts.$key" "\"$path\""
   done < <(nget '.artifactsIfPresent // {} | to_entries[] | [.key, .value] | @tsv')
   while IFS=$'\t' read -r key value; do
     [[ -n "$key" ]] || continue
-    [[ "$(fget ".artifacts.$key // \"null\"")" != "null" ]] || fset "artifacts.$key" "\"$value\""
+    [[ "$(fget ".artifacts.$key // \"null\"")" != "null" ]] || batch_set "artifacts.$key" "\"$value\""
   done < <(nget '.artifactsDefault // {} | to_entries[] | [.key, .value] | @tsv')
   run_bodies onOk
 fi
 if (( flags == 0 )); then
-  if [[ "$(nget '.commit // ""')" != "" ]]; then
-    paths=()
-    while IFS= read -r p; do paths+=("$(resolve "$p")"); done < <(nget '.commit.paths[]')
-    commit_paths "$(resolve "$(nget '.commit.message')")" ${paths[@]+"${paths[@]}"}
-  fi
-  checkpoint="$(nget '.checkpoint // ""')"
-  [[ -z "$checkpoint" ]] || tag_checkpoint "$checkpoint"
   while IFS=$'\t' read -r key value; do
     [[ -n "$key" ]] || continue
-    fset "$key" "$value"
+    batch_set "$key" "$value"
   done < <(nget '.set // {} | to_entries[] | [.key, (.value | @json)] | @tsv')
   case "$(nget '.close // "always"')" in
-    always) close_phase ;;
-    terminal) (( terminal == 1 )) && close_phase ;;
+    always) queue_close ;;
+    terminal) (( terminal == 1 )) && queue_close ;;
   esac
-  rm -f "$feature_dir/.phase-entry.json"
-  bash "$SCRIPT_DIR/supervisor/store.sh" persist "$feature_dir" "phase-exit:$phase" >/dev/null \
-    || flag "[store] persist failed for $feature_dir (LOOP_SPEC_STORE)"
+  # Freshness recheck before the ONE acknowledging write and before any commit/tag:
+  # a gate or child that raced an unrelated plain write since ingress bumped the
+  # generation without refreshing our token, and the batch below must not silently
+  # accept a phase's writes over a state it no longer reflects.
+  # The batch call is the `elif` condition itself (never a bare statement): under
+  # set -e a stale-token failure there, as a standalone command after `||`, would abort
+  # the whole script before this FLAG ever printed -- as a condition it is exempt, and
+  # the same publication FLAG covers both "went stale before this check" and "went
+  # stale in the instant between this check and the write it was guarding".
+  if ! loop_spec_publication_fresh "$feature_dir"; then
+    flag "[publication] feature state changed since this exit began; run the exit again"
+  elif [[ "$batch_entries" == "[]" ]] || lib feature-write batch "$feature_dir" "$batch_entries" >/dev/null; then
+    if [[ "$(nget '.commit // ""')" != "" ]]; then
+      paths=()
+      while IFS= read -r p; do paths+=("$(resolve "$p")"); done < <(nget '.commit.paths[]')
+      # The feature's docs directory is plugin-owned end to end, so everything a phase
+      # left there rides its commit: a fixed list rotted on a live run (a driver-edited
+      # SPEC.md in VERIFY, a REVIEW-ORDER.md the list named but the add missed) and the
+      # next phase's entry refused the dirt.
+      docs_dir="$(resolve '{docs}')"
+      [[ -d "$docs_dir" ]] && paths+=("$docs_dir")
+      commit_paths "$(resolve "$(nget '.commit.message')")" ${paths[@]+"${paths[@]}"}
+    fi
+    checkpoint="$(nget '.checkpoint // ""')"
+    [[ -z "$checkpoint" ]] || tag_checkpoint "$checkpoint"
+    rm -f "$feature_dir/.phase-entry.json" "$feature_dir/.phase-entry.token.json"
+    bash "$SCRIPT_DIR/supervisor/store.sh" persist "$feature_dir" "phase-exit:$phase" >/dev/null \
+      || flag "[store] persist failed for $feature_dir (LOOP_SPEC_STORE)"
+  else
+    flag "[publication] feature state changed since this exit began; run the exit again"
+  fi
 fi
 if (( flags == 0 )); then
   echo "phase-exit: ok ($phase)"

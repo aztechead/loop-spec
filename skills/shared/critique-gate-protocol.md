@@ -68,7 +68,10 @@ declares `currentGate` in the `reads[]` of both critique subgraph nodes, and
 spawn kind (`skills/shared/dispatch.md`) this and every later message is a nameless
 `Agent({description, subagent_type: "loop-spec:challenger", run_in_background: false,
 model: <open's .model>, prompt})` with the prior gate-logs inlined; omit `model` only
-when `open` answered null:
+when `open` answered null. `prompt` is the brief's own text, pasted after you Read the
+brief file: the Agent tool runs no shell, so a `$(cat ...)` reaches the agent as literal
+text and `hooks/team/dispatch-prompt-guard.sh` denies it (three live runs each lost a
+dispatch to this).
 
 ```
 SendMessage({
@@ -103,7 +106,7 @@ critic.
 | `[major]` finding the lead disputes | Do NOT drop it — add it to the fix-list. A solo gate may only bias stricter, never looser. There is no advocate tiebreak. |
 | `[minor]` finding | Lead's judgment: add to fix-list or drop. Every dropped `[minor]` is logged in the gate-log with a one-line reason — never silently. |
 | Finding depends on user intent | Escalate via `AskUserQuestion`. Autonomous mode: no escalation — `{user_intent_action}` per the phase skill, and add it to the fix-list so the artifact states it explicitly. |
-| Finding is an ungrounded external claim (`UNGROUNDED:` line) | Lead runs the suggested read-only probe ITSELF (teammates have no Bash), appends it to the evidence ledger, then `{ungrounded_action}` per the phase skill (or converts the claim to an ASSUMPTION if the probe is impossible). |
+| Finding is an ungrounded external claim (`UNGROUNDED:` line) | Lead runs the suggested read-only probe ITSELF (teammates have no Bash), appends it to the evidence ledger, then `{ungrounded_action}` per the phase skill (or converts the claim to an ASSUMPTION if the probe is impossible). A version or documentation claim goes through `lib/docs-probe.sh latest|docs <name>`, one call per claim, never a hand-rolled fetch of a source tree: the probe bounds the read and names the source the ledger cites. |
 
 Build `fix_list` (may be empty). PLAN prepends its mechanical FLAG lines verbatim.
 

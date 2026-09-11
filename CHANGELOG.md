@@ -4,6 +4,199 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.0.0] - 2026-09-11
+
+Traceable requirements (`docs/loop-spec/7.x-roadmap.md`, "7.0: connect requirements,
+tasks, and evidence"): a required outcome now carries a stable ID and revision from
+authoring through evidence, a driver owns the artifacts that prove it, and an incomplete
+pre-7 cycle can move onto the new contract instead of only finishing or being abandoned.
+The twelve `docs/loop-spec/features/release-7-0/` tasks that built this are summarized
+below; each task's own SPEC/PLAN/VERIFICATION is the durable record of what it proved.
+
+### Before you update
+
+- **A new cycle records the v1 requirements contract from creation**; there is no
+  operator switch to keep issuing the old positional format for a new feature. SPEC's
+  frontmatter now carries `requirements_version: 1` and `requirements_owner`, and each
+  `### Good Enough` item is a stable `GE-NNN` with its own `SC-NNN` scenarios
+  (`docs/loop-spec/requirements-format.md`).
+- **An incomplete cycle that started before this release keeps working under its
+  original (legacy) contract for the whole 7.x series** — this is never automatic and
+  never required. An operator who wants that one cycle's identities, revisions, and
+  coverage gates on the v1 contract runs `bash lib/requirements-migrate.sh
+  preview|status|apply|resume|rollback --feature-dir DIR`
+  (`docs/loop-spec/requirements-migration.md`). Completed legacy artifacts and approval
+  records are never rewritten.
+- **Every authoritative state write goes through the driver's ingress token.** A staged
+  publication (`lib/artifact-publication.sh capture`/`publish`) carries the generation
+  and input hashes it was captured against; an intervening generation change invalidates
+  the old token rather than being silently accepted (`lib/artifact_publication.py`).
+- **The four harness guards (Claude Code, opencode, ADK, Codex) deny a direct tool write
+  onto a driver-owned publication path** — SPEC/PLAN/VERIFICATION/PATTERNS.md once a
+  feature is on the oneshot route or the v1 format, `feature.json`/`tasks.json`, and
+  `observations/**`, `publication-generations/**`, `migration-generations/**` under
+  runtime state — and name the driver command to use instead
+  (`skills/shared/{claude,opencode,adk,codex}-harness.md`, "Protected publication
+  paths"; `bash lib/harness.sh protected-path`). This guards the tool boundary a normal
+  run goes through, not a host an attacker already controls.
+- **The portability rule now has a probe of its own**: `bash lib/portability-scan.sh
+  scan <files>` names, with `file:line`, a bash>=4-only construct or a
+  GNU-coreutils-only flag the plugin's `bash>=3.2`/BSD-userland floor does not accept
+  (`tests/lib/portability-scan.test.sh`; registered in `tests/run-all.sh` and CLAUDE.md's
+  code-for-humans checklist).
+
+### Added
+
+- `lib/requirements.py` / `lib/requirements.sh`: the pure, stdlib-only requirements
+  parser and inventory reader (`parse_spec`, `load_inventory`, `inventory_digest`);
+  `docs/loop-spec/requirements-format.md` is its grammar and revision-digest reference
+  (task-001).
+- Driver-owned identity state: `feature.json`'s `requirementsContract` records format,
+  owner, and the monotonic issued/retired ledger; format/owner cannot be downgraded by
+  an ordinary write, including whole-state replacement (task-002).
+- `lib/artifact_publication.py` / `lib/artifact-publication.sh`: the shared
+  capture/stage/commit primitive every producer route now stages through, with a
+  generation counter that only moves forward (task-003).
+- `cycle-driver.sh spec skeleton|write|fill` and `verification run` route both full and
+  short (oneshot) authoring through the same identity and publication contract, so a
+  requirement's ID and revision do not change because its execution route did
+  (task-004; `docs/loop-spec/requirements-format.md`, "Authoring commands").
+- `lib/criteria-coverage.sh` (and PLAN's `**Requirements:**`/`**Obligations:**` blocks)
+  validate coverage against the actual dispatch plan, not text that only appears in
+  notes; many-to-many mappings and multiline criteria are supported, dangling or missing
+  mappings fail with a diagnostic (task-005).
+- `lib/execution_inputs.py`: declared toolchain, local, external, and sensitive input
+  identities (`**Execution inputs:**` in PLAN), captured and diffed without treating a
+  preparation receipt or a lockfile as proof of installed bytes (task-006).
+- `lib/execution_observation.py`: bounded, driver-owned command records
+  (`observations/<execution-id>.json`/`.output`) binding a scenario to its requirement
+  revision, exit status, clean HEAD, and the actual input/environment identity examined
+  (task-007).
+- VERIFY and ITERATE (`lib/verification-grounding-lint.sh`, `lib/converged-floor.sh`)
+  cross-check every required scenario against a current observation record before
+  accepting PASS; a fabricated row, an unknown scenario ID, or a changed requirement or
+  code state cannot satisfy the gate (task-008).
+- `bash lib/harness.sh protected-path` and the matching `PreToolUse`/`before_tool_callback`
+  guard on all four harnesses (task-009, see "Before you update").
+- `lib/requirements_migrate.py` / `lib/requirements-migrate.sh`: `preview` (deterministic,
+  read-only, byte-identical on repeat calls against unchanged inputs) and `status`;
+  `apply`, `resume`, and `rollback` publish an approved preview under the same
+  publication lock, preserve the original artifacts under
+  `migration-generations/<transaction-id>/`, and are safe to resume after interruption or
+  roll back without manufacturing historical evidence (tasks 010-011;
+  `docs/loop-spec/requirements-migration.md`).
+- `tests/release-7-0-coverage.test.sh`: pins every 7.0 helper suite's registration, the
+  four-harness protected-path wiring, the short/full VERIFICATION row-shape agreement,
+  the grounding/floor gates' `--feature-dir` wiring, and a ceiling on the required
+  source probes (task-012).
+
+### Changed
+
+- `lib/deliver.sh` and `lib/finalize-delivery-candidate.sh` finalize the tracked
+  artifacts first, resolve the exact final-candidate SHA, then run every required
+  scenario and mandatory command fresh against that candidate
+  (`observations/final/<candidate-digest>/VERIFICATION.md`); an earlier VERIFY
+  observation never authorizes a later, differently-shaped candidate (task-008).
+- `docs/loop-spec/reliability.md` and `docs/loop-spec/7.x-roadmap.md` mark the delivered
+  7.0 items and keep the roadmap's later stages (7.1 capability lifecycle, 7.2 selective
+  reuse) open.
+
+### Fixed
+
+- A copied PASS row, a matching requirement ID, or a source citation is no longer
+  sufficient evidence that a check actually ran: VERIFY and ITERATE now require a
+  driver-owned observation record for every required scenario (task-008).
+- A live Sonnet cycle on the `fastapi-echo` eval task (one session, 363 lead turns,
+  no application code in 60 minutes) showed five ways the lead fought the plugin, each
+  now closed with a test: a `next` or `phase-begin` call with the harness session id
+  stripped counts as the session that handed off, never as a fresh one; `spec write`
+  replaces the full-route template's `{requirements_frontmatter}` line with the v1
+  declarations instead of publishing it; the pattern-mapper may stage PATTERNS.md under
+  the feature's `publication-staging/`, where the plan skill sends it; PLAN's exit gate
+  folds the driver's inferred task edges into its parity check, so an inferred edge is
+  not drift; and a bare `feature-write.sh set` refusal names the token-bound write a
+  lead can run, which the plan skill now spells out for `commands.prepare`.
+- The same run's smaller frictions are closed too: a slug keeps six words and drops a
+  leading article instead of the first eleven words of the prompt; the planner writes
+  `"revision":"current"` and `plan write` stamps the live digest, so nobody copies a
+  hash by hand after a SPEC repair during PLAN; that repair (`spec fill` in PLAN) is on
+  the plan node's egress allow-list rather than a warning; a lead may not edit the
+  planner's or pattern-mapper's staged draft and re-dispatches with a fix list instead;
+  and the critique protocol sends version and documentation claims through
+  `lib/docs-probe.sh` rather than hand-rolled fetches.
+- A second live Sonnet cycle on the fixed plugin reached VERIFY with the service built
+  (seven of seven acceptance checks, five fresh sessions, about a third of the first
+  run's cost) and showed the next layer: a planner resumed by `SendMessage` with a fix
+  list now keeps its role in the path hook (the subagent meta file names its dispatch);
+  the Task DAG lint says the row shape it wants and the planner is told the table is
+  mandatory; the acceptance lint's flag carries its own remedy; the challenger names
+  `lib/docs-probe.sh` as the probe for a dependency claim; `task integrate` commits
+  `task.files` in a task worktree the implementer left dirty, as the in-place path
+  always did; a plain PEP 621 project is prepared into `.venv` under an interpreter
+  that satisfies `requires-python`, with its test extras, and its test command targets
+  that venv, so a 3.14 project is no longer installed under the default 3.11; and the
+  token refusals say the helper mints the token itself.
+- A third live cycle built the service again and escalated at VERIFY on its own setup:
+  `task integrate` now passes `commands.prepare` to the task worktree and runs it in
+  place before verify, a prepared checkout's `.venv/bin` is on the verify command's
+  PATH, the venv, egg-info and pytest cache a prepare command creates are excluded in
+  the repository's common exclude file before it runs, plugin state under `.loop-spec`
+  is never setup dirt, and the critique protocol says the challenger's prompt is the
+  brief's text read with Read, since the Agent tool runs no shell.
+- Two gaps found while assessing VERIFY before a fourth run: the observation runner puts a
+  prepared checkout's `.venv/bin` first on PATH, so a SPEC's bare `pytest` and `python3`
+  checks run under the venv the prepare step built; and the first task's backfill of
+  `commands.test` and `commands.prepare` runs whenever those are empty, not only under
+  the greenfield flag a placeholder README kept two runs from earning. The backfill had
+  also been silently refused: `task-progress mark-done` wrote tasks.json directly and
+  moved the hash the parent's token had captured, so it now publishes under that token.
+- The fourth live cycle passed VERIFY and ITERATE's judge scored every criterion full
+  marks, then two things sent it back: the iterate route called the converged floor
+  without `--feature-dir`, so a v1 verification table failed the legacy matcher and the
+  verdict was vetoed (fixed); and the second VERIFY entry refused a driver-edited SPEC.md
+  and a REVIEW-ORDER.md the fixed commit list had not carried, so every phase exit now
+  commits everything under the feature's docs directory, which is plugin-owned end to end.
+
+No comparative measurement of repair rounds, cost, or latency accompanies this release;
+that evaluation is out of scope for 7.0 (SPEC "Exceptional": comparative live
+evaluations require separate authorization and are not an offline acceptance gate).
+## [6.6.0] - 2026-09-10
+
+The Goal and Boundary freeze moves from SPEC exit to PLAN entry.
+
+### Before you update
+
+- **DISCUSS may change Goal and Boundary again.** A live run froze them when SPEC
+  exited; DISCUSS then asked its design questions in a fresh session, the human's
+  answers changed those sections, and the return escalated `frozen-intent-changed`
+  with the human present. The driver now records `specApproval` when the cycle enters
+  PLAN, on every route in (the DISCUSS gate, the short and compact paths, ITERATE's
+  plan gap), with the source read from `lib/supervisor/oracle.sh` rather than typed by
+  the lead. `skills/spec/SKILL.md` and `skills/discuss/SKILL.md` no longer call
+  `spec approve`; the command remains for tests and out-of-band supervisors.
+- **The DISCUSS human gate says whether intent moved.** `next` answers
+  `PAUSED node=human.after-discuss intent=changed|unchanged|unknown` by comparing the
+  sections against `specIntentSeen`, the digest the driver records at SPEC exit. A
+  feature 6.5 froze at SPEC exit has no snapshot; the gate compares against its
+  approval instead. The cycle skill prints Goal and Boundary before that pause when
+  they changed, because PLAN freezes them as they stand.
+- **A human-approved SPEC rewind reopens the freeze.** When ITERATE routes a `spec`
+  gap through `human.iterate-spec-approval` and the human chooses to re-open, the
+  driver retires `specApproval` into `specApprovalHistory`, clears it, and re-records
+  at PLAN; the DISCUSS gate compares against the retired digest. An unattended rewind
+  keeps the freeze, as before. `tests/lib/pr-body.test.sh` no longer uses the macOS
+  form of `sed -i`.
+- **A refused phase entry is not an escalation.** `phase-begin` refused for a missing or
+  changed approval used to write the escalated result and open a checkpoint PR while the
+  feature stayed in its phase. It now emits `entry_refused` with the reason and exits 1.
+- **A NEXT answer removes the pause it resumes from.** `result.json` and the
+  `.loop-spec/last-result.json` pointer kept the last `paused` record while the next
+  phase ran; the driver removes both when it activates the phase.
+- **PLAN entry requires the record.** `phase-begin plan` refuses a feature with no
+  `specApproval`; entering through `next` records it. Before PLAN, artifact lint checks
+  only that Goal and Boundary exist and are non-empty; from PLAN on it compares the
+  digest as before, and the state writer still refuses replacement or deletion.
+
 ## [6.5.0] - 2026-09-09
 
 The orchestrator port's follow-up (`port audit 1`,

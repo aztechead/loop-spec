@@ -61,12 +61,22 @@ Read the returned `flags` for current exit-gate findings:
 - `--command "<shell>" --expect "<what exit 0 proves>"` once per observable outcome:
   the driver writes the line and runs that command at the boundary; you never compose
   the sentence (`--row GE-001` replaces a criterion)
+- `--execution-inputs '<JSON>'` alongside `--command`/`--expect` under a v1 contract
+  (required; refused otherwise). Minimal declaration when the command touches no
+  tracked toolchain, file, or external identity:
+  `--execution-inputs '{"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}'`
 - `--grounding "<file:line - the fact it shows>"` per grounding row
 
 The footprint holds every cited file and the existing test module of each: a test
 module the task does not need leaves it in one call,
 `bash "$DRV" spec footprint drop --feature-dir "$feature_dir" --file <test module> --reason "<why>"`,
 which is refused while the file it tests changes.
+
+Under a v1 contract (`requirementsContract.format`, the default for every new cycle;
+a resumed pre-7 cycle stays legacy -- `docs/loop-spec/requirements-format.md`), the
+skeleton opens with an empty `### Good Enough`: the driver allocates a fresh
+`GE-NNN`/`SC-NNN` on your first `--command`/`--expect` fill, never a placeholder row,
+and `--row` names a requirement by that stable ID, never a position.
 
 An intent gap is a choice the user would notice in the result that the code cannot
 settle; everything else you decide and record

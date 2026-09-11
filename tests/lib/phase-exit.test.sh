@@ -38,6 +38,21 @@ FD="$REPO/.loop-spec/features/my-feature"
 DOCS="$REPO/docs/loop-spec/features/my-feature"
 mkdir -p "$DOCS"
 fj() { jq -r "$1" "$FD/feature.json"; }
+# fw_set FEATURE_DIR DOT_PATH JSON_VALUE: a plain `set` against a feature that already
+# carries artifactPublication (bootstrapped legacy once phase-exit.sh first touches
+# FD) needs its own ingress token (task-009 strict enforcement).
+fw_set() {
+  local dir="$1" path="$2" value="$3" tok
+  tok="$(mktemp "${TMPDIR:-/tmp}/phase-exit-fw-token.XXXXXX")"
+  python3 "$REPO_ROOT/lib/feature_write.py" ingress "$dir" > "$tok"
+  bash "$REPO_ROOT/lib/feature-write.sh" set "$dir" "$path" "$value" --token "$tok" >/dev/null
+  rm -f "$tok"
+}
+# This shared fixture drives phase-exit.sh generically, with legacy-shaped SPEC/PLAN/
+# VERIFICATION fixtures throughout (the separate REPOV1 fixture below covers the v1
+# relation gate). Strip the v1 contract a new cycle otherwise carries so the first
+# participant bootstraps legacy, same pattern as tests/lib/cycle-driver.test.sh's AC6.
+jq 'del(.artifactPublication) | del(.requirementsContract)' "$FD/feature.json" > "$WORK/fd-legacy.json" && mv "$WORK/fd-legacy.json" "$FD/feature.json"
 
 # --- usage ------------------------------------------------------------------------
 ec=0; bash "$EXIT" >/dev/null 2>&1 || ec=$?
@@ -137,11 +152,11 @@ check "exit spec: SPEC.md committed" "1" "$(git log --oneline | grep -c 'spec: m
 # repository) must not read as workspace mode: the haiku re-run of todo-due carried one
 # and phase-exit committed nothing. Re-run the exit over an edited SPEC.md and expect a
 # second commit.
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" workspace "{\"root\":\"$REPO\",\"mode\":\"single\",\"repos\":[]}" >/dev/null
+fw_set "$FD" workspace "{\"root\":\"$REPO\",\"mode\":\"single\",\"repos\":[]}"
 printf '\nA line the second commit carries.\n' >> "$DOCS/SPEC.md"
 bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1
 check "exit spec: a single-mode workspace record still commits" "2" "$(git log --oneline | grep -c 'spec: my-feature')"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" workspace null >/dev/null
+fw_set "$FD" workspace null
 
 # --- discuss ------------------------------------------------------------------------
 out="$(bash "$MODE" discuss --feature-dir "$FD")"
@@ -151,10 +166,10 @@ out="$(LOOP_SPEC_AUTONOMOUS=1 bash "$MODE" discuss --feature-dir "$FD")"
 check "mode discuss: autonomous self-answers the grill" "grill=self-answer" "${out%% *}"
 out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$MODE" discuss --feature-dir "$FD")"
 check "mode discuss: a supervisor rides on the grill line" "oracle=supervisor" "$(cut -d' ' -f2 <<<"$out")"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"review-only"' >/dev/null
+fw_set "$FD" execStyle '"review-only"'
 out="$(bash "$MODE" discuss --feature-dir "$FD")"
 check "mode discuss: review-only skips the grill" "grill=skip" "${out%% *}"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"auto"' >/dev/null
+fw_set "$FD" execStyle '"auto"'
 
 # the oracle gate: a named supervisor that no discuss question reached keeps the phase open
 ec=0; out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" discuss --feature-dir "$FD" 2>&1)" || ec=$?
@@ -241,11 +256,256 @@ done
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 out="$(bash "$MODE" plan --feature-dir "$FD")"
 check "mode plan: one small task takes the fast path" "critique=skip" "${out%% *}"
+printf '# Review order\n\n- none yet\n' > "$DOCS/REVIEW-ORDER.md"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: gated plan passes" "0" "$ec"
+check "exit plan: everything under the feature docs dir rides the phase commit" "" "$(git status --porcelain -- "$DOCS")"
 check "exit plan: tasks pointer recorded" "1" "$([[ "$(fj '.artifacts.tasks')" == *tasks.json ]] && echo 1 || echo 0)"
 check "exit plan: patterns source defaulted" "pattern-mapper" "$(fj '.artifacts.patternsSource')"
-check "exit plan: PLAN.md committed" "1" "$(git log --oneline | grep -c 'plan: my-feature')"
+# Two passing exits, two commits: the second carried the REVIEW-ORDER.md that appeared
+# under the feature docs dir between them.
+check "exit plan: PLAN.md committed" "2" "$(git log --oneline | grep -c 'plan: my-feature')"
+# `plan tasks` publishes the extraction with plan-conflicts.sh's inferred edges folded
+# in; the parity check must see the same edges, or a plan whose task prose names an
+# earlier task bounces on an edge the driver itself added.
+cp "$DOCS/PLAN.md" "$WORK/plan-one-task.md"
+cat > "$DOCS/PLAN.md" <<'MD'
+# My Feature - Implementation Plan
+
+**Spec:** `docs/loop-spec/features/my-feature/SPEC.md`
+
+## Architecture overview
+
+Two tasks.
+
+## Task DAG
+
+| ID | Subject | BlockedBy | Files | Est scope |
+|----|---------|-----------|-------|-----------|
+| task-001 | do a thing | - | a.sh | small |
+| task-002 | check the thing task-001 wrote | - | b.sh | small |
+
+## Spec coverage
+
+- `bash -n a.sh` exits 0 -> task-001
+
+## Tasks
+
+### task-001: do a thing
+
+**Goal:** one sentence.
+
+**Files:**
+- `a.sh`
+
+**Verify:** `bash -n a.sh`
+
+**Acceptance criteria:**
+- [ ] `bash -n a.sh` exits 0
+
+### task-002: check the thing task-001 wrote
+
+**Goal:** reuse the helper task-001 wrote.
+
+**Files:**
+- `b.sh`
+
+**Verify:** `bash -n b.sh`
+
+**Acceptance criteria:**
+- [ ] `bash -n b.sh` exits 0
+
+## Grounding
+
+- none
+MD
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCS/PLAN.md" > "$WORK/plan-two-extract.json"
+bash "$REPO_ROOT/lib/plan-conflicts.sh" edges "$WORK/plan-two-extract.json" > "$FD/tasks.json" 2>/dev/null
+check "exit plan: the driver inferred the edge the prose implies" "task-001" "$(jq -r '.[] | select(.id == "task-002") | .blockedBy | join(",")' "$FD/tasks.json")"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: an inferred edge is not drift between PLAN.md and tasks.json" "0" "$(grep -c 'blockedBy differs' <<<"$out")"
+cp "$WORK/plan-one-task.md" "$DOCS/PLAN.md"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCS/PLAN.md" > "$FD/tasks.json"
+
+# --- plan (v1 contract): the reviewed task relation replaces positional coverage ----
+# A v1 feature: every ordinary new cycle records v1 by default (no operator switch).
+REPOV1="$WORK/repov1"; mkdir -p "$REPOV1"
+git -C "$REPOV1" init -q -b main
+git -C "$REPOV1" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+bash "$REPO_ROOT/lib/cycle-driver.sh" start --dir "$REPOV1" -- v1 relation check >/dev/null 2>&1
+bash "$REPO_ROOT/lib/cycle-driver.sh" init --dir "$REPOV1" \
+  --slug v1-relation-check --title "v1 relation check" --style auto --profile standard --autonomous 0 >/dev/null 2>&1
+FDV1="$REPOV1/.loop-spec/features/v1-relation-check"
+DOCSV1="$REPOV1/docs/loop-spec/features/v1-relation-check"
+mkdir -p "$DOCSV1"
+check "v1 fixture: creation records a v1 contract" "v1" "$(jq -r '.requirementsContract.format' "$FDV1/feature.json")"
+owner_json="$(jq -c '.requirementsContract.owner' "$FDV1/feature.json")"
+
+cat > "$DOCSV1/SPEC.md" <<EOF
+---
+requirements_version: 1
+requirements_owner: $owner_json
+---
+# v1 relation check
+
+## Success criteria
+
+### Good Enough
+
+- [ ] GE-001: The user sees the result.
+  - SC-001: Reload shows the result.
+
+## Constraints
+
+- OBL-runtime: keep it offline.
+EOF
+# The revision comes from the inventory reader itself, never typed by hand
+# (docs/loop-spec/requirements-format.md; requirements.py's own digest is the
+# only authoritative source of a requirement's revision).
+ge001_revision="$(bash "$REPO_ROOT/lib/requirements.sh" inventory --spec "$DOCSV1/SPEC.md" --feature-dir "$FDV1" \
+  | jq -r '.requirements[0].revision')"
+check "v1 fixture: inventory reader produced a revision" "64" "${#ge001_revision}"
+
+write_v1_plan() {
+  # $1 requirements bullet (or "-" for none), $2 obligations bullet (or "-" for none)
+  local req_line="$1" obl_line="$2"
+  {
+    printf '# v1 relation check - Implementation Plan\n\n## Task DAG\n\n'
+    printf '| ID | Subject | BlockedBy | Files | Est scope |\n|----|---------|-----------|-------|-----------|\n'
+    printf '| task-001 | do a thing | - | a.sh | small |\n\n## Tasks\n\n### task-001: do a thing\n\n'
+    printf '**Goal:** one sentence.\n\n**Files:**\n- `a.sh`\n\n'
+    if [[ "$req_line" != "-" ]]; then printf '**Requirements:**\n- %s\n\n' "$req_line"; fi
+    if [[ "$obl_line" != "-" ]]; then printf '**Obligations:**\n- %s\n\n' "$obl_line"; fi
+    printf '**Execution inputs:** {"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}\n\n'
+    printf '**Verify:** `bash -n a.sh`\n\n**Acceptance criteria:**\n- [ ] `bash -n a.sh` exits 0\n\n'
+    printf '## Grounding\n\n- none\n'
+  } > "$DOCSV1/PLAN.md"
+}
+printf '# PATTERNS.md - v1 relation check\n\n## Concept: writer\n\ndetail\n' > "$DOCSV1/PATTERNS.md"
+
+valid_req="{\"owner\":$owner_json,\"requirement\":\"GE-001\",\"revision\":\"$ge001_revision\",\"scenarios\":[\"SC-001\"]}"
+
+# a. a scenario the SPEC inventory lacks
+write_v1_plan "{\"owner\":$owner_json,\"requirement\":\"GE-001\",\"revision\":\"$ge001_revision\",\"scenarios\":[\"SC-999\"]}" "-"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: unknown scenario exits 1" "1" "$ec"
+check "v1 exit plan: unknown scenario names GE-001/SC-999" "1" "$(grep -c 'GE-001/SC-999' <<<"$out")"
+
+# b. a stale revision
+write_v1_plan "{\"owner\":$owner_json,\"requirement\":\"GE-001\",\"revision\":\"$(printf '0%.0s' $(seq 1 64))\",\"scenarios\":[\"SC-001\"]}" "-"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: stale revision exits 1" "1" "$ec"
+check "v1 exit plan: stale revision is named" "1" "$(grep -c 'stale revision for GE-001' <<<"$out")"
+
+# b2. the planner writes "current"; plan write stamps the live revision, so a SPEC
+# repaired during PLAN needs a re-landing, never a hand-copied digest.
+write_v1_plan "{\"owner\":$owner_json,\"requirement\":\"GE-001\",\"revision\":\"current\",\"scenarios\":[\"SC-001\"]}" "-"
+cp "$DOCSV1/PLAN.md" "$WORK/plan-current.md"
+landed="$(cd "$REPOV1" && bash "$REPO_ROOT/lib/cycle-driver.sh" plan write --feature-dir "$FDV1" --file "$WORK/plan-current.md" 2>/dev/null)"
+check "v1 plan write: a 'current' revision is stamped from the inventory" "1" "$(grep -c "\"revision\":\"$ge001_revision\"" "$DOCSV1/PLAN.md")"
+check "v1 plan write: no 'current' placeholder is published" "0" "$(grep -c '"revision":"current"' "$DOCSV1/PLAN.md")"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: the stamped revision is current" "0" "$(grep -c 'stale revision' <<<"$out")"
+
+# c. a dangling task reference in the derived '## Spec coverage' summary
+write_v1_plan "$valid_req" "-"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+printf '\n## Spec coverage\n\n- The user sees the result -> task-999\n' >> "$DOCSV1/PLAN.md"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: dangling task-999 reference exits 1" "1" "$ec"
+check "v1 exit plan: dangling reference names task-999" "1" "$(grep -c 'dangling task reference task-999' <<<"$out")"
+
+# d. a free-text exemption instead of a Requirements/Obligations bullet
+write_v1_plan "-" "-"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: no Requirements/Obligations bullet exits 1" "1" "$ec"
+check "v1 exit plan: names the free-text exemption" "yes" "$(grep -q 'no free-text coverage exemption' <<<"$out" && echo yes)"
+
+# e. an OBL- id not declared under SPEC '## Constraints'
+write_v1_plan "-" "OBL-unknown"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: undeclared obligation exits 1" "1" "$ec"
+check "v1 exit plan: undeclared obligation is named" "1" "$(grep -c 'obligation OBL-unknown not declared' <<<"$out")"
+
+# f. tasks.json with the same ids as PLAN.md but an altered dispatch field
+write_v1_plan "$valid_req" "-"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+ec=0; bash "$EXIT" plan --feature-dir "$FDV1" >/dev/null 2>&1 || ec=$?
+check "v1 exit plan: the valid relation passes clean first" "0" "$ec"
+python3 -c "
+import json
+tasks = json.load(open('$FDV1/tasks.json'))
+tasks[0]['verifyCommand'] = 'echo altered'
+json.dump(tasks, open('$FDV1/tasks.json', 'w'))
+"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: an altered sidecar verifyCommand exits 1" "1" "$ec"
+check "v1 exit plan: the altered field is named" "1" "$(grep -c 'task-001.verifyCommand differs' <<<"$out")"
+
+# g. the valid relation, restored, passes clean
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: the valid relation passes clean" "0" "$ec"
+
+# --- verify (v1 contract): the exit's own gates recheck the same GE-001/SC-001
+# binding against a real execution_observation.observe() record (task-008) ----------
+printf 'echo ok\n' > "$REPOV1/a.sh"
+git -C "$REPOV1" add -A && git -C "$REPOV1" -c user.email=t@t -c user.name=t commit -q -m "feat: a.sh"
+python3 -c "
+path = '$DOCSV1/SPEC.md'
+text = open(path).read()
+line = 'scenario_checks: {\"GE-001/SC-001\":{\"command\":\"bash -n a.sh\",\"executionInputs\":' \
+       '{\"version\":1,\"toolchains\":[],\"localInputs\":[],\"externalInputs\":[],\"sensitiveInputs\":[]}}}\n'
+text = text.replace('---\n', '---\n' + line, 1)
+open(path, 'w').write(text)
+"
+cat > "$DOCSV1/VERIFICATION.md" <<'MD'
+# v1 relation check - Verification
+
+## Repository grounding
+
+- criterion: GE-001/SC-001 | implementation: a.sh:1 - proves it | integration: none - standalone check
+
+## Acceptance criteria
+
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+
+## Code review
+
+**Reviewer:** code-reviewer (inherit)
+
+### Findings
+
+none
+
+## Final test suite
+
+```
+(no commands.test is configured for this feature)
+```
+MD
+(cd "$REPOV1" && bash "$REPO_ROOT/lib/cycle-driver.sh" verification run --feature-dir "$FDV1" >/dev/null 2>&1)
+ec=0; out="$(bash "$EXIT" verify --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit verify: a fresh eligible GE-001/SC-001 record passes" "0" "$ec"
+
+# A changed scenario revision without a fresh run: the exit's own
+# verification-grounding gate refuses the now-stale row (never a numeric or
+# document-position check -- the same binding recheck cycle-driver.test.sh drives
+# through `verification run` directly).
+sed -i.bak 's/Reload shows the result\./Reload shows the result, reworded./' "$DOCSV1/SPEC.md"
+rm -f "$DOCSV1/SPEC.md.bak"
+ec=0; out="$(bash "$EXIT" verify --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit verify: a stale record (changed revision) fails the exit" "1" "$ec"
+check "v1 exit verify: the flag names current evidence" "1" "$(grep -c 'not current evidence' <<<"$out")"
+(cd "$REPOV1" && bash "$REPO_ROOT/lib/cycle-driver.sh" verification run --feature-dir "$FDV1" >/dev/null 2>&1)
+ec=0; bash "$EXIT" verify --feature-dir "$FDV1" >/dev/null 2>&1 || ec=$?
+check "v1 exit verify: a fresh run over the reworded scenario passes again" "0" "$ec"
 
 # --- execute ------------------------------------------------------------------------
 ec=0; out="$(bash "$EXIT" execute --feature-dir "$FD" 2>&1)" || ec=$?
@@ -259,12 +519,12 @@ check "exit execute: checkpoint tagged" "1" "$(git tag | grep -c 'post-execute')
 
 # Every exit refusal below must occur even though the published task is done.
 for pending in '[{"id":"still-queued","subject":"not dispatched"}]' 'false' '{}'; do
-  bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks "$pending" >/dev/null
+  fw_set "$FD" pendingRemediationTasks "$pending"
   ec=0; out="$(bash "$EXIT" execute --feature-dir "$FD" 2>&1)" || ec=$?
   check "exit execute: pending remediation $pending blocks exit" "1" "$ec"
   check "exit execute: pending remediation diagnostic" "1" "$(grep -c 'pendingRemediationTasks' <<<"$out")"
 done
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks '[]' >/dev/null
+fw_set "$FD" pendingRemediationTasks '[]'
 cp "$FD/tasks.json" "$WORK/published-tasks.json"
 for broken in '{' '[{}]' '[]' '{"tasks":[]}'; do
   printf '%s' "$broken" > "$FD/tasks.json"
@@ -332,31 +592,31 @@ check "exit iterate: rewind pass leaves the phase open" "verify" "$(fj '.complet
 ec=0; bash "$EXIT" iterate --feature-dir "$FD" --terminal >/dev/null 2>&1 || ec=$?
 check "exit iterate: terminal pass closes the phase" "iterate" "$(fj '.completedPhases[-1]')"
 
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" iterate.lastVerdict '{"converged":true}' >/dev/null
+fw_set "$FD" iterate.lastVerdict '{"converged":true}'
 cp "$DOCS/VERIFICATION.md" "$WORK/verification.good"
 sed 's/| PASS |/| PENDING |/' "$WORK/verification.good" > "$DOCS/VERIFICATION.md"
 ec=0; bash "$EXIT" iterate --feature-dir "$FD" --terminal >/dev/null 2>&1 || ec=$?
 check "exit iterate: convergence with pending acceptance is rejected" "1" "$ec"
 cp "$WORK/verification.good" "$DOCS/VERIFICATION.md"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" iterate.lastVerdict null >/dev/null
+fw_set "$FD" iterate.lastVerdict null
 
 # --- egress guard -------------------------------------------------------------------
 # ITERATION.md is present, so the only thing left to judge is what the phase wrote.
 ENTRY="$REPO_ROOT/lib/phase-entry.sh"
 bash "$ENTRY" iterate --feature-dir "$FD" >/dev/null
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" iterate.used 1 >/dev/null
+fw_set "$FD" iterate.used 1
 ec=0; out="$(bash "$EXIT" iterate --feature-dir "$FD" 2>&1)" || ec=$?
 check "egress: a key the phase owns raises nothing" "0" "$(grep -c '\[egress\]' <<<"$out")"
 check "egress: the snapshot is consumed on ok" "missing" "$([[ -f "$FD/.phase-entry.json" ]] && echo present || echo missing)"
 
 bash "$ENTRY" iterate --feature-dir "$FD" >/dev/null
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" scratch.note '"left behind"' >/dev/null
+fw_set "$FD" scratch.note '"left behind"'
 ec=0; out="$(bash "$EXIT" iterate --feature-dir "$FD" 2>&1)" || ec=$?
 check "egress: a stray key warns by default and does not block" "0" "$ec"
 check "egress: the warning names the path" "1" "$(grep -c '^WARN \[egress\] scratch.note ' <<<"$out")"
 
 bash "$ENTRY" iterate --feature-dir "$FD" >/dev/null
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" scratch.note '"changed again"' >/dev/null
+fw_set "$FD" scratch.note '"changed again"'
 ec=0; out="$(LOOP_SPEC_EGRESS_GUARD=deny bash "$EXIT" iterate --feature-dir "$FD" 2>&1)" || ec=$?
 check "egress: deny mode flags the stray key" "1" "$ec"
 check "egress: deny mode names the path as a FLAG" "1" "$(grep -c '^FLAG \[egress\] scratch.note ' <<<"$out")"
@@ -367,6 +627,49 @@ check "egress: an unknown mode is a bad invocation" "2" "$ec"
 rm -f "$FD/.phase-entry.json"
 ec=0; out="$(bash "$EXIT" iterate --feature-dir "$FD" 2>&1)" || ec=$?
 check "egress: no snapshot means nothing to judge" "0" "$(grep -c '\[egress\]' <<<"$out")"
+
+# --- publication contract --------------------------------------------------------------
+# Point LOOP_SPEC_GRAPH at a copy of the real graph whose spec node's gates also run an
+# intruder script: it proves whether the gate ran (a marker file) and, when told to,
+# performs a plain write that races the token this exit captured at ingress.
+PUB_GRAPH="$WORK/graph-publication.json"
+jq --arg body "tests/fixtures/publication-intruder-gate.sh" \
+  '(.nodes[] | select(.id == "spec") | .egress.gates) += [{label:"intruder",body:$body,args:[]}]' \
+  "$REPO_ROOT/graph/cycle.graph.json" > "$PUB_GRAPH"
+MARKER="$WORK/intruder-marker"
+
+# AC2: the gate's plain write (LOOP_SPEC_PUBLICATION_TOKEN unset inside it) advances the
+# generation behind this exit's back; the exit must FLAG and accept nothing of its own.
+before_completed="$(fj '.completedPhases')"
+before_pointer="$(fj '.artifacts.spec')"
+before_commits="$(git -C "$REPO" log --oneline | wc -l | tr -d ' ')"
+before_tags="$(git -C "$REPO" tag | wc -l | tr -d ' ')"
+rm -f "$MARKER"
+ec=0
+out="$(LOOP_SPEC_GRAPH="$PUB_GRAPH" MARKER_FILE="$MARKER" INTRUDE_FEATURE_DIR="$FD" \
+  INTRUDE_LIB="$REPO_ROOT/lib/feature-write.sh" bash "$EXIT" spec --feature-dir "$FD" 2>&1)" || ec=$?
+check "publication AC2: an intervening plain write during a gate fails the exit" "1" "$ec"
+check "publication AC2: the publication FLAG is printed" "1" \
+  "$(grep -c 'FLAG \[publication\] feature state changed since this exit began; run the exit again' <<<"$out")"
+check "publication AC2: completedPhases is unchanged" "$before_completed" "$(fj '.completedPhases')"
+check "publication AC2: no artifacts pointer was written" "$before_pointer" "$(fj '.artifacts.spec')"
+check "publication AC2: no commit was created" "$before_commits" "$(git -C "$REPO" log --oneline | wc -l | tr -d ' ')"
+check "publication AC2: no tag was created" "$before_tags" "$(git -C "$REPO" tag | wc -l | tr -d ' ')"
+check "publication AC2: the gate did run" "1" "$([[ -f "$MARKER" ]] && echo 1 || echo 0)"
+check "publication AC2: the intruder's write was accepted" '["intruder"]' "$(jq -c '.warnings' "$FD/feature.json")"
+
+# A migration in progress refuses entry before any gate runs -- prove it with the same
+# gate body: the marker must stay absent, since begin_operation refuses before gates run.
+rm -f "$MARKER"
+digest64="$(printf 'a%.0s' {1..64})"
+jq --arg d "$digest64" '.artifactPublication.migration = {id:"m1",previewDigest:$d,phase:"marker",originalGeneration:0,publishedHashes:{}}' \
+  "$FD/feature.json" > "$FD/feature.json.tmp" && mv "$FD/feature.json.tmp" "$FD/feature.json"
+ec=0
+LOOP_SPEC_GRAPH="$PUB_GRAPH" MARKER_FILE="$MARKER" INTRUDE_FEATURE_DIR="$FD" \
+  INTRUDE_LIB="$REPO_ROOT/lib/feature-write.sh" bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
+check "publication: migration in progress exits non-zero" "1" "$([[ "$ec" -ne 0 ]] && echo 1 || echo 0)"
+check "publication: no gate ran during a migration refusal" "0" "$([[ -f "$MARKER" ]] && echo 1 || echo 0)"
+jq '.artifactPublication.migration = null' "$FD/feature.json" > "$FD/feature.json.tmp" && mv "$FD/feature.json.tmp" "$FD/feature.json"
 
 echo
 echo "phase-exit: $PASS passed, $FAIL failed"

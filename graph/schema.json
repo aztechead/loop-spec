@@ -76,6 +76,8 @@
         "handoffSession",
         "artifactSink",
         "specApproval",
+        "specIntentSeen",
+        "specApprovalHistory",
         "instructionSnapshots",
         "requirementsContract",
         "artifactPublication",

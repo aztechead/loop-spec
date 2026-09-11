@@ -45,6 +45,31 @@
 #                               harness's CLI, the CLI is on PATH, and python3 has
 #                               tomllib; every unknown leg answers "in-harness")
 #   harness.sh session-layer-reason -> stable reason for rung telemetry
+#   harness.sh protected-path --path PATH --feature-dir DIR
+#                           -> "protected=yes|no reason=<text>" on one line:
+#                              is PATH one of this feature's driver-owned
+#                              publication paths? SPEC.md/PLAN.md/
+#                              VERIFICATION.md/PATTERNS.md (resolved through
+#                              the feature's own artifact pointers, defaulting
+#                              to docs/loop-spec/features/<slug>/) are protected
+#                              when the route is oneshot (lib/graph/probes/
+#                              oneshot.sh) or requirementsContract.format is
+#                              "v1"; feature.json, feature.json.bak, and
+#                              tasks.json are always protected; so are
+#                              observations/** and its final/ subtree,
+#                              publication-generations/**, and
+#                              migration-generations/** under the feature
+#                              directory. publication-staging/**, dispatch/**,
+#                              and review-attempts/** answer "no" (legitimate
+#                              maker staging). Every guard and adapter
+#                              (hooks/pre-tool-guard.py's callees,
+#                              extensions/opencode/loop-spec.ts,
+#                              extensions/adk/loop_spec_adk/plugin.py through
+#                              that same hook) reads this one answer instead of
+#                              reimplementing the path rule. An unreadable
+#                              feature directory, missing feature.json, or any
+#                              other probe failure answers "yes": fail safe,
+#                              and the reason never claims evidence exists.
 #
 # Detection order (first match wins):
 #   1. LOOP_SPEC_HARNESS=claude|opencode|adk|codex   explicit override. The retired
@@ -123,12 +148,15 @@
 #   launches anything: extensions/sessions/session_run.py exits 3 on its own when
 #   the binary or the interpreter is missing at launch time.
 #
-# detect/cli/subagents/entrypoint/headless/attended/session-layer always exit 0 with
-# the answer on stdout; an unknown command exits 2.
+# detect/cli/subagents/entrypoint/headless/attended/session-layer/protected-path
+# always exit 0 with the answer on stdout; an unknown command, or protected-path
+# called without both --path and --feature-dir, exits 2.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SESSION_PROFILES="$SCRIPT_DIR/../extensions/sessions/profiles"
+ONESHOT_PROBE="$SCRIPT_DIR/graph/probes/oneshot.sh"
+FEATURE_READ="$SCRIPT_DIR/feature-read.sh"
 
 # Entrypoint stamps that prove a one-shot, unattended invocation.
 HEADLESS_ENTRYPOINTS=" sdk-cli sdk-py sdk-ts "
@@ -171,6 +199,122 @@ detect() {
     echo "claude"; return
   fi
   echo "claude"
+}
+
+# The one place every guard and adapter asks "is this write onto a driver-owned
+# publication path?" (SPEC "The driver owns execution observations" / "Migration
+# preserves originals..."). Callers already know which feature a candidate path
+# belongs to -- hooks/restrict-agent-paths.sh and hooks/team/result-forgery-guard.sh
+# already extract the slug from the path -- so this takes an explicit
+# --feature-dir rather than searching for one; a second implementation of that
+# search here would drift from the callers' own.
+protected_path() {
+  local path="" feature_dir=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --path) path="${2:-}"; shift 2 ;;
+      --feature-dir) feature_dir="${2:-}"; shift 2 ;;
+      *) echo "harness.sh protected-path: unknown flag '$1' (usage: --path PATH --feature-dir DIR)" >&2; exit 2 ;;
+    esac
+  done
+  [[ -n "$path" && -n "$feature_dir" ]] || {
+    echo "harness.sh protected-path: --path and --feature-dir are both required" >&2
+    exit 2
+  }
+
+  deny() { printf 'protected=yes reason=%s\n' "$1"; exit 0; }
+  allow() { printf 'protected=no reason=%s\n' "$1"; exit 0; }
+
+  local fd_real slug target
+  fd_real="$(cd "$feature_dir" 2>/dev/null && pwd -P)" || deny "unknown feature dir ($feature_dir does not exist)"
+  [[ -f "$fd_real/feature.json" ]] || deny "unknown feature dir (no feature.json in $feature_dir)"
+  slug="$(bash "$FEATURE_READ" "$fd_real" -r --filter '.slug // ""' 2>/dev/null)" || deny "feature.json could not be read"
+  [[ -n "$slug" ]] || deny "feature.json has no slug"
+
+  # A relative candidate (hooks/team/result-forgery-guard.sh's shell-command
+  # matches are not pre-resolved the way a Write tool's file_path already is)
+  # is joined against the checkout root implied by fd_real's own
+  # .loop-spec/features/<slug> suffix -- not the git-toplevel/workspace lookup
+  # below, which the state-dir case never needs and a symlinked checkout could
+  # answer differently for.
+  if [[ "$path" == /* ]]; then
+    target="$path"
+  else
+    target="${fd_real%%/.loop-spec/features/*}/$path"
+  fi
+
+  # Resolve symlinks before every comparison below: a candidate that is itself a
+  # symlink into a protected path (or sits under a symlinked directory that resolves
+  # into one) must answer protected=yes even though the literal $target does not
+  # textually match. lib/resolve-symlink.sh does the resolution -- shared with
+  # hooks/restrict-agent-paths.sh's own resolve_target so the two guards never
+  # disagree about where a path lands. Resolution failure (missing python3, an
+  # unreadable parent) falls back to the literal target rather than denying blind --
+  # the route/format checks below still run against whatever target names.
+  target="$(bash "$SCRIPT_DIR/resolve-symlink.sh" "$target" 2>/dev/null)" || true
+
+  # Runtime-state paths (under the feature's own .loop-spec/features/<slug>): the
+  # driver's staging/journal/observation set, checked before the docs tree so a
+  # feature-dir-relative name never collides with a docs-tree one.
+  case "$target" in
+    "$fd_real"/observations/*)
+      deny "observations/** is a driver-owned execution record (lib/execution_observation.py)" ;;
+    "$fd_real"/publication-generations/*)
+      deny "publication-generations/** is the driver's publication journal (lib/artifact_publication.py)" ;;
+    "$fd_real"/migration-generations/*)
+      deny "migration-generations/** is the driver's migration journal (lib/requirements_migrate.py)" ;;
+    "$fd_real"/publication-staging/*)
+      allow "publication-staging/** is where a maker legitimately stages a publication before the driver commits it" ;;
+    "$fd_real"/dispatch/*|"$fd_real"/review-attempts/*)
+      allow "$(basename "$(dirname "$target")")/ is not part of this feature's protected set" ;;
+    "$fd_real"/feature.json|"$fd_real"/feature.json.bak)
+      deny "feature.json is written only by lib/feature-write.sh" ;;
+    "$fd_real"/tasks.json)
+      deny "tasks.json is written only by the driver (lib/graph/driver.py / cycle-driver.sh)" ;;
+  esac
+
+  # Authoritative markdown: protected once this feature is on the oneshot route
+  # or the v1 requirements format, resolved through the feature's own artifact
+  # pointers so a relocated pointer (artifact_publication.py's registry) is
+  # still covered, not just the default docs/loop-spec/features/<slug>/ layout.
+  # An unreadable spec keeps the driver-owned reading rather than falling open
+  # to the full route's human-authored one (an unreadable spec may be what a
+  # hand write just broke); so does a probe that produced no answer at all.
+  local format route by_route=0 pair key name ptr abs
+  format="$(bash "$FEATURE_READ" "$fd_real" -r --filter '.requirementsContract.format // "legacy"' 2>/dev/null)" || format="legacy"
+  route="$(bash "$ONESHOT_PROBE" --feature-dir "$fd_real" 2>/dev/null)" || route=""
+  if [[ "$format" == "v1" ]]; then
+    by_route=1
+  elif [[ "${route%% *}" == "route=oneshot" ]]; then
+    by_route=1
+  elif [[ "${route%% *}" != "route=full" ]]; then
+    by_route=1  # empty or unrecognized answer: fail safe
+  else
+    case "$route" in
+      *"frontmatter missing"*|*"frontmatter unterminated"*|*"could not be read"*|*"not readable"*) by_route=1 ;;
+    esac
+  fi
+  if [[ "$by_route" == "1" ]]; then
+    local ws_root root
+    ws_root="$(bash "$FEATURE_READ" "$fd_real" -r --filter \
+      'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end' 2>/dev/null)" || ws_root=""
+    if [[ -n "$ws_root" ]]; then
+      root="$ws_root"
+    else
+      root="$(git -C "$fd_real" rev-parse --show-toplevel 2>/dev/null)" || deny "$fd_real is not inside a git repository"
+    fi
+    for pair in spec:SPEC.md plan:PLAN.md verification:VERIFICATION.md patterns:PATTERNS.md; do
+      key="${pair%%:*}"; name="${pair#*:}"
+      ptr="$(bash "$FEATURE_READ" "$fd_real" -r --filter ".artifacts.${key} // \"\"" 2>/dev/null)" || ptr=""
+      [[ -n "$ptr" ]] || ptr="docs/loop-spec/features/$slug/$name"
+      if [[ "$ptr" == /* ]]; then abs="$ptr"; else abs="$root/$ptr"; fi
+      if [[ "$target" == "$abs" ]]; then
+        deny "$name is driver-owned on this feature's requirements format/route (format=$format, ${route:-route probe gave no answer})"
+      fi
+    done
+  fi
+
+  allow "not one of feature '$slug's driver-owned publication paths"
 }
 
 cmd="${1:-}"
@@ -278,8 +422,12 @@ case "$cmd" in
     esac
     if [[ "$cmd" == "loop-runtime" ]]; then echo "$runtime"; else echo "$reason"; fi
     ;;
+  protected-path)
+    shift
+    protected_path "$@"
+    ;;
   *)
-    echo "harness.sh: unknown command '${cmd}' (detect|cli|subagents|entrypoint|headless|attended|attended-reason|loop-runtime|loop-runtime-reason|session-layer|session-layer-reason)" >&2
+    echo "harness.sh: unknown command '${cmd}' (detect|cli|subagents|entrypoint|headless|attended|attended-reason|loop-runtime|loop-runtime-reason|session-layer|session-layer-reason|protected-path)" >&2
     exit 2
     ;;
 esac

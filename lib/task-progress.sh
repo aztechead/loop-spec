@@ -34,12 +34,12 @@ case "$cmd" in
   *) usage ;;
 esac
 
-python3 - "$cmd" "$path" "${3:-}" <<'PY'
+python3 - "$cmd" "$path" "${3:-}" "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" <<'PY'
 import json
 import os
 import sys
 
-cmd, path, task_id = sys.argv[1], sys.argv[2], sys.argv[3]
+cmd, path, task_id, lib_dir = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
 try:
     with open(path, "r", encoding="utf-8") as fh:
@@ -81,6 +81,35 @@ for task in tasks:
 if not found:
     print("task-progress: unknown task id %s in %s" % (task_id, path), file=sys.stderr)
     sys.exit(1)
+
+# tasks.json is a registered artifact: under a publication token (the caller ran this
+# through lib/feature-write.sh's participant helpers) it is staged and published with
+# that token, and the refresh goes back to the caller. A direct write here moved the
+# captured tasks hash under the parent's token, so every later write in lib/execute-step.sh's
+# integrate step -- the greenfield backfill of commands.test among them -- read as stale.
+token_path = os.environ.get("LOOP_SPEC_PUBLICATION_TOKEN")
+feature_dir = os.path.dirname(os.path.abspath(path))
+if token_path and os.path.isfile(os.path.join(feature_dir, "feature.json")):
+    import uuid
+    from pathlib import Path
+    sys.path.insert(0, lib_dir)
+    from artifact_publication import locked_feature, publish_locked, stage
+    from feature_write import participant_registry, read_bounded
+    directory = Path(feature_dir)
+    try:
+        token = json.loads(read_bounded(Path(token_path), 1024 * 1024))
+        source = stage(directory, "tasks-" + uuid.uuid4().hex, (json.dumps(tasks, indent=2) + "\n").encode("utf-8"))
+        with locked_feature(directory):
+            refreshed = publish_locked(directory, token, {"version": 1, "files": [{"source": source, "target": "tasks"}], "updates": []},
+                                       registry=participant_registry(directory))
+    except (OSError, ValueError) as exc:
+        print("task-progress: cannot publish %s: %s" % (path, exc), file=sys.stderr)
+        sys.exit(1)
+    output = os.environ.get("LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT")
+    if output:
+        with open(output, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(refreshed) + "\n")
+    sys.exit(0)
 
 tmp = path + ".tmp"
 try:

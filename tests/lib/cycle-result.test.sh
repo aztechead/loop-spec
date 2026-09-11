@@ -203,7 +203,15 @@ LEGACY_WT="$WORK/legacy-worktree"
 git -C "$LEGACY_CONTROL" worktree add -q -b legacy-feature "$LEGACY_WT"
 LEGACY_FEAT="$LEGACY_WT/.loop-spec/features/legacy"
 mkdir -p "$LEGACY_FEAT"
-printf '%s\n' "$(jq 'del(.resultRoot) | .slug = "legacy"' <<<"$FIXTURE_FJ")" > "$LEGACY_FEAT/feature.json"
+LEGACY_HEAD="$(git -C "$LEGACY_WT" rev-parse HEAD)"
+# The final-candidate gate resolves feature_dir's real git HEAD, so a fixture's
+# claimed delivery targetSha must be a real reachable SHA here, not the shared
+# FIXTURE_FJ's placeholder "abc" -- see also case AD's shim, which returns the
+# real SHA it was invoked with for the same reason.
+printf '%s\n' "$(jq --arg sha "$LEGACY_HEAD" \
+  'del(.resultRoot) | .slug = "legacy" | .delivery.targets[0].targetSha = $sha
+   | .delivery.targets[0].remoteSha = $sha | .delivery.targets[0].headSha = $sha' \
+  <<<"$FIXTURE_FJ")" > "$LEGACY_FEAT/feature.json"
 bash "$LIB" write "$LEGACY_FEAT" --status completed --summary "Legacy worktree delivery completed." >/dev/null 2>&1
 check "N2: legacy worktree finds control pointer" "1" \
   "$([[ -f "$LEGACY_CONTROL/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
@@ -989,9 +997,19 @@ url="${FAKE_OBSERVE_PR_URL:-https://github.com/test/repo/pull/40}"
 code="${FAKE_OBSERVE_ERROR:-}"
 ok=true
 [[ -z "$code" ]] || ok=false
-jq -cn --argjson ok "$ok" --arg outcome "$outcome" --arg url "$url" --arg code "$code" \
+sha=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --sha) sha="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+# delivery-reconcile.sh always passes the real current HEAD here; echoing it back
+# (rather than a fabricated SHA) keeps the resulting delivery.json a real, checkable
+# candidate binding for cycle-result.sh's own final-candidate gate downstream.
+jq -cn --argjson ok "$ok" --arg outcome "$outcome" --arg url "$url" --arg code "$code" --arg sha "$sha" \
   '{schema:1,ok:$ok,mode:"observe",outcome:$outcome,prUrl:$url,prNumber:40,
-    isDraft:($outcome == "delivered-draft"),targetSha:"abc",remoteSha:"abc",headSha:"abc",
+    isDraft:($outcome == "delivered-draft"),targetSha:$sha,remoteSha:$sha,headSha:$sha,
     checks:{status:"passed",required:[]},errorCode:(if $code == "" then null else $code end),
     error:null}'
 [[ -z "$code" ]] || exit 1
@@ -1062,6 +1080,45 @@ check "write: completed without DELIVER's sidecar is refused" "0" "$([[ -f "$MID
 printf '{"schema":1,"status":"ready-for-review","nextPhase":"completed","targets":[]}' > "$MID_DIR/delivery.json"
 bash "$LIB" write "$MID_DIR" --status completed --summary "done" >/dev/null 2>&1
 check "write: completed with DELIVER's sidecar publishes" "completed" "$(jq -r '.status' "$MID_DIR/result.json" 2>/dev/null)"
+# --- publication contract -------------------------------------------------------------
+# A feature mid-migration REFUSES the write outright: no result.json, no change to the
+# last-result.json pointer other tests already populated.
+digest64="$(printf 'a%.0s' {1..64})"
+PUB_DIR="$LOOP_DIR/features/publication-migration"; mkdir -p "$PUB_DIR"
+jq --arg d "$digest64" '.slug="publication-migration" | .artifactPublication={version:1,generation:0,evidenceEpoch:0,participantsVersion:1,
+  migration:{id:"m1",previewDigest:$d,phase:"marker",originalGeneration:0,publishedHashes:{}}}' <<<"$FIXTURE_FJ" > "$PUB_DIR/feature.json"
+before_pointer="$(cat "$LOOP_DIR/last-result.json" 2>/dev/null || echo MISSING)"
+ec=0; err="$(bash "$LIB" write "$PUB_DIR" --status completed --summary "should not publish" 2>&1 >/dev/null)" || ec=$?
+check "publication: migration in progress refuses the write" "1" "$ec"
+check "publication: no result.json during a migration" "0" "$([[ -f "$PUB_DIR/result.json" ]] && echo 1 || echo 0)"
+check "publication: no last-result.json pointer change during a migration" "$before_pointer" "$(cat "$LOOP_DIR/last-result.json" 2>/dev/null || echo MISSING)"
+
+# An unfinished publication (its journal present, whether or not the feature carries a
+# full artifactPublication object) refuses the same way.
+UNFIN_DIR="$LOOP_DIR/features/publication-unfinished"; mkdir -p "$UNFIN_DIR/publication-generations"
+jq '.slug="publication-unfinished"' <<<"$FIXTURE_FJ" > "$UNFIN_DIR/feature.json"
+echo '{}' > "$UNFIN_DIR/publication-generations/active.json"
+before_pointer="$(cat "$LOOP_DIR/last-result.json" 2>/dev/null || echo MISSING)"
+ec=0; err="$(bash "$LIB" write "$UNFIN_DIR" --status completed --summary "should not publish" 2>&1 >/dev/null)" || ec=$?
+check "publication: an unfinished publication refuses the write" "1" "$ec"
+check "publication: no result.json for an unfinished publication" "0" "$([[ -f "$UNFIN_DIR/result.json" ]] && echo 1 || echo 0)"
+check "publication: no last-result.json pointer change for an unfinished publication" "$before_pointer" "$(cat "$LOOP_DIR/last-result.json" 2>/dev/null || echo MISSING)"
+
+# An ordinary write (a real, non-null publication contract, no migration) still succeeds.
+ORD_DIR="$LOOP_DIR/features/publication-ordinary"; mkdir -p "$ORD_DIR"
+jq '.slug="publication-ordinary" | .artifactPublication={version:1,generation:0,evidenceEpoch:0,participantsVersion:1,migration:null}' \
+  <<<"$FIXTURE_FJ" > "$ORD_DIR/feature.json"
+ec=0; bash "$LIB" write "$ORD_DIR" --status completed --summary "clean" >/dev/null 2>&1 || ec=$?
+check "publication: an ordinary write still succeeds" "0" "$ec"
+check "publication: an ordinary write's result.json lands" "completed" "$(jq -r '.status' "$ORD_DIR/result.json" 2>/dev/null)"
+
+# A completed cycle never gets a publication contract at all (begin_operation never
+# bootstraps currentPhase=="completed"); $FEAT_DIR, exercised throughout this suite,
+# already proves that case still writes -- name it explicitly here.
+check "publication: a completed cycle carries no artifactPublication" "1" \
+  "$(jq -e '.artifactPublication == null' "$FEAT_DIR/feature.json" >/dev/null 2>&1 && echo 1 || echo 0)"
+check "publication: that completed cycle still writes" "completed" "$(jq -r '.status' "$FEAT_DIR/result.json" 2>/dev/null)"
+
 ARMED="$WORK/armed"; mkdir -p "$ARMED/.loop-spec"
 printf '{"schema":1,"cycleType":"full","phase":"execute","slug":"s","title":"t","autonomous":true}' > "$ARMED/.loop-spec/active-run.json"
 ec=0; bash "$LIB" write-terminal --result-root "$ARMED" --cycle-type full --status completed --outcome delivered --title t --converged true --summary s >/dev/null 2>&1 || ec=$?

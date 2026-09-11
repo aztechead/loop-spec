@@ -25,6 +25,7 @@ acceptance script:
 | `todo-due` | medium | multi-file feature | plan, dependencies, new tests |
 | `readme-sync` | trivial | docs only | over-building: code written for a docs ask |
 | `fastapi-items` | small | greenfield, runtime absent | a Python 3.14 FastAPI service in a container that ships no 3.14: environment recovery, dependency install, one PLAN review round |
+| `fastapi-echo` | small | greenfield, runtime absent | the smallest 3.14 FastAPI ask (a GET and a POST that echo a string): how much plugin ceremony the cycle spends on a two-endpoint service |
 
 Per task the driver records: rounds, turns, subagents, cost, wall-clock, tokens, terminal
 result, project diff versus artifact diff, an over-build ratio (project lines added over

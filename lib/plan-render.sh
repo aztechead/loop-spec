@@ -24,7 +24,11 @@
 #     bulk is rendered task blocks (a live 377-line plan paid a pruner for all of it).
 #
 # Task fields read: id, subject|title, goal, files[], read_first[], interfaces{consumes,
-# produces}, blockedBy[], verifyCommand, expected, acceptanceCriteria[], steps[], scope.
+# produces}, blockedBy[], verifyCommand, expected, acceptanceCriteria[], steps[], scope,
+# requirements[] ({owner,requirement,revision,scenarios} objects, rendered as one
+# single-line JSON bullet each), obligations[] (bare OBL-... ids), executionInputs
+# (a {version,toolchains,localInputs,externalInputs,sensitiveInputs,preparationReceipt?}
+# object, rendered as one single-line JSON value on the marker line).
 # Exit: 0 rendered, 1 unreadable or non-array tasks.json, 2 usage.
 set -uo pipefail
 
@@ -146,6 +150,21 @@ for t in data:
     rf = strs(t.get("read_first") or t.get("readFirst"))
     if rf:
         out += ["**read_first:**"] + ["- " + r for r in rf] + [""]
+    requirements = t.get("requirements")
+    if isinstance(requirements, list) and requirements:
+        out.append("**Requirements:**")
+        for r in requirements:
+            out.append("- " + (r if isinstance(r, str) else json.dumps(r, sort_keys=True, separators=(",", ":"))))
+        out.append("")
+    obligations = t.get("obligations")
+    if isinstance(obligations, list) and obligations:
+        out.append("**Obligations:**")
+        out += ["- " + str(o) for o in obligations]
+        out.append("")
+    if "executionInputs" in t and t["executionInputs"] is not None:
+        ei = t["executionInputs"]
+        value = ei if isinstance(ei, str) else json.dumps(ei, sort_keys=True, separators=(",", ":"))
+        out += ["**Execution inputs:** " + value, ""]
     iface = t.get("interfaces") if isinstance(t.get("interfaces"), dict) else {}
     out += ["**Interfaces:**",
             "- consumes: " + str(iface.get("consumes") or "none"),

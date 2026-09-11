@@ -100,6 +100,21 @@ the deterministic `lib/verification-grounding-lint.sh` gate through the task fal
 `lib/cycle-reconcile.sh` call in `/loop-spec/auto` the only thing holding the route-exit
 contract here (`skills/shared/route-exit-contract.md`). Run it on every route.
 
+### Protected publication paths
+
+Since `tool.execute.before` runs `hooks/pre-tool-guard.py` for every native
+`write`/`edit`/`apply_patch`/`bash` call, a native OpenCode payload onto a
+driver-owned publication path (SPEC/PLAN/VERIFICATION/PATTERNS.md on the
+oneshot route or v1 format, `feature.json[.bak]`, `tasks.json`,
+`observations/**`, `publication-generations/**`, `migration-generations/**`)
+throws the shared denial and OpenCode's own error surfacing shows it to the
+model; `publication-staging/**` stays open for a maker's staged writes. See
+`skills/shared/claude-harness.md` "Protected publication paths" for the full
+list and `bash lib/harness.sh protected-path` contract — this is the one place
+the rule lives, and this bridge adds no OpenCode-specific exception to it. As
+everywhere in this contract, the guarantee covers the tool boundary a normal
+session runs through, not a host an attacker already controls.
+
 ## Dispatch mapping rule (every one-shot `Agent` call)
 
 Under opencode, `harness.sh subagents` prints `true`: the full EXECUTE ladder

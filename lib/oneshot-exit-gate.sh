@@ -121,10 +121,10 @@ if (( ! escalated )); then
   fi
 fi
 if [[ -f "$docs/VERIFICATION.md" ]]; then
-  run_gate artifact-lint lib artifact-lint verification "$docs/VERIFICATION.md"
-  run_gate verification-grounding lib verification-grounding-lint "$docs/VERIFICATION.md" --repo "$root" --spec "$spec"
+  run_gate artifact-lint lib artifact-lint verification "$docs/VERIFICATION.md" --feature-dir "$feature_dir"
+  run_gate verification-grounding lib verification-grounding-lint "$docs/VERIFICATION.md" --repo "$root" --spec "$spec" --feature-dir "$feature_dir"
   run_gate review-triage lib review-triage-lint "$docs/VERIFICATION.md"
-  (( escalated )) || run_gate converged-floor lib converged-floor "$spec" "$docs/VERIFICATION.md"
+  (( escalated )) || run_gate converged-floor lib converged-floor "$spec" "$docs/VERIFICATION.md" --feature-dir "$feature_dir"
 elif (( ! escalated )); then
   flag "[verification] $docs/VERIFICATION.md missing: ONESHOT writes it after the criteria pass (skills/oneshot/SKILL.md, Verify)"
 fi

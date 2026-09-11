@@ -141,6 +141,19 @@ While waiting for an answer, use for example
 Record the answer and rationale before removing a question.
 Do not include ambiguity scores or an interview transcript. Spec-lite owns the oneshot skeleton.
 
+When the entry packet's `requirementsContract.format` is `v1` (the default for every new cycle; a resumed pre-7 cycle stays legacy instead -- `docs/loop-spec/requirements-format.md`), write each
+`### Good Enough` row as plain `- [ ] outcome` prose and leave the template's
+`{requirements_frontmatter}` line where it is. `spec write` turns that line into the
+`requirements_version`/`requirements_owner`/`scenario_checks` declarations from the
+packet's contract and gives every row its `GE-NNN` with one `SC-001`; type neither, and
+do not read `lib/` to learn them. Then attach each row's check with
+`spec fill --feature-dir "$feature_dir" --row GE-001 --command '<shell>' --expect '<outcome>'
+--execution-inputs '{"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}'`
+(name real toolchains and local paths where they exist). Under a legacy contract, delete both
+the `{requirements_frontmatter}` line and the GE/SC row and keep the existing shape.
+Only the driver writes SPEC.md: draft it anywhere else and land it with `spec write`
+below, never by opening the target path directly.
+
 A draft written anywhere but `docs/loop-spec/features/{slug}/SPEC.md` in the checkout
 that holds `feature.json` lands through `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh"
 spec write --feature-dir "$feature_dir" --file <draft>`, which accepts no other target.
@@ -155,19 +168,15 @@ ledger. This pass does not invent a transcript or score.
 Before approval, write Goal and Boundary as outcomes and constraints: for example,
 return all accepted strings. Put revisable choices such as path-versus-query input
 in an implementation section outside Goal and Boundary, unless the user explicitly
-required that interface. After approval, moving that choice out of a frozen section
-is itself an intent change; return the gap to the human.
+required that interface.
 
-After the human approves the written Goal and Boundary, record the freeze:
-
-```bash
-bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" spec approve --feature-dir "$feature_dir" --source human
-```
-
-For unattended runs use `--source autonomous` after recording recommended decisions;
-a supervisor's explicit approval uses `--source supervised`. Never label an assumed
-answer human approval. The digest is immutable: later intent gaps return to the human,
-and cannot be fixed by changing the approval record. Phase exit verifies the digest.
+Get the human's approval of the written Goal and Boundary at this phase's gate, and
+record the answer with `decisions.sh add`. Do not record a freeze here: the driver
+freezes Goal and Boundary when the cycle enters PLAN, after DISCUSS has asked its
+design questions, and reads the approval source from the run (human, supervised, or
+autonomous) itself. DISCUSS may still change these sections; the DISCUSS gate tells the
+human whether they did. From PLAN on the digest is immutable: an intent gap returns to
+the human and cannot be fixed by changing the approval record.
 
 
 Return to the cycle; never invoke a successor phase and never run the exit yourself.

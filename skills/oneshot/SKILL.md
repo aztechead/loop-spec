@@ -34,10 +34,19 @@ from DISCUSS with the reason on record: a file outside the footprint in the diff
 reviewer BLOCK that stands after your fix, or the exit gate held three times on the
 same flags. When the change needs a fourth file, make it and return: the gate reads
 the diff. When a criterion's command is wrong, the spec's owner is the driver:
-`spec fill --command --expect --row GE-NNN` replaces it. A question the spec leaves
+`spec fill --command --expect --row GE-NNN` replaces it (under a v1 contract,
+`--execution-inputs '<JSON>'` goes with it -- the minimal declaration is
+`'{"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}'`,
+`docs/loop-spec/requirements-format.md`). A question the spec leaves
 open is a decision you record (`decisions.sh add`). A oneshot never turns a full run
 into a oneshot, and you never pick the next phase. The driver is the only writer of
 SPEC.md and VERIFICATION.md on this route.
+
+Under a v1 contract (default for every new cycle; a resumed pre-7 cycle stays legacy
+-- `docs/loop-spec/requirements-format.md`), `GE-NNN` is one stable identity across
+SPEC's checkbox, its nested `SC-NNN`, and the `scenario_checks` frontmatter key; the
+driver allocates every ID, so `--row GE-NNN` addresses it even after reordering and a
+bare position (`--row 1`) is refused.
 
 ## 2. Implement
 

@@ -199,14 +199,33 @@ case "$cmd" in
     verify_cmd="$(jq -r '.verifyCommand' <<<"$task_json")"
     if [[ "$(sget '.inPlace')" != "true" ]]; then
       worktree="$(sget '.worktree')"; branch="$(sget '.branch')"
+      # The implementer never commits (skills/shared/execute-subagent.md); in place this
+      # step stages task.files itself below, and a task worktree got no such commit: a
+      # live session-rung run left its files untracked, read zero-commit, and the lead
+      # committed by hand. Stage exactly task.files here when the branch is still at its
+      # base, so integrate-task sees the same commit the in-place path makes.
+      if [[ -d "$worktree" && "$(git -C "$worktree" rev-parse HEAD 2>/dev/null)" == "$(sget '.taskBaseSha')" ]]; then
+        while IFS= read -r f; do [[ -n "$f" ]] && git -C "$worktree" add -- "$f" 2>/dev/null; done < <(jq -r '.files // [] | .[]' <<<"$task_json")
+        git -C "$worktree" commit -q -m "feat: NO_JIRA $(jq -r '.subject' <<<"$task_json")" >/dev/null 2>&1 || true
+      fi
+      # commands.prepare is what makes verifyCommand runnable (lib/plan-exit-gate.sh sends
+      # every install there); a live run's `pytest -q` failed in the task worktree until
+      # the lead prepared it by hand, because nothing here passed the command on.
       res="$(lib integrate-task --feature-root "$root" --feature-branch "feat/$slug" --task-worktree "$worktree" \
-        --task-branch "$branch" --verify "$verify_cmd" --cleanup)" || true
+        --task-branch "$branch" --prepare "$(fget '.commands.prepare // ""')" --verify "$verify_cmd" --cleanup)" || true
       published="$(jq -r '.published // false' <<<"$res")"
       sha="$(git -C "$root" rev-parse "feat/$slug" 2>/dev/null || true)"
       answer="$(jq -c --arg sha "$sha" '{published:(.published // false), reason:(.reason // null), detail:(.detail // null), sha:$sha, blocked:null}' <<<"$res")"
     else
       mkdir -p "$feature_dir/logs"
-      vrc=0; lib output-digest run --log "$feature_dir/logs/verify-$task_id.log" --label "verify $task_id" -- bash -c "cd '$root' && $verify_cmd" >&2 || vrc=$?
+      prep_cmd="$(fget '.commands.prepare // ""')"; prc=0
+      [[ -z "$prep_cmd" ]] || (cd "$root" && bash -o pipefail -c "$prep_cmd") >&2 || prc=$?
+      if (( prc != 0 )); then
+        answer="$(jq -cn --argjson rc "$prc" '{published:false, reason:"prepare-failed", detail:("prepare command exited " + ($rc | tostring)), sha:null, blocked:null}')"
+      else
+      # A prepared checkout's .venv/bin is on PATH for its verify command, the way
+      # `uv run` and `poetry run` would put it there: the planner writes `pytest -q`.
+      vrc=0; lib output-digest run --log "$feature_dir/logs/verify-$task_id.log" --label "verify $task_id" -- bash -c "cd '$root' && { [ -d .venv/bin ] && export PATH=\"\$PWD/.venv/bin:\$PATH\"; } ; $verify_cmd" >&2 || vrc=$?
       if (( vrc != 0 )); then
         answer="$(jq -cn --argjson rc "$vrc" '{published:false, reason:"verify-failed", detail:("verify command exited " + ($rc | tostring)), sha:null, blocked:null}')"
       else
@@ -224,18 +243,26 @@ case "$cmd" in
           answer="$(jq -cn --arg sha "$after" '{published:true, reason:null, detail:null, sha:$sha, blocked:null}')"
         fi
       fi
+      fi
     fi
     if [[ "$(jq -r '.published' <<<"$answer")" == "true" ]]; then
       for member in $(jq -r '(.memberIds // [.id])[]' <<<"$task_json"); do
         lib task-progress mark-done "$sidecar" "$member" >/dev/null
       done
       task_end merged
-      if [[ "$task_id" == "task-001" && "$(fget '.greenfield // false')" == "true" ]]; then
+      # The backfill runs for a greenfield feature and for any feature whose stored
+      # test command is still empty after its first task: a placeholder README kept two
+      # live runs off the greenfield flag, and VERIFY then had no test suite to run.
+      if [[ "$task_id" == "task-001" && ( "$(fget '.greenfield // false')" == "true" || -z "$(fget '.commands.test // ""')" ) ]]; then
         test_cmd="$(lib detect-test-cmd "$root" 2>/dev/null || true)"
         [[ -n "$test_cmd" ]] && lib feature-write set "$feature_dir" commands.test "\"$test_cmd\"" >/dev/null
-        prep_cmd="$(lib prepare-environment resolve --root "$root" 2>/dev/null | jq -r '.command // ""' || true)"
-        [[ -n "$prep_cmd" ]] && lib feature-write set "$feature_dir" commands.prepare "\"$prep_cmd\"" >/dev/null
-        lib greenfield-bootstrap backfill-check "$feature_dir" >&2 || answer="$(jq -c '.detail = "greenfield backfill missing: commands.test is empty after the scaffold"' <<<"$answer")"
+        if [[ -z "$(fget '.commands.prepare // ""')" ]]; then
+          prep_cmd="$(lib prepare-environment resolve --root "$root" 2>/dev/null | jq -r '.command // ""' || true)"
+          [[ -n "$prep_cmd" ]] && lib feature-write set "$feature_dir" commands.prepare "\"$prep_cmd\"" >/dev/null
+        fi
+        if [[ "$(fget '.greenfield // false')" == "true" ]]; then
+          lib greenfield-bootstrap backfill-check "$feature_dir" >&2 || answer="$(jq -c '.detail = "greenfield backfill missing: commands.test is empty after the scaffold"' <<<"$answer")"
+        fi
       fi
       printf '%s\n' "$answer"; exit 0
     fi

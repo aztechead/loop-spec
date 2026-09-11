@@ -27,6 +27,7 @@ Surface gaps, ambiguities, flawed assumptions, and missing acceptance criteria i
    - **Missing criterion**: an acceptance criterion that cannot be verified as written.
    - **Ungrounded claim**: any statement asserting a capability, limitation, schema, or configuration of an external system (dataset, API, service, infra) without an `EVID-NNN` citation or an explicit `ASSUMPTION` marker. Emit each such finding as its own line in exactly this format:
      `UNGROUNDED: "<verbatim quote from the artifact>" — probe: <suggested read-only command>`
+     (a version or documentation claim about a dependency names `bash lib/docs-probe.sh latest|docs <name>` as its probe, never a raw fetch)
 3. Tag EVERY finding `[major]` or `[minor]`:
    - `[major]`: left unfixed, it would cause a wrong implementation, an unmet or unverifiable requirement, or a violated decision. The artifact must change.
    - `[minor]`: clarity or completeness polish; the lead may accept it into the fix-list or drop it with a logged reason.

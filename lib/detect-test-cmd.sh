@@ -142,6 +142,11 @@ elif [[ -f "$dir/pyproject.toml" && -f "$dir/poetry.lock" ]]; then
   add_cmd 'poetry run pytest'
 elif [[ -f "$dir/pyproject.toml" && -x "$dir/.venv/bin/python" ]]; then
   add_cmd '.venv/bin/python -m pytest'
+elif [[ -f "$dir/pyproject.toml" ]] && grep -Eq '^requires-python *=' "$dir/pyproject.toml"; then
+  # The prepare command lib/prepare-environment.sh resolves for this project builds
+  # .venv under the interpreter requires-python names; a bare `python` here ran a
+  # 3.14 project's tests under 3.11 on a live run.
+  add_cmd '.venv/bin/python -m pytest'
 elif [[ -f "$dir/pyproject.toml" ]]; then
   add_cmd 'python -m pytest'
 elif [[ -f "$dir/setup.py" && -x "$dir/.venv/bin/python" ]]; then

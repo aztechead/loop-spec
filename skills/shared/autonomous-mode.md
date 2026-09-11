@@ -111,8 +111,9 @@ paths, and the exact commands needed to resume.
 Self-answering collapses preference questions, never safety aborts: dirty-repo aborts,
 schema guards, the iteration ceiling, VERIFY's code-review HARD-GATE and tamper scan,
 and DELIVER's exact-SHA, required-check, and unique-PR gates stay hard failures.
-Approved Goal and Boundary remain frozen (`lib/spec_intent.py`). Self-answering
-cannot change them or rewrite the approval digest: return genuine post-approval
+Goal and Boundary freeze when the cycle enters PLAN (`lib/spec_intent.py`), after
+SPEC and DISCUSS have both asked their questions. From then on self-answering cannot
+change them or rewrite the approval digest: return genuine post-approval
 intent gaps to the human. Implementation choices outside those sections can change
 within the approved outcomes and constraints. Subject to that freeze, sites
 that normally reach a human only in one style (DISCUSS unresolved dimensions and
@@ -128,7 +129,8 @@ Use these recovery paths within existing authorization and gate limits:
 2. **Lead-authored fallback**: a teammate that produces nothing after one fresh
    re-dispatch is replaced by the lead authoring the artifact from the same brief
    (`lead-authored` in the transcript).
-3. **ITERATE rewinds** hands-off; the immutable original goal keeps the oracle honest
+3. **ITERATE rewinds** hands-off; the immutable original goal keeps the oracle honest,
+   the Goal and Boundary freeze stays (only a human-approved rewind reopens it),
    and `iterate.maxIterations` bounds it. While iterations remain, the backlog is never
    used.
 4. **Iteration limit hit** (the only backlog entry point): the confirmation pass, then

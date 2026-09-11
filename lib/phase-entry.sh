@@ -24,11 +24,17 @@
 # The call also copies feature.json to <DIR>/.phase-entry.json (ignored by the
 # runtime ignore rules): phase-exit.sh diffs the file against it and names every key the
 # phase changed outside its own allow-list, which is the egress half of this contract.
+# A read-only publication ingress (lib/feature-write.sh, lib/artifact_publication.py)
+# runs first and refuses entry outright during an active migration or an unfinished
+# publication -- no snapshot is written in that case. On an ordinary entry the ingress
+# generation is recorded alongside the snapshot at <DIR>/.phase-entry.token.json;
+# phase-exit.sh removes both files on ok.
 #
 # Output:
 #   fields=<compact JSON of the consumed feature.json keys>
 #   read=<path>                one per existing file the phase reads, required or not
 #   FLAG [ingress] <path> missing: <which phase should have written it>
+#   FLAG [publication] <reason>: migration in progress or an unfinished publication
 #   phase-entry: ok (<phase>)          exit 0
 #   phase-entry: <n> flag(s) (<phase>) exit 1
 # Exit 2 is a bad invocation, including a phase whose node declares no ingress block.
@@ -52,10 +58,32 @@ node="$(jq -c --arg p "$phase" '.nodes[] | select(.id == $p) | .ingress // empty
   || { echo "phase-entry: the '$phase' node of $GRAPH declares no ingress block; nothing opens it here" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
+
+# Read-only ingress: an active migration or an unfinished publication refuses entry
+# outright (before the snapshot is ever written), and never bootstraps a legacy
+# contract -- entry only reads, it never has a state change of its own to protect.
+. "$SCRIPT_DIR/feature-write.sh"
+# Redirect only stderr (not a $(...) capture): loop_spec_publication_begin sets
+# LOOP_SPEC_OPERATION_TOKEN as a plain variable, and a command substitution would run
+# it in a subshell where that assignment never reaches this one.
+publication_log="$(mktemp "${TMPDIR:-/tmp}/loop-spec-phase-entry-publication.XXXXXX")"
+if ! loop_spec_publication_begin "$feature_dir" read-only 2>"$publication_log"; then
+  echo "FLAG [publication] $(sed 's/^feature-write: //' "$publication_log")"
+  rm -f "$publication_log"
+  echo "phase-entry: 1 flag(s) ($phase)"
+  exit 1
+fi
+rm -f "$publication_log"
 fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 
 slug="$(fget '.slug')"
-cp "$fj" "$feature_dir/.phase-entry.json"
+# tmp + mv: the snapshot phase-exit.sh diffs against must never be observed half-written.
+snapshot_tmp="$(mktemp "$feature_dir/.phase-entry.json.XXXXXX")"
+cp "$fj" "$snapshot_tmp"
+mv "$snapshot_tmp" "$feature_dir/.phase-entry.json"
+token_tmp="$(mktemp "$feature_dir/.phase-entry.token.XXXXXX")"
+cp "$LOOP_SPEC_OPERATION_TOKEN" "$token_tmp"
+mv "$token_tmp" "$feature_dir/.phase-entry.token.json"
 ws_root="$(fget 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end')"
 if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir" rev-parse --show-toplevel)"; fi
 docs="$root/docs/loop-spec/features/$slug"

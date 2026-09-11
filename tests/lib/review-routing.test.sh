@@ -93,6 +93,11 @@ for route, phase in (("bad-spec", "verify"), ("intent-gap", "verify"),
         if phase == "oneshot":
             driver.lib("events", "emit", str(feature), "dispatch", "--phase", phase,
                        "--data", json.dumps({"role":"code-reviewer"}))
+        # cmd_next captures its ingress token fresh at entry, seeing every artifact this
+        # test just wrote directly (report/app.py); review_recovery is called here on its
+        # own, so re-begin the same way to hand it a token that matches what is on disk,
+        # rather than the one graph_step captured before those direct writes (task-004).
+        driver.pub.begin(str(feature))
         result = driver.review_recovery(str(feature), phase)
         if route in ("bad-spec", "intent-gap"):
             assert app.read_text() == "value = 1\n"
@@ -129,6 +134,11 @@ for route, phase in (("bad-spec", "verify"), ("intent-gap", "verify"),
             assert "wrong helper" in (root / ".loop-spec/BACKLOG.md").read_text()
         else:
             assert result is None and git("rev-parse", "HEAD") == fix
+        # Each iteration is its own temporary repository standing in for a fresh driver
+        # process; finish() releases this one's ingress the way a real process's exit
+        # path does, so the next iteration's graph_step captures its own rather than
+        # reusing this iteration's now-foreign token (task-004).
+        driver.pub.finish()
         print("PASS: review route " + route + " from " + phase)
 
 for invalid in ({"route":"bad-spec","cause":"x","section":"Goals","replacement":"different"},

@@ -55,17 +55,22 @@ if not any(l.strip() == "## Intent" for l in body):
     flags.append("FLAG [oneshot-shape] SPEC.md has no '## Intent' block: the ask goes inside `<!-- intent: frozen ... -->` and `<!-- /intent -->` (skills/shared/artifact-templates/SPEC-oneshot.md.template); no later phase edits it")
 if not any(l.strip() == "## Implementation notes" for l in body):
     flags.append("FLAG [oneshot-shape] SPEC.md has no '## Implementation notes' section: one bullet per footprint file naming what changes in it")
-# Every Good Enough line carries its command in backticks: the driver writes it from
-# `spec fill --command --expect`, and `verification run` executes it; a sentence with no
-# command stalled three live runs on empty Status cells before the boundary could
-# ever see it (port audit 5, R1). Checked here, at SPEC's exit.
+# Legacy: every Good Enough line carries its command in backticks, the driver writes it
+# from `spec fill --command --expect`, and `verification run` executes it; a sentence
+# with no command stalled three live runs on empty Status cells before the boundary
+# could ever see it (port audit 5, R1). Checked here, at SPEC's exit. Under a v1
+# contract the row is `- [ ] GE-NNN: outcome text` -- the command lives in the
+# frontmatter's `scenario_checks` map, keyed GE-NNN/SC-NNN, never inline
+# (docs/loop-spec/requirements-format.md), so the same bare-sentence row is the
+# correct v1 shape and carries no backtick to find.
+v1 = any(re.match(r"^requirements_[A-Za-z0-9_]*\s*:", l) for l in front)
 inside = False
 for idx, l in enumerate(body):
     if l.startswith("### "):
         inside = l.strip() == "### Good Enough"
     elif l.startswith("## "):
         inside = False
-    elif inside and re.match(r"^- \[[ xX]\] ", l) and not re.search(r"`[^`]+`", l):
+    elif inside and not v1 and re.match(r"^- \[[ xX]\] ", l) and not re.search(r"`[^`]+`", l):
         flags.append("FLAG [oneshot-shape] Good Enough line %d carries no backticked command: a criterion is `cycle-driver.sh spec fill --command <shell> --expect <text>`, never a sentence (%s)" % (end + 2 + idx, l.strip()[:80]))
 # A footprint file's existing test module is a decision the spec makes out loud: in the
 # footprint when it changes, in Implementation notes as unchanged when it does not. A

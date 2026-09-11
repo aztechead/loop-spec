@@ -7,6 +7,13 @@
 # changed repository. Successful/external delivery observations are written to the
 # ignored delivery.json sidecar so the exact checked SHA stays clean; code-remediation
 # failures atomically route tracked feature.json back to EXECUTE.
+#
+# Publication participant (lib/feature-write.sh, lib/artifact_publication.py): one
+# ingress token captured before any side effect (an active migration or an unfinished
+# publication exits 2 first), rechecked fresh immediately before the delivery.json
+# sidecar lands and again before the EXECUTE-routing feature.json write -- a write that
+# raced in between exits 2 with neither file written, leaving the intervening writer's
+# change as the only one that landed.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,6 +40,15 @@ feature_json="$feature_dir/feature.json"
 delivery_file="$feature_dir/delivery.json"
 bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '.schemaVersion == 7 and (.currentPhase == "deliver")' >/dev/null 2>&1 || {
   echo "deliver: feature must be schema 7 at currentPhase=deliver" >&2
+  exit 2
+}
+
+# One ingress token for the whole delivery attempt, captured before any git side effect
+# (pr-body render, finalize-delivery-candidate.sh, pr-delivery.sh): also refuses an
+# active migration or an unfinished publication before any of that runs.
+. "$SCRIPT_DIR/feature-write.sh"
+loop_spec_publication_begin "$feature_dir" || {
+  echo "deliver: publication refuses entry (migration in progress or unfinished publication); run requirements-migrate.sh status/resume or artifact-publication.sh recover" >&2
   exit 2
 }
 
@@ -211,11 +227,25 @@ if [[ -z "$workspace_root" ]]; then
       append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$bound" "$hint" \
         "candidate_sha_drift" "HEAD '$target_sha' drifted from the SHA the prior attempt verified '$bound'" "$target_sha" true
     else
-      result_rc=0
-      result="$(invoke_delivery "$artifact_root" "$branch" "$base_branch" "$target_sha" \
-        "feat: $feature_title" "$hint")" || result_rc=$?
-      record="$(jq -c --arg name "$slug" --arg path "$artifact_root" '. + {name:$name,path:$path,bindingEligible:true}' <<<"$result")"
-      targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
+      # A real finalized candidate never authorizes delivery on a PASS someone
+      # copied down from an earlier phase report or a similar-looking tree (PLAN
+      # "Final candidate observations"): the exact HEAD just finalized must carry
+      # its own fresh scenario/criterion + final-command evidence before any PR
+      # adapter call. Missing or stale, this reruns everything required; unchanged,
+      # it costs one more real run rather than trusting a byte comparison.
+      final_check_ok=1
+      final_result="$(bash "$SCRIPT_DIR/cycle-driver.sh" verification run --final-candidate "$target_sha" \
+        --feature-dir "$feature_dir" 2>&1)" || final_check_ok=0
+      if [[ "$final_check_ok" -ne 1 ]] || ! jq -e '.ok == true' <<<"$final_result" >/dev/null 2>&1; then
+        append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+          "final_candidate_unverified" "final candidate observations did not validate: $(printf '%s' "$final_result" | tail -c 500)"
+      else
+        result_rc=0
+        result="$(invoke_delivery "$artifact_root" "$branch" "$base_branch" "$target_sha" \
+          "feat: $feature_title" "$hint")" || result_rc=$?
+        record="$(jq -c --arg name "$slug" --arg path "$artifact_root" '. + {name:$name,path:$path,bindingEligible:true}' <<<"$result")"
+        targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
+      fi
     fi
   fi
 else
@@ -318,6 +348,28 @@ else
         "workspace_preflight_failed" "another workspace target failed local preflight"
     done < <(jq -c '.[]' <<<"$deliverables")
     deliverables="[]"
+  fi
+
+  # Final candidate observations, resolved for the whole reviewed workspace at once
+  # (the exact candidate SHA set PLAN names): every deliverable target's declared HEAD
+  # must carry fresh scenario/criterion + final-command evidence before any target's PR
+  # adapter call -- no workspace bypass through the single-repo finalizer's early return,
+  # and readiness stays a feature-level invariant, so one unverified target blocks all.
+  if [[ "$(jq 'length' <<<"$deliverables")" -gt 0 ]]; then
+    final_candidates_file="$tmp_dir/final-candidates.json"
+    jq -c 'reduce .[] as $d ({}; .[$d.name] = $d.sha)' <<<"$deliverables" > "$final_candidates_file"
+    final_check_ok=1
+    final_result="$(bash "$SCRIPT_DIR/cycle-driver.sh" verification run --final-candidates "$final_candidates_file" \
+      --feature-dir "$feature_dir" 2>&1)" || final_check_ok=0
+    if [[ "$final_check_ok" -ne 1 ]] || ! jq -e '.ok == true' <<<"$final_result" >/dev/null 2>&1; then
+      while IFS= read -r entry; do
+        append_target_failure "$(jq -r '.name' <<<"$entry")" "$(jq -r '.path' <<<"$entry")" \
+          "$(jq -r '.branch' <<<"$entry")" "$(jq -r '.base' <<<"$entry")" \
+          "$(jq -r '.sha' <<<"$entry")" "$(jq -r '.hint' <<<"$entry")" \
+          "final_candidate_unverified" "final candidate observations did not validate: $(printf '%s' "$final_result" | tail -c 500)"
+      done < <(jq -c '.[]' <<<"$deliverables")
+      deliverables="[]"
+    fi
   fi
 
   # Pass 2 - deliver. With two or more changed repos, stage readiness: prove every
@@ -480,6 +532,13 @@ aggregate="$(jq -cn --argjson ok "$ok" --arg status "$status" --arg nextPhase "$
     ciRemediationAttempts:$ciAttempts,ciRemediationLimit:$ciLimit,targets:$targets}')"
 
 # The sidecar is the local observation record. It must not change the candidate commit.
+# Recheck freshness right before it lands: an unrelated write since ingress (a stray
+# process, a concurrent attempt) means this attempt's view of the feature is stale, and
+# publishing an observation over it would be as wrong as publishing a state change over it.
+if ! loop_spec_publication_fresh "$feature_dir"; then
+  echo "deliver: feature state changed since this delivery attempt began; retry deliver" >&2
+  exit 2
+fi
 printf '%s\n' "$aggregate" > "$delivery_file.tmp" || exit 2
 sync
 mv "$delivery_file.tmp" "$delivery_file" || exit 2
@@ -500,7 +559,11 @@ if [[ "$next_phase" == "execute" ]]; then
     echo "deliver: failed to build updated feature state" >&2
     exit 2
   }
-  bash "$SCRIPT_DIR/feature-write.sh" "$feature_dir" "$updated" || exit 2
+  if ! loop_spec_publication_fresh "$feature_dir"; then
+    echo "deliver: feature state changed since this delivery attempt began; retry deliver" >&2
+    exit 2
+  fi
+  loop_spec_feature_write "$feature_dir" "$updated" || exit 2
 fi
 
 printf '%s\n' "$aggregate"

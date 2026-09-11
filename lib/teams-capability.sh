@@ -94,8 +94,8 @@ if [[ -z "$ver" ]]; then
   exit 0
 fi
 
-# implicit iff ver >= MIN_IMPLICIT (sort -V ascending puts MIN first when ver >= MIN)
-if [[ "$(printf '%s\n%s\n' "$ver" "$MIN_IMPLICIT" | sort -V | head -1)" == "$MIN_IMPLICIT" ]]; then
+# implicit iff ver >= MIN_IMPLICIT
+if bash "$SCRIPT_DIR/version-ge.sh" "$ver" "$MIN_IMPLICIT"; then
   echo "implicit"
 else
   echo "explicit"

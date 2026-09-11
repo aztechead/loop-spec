@@ -99,7 +99,7 @@ PY
       --data "$(jq -cn --arg v "$([[ "$converged" == true ]] && echo converged || echo not-converged)" --argjson i "$iteration" --arg g "$(jq -r '.gap.type // "none"' <<<"$verdict")" '{verdict:$v, iteration:$i, gap:$g}')" >/dev/null 2>&1 || true
     floor='[]'; route=""; tasks='[]'
     if [[ "$converged" == "true" ]]; then
-      frc=0; fout="$(lib converged-floor "$docs/SPEC.md" "$docs/VERIFICATION.md" 2>&1)" || frc=$?
+      frc=0; fout="$(lib converged-floor "$docs/SPEC.md" "$docs/VERIFICATION.md" --feature-dir "$feature_dir" 2>&1)" || frc=$?
       if (( frc == 0 )); then
         fset iterate.feedback null; route=deliver
       else

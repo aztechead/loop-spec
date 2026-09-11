@@ -1,5 +1,6 @@
 ---
 unresolved_questions: []
+{requirements_frontmatter}
 footprint:
   - {path/to/file-the-change-touches}
 ---
@@ -20,6 +21,8 @@ footprint:
 ### Good Enough
 
 - [ ] `{check command}` exits 0: {what that proves}
+- [ ] {GE-001: outcome}
+  - {SC-001: observable scenario}
 
 ## Grounding
 

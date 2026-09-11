@@ -122,6 +122,21 @@ deterministic `lib/verification-grounding-lint.sh` gate.
 `lib/cycle-reconcile.sh` call the only thing holding the route-exit contract here
 (`skills/shared/route-exit-contract.md`). Run it on every route.
 
+### Protected publication paths
+
+`before_tool_callback` runs `hooks/pre-tool-guard.py` before every Execute,
+WriteFile, and EditFile call, so a native ADK tool payload onto a driver-owned
+publication path (SPEC/PLAN/VERIFICATION/PATTERNS.md on the oneshot route or
+v1 format, `feature.json[.bak]`, `tasks.json`, `observations/**`,
+`publication-generations/**`, `migration-generations/**`) returns the shared
+`{"status": "error", ...}` result, which ADK surfaces to the model as the tool
+result; `publication-staging/**` stays open for a maker's staged writes. See
+`skills/shared/claude-harness.md` "Protected publication paths" for the full
+list and `bash lib/harness.sh protected-path` contract — this is the one place
+the rule lives; the bridge adds no ADK-specific exception. The guarantee
+covers the tool boundary a normal run goes through, not a host an attacker
+already controls.
+
 ## Dispatch mapping rule (every one-shot `Agent` call)
 
 `harness.sh subagents` prints `true` under ADK: the full EXECUTE ladder below the

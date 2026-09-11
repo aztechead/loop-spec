@@ -16,7 +16,7 @@
         "artifacts",
         "currentPhase",
         "warnings",
-        "specApproval",
+        "specIntentSeen",
         "artifactPublication",
         "requirementsContract"
       ],
@@ -60,7 +60,6 @@
         "oracle": true,
         "writes": [
           "artifacts.spec",
-          "specApproval",
           "artifactPublication",
           "requirementsContract"
         ],
@@ -322,7 +321,8 @@
         "artifacts",
         "currentPhase",
         "warnings",
-        "artifactPublication"
+        "artifactPublication",
+        "specApproval"
       ],
       "effort": "system2",
       "body": "skills/plan/SKILL.md",
@@ -390,7 +390,9 @@
           "artifacts.patterns",
           "artifacts.plan",
           "artifacts.tasks",
-          "artifactPublication"
+          "artifactPublication",
+          "commands.prepare",
+          "requirementsContract"
         ],
         "artifacts": {
           "plan": "{docs}/PLAN.md",
@@ -667,7 +669,9 @@
             "body": "lib/artifact-lint.sh",
             "args": [
               "verification",
-              "{docs}/VERIFICATION.md"
+              "{docs}/VERIFICATION.md",
+              "--feature-dir",
+              "{featureDir}"
             ]
           },
           {
@@ -678,7 +682,9 @@
               "--repo",
               "{root}",
               "--spec",
-              "{spec}"
+              "{spec}",
+              "--feature-dir",
+              "{featureDir}"
             ]
           },
           {
@@ -694,7 +700,9 @@
             "args": [
               "--shape",
               "{spec}",
-              "{docs}/VERIFICATION.md"
+              "{docs}/VERIFICATION.md",
+              "--feature-dir",
+              "{featureDir}"
             ]
           }
         ],
@@ -913,7 +921,9 @@
             "body": "lib/converged-floor.sh",
             "args": [
               "{spec}",
-              "{docs}/VERIFICATION.md"
+              "{docs}/VERIFICATION.md",
+              "--feature-dir",
+              "{featureDir}"
             ],
             "when": {
               "field": "iterate.lastVerdict.converged",
@@ -955,7 +965,10 @@
       ],
       "writes": [
         "currentPhase",
-        "warnings"
+        "warnings",
+        "specApproval",
+        "specApprovalHistory",
+        "specIntentSeen"
       ],
       "effort": "system1",
       "admit": {

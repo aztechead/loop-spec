@@ -51,8 +51,8 @@ if [[ -z "$ver" ]]; then
   ver="$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
 fi
 
-# true iff ver is present and ver >= MIN (sort -V ascending puts MIN first when ver >= MIN)
-if [[ -n "$ver" && "$(printf '%s\n%s\n' "$ver" "$MIN" | sort -V | head -1)" == "$MIN" ]]; then
+# true iff ver is present and ver >= MIN
+if [[ -n "$ver" ]] && bash "$SCRIPT_DIR/version-ge.sh" "$ver" "$MIN"; then
   echo "true"
 else
   echo "false"

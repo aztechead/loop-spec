@@ -98,6 +98,36 @@ ec=0; out="$(bash "$ENTRY" deliver --feature-dir "$FD")" || ec=$?
 check "deliver: enters clean" "0" "$ec"
 check "deliver: packet carries baseBranch" "main" "$(jq -r '.baseBranch' <<<"$(fields "$out")")"
 
+# --- publication contract ------------------------------------------------------------
+# phase-entry.sh's ingress is always read-only, so it never bootstraps a publication
+# contract on its own; write one directly, with a migration set, as
+# `artifact-publication.sh` would leave a feature mid-transaction.
+digest64="$(printf 'a%.0s' {1..64})"
+rm -f "$FD/.phase-entry.json" "$FD/.phase-entry.token.json"
+jq --arg d "$digest64" '.artifactPublication = {version:1,generation:0,evidenceEpoch:0,participantsVersion:1,
+  migration:{id:"m1",previewDigest:$d,phase:"marker",originalGeneration:0,publishedHashes:{}}}' \
+  "$FD/feature.json" > "$FD/feature.json.tmp" && mv "$FD/feature.json.tmp" "$FD/feature.json"
+ec=0; out="$(bash "$ENTRY" deliver --feature-dir "$FD" 2>&1)" || ec=$?
+check "publication: migration in progress refuses entry" "1" "$ec"
+check "publication: the flag names publication" "1" "$(grep -c '^FLAG \[publication\]' <<<"$out")"
+check "publication: no snapshot written during a migration refusal" "0" "$([[ -f "$FD/.phase-entry.json" ]] && echo 1 || echo 0)"
+check "publication: no token file written during a migration refusal" "0" "$([[ -f "$FD/.phase-entry.token.json" ]] && echo 1 || echo 0)"
+
+jq '.artifactPublication.migration = null' "$FD/feature.json" > "$FD/feature.json.tmp" && mv "$FD/feature.json.tmp" "$FD/feature.json"
+ec=0; out="$(bash "$ENTRY" deliver --feature-dir "$FD")" || ec=$?
+check "publication: a clean state enters normally" "0" "$ec"
+check "publication: the snapshot is written" "1" "$([[ -f "$FD/.phase-entry.json" ]] && echo 1 || echo 0)"
+check "publication: the token is recorded next to the snapshot" "1" "$([[ -f "$FD/.phase-entry.token.json" ]] && echo 1 || echo 0)"
+check "publication: the recorded token carries the ingress generation" "0" "$(jq -r '.generation' "$FD/.phase-entry.token.json")"
+
+mkdir -p "$FD/publication-generations"
+echo '{}' > "$FD/publication-generations/active.json"
+rm -f "$FD/.phase-entry.json" "$FD/.phase-entry.token.json"
+ec=0; out="$(bash "$ENTRY" deliver --feature-dir "$FD" 2>&1)" || ec=$?
+check "publication: an unfinished publication refuses entry" "1" "$ec"
+check "publication: no snapshot written for an unfinished publication" "0" "$([[ -f "$FD/.phase-entry.json" ]] && echo 1 || echo 0)"
+rm -rf "$FD/publication-generations"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

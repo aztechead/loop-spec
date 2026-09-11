@@ -249,5 +249,85 @@ check "subdir node_modules is a symlink" "1" \
 check "shared subdir dependencies resolve" "installed" \
   "$(<"$SUB_SHARE_WT/webapp/frontend/node_modules/example/value")"
 
+# --- task-006 AC4: a preparationReceipt alone cannot authorize a PASS-eligible
+# identity; the actual installed inputs prepare-environment.sh produced can. ---
+RECEIPT_REPO="$WORK/receipt-repo"
+new_repo "$RECEIPT_REPO"
+printf '{}\n' > "$RECEIPT_REPO/package.json"
+printf '{"lockfileVersion":3}\n' > "$RECEIPT_REPO/package-lock.json"
+printf 'node_modules/\n' > "$RECEIPT_REPO/.gitignore"
+git -C "$RECEIPT_REPO" add package.json package-lock.json .gitignore
+git -C "$RECEIPT_REPO" commit -qm node-manifest
+receipt_out="$(PATH="$SHARE_BIN:$PATH" bash "$SCRIPT" run --root "$RECEIPT_REPO" --command 'npm ci')"
+check "receipt fixture: dependency tree prepared" "prepared" "$(jq -r '.status' <<<"$receipt_out")"
+receipt_key="$(jq -r '.key' <<<"$receipt_out")"
+
+receipt_py_out="$(PATH="$SHARE_BIN:$PATH" PYTHONPATH="$ROOT/lib" python3 - "$RECEIPT_REPO" "$receipt_key" 2>&1 <<'PY'
+import sys
+from execution_inputs import capture_inputs, identity_changed
+
+root, receipt_key = sys.argv[1], sys.argv[2]
+receipt_only = {
+    "version": 1, "toolchains": [], "externalInputs": [], "sensitiveInputs": [],
+    "localInputs": [],
+    "preparationReceipt": {"tool": "prepare-environment.sh", "key": receipt_key},
+}
+try:
+    capture_inputs(root, receipt_only, [])
+except ValueError as exc:
+    print("PASS: receipt-only contract raises (%s)" % exc)
+else:
+    print("FAIL: receipt-only contract yielded a record instead of raising")
+
+installed = {
+    "version": 1, "toolchains": [], "externalInputs": [], "sensitiveInputs": [],
+    "localInputs": [{"root": "node_modules", "paths": ["."]}],
+    "preparationReceipt": {"tool": "prepare-environment.sh", "key": receipt_key},
+}
+before = capture_inputs(root, installed, [])
+after = capture_inputs(root, installed, [])
+if not identity_changed(before, after):
+    print("PASS: unchanged actual installed-input set is stable across captures")
+else:
+    print("FAIL: an unchanged installed-input set reported a spurious identity change")
+PY
+)"
+py_status=$?
+if [[ "$py_status" -ne 0 ]]; then
+  echo "$receipt_py_out"
+  echo "FAIL: execution_inputs.py AC4 check exited $py_status instead of reporting PASS/FAIL"
+  FAIL=$((FAIL + 1))
+fi
+while IFS= read -r line; do
+  case "$line" in
+    PASS:*) echo "$line"; PASS=$((PASS + 1)) ;;
+    FAIL:*) echo "$line"; FAIL=$((FAIL + 1)) ;;
+    *) [[ "$py_status" -eq 0 ]] && echo "$line" ;;
+  esac
+done <<<"$receipt_py_out"
+
+# A PEP 621 project with no lock installs itself editable into .venv under an interpreter
+# that satisfies requires-python (a live 3.14 project was prepared under 3.11 and VERIFY
+# could not install it).
+PYP="$WORK/pyproject-plain"; mkdir -p "$PYP"; git -C "$PYP" init -q
+printf '[project]\nname = "x"\nversion = "0"\nrequires-python = ">=3.8"\n' > "$PYP/pyproject.toml"
+git -C "$PYP" -c user.email=t@t -c user.name=t add -A; git -C "$PYP" -c user.email=t@t -c user.name=t commit -q -m seed
+out="$(bash "$SCRIPT" resolve --root "$PYP")"
+check "a plain pyproject installs editable into .venv" "python3 -m venv .venv && .venv/bin/python -m pip install -e '.'" "$(jq -r '.command' <<<"$out")"
+check "a plain pyproject reports its source" "root:pyproject" "$(jq -r '.reason' <<<"$out" | sed -n 's/.*python=\([^ ]*\).*/\1/p')"
+printf '[project]\nname = "x"\nversion = "0"\nrequires-python = ">=3.14"\n\n[project.optional-dependencies]\ntest = ["pytest"]\n' > "$PYP/pyproject.toml"
+git -C "$PYP" -c user.email=t@t -c user.name=t commit -q -am bump
+out="$(bash "$SCRIPT" resolve --root "$PYP")"
+check "requires-python names an interpreter that satisfies it" "1" "$(jq -r '.command' <<<"$out" | grep -c '3\.14')"
+check "declared test extras are installed" "1" "$(jq -r '.command' <<<"$out" | grep -c -- "-e '\.\[test\]'")"
+
+# The venv, egg-info and pytest cache a prepare command creates are excluded before it
+# runs, so a greenfield project with no .gitignore is not "dirty" after its own setup.
+mkdir -p "$PYP/.loop-spec"; printf '# Backlog\n' > "$PYP/.loop-spec/BACKLOG.md"
+out="$(bash "$SCRIPT" run --root "$PYP" --command "mkdir -p .venv/bin x.egg-info .pytest_cache && touch .venv/bin/python")"
+check "run: untracked plugin state under .loop-spec is not setup dirt" "1" "$([[ -f "$PYP/.loop-spec/BACKLOG.md" ]] && echo 1)"
+check "run: build artifacts of a prepare command are not worktree dirt" "prepared" "$(jq -r '.status' <<<"$out")"
+check "run: the artifacts are excluded in the common exclude file" "3" "$(grep -c -e '^/\.venv/$' -e '^/\*\.egg-info/$' -e '^/\.pytest_cache/$' "$(git -C "$PYP" rev-parse --absolute-git-dir)/info/exclude")"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

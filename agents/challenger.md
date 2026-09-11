@@ -31,7 +31,9 @@ assumption, Missing criterion, Ungrounded claim — is defined once in
 `skills/shared/team-prompts/critic.md`; apply it as written rather than from memory.
 Emit each Ungrounded-claim finding as its own line in exactly this format:
 `UNGROUNDED: "<verbatim quote from the artifact>" — probe: <suggested read-only command>`
-(`[major]` until the lead's probe resolves it). Beyond the taxonomy, also check:
+(`[major]` until the lead's probe resolves it). For a version or documentation claim
+about a dependency the probe is `bash lib/docs-probe.sh latest|docs <name> [--topic WORD]`,
+never a raw fetch: the lead runs it as written. Beyond the taxonomy, also check:
 
 - **Better alternatives**: where a different approach would be materially superior
 - **Designed into a corner (the corner test)**: name the most likely next change to this design (a new param, a new case, a new caller, a scale step) and check whether the design absorbs it as a local diff. If that change would ripple through many files or force a redesign, that is a finding: say which boundary is missing or misplaced. Do NOT demand speculative artifacts as the fix — a seam (a clean boundary, an injected dependency) suffices; built-out speculation is itself a finding.

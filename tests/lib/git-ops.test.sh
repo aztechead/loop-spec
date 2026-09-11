@@ -31,7 +31,9 @@ check "C: slugify trims leading/trailing dashes" "trim-me" "$got"
 
 long="a python 3.14 web service built with fastapi and pydantic post items accepts a json item with a name string and a quantity integer validates it"
 got=$(bash "$LIB" slugify "$long")
-check "C2: slugify bounds a long title at 64 chars on a word boundary" "a-python-3-14-web-service-built-with-fastapi-and-pydantic-post" "$got"
+check "C2: slugify drops a leading article and keeps six words of a long title" "python-3-14-web-service-built" "$got"
+got=$(bash "$LIB" slugify "The Quick Brown Fox")
+check "C2b: slugify drops a leading article" "quick-brown-fox" "$got"
 got=$(bash "$LIB" slugify "$(printf 'x%.0s' $(seq 1 80))")
 check "C3: slugify cuts one 80-char word at 64" "64" "${#got}"
 

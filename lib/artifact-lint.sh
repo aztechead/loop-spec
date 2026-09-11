@@ -12,12 +12,23 @@
 # deterministic and pins the repair on the PRODUCER, at its own phase exit.
 #
 # Usage:
-#   artifact-lint.sh spec         <SPEC.md path | ->
-#   artifact-lint.sh plan         <PLAN.md path | ->
+#   artifact-lint.sh spec         <SPEC.md path | -> [--feature-dir DIR]
+#   artifact-lint.sh plan         <PLAN.md path | -> [--feature-dir DIR]
 #   artifact-lint.sh patterns     <PATTERNS.md path | ->
-#   artifact-lint.sh verification <VERIFICATION.md path | ->
-#   artifact-lint.sh tasks        <tasks JSON path | ->
+#   artifact-lint.sh verification <VERIFICATION.md path | -> [--feature-dir DIR]
+#   artifact-lint.sh tasks        <tasks JSON path | -> [--feature-dir DIR]
 #   artifact-lint.sh json         <path> [<path>...]
+#
+# --feature-dir selects the requirements contract (feature.json's
+# requirementsContract.format): under "v1" every PLAN task block and tasks[] entry
+# must carry a Requirements or Obligations reference (structural shape only --
+# whether the reference resolves against the live SPEC inventory is
+# lib/criteria-coverage.sh's job, run from lib/plan-exit-gate.sh). Without it, or
+# under "legacy", those fields are optional and only checked when present. For
+# `verification`, --feature-dir selects the row-key grammar only: under "v1" an
+# Acceptance criteria row keyed by a bare number is flagged (task-008 "no numeric
+# row aliases"); whether the key resolves to a live scenario is
+# lib/verification-grounding-lint.sh's job.
 #
 # Output: one `FLAG <path>:<line>: <message>` per structural defect, then a final
 # one-line answer with the reason: `artifact-lint: ok (<type>: <path>)` or
@@ -34,14 +45,14 @@ set -uo pipefail
 
 type="${1:-}"
 case "$type" in
-  spec) [[ $# -eq 2 || ( $# -eq 4 && "$3" == "--feature-dir" ) ]] || { echo "usage: artifact-lint.sh spec <path|-> [--feature-dir DIR]" >&2; exit 2; } ;;
-  plan|patterns|verification|tasks) [[ $# -eq 2 ]] || { echo "usage: artifact-lint.sh $type <path|->" >&2; exit 2; } ;;
+  spec|plan|tasks|verification) [[ $# -eq 2 || ( $# -eq 4 && "$3" == "--feature-dir" ) ]] || { echo "usage: artifact-lint.sh $type <path|-> [--feature-dir DIR]" >&2; exit 2; } ;;
+  patterns) [[ $# -eq 2 ]] || { echo "usage: artifact-lint.sh $type <path|->" >&2; exit 2; } ;;
   json) [[ $# -ge 2 ]] || { echo "usage: artifact-lint.sh json <path> [<path>...]" >&2; exit 2; } ;;
   *) echo "usage: artifact-lint.sh <spec|plan|patterns|verification|tasks|json> <path> [...]" >&2; exit 2 ;;
 esac
 shift
 feature_dir=""
-if [[ "$type" == spec && $# -eq 3 ]]; then
+if [[ ( "$type" == spec || "$type" == plan || "$type" == tasks || "$type" == verification ) && $# -eq 3 ]]; then
   feature_dir="$3"
   set -- "$1"
 fi
@@ -244,13 +255,16 @@ def lint_spec(display, data):
         flag(display, 0, str(exc))
     if feature_dir:
         from feature_read import load_state
-        from spec_intent import verify_intent
+        from spec_intent import intent_digest, verify_intent
         try:
             feature = load_state(feature_dir)
             text = data.decode("utf-8")
-            if (feature.get("specApproval") or re.search(r"^route: *full\s*$", text, re.M)
-                    or not re.search(r"^## Intent$", text, re.M)):
-                verify_intent(text, feature.get("specApproval"))
+            if feature.get("specApproval"):
+                verify_intent(text, feature["specApproval"])
+            elif re.search(r"^route: *full\s*$", text, re.M) or not re.search(r"^## Intent$", text, re.M):
+                # Before PLAN records the freeze, the sections it will cover must exist and
+                # say something; the digest is compared only once it is on record.
+                intent_digest(text)
         except (OSError, ValueError) as exc:
             flag(display, 0, str(exc))
     lines, mask = markdown_scan(display, data, allow_frontmatter=True)
@@ -287,6 +301,106 @@ def lint_spec(display, data):
 
 
 TASK_HEADING = re.compile(r'^### (task-[A-Za-z0-9][A-Za-z0-9-]*)\b')
+GE_ID = re.compile(r'GE-[0-9]{3,}')
+SC_ID = re.compile(r'SC-[0-9]{3,}')
+OBL_ID = re.compile(r'OBL-[A-Za-z0-9][A-Za-z0-9-]*')
+SHA256 = re.compile(r'[0-9a-f]{64}')
+EXECUTION_INPUTS_KEYS = {'version', 'toolchains', 'localInputs', 'externalInputs', 'sensitiveInputs'}
+EXECUTION_INPUTS_OPTIONAL = {'preparationReceipt'}
+
+
+def contract_format():
+    """'v1' or 'legacy' by feature.json's requirementsContract, 'legacy' when the
+    feature carries none yet (the ordinary case until task-009 activation)."""
+    if not feature_dir:
+        return 'legacy'
+    from feature_read import load_state
+    return (load_state(feature_dir).get('requirementsContract') or {}).get('format', 'legacy')
+
+
+def items_under(block_text, marker):
+    """Bullet items ('- ...') between `marker` and the next '**...**' marker line."""
+    items = []
+    in_section = False
+    for t in block_text:
+        if t.startswith(marker) or t.startswith(marker[:-3] + '**:'):
+            in_section = True
+            continue
+        if in_section:
+            if t.startswith('**'):
+                break
+            if t.startswith('- '):
+                items.append(t[2:].strip())
+    return items
+
+
+# The three checkers below take an already-parsed Python value and return error
+# strings (never print) so lint_plan (parses a JSON bullet/line first) and lint_tasks
+# (already holds parsed JSON) share one shape check instead of two.
+
+def requirement_ref_errors(obj):
+    required = {'owner', 'requirement', 'revision', 'scenarios'}
+    if not isinstance(obj, dict) or set(obj) != required:
+        got = ', '.join(sorted(obj)) if isinstance(obj, dict) else type(obj).__name__
+        return ['needs exactly owner, requirement, revision, scenarios (got %s)' % got]
+    errors = []
+    owner = obj['owner']
+    if (not isinstance(owner, dict) or set(owner) != {'repository', 'feature'}
+            or any(not isinstance(v, str) or not v.strip() for v in owner.values())):
+        errors.append('owner needs non-empty repository and feature')
+    if not isinstance(obj['requirement'], str) or not GE_ID.fullmatch(obj['requirement']):
+        errors.append('requirement must be a canonical GE-NNN id')
+    if not isinstance(obj['revision'], str) or not SHA256.fullmatch(obj['revision']):
+        errors.append('revision must be a lowercase SHA-256')
+    if (not isinstance(obj['scenarios'], list) or not obj['scenarios']
+            or any(not isinstance(s, str) or not SC_ID.fullmatch(s) for s in obj['scenarios'])):
+        errors.append('scenarios must be a non-empty array of canonical SC-NNN ids')
+    return errors
+
+
+def obligation_id_errors(item):
+    if not isinstance(item, str) or not OBL_ID.fullmatch(item):
+        return ["must be a bare OBL-... id declared under SPEC '## Constraints' (got %r)" % (item,)]
+    return []
+
+
+def execution_inputs_errors(obj):
+    if not isinstance(obj, dict) or not EXECUTION_INPUTS_KEYS <= set(obj) or not set(obj) <= (EXECUTION_INPUTS_KEYS | EXECUTION_INPUTS_OPTIONAL):
+        got = ', '.join(sorted(obj)) if isinstance(obj, dict) else type(obj).__name__
+        return ['needs version, toolchains, localInputs, externalInputs, sensitiveInputs '
+                'and only the optional preparationReceipt (got %s)' % got]
+    errors = []
+    if obj.get('version') != 1:
+        errors.append('version must be 1')
+    for key in ('toolchains', 'localInputs', 'externalInputs', 'sensitiveInputs'):
+        if not isinstance(obj[key], list):
+            errors.append('%s must be an array' % key)
+    return errors
+
+
+def lint_requirement_bullet(display, no, tid, item):
+    try:
+        obj = json.loads(item)
+    except ValueError as exc:
+        flag(display, no, '%s Requirements bullet is not single-line JSON: %s' % (tid, exc))
+        return
+    for message in requirement_ref_errors(obj):
+        flag(display, no, '%s Requirements bullet %s' % (tid, message))
+
+
+def lint_obligation_bullet(display, no, tid, item):
+    for message in obligation_id_errors(item):
+        flag(display, no, '%s Obligations bullet %s' % (tid, message))
+
+
+def lint_execution_inputs(display, no, tid, value):
+    try:
+        obj = json.loads(value)
+    except ValueError as exc:
+        flag(display, no, '%s Execution inputs value is not single-line JSON: %s' % (tid, exc))
+        return
+    for message in execution_inputs_errors(obj):
+        flag(display, no, '%s Execution inputs %s' % (tid, message))
 
 
 def lint_plan(display, data):
@@ -298,7 +412,9 @@ def lint_plan(display, data):
 
     vis = visible(lines, mask)
     if not any(re.match(r'^\|\s*task-', line.strip()) for _, line in vis):
-        flag(display, 0, "'## Task DAG' table has no '| task-...' rows")
+        flag(display, 0, "'## Task DAG' table has no '| task-...' rows (one row per task: "
+                         "`| task-001 | <subject> | <blockedBy ids or -> | <files> | <scope> |`; "
+                         "two live planners left the section empty)")
 
     # Collect task blocks: from each `### task-<id>` heading to the next ##/### heading.
     blocks = []
@@ -355,6 +471,25 @@ def lint_plan(display, data):
                 flag(display, no, "task block %s has an '**Acceptance criteria:**' marker "
                      'but no criteria list items under it' % tid)
 
+        # Requirements/Obligations/Execution inputs: structural shape only -- whether a
+        # reference resolves against the live SPEC inventory is criteria-coverage.sh's
+        # relation check, run from plan-exit-gate.sh with the feature's contract.
+        requirements = items_under(block_text, '**Requirements:**')
+        obligations = items_under(block_text, '**Obligations:**')
+        for item in requirements:
+            lint_requirement_bullet(display, no, tid, item)
+        for item in obligations:
+            lint_obligation_bullet(display, no, tid, item)
+        exec_inputs_line = next((t for t in block_text if t.startswith('**Execution inputs:**')), None)
+        if exec_inputs_line is not None:
+            lint_execution_inputs(display, no, tid, exec_inputs_line[len('**Execution inputs:**'):].strip())
+        if contract_format() == 'v1':
+            if not requirements and not obligations:
+                flag(display, no, "%s carries no '**Requirements:**' or '**Obligations:**' "
+                     'bullet -- a v1 cycle has no free-text coverage exemption' % tid)
+            if exec_inputs_line is None:
+                flag(display, no, "%s is missing '**Execution inputs:**'" % tid)
+
 
 def lint_patterns(display, data):
     lines, mask = markdown_scan(display, data, allow_frontmatter=False)
@@ -369,6 +504,7 @@ def lint_verification(display, data):
     lines, mask = markdown_scan(display, data, allow_frontmatter=False)
     if lines is None:
         return
+    v1 = contract_format() == 'v1'
     require_heading(display, lines, mask, '## Repository grounding')
     ac = require_heading(display, lines, mask, '## Acceptance criteria')
     if ac is not None:
@@ -388,6 +524,14 @@ def lint_verification(display, data):
                 if len(cells) >= 3 and cells[0] not in ('#', '') and not set(cells[0]) <= set('-') and cells[2] == '':
                     flag(display, no, "acceptance row %s has an empty Status cell — the driver's "
                          "`verification run` fills it from the command's exit; nobody writes a status by hand" % cells[0])
+                if v1 and len(cells) >= 3 and cells[0] not in ('#', '') and not set(cells[0]) <= set('-') and re.fullmatch(r'[0-9]+', cells[0]):
+                    # A v1 row is keyed GE-ID/SC-ID, bound from the live inventory by
+                    # verification_run; a bare number is the document-position alias
+                    # this contract does not accept (task-008, PLAN "no numeric row
+                    # aliases are accepted in v1"). Whether a GE-ID/SC-ID key actually
+                    # resolves to a live scenario is verification-grounding-lint.sh's job.
+                    flag(display, no, "acceptance row %s is a numeric alias; a v1 contract keys "
+                         "rows GE-ID/SC-ID, never a document-position number" % cells[0])
         if not has_row:
             flag(display, ac, "'## Acceptance criteria' has no table rows — the iterate "
                  'judge and regression-scan read this table')
@@ -502,6 +646,30 @@ def lint_tasks(display, data):
                         continue
                     flag(display, 0, '%s.interfaces.%s must be a string or array of strings'
                          % (label, key))
+        def flag_array_field(field, error_fn):
+            value = t.get(field)
+            if value is None:
+                return value
+            if not isinstance(value, list):
+                flag(display, 0, '%s.%s must be an array when present' % (label, field))
+            else:
+                for entry in value:
+                    for message in error_fn(entry):
+                        flag(display, 0, '%s.%s %s' % (label, field, message))
+            return value
+
+        requirements = flag_array_field('requirements', requirement_ref_errors)
+        obligations = flag_array_field('obligations', obligation_id_errors)
+        execution_inputs = t.get('executionInputs')
+        if execution_inputs is not None:
+            for message in execution_inputs_errors(execution_inputs):
+                flag(display, 0, '%s.executionInputs %s' % (label, message))
+        if contract_format() == 'v1':
+            if not requirements and not obligations:
+                flag(display, 0, "%s carries no requirements or obligations -- a v1 cycle "
+                     'has no free-text coverage exemption' % label)
+            if execution_inputs is None:
+                flag(display, 0, '%s.executionInputs is required under a v1 contract' % label)
     for i, t in enumerate(tasks):
         if not isinstance(t, dict):
             continue

@@ -205,6 +205,9 @@ fi
 
 if [[ -n "$prepare_command" ]]; then
   prepare_rc=0
+  # The artifacts a prepare command creates are excluded before it runs, the way
+  # lib/prepare-environment.sh run excludes them for the feature root.
+  bash "$SCRIPT_DIR/prepare-environment.sh" exclude-artifacts --root "$task_worktree" >/dev/null 2>&1 || true
   (cd "$task_worktree" && LOOP_SPEC_INTEGRATION_CANDIDATE="$candidate" bash -o pipefail -c "$prepare_command") >&2 \
     || prepare_rc=$?
   if ! check_clean "$task_worktree" task-after-prepare; then
@@ -217,7 +220,12 @@ fi
 
 verify_rc=0
 verify_log="$(mktemp "${TMPDIR:-/tmp}/integrate-verify.XXXXXX")"
-(cd "$task_worktree" && LOOP_SPEC_INTEGRATION_CANDIDATE="$candidate" bash -o pipefail -c "$verify_command") 2>&1 \
+# A prepared checkout's .venv/bin is on PATH for the verify command, the way `uv run`
+# and `poetry run` would put it there: the planner writes `pytest -q`, and a live run's
+# integrate failed until the lead prepended the venv by hand.
+verify_path="$PATH"
+[[ -d "$task_worktree/.venv/bin" ]] && verify_path="$task_worktree/.venv/bin:$PATH"
+(cd "$task_worktree" && PATH="$verify_path" LOOP_SPEC_INTEGRATION_CANDIDATE="$candidate" bash -o pipefail -c "$verify_command") 2>&1 \
   | tee "$verify_log" >&2 || verify_rc=$?
 if ! check_clean "$task_worktree" task-after-verify; then
   rm -f "$verify_log"

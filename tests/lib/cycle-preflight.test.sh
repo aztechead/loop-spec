@@ -186,6 +186,32 @@ out="$(run_preflight)"
 check "mismatched no-change result cannot hide feature" "1" \
   "$(jq -r '[.resume.candidates[] | select(.slug == "wt-only")] | length' <<<"$out")"
 
+# --- publication contract: migration/unfinished-publication are recovery states, ----
+#     not resumable cycles -----------------------------------------------------------
+digest64="$(printf 'a%.0s' {1..64})"
+mk_feature migrating-one execute 7 null "$now_iso"
+jq --arg d "$digest64" '.artifactPublication={version:1,generation:0,evidenceEpoch:0,participantsVersion:1,
+  migration:{id:"m1",previewDigest:$d,phase:"marker",originalGeneration:0,publishedHashes:{}}}' \
+  "$FEATS/migrating-one/feature.json" > "$FEATS/migrating-one/feature.json.tmp"
+mv "$FEATS/migrating-one/feature.json.tmp" "$FEATS/migrating-one/feature.json"
+mk_feature unfinished-pub-one execute 7 null "$now_iso"
+mkdir -p "$FEATS/unfinished-pub-one/publication-generations"
+echo '{}' > "$FEATS/unfinished-pub-one/publication-generations/active.json"
+out="$(run_preflight)"
+check "migration in progress is never a candidate" "0" \
+  "$(jq -r '[.resume.candidates[] | select(.slug == "migrating-one")] | length' <<<"$out")"
+check "migration in progress is reported skipped" "migration in progress: run requirements-migrate.sh status/resume" \
+  "$(jq -r '.resume.skipped[] | select(.slug == "migrating-one") | .why' <<<"$out")"
+check "migration in progress warns" "1" \
+  "$(jq -r '[.warnings[] | select(test("migrating-one.*requirements-migrate.sh status/resume"))] | length' <<<"$out")"
+check "unfinished publication is never a candidate" "0" \
+  "$(jq -r '[.resume.candidates[] | select(.slug == "unfinished-pub-one")] | length' <<<"$out")"
+check "unfinished publication is reported skipped" "unfinished publication: run artifact-publication.sh recover" \
+  "$(jq -r '.resume.skipped[] | select(.slug == "unfinished-pub-one") | .why' <<<"$out")"
+check "unfinished publication warns" "1" \
+  "$(jq -r '[.warnings[] | select(test("unfinished-pub-one.*artifact-publication.sh recover"))] | length' <<<"$out")"
+rm -rf "$FEATS/migrating-one" "$FEATS/unfinished-pub-one"
+
 # --- Recovery breadcrumb is placed BEFORE the stale pointer is cleared -----------
 # Preflight clears the previous run's terminal pointer, then can still abort (the
 # a preflight abort). Without a breadcrumb first, that abort left NEITHER a

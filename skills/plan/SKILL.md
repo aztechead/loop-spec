@@ -33,6 +33,14 @@ Agent with absolute paths for SPEC.md, the target, and
 cannot resolve a plugin-relative path), then stop; the planner's brief covers the last-resort fallback. Greenfield: PATTERNS.md
 records the chosen stack's conventions instead of mined analogs.
 
+`<target>`/the Agent's target is always `<feature_dir>/publication-staging/PATTERNS.md`:
+every new cycle's `requirementsContract` is v1 from creation, which makes
+`docs/loop-spec/features/{slug}/PATTERNS.md` a protected path (`lib/harness.sh`;
+`hooks/restrict-agent-paths.sh`) no agent may write directly. Land the staged draft
+with `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" plan patterns --feature-dir "$feature_dir" --file <target>`,
+which lints it (`lib/artifact-lint.sh patterns`) and publishes it under the phase's
+held token; it prints the published path.
+
 ## 2. Author PLAN.md
 
 Read `skills/shared/approach-selection.md` and include it in the authoring brief on
@@ -44,6 +52,10 @@ In team modes, also start `challenger-1` with SPEC.md.
 Include these fields and instructions in the planner brief:
 
 - `slug`, `spec_path`, `patterns_path`, and `evidence_path`.
+- `draft_path`: `<feature_dir>/publication-staging/PLAN.md` -- the planner writes
+  there, never to `docs/loop-spec/features/{slug}/PLAN.md` directly (that path is
+  protected once `requirementsContract.format` is v1, which every new cycle now is
+  from creation; `agents/planner.md` names the same scope).
 - `template_path`: the absolute `${LOOP_SPEC_SKILL_DIR}/../shared/artifact-templates/PLAN.md.template`.
   Require its exact shape, including `## Task DAG`, `**Files:**`, `**Verify:**`, and `**Acceptance criteria:**`.
 - Every external fact must cite `EVID-NNN` or use `ASSUMPTION: ... | verify: ...`.
@@ -51,13 +63,23 @@ Include these fields and instructions in the planner brief:
   Use `EVID-NNN` or an `ASSUMPTION`. Fetch current documentation with an available web tool, or report the missing evidence.
 - Cite PATTERNS.md analogs in each task's steps.
 - Include every field that `lib/plan-tasks.sh` reads, including `**BlockedBy:**`. Do not compute waves.
+- When SPEC.md's frontmatter declares `requirements_version: 1` (the default for
+  every new cycle; a resumed pre-7 cycle stays legacy instead --
+  `docs/loop-spec/requirements-format.md`), each task also carries
+  `**Requirements:**` single-line JSON bullets
+  (`{"owner":{...},"requirement":"GE-NNN","revision":"current","scenarios":["SC-NNN"]}`)
+  or `**Obligations:**` naming `OBL-` ids from `## Constraints`, taken from
+  `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/requirements.sh" inventory --spec <spec_path> --feature-dir "$feature_dir"`.
+  `plan write` stamps `"current"` with the live revision, so a SPEC repaired during
+  PLAN needs only a re-landing, never a hand-copied digest.
+  Under a legacy contract, omit both.
 - Check the draft against `agents/planner.md` before submission.
 - Copy `## Global constraints` verbatim, or write `- none`.
 
 In workspace mode, each task has one `repo`. Use `<repo>/<path>` in `files[]` and `blockedBy` edges for cross-repository ordering.
 
 For greenfield work, task-001 creates the scaffold: structure, manifest, adjacent generated lockfile, test harness, and a passing walking-skeleton test.
-Its `verifyCommand` must be the stack's test command. Put installation steps in `commands.prepare`.
+Its `verifyCommand` must be the stack's test command. Put installation steps in `commands.prepare`, landed under a publication token in one Bash call: `. "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-write.sh"; loop_spec_publication_begin "$feature_dir"; loop_spec_feature_write set "$feature_dir" commands.prepare '"<install command>"'` (a bare `feature-write.sh set` is refused).
 Every other task depends on task-001.
 Complete `## System design` using the build-from-scratch and system-design stances in `skills/shared/engineering-stances.md`.
 For refactor specs, apply that file's refactor stance.
@@ -66,19 +88,29 @@ With `workflowsAvailable` and `LOOP_SPEC_PLAN_MULTI_ANGLE=1`, the
 `lib/workflows/plan-multi-angle.js` Workflow authors instead; log its angles to
 `feature_dir/gate-logs/plan-multi-angle.json`.
 
-When the planner reports, derive `tasks.json` from PLAN.md and run the mechanical
-gates. PLAN.md is the source; the completion message is a report, and a message that
-arrives empty or stale never becomes the dispatch list:
+When the planner reports, land its staged PLAN.md, derive `tasks.json` from it, and
+run the mechanical gates. PLAN.md is the source; the completion message is a report,
+and a message that arrives empty or stale never becomes the dispatch list. Landing
+goes through the driver so a protected `docs/loop-spec/features/{slug}/PLAN.md`
+(every new cycle, once its v1 contract exists) is never written or redirected into
+directly -- `plan write` lints and publishes it, and `plan tasks` extracts and
+publishes `tasks.json` from the PUBLISHED PLAN.md under the same held token:
 
 ```bash
-bash "${LOOP_SPEC_SKILL_DIR}/../../lib/plan-tasks.sh" extract docs/loop-spec/features/{slug}/PLAN.md > "$feature_dir/tasks.json"
-bash "${LOOP_SPEC_SKILL_DIR}/../../lib/plan-conflicts.sh" edges "$feature_dir/tasks.json"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" plan write --feature-dir "$feature_dir" --file "$feature_dir/publication-staging/PLAN.md"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" plan tasks --feature-dir "$feature_dir"
 bash "${LOOP_SPEC_SKILL_DIR}/../../lib/phase-exit.sh" plan --feature-dir "$feature_dir"
 ```
 
-`edges` adds missing dependencies to tasks.json when `interfaces.consumes`, `goal`, or `brief` names another task.
-It rejects an edge that would create a dependency cycle with exit 1.
-Send that failure to the planner as a finding.
+`plan tasks` extracts tasks from the published PLAN.md and, before publishing, folds in
+`lib/plan-conflicts.sh edges`'s inference: a missing `blockedBy` dependency whenever
+`interfaces.consumes`, `goal`, or `brief` names another task. Both the extraction and
+the inference land in the one `publish_artifact` call `plan tasks` makes under its held
+token, so tasks.json is never written outside that boundary (lib/harness.sh protected-
+path: "tasks.json is written only by the driver"). `plan-conflicts.sh edges` itself is
+print-only now -- run it directly only for a read-only look at what it would infer,
+never expecting it to write. An edge that would create a dependency cycle fails `plan
+tasks` with exit 1; send that failure to the planner as a finding.
 
 A non-zero extract exit is a message on stderr (no task blocks, or an unreadable
 plan): it is a fix-list item for the planner, never an empty `tasks.json`. The gate
@@ -110,14 +142,14 @@ as the more reversible reading recorded via
 and in `## User decisions (already made)` suffixed `(assumed)`; `UNGROUNDED:` findings
 get their probe run by you (`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/evidence.sh" add ...`)
 and fed to the planner with the `EVID-NNN`. When the revision lands, re-run step 2's
-two commands before the delta re-verify, write the surviving FLAG lines to a file, and
+landing commands before the delta re-verify, write the surviving FLAG lines to a file, and
 pass it as `critique delta --flags`. Emit one `dispatch` event per agent launched;
 the critique steps emit the `gate_round` events.
 
 With `.mode.critique == skip` the same gate still bounds the FLAG loop: `critique open
 --gate plan-critique --artifact <PLAN.md>` before the fix-list goes out, `critique fail`
 with the FLAG lines as the fix-list (it runs `gate.sh next`); `rerun` sends the list,
-`close` stops. After the revision, `critique revised`, step 2's two commands, then
+`close` stops. After the revision, `critique revised`, step 2's landing commands, then
 `critique delta --flags <file>` with a one-line `DELTA-VERIFIED:` reply you write
 yourself: no FLAG left means the gate is closed. On `close` (either mode) with FLAG
 lines still open: skip the pruning pass and return to the cycle; its exit answers
@@ -139,12 +171,12 @@ In explicit teams mode `TeamDelete` first. Return to the cycle. Its
 revision (`lib/phase-exit.sh plan`): ok records `artifacts.plan|patterns|tasks`,
 commits PLAN.md and PATTERNS.md, tags `post-plan`, and closes the phase; a `FLAG`
 answers `REDO` and you are invoked again: one planner dispatch with the FLAG lines,
-step 2's two commands, return. No critique, no pruning; the driver bounds the REDOs
+step 2's landing commands, return. No critique, no pruning; the driver bounds the REDOs
 (`LOOP_SPEC_REDO_MAX`). In
 `step`/`interactive` say `PLAN complete. PLAN.md at docs/loop-spec/features/{slug}/PLAN.md.`
 
 ## Resume
 
 `artifacts.plan` null: start at step 1 or 2 by what exists. An open `plan-critique`
-gate: re-run step 2's two commands and resume the review round per the protocol with
+gate: re-run step 2's landing commands and resume the review round per the protocol with
 the existing gate-logs. Otherwise run the gate command and continue from its answer. Teammates never survive a session; spawn fresh.

@@ -6,6 +6,18 @@ LIB="$(cd "$(dirname "$0")/../.." && pwd)/lib/feature-write.sh"
 PASS=0
 FAIL=0
 
+# fw_set DIR DOT_PATH JSON_VALUE: a plain `set` against a feature that already carries
+# artifactPublication now requires its ingress token (task-009 strict enforcement) --
+# this fixture helper begins one throwaway operation and writes through it, standing
+# in for a real participant whenever a test only needs the mutation to land.
+fw_set() {
+  local dir="$1" path="$2" value="$3" tok
+  tok="$(mktemp "${TMPDIR:-/tmp}/fw-token.XXXXXX")"
+  python3 "$(dirname "$LIB")/feature_write.py" ingress "$dir" > "$tok"
+  bash "$LIB" set "$dir" "$path" "$value" --token "$tok" >/dev/null
+  rm -f "$tok"
+}
+
 check() {
   local name="$1"
   local expected="$2"
@@ -46,6 +58,41 @@ check "C: feature.json unchanged after invalid input" "bar" "$got_unchanged"
 exit_code=0
 bash "$LIB" "$WORK/missing" '{"x":1}' >/dev/null 2>&1 || exit_code=$?
 check "D: missing dir rejected (exit 1)" "1" "$exit_code"
+
+# Case D2/D3/D4: an empty string, ".", or a real directory with no feature.json must
+# all be refused before any lock file is created anywhere -- Path("") and Path(".")
+# both resolve to the CALLER'S cwd, so an unguarded locked_feature would otherwise
+# leave .artifact-publication.lock/.feature-write.lock sitting in whatever directory
+# happened to be current (loop-spec's own repo root, when a caller invokes this from
+# there with a blank or unset --feature-dir).
+before_cwd_locks="$(ls -A1 | grep -c '\.lock$' || true)"
+exit_code=0
+bash "$LIB" set "" currentPhase '"plan"' >/dev/null 2>&1 || exit_code=$?
+check "D2: empty-string dir rejected (exit 1)" "1" "$exit_code"
+after_cwd_locks="$(ls -A1 | grep -c '\.lock$' || true)"
+check "D2: no lock file created in the cwd" "$before_cwd_locks" "$after_cwd_locks"
+
+exit_code=0
+bash "$LIB" set "." currentPhase '"plan"' >/dev/null 2>&1 || exit_code=$?
+check "D3: \".\" dir rejected (exit 1)" "1" "$exit_code"
+after_cwd_locks="$(ls -A1 | grep -c '\.lock$' || true)"
+check "D3: no lock file created in the cwd" "$before_cwd_locks" "$after_cwd_locks"
+
+mkdir -p "$WORK/no-feature-here"
+exit_code=0
+err="$(bash "$LIB" set "$WORK/no-feature-here" currentPhase '"plan"' 2>&1 >/dev/null)" || exit_code=$?
+check "D4: a real directory without feature.json is rejected (exit 1)" "1" "$exit_code"
+check "D4: error names the offending path" "1" "$(grep -c "$WORK/no-feature-here" <<<"$err")"
+check "D4: no lock file left in that directory" "0" "$(ls -A1 "$WORK/no-feature-here" | grep -c '\.lock$' || true)"
+
+# The one legitimate token-less creation path stays open: a bare (unconditional-replace)
+# write to a real, existing, feature.json-less directory still creates one (Case A above
+# already exercises this; repeat it explicitly against a directory named to make the
+# create-vs-refuse distinction obvious).
+mkdir -p "$WORK/creates-fine"
+bash "$LIB" "$WORK/creates-fine" '{"slug":"creates-fine"}' >/dev/null
+check "D5: bare replace still creates feature.json in a fresh directory" "creates-fine" \
+  "$(jq -r '.slug' "$WORK/creates-fine/feature.json" 2>/dev/null || echo MISSING)"
 
 # Case E: wrong arg count rejected
 exit_code=0
@@ -107,6 +154,58 @@ err=$(bash "$LIB" set "$WORK/feat" 'workspace.repos[0]' '"x"' 2>&1 >/dev/null) &
 check "L: array-index dot_path rejected" "1" "$exit_code"
 check "L: error names the limitation" "1" "$(grep -c 'array indices are not' <<<"$err")"
 
+# Case M-P: batch, in its own directory so its artifactPublication contract never
+# leaks into the plain-write fixtures the rest of this suite reuses.
+mkdir -p "$WORK/batch-feat"
+bash "$LIB" "$WORK/batch-feat" '{"slug":"batch-base","warnings":["keep"],"currentPhase":"plan"}' >/dev/null
+
+# Case M: batch applies set+append atomically under one write
+batch='[{"op":"set","path":"currentPhase","value":"execute"},{"op":"append","path":"warnings","value":"w3"}]'
+bash "$LIB" batch "$WORK/batch-feat" "$batch" >/dev/null
+check "M: batch set lands" "execute" "$(jq -r '.currentPhase' "$WORK/batch-feat/feature.json")"
+check "M: batch append lands" '["keep","w3"]' "$(jq -c '.warnings' "$WORK/batch-feat/feature.json")"
+
+# Case N: a batch whose last entry is invalid changes nothing (atomic, one write)
+before_batch="$(cat "$WORK/batch-feat/feature.json")"
+bad_batch='[{"op":"set","path":"currentPhase","value":"verify"},{"op":"set","path":"bogus path","value":1}]'
+exit_code=0
+bash "$LIB" batch "$WORK/batch-feat" "$bad_batch" >/dev/null 2>&1 || exit_code=$?
+check "N: batch with an invalid trailing entry rejected" "1" "$exit_code"
+check "N: file untouched after a malformed batch entry" "$before_batch" "$(cat "$WORK/batch-feat/feature.json")"
+
+# Case O: an empty batch array is rejected, nothing written
+exit_code=0
+bash "$LIB" batch "$WORK/batch-feat" '[]' >/dev/null 2>&1 || exit_code=$?
+check "O: empty batch rejected" "1" "$exit_code"
+check "O: file untouched after empty batch" "$before_batch" "$(cat "$WORK/batch-feat/feature.json")"
+
+# Case P: batch with a stale token changes nothing
+PYTHONPATH="$(dirname "$LIB")" python3 - "$WORK/batch-feat" <<'PYBATCH'
+import json, sys
+from pathlib import Path
+folder = Path(sys.argv[1])
+state = json.loads((folder / "feature.json").read_text())
+state["artifactPublication"] = {"version": 1, "generation": 0, "evidenceEpoch": 0, "migration": None, "participantsVersion": 1}
+(folder / "feature.json").write_text(json.dumps(state))
+PYBATCH
+PYTHONPATH="$(dirname "$LIB")" python3 - "$WORK/batch-feat" "$WORK/batch-token.json" <<'PYBATCH2'
+import json, sys
+from pathlib import Path
+from artifact_publication import capture_locked, locked_feature
+folder = Path(sys.argv[1])
+with locked_feature(folder):
+    token = capture_locked(folder)
+Path(sys.argv[2]).write_text(json.dumps(token))
+PYBATCH2
+# advance the generation behind the captured token's back (a different participant's
+# own operation, not a token-less bypass)
+fw_set "$WORK/batch-feat" warnings '["moved-on"]'
+before_stale="$(cat "$WORK/batch-feat/feature.json")"
+exit_code=0
+bash "$LIB" batch "$WORK/batch-feat" '[{"op":"set","path":"currentPhase","value":"iterate"}]' --token "$WORK/batch-token.json" >/dev/null 2>&1 || exit_code=$?
+check "P: batch with a stale token rejected" "1" "$exit_code"
+check "P: file untouched after a stale-token batch" "$before_stale" "$(cat "$WORK/batch-feat/feature.json")"
+
 # Acknowledgment removes only the published prefix under the writer's lock.
 bash "$LIB" "$WORK/feat" '{"slug":"ack","pendingRemediationTasks":[{"id":"a"},{"id":"b"}],"artifacts":{"tasks":"tasks.json"},"warnings":["keep"],"specApproval":{"digest":"immutable"}}' >/dev/null
 ack='{"snapshot":[{"id":"a"}],"generation":null,"receipt":"first"}'
@@ -127,6 +226,14 @@ exit_code=0
 bash "$LIB" set "$WORK/feat" specApproval '{"digest":"changed"}' >/dev/null 2>&1 || exit_code=$?
 check "ack: later writes still cannot change approval" "1" "$exit_code"
 check "ack: rejected approval edit changes nothing" "$before" "$(cat "$WORK/feat/feature.json")"
+# The driver's reopen for a human-approved SPEC rewind: the record retires into the
+# history first, then the approval may clear; a bare clear is still refused.
+exit_code=0
+bash "$LIB" set "$WORK/feat" specApproval null >/dev/null 2>&1 || exit_code=$?
+check "reopen: clearing the approval without retiring it is refused" "1" "$exit_code"
+bash "$LIB" append "$WORK/feat" specApprovalHistory '{"digest":"immutable","reopenedBy":"human.iterate-spec-approval"}' >/dev/null
+bash "$LIB" set "$WORK/feat" specApproval null >/dev/null
+check "reopen: a retired approval may clear" "null" "$(jq -r '.specApproval' "$WORK/feat/feature.json")"
 printf '#!/usr/bin/env bash\necho "injected store persistence failure" >&2\nexit 2\n' > "$WORK/failing-store.sh"
 chmod +x "$WORK/failing-store.sh"
 exit_code=0
@@ -203,7 +310,13 @@ legacy = Path(sys.argv[1]) / 'legacy-identity'
 legacy.mkdir()
 (legacy/'feature.json').write_text('{"slug":"old"}')
 for args in [[str(legacy),json.dumps(state)],['set',str(legacy),'requirementsContract',json.dumps(c)]]:
-    assert write(args).returncode == 1
+    result = write(args)
+    assert result.returncode == 1
+    # A state with no requirementsContract cannot be handed v1 metadata by an
+    # ordinary write -- only requirements.bootstrap_state may introduce the first
+    # contract, so removing v1 from a v1 feature can never "select legacy" by simply
+    # writing a state that never had a contract to begin with (task-009 AC).
+    assert 'existing legacy state requires explicit migration before v1' in result.stderr, result.stderr
 print('PASS: ordinary and replacement writes preserve identity histories and legacy boundary')
 PYTEST
 
@@ -246,11 +359,27 @@ while not (folder/'ready').exists():
     assert publisher.poll() is None, publisher.communicate()
     assert time.monotonic() < deadline
     time.sleep(.01)
-writer = subprocess.Popen(['bash',sys.argv[2],'append',str(folder),'warnings','"concurrent"'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+writer_script = """
+import json, subprocess, sys
+folder, lib = sys.argv[1], sys.argv[2]
+token_path = folder + '/writer-token.json'
+# A queued ordinary writer is still a publication participant once the feature
+# carries artifactPublication (task-009 strict enforcement): it begins its own
+# operation -- blocking on the same file lock the publish holds -- then writes
+# through the token that ingress hands back, exactly like any other caller.
+ingress = subprocess.run(['bash', lib, 'ingress', folder], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+open(token_path, 'w').write(ingress.stdout)
+result = subprocess.run(['bash', lib, 'append', folder, 'warnings', '"concurrent"', '--token', token_path],
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+sys.stderr.write(result.stderr)
+sys.exit(result.returncode)
+"""
+writer = subprocess.Popen([sys.executable,'-c',writer_script,str(folder),sys.argv[2]],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
 (folder/'release').touch()
 output, error = publisher.communicate(timeout=15)
 assert publisher.returncode == 0, error
-assert writer.communicate(timeout=15) == ('','') and writer.returncode == 0
+writer_out, writer_err = writer.communicate(timeout=15)
+assert writer_err == '' and writer.returncode == 0, (writer_out, writer_err)
 state = json.loads((folder/'feature.json').read_text())
 assert state['warnings'] == ['concurrent'] and state['currentPhase'] == 'plan'
 assert state['artifactPublication']['generation'] == 2 and state['artifactPublication']['evidenceEpoch'] == 0

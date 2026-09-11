@@ -191,7 +191,20 @@ with tempfile.TemporaryDirectory() as tmp:
     for artifact in ('SPEC.md', 'VERIFICATION.md'):
         payload.update(tool_name='apply_patch', tool_input={'command':
             '*** Begin Patch\n*** Update File: docs/loop-spec/features/guarded/' + artifact + '\n@@\n-x\n+y\n*** End Patch'})
-        assert any(p.returncode == 2 and 'driver writes' in p.stderr for p in run('PreToolUse')), artifact
+        assert any(p.returncode == 2 and 'Fill it through the driver' in p.stderr for p in run('PreToolUse')), artifact
+    # task-009: the same protected-path policy (lib/harness.sh protected-path)
+    # covers driver-owned feature state and execution/migration records under
+    # Codex's own PreToolUse hook, not just SPEC/VERIFICATION.
+    (feature / 'observations').mkdir()
+    payload.update(tool_name='Write', tool_input={'file_path': str(feature / 'tasks.json')})
+    assert any(p.returncode == 2 and 'Fill it through the driver' in p.stderr for p in run('PreToolUse'))
+    payload.update(tool_name='Write', tool_input={
+        'file_path': str(feature / 'observations' / 'exec-1.json')})
+    assert any(p.returncode == 2 and 'Fill it through the driver' in p.stderr for p in run('PreToolUse'))
+    (feature / 'publication-staging').mkdir()
+    payload.update(tool_name='Write', tool_input={
+        'file_path': str(feature / 'publication-staging' / 'spec-abc.md')})
+    assert all(p.returncode == 0 for p in run('PreToolUse'))
 PY
 then
   PASS=$((PASS+1)); echo "PASS: registered Codex prompt and Stop hooks enforce driver state"

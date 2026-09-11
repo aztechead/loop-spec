@@ -81,3 +81,22 @@ checkpoint records retain their completed meaning.
 available as `RUN_ALL_PROFILE=unit bash tests/run-all.sh`. Offline checks establish
 mechanical behavior; they do not measure live model task success or replace the manual
 harness matrix in [the test guide](../../tests/README.md).
+
+## Upgrade from 6.x: traceable requirements
+
+7.0 delivered [the roadmap's 7.0 stage](7.x-roadmap.md#70-connect-requirements-tasks-and-evidence):
+stable requirement identity and revision (`lib/requirements.py`,
+[requirements-format.md](requirements-format.md)), a driver-owned publication
+transaction every producer route stages through (`lib/artifact_publication.py`),
+declared execution-input identity (`lib/execution_inputs.py`), bounded driver-owned
+observation records that VERIFY and ITERATE cross-check before accepting PASS
+(`lib/execution_observation.py`, `lib/converged-floor.sh`), the same protected-path
+guard on all four harnesses (`bash lib/harness.sh protected-path`,
+`skills/shared/claude-harness.md` "Protected publication paths"), and a deterministic,
+read-only migration preview plus recoverable apply/resume/rollback for an incomplete
+pre-7 cycle (`lib/requirements_migrate.py`, [requirements-migration.md](requirements-migration.md)).
+Evidence: `tests/lib/requirements.test.sh`, `tests/lib/artifact-publication.test.sh`,
+`tests/lib/execution-observation.test.sh`, `tests/lib/requirements-migrate.test.sh`, and
+`tests/release-7-0-coverage.test.sh` (the cross-file wiring). The roadmap's 7.1
+(capability lifecycle) and 7.2 (selective evidence reuse) stages remain open; this
+release does not implement either.

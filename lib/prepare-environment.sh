@@ -23,8 +23,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "$subcommand" == "resolve" || "$subcommand" == "run" ]] \
-  || die2 "usage: prepare-environment.sh {resolve|run} --root ROOT [--command COMMAND] [--reuse-from ROOT]"
+[[ "$subcommand" == "resolve" || "$subcommand" == "run" || "$subcommand" == "exclude-artifacts" ]] \
+  || die2 "usage: prepare-environment.sh {resolve|run|exclude-artifacts} --root ROOT [--command COMMAND] [--reuse-from ROOT]"
 [[ -n "$root" && -d "$root" ]] || die2 "--root must name a directory"
 root="$(cd "$root" && pwd -P)"
 git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
@@ -105,6 +105,79 @@ node_install_command() {
   esac
 }
 
+exclude_build_artifacts() {
+  # What a prepare command leaves behind is not the worktree's dirt: the venv the
+  # resolver builds, an editable install's egg-info, and pytest's cache all landed as
+  # "setup left non-ignored worktree changes" on a live greenfield run with no
+  # .gitignore yet. They go in the repository's common info/exclude, the file this
+  # script and lib/runtime-ignore.sh already own, never in the project's own
+  # .gitignore; a line is appended only when absent, so a repository that ignores
+  # them itself sees nothing.
+  local common_dir exclude_file line
+  common_dir="$(git -C "$root" rev-parse --git-common-dir)"
+  [[ "$common_dir" == /* ]] || common_dir="$(cd "$root" && cd "$common_dir" && pwd -P)"
+  exclude_file="$common_dir/info/exclude"
+  mkdir -p "$(dirname "$exclude_file")"
+  touch "$exclude_file"
+  for line in "/.venv/" "/*.egg-info/" "/.pytest_cache/" "__pycache__/"; do
+    grep -qxF "$line" "$exclude_file" 2>/dev/null || printf '%s\n' "$line" >> "$exclude_file"
+  done
+}
+
+pyproject_install_command() {
+  # A PEP 621 project with no lock and no requirements file installs itself editable
+  # into .venv with the test or dev extras it declares, under an interpreter that
+  # satisfies requires-python: a live 3.14 project was backfilled `pip install -e
+  # .[test]` under the default 3.11 and VERIFY could not prepare. python3 reads the
+  # TOML by regex (tomllib is 3.11+), a pythonX.Y on PATH is preferred, and uv is
+  # named only when it is present and nothing on PATH satisfies the bound.
+  local root="$1"
+  python3 - "$root" <<'PY'
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+root = sys.argv[1]
+with open(os.path.join(root, "pyproject.toml"), encoding="utf-8", errors="replace") as fh:
+    text = fh.read()
+bound = None
+declared = re.search(r'^requires-python\s*=\s*"([^"]*)"', text, re.M)
+if declared:
+    lower = re.search(r">=\s*(\d+)\.(\d+)", declared.group(1))
+    if lower:
+        bound = (int(lower.group(1)), int(lower.group(2)))
+section = re.search(r"^\[project\.optional-dependencies\]\n(.*?)(?=^\[|\Z)", text, re.M | re.S)
+extras = [name for name in ("test", "tests", "dev")
+          if section and re.search(r"^\s*%s\s*=\s*\[" % name, section.group(1), re.M)]
+extra = "[%s]" % ",".join(extras) if extras else ""
+
+
+def version(exe):
+    try:
+        out = subprocess.run([exe, "-c", "import sys; print('%d.%d' % sys.version_info[:2])"],
+                             capture_output=True, text=True, timeout=10).stdout.strip()
+        major, minor = out.split(".")
+        return (int(major), int(minor))
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+python = "python3"
+if bound and (version("python3") or (0, 0)) < bound:
+    named = "python%d.%d" % bound
+    if shutil.which(named) and (version(named) or (0, 0)) >= bound:
+        python = named
+    elif shutil.which("uv"):
+        print("uv venv --python %d.%d .venv && uv pip install --python .venv/bin/python -e '.%s'" % (bound[0], bound[1], extra))
+        sys.exit(0)
+    else:
+        python = named
+print("%s -m venv .venv && .venv/bin/python -m pip install -e '.%s'" % (python, extra))
+PY
+}
+
 resolve_command() {
   local workflow="$root/.loop-spec/workflow.json"
   source="none"
@@ -176,6 +249,9 @@ resolve_command() {
     if [[ -n "$requirements" ]]; then
       python_command="python3 -m venv .venv && .venv/bin/python -m pip install -r $requirements"
       python_reason="root:pip"
+    elif [[ -f "$root/pyproject.toml" ]]; then
+      python_command="$(pyproject_install_command "$root")"
+      python_reason="root:pyproject"
     fi
   fi
   if [[ -z "$python_command" && ! -f "$root/pyproject.toml" \
@@ -269,7 +345,9 @@ PY
 }
 
 read_worktree_status() {
-  git -C "$root" status --porcelain --untracked-files=all 2>/dev/null
+  # Plugin state is never setup dirt: lib/execute-step.sh reads dirt with the same
+  # exclusions, and a live VERIFY escalated on an untracked .loop-spec/BACKLOG.md.
+  git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude).loop-spec' ':(exclude).claude/agent-memory' 2>/dev/null
 }
 
 state_unreadable() {
@@ -286,6 +364,10 @@ resolve_command
 key=""
 [[ -z "$command" ]] || key="$(preparation_key)"
 
+if [[ "$subcommand" == "exclude-artifacts" ]]; then
+  exclude_build_artifacts
+  exit 0
+fi
 if [[ "$subcommand" == "resolve" ]]; then
   jq -cn --arg command "$command" --arg source "$source" --arg key "$key" \
     --arg reason "$reason" \
@@ -381,6 +463,7 @@ if [[ -n "$reuse_from" && "${LOOP_SPEC_SHARE_DEPENDENCIES:-1}" != "0" \
   fi
 fi
 
+exclude_build_artifacts
 watchdog="$script_dir/run-with-watchdog.sh"
 prepare_timeout="${LOOP_SPEC_PREPARE_TIMEOUT_SECS:-1800}"
 prepare_idle_timeout="${LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS:-300}"

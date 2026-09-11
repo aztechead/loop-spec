@@ -34,6 +34,10 @@
 #   - skip currentPhase == "completed"; a ready DELIVER sidecar remains resumable
 #     so completion finalization can recover after a crash
 #   - skip schemaVersion != 7 -> skipped + the one-line warning the skill specifies
+#   - skip artifactPublication.migration != null, or publication-generations/active.json
+#     present -> skipped + a warning naming the recovery command (requirements-migrate.sh
+#     status/resume, or artifact-publication.sh recover); resuming into either state
+#     would step around the transaction those commands exist to finish or roll back
 #   - currentTeamName != null -> candidate with needs_probe: true (liveness probing
 #     needs the harness TaskList tool; the ORCHESTRATOR resolves it per
 #     lib/cycle-driver.sh start, using teams.mode from this same blob)
@@ -186,6 +190,19 @@ scan_feature_root() {
           continue
         fi
       fi
+    fi
+    # A migration or an unfinished publication is a state that needs its own recovery
+    # command, not a resumed cycle: resuming into it would step around the very
+    # transaction those commands exist to finish or roll back.
+    if [[ "$(jq -r '.artifactPublication.migration // "null"' <<<"$doc")" != "null" ]]; then
+      skipped="$(jq -c --arg slug "$fslug" --arg why "migration in progress: run requirements-migrate.sh status/resume" '. + [{slug: $slug, why: $why}]' <<<"$skipped")"
+      warnings+=("feature ${fslug}: migration in progress; run requirements-migrate.sh status/resume")
+      continue
+    fi
+    if [[ -f "$(dirname "$fpath")/publication-generations/active.json" ]]; then
+      skipped="$(jq -c --arg slug "$fslug" --arg why "unfinished publication: run artifact-publication.sh recover" '. + [{slug: $slug, why: $why}]' <<<"$skipped")"
+      warnings+=("feature ${fslug}: unfinished publication; run artifact-publication.sh recover")
+      continue
     fi
     team="$(jq -r '.currentTeamName // ""' <<<"$doc")"
     updated_at="$(jq -r '.updatedAt // ""' <<<"$doc")"

@@ -3,7 +3,9 @@
 # Standalone: exit 0 on all pass, exit 1 on any failure.
 set -euo pipefail
 
-SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/quality-loop-state.sh"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT="$REPO_ROOT/lib/quality-loop-state.sh"
+CYCLE_DRIVER="$REPO_ROOT/lib/cycle-driver.sh"
 PASS=0
 FAIL=0
 
@@ -27,6 +29,26 @@ assert_valid_json() {
   else
     fail "$label: state file is not valid JSON"
   fi
+}
+
+# Build a real schema-7 feature the way the cycle makes one (mirrors
+# tests/lib/phase-exit.test.sh), for the cycle-participation cases below.
+# Prints the feature directory.
+make_feature() {
+  local work="$1" repo="$1/repo"
+  mkdir -p "$repo"
+  git -C "$repo" init -q -b main
+  git -C "$repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+  (
+    export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+    export LOOP_SPEC_HARNESS=codex LOOP_SPEC_TEAMS_MODE=none LOOP_SPEC_WORKFLOWS_AVAILABLE=0 LOOP_SPEC_CHECKPOINT_PR=0
+    unset LOOP_SPEC_AUTONOMOUS LOOP_SPEC_NON_INTERACTIVE
+    cd "$repo" || exit 1
+    bash "$CYCLE_DRIVER" start --dir "$repo" -- my feature >/dev/null 2>&1 || true
+    bash "$CYCLE_DRIVER" init --dir "$repo" --slug my-feature --title "my feature" \
+      --style auto --profile standard --autonomous 0 >/dev/null 2>&1 || true
+  )
+  printf '%s' "$repo/.loop-spec/features/my-feature"
 }
 
 # ---------------------------------------------------------------------------
@@ -400,6 +422,128 @@ assert_valid_json "after status"
 
 ql systemic "final/check.py" >/dev/null || true
 assert_valid_json "after systemic"
+
+# ---------------------------------------------------------------------------
+# Case 9: cycle participation -- a real feature dir, publication generation
+# ---------------------------------------------------------------------------
+echo "--- Case 9: cycle participation ---"
+
+# (b) record-round then mark-clean succeed; generation advances by one per
+# accepted publication.
+FDB="$(make_feature "$WORK/cycle-b")"
+TOK_B1="$WORK/cycle-b/tok1.json"
+# cycle-driver.sh init is itself a publication participant (task-004 WP3): it
+# bootstraps the legacy contract as part of init, so a feature is never without one
+# by the time the cycle can touch it -- record-round and mark-clean below each then
+# advance that same contract by one generation, rather than establishing it lazily.
+gen0="$(jq -r '.artifactPublication.generation // "absent"' "$FDB/feature.json")"
+if [[ "$gen0" == "0" ]]; then
+  pass "in-cycle: init bootstraps the publication contract at generation 0"
+else
+  fail "in-cycle: init bootstraps the publication contract at generation 0 (got generation=$gen0)"
+fi
+
+LOOP_SPEC_QL_STATE="$FDB/quality-loop.json" LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT="$TOK_B1" \
+  bash "$SCRIPT" record-round "app/main.py" 1 '[]' >/dev/null
+gen1="$(jq -r '.artifactPublication.generation' "$FDB/feature.json")"
+if [[ "$gen1" == "1" ]]; then
+  pass "in-cycle: record-round's accepted publication bumps generation to 1"
+else
+  fail "in-cycle: record-round's accepted publication bumps generation to 1 (got $gen1)"
+fi
+if [[ -f "$FDB/quality-loop.json" ]]; then
+  pass "in-cycle: sidecar lands at <feature dir>/quality-loop.json"
+else
+  fail "in-cycle: sidecar lands at <feature dir>/quality-loop.json"
+fi
+if [[ -s "$TOK_B1" ]]; then
+  pass "in-cycle: record-round returns the accepted refresh"
+else
+  fail "in-cycle: record-round returns the accepted refresh"
+fi
+
+TOK_B2="$WORK/cycle-b/tok2.json"
+LOOP_SPEC_QL_STATE="$FDB/quality-loop.json" LOOP_SPEC_PUBLICATION_TOKEN="$TOK_B1" \
+  LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT="$TOK_B2" bash "$SCRIPT" mark-clean "app/main.py" 1 >/dev/null
+gen2="$(jq -r '.artifactPublication.generation' "$FDB/feature.json")"
+if [[ "$gen2" == "2" ]]; then
+  pass "in-cycle: mark-clean's accepted publication bumps generation to 2"
+else
+  fail "in-cycle: mark-clean's accepted publication bumps generation to 2 (got $gen2)"
+fi
+clean_b="$(jq -r '."app/main.py".clean' "$FDB/quality-loop.json")"
+if [[ "$clean_b" == "true" ]]; then
+  pass "in-cycle: sidecar reflects mark-clean"
+else
+  fail "in-cycle: sidecar reflects mark-clean (got $clean_b)"
+fi
+
+# (c) an old held token: run mark-clean with it after an unrelated write bumps
+# the generation. Refused as stale; nothing changes.
+FDC="$(make_feature "$WORK/cycle-c")"
+TOK_C1="$WORK/cycle-c/tok1.json"
+LOOP_SPEC_QL_STATE="$FDC/quality-loop.json" LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT="$TOK_C1" \
+  bash "$SCRIPT" record-round "app/main.py" 1 '[]' >/dev/null
+# The unrelated write is its own participant (task-009 strict enforcement): it begins
+# its own operation rather than bypassing the ingress token entirely.
+TOK_C_BUMP="$WORK/cycle-c/tok-bump.json"
+python3 "$REPO_ROOT/lib/feature_write.py" ingress "$FDC" > "$TOK_C_BUMP"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FDC" warnings '["x"]' --token "$TOK_C_BUMP" >/dev/null
+before_sidecar_c="$(cat "$FDC/quality-loop.json")"
+rc=0
+out_c="$(LOOP_SPEC_QL_STATE="$FDC/quality-loop.json" LOOP_SPEC_PUBLICATION_TOKEN="$TOK_C1" \
+  bash "$SCRIPT" mark-clean "app/main.py" 1 2>&1)" || rc=$?
+if [[ "$rc" -eq 1 ]]; then
+  pass "stale token: mark-clean exits 1"
+else
+  fail "stale token: mark-clean exits 1 (got exit $rc)"
+fi
+if grep -q "stale publication token" <<<"$out_c"; then
+  pass "stale token: message names it"
+else
+  fail "stale token: message names it (got '$out_c')"
+fi
+after_sidecar_c="$(cat "$FDC/quality-loop.json")"
+if [[ "$before_sidecar_c" == "$after_sidecar_c" ]]; then
+  pass "stale token: sidecar bytes unchanged"
+else
+  fail "stale token: sidecar bytes unchanged"
+fi
+status_c="$(LOOP_SPEC_QL_STATE="$FDC/quality-loop.json" bash "$SCRIPT" status "app/main.py")"
+clean_c="$(jq -r '.clean' <<<"$status_c")"
+if [[ "$clean_c" == "false" ]]; then
+  pass "stale token: status still reports clean=false"
+else
+  fail "stale token: status still reports clean=false (got $clean_c)"
+fi
+
+# (d) an in-progress migration marker refuses record-round before writing.
+FDD="$(make_feature "$WORK/cycle-d")"
+bash "$REPO_ROOT/lib/feature-write.sh" ingress "$FDD" >/dev/null
+digest64="$(printf 'a%.0s' {1..64})"
+jq --arg d "$digest64" \
+  '.artifactPublication.migration = {"id":"m1","previewDigest":$d,"phase":"marker","originalGeneration":0,"publishedHashes":{}}' \
+  "$FDD/feature.json" > "$FDD/feature.json.tmp"
+mv "$FDD/feature.json.tmp" "$FDD/feature.json"
+gen_before_d="$(jq -r '.artifactPublication.generation' "$FDD/feature.json")"
+rc=0
+LOOP_SPEC_QL_STATE="$FDD/quality-loop.json" bash "$SCRIPT" record-round "app/main.py" 1 '[]' >/dev/null 2>&1 || rc=$?
+if [[ "$rc" -eq 1 ]]; then
+  pass "migration marker: record-round refuses"
+else
+  fail "migration marker: record-round refuses (got exit $rc)"
+fi
+if [[ -f "$FDD/quality-loop.json" ]]; then
+  fail "migration marker: no sidecar written"
+else
+  pass "migration marker: no sidecar written"
+fi
+gen_after_d="$(jq -r '.artifactPublication.generation' "$FDD/feature.json")"
+if [[ "$gen_before_d" == "$gen_after_d" ]]; then
+  pass "migration marker: generation unchanged"
+else
+  fail "migration marker: generation unchanged (before=$gen_before_d after=$gen_after_d)"
+fi
 
 # ---------------------------------------------------------------------------
 # Summary

@@ -235,6 +235,13 @@ feature_json="$(jq --argjson baseline "$baseline_json" --arg profile "$effective
 
 # Everything below chats on stdout; the ONLY stdout this script owns is the final
 # test command the caller captures, so sub-call chatter is routed to stderr.
+# feature-write.sh's bare form is a "replace" that overwrites unconditionally (it has no
+# previous-state check of its own): finalize is a create, so refuse loudly rather than
+# clobber a feature.json a caller left behind, and only then open the publication contract.
+if [[ -f ".loop-spec/features/${slug}/feature.json" ]]; then
+  echo "feature-bootstrap: feature.json already exists at .loop-spec/features/${slug}; finalize creates a new feature and never resumes one" >&2
+  exit 1
+fi
 bash "$SCRIPT_DIR/feature-write.sh" ".loop-spec/features/${slug}" "$feature_json" >&2
 feature_dir_abs="$(cd ".loop-spec/features/${slug}" && pwd -P)"
 bash "$SCRIPT_DIR/cycle-result.sh" begin \
@@ -244,12 +251,18 @@ bash "$SCRIPT_DIR/cycle-result.sh" begin \
 
 # Autonomous mode: persist the flag so phase skills and resumed sessions see it
 # without re-parsing the invocation (skills/shared/autonomous-mode.md).
-# Greenfield mode: persist it the same way.
-if [[ "$autonomous" == "1" ]]; then
-  bash "$SCRIPT_DIR/feature-write.sh" set ".loop-spec/features/${slug}" autonomous true >&2
-fi
-if [[ "$greenfield" == "1" ]]; then
-  bash "$SCRIPT_DIR/feature-write.sh" set ".loop-spec/features/${slug}" greenfield true >&2
+# Greenfield mode: persist it the same way. The skeleton just written carries no
+# artifactPublication yet; begin bootstraps the legacy contract from it and every set
+# below carries the token it captures, same as any other participant.
+if [[ "$autonomous" == "1" || "$greenfield" == "1" ]]; then
+  . "$SCRIPT_DIR/feature-write.sh"
+  loop_spec_publication_begin "$feature_dir_abs" || exit 1
+  if [[ "$autonomous" == "1" ]]; then
+    loop_spec_feature_write set "$feature_dir_abs" autonomous true >&2
+  fi
+  if [[ "$greenfield" == "1" ]]; then
+    loop_spec_feature_write set "$feature_dir_abs" greenfield true >&2
+  fi
 fi
 
 # Move any pre-SPEC assumed decisions (recorded during cycle Steps 0-4) into the

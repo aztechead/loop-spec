@@ -84,6 +84,8 @@
 # }
 #
 # events.jsonl and result.json are local telemetry, deliberately not committed.
+# A paused result.json lives until the driver answers NEXT for the phase that resumes
+# it; the driver removes it and the pointer then, so a running phase has no result.
 #
 # `state` is the probe behind the route-exit contract: a run is armed (`begin`) before
 # any protocol machinery starts and disarmed only by a published terminal result, so
@@ -98,8 +100,15 @@
 # Missing feature.json → one-line stderr warning, exit 0 (observability never aborts).
 # Bad --status value → one-line stderr warning, exit 0, write nothing.
 #
-# Exit codes: writes always return 0 (observability never aborts); `clear` returns 1
-# when it cannot safely remove the stale pointer so an entry point cannot reuse it.
+# PUBLICATION EXCEPTION (`write` only): a feature mid-migration or with an unfinished
+# publication REFUSES the write outright -- one-line stderr reason, exit 1, no
+# result.json and no last-result.json pointer change. This is a refusal, not the
+# fail-open observability path above: the transaction has not said its final word on
+# this feature.json yet, so a published outcome would be misleading, not merely absent.
+#
+# Exit codes: writes otherwise always return 0 (observability never aborts), except
+# `write`'s publication refusal above (exit 1); `clear` returns 1 when it cannot safely
+# remove the stale pointer so an entry point cannot reuse it.
 set -uo pipefail
 
 VALID_STATUSES="completed paused escalated terminal failed"
@@ -143,6 +152,19 @@ _is_nonblank() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# _publication_refusal DIR: prints a one-line reason and returns true (0) when DIR is
+# mid-migration or has an unfinished publication; prints nothing and returns false (1)
+# otherwise. `write` REFUSES on this -- unlike every other failure path here, which
+# degrades to a warning and exit 0 (the header's OBSERVABILITY CONTRACT): a result
+# published over a feature mid-transaction would tell a headless supervisor "here is
+# the outcome" about state that is not the transaction's final word yet.
+_publication_refusal() {
+  local reason
+  reason="$(python3 "$SCRIPT_DIR/feature_write.py" ingress-read "$1" 2>&1 >/dev/null)" && return 1
+  echo "cycle-result.sh: refusing to publish over ${reason#feature-write: }" >&2
+  return 0
+}
 
 # Stamped into every terminal result so a consumer can date the run against the
 # version that produced it. Resolved once; never fails (degrades to "unknown").
@@ -713,6 +735,10 @@ PY
       echo "cycle-result.sh: feature.json not found in $feature_dir" >&2
       exit 0
     fi
+    # Before building result.json: a feature mid-migration or with an unfinished
+    # publication REFUSES (exit 1), not the fail-open path above -- see
+    # _publication_refusal's own comment for why this one call is not observability.
+    _publication_refusal "$feature_dir" && exit 1
     # The driver answered NEXT and the lead is publishing a failure instead of invoking
     # the phase: a supervisor reads that as a dead run. Not refused outright, because a
     # phase can genuinely die; refused without a reason, because "interrupted" with no
@@ -754,6 +780,34 @@ PY
     fi
     if [[ "$delivery_content" == "null" ]]; then
       delivery_content="$(jq -c '.delivery // null' <<<"$fj_content" 2>/dev/null || echo null)"
+    fi
+    # A terminal --status completed/--outcome delivered must name the same checked
+    # candidate binding deliver.sh itself requires (PLAN "Final candidate
+    # observations" -- "terminal cycle-result consumers require the same checked
+    # target binding"), not just a sidecar that already claims readiness: the
+    # delivery-reconcile.sh call above only re-validates a NON-canonical sidecar
+    # (an out-of-band PR), so an already-canonical one -- however it got that way --
+    # still needs its own check here. Skipped when feature_dir names no real git
+    # work tree: this observability writer's own test fixtures are deliberately
+    # git-free plumbing (a "checked candidate binding" is a git concept, and there
+    # is nothing here to check it against), and every real deployment runs inside one.
+    if [[ "$status" == "completed" && -z "$no_change_reason" ]] \
+       && git -C "$feature_dir" rev-parse --show-toplevel >/dev/null 2>&1; then
+      final_shas="$(jq -c '[.targets[]? | select((.ok == true) and ((.targetSha // "") != "")) |
+        {name: .name, sha: .targetSha}] | reduce .[] as $t ({}; .[$t.name] = $t.sha)' \
+        <<<"$delivery_content" 2>/dev/null || echo '{}')"
+      if [[ "$(jq 'length' <<<"$final_shas")" -gt 0 ]]; then
+        final_candidates_file="$(mktemp "${TMPDIR:-/tmp}/loop-spec-final-candidates.XXXXXX")"
+        printf '%s' "$final_shas" > "$final_candidates_file"
+        final_check_ok=1
+        final_result="$(bash "$SCRIPT_DIR/cycle-driver.sh" verification run --final-candidates "$final_candidates_file" \
+          --feature-dir "$feature_dir" 2>&1)" || final_check_ok=0
+        rm -f "$final_candidates_file"
+        if [[ "$final_check_ok" -ne 1 ]] || ! jq -e '.ok == true' <<<"$final_result" >/dev/null 2>&1; then
+          echo "cycle-result.sh: --status completed but final candidate observations did not validate for the delivered SHA(s): $final_result" >&2
+          exit 0
+        fi
+      fi
     fi
     # A delivered run must still publish when ITERATE left no summary. Reconcile
     # and --outcome delivered already fall back; refusing here is the hole that
@@ -957,6 +1011,10 @@ PY
       echo "cycle-result.sh: failed to build result.json from feature.json in $feature_dir" >&2
       exit 0
     }
+
+    # Recheck immediately before the atomic result publish: still a refusal, not the
+    # fail-open path (see _publication_refusal).
+    _publication_refusal "$feature_dir" && exit 1
 
     # Write result.json to feature dir
     _write_atomic "$result_json" "$feature_dir/result.json" || {

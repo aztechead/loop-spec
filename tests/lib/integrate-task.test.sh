@@ -135,6 +135,10 @@ check "preflight verifies exact candidate" ready "$(jq -r .reason <<<"$OUT")"
 check "preflight does not publish" "$FEATURE_BEFORE" "$(git -C "$REPO" rev-parse HEAD)"
 
 make_fixture
+run_helper --prepare 'mkdir -p .venv/bin && printf "#!/bin/sh\nexit 0\n" > .venv/bin/tool && chmod +x .venv/bin/tool' --verify 'tool'
+check "prepare's venv is not task dirt and its bin is on the verify PATH" "true" "$(jq -r .published <<<"$OUT")"
+
+make_fixture
 run_helper --verify "printf dirt > '$REPO/preflight-dirt.txt'" --preflight-only
 check "preflight rejects feature dirt" check-dirty-worktree "$(jq -r .reason <<<"$OUT")"
 check "preflight identifies dirty feature" feature-dirty "$(jq -r .detail <<<"$OUT" | cut -d: -f1)"

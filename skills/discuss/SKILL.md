@@ -30,14 +30,17 @@ criterion before it leaves the list.
 
 When ONESHOT promoted this build (`route: full` with only an Intent section), expand
 the draft into the full SPEC template while preserving that intent. Resolve concrete
-questions, then obtain and record approval through SPEC's "Approval and exit"
-instructions in `skills/spec/SKILL.md` before returning. Use the run's existing human,
-autonomous, or supervised approval source; promotion never grants human approval.
+questions and get the run's approval of the written Goal and Boundary per SPEC's
+"Approval and exit" in `skills/spec/SKILL.md` before returning; the driver records the
+freeze when the cycle enters PLAN. Promotion never grants human approval.
 
 `reentry=true` (ITERATE sent the cycle back for a `spec`-type gap): read
 `iterate.feedback`, refine SPEC.md toward the ORIGINAL goal (`feature_title`) for that
-gap only, and do not restart the interview. `auto`/`review-only` do this without
-questions.
+gap only, and do not restart the interview. When a human approved the rewind
+(`step`/`interactive`), the driver has reopened Goal and Boundary: amend them for that
+gap, record why, and PLAN freezes them again. `auto`/`review-only` do this without
+questions and without a reopen: Goal and Boundary stay frozen there, so the refinement
+lands in the other sections.
 
 ## 2. Grill (by `grill`)
 
@@ -78,7 +81,10 @@ Cite `EVID-NNN`, or record an ASSUMPTION when a probe is unavailable (`skills/sh
   assumptions above.
 
 Save the transcript to `feature_dir/discuss-transcript.md`. If `docs/loop-spec/features/{slug}/SPEC.md` exists,
-edit its design decisions in place and preserve the approved Goal and Boundary.
+edit its design decisions in place. Goal and Boundary are not yet frozen: an answer
+here that changes what the feature must do is written into them, with the reason in
+the decisions ledger, and the DISCUSS gate shows the human that they changed. The
+freeze lands when the cycle enters PLAN.
 Record resolved questions and their reasons in the decisions ledger.
 Spawn `spec-writer-1` (`loop-spec:spec-writer`) only when SPEC.md is missing.
 Give it absolute `spec_path` and transcript paths. Agents share your current directory, but the exit gate reads the feature's checkout.

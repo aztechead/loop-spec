@@ -99,6 +99,20 @@ check "verdict: the breaker blocks with retry-exhausted" "retry-exhausted" "$(jq
 ec=0; out="$(bash "$STEP" verdict --feature-dir "$FD" --task task-002 --verdict block 2>/dev/null)" || ec=$?
 check "verdict block: spec-compliance-block" "spec-compliance-block" "$(jq -r '.reason' <<<"$out")"
 
+# --- backfill: an empty test command is filled after the first task, greenfield or not ---
+# (two live runs shipped a placeholder README, were never flagged greenfield, and reached
+# VERIFY with no test suite recorded).
+export LOOP_SPEC_HARNESS=codex LOOP_SPEC_WORKTREES=0
+FDB="$(new_feature backfill)"; ROOTB="$(git -C "$FDB" rev-parse --show-toplevel)"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FDB" commands '{"prepare":"","test":"","lint":"","typecheck":""}' >/dev/null
+bash "$PREP" run --feature-dir "$FDB" >/dev/null 2>&1
+bash "$STEP" dispatch --feature-dir "$FDB" --task task-001 >/dev/null 2>&1
+printf 'print(2)\n' > "$ROOTB/a.py"; printf '[project]\nname = "x"\nversion = "0"\nrequires-python = ">=3.8"\n' > "$ROOTB/pyproject.toml"
+jq '.[0].files += ["pyproject.toml"]' "$FDB/tasks.json" > "$FDB/tasks.json.tmp" && mv "$FDB/tasks.json.tmp" "$FDB/tasks.json"
+bash "$STEP" integrate --feature-dir "$FDB" --task task-001 >/dev/null 2>&1
+check "integrate: an empty commands.test is filled after task-001 without a greenfield flag" ".venv/bin/python -m pytest" "$(jq -r '.commands.test' "$FDB/feature.json")"
+check "integrate: an empty commands.prepare is filled the same way" "1" "$(jq -r '.commands.prepare' "$FDB/feature.json" | grep -c 'venv')"
+
 # --- worktree mode (Claude harness, lead-created worktrees) -----------------------------
 export LOOP_SPEC_HARNESS=claude LOOP_SPEC_WORKTREES=1
 FD2="$(new_feature isolated)"; ROOT2="$(git -C "$FD2" rev-parse --show-toplevel)"
@@ -122,6 +136,14 @@ if [[ "$(jq -r '.rung.subagentIsolation' "$FD2/dispatch/prepare.json")" == "lead
   check "integrate worktree: a new .loop-spec file is never dirt and never tracked" "0" "$(git -C "$ROOT2" ls-files .loop-spec/BACKLOG.md | grep -c BACKLOG)"
   check "integrate worktree: feature branch carries the commit" "1" "$(git -C "$ROOT2" log --oneline feat/my-feature | grep -c 'change a')"
   check "integrate worktree: marked done" "task-001" "$(bash "$REPO_ROOT/lib/task-progress.sh" done "$FD2/tasks.json")"
+  # The implementer never commits; a task worktree left dirty is the driver's to commit
+  # (a live session-rung run read zero-commit and the lead committed by hand).
+  out="$(bash "$STEP" dispatch --feature-dir "$FD2" --task task-002)"
+  WT2="$(jq -r '.worktreePath' <<<"$out")"
+  printf 'print("b")\n' > "$WT2/b.py"
+  ec=0; out="$(bash "$STEP" integrate --feature-dir "$FD2" --task task-002 2>/dev/null)" || ec=$?
+  check "integrate worktree: an uncommitted task.files change is committed by the driver" "true" "$(jq -r '.published' <<<"$out")"
+  check "integrate worktree: the driver's commit names the task" "1" "$(git -C "$ROOT2" log --oneline feat/my-feature | grep -c 'add b')"
 else
   echo "SKIP: worktree mode not selected on this host ($(jq -r '.rung.reason' "$FD2/dispatch/prepare.json"))"
 fi

@@ -17,11 +17,11 @@ module = importlib.util.spec_from_file_location('driver', root / 'lib/graph/driv
 driver = importlib.util.module_from_spec(module)
 module.loader.exec_module(driver)
 observations = []
-observe = driver.observe
-def counted_observe(command, cwd):
+observe_command = driver.observe_command
+def counted_observe_command(feature_dir, root, requirement, command, binding=None, contract=None):
     observations.append(command)
-    return observe(command, cwd)
-driver.observe = counted_observe
+    return observe_command(feature_dir, root, requirement, command, binding=binding, contract=contract)
+driver.observe_command = counted_observe_command
 for task, source, count in [('slugify-bug', 'slugify.py', 1), ('wc-json', 'wc_tool.py', 3)]:
     observations.clear()
     with tempfile.TemporaryDirectory() as directory:
@@ -66,6 +66,7 @@ class JsonTests(unittest.TestCase):
         fd.mkdir(parents=True)
         docs = project / 'docs/loop-spec/features' / task
         docs.mkdir(parents=True)
+        (fd / 'feature.json').write_text(json.dumps({'slug': task}))
         spec, verification = docs / 'SPEC.md', docs / 'VERIFICATION.md'
         command = 'python3 -m unittest discover -s tests'
         requirements = ['all existing regression cases pass'] if task == 'slugify-bug' else [
@@ -104,7 +105,7 @@ class JsonTests(unittest.TestCase):
         driver.verification_review(str(verification), str(report), 'offline-fixture')
         for name, args in [('artifact-lint', ['spec', str(spec)]), ('oneshot-spec-lint', [str(spec)])]:
             subprocess.run(['bash', str(root / 'lib' / (name + '.sh'))] + args, check=True)
-        assert not driver.verification_lint_flags(str(project), str(verification), str(spec))
+        assert not driver.verification_lint_flags(str(fd), str(project), str(verification), str(spec))
         total = sum(len(p.read_text().splitlines()) for p in docs.iterdir())
         limit = json.loads((root / 'evals/tasks' / task / 'task.json').read_text())['bar']['artifact_lines']
         print('%s: %d artifact lines (limit %d)' % (task, total, limit))

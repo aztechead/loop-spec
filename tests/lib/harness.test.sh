@@ -278,6 +278,31 @@ check "operator on outranks the probe" "session" "$got"
 got=$(run session-layer-reason PATH="$BARE" LOOP_SPEC_SESSION_LAYER=1)
 check "operator on is named as such" "operator-enabled" "$got"
 
+# --- protected-path: symlink resolution (security hardening) ---
+# A candidate is judged by where it actually lands, not by its literal path: a
+# maker allowed to write under publication-staging could plant a symlink there
+# pointing at the feature's protected SPEC.md and this probe must still answer
+# protected=yes even though the literal target is a staging path. A plain
+# (non-symlink) staging file must keep answering protected=no exactly as before.
+PPWORK="$(mktemp -d "${TMPDIR:-/tmp}/harness-protected-path-test.XXXXXX")"
+trap 'rm -rf "$PPWORK"' EXIT
+PPREPO="$PPWORK/repo"
+mkdir -p "$PPREPO/docs/loop-spec/features/pp" "$PPREPO/.loop-spec/features/pp/publication-staging"
+git -C "$PPREPO" init -q && git -C "$PPREPO" -c commit.gpgsign=false commit -q --allow-empty -m seed
+printf '{"slug":"pp","schemaVersion":7}\n' > "$PPREPO/.loop-spec/features/pp/feature.json"
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - a.py\n---\n# pp\n\n## Intent\n\nx\n<!-- /intent -->\n\n## Implementation notes\n\n- a.py: x\n' \
+  > "$PPREPO/docs/loop-spec/features/pp/SPEC.md"
+ln -s "$PPREPO/docs/loop-spec/features/pp/SPEC.md" "$PPREPO/.loop-spec/features/pp/publication-staging/sneaky.md"
+got=$(bash "$LIB" protected-path --path "$PPREPO/.loop-spec/features/pp/publication-staging/sneaky.md" \
+  --feature-dir "$PPREPO/.loop-spec/features/pp")
+check "protected-path: a staging symlink resolving to the protected SPEC.md is protected=yes" \
+  "protected=yes" "${got%% *}"
+got=$(bash "$LIB" protected-path --path "$PPREPO/.loop-spec/features/pp/publication-staging/plain.md" \
+  --feature-dir "$PPREPO/.loop-spec/features/pp")
+check "protected-path: a plain (non-symlink) staging file stays protected=no" \
+  "protected=no" "${got%% *}"
+rm -rf "$PPWORK"
+
 # --- unknown command exits 2 ---
 rc=0
 run bogus >/dev/null 2>&1 || rc=$?

@@ -3,6 +3,21 @@ route: full
 unresolved_questions: []
 footprint:
   - lib/artifact_sink.py
+  - lib/publication_participant.py
+  - lib/version-ge.sh
+  - lib/portability-scan.sh
+  - lib/portability_scan.py
+  - lib/teams-capability.sh
+  - lib/workflow-availability.sh
+  - tests/lib/portability-scan.test.sh
+  - tests/graph-conformance.test.sh
+  - tests/fixtures/publication-intruder-gate.sh
+  - tests/lib/review-routing.test.sh
+  - tests/lib/graph-gate-dispatch.test.sh
+  - tests/lib/cycle-preflight.test.sh
+  - tests/lib/pr-body.test.sh
+  - docs/loop-spec/configuration.md
+  - CLAUDE.md
   - lib/execute-prepare.sh
   - lib/feature-write.sh
   - docs/loop-spec/features/release-7-0/SPEC.md

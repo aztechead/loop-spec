@@ -2,9 +2,12 @@
 
 For maintainers editing SPEC requirements or consuming the pure inventory reader.
 
-The v1 grammar is available for integration fixtures. Ordinary cycles retain their
-legacy format until every producer and consumer supports v1. An explicit unknown or
-malformed version fails; a persisted v1 contract cannot lose its metadata.
+v1 is the format every new cycle records from creation. A cycle resumed from a
+pre-7 checkout that never carried this contract stays on legacy once the first
+participant bootstraps it (`lib/requirements.py bootstrap_state`); there is no
+operator switch to choose legacy for a new cycle. An explicit unknown or malformed
+version fails; a persisted contract's format, version and owner cannot be removed
+or downgraded by ordinary writes, including whole-state replacement.
 
 SPEC begins with frontmatter containing exactly one of each declaration:
 
@@ -85,3 +88,83 @@ file/line diagnostic; repair that source and retry. Bad invocation exits 2.
 SPEC input is limited to 16 MiB before decoding. Parsing uses memory proportional to
 that bounded artifact, with identity sets for duplicate detection. No dependencies
 beyond the repository's Python standard library runtime are required.
+
+## Authoring commands (lib/graph/driver.py)
+
+A feature never edits SPEC.md itself: `cycle-driver.sh spec skeleton|write|fill`
+stage a candidate and publish it (and, under a v1 contract, the reconciled
+`requirementsContract`) in one transaction -- `cmd_spec`, `publish_spec`. A driver-
+rendered skeleton (`render_skeleton`, `apply_requirements_shape`) is unfilled
+scaffolding, published plainly with no reconciliation attempted; the first real
+`write` or `fill` is what reconciles the ledger.
+
+`spec write --file DRAFT` (and `-` for stdin) under a v1 contract parses the draft
+as-is when it already declares `requirements_version`/`requirements_owner`
+(`declares_requirements_metadata`); a draft that declares neither is normalized only
+-- the frontmatter declarations are added and each undated Good Enough item is
+assigned the next stable `GE-NNN` from the contract's ledger, in document order, with
+a synthesized `SC-001` carrying its own prose when it names no scenario itself
+(`normalize_v1_draft`). An item that already carries a `GE-NNN:` prefix keeps it.
+
+`spec fill --command/--expect` allocates a fresh stable ID from the same ledger
+(`fill_requirement`); `--row` names an existing requirement by its `GE-NNN` identity
+and never a document position -- a numeric alias (`--row 1`, `--row GE-9`) is refused
+with exit 2. A `spec fill --json` batch reconciles in memory between the criteria in
+one call so two new requirements never race for the same fresh ID.
+
+A v1 `--command`/`--expect` fill also requires `--execution-inputs JSON` -- the
+reviewed input contract that binds the eventual observation (`execution_inputs.py`
+above). A fill with no `--execution-inputs` is refused (exit 2) naming this file and
+the minimal declaration that satisfies it:
+
+```
+'{"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}'
+```
+
+A `spec fill --json` batch carries the same contract per criterion as `executionInputs`
+(camelCase, since it rides inside a JSON document rather than a shell flag):
+`{"criteria": [{"command": "...", "expect": "...", "executionInputs": {...}}]}`.
+
+The v1 oneshot skeleton (`spec skeleton`) carries NO Good Enough placeholder row --
+`apply_requirements_shape` strips it the same way it strips the legacy `{check
+command}` row, because the literal placeholder text (`{GE-001: outcome}`) is not a
+valid requirement id and `parse_spec` would reject it. The first `spec fill
+--command/--expect` allocates GE-001/SC-001 itself. The full-route
+`SPEC.md.template` keeps its placeholder row for the human/agent lead to replace by
+hand; `spec write` refuses a draft that still carries a `{GE-` placeholder, naming
+the offending line.
+
+## Execution inputs (lib/execution_inputs.py)
+
+For a task author declaring `**Execution inputs:**` in PLAN, and for a driver
+capturing the actual identity that contract names before and after a command runs.
+
+A task's execution-inputs contract is single-line JSON with `version:1` and four
+arrays -- `toolchains`, `localInputs`, `externalInputs`, `sensitiveInputs` -- plus an
+optional `preparationReceipt`. A toolchain, external, or sensitive entry is
+`{"name","argv","expectedIdentity"}`: `argv` runs with no shell expansion, bounded to
+64 KiB of stdout and 30 seconds of wall time by default, and its trimmed output is
+the identity (an external entry's probe instead prints JSON `{"identity","immutable"}`
+and is rejected unless `immutable` is `true`). A local input is `{"root","paths"}`:
+each declared path is traversed in sorted order, symlinks are resolved and rejected
+if they escape the declared root, and every file's path/type/content is hashed in
+64 KiB chunks. `lib/execution_inputs.py`'s module docstring is the source of truth
+for the record shape, the per-file (16 MiB) and per-set (4096 file) ceilings, and the
+argv-probe defaults; this section only orients a reader toward it.
+
+`capture_inputs(root, contract, outputs)` returns that actual identity or raises
+`ValueError` naming the offending path or probe: an escaping symlink, an unreadable
+file, an unavailable or mutable external identity, a missing/malformed declaration,
+or an input path overlapping a declared output. `compare_inputs(before, after)` and
+`identity_changed(before, after)` diff two captures for a driver deciding whether a
+command changed its declared inputs mid-run.
+
+A `preparationReceipt` is optional context, never proof: a contract that carries one
+with an empty `localInputs` array raises rather than returning a record, because a
+receipt describes intent, not installed bytes (`docs/loop-spec/features/release-7-0/
+SPEC.md`, "The driver owns execution observations"). Declare the local root the
+receipt prepared so `capture_inputs` hashes what is actually there.
+
+This module discovers nothing on its own: a check's dependencies must be named in
+its contract, and an undeclared or unknown input blocks a current result rather than
+being guessed.
