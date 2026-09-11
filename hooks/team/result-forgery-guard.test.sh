@@ -86,6 +86,18 @@ check "a redirect into a oneshot feature's PATTERNS.md is denied" 2 \
   'cat > docs/loop-spec/features/one/PATTERNS.md <<< "# x"' "$ONE"
 check "a full-route feature's PLAN.md stays the lead's" 0 \
   'cat > docs/loop-spec/features/big/PLAN.md <<< "# big"' "$ONE"
+
+# Security hardening: a shell write through a symlink whose LITERAL name is
+# nothing protected (the redirection target text a regex could ever match) but
+# that RESOLVES into a protected artifact must still be denied -- the second
+# "candidate" trigger resolves every match under a feature's tree with realpath
+# before handing it to lib/harness.sh protected-path, so the resolved location
+# is judged, not the literal staged-looking name.
+ln -s "$ONE/docs/loop-spec/features/one/SPEC.md" "$ONE/.loop-spec/features/one/publication-staging/sneaky.md"
+check "a shell write through a staging symlink resolving to the protected SPEC.md is denied" 2 \
+  'cat > .loop-spec/features/one/publication-staging/sneaky.md <<< "# x"' "$ONE"
+check "a plain (non-symlink) staging file stays allowed" 0 \
+  'cat > .loop-spec/features/one/publication-staging/plain.md <<< "# x"' "$ONE"
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

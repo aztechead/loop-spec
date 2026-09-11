@@ -400,6 +400,101 @@ new_fd
 publication_case "revise-state.sh ensure" -- \
   bash "$ROOT/lib/revise-state.sh" ensure "$FD/../.." rt
 
+# --- cycle-driver.sh plan tasks (security hardening): lib/plan-conflicts.sh edges
+# used to rewrite tasks.json in place, outside this command's publication boundary.
+# `plan tasks` now folds edge inference into its own extract-lint-publish sequence, so
+# a valid token both derives tasks.json from PLAN.md AND lands the inferred blockedBy
+# edge in the SAME publish_artifact call, and a stale token changes nothing at all --
+# never a partial write with the edges applied outside the token.
+PLAN_TASKS_DOCS="$REPO/docs/loop-spec/features/rt"
+write_plan_tasks_fixture() {
+  cat > "$PLAN_TASKS_DOCS/PLAN.md" <<'PLAN'
+# rt - Implementation Plan
+
+## Task DAG
+
+| ID | Subject | BlockedBy | Files | Est scope |
+|----|---------|-----------|-------|-----------|
+| task-001 | produce root config | - | a | small |
+| task-002 | consume root config | - | b | small |
+
+## Tasks
+
+### task-001: produce root config
+
+**Goal:** one sentence.
+
+**Files:**
+- `a`
+
+**Interfaces:**
+- consumes: none
+- produces: root.hcl
+
+**Verify:** `true`
+
+**Acceptance criteria:**
+- [ ] `true` exits 0
+
+**BlockedBy:** []
+
+### task-002: consume root config
+
+**Goal:** one sentence.
+
+**Files:**
+- `b`
+
+**Interfaces:**
+- consumes: task-001's root.hcl
+- produces: none
+
+**Verify:** `true`
+
+**Acceptance criteria:**
+- [ ] `true` exits 0
+
+**BlockedBy:** []
+PLAN
+}
+
+new_fd
+rm -f "$FD/tasks.json"
+write_plan_tasks_fixture
+plan_tasks_t0="$WORK/plan-tasks-t0.json"
+python3 "$FW" ingress "$FD" > "$plan_tasks_t0"
+plan_tasks_gen0="$(jq '.generation' "$plan_tasks_t0")"
+plan_tasks_rc=0
+plan_tasks_err="$(LOOP_SPEC_PUBLICATION_TOKEN="$plan_tasks_t0" env LOOP_SPEC_HARNESS=codex \
+  bash "$ROOT/lib/cycle-driver.sh" plan tasks --feature-dir "$FD" 2>&1 1>/dev/null)" || plan_tasks_rc=$?
+check "cycle-driver.sh plan tasks: a valid token's run exits 0" "0" "$plan_tasks_rc"
+plan_tasks_gen1="$(jq -r '.artifactPublication.generation // empty' "$FD/feature.json")"
+if [[ -n "$plan_tasks_gen1" && "$plan_tasks_gen1" -gt "$plan_tasks_gen0" ]]; then
+  check "cycle-driver.sh plan tasks: valid token write publishes and the generation advances" "true" "true"
+else
+  check "cycle-driver.sh plan tasks: valid token write publishes and the generation advances" "advanced past $plan_tasks_gen0" "$plan_tasks_gen1"
+fi
+check "cycle-driver.sh plan tasks: the published tasks.json carries the edge inferred in the same publish" \
+  "task-001" "$(jq -r '.[1].blockedBy | join(",")' "$FD/tasks.json")"
+
+new_fd
+rm -f "$FD/tasks.json"
+write_plan_tasks_fixture
+plan_tasks_t1="$WORK/plan-tasks-t1.json"
+python3 "$FW" ingress "$FD" > "$plan_tasks_t1"
+plan_tasks_tbump="$WORK/plan-tasks-tbump.json"
+python3 "$FW" ingress "$FD" > "$plan_tasks_tbump"
+bash "$ROOT/lib/feature-write.sh" append "$FD" warnings '"plan-tasks-bump"' --token "$plan_tasks_tbump" >/dev/null
+cp "$FD/feature.json" "$WORK/plan-tasks-before.json"
+plan_tasks_rc1=0
+plan_tasks_err1="$(LOOP_SPEC_PUBLICATION_TOKEN="$plan_tasks_t1" env LOOP_SPEC_HARNESS=codex \
+  bash "$ROOT/lib/cycle-driver.sh" plan tasks --feature-dir "$FD" 2>&1 1>/dev/null)" || plan_tasks_rc1=$?
+assert_stale_refusal "cycle-driver.sh plan tasks" "$plan_tasks_rc1" "$plan_tasks_err1"
+cmp -s "$WORK/plan-tasks-before.json" "$FD/feature.json"
+check "cycle-driver.sh plan tasks: the stale attempt changed feature.json nothing" "0" "$?"
+check "cycle-driver.sh plan tasks: the stale attempt never created tasks.json" \
+  "0" "$([[ -f "$FD/tasks.json" ]] && echo 1 || echo 0)"
+
 new_fd
 publication_case "cycle-driver.sh escalate (driver fset/fappend)" -- \
   env LOOP_SPEC_CHECKPOINT_PR=0 LOOP_SPEC_HARNESS=codex bash "$ROOT/lib/cycle-driver.sh" escalate --feature-dir "$FD" --reason "round trip"

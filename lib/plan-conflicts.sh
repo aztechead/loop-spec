@@ -12,17 +12,23 @@
 # `table` output: JSON {pairs:[{a,b,files,status}], interfaces:[{task,problem}],
 # rows:N, reason:...}. status=overlap for shared files.
 #
-# `edges` writes tasks.json back with a blockedBy edge for every task whose
-# interfaces.consumes, goal, or brief names another task id it does not already wait on
-# ("consumes: task-003's module path"), prints the updated array on stdout (the same
-# JSON `table` readers expect; a live lead redirected stdout into a file and jq-parsed
-# it), and reports `edge <task> -> <dep>` per addition on stderr.
-# Why: a live PLAN critique spent a round on exactly this omission while EXECUTE would
-# have added the same edge from the interface row; inferring it before the render means
-# the plan the challenger reads already has it. An edge that would close a cycle is
-# refused (nothing written, exit 1).
-# Exit: 0 always with JSON / edges written (fail-open for a missing optional interfaces
-# field), 1 an inferred edge would close a cycle, 2 usage / unreadable.
+# `edges` is print-only: it NEVER writes <tasks.json>. It infers a blockedBy edge for
+# every task whose interfaces.consumes, goal, or brief names another task id it does
+# not already wait on ("consumes: task-003's module path"), and prints the augmented
+# array to stdout (the same JSON `table` readers expect), reporting `edge <task> ->
+# <dep>` per addition on stderr. The caller decides what becomes durable: `cycle-
+# driver.sh plan tasks` (lib/graph/driver.py cmd_plan) feeds this the extractor's
+# output and publishes what comes back through publish_artifact under its held
+# ingress token -- the one path allowed to write the registered tasks.json
+# (lib/harness.sh protected-path). This script used to write the file itself, outside
+# that publication boundary; a security hardening pass removed the write here rather
+# than teach a Bash script to hold the token.
+# Why infer at all: a live PLAN critique spent a round on exactly this omission while
+# EXECUTE would have added the same edge from the interface row; inferring it before
+# the render means the plan the challenger reads already has it. An edge that would
+# close a cycle is refused (nothing printed, exit 1).
+# Exit: 0 with JSON on stdout (fail-open for a missing optional interfaces field), 1 an
+# inferred edge would close a cycle (nothing printed), 2 usage / unreadable.
 set -euo pipefail
 
 cmd="${1:-}"
@@ -85,9 +91,8 @@ if cmd == "edges":
                 extra = [d for d in sorted(deps[t.get("id")]) if d not in (t.get("blockedBy") or [])]
                 if extra:
                     t["blockedBy"] = list(t.get("blockedBy") or []) + extra
-        with open(path, "w") as fh:
-            json.dump(tasks, fh, indent=2)
-            fh.write("\n")
+    # print-only: the caller (cycle-driver.sh plan tasks) publishes the result through
+    # publish_artifact under its held token; this script never writes <tasks.json>.
     for a, b in added:
         sys.stderr.write("edge %s -> %s\n" % (a, b))
     sys.stderr.write("plan-conflicts: %d edge(s) inferred\n" % len(added))

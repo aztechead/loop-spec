@@ -2724,7 +2724,32 @@ def cmd_plan(argv):
     lint = lib_run("artifact-lint", "tasks", "-", "--feature-dir", feature_dir, stdin_text=extracted.stdout)
     if lint.returncode != 0:
         raise Die("plan tasks: artifact-lint rejected the extracted tasks:\n%s" % lint.stdout, 1)
-    publish_artifact(feature_dir, "tasks", extracted.stdout.encode("utf-8"))
+    # Edge inference (lib/plan-conflicts.sh edges) used to write tasks.json in place,
+    # outside this command's publication boundary -- a security hardening pass moved
+    # it here, in-process before the single publish_artifact call, so the driver's
+    # held token is the only thing that ever lands tasks.json. plan-conflicts.sh is
+    # print-only now: it reads a file and prints the augmented array, so the
+    # extractor's output goes to a throwaway temp file rather than the published one.
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".json", delete=False) as tmp:
+        tmp.write(extracted.stdout.encode("utf-8"))
+        tmp_path = tmp.name
+    try:
+        # quiet=True: plan-conflicts.sh edges' own stderr ("edge X -> Y",
+        # "N edge(s) inferred") is diagnostic chatter this command's stdout
+        # contract (the published tasks.json path, nothing else) never carried
+        # before -- an inherited fd here would otherwise leak straight past this
+        # process into whatever redirects the driver's own stderr.
+        edges = lib_run("plan-conflicts", "edges", tmp_path, quiet=True)
+    finally:
+        os.unlink(tmp_path)
+    if edges.returncode != 0:
+        raise Die("plan tasks: %s" % (edges.stdout or "an inferred blockedBy edge would close a dependency cycle"), 1)
+    final_tasks = edges.stdout.encode("utf-8")
+    lint = lib_run("artifact-lint", "tasks", "-", "--feature-dir", feature_dir, stdin_text=edges.stdout)
+    if lint.returncode != 0:
+        raise Die("plan tasks: artifact-lint rejected the tasks after edge inference:\n%s" % lint.stdout, 1)
+    publish_artifact(feature_dir, "tasks", final_tasks)
     print(os.path.join(feature_dir, "tasks.json"))
     return 0
 

@@ -243,6 +243,16 @@ protected_path() {
     target="${fd_real%%/.loop-spec/features/*}/$path"
   fi
 
+  # Resolve symlinks before every comparison below: a candidate that is itself a
+  # symlink into a protected path (or sits under a symlinked directory that resolves
+  # into one) must answer protected=yes even though the literal $target does not
+  # textually match. lib/resolve-symlink.sh does the resolution -- shared with
+  # hooks/restrict-agent-paths.sh's own resolve_target so the two guards never
+  # disagree about where a path lands. Resolution failure (missing python3, an
+  # unreadable parent) falls back to the literal target rather than denying blind --
+  # the route/format checks below still run against whatever target names.
+  target="$(bash "$SCRIPT_DIR/resolve-symlink.sh" "$target" 2>/dev/null)" || true
+
   # Runtime-state paths (under the feature's own .loop-spec/features/<slug>): the
   # driver's staging/journal/observation set, checked before the docs tree so a
   # feature-dir-relative name never collides with a docs-tree one.

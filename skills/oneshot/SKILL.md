@@ -42,11 +42,11 @@ open is a decision you record (`decisions.sh add`). A oneshot never turns a full
 into a oneshot, and you never pick the next phase. The driver is the only writer of
 SPEC.md and VERIFICATION.md on this route.
 
-When the entry packet's `requirementsContract.format` is `v1` (the default for every new cycle; a resumed pre-7 cycle stays legacy instead -- `docs/loop-spec/requirements-format.md`), `GE-NNN`
-is the same stable identity everywhere: SPEC's checkbox, its nested `SC-NNN` scenario,
-and the `scenario_checks` frontmatter key `GE-NNN/SC-NNN` that names the command. The
-driver allocates every ID; `--row GE-NNN` replaces that requirement by identity even
-after the document reorders, and a bare position (`--row 1`) is refused.
+Under a v1 contract (default for every new cycle; a resumed pre-7 cycle stays legacy
+-- `docs/loop-spec/requirements-format.md`), `GE-NNN` is one stable identity across
+SPEC's checkbox, its nested `SC-NNN`, and the `scenario_checks` frontmatter key; the
+driver allocates every ID, so `--row GE-NNN` addresses it even after reordering and a
+bare position (`--row 1`) is refused.
 
 ## 2. Implement
 

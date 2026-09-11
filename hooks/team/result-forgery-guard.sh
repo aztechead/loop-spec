@@ -64,7 +64,17 @@ else:
     # The same write shapes aimed at a driver-owned publication path (docs
     # artifact or runtime-state file). lib/harness.sh protected-path decides
     # whether the candidate is actually protected; this only locates it and
-    # the feature slug, printed as `candidate <slug> <path>`.
+    # the feature slug, printed as `candidate <slug> <resolved-path>`.
+    #
+    # The path text this regex matches is deliberately ANY file under a feature's
+    # docs or runtime tree, not just the canonical protected names: a maker
+    # allowed to write under publication-staging could plant a symlink there
+    # literally named anything and point it at SPEC.md/feature.json/tasks.json,
+    # and a regex keyed on the literal target name would never see it (the
+    # redirection target in the command text is the symlink's own name, not what
+    # it resolves to). So every candidate found here is resolved with realpath
+    # below BEFORE being handed to lib/harness.sh protected-path -- the literal
+    # match is only the trigger; the resolved location is what gets judged.
     ops = [
         r">>?\s*(?P<path>{p})",                              # cat > x, jq ... >> x
         r"\btee\b[^\n;&|]*(?P<path>{p})",                    # ... | tee x
@@ -74,10 +84,12 @@ else:
         r"\bgit\s+apply\b[^\n;&|]*(?P<path>{p})",            # git apply ... x
         r"open\(\s*\\?['\"](?P<path>{p})\\?['\"]\s*,\s*\\?['\"][wa]",  # open("x", "w")
     ]
+    # [^\s'"\\]+ rather than \S+: excludes the quote/backslash characters a
+    # quoted shell or Python string wraps the path in, so a trailing \" (as in
+    # `open("...VERIFICATION.md", "w")`) is not swallowed into the captured path.
     candidates = (
-        r"\S*docs/loop-spec/features/(?P<slug>[A-Za-z0-9._-]+)/(?:SPEC|PLAN|VERIFICATION|PATTERNS)\.md",
-        r"\S*\.loop-spec/features/(?P<slug>[A-Za-z0-9._-]+)/(?:feature\.json(?:\.bak)?|tasks\.json"
-        r"|observations/\S+|publication-generations/\S+|migration-generations/\S+)",
+        r"\S*docs/loop-spec/features/(?P<slug>[A-Za-z0-9._-]+)/[^\s'\"\\]+",
+        r"\S*\.loop-spec/features/(?P<slug>[A-Za-z0-9._-]+)/[^\s'\"\\]+",
     )
     found = None
     for path_re in candidates:
@@ -88,7 +100,18 @@ else:
         if found:
             break
     if found:
-        print("candidate %s %s" % (found.group("slug"), found.group("path")[:200]))
+        slug = found.group("slug")
+        raw_path = found.group("path")[:200]
+        candidate_path = raw_path if raw_path.startswith("/") else os.path.join(os.getcwd(), raw_path)
+        try:
+            if os.path.islink(candidate_path) or os.path.exists(candidate_path):
+                resolved = os.path.realpath(candidate_path)
+            else:
+                parent = os.path.dirname(candidate_path) or "."
+                resolved = os.path.join(os.path.realpath(parent), os.path.basename(candidate_path))
+        except OSError:
+            resolved = candidate_path
+        print("candidate %s %s" % (slug, resolved))
 PY
 )
 [[ -n "$VERDICT" ]] || exit 0

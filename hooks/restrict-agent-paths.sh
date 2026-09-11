@@ -92,14 +92,32 @@ if [[ "$TOOL_NAME" != "Write" && "$TOOL_NAME" != "Edit" ]]; then
   exit 0
 fi
 
+# Every scope/protected-path decision below judges the RESOLVED location a write
+# actually lands at, never the literal path the tool call names: a maker allowed to
+# write under publication-staging could otherwise plant a symlink there pointing at
+# SPEC.md/VERIFICATION.md (or a caller could name a symlinked "output.txt" that
+# resolves to feature.json) and write through it undetected -- this hook would only
+# ever have seen the literal, allowed-looking path. lib/resolve-symlink.sh does the
+# resolution (shared with lib/harness.sh protected-path's own candidate resolution,
+# so the two guards never disagree about where a path lands); FILE_PATH itself stays
+# literal for DENY messages (what the caller actually typed), FILE_PATH_REAL is what
+# every check below judges.
+resolve_target() {
+  local target="$1" abs
+  abs="$target"
+  [[ "$abs" == /* ]] || abs="${CLAUDE_PROJECT_DIR:-$PWD}/$abs"
+  bash "$(dirname "${BASH_SOURCE[0]}")/../lib/resolve-symlink.sh" "$abs" 2>/dev/null || printf '%s' "$abs"
+}
+FILE_PATH_REAL="$(resolve_target "$FILE_PATH")"
+
 # The files lib/cycle-result.sh, lib/feature-write.sh, and lib/deliver.sh own are never
 # Write or Edit targets, whoever the caller is: a haiku eval run whose result the writer
 # refused twice wrote .loop-spec/last-result.json by hand and a supervisor read a run
 # that never reached DELIVER as completed (the 2026-09-06 live evals).
 # hooks/team/result-forgery-guard.sh covers the same files from the shell.
-case "$FILE_PATH" in
-  .loop-spec/*|*/.loop-spec/*)
-    case "$(basename "$FILE_PATH")" in
+case "$FILE_PATH_REAL" in
+  */.loop-spec/*)
+    case "$(basename "$FILE_PATH_REAL")" in
       last-result.json|result.json|active-run.json|feature.json|delivery.json)
         echo "DENY: $TOOL_NAME targets $FILE_PATH, a loop-spec contract file that only lib/cycle-result.sh, lib/feature-write.sh, or lib/deliver.sh may write. A result those writers refuse is a run that has not earned it: return to the cycle, or publish the honest status with --reason. (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
         exit 2
@@ -207,16 +225,12 @@ PY
 CALLER=$(printf '%s' "$CALLER_INFO" | sed -n '1p')
 CALLER_SLUG=$(printf '%s' "$CALLER_INFO" | sed -n '2p')
 
-# Path match helper: returns 0 if FILE_PATH is under the given prefix segment.
-# Handles both relative and absolute paths by matching on the path fragment.
+# Path match helper: returns 0 if the RESOLVED file path (FILE_PATH_REAL, computed
+# above) is under the given prefix
+# segment. FILE_PATH_REAL is always absolute, so only the fragment match applies.
 path_allowed() {
   local prefix="$1"
-  # Relative match
-  if [[ "$FILE_PATH" == ${prefix}/* || "$FILE_PATH" == ${prefix} ]]; then
-    return 0
-  fi
-  # Absolute path containing the prefix segment (e.g. /Users/.../docs/loop-spec/features/...)
-  if [[ "$FILE_PATH" == */${prefix}/* || "$FILE_PATH" == */${prefix} ]]; then
+  if [[ "$FILE_PATH_REAL" == */${prefix}/* || "$FILE_PATH_REAL" == */${prefix} ]]; then
     return 0
   fi
   return 1
@@ -240,11 +254,11 @@ CALLER="${CALLER#loop-spec-}"
 # nothing to compare, so the write stays allowed.
 feature_checkout_deny() {
   local rel slug project target target_dir wt home homes=()
-  rel="${FILE_PATH#*docs/loop-spec/features/}"
-  [[ "$rel" != "$FILE_PATH" && "$rel" == */* ]] || return 0
+  rel="${FILE_PATH_REAL#*docs/loop-spec/features/}"
+  [[ "$rel" != "$FILE_PATH_REAL" && "$rel" == */* ]] || return 0
   slug="${rel%%/*}"
   project="$(cd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null && pwd -P)" || return 0
-  target="$FILE_PATH"; [[ "$target" == /* ]] || target="$project/$target"
+  target="$FILE_PATH_REAL"
   target_dir="$(cd "$(dirname "$target")" 2>/dev/null && pwd -P)" || target_dir="$(dirname "$target")"
   while IFS= read -r wt; do
     wt="${wt#worktree }"
@@ -277,20 +291,20 @@ fi
 # reimplementing the route/format check here.
 publication_protected_deny() {
   local rel slug checkout fd target verdict reason
-  case "$FILE_PATH" in
-    .loop-spec/features/*|*/.loop-spec/features/*)
-      rel="${FILE_PATH#*.loop-spec/features/}"
+  case "$FILE_PATH_REAL" in
+    */.loop-spec/features/*)
+      rel="${FILE_PATH_REAL#*.loop-spec/features/}"
       [[ "$rel" == */* ]] || return 0
       slug="${rel%%/*}"
-      checkout="${FILE_PATH%.loop-spec/features/*}"
+      checkout="${FILE_PATH_REAL%.loop-spec/features/*}"
       [[ -n "$checkout" ]] || checkout="${CLAUDE_PROJECT_DIR:-$PWD}/"
       fd="${checkout}.loop-spec/features/$slug"
       ;;
-    docs/loop-spec/features/*|*/docs/loop-spec/features/*)
-      rel="${FILE_PATH#*docs/loop-spec/features/}"
+    */docs/loop-spec/features/*)
+      rel="${FILE_PATH_REAL#*docs/loop-spec/features/}"
       [[ "$rel" == */* ]] || return 0
       slug="${rel%%/*}"
-      checkout="${FILE_PATH%docs/loop-spec/features/*}"
+      checkout="${FILE_PATH_REAL%docs/loop-spec/features/*}"
       [[ -n "$checkout" ]] || checkout="${CLAUDE_PROJECT_DIR:-$PWD}/"
       fd="${checkout}.loop-spec/features/$slug"
       ;;
@@ -299,8 +313,7 @@ publication_protected_deny() {
   # No feature state yet means nothing this policy protects exists to compare
   # against (feature_checkout_deny above already made this call for the docs tree).
   [[ -f "$fd/feature.json" ]] || return 0
-  target="$FILE_PATH"
-  [[ "$target" == /* ]] || target="${CLAUDE_PROJECT_DIR:-$PWD}/$target"
+  target="$FILE_PATH_REAL"
   verdict="$(bash "$(dirname "${BASH_SOURCE[0]}")/../lib/harness.sh" protected-path --path "$target" --feature-dir "$fd" 2>/dev/null)" \
     || verdict="protected=yes reason=the protected-path probe failed to answer"
   [[ "${verdict%% *}" == "protected=yes" ]] || return 0
@@ -321,8 +334,8 @@ case "$CALLER" in
     # single feature this dispatch named in its brief -- never any other feature's
     # staging, and never when the brief named none (fail closed, not "any feature").
     if path_allowed ".loop-spec/features"; then
-      rel="${FILE_PATH#*.loop-spec/features/}"
-      if [[ "$rel" != "$FILE_PATH" && "$rel" == */publication-staging/* ]]; then
+      rel="${FILE_PATH_REAL#*.loop-spec/features/}"
+      if [[ "$rel" != "$FILE_PATH_REAL" && "$rel" == */publication-staging/* ]]; then
         slug="${rel%%/*}"
         if [[ -n "$CALLER_SLUG" && "$slug" == "$CALLER_SLUG" ]]; then
           exit 0

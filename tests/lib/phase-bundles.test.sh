@@ -28,10 +28,24 @@ bash "$DRV" init --dir "$REPO" --slug my-feature --title "my feature" --style au
 FD="$REPO/.loop-spec/features/my-feature"
 DOCS="$REPO/docs/loop-spec/features/my-feature"; mkdir -p "$DOCS"
 fj() { jq -r "$1" "$FD/feature.json"; }
+# fw_set PATH VALUE: feature.json carries an artifactPublication contract from spec
+# approve's begin_operation bootstrap, so a plain `set` needs the ingress token that
+# begins an operation (task-009 strict enforcement), same as verify-prepare.test.sh.
+fw_set() {
+  local tok="$WORK/fw-token"
+  python3 "$REPO_ROOT/lib/feature_write.py" ingress "$FD" > "$tok"
+  bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" "$1" "$2" --token "$tok" >/dev/null
+  rm -f "$tok"
+}
+# This fixture covers the verify-gate/iterate bookkeeping, not requirements-format
+# semantics, and minimal-SPEC.md is deliberately legacy-shaped -- strip the v1 contract
+# a new cycle otherwise carries so the first participant (spec approve, below)
+# bootstraps legacy, same as cycle-driver.test.sh's AC6/REPO6/REPO7 fixtures.
+jq 'del(.artifactPublication) | del(.requirementsContract)' "$FD/feature.json" > "$WORK/feature.json" && mv "$WORK/feature.json" "$FD/feature.json"
 cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCS/SPEC.md"
 bash "$DRV" spec approve --feature-dir "$FD" --source human >/dev/null
 printf '# PLAN\n' > "$DOCS/PLAN.md"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands '{"prepare":"","test":"true","lint":"","typecheck":""}' >/dev/null
+fw_set commands '{"prepare":"","test":"true","lint":"","typecheck":""}'
 printf 'echo ok\n' > a.sh; git add -A; git commit -q -m "feat: a.sh"
 
 # --- verify gate: both verdicts pass ----------------------------------------------------
@@ -69,14 +83,14 @@ check "gate block: exit 1" "1" "$ec"
 check "gate block: the task is queued with the project test command" "true" "$(fj '.pendingRemediationTasks[0].verifyCommand')"
 check "gate block: the code-review gate recorded a fail" "fail" "$(fj '[.gateHistory[] | select(.gate == "code-review")][-1].result')"
 check "gate block: verify_failure emitted" "1" "$(grep -c '"class":"code-review"' "$FD/events.jsonl")"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks '[]' >/dev/null
+fw_set pendingRemediationTasks '[]'
 out="$(bash "$DRV" verify gate --feature-dir "$FD" --verifier ALL_PASS --suite PASS --reviewer BLOCK \
   --remediation-tasks '[{"id":"task-001+remediate-2","subject":"Fix: boundary violation","files":["a.sh"]}]' 2>/dev/null)" || true
 check "gate block: the same finding twice is a repeat" "true" "$(jq -r '.repeat' <<<"$out")"
 check "gate block: a repeat records a rule" "1" "$(grep -c 'repeat-fail' "$REPO/.loop-spec/RULES.md" 2>/dev/null || echo 0)"
 
 # --- verify gate: a malformed record is a redo, never a recorded failure -----------------
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks '[]' >/dev/null
+fw_set pendingRemediationTasks '[]'
 before="$(fj '.gateHistory | length')"
 printf '# broken\n' > "$DOCS/VERIFICATION.md"
 ec=0; out="$(bash "$DRV" verify gate --feature-dir "$FD" --verifier ALL_PASS --suite PASS --reviewer PASS 2>/dev/null)" || ec=$?
@@ -96,11 +110,11 @@ cat > "$DOCS/VERIFICATION.md" <<'MD'
 MD
 
 # --- verify gate: verifier fails without tasks -------------------------------------------
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks '[]' >/dev/null
+fw_set pendingRemediationTasks '[]'
 out="$(bash "$DRV" verify gate --feature-dir "$FD" --verifier FAIL --suite N/A --reviewer PASS 2>/dev/null)" || true
 check "gate fail without tasks: one task is synthesized" "1" "$(jq '.tasks | length' <<<"$out")"
 check "gate fail: class is acceptance" "acceptance" "$(jq -r '.class' <<<"$out")"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks '[]' >/dev/null
+fw_set pendingRemediationTasks '[]'
 
 # --- verify passes ---------------------------------------------------------------------
 out="$(bash "$DRV" verify passes --feature-dir "$FD" 2>/dev/null)"
@@ -147,7 +161,7 @@ bash "$DRV" iterate record --feature-dir "$FD" --judge-out "$FD/.iterate-judge.o
 printf 'no verdict here\n' > "$FD/.iterate-judge.out"
 ec=0; bash "$DRV" iterate record --feature-dir "$FD" --judge-out "$FD/.iterate-judge.out" >/dev/null 2>&1 || ec=$?
 check "iterate record: a malformed verdict is refused" "1" "$ec"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" iterate.used 10 >/dev/null
+fw_set iterate.used 10
 out="$(bash "$DRV" iterate limit --feature-dir "$FD")"
 check "iterate limit: a spent budget owes one confirmation pass" "confirmation" "$(jq -r '.route' <<<"$out")"
 out="$(bash "$DRV" iterate limit --feature-dir "$FD")"

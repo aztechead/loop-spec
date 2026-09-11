@@ -289,6 +289,18 @@ check "X12: PATTERNS.md is driver-owned on the oneshot route too" 2 \
   "$(payload "Write" "$XREPO/docs/loop-spec/features/one/PATTERNS.md" "$FIXTURES/main-thread.jsonl")"
 check "X13: a full-route PLAN.md stays the lead's" 0 \
   "$(payload "Edit" "$XREPO/docs/loop-spec/features/big/PLAN.md" "$FIXTURES/main-thread.jsonl")"
+
+# Case X14/X15 (security hardening): a maker allowed to write under
+# publication-staging could plant a symlink there pointing at the feature's
+# protected SPEC.md and write through it under a literal path this hook would
+# otherwise see as plain staging. FILE_PATH_REAL resolves it first, so the
+# resolved target -- not the literal staging-looking path -- is what gets judged.
+mkdir -p "$XREPO/.loop-spec/features/one/publication-staging"
+ln -s "$XREPO/docs/loop-spec/features/one/SPEC.md" "$XREPO/.loop-spec/features/one/publication-staging/sneaky.md"
+check "X14: a staging symlink resolving to the protected SPEC.md is DENY" 2 \
+  "$(payload "Write" "$XREPO/.loop-spec/features/one/publication-staging/sneaky.md" "$FIXTURES/main-thread.jsonl")"
+check "X15: a plain (non-symlink) staging file stays ALLOW" 0 \
+  "$(payload "Write" "$XREPO/.loop-spec/features/one/publication-staging/plain.md" "$FIXTURES/main-thread.jsonl")"
 unset CLAUDE_PROJECT_DIR; rm -rf "$XREPO"
 
 # Cases Y: task-009's driver-owned state -- feature.json.bak, tasks.json,

@@ -452,6 +452,7 @@ They are listed to remove ambiguity in wrappers and integrations.
 | `LOOP_SPEC_PLUGIN` | Deployment-wrapper path used by the documented cloud recipe; plugin runtime itself does not read it. |
 | `LOOP_SPEC_OPERATION_TOKEN` | Set by `lib/feature-write.sh`'s sourced helpers to the temp file holding the in-flight publication operation's token. Never set by an operator. |
 | `LOOP_SPEC_PUBLICATION_WRITER` | Set by `lib/feature-write.sh`'s sourced helpers to the path of `feature_write.py`. Never set by an operator. |
+| `LOOP_SPEC_MIGRATION_FAIL_AT` | Test-only failure injection honored by `lib/requirements_migrate.py` apply/resume: one of `backup\|marker\|spec\|plan\|state\|receipt` raises at that durable boundary in a real subprocess. Never set by an operator. |
 
 When integrating loop-spec, depend only on the supported inputs and documented
 machine-result files/lines. Internal variables may change without compatibility

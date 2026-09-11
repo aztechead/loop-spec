@@ -97,13 +97,18 @@ publishes `tasks.json` from the PUBLISHED PLAN.md under the same held token:
 ```bash
 bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" plan write --feature-dir "$feature_dir" --file "$feature_dir/publication-staging/PLAN.md"
 bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" plan tasks --feature-dir "$feature_dir"
-bash "${LOOP_SPEC_SKILL_DIR}/../../lib/plan-conflicts.sh" edges "$feature_dir/tasks.json"
 bash "${LOOP_SPEC_SKILL_DIR}/../../lib/phase-exit.sh" plan --feature-dir "$feature_dir"
 ```
 
-`edges` adds missing dependencies to tasks.json when `interfaces.consumes`, `goal`, or `brief` names another task.
-It rejects an edge that would create a dependency cycle with exit 1.
-Send that failure to the planner as a finding.
+`plan tasks` extracts tasks from the published PLAN.md and, before publishing, folds in
+`lib/plan-conflicts.sh edges`'s inference: a missing `blockedBy` dependency whenever
+`interfaces.consumes`, `goal`, or `brief` names another task. Both the extraction and
+the inference land in the one `publish_artifact` call `plan tasks` makes under its held
+token, so tasks.json is never written outside that boundary (lib/harness.sh protected-
+path: "tasks.json is written only by the driver"). `plan-conflicts.sh edges` itself is
+print-only now -- run it directly only for a read-only look at what it would infer,
+never expecting it to write. An edge that would create a dependency cycle fails `plan
+tasks` with exit 1; send that failure to the planner as a finding.
 
 A non-zero extract exit is a message on stderr (no task blocks, or an unreadable
 plan): it is a fix-list item for the planner, never an empty `tasks.json`. The gate
