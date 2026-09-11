@@ -19,12 +19,15 @@ check() {
   fi
 }
 
-compile_out="$(python3 -W error -c '
-with open("'"$DRIVER"'") as f:
-    src = f.read()
-compile(src, "driver.py", "exec")
+# The escape class is repo-wide, so every shipped module compiles under -W error.
+compile_out="$(find "$REPO/lib" "$REPO/hooks" "$REPO/extensions" -name '*.py' -print0 \
+  | xargs -0 python3 -W error -c '
+import sys
+for path in sys.argv[1:]:
+    with open(path) as f:
+        compile(f.read(), path, "exec")
 ' 2>&1)"
-check "driver.py compiles under -W error" "0:" "$?:$compile_out"
+check "every shipped .py compiles under -W error" "0:" "$?:$compile_out"
 [[ -z "$compile_out" ]] || echo "  output: $compile_out"
 
 # Embedded python in shell heredocs counts too (lib/cycle-result.sh had one).

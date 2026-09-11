@@ -8,7 +8,7 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ### Fixed
 
-Six findings from a 6.6.1 user's 29-task `full` cycle in workspace mode.
+Five findings from a 6.6.1 user's 29-task `full` cycle in workspace mode.
 
 - **The nested-session guard scans only scripts the command runs.**
   `hooks/team/nested-session-guard.sh` read every existing file a Bash command named
@@ -32,7 +32,7 @@ Six findings from a 6.6.1 user's 29-task `full` cycle in workspace mode.
   `dag-width` exit 3 before EXECUTE could start. The declared edge now wins.
 - **`lib/graph/driver.py` runs clean under `python3 -W error`.** An invalid `\``
   escape in the usage docstring raised `SyntaxWarning` and `datetime.utcnow()`
-  raised `DeprecationWarning` on every driver call, interleaved with the protocol
+  raised `DeprecationWarning` on Python 3.12+ on every driver call, interleaved with the protocol
   lines a lead parses. Both are gone (`lib/cycle-result.sh` had the same `utcnow()`);
   `tests/lib/driver-warnings.test.sh` pins it.
 - **Subagent-rung dispatches are nameless and blocking.**

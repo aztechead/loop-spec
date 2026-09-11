@@ -274,8 +274,9 @@ from `models.implementer` or `models.specComplianceReviewer`; add the Agent
 Every dispatch on this rung is a nameless, blocking Agent call: no `name` key,
 `run_in_background: false` (see "Call shapes" in `skills/shared/dispatch.md`). A named
 Agent becomes a background teammate whose final message never comes back as a tool
-result, and these reviewer personas have no SendMessage to fall back on -- a live 6.6.1
-run lost a verdict to a named dispatch and had to redispatch.
+result (on Claude Code >= 2.1.251 it rides the idle notification, which this rung does
+not parse), and the reviewer personas have no SendMessage to fall back on -- a live
+6.6.1 run lost a verdict to a named dispatch and had to redispatch.
 
 **Dispatch telemetry (`skills/shared/dispatch.md`):** `task dispatch` and `task package` emit `dispatch` with the resolved model.
 The lead emits no duplicate event. Retries use `task dispatch` again and emit a new event.
