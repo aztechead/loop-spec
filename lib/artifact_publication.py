@@ -53,9 +53,17 @@ def safe_path(root, relative):
 
 
 @contextmanager
-def locked_feature(directory):
-  if directory.is_symlink() or not directory.is_dir():
-    raise ValueError("feature directory must be a real directory")
+def locked_feature(directory, create=False):
+  """Every lock file this creates lives inside a real feature state directory: an
+  empty, relative-and-empty (Path("") or "."), or otherwise ordinary directory is
+  refused before any lock file is touched, unless `create` names this call as the
+  one token-less path that legitimately creates feature.json (feature_write's bare
+  "replace" with no prior token -- lib/feature-bootstrap.sh finalize and
+  init_workspace's skeleton write, guarded there by their own not-yet-exists check)."""
+  if not directory.parts or directory.is_symlink() or not directory.is_dir():
+    raise ValueError("feature directory must be a real directory: {}".format(directory))
+  if not create and not safe_path(directory, "feature.json").is_file():
+    raise ValueError("not a feature state directory (no feature.json): {}".format(directory))
   locks = []
   try:
     for name in (".artifact-publication.lock", ".feature-write.lock"):
@@ -63,7 +71,6 @@ def locked_feature(directory):
       lock = path.open("a")
       locks.append(lock)
       fcntl.flock(lock, fcntl.LOCK_EX)
-    safe_path(directory, "feature.json")
     yield
   finally:
     for lock in reversed(locks):

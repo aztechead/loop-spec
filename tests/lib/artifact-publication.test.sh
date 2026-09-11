@@ -334,4 +334,45 @@ with tempfile.TemporaryDirectory() as work:
             capture_locked(sym_real_feature)
     (sym_real_feature/'feature.json').write_text(json.dumps(sym_state))
     print('PASS: a symlink that genuinely escapes the feature roots is still rejected')
+
+    # locked_feature must refuse before ever touching a lock file: an empty string, ".",
+    # or an ordinary directory without feature.json all resolve to a real, existing
+    # directory (Path("") and Path(".") both resolve to the cwd), so the emptiness check
+    # alone is not enough -- only feature.json's presence (or an explicit create=True)
+    # earns the two lock files this context manager is about to open.
+    from artifact_publication import locked_feature as _locked_feature
+    cwd_before = os.getcwd()
+    os.chdir(work)
+    try:
+        for bad, label in ((Path(""), "empty string"), (Path("."), '"."')):
+            with assertions.assertRaisesRegex(ValueError, "feature directory must be a real directory"):
+                with _locked_feature(bad):
+                    pass
+            assert not (Path(work)/'.artifact-publication.lock').exists(), label
+            assert not (Path(work)/'.feature-write.lock').exists(), label
+        print('PASS: an empty or "." directory is refused before any lock file is created')
+    finally:
+        os.chdir(cwd_before)
+
+    no_feature = Path(work)/'no-feature-here'
+    no_feature.mkdir()
+    try:
+        with _locked_feature(no_feature):
+            pass
+        raise AssertionError('locked_feature accepted a directory with no feature.json')
+    except ValueError as exc:
+        assert 'not a feature state directory' in str(exc) and str(no_feature) in str(exc), str(exc)
+    assert not (no_feature/'.artifact-publication.lock').exists()
+    assert not (no_feature/'.feature-write.lock').exists()
+    print('PASS: an ordinary directory with no feature.json is refused, naming the path, with no lock file left behind')
+
+    # The one legitimate token-less creation path (feature_write.write_operation's bare
+    # "replace" with no prior token) must still work: create=True skips the feature.json
+    # requirement but still takes and releases both locks.
+    to_create = Path(work)/'creates-fine'
+    to_create.mkdir()
+    with _locked_feature(to_create, create=True):
+        pass
+    assert (to_create/'.artifact-publication.lock').exists()
+    print('PASS: an explicit create-if-absent target is still allowed, and takes its own locks')
 PYTEST

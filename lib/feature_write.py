@@ -224,7 +224,10 @@ def write_operation(directory, operation, value, keys=(), token=None, registry=N
     if operation == "replace" and not isinstance(value, dict):
         raise ValueError("feature state must be one JSON object")
     from artifact_publication import capture_locked, locked_feature, refuse_pending
-    with locked_feature(directory):
+    # A bare, token-less "replace" is feature-write.sh's only unconditional form and
+    # the sole legitimate way feature.json does not yet exist here (finalize and
+    # init_workspace guard the not-yet-exists case themselves before calling in).
+    with locked_feature(directory, create=(operation == "replace" and token is None)):
         refuse_pending(directory)
         if registry is None:
             registry = participant_registry(directory)

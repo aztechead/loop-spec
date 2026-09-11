@@ -47,6 +47,41 @@ exit_code=0
 bash "$LIB" "$WORK/missing" '{"x":1}' >/dev/null 2>&1 || exit_code=$?
 check "D: missing dir rejected (exit 1)" "1" "$exit_code"
 
+# Case D2/D3/D4: an empty string, ".", or a real directory with no feature.json must
+# all be refused before any lock file is created anywhere -- Path("") and Path(".")
+# both resolve to the CALLER'S cwd, so an unguarded locked_feature would otherwise
+# leave .artifact-publication.lock/.feature-write.lock sitting in whatever directory
+# happened to be current (loop-spec's own repo root, when a caller invokes this from
+# there with a blank or unset --feature-dir).
+before_cwd_locks="$(ls -A1 | grep -c '\.lock$' || true)"
+exit_code=0
+bash "$LIB" set "" currentPhase '"plan"' >/dev/null 2>&1 || exit_code=$?
+check "D2: empty-string dir rejected (exit 1)" "1" "$exit_code"
+after_cwd_locks="$(ls -A1 | grep -c '\.lock$' || true)"
+check "D2: no lock file created in the cwd" "$before_cwd_locks" "$after_cwd_locks"
+
+exit_code=0
+bash "$LIB" set "." currentPhase '"plan"' >/dev/null 2>&1 || exit_code=$?
+check "D3: \".\" dir rejected (exit 1)" "1" "$exit_code"
+after_cwd_locks="$(ls -A1 | grep -c '\.lock$' || true)"
+check "D3: no lock file created in the cwd" "$before_cwd_locks" "$after_cwd_locks"
+
+mkdir -p "$WORK/no-feature-here"
+exit_code=0
+err="$(bash "$LIB" set "$WORK/no-feature-here" currentPhase '"plan"' 2>&1 >/dev/null)" || exit_code=$?
+check "D4: a real directory without feature.json is rejected (exit 1)" "1" "$exit_code"
+check "D4: error names the offending path" "1" "$(grep -c "$WORK/no-feature-here" <<<"$err")"
+check "D4: no lock file left in that directory" "0" "$(ls -A1 "$WORK/no-feature-here" | grep -c '\.lock$' || true)"
+
+# The one legitimate token-less creation path stays open: a bare (unconditional-replace)
+# write to a real, existing, feature.json-less directory still creates one (Case A above
+# already exercises this; repeat it explicitly against a directory named to make the
+# create-vs-refuse distinction obvious).
+mkdir -p "$WORK/creates-fine"
+bash "$LIB" "$WORK/creates-fine" '{"slug":"creates-fine"}' >/dev/null
+check "D5: bare replace still creates feature.json in a fresh directory" "creates-fine" \
+  "$(jq -r '.slug' "$WORK/creates-fine/feature.json" 2>/dev/null || echo MISSING)"
+
 # Case E: wrong arg count rejected
 exit_code=0
 bash "$LIB" "$WORK/feat" >/dev/null 2>&1 || exit_code=$?
