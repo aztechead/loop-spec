@@ -128,6 +128,49 @@ check "non-array tasks exits 1" "1" "$ec"
 ec=0; bash "$LIB" >/dev/null 2>&1 || ec=$?
 check "no arguments exits 2" "2" "$ec"
 
+# --- task-005: requirements/obligations/executionInputs round-trip -----------------
+# Many-to-many (task-001 and task-002 both name GE-001; task-002 also names GE-002)
+# and an Obligations-only scaffolding task (task-003, no Requirements at all).
+python3 -c "
+import json
+rev1 = '1' * 64
+rev2 = '2' * 64
+owner = {'repository': 'r', 'feature': 'f'}
+inputs = {'version': 1, 'toolchains': [], 'localInputs': [], 'externalInputs': [], 'sensitiveInputs': []}
+tasks = [
+    {'id': 'task-001', 'subject': 'first', 'files': ['a.sh'], 'blockedBy': [],
+     'verifyCommand': 'bash -n a.sh', 'acceptanceCriteria': ['exits 0'],
+     'requirements': [{'owner': owner, 'requirement': 'GE-001', 'revision': rev1, 'scenarios': ['SC-001']}],
+     'executionInputs': inputs},
+    {'id': 'task-002', 'subject': 'second', 'files': ['b.sh'], 'blockedBy': ['task-001'],
+     'verifyCommand': 'bash -n b.sh', 'acceptanceCriteria': ['exits 0'],
+     'requirements': [{'owner': owner, 'requirement': 'GE-001', 'revision': rev1, 'scenarios': ['SC-002']},
+                       {'owner': owner, 'requirement': 'GE-002', 'revision': rev2, 'scenarios': ['SC-001']}],
+     'executionInputs': inputs},
+    {'id': 'task-003', 'subject': 'scaffolding only', 'files': ['c.sh'], 'blockedBy': [],
+     'verifyCommand': 'bash -n c.sh', 'acceptanceCriteria': ['exits 0'],
+     'obligations': ['OBL-runtime'], 'executionInputs': inputs},
+]
+json.dump(tasks, open('$WORK/tasks-v1.json', 'w'), indent=2)
+"
+bash "$LIB" render --tasks "$WORK/tasks-v1.json" --plan /dev/null >/dev/null 2>&1
+rendered="$(bash "$LIB" render --tasks "$WORK/tasks-v1.json")"
+check "renders a Requirements marker per task that has one" "2" "$(grep -c '^\*\*Requirements:\*\*$' <<<"$rendered")"
+check "renders an Obligations marker for the scaffolding task" "1" "$(grep -c '^\*\*Obligations:\*\*$' <<<"$rendered")"
+check "renders an Execution inputs line per task" "3" "$(grep -c '^\*\*Execution inputs:\*\*' <<<"$rendered")"
+check "task-002 keeps both requirement references (many-to-many)" "2" \
+  "$(awk '/^### task-002:/{t=1} /^### task-003:/{t=0} t' <<<"$rendered" | grep -c '"requirement":"GE-00')"
+
+printf '# v1 fixture - Implementation Plan\n\n%s\n' "$rendered" > "$WORK/PLAN-v1.md"
+printf '\n## Grounding\n\n- none\n' >> "$WORK/PLAN-v1.md"
+reextracted="$(bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$WORK/PLAN-v1.md")"
+check "round trip: extract -> render -> extract yields the same JSON" "true" \
+  "$(jq -n --argjson a "$(jq -Sc . "$WORK/tasks-v1.json")" --argjson b "$(jq -Sc . <<<"$reextracted")" '$a == $b' 2>/dev/null || echo false)"
+rc=0; bash "$LINT" plan "$WORK/PLAN-v1.md" >/dev/null 2>&1 || rc=$?
+check "the rendered v1 plan passes the structural plan lint" "0" "$rc"
+rc=0; bash "$LINT" tasks - <<<"$reextracted" >/dev/null 2>&1 || rc=$?
+check "the round-tripped tasks pass the structural tasks lint" "0" "$rc"
+
 echo
 echo "plan-render: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

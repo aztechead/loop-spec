@@ -247,6 +247,122 @@ check "exit plan: tasks pointer recorded" "1" "$([[ "$(fj '.artifacts.tasks')" =
 check "exit plan: patterns source defaulted" "pattern-mapper" "$(fj '.artifacts.patternsSource')"
 check "exit plan: PLAN.md committed" "1" "$(git log --oneline | grep -c 'plan: my-feature')"
 
+# --- plan (v1 contract): the reviewed task relation replaces positional coverage ----
+# A v1 feature, built the way tests/lib/cycle-driver.test.sh and
+# tests/lib/feature-init.test.sh do (LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 at creation --
+# a transitional, fixture-only switch; not a downgrade a real cycle can choose).
+REPOV1="$WORK/repov1"; mkdir -p "$REPOV1"
+git -C "$REPOV1" init -q -b main
+git -C "$REPOV1" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+bash "$REPO_ROOT/lib/cycle-driver.sh" start --dir "$REPOV1" -- v1 relation check >/dev/null 2>&1
+LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 bash "$REPO_ROOT/lib/cycle-driver.sh" init --dir "$REPOV1" \
+  --slug v1-relation-check --title "v1 relation check" --style auto --profile standard --autonomous 0 >/dev/null 2>&1
+FDV1="$REPOV1/.loop-spec/features/v1-relation-check"
+DOCSV1="$REPOV1/docs/loop-spec/features/v1-relation-check"
+mkdir -p "$DOCSV1"
+check "v1 fixture: creation records a v1 contract" "v1" "$(jq -r '.requirementsContract.format' "$FDV1/feature.json")"
+owner_json="$(jq -c '.requirementsContract.owner' "$FDV1/feature.json")"
+
+cat > "$DOCSV1/SPEC.md" <<EOF
+---
+requirements_version: 1
+requirements_owner: $owner_json
+---
+# v1 relation check
+
+## Success criteria
+
+### Good Enough
+
+- [ ] GE-001: The user sees the result.
+  - SC-001: Reload shows the result.
+
+## Constraints
+
+- OBL-runtime: keep it offline.
+EOF
+# The revision comes from the inventory reader itself, never typed by hand
+# (docs/loop-spec/requirements-format.md; requirements.py's own digest is the
+# only authoritative source of a requirement's revision).
+ge001_revision="$(bash "$REPO_ROOT/lib/requirements.sh" inventory --spec "$DOCSV1/SPEC.md" --feature-dir "$FDV1" \
+  | jq -r '.requirements[0].revision')"
+check "v1 fixture: inventory reader produced a revision" "64" "${#ge001_revision}"
+
+write_v1_plan() {
+  # $1 requirements bullet (or "-" for none), $2 obligations bullet (or "-" for none)
+  local req_line="$1" obl_line="$2"
+  {
+    printf '# v1 relation check - Implementation Plan\n\n## Task DAG\n\n'
+    printf '| ID | Subject | BlockedBy | Files | Est scope |\n|----|---------|-----------|-------|-----------|\n'
+    printf '| task-001 | do a thing | - | a.sh | small |\n\n## Tasks\n\n### task-001: do a thing\n\n'
+    printf '**Goal:** one sentence.\n\n**Files:**\n- `a.sh`\n\n'
+    if [[ "$req_line" != "-" ]]; then printf '**Requirements:**\n- %s\n\n' "$req_line"; fi
+    if [[ "$obl_line" != "-" ]]; then printf '**Obligations:**\n- %s\n\n' "$obl_line"; fi
+    printf '**Execution inputs:** {"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}\n\n'
+    printf '**Verify:** `bash -n a.sh`\n\n**Acceptance criteria:**\n- [ ] `bash -n a.sh` exits 0\n\n'
+    printf '## Grounding\n\n- none\n'
+  } > "$DOCSV1/PLAN.md"
+}
+printf '# PATTERNS.md - v1 relation check\n\n## Concept: writer\n\ndetail\n' > "$DOCSV1/PATTERNS.md"
+
+valid_req="{\"owner\":$owner_json,\"requirement\":\"GE-001\",\"revision\":\"$ge001_revision\",\"scenarios\":[\"SC-001\"]}"
+
+# a. a scenario the SPEC inventory lacks
+write_v1_plan "{\"owner\":$owner_json,\"requirement\":\"GE-001\",\"revision\":\"$ge001_revision\",\"scenarios\":[\"SC-999\"]}" "-"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: unknown scenario exits 1" "1" "$ec"
+check "v1 exit plan: unknown scenario names GE-001/SC-999" "1" "$(grep -c 'GE-001/SC-999' <<<"$out")"
+
+# b. a stale revision
+write_v1_plan "{\"owner\":$owner_json,\"requirement\":\"GE-001\",\"revision\":\"$(printf '0%.0s' $(seq 1 64))\",\"scenarios\":[\"SC-001\"]}" "-"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: stale revision exits 1" "1" "$ec"
+check "v1 exit plan: stale revision is named" "1" "$(grep -c 'stale revision for GE-001' <<<"$out")"
+
+# c. a dangling task reference in the derived '## Spec coverage' summary
+write_v1_plan "$valid_req" "-"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+printf '\n## Spec coverage\n\n- The user sees the result -> task-999\n' >> "$DOCSV1/PLAN.md"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: dangling task-999 reference exits 1" "1" "$ec"
+check "v1 exit plan: dangling reference names task-999" "1" "$(grep -c 'dangling task reference task-999' <<<"$out")"
+
+# d. a free-text exemption instead of a Requirements/Obligations bullet
+write_v1_plan "-" "-"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: no Requirements/Obligations bullet exits 1" "1" "$ec"
+check "v1 exit plan: names the free-text exemption" "yes" "$(grep -q 'no free-text coverage exemption' <<<"$out" && echo yes)"
+
+# e. an OBL- id not declared under SPEC '## Constraints'
+write_v1_plan "-" "OBL-unknown"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: undeclared obligation exits 1" "1" "$ec"
+check "v1 exit plan: undeclared obligation is named" "1" "$(grep -c 'obligation OBL-unknown not declared' <<<"$out")"
+
+# f. tasks.json with the same ids as PLAN.md but an altered dispatch field
+write_v1_plan "$valid_req" "-"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+ec=0; bash "$EXIT" plan --feature-dir "$FDV1" >/dev/null 2>&1 || ec=$?
+check "v1 exit plan: the valid relation passes clean first" "0" "$ec"
+python3 -c "
+import json
+tasks = json.load(open('$FDV1/tasks.json'))
+tasks[0]['verifyCommand'] = 'echo altered'
+json.dump(tasks, open('$FDV1/tasks.json', 'w'))
+"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: an altered sidecar verifyCommand exits 1" "1" "$ec"
+check "v1 exit plan: the altered field is named" "1" "$(grep -c 'task-001.verifyCommand differs' <<<"$out")"
+
+# g. the valid relation, restored, passes clean
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: the valid relation passes clean" "0" "$ec"
+
 # --- execute ------------------------------------------------------------------------
 ec=0; out="$(bash "$EXIT" execute --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit execute: unpublished task flags" "1" "$ec"

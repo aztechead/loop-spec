@@ -415,6 +415,113 @@ check "whitespace-only batchGroup flags" 1 tasks "$WORK/tasks-blank-bg.json"
 printf '[{"id": "task-001", "brief": "x", "files": [], "blockedBy": [], "verifyCommand": "true", "acceptanceCriteria": ["ok"], "modelTier": "haiku"}]' > "$WORK/tasks-bad-tier.json"
 check "unknown modelTier flags" 1 tasks "$WORK/tasks-bad-tier.json"
 
+# --- task-005: Requirements/Obligations/Execution inputs structural shape ----------
+# A minimal v1 feature dir (LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1, the same transitional
+# switch tests/lib/cycle-driver.test.sh and tests/lib/feature-init.test.sh use) --
+# feature_read.load_state only reads feature.json, so no git checkout is needed here.
+V1DIR="$WORK/v1-feature"
+mkdir -p "$V1DIR"
+LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 bash "$ROOT/lib/feature-init.sh" skeleton --mode single \
+  --slug demo --now N --style auto --branch feat/demo --base-sha abc --base-branch main --worktree wt \
+  > "$V1DIR/feature.json"
+if jq -e '.requirementsContract.format == "v1"' "$V1DIR/feature.json" >/dev/null 2>&1; then
+  echo "PASS: v1 fixture: feature.json records format v1"; PASS=$((PASS + 1))
+else
+  echo "FAIL: v1 fixture: feature.json records format v1"; FAIL=$((FAIL + 1))
+fi
+LEGACYDIR="$WORK/legacy-feature"
+mkdir -p "$LEGACYDIR"
+bash "$ROOT/lib/feature-init.sh" skeleton --mode single \
+  --slug legacy --now N --style auto --branch feat/legacy --base-sha abc --base-branch main --worktree wt \
+  > "$LEGACYDIR/feature.json"
+if jq -e 'has("requirementsContract") | not' "$LEGACYDIR/feature.json" >/dev/null 2>&1; then
+  echo "PASS: legacy fixture: feature.json carries no requirementsContract"; PASS=$((PASS + 1))
+else
+  echo "FAIL: legacy fixture: feature.json carries no requirementsContract"; FAIL=$((FAIL + 1))
+fi
+
+req_block() {  # $1 requirement JSON bullet text (the raw line after '- ')
+  printf '# Plan\n\n## Task DAG\n\n| ID | Subject | BlockedBy | Files | Est scope |\n|----|---------|-----------|-------|-----------|\n| task-001 | x | - | a.sh | small |\n\n## Tasks\n\n### task-001: x\n\n**Files:**\n- a.sh\n\n**Requirements:**\n- %s\n\n**Verify:** `true`\n\n**Acceptance criteria:**\n- [ ] ok\n' "$1"
+}
+good_rev="1234567890123456789012345678901234567890123456789012345678901234"
+good_owner='{"repository":"r","feature":"f"}'
+
+# 1. malformed Requirements JSON
+req_block "not valid json" > "$WORK/plan-req-badjson.md"
+check "plan: malformed Requirements JSON flags" 1 plan "$WORK/plan-req-badjson.md"
+check_output "plan: malformed Requirements JSON is named" "not single-line JSON" plan "$WORK/plan-req-badjson.md"
+
+# 2. a non-GE requirement id
+req_block "{\"owner\":$good_owner,\"requirement\":\"REQ-1\",\"revision\":\"$good_rev\",\"scenarios\":[\"SC-001\"]}" > "$WORK/plan-req-badid.md"
+check "plan: non-GE requirement id flags" 1 plan "$WORK/plan-req-badid.md"
+check_output "plan: non-GE requirement id is named" "canonical GE-NNN id" plan "$WORK/plan-req-badid.md"
+
+# 3. a bad revision shape (too short, not hex-64)
+req_block "{\"owner\":$good_owner,\"requirement\":\"GE-001\",\"revision\":\"abc123\",\"scenarios\":[\"SC-001\"]}" > "$WORK/plan-req-badrev.md"
+check "plan: bad revision shape flags" 1 plan "$WORK/plan-req-badrev.md"
+check_output "plan: bad revision shape is named" "lowercase SHA-256" plan "$WORK/plan-req-badrev.md"
+
+# valid Requirements bullet, for contrast (also used below as the v1-clean baseline)
+req_ok="{\"owner\":$good_owner,\"requirement\":\"GE-001\",\"revision\":\"$good_rev\",\"scenarios\":[\"SC-001\"]}"
+req_block "$req_ok" > "$WORK/plan-req-ok.md"
+check "plan: well-formed Requirements bullet passes" 0 plan "$WORK/plan-req-ok.md"
+
+# 4. an OBL bullet that is not an id
+printf '# Plan\n\n## Task DAG\n\n| ID | Subject | BlockedBy | Files | Est scope |\n|----|---------|-----------|-------|-----------|\n| task-001 | x | - | a.sh | small |\n\n## Tasks\n\n### task-001: x\n\n**Files:**\n- a.sh\n\n**Obligations:**\n- keep it offline\n\n**Verify:** `true`\n\n**Acceptance criteria:**\n- [ ] ok\n' > "$WORK/plan-obl-notid.md"
+check "plan: Obligations bullet that is not an id flags" 1 plan "$WORK/plan-obl-notid.md"
+check_output "plan: bad Obligations bullet is named" "bare OBL-... id" plan "$WORK/plan-obl-notid.md"
+
+# 5. a malformed Execution inputs object (missing required keys)
+printf '# Plan\n\n## Task DAG\n\n| ID | Subject | BlockedBy | Files | Est scope |\n|----|---------|-----------|-------|-----------|\n| task-001 | x | - | a.sh | small |\n\n## Tasks\n\n### task-001: x\n\n**Files:**\n- a.sh\n\n**Execution inputs:** {"version":1}\n\n**Verify:** `true`\n\n**Acceptance criteria:**\n- [ ] ok\n' > "$WORK/plan-execinputs-bad.md"
+check "plan: malformed Execution inputs flags" 1 plan "$WORK/plan-execinputs-bad.md"
+check_output "plan: malformed Execution inputs is named" "needs version, toolchains" plan "$WORK/plan-execinputs-bad.md"
+
+# 6. a v1 task block with neither Requirements nor Obligations
+printf '# Plan\n\n## Task DAG\n\n| ID | Subject | BlockedBy | Files | Est scope |\n|----|---------|-----------|-------|-----------|\n| task-001 | x | - | a.sh | small |\n\n## Tasks\n\n### task-001: x\n\n**Files:**\n- a.sh\n\n**Execution inputs:** {"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}\n\n**Verify:** `true`\n\n**Acceptance criteria:**\n- [ ] ok\n' > "$WORK/plan-v1-noexemption.md"
+check "plan legacy: no Requirements/Obligations passes without --feature-dir" 0 plan "$WORK/plan-v1-noexemption.md"
+check "plan v1: no Requirements/Obligations flags with the v1 feature-dir" 1 plan "$WORK/plan-v1-noexemption.md" --feature-dir "$V1DIR"
+check_output "plan v1: the free-text exemption is named" "no free-text coverage exemption" \
+  plan "$WORK/plan-v1-noexemption.md" --feature-dir "$V1DIR"
+
+# 7. a v1 task block missing Execution inputs (Requirements present, otherwise valid)
+req_block "$req_ok" > "$WORK/plan-v1-noexecinputs.md"
+check "plan legacy: missing Execution inputs passes without --feature-dir" 0 plan "$WORK/plan-v1-noexecinputs.md"
+check "plan v1: missing Execution inputs flags with the v1 feature-dir" 1 plan "$WORK/plan-v1-noexecinputs.md" --feature-dir "$V1DIR"
+check_output "plan v1: missing Execution inputs is named" "is missing '**Execution inputs:**'" \
+  plan "$WORK/plan-v1-noexecinputs.md" --feature-dir "$V1DIR"
+
+# 8. a legacy PLAN with none of these lines at all still passes, --feature-dir or not
+check "plan legacy: a plan with no v1 lines passes (no --feature-dir)" 0 plan "$WORK/plan-good.md"
+check "plan legacy: the same plan passes under a legacy feature-dir too" 0 plan "$WORK/plan-good.md" --feature-dir "$LEGACYDIR"
+
+# --- the same shape checks from the tasks.json side ---
+tasks_with() {  # $1 extra JSON fields to splice into the one task object
+  printf '[{"id":"task-001","brief":"x","files":[],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["ok"]%s}]' "$1"
+}
+tasks_with ',"requirements":["not an object"]' > "$WORK/tasks-req-badshape.json"
+check "tasks: a non-object requirements entry flags" 1 tasks "$WORK/tasks-req-badshape.json"
+check_output "tasks: bad requirements shape is named" "needs exactly owner, requirement" tasks "$WORK/tasks-req-badshape.json"
+
+tasks_with ',"obligations":["keep it offline"]' > "$WORK/tasks-obl-notid.json"
+check "tasks: an Obligations entry that is not an id flags" 1 tasks "$WORK/tasks-obl-notid.json"
+check_output "tasks: bad obligations entry is named" "bare OBL-... id" tasks "$WORK/tasks-obl-notid.json"
+
+tasks_with ',"executionInputs":{"version":1}' > "$WORK/tasks-execinputs-bad.json"
+check "tasks: malformed executionInputs flags" 1 tasks "$WORK/tasks-execinputs-bad.json"
+check_output "tasks: malformed executionInputs is named" "needs version, toolchains" tasks "$WORK/tasks-execinputs-bad.json"
+
+tasks_with '' > "$WORK/tasks-v1-noexemption.json"
+check "tasks legacy: no requirements/obligations passes without --feature-dir" 0 tasks "$WORK/tasks-v1-noexemption.json"
+check "tasks v1: no requirements/obligations flags with the v1 feature-dir" 1 tasks "$WORK/tasks-v1-noexemption.json" --feature-dir "$V1DIR"
+check_output "tasks v1: the free-text exemption is named" "no free-text coverage exemption" \
+  tasks "$WORK/tasks-v1-noexemption.json" --feature-dir "$V1DIR"
+
+tasks_with ",\"requirements\":[{\"owner\":$good_owner,\"requirement\":\"GE-001\",\"revision\":\"$good_rev\",\"scenarios\":[\"SC-001\"]}]" > "$WORK/tasks-v1-noexecinputs.json"
+check "tasks legacy: missing executionInputs passes without --feature-dir" 0 tasks "$WORK/tasks-v1-noexecinputs.json"
+check "tasks v1: missing executionInputs flags with the v1 feature-dir" 1 tasks "$WORK/tasks-v1-noexecinputs.json" --feature-dir "$V1DIR"
+check_output "tasks v1: missing executionInputs is named" "executionInputs is required under a v1 contract" \
+  tasks "$WORK/tasks-v1-noexecinputs.json" --feature-dir "$V1DIR"
+
 # --- the repo's own current templates/artifacts stay green ---
 check "current PLAN template shape passes (real artifact)" 0 plan "$ROOT/tests/fixtures/real-PLAN.md"
 check "current SPEC template shape passes (real artifact)" 0 spec "$ROOT/tests/fixtures/real-SPEC.md"

@@ -54,6 +54,19 @@
 **read_first:**
 - {path or path:line-range or path (section)}
 
+<!-- v1 requirements cycles only (requirementsContract.format == "v1"): every task
+     names either the outcomes it enables (Requirements) or a named obligation
+     (Obligations) declared under SPEC `## Constraints` — never a free-text exemption,
+     and never both empty. One task may list several; several tasks may list the
+     same one. Drop both blocks entirely on a legacy cycle. -->
+**Requirements:**
+- {"owner":{"repository":"{repository-id}","feature":"{slug}"},"requirement":"GE-001","revision":"{sha256 from the current inventory}","scenarios":["SC-001"]}
+
+**Obligations:**
+- OBL-{id declared under SPEC `## Constraints`}
+
+**Execution inputs:** {"version":1,"toolchains":[{name,argv,expectedIdentity}],"localInputs":[{root,paths}],"externalInputs":[{name,argv,expectedIdentity}],"sensitiveInputs":[{name,argv,expectedIdentity}]}
+
 **Interfaces:**
 - consumes: {contract this task depends on — signature/endpoint/schema, and which task produces it; `none` if independent}
 - produces: {contract other tasks consume from this one; `none` if leaf}

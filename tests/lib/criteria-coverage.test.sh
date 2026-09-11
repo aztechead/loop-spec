@@ -152,6 +152,90 @@ exit_code=0
 bash "$SCRIPT" "$SPEC_F" "$PLAN_F" >/dev/null 2>&1 || exit_code=$?
 check "F: checkbox bullet covered exits 0" "0" "$exit_code"
 
+# === Case G: dangling task-999 mapping is rejected when PLAN declares a registry ===
+# A live task registry (Task DAG table + task blocks, like a real PLAN) makes the
+# mapped task id checkable; task-999 names no defined task and must be rejected even
+# though its bullet text matches the SPEC criterion word for word.
+SPEC_G="$WORK/spec-g.md"
+PLAN_G="$WORK/plan-g.md"
+cat > "$SPEC_G" <<'EOF'
+### Good Enough
+
+- CSV export completes for a 10k-row table
+EOF
+cat > "$PLAN_G" <<'EOF'
+## Task DAG
+
+| ID | Subject | BlockedBy | Files | Est scope |
+|----|---------|-----------|-------|-----------|
+| task-001 | add the endpoint | - | api/export.py | small |
+
+## Spec coverage
+
+- CSV export completes for a 10k-row table -> task-999
+
+## Tasks
+
+### task-001: add the endpoint
+EOF
+
+exit_code=0
+output=$(bash "$SCRIPT" "$SPEC_G" "$PLAN_G" 2>&1) || exit_code=$?
+check "G: dangling task-999 mapping exits 1" "1" "$exit_code"
+echo "$output" | grep -qF "task-999" && named="yes" || named="no"
+check "G: dangling reference names task-999" "yes" "$named"
+
+# === Case H: notes-only copy of the criterion does not satisfy coverage ===
+# The exact criterion sentence sits in prose (no '-> task-NNN' bullet); a substring
+# scan of the whole document would wrongly call this covered.
+SPEC_H="$WORK/spec-h.md"
+PLAN_H="$WORK/plan-h.md"
+cat > "$SPEC_H" <<'EOF'
+### Good Enough
+
+- progress bar renders during export
+EOF
+cat > "$PLAN_H" <<'EOF'
+## Notes
+
+The team agreed that progress bar renders during export is important, but tracking
+it in the coverage table was deferred to a follow-up.
+EOF
+
+exit_code=0
+output=$(bash "$SCRIPT" "$SPEC_H" "$PLAN_H" 2>&1) || exit_code=$?
+check "H: notes-only copy exits 1" "1" "$exit_code"
+echo "$output" | grep -qF "progress bar renders during export" && listed="yes" || listed="no"
+check "H: notes-only criterion is listed uncovered" "yes" "$listed"
+
+# === Case I: a valid mapping against a real task registry is still accepted ===
+SPEC_I="$WORK/spec-i.md"
+PLAN_I="$WORK/plan-i.md"
+cat > "$SPEC_I" <<'EOF'
+### Good Enough
+
+- CSV export completes for a 10k-row table
+EOF
+cat > "$PLAN_I" <<'EOF'
+## Task DAG
+
+| ID | Subject | BlockedBy | Files | Est scope |
+|----|---------|-----------|-------|-----------|
+| task-001 | add the endpoint | - | api/export.py | small |
+
+## Spec coverage
+
+- CSV export completes for a 10k-row table -> task-001
+
+## Tasks
+
+### task-001: add the endpoint
+EOF
+
+exit_code=0
+bash "$SCRIPT" "$SPEC_I" "$PLAN_I" >/dev/null 2>&1 || exit_code=$?
+check "I: valid mapping against a real registry exits 0" "0" "$exit_code"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

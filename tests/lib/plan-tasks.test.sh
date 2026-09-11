@@ -133,6 +133,80 @@ check "unreadable file exits 1" "1" "$rc"
 rc=0; bash "$LIB" parse "$tmp/PLAN.md" >/dev/null 2>&1 || rc=$?
 check "unknown subcommand exits 2" "2" "$rc"
 
+# --- task-005: Requirements/Obligations/Execution inputs, and multiline criteria ---
+cat > "$tmp/PLANv1.md" <<'MD'
+# Multiline - Implementation Plan
+
+## Task DAG
+
+| ID | Subject | BlockedBy | Files | Est scope |
+|----|---------|-----------|-------|-----------|
+| task-001 | first | - | a.sh | small |
+
+## Tasks
+
+### task-001: first
+
+**Files:**
+- `a.sh`
+
+**Requirements:**
+- {"owner":{"repository":"r","feature":"f"},"requirement":"GE-001","revision":"1111111111111111111111111111111111111111111111111111111111111111","scenarios":["SC-001"]}
+
+**Obligations:**
+- OBL-runtime
+
+**Execution inputs:** {"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}
+
+**Verify:** `bash -n a.sh`
+
+**Acceptance criteria:**
+- [ ] the check exits 0 and this criterion continues
+  across a second physical line that a planner wrapped
+- [ ] a second, single-line criterion
+MD
+out="$(bash "$LIB" extract "$tmp/PLANv1.md")"
+check "Requirements bullet parses as JSON" "GE-001" "$(jq -r '.[0].requirements[0].requirement' <<<"$out")"
+check "Obligations bullet keeps the bare OBL id" '["OBL-runtime"]' "$(jq -c '.[0].obligations' <<<"$out")"
+check "Execution inputs parses as a JSON object" "1" "$(jq -r '.[0].executionInputs.version' <<<"$out")"
+check "a wrapped acceptance criterion stays one item" "2" \
+  "$(jq '.[0].acceptanceCriteria | length' <<<"$out")"
+check "the wrapped continuation text is joined in, not dropped" \
+  "the check exits 0 and this criterion continues across a second physical line that a planner wrapped" \
+  "$(jq -r '.[0].acceptanceCriteria[0]' <<<"$out")"
+rc=0; bash "$LINT" tasks - <<<"$out" >/dev/null 2>&1 || rc=$?
+check "the v1 extraction passes the tasks lint" "0" "$rc"
+
+# A malformed Requirements bullet is kept raw so artifact-lint reports the shape,
+# rather than this extractor silently dropping the reference.
+cat > "$tmp/PLANbad.md" <<'MD'
+# Bad - Implementation Plan
+
+## Task DAG
+
+| ID | Subject | BlockedBy | Files | Est scope |
+|----|---------|-----------|-------|-----------|
+| task-001 | first | - | a.sh | small |
+
+## Tasks
+
+### task-001: first
+
+**Files:**
+- `a.sh`
+
+**Requirements:**
+- not valid json
+
+**Verify:** `bash -n a.sh`
+
+**Acceptance criteria:**
+- [ ] exits 0
+MD
+out="$(bash "$LIB" extract "$tmp/PLANbad.md")"
+check "an unparseable Requirements bullet is kept as the raw string" "not valid json" \
+  "$(jq -r '.[0].requirements[0]' <<<"$out")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

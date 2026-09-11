@@ -21,6 +21,17 @@
 #   repo, batchGroup, modelTier, specPath
 #                           **Repo:**, **Batch group:**, **Model tier:**, **Spec path:**
 #                           lines, present only when the block carries them
+#   requirements[]          **Requirements:** bullets, each the parsed single-line JSON
+#                           object {owner,requirement,revision,scenarios} (kept as the
+#                           raw bullet string when it does not parse as JSON, so
+#                           artifact-lint can flag the malformed shape instead of this
+#                           extractor silently dropping it), present only when listed
+#   obligations[]           **Obligations:** bullets, each the bare `OBL-...` id (or the
+#                           raw bullet text when the line does not carry one), present
+#                           only when listed
+#   executionInputs         **Execution inputs:** single-line JSON object, parsed the
+#                           same way (kept as the raw string when unparseable), present
+#                           only when listed
 # `lib/artifact-lint.sh tasks` validates the result; this script only reads the shape.
 #
 # Usage:
@@ -44,13 +55,25 @@ lines = open(plan, encoding="utf-8", errors="replace").read().splitlines()
 
 HEADING = re.compile(r"^### (task-\d+):\s*(.+?)\s*$")
 MARKER = re.compile(r"^\*\*([^*]+?)(?::\*\*|\*\*:)\s*(.*)$")
-LISTS = ("Files", "read_first", "Acceptance criteria", "Interfaces")
+LISTS = ("Files", "read_first", "Acceptance criteria", "Interfaces", "Requirements", "Obligations")
+PLAIN_LIST_KEY = {"Files": "files", "read_first": "readFirst", "Acceptance criteria": "acceptanceCriteria"}
 BULLET = re.compile(r"^[-*+]\s+(?:\[[ xX]\]\s+)?(.*\S)\s*$")
 CODE = re.compile(r"`([^`]+)`")
 ROW = re.compile(r"^\|\s*(task-\d+)\s*\|([^|]*)\|([^|]*)\|")
+OBLIGATION_ID = re.compile(r"OBL-[A-Za-z0-9][A-Za-z0-9-]*")
 
 def strip_code(text):
     return CODE.sub(r"\1", text).strip()
+
+def parsed_or_raw(text):
+    """A Requirements bullet / Execution inputs value is single-line JSON per the
+    grammar (docs/loop-spec/features/release-7-0/PLAN.md, Exact artifact grammar);
+    keep the raw text when it fails to parse so artifact-lint's structural check is
+    the one place that reports the malformed shape, not a silent drop here."""
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text
 
 def ids_from(text):
     text = text.strip().strip("[]")
@@ -98,11 +121,23 @@ for raw in lines:
             task["modelTier"] = strip_code(rest)
         elif name == "Spec path":
             task["specPath"] = strip_code(rest)
+        elif name == "Execution inputs":
+            task["executionInputs"] = parsed_or_raw(rest)
         elif name in LISTS:
             section = name
         continue
     bullet = BULLET.match(line)
-    if not bullet or section is None:
+    if section is None:
+        continue
+    if not bullet:
+        # A plain-prose bullet a planner wrapped across lines (an acceptance criterion
+        # is the case that lost text before this fix): join it onto the last item of
+        # the current plain-text list. Requirements/Obligations/Interfaces hold
+        # structured values, not prose, so a stray continuation line there is left
+        # alone rather than corrupted into their JSON/key:value shape.
+        key = PLAIN_LIST_KEY.get(section)
+        if line and key and task.get(key):
+            task[key][-1] += " " + line
         continue
     item = bullet.group(1)
     if section == "Files":
@@ -111,6 +146,11 @@ for raw in lines:
         task["readFirst"].append(strip_code(item))
     elif section == "Acceptance criteria":
         task["acceptanceCriteria"].append(item)
+    elif section == "Requirements":
+        task.setdefault("requirements", []).append(parsed_or_raw(item))
+    elif section == "Obligations":
+        found = OBLIGATION_ID.search(item)
+        task.setdefault("obligations", []).append(found.group(0) if found else item)
     elif section == "Interfaces":
         key, _, value = item.partition(":")
         if key.strip() in ("consumes", "produces") and value.strip() and value.strip() != "none":
