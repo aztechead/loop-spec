@@ -249,5 +249,62 @@ check "subdir node_modules is a symlink" "1" \
 check "shared subdir dependencies resolve" "installed" \
   "$(<"$SUB_SHARE_WT/webapp/frontend/node_modules/example/value")"
 
+# --- task-006 AC4: a preparationReceipt alone cannot authorize a PASS-eligible
+# identity; the actual installed inputs prepare-environment.sh produced can. ---
+RECEIPT_REPO="$WORK/receipt-repo"
+new_repo "$RECEIPT_REPO"
+printf '{}\n' > "$RECEIPT_REPO/package.json"
+printf '{"lockfileVersion":3}\n' > "$RECEIPT_REPO/package-lock.json"
+printf 'node_modules/\n' > "$RECEIPT_REPO/.gitignore"
+git -C "$RECEIPT_REPO" add package.json package-lock.json .gitignore
+git -C "$RECEIPT_REPO" commit -qm node-manifest
+receipt_out="$(PATH="$SHARE_BIN:$PATH" bash "$SCRIPT" run --root "$RECEIPT_REPO" --command 'npm ci')"
+check "receipt fixture: dependency tree prepared" "prepared" "$(jq -r '.status' <<<"$receipt_out")"
+receipt_key="$(jq -r '.key' <<<"$receipt_out")"
+
+receipt_py_out="$(PATH="$SHARE_BIN:$PATH" PYTHONPATH="$ROOT/lib" python3 - "$RECEIPT_REPO" "$receipt_key" 2>&1 <<'PY'
+import sys
+from execution_inputs import capture_inputs, identity_changed
+
+root, receipt_key = sys.argv[1], sys.argv[2]
+receipt_only = {
+    "version": 1, "toolchains": [], "externalInputs": [], "sensitiveInputs": [],
+    "localInputs": [],
+    "preparationReceipt": {"tool": "prepare-environment.sh", "key": receipt_key},
+}
+try:
+    capture_inputs(root, receipt_only, [])
+except ValueError as exc:
+    print("PASS: receipt-only contract raises (%s)" % exc)
+else:
+    print("FAIL: receipt-only contract yielded a record instead of raising")
+
+installed = {
+    "version": 1, "toolchains": [], "externalInputs": [], "sensitiveInputs": [],
+    "localInputs": [{"root": "node_modules", "paths": ["."]}],
+    "preparationReceipt": {"tool": "prepare-environment.sh", "key": receipt_key},
+}
+before = capture_inputs(root, installed, [])
+after = capture_inputs(root, installed, [])
+if not identity_changed(before, after):
+    print("PASS: unchanged actual installed-input set is stable across captures")
+else:
+    print("FAIL: an unchanged installed-input set reported a spurious identity change")
+PY
+)"
+py_status=$?
+if [[ "$py_status" -ne 0 ]]; then
+  echo "$receipt_py_out"
+  echo "FAIL: execution_inputs.py AC4 check exited $py_status instead of reporting PASS/FAIL"
+  FAIL=$((FAIL + 1))
+fi
+while IFS= read -r line; do
+  case "$line" in
+    PASS:*) echo "$line"; PASS=$((PASS + 1)) ;;
+    FAIL:*) echo "$line"; FAIL=$((FAIL + 1)) ;;
+    *) [[ "$py_status" -eq 0 ]] && echo "$line" ;;
+  esac
+done <<<"$receipt_py_out"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

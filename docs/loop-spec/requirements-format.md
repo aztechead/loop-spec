@@ -112,3 +112,38 @@ one call so two new requirements never race for the same fresh ID.
 `LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1` (`lib/feature-init.sh`) is a transitional,
 fixture-only opt-in read once at cycle creation: it is not a user-facing downgrade
 switch, and ordinary cycles stay on legacy until v1 activation.
+
+## Execution inputs (lib/execution_inputs.py)
+
+For a task author declaring `**Execution inputs:**` in PLAN, and for a driver
+capturing the actual identity that contract names before and after a command runs.
+
+A task's execution-inputs contract is single-line JSON with `version:1` and four
+arrays -- `toolchains`, `localInputs`, `externalInputs`, `sensitiveInputs` -- plus an
+optional `preparationReceipt`. A toolchain, external, or sensitive entry is
+`{"name","argv","expectedIdentity"}`: `argv` runs with no shell expansion, bounded to
+64 KiB of stdout and 30 seconds of wall time by default, and its trimmed output is
+the identity (an external entry's probe instead prints JSON `{"identity","immutable"}`
+and is rejected unless `immutable` is `true`). A local input is `{"root","paths"}`:
+each declared path is traversed in sorted order, symlinks are resolved and rejected
+if they escape the declared root, and every file's path/type/content is hashed in
+64 KiB chunks. `lib/execution_inputs.py`'s module docstring is the source of truth
+for the record shape, the per-file (16 MiB) and per-set (4096 file) ceilings, and the
+argv-probe defaults; this section only orients a reader toward it.
+
+`capture_inputs(root, contract, outputs)` returns that actual identity or raises
+`ValueError` naming the offending path or probe: an escaping symlink, an unreadable
+file, an unavailable or mutable external identity, a missing/malformed declaration,
+or an input path overlapping a declared output. `compare_inputs(before, after)` and
+`identity_changed(before, after)` diff two captures for a driver deciding whether a
+command changed its declared inputs mid-run.
+
+A `preparationReceipt` is optional context, never proof: a contract that carries one
+with an empty `localInputs` array raises rather than returning a record, because a
+receipt describes intent, not installed bytes (`docs/loop-spec/features/release-7-0/
+SPEC.md`, "The driver owns execution observations"). Declare the local root the
+receipt prepared so `capture_inputs` hashes what is actually there.
+
+This module discovers nothing on its own: a check's dependencies must be named in
+its contract, and an undeclared or unknown input blocks a current result rather than
+being guessed.

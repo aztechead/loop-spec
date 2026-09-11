@@ -251,6 +251,7 @@ run_suite "hooks/team/artifact-lint-feedback" "bash hooks/team/artifact-lint-fee
 run_suite "hooks/team/dispatch-prompt-guard" "bash hooks/team/dispatch-prompt-guard.test.sh"
 run_suite "lib/feature-write"         "bash tests/lib/feature-write.test.sh"
 run_suite "lib/artifact-publication"         "bash tests/lib/artifact-publication.test.sh"
+run_suite "lib/execution-inputs"      "bash tests/lib/execution-inputs.test.sh"
 run_suite "lib/team-ops"              "bash tests/lib/team-ops.test.sh"
 run_suite "lib/teams-capability"      "bash tests/lib/teams-capability.test.sh"
 run_suite "lib/bounded-run"           "bash tests/lib/bounded-run.test.sh" integration
