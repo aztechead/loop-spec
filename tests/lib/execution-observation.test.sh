@@ -97,6 +97,17 @@ check("AC1: a new untracked file during the command is non-PASS", untracked["sta
 check("AC1: the reason names the new path", "new-untracked.txt" in (untracked["failureReason"] or ""))
 os.remove(root / "new-untracked.txt")
 
+# A prepared checkout's .venv/bin leads the command's PATH (a live SPEC's checks were
+# bare `pytest` and `python3`, satisfiable only by the venv the prepare step built).
+venv_bin = root / ".venv" / "bin"
+venv_bin.mkdir(parents=True)
+(venv_bin / "venv-only-tool").write_text("#!/bin/sh\nexit 0\n")
+os.chmod(str(venv_bin / "venv-only-tool"), 0o755)
+(root / ".git" / "info" / "exclude").write_text("/.venv/\n")
+subprocess.run(["git", "checkout", "--", "."], cwd=root, check=True)
+venv = observe(fd, root, legacy_binding("GE-004"), "venv-only-tool", None)
+check("AC1: a tool in the checkout's .venv/bin resolves for the command", venv["status"] == "PASS")
+
 # A changed SPEC.md/PLAN.md hash
 spec_changed = observe(fd, root, legacy_binding("GE-004"),
                         "printf 'changed\\n' >> " + str(fd / "SPEC.md"), None)

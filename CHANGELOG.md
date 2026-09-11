@@ -143,6 +143,13 @@ below; each task's own SPEC/PLAN/VERIFICATION is the durable record of what it p
   the repository's common exclude file before it runs, plugin state under `.loop-spec`
   is never setup dirt, and the critique protocol says the challenger's prompt is the
   brief's text read with Read, since the Agent tool runs no shell.
+- Two gaps found while assessing VERIFY before a fourth run: the observation runner puts a
+  prepared checkout's `.venv/bin` first on PATH, so a SPEC's bare `pytest` and `python3`
+  checks run under the venv the prepare step built; and the first task's backfill of
+  `commands.test` and `commands.prepare` runs whenever those are empty, not only under
+  the greenfield flag a placeholder README kept two runs from earning. The backfill had
+  also been silently refused: `task-progress mark-done` wrote tasks.json directly and
+  moved the hash the parent's token had captured, so it now publishes under that token.
 
 No comparative measurement of repair rounds, cost, or latency accompanies this release;
 that evaluation is out of scope for 7.0 (SPEC "Exceptional": comparative live

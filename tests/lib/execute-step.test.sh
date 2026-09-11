@@ -99,6 +99,20 @@ check "verdict: the breaker blocks with retry-exhausted" "retry-exhausted" "$(jq
 ec=0; out="$(bash "$STEP" verdict --feature-dir "$FD" --task task-002 --verdict block 2>/dev/null)" || ec=$?
 check "verdict block: spec-compliance-block" "spec-compliance-block" "$(jq -r '.reason' <<<"$out")"
 
+# --- backfill: an empty test command is filled after the first task, greenfield or not ---
+# (two live runs shipped a placeholder README, were never flagged greenfield, and reached
+# VERIFY with no test suite recorded).
+export LOOP_SPEC_HARNESS=codex LOOP_SPEC_WORKTREES=0
+FDB="$(new_feature backfill)"; ROOTB="$(git -C "$FDB" rev-parse --show-toplevel)"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FDB" commands '{"prepare":"","test":"","lint":"","typecheck":""}' >/dev/null
+bash "$PREP" run --feature-dir "$FDB" >/dev/null 2>&1
+bash "$STEP" dispatch --feature-dir "$FDB" --task task-001 >/dev/null 2>&1
+printf 'print(2)\n' > "$ROOTB/a.py"; printf '[project]\nname = "x"\nversion = "0"\nrequires-python = ">=3.8"\n' > "$ROOTB/pyproject.toml"
+jq '.[0].files += ["pyproject.toml"]' "$FDB/tasks.json" > "$FDB/tasks.json.tmp" && mv "$FDB/tasks.json.tmp" "$FDB/tasks.json"
+bash "$STEP" integrate --feature-dir "$FDB" --task task-001 >/dev/null 2>&1
+check "integrate: an empty commands.test is filled after task-001 without a greenfield flag" ".venv/bin/python -m pytest" "$(jq -r '.commands.test' "$FDB/feature.json")"
+check "integrate: an empty commands.prepare is filled the same way" "1" "$(jq -r '.commands.prepare' "$FDB/feature.json" | grep -c 'venv')"
+
 # --- worktree mode (Claude harness, lead-created worktrees) -----------------------------
 export LOOP_SPEC_HARNESS=claude LOOP_SPEC_WORKTREES=1
 FD2="$(new_feature isolated)"; ROOT2="$(git -C "$FD2" rev-parse --show-toplevel)"

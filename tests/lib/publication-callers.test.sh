@@ -43,6 +43,7 @@ lib/iterate-judged.sh
 lib/phase-exit.sh
 lib/requirements_migrate.py
 lib/revise-state.sh
+lib/task-progress.sh
 lib/verify-gate.sh
 lib/verify-prepare.sh
 "

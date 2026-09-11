@@ -250,12 +250,19 @@ case "$cmd" in
         lib task-progress mark-done "$sidecar" "$member" >/dev/null
       done
       task_end merged
-      if [[ "$task_id" == "task-001" && "$(fget '.greenfield // false')" == "true" ]]; then
+      # The backfill runs for a greenfield feature and for any feature whose stored
+      # test command is still empty after its first task: a placeholder README kept two
+      # live runs off the greenfield flag, and VERIFY then had no test suite to run.
+      if [[ "$task_id" == "task-001" && ( "$(fget '.greenfield // false')" == "true" || -z "$(fget '.commands.test // ""')" ) ]]; then
         test_cmd="$(lib detect-test-cmd "$root" 2>/dev/null || true)"
         [[ -n "$test_cmd" ]] && lib feature-write set "$feature_dir" commands.test "\"$test_cmd\"" >/dev/null
-        prep_cmd="$(lib prepare-environment resolve --root "$root" 2>/dev/null | jq -r '.command // ""' || true)"
-        [[ -n "$prep_cmd" ]] && lib feature-write set "$feature_dir" commands.prepare "\"$prep_cmd\"" >/dev/null
-        lib greenfield-bootstrap backfill-check "$feature_dir" >&2 || answer="$(jq -c '.detail = "greenfield backfill missing: commands.test is empty after the scaffold"' <<<"$answer")"
+        if [[ -z "$(fget '.commands.prepare // ""')" ]]; then
+          prep_cmd="$(lib prepare-environment resolve --root "$root" 2>/dev/null | jq -r '.command // ""' || true)"
+          [[ -n "$prep_cmd" ]] && lib feature-write set "$feature_dir" commands.prepare "\"$prep_cmd\"" >/dev/null
+        fi
+        if [[ "$(fget '.greenfield // false')" == "true" ]]; then
+          lib greenfield-bootstrap backfill-check "$feature_dir" >&2 || answer="$(jq -c '.detail = "greenfield backfill missing: commands.test is empty after the scaffold"' <<<"$answer")"
+        fi
       fi
       printf '%s\n' "$answer"; exit 0
     fi

@@ -272,6 +272,12 @@ def _run_bounded(command, root, limits, output_path):
     # not a source change, but the clean-tree check cannot tell that from one
     # without knowing Python wrote it, so the child is told not to.
     child_env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    # A prepared checkout's .venv/bin leads PATH, as it does for the integrate step's
+    # verify command: a live SPEC's checks were bare `pytest ...` and `python3 -c
+    # "from main import app"`, which the system interpreter cannot satisfy.
+    venv_bin = os.path.join(str(root), ".venv", "bin")
+    if os.path.isdir(venv_bin):
+        child_env["PATH"] = venv_bin + os.pathsep + child_env.get("PATH", "")
     try:
         proc = subprocess.Popen(["bash", "-c", command], cwd=str(root), stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
