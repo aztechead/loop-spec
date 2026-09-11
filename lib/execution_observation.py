@@ -60,6 +60,24 @@ API
         without re-deriving the path-join/read-bounded dance at every call
         site. None when the file is missing (a caller then treats that as a
         mismatch itself -- this helper does not decide eligibility).
+    current_binding(feature_dir, root, binding, command, contract, git=None,
+                     inputs=execution_inputs, runner=None) -> dict
+        Task-008 boundary: recomputes the FRESHNESS TUPLE's live half for one v1
+        VERIFICATION row -- the examined HEAD, the command digest, and (when
+        `contract` names execution inputs) a fresh probe of the declared input
+        identities -- without running `command`. A grounding/floor gate calls
+        this instead of `observe()` because checking a row must never itself
+        write a new observation; only `spec fill`'s reviewed command, run
+        through `observe()`, does that. Callers add `current["outputDigest"]`
+        (`read_output_digest`) before `validate_record`.
+    eligible_row(feature_dir, root, binding, command, contract, execution_id,
+                 git=None, inputs=execution_inputs, runner=None) -> (eligible, reasons)
+        Loads `observations/<execution_id>.json` and decides whether it still
+        supports a v1 row's PASS: `eligible_row` reports a missing or unparsable
+        record itself (`reasons` names it), then defers to `validate_record`
+        against a fresh `current_binding(...)` for everything else. Shared by
+        lib/verification-grounding-lint.sh and lib/converged-floor.sh so neither
+        reimplements the freshness rebuild.
 
 RECORD SCHEMA (schema 1, what observe() writes and returns)
     {"schema": 1, "executionId": <uuid4 hex>,
@@ -463,6 +481,53 @@ def read_output_digest(feature_dir, record):
 
 FRESHNESS_FIELDS = ("owner", "requirement", "revision", "scenario", "commandDigest",
                     "inputSetDigest", "examinedHeads", "environmentDigest", "evidenceEpoch")
+
+
+def current_binding(feature_dir, root, binding, command, contract, git=None,
+                     inputs=execution_inputs, runner=None):
+    """See module docstring. Never runs `command` -- only re-derives what a fresh
+    `observe()` of it would currently see."""
+    binding = _validate_binding(binding)
+    git = git or _default_git
+    root = Path(root)
+    state = feature_read.load_state(str(feature_dir))
+    evidence_epoch = (state.get("artifactPublication") or {}).get("evidenceEpoch", 0)
+    head = git(["rev-parse", "HEAD"], root)
+    input_set_digest = environment_digest = None
+    if contract is not None:
+        try:
+            captured = inputs.capture_inputs(str(root), contract, (), runner=runner)
+        except ValueError:
+            captured = None
+        if captured is not None:
+            input_set_digest = captured["inputSetDigest"]
+            environment_digest = captured["environmentDigest"]
+    return {
+        "owner": binding["owner"], "requirement": binding["requirement"],
+        "revision": binding["revision"], "scenario": binding["scenario"],
+        "commandDigest": _digest_bytes(command.encode("utf-8")),
+        "inputSetDigest": input_set_digest,
+        "examinedHeads": [{"root": str(root), "before": head, "after": head}],
+        "environmentDigest": environment_digest,
+        "evidenceEpoch": evidence_epoch,
+    }
+
+
+def eligible_row(feature_dir, root, binding, command, contract, execution_id, git=None,
+                  inputs=execution_inputs, runner=None):
+    """See module docstring."""
+    feature_dir = Path(feature_dir)
+    record_path = feature_dir / "observations" / "{}.json".format(execution_id)
+    if not record_path.is_file():
+        return False, ["no observation record for execution {}".format(execution_id)]
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        return False, ["observation record for execution {} is not valid JSON: {}".format(execution_id, exc)]
+    current = current_binding(feature_dir, root, binding, command, contract,
+                               git=git, inputs=inputs, runner=runner)
+    current["outputDigest"] = read_output_digest(feature_dir, record)
+    return validate_record(record, current)
 
 
 def validate_record(record, current):

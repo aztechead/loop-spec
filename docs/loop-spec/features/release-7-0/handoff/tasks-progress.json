@@ -398,7 +398,8 @@
     "interfaces": {
       "consumes": "task-007",
       "produces": "Current-evidence requirement at shape, grounding, convergence and real phase exit."
-    }
+    },
+    "status": "done"
   },
   {
     "id": "task-009",

@@ -363,6 +363,61 @@ bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.jso
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
 check "v1 exit plan: the valid relation passes clean" "0" "$ec"
 
+# --- verify (v1 contract): the exit's own gates recheck the same GE-001/SC-001
+# binding against a real execution_observation.observe() record (task-008) ----------
+printf 'echo ok\n' > "$REPOV1/a.sh"
+git -C "$REPOV1" add -A && git -C "$REPOV1" -c user.email=t@t -c user.name=t commit -q -m "feat: a.sh"
+python3 -c "
+path = '$DOCSV1/SPEC.md'
+text = open(path).read()
+line = 'scenario_checks: {\"GE-001/SC-001\":{\"command\":\"bash -n a.sh\",\"executionInputs\":' \
+       '{\"version\":1,\"toolchains\":[],\"localInputs\":[],\"externalInputs\":[],\"sensitiveInputs\":[]}}}\n'
+text = text.replace('---\n', '---\n' + line, 1)
+open(path, 'w').write(text)
+"
+cat > "$DOCSV1/VERIFICATION.md" <<'MD'
+# v1 relation check - Verification
+
+## Repository grounding
+
+- criterion: GE-001/SC-001 | implementation: a.sh:1 - proves it | integration: none - standalone check
+
+## Acceptance criteria
+
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+
+## Code review
+
+**Reviewer:** code-reviewer (inherit)
+
+### Findings
+
+none
+
+## Final test suite
+
+```
+(no commands.test is configured for this feature)
+```
+MD
+(cd "$REPOV1" && bash "$REPO_ROOT/lib/cycle-driver.sh" verification run --feature-dir "$FDV1" >/dev/null 2>&1)
+ec=0; out="$(bash "$EXIT" verify --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit verify: a fresh eligible GE-001/SC-001 record passes" "0" "$ec"
+
+# A changed scenario revision without a fresh run: the exit's own
+# verification-grounding gate refuses the now-stale row (never a numeric or
+# document-position check -- the same binding recheck cycle-driver.test.sh drives
+# through `verification run` directly).
+sed -i.bak 's/Reload shows the result\./Reload shows the result, reworded./' "$DOCSV1/SPEC.md"
+rm -f "$DOCSV1/SPEC.md.bak"
+ec=0; out="$(bash "$EXIT" verify --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit verify: a stale record (changed revision) fails the exit" "1" "$ec"
+check "v1 exit verify: the flag names current evidence" "1" "$(grep -c 'not current evidence' <<<"$out")"
+(cd "$REPOV1" && bash "$REPO_ROOT/lib/cycle-driver.sh" verification run --feature-dir "$FDV1" >/dev/null 2>&1)
+ec=0; bash "$EXIT" verify --feature-dir "$FDV1" >/dev/null 2>&1 || ec=$?
+check "v1 exit verify: a fresh run over the reworded scenario passes again" "0" "$ec"
+
 # --- execute ------------------------------------------------------------------------
 ec=0; out="$(bash "$EXIT" execute --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit execute: unpublished task flags" "1" "$ec"

@@ -303,5 +303,79 @@ sed -i.bak 's|^  - a/tests/test_x.py$||' "$WDOCS/SPEC.md"; sed -i.bak '/^- b\/y.
 ec=0; out="$(cd "$WS" && bash "$GATE" "$WFD" 2>&1)" || ec=$?
 check "workspace mode: a changed file outside the footprint in repo b escalates" "1" "$(grep -c '^NOTE \[footprint\] the diff touches b/z.py outside' <<<"$out")"
 
+# --- v1 contract: verification-grounding-lint runs with --feature-dir at real
+# ONESHOT egress (task-008). An already-escalated (route: full) SPEC skips the
+# footprint/intent/review checks above so this fixture stays small; escalation also
+# skips converged-floor, so this exercises verification-grounding specifically.
+REPO2="$WORK/repo2"; mkdir -p "$REPO2"
+git -C "$REPO2" init -q -b main
+git -C "$REPO2" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+printf 'echo ok\n' > "$REPO2/a.sh"
+git -C "$REPO2" add -A && git -C "$REPO2" -c user.email=t@t -c user.name=t commit -q -m "feat: a.sh"
+bash "$REPO_ROOT/lib/cycle-driver.sh" start --dir "$REPO2" -- v1 oneshot check >/dev/null 2>&1
+LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 bash "$REPO_ROOT/lib/cycle-driver.sh" init --dir "$REPO2" \
+  --slug v1-oneshot-check --title "v1 oneshot check" --style auto --profile standard --autonomous 1 >/dev/null 2>&1
+FD2="$REPO2/.loop-spec/features/v1-oneshot-check"
+DOCS2="$REPO2/docs/loop-spec/features/v1-oneshot-check"
+mkdir -p "$DOCS2"
+owner2="$(jq -c '.requirementsContract.owner' "$FD2/feature.json")"
+cat > "$DOCS2/SPEC.md" <<EOF
+---
+unresolved_questions: []
+requirements_version: 1
+requirements_owner: $owner2
+scenario_checks: {"GE-001/SC-001":{"command":"bash -n a.sh","executionInputs":{"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}}}
+route: full
+---
+# v1 oneshot check
+
+### Good Enough
+
+- [ ] GE-001: The user sees the result.
+  - SC-001: Reload shows the result.
+EOF
+cat > "$DOCS2/VERIFICATION.md" <<'MD'
+# v1 oneshot check - Verification
+
+## Repository grounding
+
+- criterion: GE-001/SC-001 | implementation: a.sh:1 - proves it | integration: none - standalone check
+
+## Acceptance criteria
+
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+
+## Code review
+
+**Reviewer:** code-reviewer (inherit)
+
+### Findings
+
+none
+
+## Final test suite
+
+```
+(no commands.test is configured for this feature)
+```
+MD
+(cd "$REPO2" && bash "$REPO_ROOT/lib/cycle-driver.sh" verification run --feature-dir "$FD2" >/dev/null 2>&1)
+ec=0; out="$(cd "$REPO2" && bash "$GATE" "$FD2" 2>&1)" || ec=$?
+check "v1 oneshot exit: a fresh eligible record passes" "0" "$ec"
+
+python3 -c "
+path = '$DOCS2/SPEC.md'
+text = open(path).read()
+open(path, 'w').write(text.replace('Reload shows the result.', 'Reload shows the result, reworded.'))
+"
+ec=0; out="$(cd "$REPO2" && bash "$GATE" "$FD2" 2>&1)" || ec=$?
+check "v1 oneshot exit: a stale record (changed revision) flags under verification-grounding" "1" "$ec"
+check "v1 oneshot exit: the flag names current evidence" "1" \
+  "$(grep -c '^FLAG \[verification-grounding\].*not current evidence' <<<"$out")"
+(cd "$REPO2" && bash "$REPO_ROOT/lib/cycle-driver.sh" verification run --feature-dir "$FD2" >/dev/null 2>&1)
+ec=0; bash "$GATE" "$FD2" >/dev/null 2>&1 || ec=$?
+check "v1 oneshot exit: a fresh run over the reworded scenario passes again" "0" "$ec"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

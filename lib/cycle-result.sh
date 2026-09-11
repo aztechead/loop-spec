@@ -779,6 +779,34 @@ PY
     if [[ "$delivery_content" == "null" ]]; then
       delivery_content="$(jq -c '.delivery // null' <<<"$fj_content" 2>/dev/null || echo null)"
     fi
+    # A terminal --status completed/--outcome delivered must name the same checked
+    # candidate binding deliver.sh itself requires (PLAN "Final candidate
+    # observations" -- "terminal cycle-result consumers require the same checked
+    # target binding"), not just a sidecar that already claims readiness: the
+    # delivery-reconcile.sh call above only re-validates a NON-canonical sidecar
+    # (an out-of-band PR), so an already-canonical one -- however it got that way --
+    # still needs its own check here. Skipped when feature_dir names no real git
+    # work tree: this observability writer's own test fixtures are deliberately
+    # git-free plumbing (a "checked candidate binding" is a git concept, and there
+    # is nothing here to check it against), and every real deployment runs inside one.
+    if [[ "$status" == "completed" && -z "$no_change_reason" ]] \
+       && git -C "$feature_dir" rev-parse --show-toplevel >/dev/null 2>&1; then
+      final_shas="$(jq -c '[.targets[]? | select((.ok == true) and ((.targetSha // "") != "")) |
+        {name: .name, sha: .targetSha}] | reduce .[] as $t ({}; .[$t.name] = $t.sha)' \
+        <<<"$delivery_content" 2>/dev/null || echo '{}')"
+      if [[ "$(jq 'length' <<<"$final_shas")" -gt 0 ]]; then
+        final_candidates_file="$(mktemp "${TMPDIR:-/tmp}/loop-spec-final-candidates.XXXXXX")"
+        printf '%s' "$final_shas" > "$final_candidates_file"
+        final_check_ok=1
+        final_result="$(bash "$SCRIPT_DIR/cycle-driver.sh" verification run --final-candidates "$final_candidates_file" \
+          --feature-dir "$feature_dir" 2>&1)" || final_check_ok=0
+        rm -f "$final_candidates_file"
+        if [[ "$final_check_ok" -ne 1 ]] || ! jq -e '.ok == true' <<<"$final_result" >/dev/null 2>&1; then
+          echo "cycle-result.sh: --status completed but final candidate observations did not validate for the delivered SHA(s): $final_result" >&2
+          exit 0
+        fi
+      fi
+    fi
     # A delivered run must still publish when ITERATE left no summary. Reconcile
     # and --outcome delivered already fall back; refusing here is the hole that
     # makes a headless caller treat a delivered PR as a failed run.

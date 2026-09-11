@@ -227,11 +227,25 @@ if [[ -z "$workspace_root" ]]; then
       append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$bound" "$hint" \
         "candidate_sha_drift" "HEAD '$target_sha' drifted from the SHA the prior attempt verified '$bound'" "$target_sha" true
     else
-      result_rc=0
-      result="$(invoke_delivery "$artifact_root" "$branch" "$base_branch" "$target_sha" \
-        "feat: $feature_title" "$hint")" || result_rc=$?
-      record="$(jq -c --arg name "$slug" --arg path "$artifact_root" '. + {name:$name,path:$path,bindingEligible:true}' <<<"$result")"
-      targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
+      # A real finalized candidate never authorizes delivery on a PASS someone
+      # copied down from an earlier phase report or a similar-looking tree (PLAN
+      # "Final candidate observations"): the exact HEAD just finalized must carry
+      # its own fresh scenario/criterion + final-command evidence before any PR
+      # adapter call. Missing or stale, this reruns everything required; unchanged,
+      # it costs one more real run rather than trusting a byte comparison.
+      final_check_ok=1
+      final_result="$(bash "$SCRIPT_DIR/cycle-driver.sh" verification run --final-candidate "$target_sha" \
+        --feature-dir "$feature_dir" 2>&1)" || final_check_ok=0
+      if [[ "$final_check_ok" -ne 1 ]] || ! jq -e '.ok == true' <<<"$final_result" >/dev/null 2>&1; then
+        append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+          "final_candidate_unverified" "final candidate observations did not validate: $(printf '%s' "$final_result" | tail -c 500)"
+      else
+        result_rc=0
+        result="$(invoke_delivery "$artifact_root" "$branch" "$base_branch" "$target_sha" \
+          "feat: $feature_title" "$hint")" || result_rc=$?
+        record="$(jq -c --arg name "$slug" --arg path "$artifact_root" '. + {name:$name,path:$path,bindingEligible:true}' <<<"$result")"
+        targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
+      fi
     fi
   fi
 else
@@ -334,6 +348,28 @@ else
         "workspace_preflight_failed" "another workspace target failed local preflight"
     done < <(jq -c '.[]' <<<"$deliverables")
     deliverables="[]"
+  fi
+
+  # Final candidate observations, resolved for the whole reviewed workspace at once
+  # (the exact candidate SHA set PLAN names): every deliverable target's declared HEAD
+  # must carry fresh scenario/criterion + final-command evidence before any target's PR
+  # adapter call -- no workspace bypass through the single-repo finalizer's early return,
+  # and readiness stays a feature-level invariant, so one unverified target blocks all.
+  if [[ "$(jq 'length' <<<"$deliverables")" -gt 0 ]]; then
+    final_candidates_file="$tmp_dir/final-candidates.json"
+    jq -c 'reduce .[] as $d ({}; .[$d.name] = $d.sha)' <<<"$deliverables" > "$final_candidates_file"
+    final_check_ok=1
+    final_result="$(bash "$SCRIPT_DIR/cycle-driver.sh" verification run --final-candidates "$final_candidates_file" \
+      --feature-dir "$feature_dir" 2>&1)" || final_check_ok=0
+    if [[ "$final_check_ok" -ne 1 ]] || ! jq -e '.ok == true' <<<"$final_result" >/dev/null 2>&1; then
+      while IFS= read -r entry; do
+        append_target_failure "$(jq -r '.name' <<<"$entry")" "$(jq -r '.path' <<<"$entry")" \
+          "$(jq -r '.branch' <<<"$entry")" "$(jq -r '.base' <<<"$entry")" \
+          "$(jq -r '.sha' <<<"$entry")" "$(jq -r '.hint' <<<"$entry")" \
+          "final_candidate_unverified" "final candidate observations did not validate: $(printf '%s' "$final_result" | tail -c 500)"
+      done < <(jq -c '.[]' <<<"$deliverables")
+      deliverables="[]"
+    fi
   fi
 
   # Pass 2 - deliver. With two or more changed repos, stage readiness: prove every

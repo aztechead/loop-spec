@@ -138,6 +138,22 @@ Usage:
         commands.test into the Final test suite block. `next --returned-from oneshot`
         runs this before the exit gate. Prints {verification, ran:[{row, status, exit}],
         flags}. Exit 0 every row passed; 1 a row failed; 2 bad invocation.
+    cycle-driver.sh verification run --feature-dir DIR --final-candidate SHA
+    cycle-driver.sh verification run --feature-dir DIR --final-candidates PATH
+        Task-008's final-candidate observer (PLAN "Final candidate observations"):
+        finalize-delivery-candidate.sh has already finished tracked artifacts, and this
+        verifies every named root's HEAD already equals its declared SHA (refusing,
+        never checking out, otherwise), then runs every required v1 scenario or legacy
+        criterion command plus the mandatory commands.test FRESH through
+        execution_observation.observe. `--final-candidate SHA` names the one target of
+        a single-repo feature; `--final-candidates PATH` names a JSON {name: sha}
+        object, required for a workspace feature (each name a configured repo) and
+        also accepted for a single-repo feature's one target. Writes the projection
+        only under durable `observations/final/<candidate-digest>/` (record.json +
+        VERIFICATION.md) -- never onto the branch, never through the tracked
+        VERIFICATION.md. Prints the record.json object. Exit 0 every check passed
+        (including none configured); 1 a check failed or a named root is not yet at
+        its candidate SHA; 2 bad invocation.
 
     cycle-driver.sh spec approve --feature-dir DIR --source human|autonomous|supervised
         Freeze full-spec Goal and Boundary after approval; repeat calls only verify.
@@ -2217,7 +2233,18 @@ def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=No
         criteria = good_enough_criteria(spec_path or "")
         if not (feat.get("artifacts") or {}).get("plan"):
             text = re.sub(r"^\*\*Plan:\*\* .*\n", "", text, flags=re.M)
-        if criteria:
+        if contract and contract.get("format") == "v1":
+            # v1 rows are keyed by the stable GE-ID/SC-ID pair `verification run`
+            # binds from the live inventory each run, never a document-position
+            # number (PLAN "no numeric row aliases"); the numbered placeholder row
+            # and its "### Criterion 1" stub would otherwise sit unfilled forever,
+            # since nothing here writes a row keyed "1" for verification_run's v1
+            # route to find and replace.
+            text = re.sub(r"^\| 1 \| \{from SPEC\} \|.*\|\n", "", text, flags=re.M)
+            text = re.sub(
+                r"### Criterion 1\n\n```\n\{full output of verify command\}\n```\n\n\(repeat per criterion\)\n",
+                "", text)
+        elif criteria:
             text = text.replace(
                 "- criterion: GE-001 | implementation: {path}:{line} - {what it proves} | integration: {path}:{line} - {what it proves}\n",
                 "".join("- criterion: GE-%03d | implementation: {path}:{line} - {what it proves} | integration: {path}:{line} - {what it proves}\n" % (i + 1)
@@ -2250,11 +2277,22 @@ def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=No
 REQUIREMENTS_V1_GE_ROW = "- [ ] {GE-001: outcome}\n  - {SC-001: observable scenario}\n"
 
 
+VERIFICATION_V1_NOTE = (
+    "<!-- v1 requirements contract: cycle-driver.sh verification run keys each row\n"
+    "     GE-ID/SC-ID (never a document-position number) and writes its Status and Evidence\n"
+    "     from a driver-owned observation record -- see agents/verifier.md, \"v1 requirements\n"
+    "     contract\". The legacy row shape below is unchanged. -->\n\n")
+
+
 def apply_requirements_shape(text, contract):
     """Select the v1 or legacy Good Enough placeholder and frontmatter declaration in a
     freshly rendered spec skeleton. Harmless no-op against render_skeleton's own
     "GE-001" VERIFICATION-template substitution above: that block only replaces
-    `- criterion: GE-001 | ...`/`| 1 | ...` spans, which this template never contains."""
+    `- criterion: GE-001 | ...`/`| 1 | ...` spans, which this template never contains.
+    The VERIFICATION templates' own v1 note is stripped for a legacy/no-contract
+    skeleton the same way -- both templates carry the identical literal block so a
+    legacy oneshot skeleton never grows v1-only prose (tests/lib/cycle-driver.test.sh
+    pins its line count)."""
     if contract and contract.get("format") == "v1":
         declaration = "requirements_version: 1\nrequirements_owner: %s\nscenario_checks: {}\n" % (
             json.dumps(contract["owner"], sort_keys=True, separators=(",", ":")))
@@ -2263,6 +2301,7 @@ def apply_requirements_shape(text, contract):
     else:
         text = text.replace("{requirements_frontmatter}\n", "")
         text = text.replace(REQUIREMENTS_V1_GE_ROW, "")
+        text = text.replace(VERIFICATION_V1_NOTE, "")
     return text
 
 
@@ -2288,7 +2327,8 @@ def write_skeletons(feature_dir, feat, node):
         key = SKELETON_ARTIFACT_KEYS.get(os.path.basename(target))
         if key is None:
             raise Die("skeleton path is not a registered artifact: %s (graph node %s)" % (target, node.get("id")), 2)
-        publish_artifact(feature_dir, key, render_skeleton(str(template), feat, spec_path=spec).encode("utf-8"))
+        publish_artifact(feature_dir, key, render_skeleton(
+            str(template), feat, spec_path=spec, contract=feat.get("requirementsContract")).encode("utf-8"))
         written.append(target)
     return written
 
@@ -2769,12 +2809,14 @@ def author_spec(argv, target_override=None, publication_token=None):
     return 0
 
 
-def verification_lint_flags(root, target, spec):
+def verification_lint_flags(feature_dir, root, target, spec):
+    """`--feature-dir` selects each gate's v1-or-legacy row shape (its own
+    requirementsContract.format read); a legacy feature is unaffected."""
     flags = []
-    for name, args in (("artifact-lint", ["verification", target]),
-                       ("verification-grounding-lint", [target, "--repo", root, "--spec", spec]),
+    for name, args in (("artifact-lint", ["verification", target, "--feature-dir", feature_dir]),
+                       ("verification-grounding-lint", [target, "--repo", root, "--spec", spec, "--feature-dir", feature_dir]),
                        ("review-triage-lint", [target]),
-                       ("converged-floor", [spec, target])):
+                       ("converged-floor", [spec, target, "--feature-dir", feature_dir])):
         out = lib_run(name, *args, quiet=True).stdout
         flags += [line for line in out.splitlines() if line.startswith("FLAG") or line.startswith("FLOOR")]
     return flags
@@ -2797,20 +2839,25 @@ def criteria_commands(spec_path):
     return out
 
 
-def observe_command(feature_dir, root, requirement, command):
-    """Run one required command through execution_observation.observe (task-007),
-    on the legacy oneshot criteria route: no owner/revision/scenario and no
-    execution-inputs contract, so the record's environment is `unknown` but
-    `status` still comes from exit code and clean-tree identity alone (see
-    execution_observation's own LEGACY ROUTE docstring for why -- every legacy
-    fixture through the 7.x window keeps working). Returns (status, exit_code,
-    block, execution_id): `status` and `exit_code` are the record's, never
-    derived here a second time, so no caller downstream can compute a
-    different answer than the one the record holds. `block` is the display
-    tail capped at 200 lines, replacing the old unbounded subprocess.PIPE read."""
+def observe_command(feature_dir, root, requirement, command, binding=None, contract=None):
+    """Run one required command through execution_observation.observe (task-007).
+    The legacy oneshot criteria route passes no `binding`/`contract`: no
+    owner/revision/scenario and no execution-inputs contract, so the record's
+    environment is `unknown` but `status` still comes from exit code and
+    clean-tree identity alone (see execution_observation's own LEGACY ROUTE
+    docstring for why -- every legacy fixture through the 7.x window keeps
+    working). The v1 scenario_checks route (task-008) passes both: `binding`
+    names owner/requirement/revision/scenario from the live inventory and
+    `contract` is that scenario's declared execution-inputs object, so the
+    record's environment is fully checked (eligibleForV1 true). Returns
+    (status, exit_code, block, execution_id): `status` and `exit_code` are the
+    record's, never derived here a second time, so no caller downstream can
+    compute a different answer than the one the record holds. `block` is the
+    display tail capped at 200 lines, replacing the old unbounded
+    subprocess.PIPE read."""
     from execution_observation import observe as observe_execution
-    binding = {"owner": None, "requirement": requirement, "revision": None, "scenario": None}
-    record = observe_execution(feature_dir, root, binding, command, None)
+    binding = binding or {"owner": None, "requirement": requirement, "revision": None, "scenario": None}
+    record = observe_execution(feature_dir, root, binding, command, contract)
     lines = (record.get("displayTail") or "").rstrip("\n").splitlines()
     if len(lines) > 200:
         lines = lines[:200] + ["... (%d more lines)" % (len(lines) - 200)]
@@ -2819,11 +2866,156 @@ def observe_command(feature_dir, root, requirement, command):
     return record["status"], exit_code, block, record["executionId"]
 
 
+def spec_scenario_checks(spec_text):
+    """The frontmatter `scenario_checks` map of a v1 spec, {GE-ID/SC-ID: {command,
+    executionInputs}} -- the same single-line JSON fill_requirement/normalize_v1_draft
+    write and lib/requirements.py's parse_spec validates. verification_run's v1 route
+    reads it here (not from parse_spec's return value: the inventory is deliberately
+    just requirements/scenarios/obligations, PLAN "Component structure") to bind each
+    scenario's command and input contract by stable identity, never document position."""
+    from requirements import unique_object
+    match = re.search(r"^scenario_checks: *(.*)$", spec_text, re.M)
+    if not match:
+        return {}
+    return json.loads(match.group(1), object_pairs_hook=unique_object)
+
+
 def _exit_label(exit_code):
     return str(exit_code) if exit_code is not None else "killed"
 
 
 def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests):
+    """Observe, never assert (task-007/task-008): dispatch to the v1 or legacy route by
+    the feature's requirementsContract. Both write the record's status as the row's
+    status, the command/exit/execution ID as its evidence, and the record's display
+    tail as its block -- the lead supplies no status (port audit 4, items 2, 4), so a
+    hand-edited or CLI-supplied PASS has nothing here to land in. Returns the rows
+    written."""
+    contract = feat.get("requirementsContract")
+    if contract and contract.get("format") == "v1":
+        return verification_run_v1(feature_dir, feat, target, spec, contract, only_row, with_tests)
+    return verification_run_legacy(feature_dir, feat, docs, target, spec, only_row, with_tests)
+
+
+def _write_verification_row(text, target, row_key, heading_key, criterion_text, status, evidence, block):
+    """Insert or replace one `## Acceptance criteria` row (keyed `row_key`: a legacy
+    `GE-NNN` or a v1 `GE-ID/SC-ID` pair) and its `### Criterion <heading_key>` output
+    block. The two keys differ on the legacy route -- its skeleton numbers sections by
+    document position (`Criterion 1`) while the row itself already carries the
+    criterion's `GE-NNN` label -- and are the same value on the v1 route. Shared by
+    verification_run_v1 and verification_run_legacy so this table/section insertion
+    shape (an existing key replaces in place; a new one joins the table after its last
+    row, port audit 5, R1) exists once."""
+    cell = re.compile(r"^\| %s \| .* \|$" % re.escape(row_key), re.M)
+    row_text = "| %s | %s | %s | %s |" % (row_key, criterion_text.replace("|", "\\|"), status, evidence)
+    if cell.search(text):
+        text = cell.sub(lambda mm: row_text, text, count=1)
+    else:
+        # A criterion added after the skeleton: the driver owns the shape, so the row
+        # joins the table (after its last row) rather than failing the run.
+        table = section_span(text, "Acceptance criteria")
+        if table is None:
+            raise Die("verification run: %s has no ## Acceptance criteria section" % target)
+        rows_end = table[0]
+        for mm in re.finditer(r"^\|.*\|$", text[table[0]:table[1]], flags=re.M):
+            rows_end = table[0] + mm.end()
+        text = text[:rows_end] + "\n" + row_text + text[rows_end:]
+    heading = "Criterion %s" % heading_key
+    span = section_span(text, heading)
+    if span is not None:
+        return text[:span[0]] + "\n```\n" + block + "\n```\n\n" + text[span[1]:]
+    anchor = text.find("\n## Code review")
+    if anchor < 0:
+        raise Die("verification run: %s has no ## Code review section to place ### %s before" % (target, heading), 2)
+    return text[:anchor] + "\n### %s\n\n```\n%s\n```\n" % (heading, block) + text[anchor:]
+
+
+def _write_final_test_suite(feature_dir, feat, root, target, text, observed=None):
+    """Write the `## Final test suite` block and its row entry, shared by both routes.
+    `observed` is the legacy route's {command: (label, status, code, block,
+    executionId)} dedup cache; the v1 route passes None because a shared execution
+    would bind only one requirement/scenario (see verification_run_v1's own comment on
+    why it never dedups). Returns (text, entry)."""
+    test_cmd = ((feat.get("commands") or {}).get("test") or "").strip()
+    span = section_span(text, "Final test suite")
+    if span is None:
+        raise Die("verification run: %s has no ## Final test suite section" % target)
+    if test_cmd:
+        if observed is not None and test_cmd in observed:
+            source, status, code, _, execution_id = observed[test_cmd]
+            block = "Same command and result as %s (exit %s)." % (source, _exit_label(code))
+        else:
+            binding = {"owner": None, "requirement": "tests", "revision": None, "scenario": None}
+            status, code, out_block, execution_id = observe_command(feature_dir, root, "tests", test_cmd, binding=binding)
+            block = "$ %s\n%s\n(exit %s) (execution:%s)" % (test_cmd, out_block, _exit_label(code), execution_id)
+        entry = {"row": "tests", "status": status, "exit": code, "execution": execution_id}
+    else:
+        block = "(no commands.test is configured for this feature)"
+        entry = {"row": "tests", "status": "N/A", "exit": None, "execution": None}
+    return text[:span[0]] + "\n```\n" + block + "\n```\n" + text[span[1]:], entry
+
+
+def verification_run_v1(feature_dir, feat, target, spec, contract, only_row, with_tests):
+    """v1 sibling of verification_run_legacy: rows are keyed by the stable GE-ID/SC-ID
+    pair scenario_checks names, bound from lib/requirements.py's live inventory every
+    run -- never a document-order number a SPEC reorder would reattach to the wrong
+    scenario (PLAN task-008 AC3: "rows are keyed by stable identity, never by
+    position"). Same publish-once contract as the legacy route; only row identity and
+    binding differ."""
+    from requirements import parse_spec
+    root = feature_root(feature_dir, feat)
+    text = open(target, encoding="utf-8").read()
+    spec_text = open(spec, encoding="utf-8").read()
+    inventory = parse_spec(spec_text, spec, contract)
+    checks = spec_scenario_checks(spec_text)
+    written = []
+    for requirement in inventory["requirements"]:
+        for scenario in requirement["scenarios"]:
+            key = "%s/%s" % (requirement["id"], scenario["id"])
+            if only_row and key != only_row:
+                continue
+            entry = checks.get(key)
+            binding = {"owner": contract["owner"], "requirement": requirement["id"],
+                       "revision": requirement["revision"], "scenario": scenario["id"]}
+            if entry is None:
+                # A scenario the driver never bound a command for: a FAIL the row
+                # says out loud, the v1 sibling of the legacy "no command on
+                # record" row below (port audit 5, R1).
+                status, code, execution_id = "FAIL", 1, None
+                block = "(no command on record for %s: scenario_checks has no entry for this scenario)" % key
+                evidence = "no command on record: `spec fill --row %s --scenario %s ...` writes scenario_checks[%s]" % (
+                    requirement["id"], scenario["id"], key)
+            else:
+                # Never dedup by (command, executionInputs) across scenarios the way the
+                # legacy route does: a shared record would bind only ONE requirement/
+                # scenario, so every OTHER scenario's row would cite an execution ID
+                # whose record names a different binding -- exactly the "row names an
+                # execution id" mismatch verification-grounding-lint exists to catch.
+                # PLAN's "duplicate commands may share a single execution" allowance
+                # requires the record to "explicitly list every covered scenario",
+                # which execution_observation's schema-1 record (task-007) does not
+                # yet do; until it does, each scenario gets its own fresh observation.
+                command = entry.get("command") or ""
+                inputs_contract = entry.get("executionInputs")
+                status, code, block, execution_id = observe_command(feature_dir, root, requirement["id"],
+                                                                     command, binding=binding, contract=inputs_contract)
+                evidence = "owner=%s/%s revision=%s scenario=%s `%s` -> exit %s (execution:%s)" % (
+                    contract["owner"]["repository"], contract["owner"]["feature"], requirement["revision"],
+                    scenario["id"], command.replace("|", "\\|"), _exit_label(code), execution_id)
+            text = _write_verification_row(text, target, key, key, scenario["text"] or requirement["text"],
+                                            status, evidence, block)
+            with open(target, "w", encoding="utf-8") as fh:
+                fh.write(text)
+            written.append({"row": key, "status": status, "exit": code, "execution": execution_id})
+    if with_tests:
+        text, entry = _write_final_test_suite(feature_dir, feat, root, target, text)
+        written.append(entry)
+    with open(target, "w", encoding="utf-8") as fh:
+        fh.write(compact_artifact(text))
+    return written
+
+
+def verification_run_legacy(feature_dir, feat, docs, target, spec, only_row, with_tests):
     """Observe, never assert: run each Good Enough criterion's command (the first
     backticked span of its line) through execution_observation.observe (task-007) and
     write the record's status as the row's status, the command/exit/execution ID as
@@ -2847,10 +3039,10 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
         if command:
             if command in observed:
                 source, status, code, _, execution_id = observed[command]
-                block = "Same command and result as Criterion %d (exit %s)." % (source, _exit_label(code))
+                block = "Same command and result as %s (exit %s)." % (source, _exit_label(code))
             else:
                 status, code, block, execution_id = observe_command(feature_dir, root, row, command)
-                observed[command] = (i + 1, status, code, block, execution_id)
+                observed[command] = ("Criterion %d" % (i + 1), status, code, block, execution_id)
             evidence = "`%s` -> exit %s (execution:%s)" % (command.replace("|", "\\|"), _exit_label(code), execution_id)
         else:
             # A criterion the driver never wrote has no command on record: a FAIL the
@@ -2858,51 +3050,251 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
             status, code = "FAIL", 1
             block = "(no command on record for this criterion: the frontmatter criteria map has no %s)" % row
             evidence = "no command on record: `spec fill --command --expect --row %s` writes one" % row
-        cell = re.compile(r"^\| %s \| .* \|$" % re.escape(row), re.M)
-        row_text = "| %s | %s | %s | %s |" % (row, criterion.replace("|", "\\|"), status, evidence)
-        if cell.search(text):
-            text = cell.sub(lambda mm: row_text, text, count=1)
-        else:
-            # A criterion added after the skeleton: the driver owns the shape, so the
-            # row joins the table (after its last row) rather than failing the run.
-            table = section_span(text, "Acceptance criteria")
-            if table is None:
-                raise Die("verification run: %s has no ## Acceptance criteria section" % target)
-            rows_end = table[0]
-            for mm in re.finditer(r"^\|.*\|$", text[table[0]:table[1]], flags=re.M):
-                rows_end = table[0] + mm.end()
-            text = text[:rows_end] + "\n" + row_text + text[rows_end:]
-        span = section_span(text, "Criterion %d" % (i + 1))
-        if span is not None:
-            text = text[:span[0]] + "\n```\n" + block + "\n```\n\n" + text[span[1]:]
-        else:
-            anchor = text.find("\n## Code review")
-            if anchor < 0:
-                raise Die("verification run: %s has no ## Code review section to place ### Criterion %d before" % (target, i + 1))
-            text = text[:anchor] + "\n### Criterion %d\n\n```\n%s\n```\n" % (i + 1, block) + text[anchor:]
+        text = _write_verification_row(text, target, row, str(i + 1), criterion, status, evidence, block)
         with open(target, "w", encoding="utf-8") as fh:
             fh.write(text)
         written.append({"row": row, "status": status, "exit": code, "execution": execution_id})
     if with_tests:
-        test_cmd = ((feat.get("commands") or {}).get("test") or "").strip()
-        span = section_span(text, "Final test suite")
-        if span is None:
-            raise Die("verification run: %s has no ## Final test suite section" % target)
-        if test_cmd:
-            if test_cmd in observed:
-                source, status, code, _, execution_id = observed[test_cmd]
-                block = "Same command and result as Criterion %d (exit %s)." % (source, _exit_label(code))
-            else:
-                status, code, out_block, execution_id = observe_command(feature_dir, root, "tests", test_cmd)
-                block = "$ %s\n%s\n(exit %s) (execution:%s)" % (test_cmd, out_block, _exit_label(code), execution_id)
-            written.append({"row": "tests", "status": status, "exit": code, "execution": execution_id})
-        else:
-            block = "(no commands.test is configured for this feature)"
-            written.append({"row": "tests", "status": "N/A", "exit": None, "execution": None})
-        text = text[:span[0]] + "\n```\n" + block + "\n```\n" + text[span[1]:]
+        text, entry = _write_final_test_suite(feature_dir, feat, root, target, text, observed=observed)
+        written.append(entry)
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(compact_artifact(text))
     return written
+
+
+def scenario_checks_map(spec_path):
+    """The frontmatter `scenario_checks:` map of a v1 spec, {GE-ID/SC-ID: {command,
+    executionInputs}} -- the same regex shape as `criteria_commands` above, for the
+    one other frontmatter map `spec fill` ever writes (`fill_requirement`)."""
+    if not os.path.isfile(spec_path):
+        return {}
+    fm = re.match(r"^---\n(.*?)^---\n", open(spec_path, encoding="utf-8", errors="replace").read(), flags=re.M | re.S)
+    if not fm:
+        return {}
+    match = re.search(r"^scenario_checks: *(.*)$", fm.group(1), flags=re.M)
+    if not match:
+        return {}
+    try:
+        return json.loads(match.group(1))
+    except ValueError:
+        return {}
+
+
+def final_candidate_checks(feat, spec_path, ws, shas):
+    """The bindings the final-candidate observer must run fresh: one per active v1
+    requirement/scenario (from `scenario_checks_map`, owner+revision bound in) when the
+    feature's requirementsContract is v1, else the same legacy GE-NNN `criteria:` map
+    `verification_run` has always read. Either way, append one mandatory `commands.test`
+    binding per bound target -- but only when a command is actually configured: an
+    unconfigured test command is `N/A` here exactly as it is in `verification_run`
+    (PLAN task-008 AC3 keeps every legacy fixture with no commands.test passing
+    unchanged). Returns [(binding, command|None, executionInputs|None, target_name)];
+    `command is None` for a v1 scenario with no scenario_checks entry is a real gap
+    (a declared requirement nobody bound a check to) and is left in as a FAIL row,
+    the same "no command on record" shape verification_run already gives a legacy
+    criterion with no command."""
+    contract = feat.get("requirementsContract")
+    default_target = next(iter(shas))
+    checks = []
+    owner = None
+    if contract and contract.get("format") == "v1":
+        from requirements import parse_spec
+        inventory = parse_spec(open(spec_path, encoding="utf-8").read(), spec_path, contract)
+        declared = scenario_checks_map(spec_path)
+        owner = inventory["owner"]
+        for requirement in inventory["requirements"]:
+            for scenario in requirement["scenarios"]:
+                entry = declared.get(requirement["id"] + "/" + scenario["id"])
+                binding = {"owner": owner, "requirement": requirement["id"],
+                           "revision": requirement["revision"], "scenario": scenario["id"]}
+                checks.append((binding, entry.get("command") if entry else None,
+                               entry.get("executionInputs") if entry else None, default_target))
+    else:
+        criteria = good_enough_criteria(spec_path)
+        commands = criteria_commands(spec_path)
+        for i in range(len(criteria)):
+            row = "GE-%03d" % (i + 1)
+            binding = {"owner": None, "requirement": row, "revision": None, "scenario": None}
+            checks.append((binding, commands.get(row), None, default_target))
+    if ws:
+        for repo in (ws.get("repos") or []):
+            name = repo.get("name")
+            if name not in shas:
+                continue
+            test_command = ((repo.get("commands") or {}).get("test") or "").strip()
+            if test_command:
+                binding = {"owner": owner, "requirement": "tests:%s" % name, "revision": None, "scenario": None}
+                checks.append((binding, test_command, None, name))
+    else:
+        test_command = ((feat.get("commands") or {}).get("test") or "").strip()
+        if test_command:
+            binding = {"owner": owner, "requirement": "tests", "revision": None, "scenario": None}
+            checks.append((binding, test_command, None, default_target))
+    return checks
+
+
+def final_candidate_docs(feature_dir, feat, root):
+    """The tracked SPEC.md/PLAN.md bytes the final candidate binds, resolved from the
+    working tree normally or -- when artifact-sink mode already removed the docs from
+    it -- from the sink's preserved manifest copy, digest-validated against the store
+    first (PLAN "validate that store before running"). Returns (spec_bytes, plan_bytes,
+    source) where source names where they came from, for the record's own honesty."""
+    docs = docs_dir(feature_dir, feat)
+    spec_path, plan_path = os.path.join(docs, "SPEC.md"), os.path.join(docs, "PLAN.md")
+    sink = feat.get("artifactSink")
+    if not (sink and sink.get("mode") == "store"):
+        if not os.path.isfile(spec_path):
+            # No requirementsContract and no Good Enough section either: a feature
+            # this minimal (an older/plumbing-only fixture) has nothing for
+            # final_candidate_checks to bind, and that is a real, honest "nothing
+            # required" -- not a reason to refuse the whole final candidate.
+            return b"", b"", "absent"
+        spec_bytes = open(spec_path, "rb").read()
+        plan_bytes = open(plan_path, "rb").read() if os.path.isfile(plan_path) else b""
+        return spec_bytes, plan_bytes, "tree"
+    if not sink.get("manifest"):
+        raise Die("verification run --final-candidate: artifact sink mode declared with no manifest recorded", 2)
+    from artifact_sink import layout as sink_layout
+    _, _, sink_root, _, _, _, _ = sink_layout(feature_dir, root, os.environ.get("LOOP_SPEC_ARTIFACT_DIR"))
+    destination = os.path.join(sink_root, os.path.dirname(sink["manifest"]))
+    manifest_path = os.path.join(destination, "manifest.json")
+    if not os.path.isfile(manifest_path):
+        raise Die("verification run --final-candidate: artifact sink manifest missing at %s" % manifest_path, 2)
+    manifest = json.loads(open(manifest_path, encoding="utf-8").read())
+    for name, expected in (manifest.get("files") or {}).items():
+        path = os.path.join(destination, name)
+        if not os.path.isfile(path):
+            raise Die("verification run --final-candidate: artifact sink store is missing %s" % name, 2)
+        if hashlib.sha256(open(path, "rb").read()).hexdigest() != expected:
+            raise Die("verification run --final-candidate: artifact sink file changed since storage: %s" % name, 1)
+    if "artifacts/SPEC.md" not in (manifest.get("files") or {}):
+        raise Die("verification run --final-candidate: artifact sink manifest has no SPEC.md", 2)
+    spec_bytes = open(os.path.join(destination, "artifacts/SPEC.md"), "rb").read()
+    plan_bytes = (open(os.path.join(destination, "artifacts/PLAN.md"), "rb").read()
+                  if "artifacts/PLAN.md" in manifest["files"] else b"")
+    return spec_bytes, plan_bytes, "sink:" + sink["manifest"]
+
+
+def render_final_projection(candidate, shas, rows):
+    """The durable observations/final/<digest>/VERIFICATION.md projection: a plain
+    record of what the final candidate observer ran, never the tracked VERIFICATION.md
+    (PLAN: "do not rewrite it after the final candidate is formed")."""
+    lines = ["# Final candidate verification\n", "\n",
+             "Candidate: `%s`\n" % candidate, "\n",
+             "| Target | SHA |", "| --- | --- |"]
+    for name, sha in sorted(shas.items()):
+        lines.append("| %s | `%s` |" % (name, sha))
+    lines += ["", "| Requirement | Scenario | Status | Evidence |", "| --- | --- | --- | --- |"]
+    for row in rows:
+        lines.append("| %s | %s | %s | %s |" % (
+            row["requirement"], row["scenario"] or "-", row["status"], row["evidence"]))
+    return "\n".join(lines) + "\n"
+
+
+def cmd_verification_final(o):
+    """`verification run --final-candidate SHA` (single repo) or `--final-candidates
+    PATH` ({name: sha} JSON, workspace or single) -- task-008's final-candidate
+    observer (PLAN "Final candidate observations"). Verifies every named root is
+    already at its declared SHA (never checks out), runs every required v1 scenario
+    or legacy criterion command plus the mandatory commands.test fresh through
+    execution_observation.observe, and writes the projection only under durable
+    `observations/final/<candidate-digest>/` -- never onto the branch, never through
+    publication_participant (these files are driver-owned runtime state, the same
+    home as `observations/<id>.json` itself, so no CAS token is needed to write them).
+    Always executes fresh: a newly selected candidate (or a retry of the same one)
+    gets its own real run every time, never a cached reuse -- the laziness ladder
+    stops here because nothing in this task's acceptance criteria asks for one, and
+    a hand-rolled staleness cache is exactly the kind of speculative extraction
+    CLAUDE.md's "seams, not speculation" warns against."""
+    feature_dir = o.get("feature_dir") or ""
+    if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
+        usage()
+    feature_dir = os.path.realpath(feature_dir)
+    feat = state(feature_dir)
+    ws = workspace_of(feat)
+    single_sha, candidates_path = o.get("final_candidate"), o.get("final_candidates")
+    if bool(single_sha) == bool(candidates_path):
+        raise Die("verification run needs exactly one of --final-candidate SHA or --final-candidates PATH", 2)
+    if single_sha:
+        if ws is not None:
+            raise Die("verification run --final-candidate is single-repo only; a workspace feature names each target with --final-candidates", 2)
+        shas = {feat.get("slug") or "root": single_sha}
+    else:
+        try:
+            shas = json.loads(open(candidates_path, encoding="utf-8").read())
+        except (OSError, ValueError) as exc:
+            raise Die("verification run --final-candidates %s: %s" % (candidates_path, exc), 2)
+        if not isinstance(shas, dict) or not shas or not all(isinstance(v, str) and v for v in shas.values()):
+            raise Die("verification run --final-candidates %s must hold a non-empty {name: sha} object" % candidates_path, 2)
+        if ws is None and len(shas) != 1:
+            raise Die("verification run --final-candidates: a single-repo feature has exactly one target", 2)
+
+    root = feature_root(feature_dir, feat)
+    roots = {}
+    for name in shas:
+        if ws is None:
+            roots[name] = root
+            continue
+        repo = next((r for r in (ws.get("repos") or []) if r.get("name") == name), None)
+        if repo is None:
+            raise Die("verification run --final-candidates: unknown workspace target '%s'" % name, 2)
+        roots[name] = os.path.join(ws["root"], repo["path"])
+    for name, sha in shas.items():
+        actual = run(["git", "-C", roots[name], "rev-parse", "HEAD"], quiet=True).stdout
+        if actual != sha:
+            raise Die("verification run: %s HEAD is %s, not the candidate %s -- no checkout performed" % (
+                name, actual or "unknown", sha), 1)
+
+    spec_bytes, plan_bytes, docs_source = final_candidate_docs(feature_dir, feat, root)
+    spec_read_path = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
+    tmp_spec = None
+    if not os.path.isfile(spec_read_path):
+        import tempfile
+        fd, tmp_spec = tempfile.mkstemp(prefix="loop-spec-final-spec-", suffix=".md")
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(spec_bytes)
+        spec_read_path = tmp_spec
+    try:
+        checks = final_candidate_checks(feat, spec_read_path, ws, shas)
+    finally:
+        if tmp_spec:
+            os.unlink(tmp_spec)
+
+    from execution_observation import observe as observe_execution
+    publication = feat.get("artifactPublication") or {}
+    executions, rows, ok = [], [], True
+    for binding, command, contract, target_name in checks:
+        if not command:
+            ok = False
+            rows.append({"requirement": binding["requirement"], "scenario": binding.get("scenario"),
+                         "status": "FAIL", "evidence": "no command on record for this scenario/criterion"})
+            continue
+        record = observe_execution(feature_dir, roots[target_name], binding, command, contract)
+        executions.append(record["executionId"])
+        if record["status"] != "PASS":
+            ok = False
+        rows.append({"requirement": binding["requirement"], "scenario": binding.get("scenario"),
+                     "status": record["status"],
+                     "evidence": "`%s` -> exit %s (execution:%s)" % (
+                         command.replace("|", "\\|"), record["exitCode"], record["executionId"])})
+
+    candidate = hashlib.sha256(json.dumps(sorted(shas.items()), separators=(",", ":")).encode("utf-8")).hexdigest()
+    final_dir = Path(feature_dir) / "observations" / "final" / candidate
+    record_doc = {
+        "schema": 1, "candidate": candidate, "shas": shas, "executions": executions,
+        "authoritativeHashes": {"spec": hashlib.sha256(spec_bytes).hexdigest() if spec_bytes else None,
+                                 "plan": hashlib.sha256(plan_bytes).hexdigest() if plan_bytes else None,
+                                 "source": docs_source},
+        "evidenceEpoch": publication.get("evidenceEpoch", 0),
+        "generationAtCapture": publication.get("generation", 0),
+        "createdAt": now(), "ok": ok,
+    }
+    from feature_write import publish
+    final_dir.mkdir(parents=True, exist_ok=True)
+    publish(final_dir / "record.json", (json.dumps(record_doc, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8"))
+    publish(final_dir / "VERIFICATION.md", render_final_projection(candidate, shas, rows).encode("utf-8"))
+    print(json.dumps(record_doc, sort_keys=True, ensure_ascii=False))
+    return 0 if ok else 1
 
 
 FINDING_RE = re.compile(r"^\s*[-*]\s+(\S+:\d+)\s*(?:—|--|-|:)\s*(.+?)\s*$")
@@ -2975,7 +3367,7 @@ def cmd_verification(argv):
             print(json.dumps({"verification": real_target, "report": report, "reviewerVerdict": verdict or None,
                               "findings": findings,
                               "routingInstructions": str(Path(instruction_record(feature_dir, feat.get("currentPhase") or "oneshot")["manifest"]).parent / "skills/shared/review-routing.md") if findings else None,
-                              "flags": verification_lint_flags(root, target, spec)}))
+                              "flags": verification_lint_flags(feature_dir, root, target, spec)}))
             return 0
         finding, verdict, reason = o.get("finding") or "", o.get("verdict") or "", (o.get("reason") or "").strip()
         if verdict not in ("true", "false") or not finding or not reason:
@@ -2997,10 +3389,14 @@ def cmd_verification(argv):
             fh.write(text)
         publish_artifact(feature_dir, "verification", Path(target).read_bytes())
         print(json.dumps({"verification": real_target, "finding": finding, "verdict": verdict,
-                          "flags": verification_lint_flags(root, target, spec)}))
+                          "flags": verification_lint_flags(feature_dir, root, target, spec)}))
         return 0
     if argv[0] == "run":
-        o = parse_pairs(argv[1:], ("--feature-dir", "--row"))
+        o = parse_pairs(argv[1:], ("--feature-dir", "--row", "--final-candidate", "--final-candidates"))
+        if o.get("final_candidate") or o.get("final_candidates"):
+            if o.get("row"):
+                raise Die("verification run --final-candidate(s) does not take --row", 2)
+            return cmd_verification_final(o)
         feature_dir, feat, docs, target, spec, root, real_target = verification_paths(o, "run")
         try:
             # verification_run writes the staged copy after every criterion, never the
@@ -3009,7 +3405,7 @@ def cmd_verification(argv):
             rows = verification_run(feature_dir, feat, docs, target, spec, o.get("row"), not o.get("row"))
         finally:
             publish_artifact(feature_dir, "verification", Path(target).read_bytes())
-        print(json.dumps({"verification": real_target, "ran": rows, "flags": verification_lint_flags(root, target, spec)}))
+        print(json.dumps({"verification": real_target, "ran": rows, "flags": verification_lint_flags(feature_dir, root, target, spec)}))
         return 0 if all(r["status"] != "FAIL" for r in rows) else 1
     o = parse_pairs(argv[1:], ("--feature-dir", "--row", "--implementation", "--proof", "--integration",
                                "--integration-proof"))
@@ -3039,7 +3435,7 @@ def cmd_verification(argv):
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(text)
     publish_artifact(feature_dir, "verification", Path(target).read_bytes())
-    print(json.dumps({"verification": real_target, "filled": filled, "flags": verification_lint_flags(root, target, spec)}))
+    print(json.dumps({"verification": real_target, "filled": filled, "flags": verification_lint_flags(feature_dir, root, target, spec)}))
     return 0
 
 

@@ -203,7 +203,15 @@ LEGACY_WT="$WORK/legacy-worktree"
 git -C "$LEGACY_CONTROL" worktree add -q -b legacy-feature "$LEGACY_WT"
 LEGACY_FEAT="$LEGACY_WT/.loop-spec/features/legacy"
 mkdir -p "$LEGACY_FEAT"
-printf '%s\n' "$(jq 'del(.resultRoot) | .slug = "legacy"' <<<"$FIXTURE_FJ")" > "$LEGACY_FEAT/feature.json"
+LEGACY_HEAD="$(git -C "$LEGACY_WT" rev-parse HEAD)"
+# The final-candidate gate resolves feature_dir's real git HEAD, so a fixture's
+# claimed delivery targetSha must be a real reachable SHA here, not the shared
+# FIXTURE_FJ's placeholder "abc" -- see also case AD's shim, which returns the
+# real SHA it was invoked with for the same reason.
+printf '%s\n' "$(jq --arg sha "$LEGACY_HEAD" \
+  'del(.resultRoot) | .slug = "legacy" | .delivery.targets[0].targetSha = $sha
+   | .delivery.targets[0].remoteSha = $sha | .delivery.targets[0].headSha = $sha' \
+  <<<"$FIXTURE_FJ")" > "$LEGACY_FEAT/feature.json"
 bash "$LIB" write "$LEGACY_FEAT" --status completed --summary "Legacy worktree delivery completed." >/dev/null 2>&1
 check "N2: legacy worktree finds control pointer" "1" \
   "$([[ -f "$LEGACY_CONTROL/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
@@ -989,9 +997,19 @@ url="${FAKE_OBSERVE_PR_URL:-https://github.com/test/repo/pull/40}"
 code="${FAKE_OBSERVE_ERROR:-}"
 ok=true
 [[ -z "$code" ]] || ok=false
-jq -cn --argjson ok "$ok" --arg outcome "$outcome" --arg url "$url" --arg code "$code" \
+sha=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --sha) sha="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+# delivery-reconcile.sh always passes the real current HEAD here; echoing it back
+# (rather than a fabricated SHA) keeps the resulting delivery.json a real, checkable
+# candidate binding for cycle-result.sh's own final-candidate gate downstream.
+jq -cn --argjson ok "$ok" --arg outcome "$outcome" --arg url "$url" --arg code "$code" --arg sha "$sha" \
   '{schema:1,ok:$ok,mode:"observe",outcome:$outcome,prUrl:$url,prNumber:40,
-    isDraft:($outcome == "delivered-draft"),targetSha:"abc",remoteSha:"abc",headSha:"abc",
+    isDraft:($outcome == "delivered-draft"),targetSha:$sha,remoteSha:$sha,headSha:$sha,
     checks:{status:"passed",required:[]},errorCode:(if $code == "" then null else $code end),
     error:null}'
 [[ -z "$code" ]] || exit 1

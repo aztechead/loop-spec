@@ -380,6 +380,7 @@ run_suite "lib/pr-delivery"           "bash tests/lib/pr-delivery.test.sh" integ
 run_suite "lib/delivery-reconcile"    "bash tests/lib/delivery-reconcile.test.sh"
 run_suite "lib/bash-helper-scope"     "bash tests/lib/bash-helper-scope.test.sh"
 run_suite "lib/deliver"               "bash tests/lib/deliver.test.sh" integration
+run_suite "lib/final-candidate-observations" "bash tests/lib/final-candidate-observations.test.sh"
 run_suite "lib/status"                "bash tests/lib/status.test.sh"
 run_suite "lib/pr-comments"           "bash tests/lib/pr-comments.test.sh"
 run_suite "lib/pr-feedback"           "bash tests/lib/pr-feedback.test.sh"

@@ -15,7 +15,7 @@
 #   artifact-lint.sh spec         <SPEC.md path | -> [--feature-dir DIR]
 #   artifact-lint.sh plan         <PLAN.md path | -> [--feature-dir DIR]
 #   artifact-lint.sh patterns     <PATTERNS.md path | ->
-#   artifact-lint.sh verification <VERIFICATION.md path | ->
+#   artifact-lint.sh verification <VERIFICATION.md path | -> [--feature-dir DIR]
 #   artifact-lint.sh tasks        <tasks JSON path | -> [--feature-dir DIR]
 #   artifact-lint.sh json         <path> [<path>...]
 #
@@ -24,7 +24,11 @@
 # must carry a Requirements or Obligations reference (structural shape only --
 # whether the reference resolves against the live SPEC inventory is
 # lib/criteria-coverage.sh's job, run from lib/plan-exit-gate.sh). Without it, or
-# under "legacy", those fields are optional and only checked when present.
+# under "legacy", those fields are optional and only checked when present. For
+# `verification`, --feature-dir selects the row-key grammar only: under "v1" an
+# Acceptance criteria row keyed by a bare number is flagged (task-008 "no numeric
+# row aliases"); whether the key resolves to a live scenario is
+# lib/verification-grounding-lint.sh's job.
 #
 # Output: one `FLAG <path>:<line>: <message>` per structural defect, then a final
 # one-line answer with the reason: `artifact-lint: ok (<type>: <path>)` or
@@ -41,14 +45,14 @@ set -uo pipefail
 
 type="${1:-}"
 case "$type" in
-  spec|plan|tasks) [[ $# -eq 2 || ( $# -eq 4 && "$3" == "--feature-dir" ) ]] || { echo "usage: artifact-lint.sh $type <path|-> [--feature-dir DIR]" >&2; exit 2; } ;;
-  patterns|verification) [[ $# -eq 2 ]] || { echo "usage: artifact-lint.sh $type <path|->" >&2; exit 2; } ;;
+  spec|plan|tasks|verification) [[ $# -eq 2 || ( $# -eq 4 && "$3" == "--feature-dir" ) ]] || { echo "usage: artifact-lint.sh $type <path|-> [--feature-dir DIR]" >&2; exit 2; } ;;
+  patterns) [[ $# -eq 2 ]] || { echo "usage: artifact-lint.sh $type <path|->" >&2; exit 2; } ;;
   json) [[ $# -ge 2 ]] || { echo "usage: artifact-lint.sh json <path> [<path>...]" >&2; exit 2; } ;;
   *) echo "usage: artifact-lint.sh <spec|plan|patterns|verification|tasks|json> <path> [...]" >&2; exit 2 ;;
 esac
 shift
 feature_dir=""
-if [[ ( "$type" == spec || "$type" == plan || "$type" == tasks ) && $# -eq 3 ]]; then
+if [[ ( "$type" == spec || "$type" == plan || "$type" == tasks || "$type" == verification ) && $# -eq 3 ]]; then
   feature_dir="$3"
   set -- "$1"
 fi
@@ -495,6 +499,7 @@ def lint_verification(display, data):
     lines, mask = markdown_scan(display, data, allow_frontmatter=False)
     if lines is None:
         return
+    v1 = contract_format() == 'v1'
     require_heading(display, lines, mask, '## Repository grounding')
     ac = require_heading(display, lines, mask, '## Acceptance criteria')
     if ac is not None:
@@ -514,6 +519,14 @@ def lint_verification(display, data):
                 if len(cells) >= 3 and cells[0] not in ('#', '') and not set(cells[0]) <= set('-') and cells[2] == '':
                     flag(display, no, "acceptance row %s has an empty Status cell — the driver's "
                          "`verification run` fills it from the command's exit; nobody writes a status by hand" % cells[0])
+                if v1 and len(cells) >= 3 and cells[0] not in ('#', '') and not set(cells[0]) <= set('-') and re.fullmatch(r'[0-9]+', cells[0]):
+                    # A v1 row is keyed GE-ID/SC-ID, bound from the live inventory by
+                    # verification_run; a bare number is the document-position alias
+                    # this contract does not accept (task-008, PLAN "no numeric row
+                    # aliases are accepted in v1"). Whether a GE-ID/SC-ID key actually
+                    # resolves to a live scenario is verification-grounding-lint.sh's job.
+                    flag(display, no, "acceptance row %s is a numeric alias; a v1 contract keys "
+                         "rows GE-ID/SC-ID, never a document-position number" % cells[0])
         if not has_row:
             flag(display, ac, "'## Acceptance criteria' has no table rows — the iterate "
                  'judge and regression-scan read this table')

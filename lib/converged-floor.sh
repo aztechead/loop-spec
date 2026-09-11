@@ -39,13 +39,169 @@
 set -uo pipefail
 
 shape=0
-[[ "${1:-}" == "--shape" ]] && { shape=1; shift; }
+feature_dir=""
+args=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --shape) shape=1; shift ;;
+    --feature-dir) feature_dir="${2:-}"; shift 2 ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+set -- "${args[@]+"${args[@]}"}"
 spec_path="${1:-}"
 verification_path="${2:-}"
 [[ -n "$spec_path" && -n "$verification_path" ]] || {
-  echo "usage: converged-floor.sh [--shape] <spec-path> <verification-path>" >&2
+  echo "usage: converged-floor.sh [--shape] [--feature-dir <dir>] <spec-path> <verification-path>" >&2
   exit 2
 }
+
+# A v1 feature (feature.json's requirementsContract.format) never falls back to the
+# legacy positional-numbering floor below: v1 rows are keyed by stable GE-ID/SC-ID and
+# (outside --shape) must resolve to a fresh, eligible driver-owned observation record
+# through the same validator verification-grounding-lint.sh uses (task-008 AC2).
+# simplicity: this format-probe/PYTHONPATH opening repeats
+# lib/verification-grounding-lint.sh's own v1 branch; a third caller would earn a
+# shared helper, but neither script's file-ownership entry in
+# docs/loop-spec/features/release-7-0/PLAN.md (task-008) lists a home for one, and
+# extraction is not worth a new file for two five-line openings (duplication-scan).
+if [[ -n "$feature_dir" ]]; then
+  format="$(bash "$(dirname "${BASH_SOURCE[0]}")/feature-read.sh" "$feature_dir" -r --filter '.requirementsContract.format // "legacy"' 2>/dev/null || echo legacy)"
+  if [[ "$format" == "v1" ]]; then
+    PYTHONPATH="$(dirname "${BASH_SOURCE[0]}")${PYTHONPATH:+:$PYTHONPATH}" \
+      python3 - "$feature_dir" "$spec_path" "$verification_path" "$shape" <<'PYV1'
+import json
+import os
+import re
+import sys
+
+from requirements import parse_spec
+from execution_observation import eligible_row
+
+feature_dir, spec_path, verification_path, shape = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4] == "1"
+violations = 0
+
+
+def veto(message):
+    global violations
+    print("FLOOR " + message)
+    violations += 1
+
+
+with open(os.path.join(feature_dir, "feature.json"), encoding="utf-8") as fh:
+    state = json.load(fh)
+contract = state["requirementsContract"]
+workspace = state.get("workspace")
+root = workspace.get("root") if isinstance(workspace, dict) and (workspace.get("mode") or "single") != "single" else None
+if not root:
+    import subprocess
+    root = subprocess.run(["git", "-C", feature_dir, "rev-parse", "--show-toplevel"],
+                           stdout=subprocess.PIPE, universal_newlines=True).stdout.strip()
+
+try:
+    spec_text = open(spec_path, encoding="utf-8").read()
+except OSError:
+    print("FLOOR spec is not readable: %s" % spec_path)
+    print("converged-floor: 1 violation(s)")
+    sys.exit(1)
+try:
+    inventory = parse_spec(spec_text, spec_path, contract)
+except ValueError as exc:
+    print("FLOOR spec is not a readable v1 contract: %s" % exc)
+    print("converged-floor: 1 violation(s)")
+    sys.exit(1)
+match = re.search(r"^scenario_checks: *(.*)$", spec_text, re.M)
+checks = json.loads(match.group(1)) if match else {}
+
+expected = []
+for requirement in inventory["requirements"]:
+    for scenario in requirement["scenarios"]:
+        expected.append((requirement, scenario))
+if not expected:
+    print("FLOOR no Good Enough scenarios in %s" % spec_path)
+    print("converged-floor: 1 violation(s)")
+    sys.exit(1)
+
+try:
+    verification_text = open(verification_path, encoding="utf-8").read()
+except OSError:
+    print("FLOOR VERIFICATION.md is not readable (%s) — a converged verdict needs the verification record" % verification_path)
+    print("converged-floor: 1 violation(s)")
+    sys.exit(1)
+lines = verification_text.splitlines()
+ac_start = None
+for index, line in enumerate(lines):
+    if line.strip() == "## Acceptance criteria":
+        ac_start = index + 1
+        break
+rows = {}
+# simplicity: this Acceptance-criteria row scan repeats
+# lib/verification-grounding-lint.sh's own v1 row parser; same call as the
+# format-probe opening above -- no shared home in this task's file-ownership list,
+# and a two-caller ~doc-parsing loop is not worth a new module for it.
+blocked_evidence = re.compile(
+    r'(^|[^a-z])(blocked|could not run|not run|never ran|did not run|unable to run|skipped|reauth|'
+    r"credentials? (expired|locked)|not verified|unverified)([^a-z]|$)", re.I)
+if ac_start is not None:
+    for index in range(ac_start, len(lines)):
+        line = lines[index]
+        if line.strip().startswith("## "):
+            break
+        if not line.strip().startswith("|"):
+            continue
+        cells = [c.strip() for c in re.split(r"(?<!\\)\|", line.strip())[1:-1]]
+        if len(cells) < 3 or set(cells[0]) <= set("-") or cells[0] in ("#", "ID", ""):
+            continue
+        rows.setdefault(cells[0], []).append((cells[2], cells[3] if len(cells) > 3 else ""))
+
+for requirement, scenario in expected:
+    key = "%s/%s" % (requirement["id"], scenario["id"])
+    matches = rows.get(key) or []
+    if len(matches) != 1:
+        result = "missing (no acceptance row keyed %s)" % key if not matches else "duplicate (%d acceptance rows keyed %s)" % (len(matches), key)
+        veto("%s acceptance result is %s in %s" % (key, result, verification_path))
+        continue
+    status, evidence = matches[0]
+    status_norm = status.upper()
+    if shape:
+        if not re.match(r"^(PASS|FAIL|BLOCKED|N/A)", status_norm):
+            veto("%s acceptance result is unreadable (status cell '%s' must begin with PASS, FAIL, BLOCKED, or N/A) in %s" % (key, status, verification_path))
+        continue
+    if status_norm.startswith("FAIL"):
+        veto("acceptance table row still FAIL: %s" % key)
+        continue
+    if status_norm.startswith("BLOCKED"):
+        veto("acceptance table row BLOCKED (an operator must clear it before this can converge): %s" % key)
+        continue
+    if not status_norm.startswith("PASS"):
+        veto("%s acceptance result is non-PASS (%s) in %s" % (key, status, verification_path))
+        continue
+    if blocked_evidence.search(evidence):
+        veto("acceptance table row is PASS but its evidence says the check did not run (mark it BLOCKED): %s" % key)
+        continue
+    execution_match = re.search(r"execution:([0-9a-f]{32})", evidence)
+    if not execution_match:
+        veto("%s is PASS but names no execution ID in %s" % (key, verification_path))
+        continue
+    entry = checks.get(key) or {}
+    binding = {"owner": contract["owner"], "requirement": requirement["id"],
+               "revision": requirement["revision"], "scenario": scenario["id"]}
+    eligible, reasons = eligible_row(feature_dir, root, binding, entry.get("command") or "",
+                                      entry.get("executionInputs"), execution_match.group(1))
+    if not eligible:
+        veto("%s PASS execution %s is not current evidence: %s" % (key, execution_match.group(1), "; ".join(reasons)))
+
+if violations:
+    print("converged-floor: %d violation(s)" % violations)
+    sys.exit(1)
+if shape:
+    print("converged-floor: shape ok (%d criteria)" % len(expected))
+else:
+    print("converged-floor: ok (%d criteria verified)" % len(expected))
+PYV1
+    exit $?
+  fi
+fi
 
 # A missing contract is missing evidence, never an empty success condition.
 spec_content=""

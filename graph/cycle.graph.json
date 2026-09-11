@@ -667,7 +667,9 @@
             "body": "lib/artifact-lint.sh",
             "args": [
               "verification",
-              "{docs}/VERIFICATION.md"
+              "{docs}/VERIFICATION.md",
+              "--feature-dir",
+              "{featureDir}"
             ]
           },
           {
@@ -678,7 +680,9 @@
               "--repo",
               "{root}",
               "--spec",
-              "{spec}"
+              "{spec}",
+              "--feature-dir",
+              "{featureDir}"
             ]
           },
           {
@@ -694,7 +698,9 @@
             "args": [
               "--shape",
               "{spec}",
-              "{docs}/VERIFICATION.md"
+              "{docs}/VERIFICATION.md",
+              "--feature-dir",
+              "{featureDir}"
             ]
           }
         ],
@@ -913,7 +919,9 @@
             "body": "lib/converged-floor.sh",
             "args": [
               "{spec}",
-              "{docs}/VERIFICATION.md"
+              "{docs}/VERIFICATION.md",
+              "--feature-dir",
+              "{featureDir}"
             ],
             "when": {
               "field": "iterate.lastVerdict.converged",

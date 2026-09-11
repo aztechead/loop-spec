@@ -6,6 +6,11 @@
 
 ## Acceptance criteria
 
+<!-- v1 requirements contract: cycle-driver.sh verification run keys each row
+     GE-ID/SC-ID (never a document-position number) and writes its Status and Evidence
+     from a driver-owned observation record -- see agents/verifier.md, "v1 requirements
+     contract". The legacy row shape below is unchanged. -->
+
 | # | Criterion | Status | Evidence |
 |---|-----------|--------|----------|
 | 1 | {from SPEC} |  | `{verify command}` -> {output summary} |

@@ -35,6 +35,14 @@ checks=(
   $'hooks/team/adhoc-verify-guard.sh\tcopy each --criteria value byte-for-byte'
   $'hooks/team/adhoc-verify-guard.sh\tpost-change grounding review'
   $'skills/auto/SKILL.md\tshared verification-grounding contract'
+  $'agents/verifier.md\tv1 requirements contract'
+  $'agents/verifier.md\tGE-ID/SC-ID'
+  $'skills/shared/artifact-templates/VERIFICATION.md.template\tv1 requirements contract'
+  $'skills/shared/artifact-templates/VERIFICATION-oneshot.md.template\tv1 requirements contract'
+  $'lib/verification-grounding-lint.sh\teligible_row'
+  $'lib/converged-floor.sh\teligible_row'
+  $'lib/execution_observation.py\tdef eligible_row'
+  $'lib/execution_observation.py\tdef current_binding'
 )
 
 for entry in "${checks[@]}"; do

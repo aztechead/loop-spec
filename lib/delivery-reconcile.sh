@@ -102,6 +102,18 @@ target_sha="$(git -C "$artifact_root" rev-parse --verify HEAD 2>/dev/null)" || {
   exit 1
 }
 
+# A PR created outside deliver.sh (headless `gh pr create`) never ran the
+# final-candidate observer at all: require the same checked binding here before
+# canonicalizing it as a delivery (PLAN "Final candidate observations" --
+# delivery-reconcile.sh requires the same checked target binding).
+final_check_ok=1
+final_result="$(bash "$SCRIPT_DIR/cycle-driver.sh" verification run --final-candidate "$target_sha" \
+  --feature-dir "$feature_dir" 2>&1)" || final_check_ok=0
+if [[ "$final_check_ok" -ne 1 ]] || ! jq -e '.ok == true' <<<"$final_result" >/dev/null 2>&1; then
+  echo "delivery-reconcile: final candidate observations did not validate for $target_sha: $final_result" >&2
+  exit 1
+fi
+
 checkpoint_url="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.checkpointPrUrl // empty')"
 hint=""
 [[ -f "$delivery_file" ]] && hint="$(jq -r '.prUrl // empty' "$delivery_file" 2>/dev/null || true)"

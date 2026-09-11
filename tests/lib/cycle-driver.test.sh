@@ -1163,6 +1163,109 @@ check "v1 escalation: route: full is on record" "1" "$(grep -c '^route: full$' "
 check "v1 escalation: the issued ledger is unchanged" "$issued_before" "$(jq -cS '.requirementsContract.issued' "$FDV1/feature.json")"
 check "v1 escalation: the owner is unchanged" "$owner_before" "$(jq -cS '.requirementsContract.owner' "$FDV1/feature.json")"
 
+# --- v1 `verification run`: rows keyed by stable GE-ID/SC-ID, never document position
+# (task-008 AC3). A fresh independent v1 fixture, hand-authored SPEC/VERIFICATION.md so
+# the test controls scenario order and revision without walking the whole phase graph.
+REPOVR="$(new_repo verify-v1)"
+printf 'tracked\n' > "$REPOVR/tracked.txt"
+git -C "$REPOVR" add -A && git -C "$REPOVR" -c user.email=t@t -c user.name=t commit -q -m "add tracked.txt"
+outvr="$(cd "$REPOVR" && LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1 AUTONOMOUS=1 drv begin -- "autonomous verify v1 rows" 2>/dev/null)"
+FDVR="$(jq -r '.featureDir' <<<"$outvr")"
+DOCSVR="$REPOVR/docs/loop-spec/features/$(jq -r '.slug' "$FDVR/feature.json")"
+mkdir -p "$DOCSVR"
+owner_vr="$(jq -c '.requirementsContract.owner' "$FDVR/feature.json")"
+empty_inputs='{"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}'
+
+write_spec_vr() {
+  # $1: first GE block, $2: second GE block, $3: GE-001/SC-001 scenario prose (the
+  # revision input) -- separated so the reorder and revision-change tests below can
+  # each vary exactly one thing.
+  cat > "$DOCSVR/SPEC.md" <<EOF
+---
+requirements_version: 1
+requirements_owner: $owner_vr
+scenario_checks: {"GE-001/SC-001":{"command":"exit 0","executionInputs":$empty_inputs},"GE-002/SC-001":{"command":"exit 0","executionInputs":$empty_inputs}}
+---
+# verify v1 rows
+
+### Good Enough
+
+$1
+$2
+EOF
+}
+ge001() { printf -- '- [ ] GE-001: First requirement holds.\n  - SC-001: %s\n' "$1"; }
+ge002() { printf -- '- [ ] GE-002: Second requirement holds.\n  - SC-001: Second scenario observed.\n'; }
+write_spec_vr "$(ge001 'First scenario observed.')" "$(ge002)"
+
+# simplicity: this minimal v1 VERIFICATION.md body repeats the one
+# tests/lib/oneshot-exit-gate.test.sh and tests/lib/phase-exit.test.sh each write for
+# their own v1 fixtures. Every suite in this tree keeps its fixture self-contained (no
+# shared cross-file fixture library exists here to lift it into -- see
+# tests/lib/cycle-driver.test.sh's write_small_plan comment for the same call made
+# once already), so this stays local rather than adding one for three callers.
+cat > "$DOCSVR/VERIFICATION.md" <<'MD'
+# verify v1 rows - Verification
+
+## Repository grounding
+
+- criterion: GE-001/SC-001 | implementation: tracked.txt:1 - proves it | integration: none - standalone check
+- criterion: GE-002/SC-001 | implementation: tracked.txt:1 - proves it | integration: none - standalone check
+
+## Acceptance criteria
+
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+
+## Code review
+
+**Reviewer:** code-reviewer (inherit)
+
+### Findings
+
+none
+
+## Final test suite
+
+```
+(no commands.test is configured for this feature)
+```
+MD
+
+ec=0
+runvr="$(cd "$REPOVR" && drv verification run --feature-dir "$FDVR" 2>&1)" || ec=$?
+check "v1 verify run: exits 0 on two PASS scenarios" "0" "$ec"
+check "v1 verify run: GE-001/SC-001 row is PASS and keyed by stable id" "1" \
+  "$(grep -c '^| GE-001/SC-001 | First scenario observed\. | PASS | owner=' "$DOCSVR/VERIFICATION.md")"
+check "v1 verify run: GE-002/SC-001 row is PASS and keyed by stable id" "1" \
+  "$(grep -c '^| GE-002/SC-001 | Second scenario observed\. | PASS | owner=' "$DOCSVR/VERIFICATION.md")"
+check "v1 verify run: no numeric-position row was ever written" "0" \
+  "$(grep -cE '^\| [0-9]+ \|' "$DOCSVR/VERIFICATION.md")"
+
+# Reorder the two requirements in the SPEC document: identity travels with the GE-ID
+# label, never document position, so re-running keeps each row's own association.
+write_spec_vr "$(ge002)" "$(ge001 'First scenario observed.')"
+cd "$REPOVR" && drv verification run --feature-dir "$FDVR" >/dev/null 2>&1
+check "v1 verify run: reordering SPEC keeps GE-001/SC-001's own scenario text" "1" \
+  "$(grep -c '^| GE-001/SC-001 | First scenario observed\. | PASS | owner=' "$DOCSVR/VERIFICATION.md")"
+check "v1 verify run: reordering SPEC keeps GE-002/SC-001's own scenario text" "1" \
+  "$(grep -c '^| GE-002/SC-001 | Second scenario observed\. | PASS | owner=' "$DOCSVR/VERIFICATION.md")"
+execution_ge1="$(grep -o 'GE-001/SC-001 | .*(execution:[0-9a-f]*)' "$DOCSVR/VERIFICATION.md" | grep -o 'execution:[0-9a-f]*' | cut -d: -f2)"
+
+# Change GE-001/SC-001's scenario prose (its revision) without a fresh run: the
+# existing PASS row's execution record now binds the OLD revision, so
+# verification-grounding-lint (task-008) refuses it as stale evidence.
+write_spec_vr "$(ge002)" "$(ge001 'First scenario observed, reworded.')"
+ec=0
+glout="$(bash "$REPO_ROOT/lib/verification-grounding-lint.sh" "$DOCSVR/VERIFICATION.md" --repo "$REPOVR" --spec "$DOCSVR/SPEC.md" --feature-dir "$FDVR" 2>&1)" || ec=$?
+check "v1 grounding-lint: a changed scenario revision needs a fresh run (exit 1)" "1" "$ec"
+check "v1 grounding-lint: the flag names the stale execution" "1" \
+  "$(grep -c "execution $execution_ge1 is not current evidence" <<<"$glout")"
+cd "$REPOVR" && drv verification run --feature-dir "$FDVR" >/dev/null 2>&1
+ec=0
+bash "$REPO_ROOT/lib/verification-grounding-lint.sh" "$DOCSVR/VERIFICATION.md" --repo "$REPOVR" --spec "$DOCSVR/SPEC.md" --feature-dir "$FDVR" >/dev/null 2>&1 || ec=$?
+check "v1 grounding-lint: a fresh run over the reworded scenario is eligible again" "0" "$ec"
+
 echo
 echo "cycle-driver: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]
