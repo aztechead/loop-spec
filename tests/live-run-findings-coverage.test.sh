@@ -16,7 +16,7 @@ checks=(
   $'skills/shared/dispatch.md\tunder `claude -p`'
   $'skills/shared/critique-gate-protocol.md\tunder `claude -p` as well'
   $'skills/shared/critique-gate-protocol.md\tACCEPTED as `[minor]`'
-  $'hooks/team/result-forgery-guard.sh\tbash lib/feature-write.sh set <feature_dir> <dot.path>'
+  $'hooks/team/result-forgery-guard.sh\tloop_spec_feature_write set <feature_dir> <dot.path>'
   $'hooks/hooks.json\thooks/team/artifact-lint-feedback.sh'
   $'hooks/hooks.json\thooks/team/dispatch-prompt-guard.sh'
   $'hooks/team/artifact-lint-feedback.sh\tbefore reporting DONE'

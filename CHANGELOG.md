@@ -106,6 +106,16 @@ below; each task's own SPEC/PLAN/VERIFICATION is the durable record of what it p
 - A copied PASS row, a matching requirement ID, or a source citation is no longer
   sufficient evidence that a check actually ran: VERIFY and ITERATE now require a
   driver-owned observation record for every required scenario (task-008).
+- A live Sonnet cycle on the `fastapi-echo` eval task (one session, 363 lead turns,
+  no application code in 60 minutes) showed five ways the lead fought the plugin, each
+  now closed with a test: a `next` or `phase-begin` call with the harness session id
+  stripped counts as the session that handed off, never as a fresh one; `spec write`
+  replaces the full-route template's `{requirements_frontmatter}` line with the v1
+  declarations instead of publishing it; the pattern-mapper may stage PATTERNS.md under
+  the feature's `publication-staging/`, where the plan skill sends it; PLAN's exit gate
+  folds the driver's inferred task edges into its parity check, so an inferred edge is
+  not drift; and a bare `feature-write.sh set` refusal names the token-bound write a
+  lead can run, which the plan skill now spells out for `commands.prepare`.
 
 No comparative measurement of repair rounds, cost, or latency accompanies this release;
 that evaluation is out of scope for 7.0 (SPEC "Exceptional": comparative live

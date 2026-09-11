@@ -107,6 +107,12 @@ check "PS3: spec-writer Write to .loop-spec/features/foo/publication-staging/SPE
   "$(payload "Write" ".loop-spec/features/foo/publication-staging/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
 check "PS4: spec-writer Write to .loop-spec/features/bar/publication-staging/SPEC.md (another feature) DENY" 2 \
   "$(payload "Write" ".loop-spec/features/bar/publication-staging/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+# The plan skill names the staged PATTERNS.md as the mapper's target; a live sonnet run
+# had the mapper denied there and the planner wrote PATTERNS.md itself.
+check "PS5: pattern-mapper Write to .loop-spec/features/foo/publication-staging/PATTERNS.md (own feature) ALLOW" 0 \
+  "$(payload "Write" ".loop-spec/features/foo/publication-staging/PATTERNS.md" "$FIXTURES/pattern-mapper.jsonl")"
+check "PS6: pattern-mapper Write to .loop-spec/features/bar/publication-staging/PATTERNS.md (another feature) DENY" 2 \
+  "$(payload "Write" ".loop-spec/features/bar/publication-staging/PATTERNS.md" "$FIXTURES/pattern-mapper.jsonl")"
 unset CLAUDE_PROJECT_DIR; rm -rf "$NOFEAT"
 
 # Case I: spec-writer with absolute path to allowed location -> ALLOW (exit 0)

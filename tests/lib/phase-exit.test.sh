@@ -261,6 +261,67 @@ check "exit plan: gated plan passes" "0" "$ec"
 check "exit plan: tasks pointer recorded" "1" "$([[ "$(fj '.artifacts.tasks')" == *tasks.json ]] && echo 1 || echo 0)"
 check "exit plan: patterns source defaulted" "pattern-mapper" "$(fj '.artifacts.patternsSource')"
 check "exit plan: PLAN.md committed" "1" "$(git log --oneline | grep -c 'plan: my-feature')"
+# `plan tasks` publishes the extraction with plan-conflicts.sh's inferred edges folded
+# in; the parity check must see the same edges, or a plan whose task prose names an
+# earlier task bounces on an edge the driver itself added.
+cp "$DOCS/PLAN.md" "$WORK/plan-one-task.md"
+cat > "$DOCS/PLAN.md" <<'MD'
+# My Feature - Implementation Plan
+
+**Spec:** `docs/loop-spec/features/my-feature/SPEC.md`
+
+## Architecture overview
+
+Two tasks.
+
+## Task DAG
+
+| ID | Subject | BlockedBy | Files | Est scope |
+|----|---------|-----------|-------|-----------|
+| task-001 | do a thing | - | a.sh | small |
+| task-002 | check the thing task-001 wrote | - | b.sh | small |
+
+## Spec coverage
+
+- `bash -n a.sh` exits 0 -> task-001
+
+## Tasks
+
+### task-001: do a thing
+
+**Goal:** one sentence.
+
+**Files:**
+- `a.sh`
+
+**Verify:** `bash -n a.sh`
+
+**Acceptance criteria:**
+- [ ] `bash -n a.sh` exits 0
+
+### task-002: check the thing task-001 wrote
+
+**Goal:** reuse the helper task-001 wrote.
+
+**Files:**
+- `b.sh`
+
+**Verify:** `bash -n b.sh`
+
+**Acceptance criteria:**
+- [ ] `bash -n b.sh` exits 0
+
+## Grounding
+
+- none
+MD
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCS/PLAN.md" > "$WORK/plan-two-extract.json"
+bash "$REPO_ROOT/lib/plan-conflicts.sh" edges "$WORK/plan-two-extract.json" > "$FD/tasks.json" 2>/dev/null
+check "exit plan: the driver inferred the edge the prose implies" "task-001" "$(jq -r '.[] | select(.id == "task-002") | .blockedBy | join(",")' "$FD/tasks.json")"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: an inferred edge is not drift between PLAN.md and tasks.json" "0" "$(grep -c 'blockedBy differs' <<<"$out")"
+cp "$WORK/plan-one-task.md" "$DOCS/PLAN.md"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCS/PLAN.md" > "$FD/tasks.json"
 
 # --- plan (v1 contract): the reviewed task relation replaces positional coverage ----
 # A v1 feature: every ordinary new cycle records v1 by default (no operator switch).

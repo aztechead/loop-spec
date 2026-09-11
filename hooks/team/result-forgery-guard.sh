@@ -126,8 +126,8 @@ if [[ "$VERDICT" == candidate\ * ]]; then
     || verdict2="protected=yes reason=the protected-path probe failed to answer"
   [[ "${verdict2%% *}" == "protected=yes" ]] || exit 0
   reason="${verdict2#*reason=}"
-  echo "DENY: '$cpath' writes a driver-owned publication path of feature '$slug' by shell ($reason). Fill it through the driver: cycle-driver.sh spec fill|escalate|footprint drop, verification fill|run|review|verdict --feature-dir $fd, lib/feature-write.sh set|reconcile-inventory, or lib/artifact-publication.sh capture|publish. (Disable: LOOP_SPEC_FORGERY_GUARD=0)" >&2
+  echo "DENY: '$cpath' writes a driver-owned publication path of feature '$slug' by shell ($reason). Fill it through the driver: cycle-driver.sh spec fill|escalate|footprint drop, verification fill|run|review|verdict --feature-dir $fd, a token-bound feature write (. lib/feature-write.sh; loop_spec_publication_begin <fd>; loop_spec_feature_write set|reconcile-inventory ...), or lib/artifact-publication.sh capture|publish. (Disable: LOOP_SPEC_FORGERY_GUARD=0)" >&2
   exit 2
 fi
-echo "DENY: '$VERDICT' writes a loop-spec contract file by hand. The terminal result is published only by lib/cycle-result.sh (write, write-terminal) and feature state only by lib/feature-write.sh (usage: bash lib/feature-write.sh set <feature_dir> <dot.path> '<json-value>' -- strings JSON-quoted, e.g. '\"in-flight\"'); a result those writers refuse is a run that has not earned it. Return to the cycle, or publish the honest status with --reason. (Disable: LOOP_SPEC_FORGERY_GUARD=0)" >&2
+echo "DENY: '$VERDICT' writes a loop-spec contract file by hand. The terminal result is published only by lib/cycle-result.sh (write, write-terminal) and feature state only by lib/feature-write.sh under a publication token (usage: . lib/feature-write.sh; loop_spec_publication_begin <feature_dir>; loop_spec_feature_write set <feature_dir> <dot.path> '<json-value>' -- strings JSON-quoted, e.g. '\"in-flight\"'); a result those writers refuse is a run that has not earned it. Return to the cycle, or publish the honest status with --reason. (Disable: LOOP_SPEC_FORGERY_GUARD=0)" >&2
 exit 2

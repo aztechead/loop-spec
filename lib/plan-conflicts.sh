@@ -76,7 +76,9 @@ if cmd == "edges":
         iface = t.get("interfaces") if isinstance(t.get("interfaces"), dict) else {}
         consumes = iface.get("consumes")
         parts = consumes if isinstance(consumes, list) else [consumes]
-        text = " ".join(str(x or "") for x in parts + [t.get("goal") or "", t.get("brief") or ""])
+        # plan-tasks.sh extract names the heading text "subject"; an older sidecar wrote
+        # "brief", and the gate's parity check treats them as one field.
+        text = " ".join(str(x or "") for x in parts + [t.get("goal") or "", t.get("brief") or "", t.get("subject") or ""])
         for dep in sorted({m.lower() for m in ref.findall(text)}):
             if dep == t.get("id") or dep not in ids or dep in deps[t.get("id")]:
                 continue

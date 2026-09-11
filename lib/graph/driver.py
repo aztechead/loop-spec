@@ -496,8 +496,17 @@ def handed_off_here(feat):
     Where the harness stamps no session id nothing can be compared, and the guard alone
     stands."""
     rec = feat.get("handoffSession")
+    if not isinstance(rec, dict) or not rec.get("id"):
+        return None
     sid = session_id()
-    if isinstance(rec, dict) and sid and rec.get("id") == sid:
+    if sid == rec.get("id"):
+        return rec
+    if not sid:
+        # The harness that stamped the record stamps every call of that session, so a
+        # call with no id against a record that has one is the same session with the
+        # variable stripped: a live sonnet run entered DISCUSS through
+        # `env -u CLAUDE_CODE_SESSION_ID` after its own HANDOFF. A fresh session carries
+        # its own id; refuse rather than trust an absence.
         return rec
     return None
 
@@ -794,7 +803,7 @@ def cmd_start(argv):
                 fdir = os.path.join(picked["featureRoot"], ".loop-spec", "features", resume_pick)
                 handed = handed_off_here(state(fdir))
                 if handed is not None:
-                    raise Die("this session handed off after %s; %s starts in a fresh invocation (%s)"
+                    raise Die("this session is finished: it handed off after %s. End the turn now; the caller starts a fresh session for %s (%s)"
                               % (handed.get("from"), handed.get("next"), handoff_answer(fdir, handed)), 4)
         elif not non_interactive:
             options = ["Resume %s - phase %s (updated %s)" % (c["slug"], c["currentPhase"], c["updatedAt"])
@@ -1385,6 +1394,8 @@ def cmd_next(argv):
 
     handed = handed_off_here(feat)
     if handed is not None and returned != (handed.get("from") or ""):
+        print("cycle-driver: this session is finished: it handed off after %s. End the turn now; "
+              "the caller starts a fresh session for %s" % (handed.get("from"), handed.get("next")), file=sys.stderr)
         print(handoff_answer(feature_dir, handed))
         return 0
     rec = feat.get("handoffSession")
@@ -2601,15 +2612,24 @@ def normalize_v1_draft(text, contract):
     contract's ledger -- ingest preserves the supplied requirement text verbatim and
     normalizes format only (docs/loop-spec/requirements-format.md). A draft that
     already declares v1 metadata is returned untouched; parse_spec alone is its judge."""
+    placeholder = re.compile(r"^\{requirements_frontmatter\}\n", re.M)
     if declares_requirements_metadata(text):
-        return text
+        # A draft that kept the template's placeholder next to its own declarations
+        # would publish the literal line; the declarations are what it stood for.
+        return placeholder.sub("", text, count=1)
     declaration = "requirements_version: 1\nrequirements_owner: %s\n" % (
         json.dumps(contract["owner"], sort_keys=True, separators=(",", ":")))
     if not re.search(r"^scenario_checks:", text, re.M):
         declaration += "scenario_checks: {}\n"
     if not re.match(r"^---\n", text):
         raise Die("spec write: v1 ingest requires YAML frontmatter to declare the contract into", 1)
-    text = re.sub(r"^---\n", "---\n" + declaration, text, count=1)
+    if placeholder.search(text):
+        # The full-route template's `{requirements_frontmatter}` line is where the
+        # declarations belong (skills/spec/SKILL.md says the placeholder becomes them);
+        # a live sonnet run read the driver source to learn what to type there instead.
+        text = placeholder.sub(declaration, text, count=1)
+    else:
+        text = re.sub(r"^---\n", "---\n" + declaration, text, count=1)
     span = section_span(text, "Good Enough")
     if span is None:
         raise Die("spec write: v1 ingest requires a ### Good Enough section", 1)
@@ -3731,7 +3751,7 @@ def cmd_phase_begin(argv):
     pub.begin(feature_dir)
     handed = handed_off_here(state(feature_dir))
     if handed is not None and phase != (handed.get("from") or ""):
-        print("cycle-driver: this session handed off after %s; %s starts in a fresh invocation (%s)"
+        print("cycle-driver: this session is finished: it handed off after %s. End the turn now; the caller starts a fresh session for %s (%s)"
               % (handed.get("from"), phase, handoff_answer(feature_dir, handed)), file=sys.stderr)
         return 4
     node = next((n for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == phase), {})

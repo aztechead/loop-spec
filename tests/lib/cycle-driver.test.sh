@@ -289,6 +289,16 @@ check "begin: the refusal carries the handoff answer" "1" "$(grep -c 'HANDOFF ne
 check "begin: the refused re-entry emits no phase event pair" "$pairs_before" "$(grep -c '"event":"phase_\(start\|end\)"' "$FD/events.jsonl")"
 check "begin: the refusal puts the result pointer back" "phase-handoff" "$(jq -r '.reason' "$REPO/.loop-spec/last-result.json" 2>/dev/null)"
 
+# A lead that strips the session id is not a fresh session: the record carries the id
+# the harness stamped, and a call with none is the same session hiding (a live sonnet
+# run entered DISCUSS through `env -u CLAUDE_CODE_SESSION_ID` after its own HANDOFF).
+out="$(cd "$REPO" && drv next --feature-dir "$FD" 2>/dev/null)"
+check "next: a call with the session id stripped gets the handoff answer again" "HANDOFF next=plan" "${out:0:17}"
+err="$(cd "$REPO" && drv next --feature-dir "$FD" 2>&1 >/dev/null)"
+check "next: the repeated answer says to end the turn" "1" "$(grep -c 'End the turn now' <<<"$err")"
+ec=0; (cd "$REPO" && drv phase-begin plan --feature-dir "$FD" >/dev/null 2>&1) || ec=$?
+check "phase-begin: the stripped session id is refused with 4" "4" "$ec"
+
 # A human-approved SPEC rewind reopens the freeze: the engine resumes from the pause
 # record at the approval gate, the driver retires the record, DISCUSS may amend, and
 # the DISCUSS gate compares against what was approved.
@@ -1555,6 +1565,38 @@ cd "$REPOVR" && drv verification run --feature-dir "$FDVR" >/dev/null 2>&1
 ec=0
 bash "$REPO_ROOT/lib/verification-grounding-lint.sh" "$DOCSVR/VERIFICATION.md" --repo "$REPOVR" --spec "$DOCSVR/SPEC.md" --feature-dir "$FDVR" >/dev/null 2>&1 || ec=$?
 check "v1 grounding-lint: a fresh run over the reworded scenario is eligible again" "0" "$ec"
+
+# --- spec write lands a template-shaped v1 draft ------------------------------------------
+# The full-route template carries `{requirements_frontmatter}`; the driver, not the lead,
+# turns it into the declarations (a live sonnet run read the driver source to learn what
+# to type there, then hand-wrote the owner and the ids).
+REPOP="$(new_repo rp)"
+AUTONOMOUS=1 drv start --dir "$REPOP" -- echo service >/dev/null 2>&1
+initp="$(drv init --dir "$REPOP" --slug echo-service --title "echo service" --style auto --profile standard --autonomous 1 2>/dev/null)"
+FDP="$(jq -r '.featureDir' <<<"$initp")"
+cat > "$WORK/draft-template.md" <<'MD'
+---
+route: full
+unresolved_questions: []
+{requirements_frontmatter}
+---
+# echo service
+
+## Success criteria
+
+### Good Enough
+
+- [ ] GET /echo returns the text it was given.
+
+### Exceptional
+
+- [ ] docs
+MD
+out="$(cd "$REPOP" && drv spec write --feature-dir "$FDP" --file "$WORK/draft-template.md" 2>/dev/null)"
+check "spec write: a template-shaped v1 draft lands" "$REPOP/docs/loop-spec/features/echo-service/SPEC.md" "$out"
+check "spec write: the placeholder became the declarations" "0" "$(grep -c '{requirements_frontmatter}' "$out" 2>/dev/null)"
+check "spec write: the owner came from the contract" "1" "$(grep -c '^requirements_owner: ' "$out" 2>/dev/null)"
+check "spec write: the row got its stable id" "1" "$(grep -c '^- \[ \] GE-001: GET /echo' "$out" 2>/dev/null)"
 
 echo
 echo "cycle-driver: $PASS passed, $FAIL failed"

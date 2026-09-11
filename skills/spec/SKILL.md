@@ -141,13 +141,15 @@ While waiting for an answer, use for example
 Record the answer and rationale before removing a question.
 Do not include ambiguity scores or an interview transcript. Spec-lite owns the oneshot skeleton.
 
-When the entry packet's `requirementsContract.format` is `v1` (the default for every new cycle; a resumed pre-7 cycle stays legacy instead -- `docs/loop-spec/requirements-format.md`), `## Success criteria`
-requirements are `- [ ] GE-NNN: outcome` with a nested `  - SC-NNN: observable scenario`
-line, and the frontmatter's `{requirements_frontmatter}` placeholder becomes the
-`requirements_version`/`requirements_owner`/`scenario_checks` declarations, single-line
-JSON, from the packet's own contract owner -- never retyped by hand. IDs are allocated
-by the driver, never by hand and never renumbered on reorder; a criterion's command
-lives in `scenario_checks`, keyed `GE-NNN/SC-NNN`. Under a legacy contract, delete both
+When the entry packet's `requirementsContract.format` is `v1` (the default for every new cycle; a resumed pre-7 cycle stays legacy instead -- `docs/loop-spec/requirements-format.md`), write each
+`### Good Enough` row as plain `- [ ] outcome` prose and leave the template's
+`{requirements_frontmatter}` line where it is. `spec write` turns that line into the
+`requirements_version`/`requirements_owner`/`scenario_checks` declarations from the
+packet's contract and gives every row its `GE-NNN` with one `SC-001`; type neither, and
+do not read `lib/` to learn them. Then attach each row's check with
+`spec fill --feature-dir "$feature_dir" --row GE-001 --command '<shell>' --expect '<outcome>'
+--execution-inputs '{"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}'`
+(name real toolchains and local paths where they exist). Under a legacy contract, delete both
 the `{requirements_frontmatter}` line and the GE/SC row and keep the existing shape.
 Only the driver writes SPEC.md: draft it anywhere else and land it with `spec write`
 below, never by opening the target path directly.

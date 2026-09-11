@@ -77,7 +77,7 @@ Include these fields and instructions in the planner brief:
 In workspace mode, each task has one `repo`. Use `<repo>/<path>` in `files[]` and `blockedBy` edges for cross-repository ordering.
 
 For greenfield work, task-001 creates the scaffold: structure, manifest, adjacent generated lockfile, test harness, and a passing walking-skeleton test.
-Its `verifyCommand` must be the stack's test command. Put installation steps in `commands.prepare`.
+Its `verifyCommand` must be the stack's test command. Put installation steps in `commands.prepare`, landed under a publication token in one Bash call: `. "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-write.sh"; loop_spec_publication_begin "$feature_dir"; loop_spec_feature_write set "$feature_dir" commands.prepare '"<install command>"'` (a bare `feature-write.sh set` is refused).
 Every other task depends on task-001.
 Complete `## System design` using the build-from-scratch and system-design stances in `skills/shared/engineering-stances.md`.
 For refactor specs, apply that file's refactor stance.

@@ -103,14 +103,14 @@ Handle the first line of `ans` using these rules. Stop when the selected rule re
   gates (`lib/phase-exit.sh`) and the artifact is not ready. Follow the same instruction
   snapshot again with the FLAG lines. The phase fixes its artifact in place and returns.
   Then call `next --returned-from <p>` again. Phase skills never run the exit themselves.
-- `HANDOFF next=<p> model=<m>` or `REWIND next=<p>` — the driver saved the next phase and closed this phase. Print
-  `LOOP_SPEC_HANDOFF {"slug":..,"next":"<p>","model":"<m>"}` and stop. The caller
-  re-invokes `/loop-spec:cycle`, and that invocation enters `<p>` with
-  `lib/phase-entry.sh <p>` as its whole ingress. Do not invoke `Skill(loop-spec:<p>)`
-  from here (`hooks/team/phase-handoff-guard.sh` denies a second phase in one
-  invocation). Never launch the next invocation yourself, directly or through a script.
-  `hooks/team/nested-session-guard.sh` blocks nested sessions because they spend this invocation's budget again. For a Claude worktree
-  feature, `ExitWorktree({action:"keep"})` first.
+- `HANDOFF next=<p> model=<m>` or `REWIND next=<p>` — this session is finished. Print
+  `LOOP_SPEC_HANDOFF {"slug":..,"next":"<p>","model":"<m>"}` and end the turn. The
+  caller starts a fresh session that re-invokes `/loop-spec:cycle` and enters `<p>`.
+  Never enter `<p>` from here: not `Skill(loop-spec:<p>)`, not `lib/phase-entry.sh`,
+  not the driver with the session id unset; the driver answers HANDOFF again and
+  `hooks/team/phase-handoff-guard.sh` denies the skill. Never launch the next invocation yourself,
+  directly or through a script: `hooks/team/nested-session-guard.sh` blocks it because
+  it spends this budget twice. For a Claude worktree feature, `ExitWorktree({action:"keep"})` first.
 - `PAUSED node=...` — a human gate (`style:step|interactive`). Print `loop-spec: paused
   at <node>; re-invoke /loop-spec:cycle to continue.`, exit a Claude worktree, stop.
   `PAUSED node=human.after-discuss intent=changed`: DISCUSS rewrote Goal or Boundary

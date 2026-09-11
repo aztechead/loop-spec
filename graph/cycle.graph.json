@@ -390,7 +390,8 @@
           "artifacts.patterns",
           "artifacts.plan",
           "artifacts.tasks",
-          "artifactPublication"
+          "artifactPublication",
+          "commands.prepare"
         ],
         "artifacts": {
           "plan": "{docs}/PLAN.md",

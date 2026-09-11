@@ -42,6 +42,14 @@ if [[ -f "$tasks" ]]; then
   else
     # Ids match; a hand-edited sidecar can still drift on the fields EXECUTE reads.
     fresh="$(bash "$SCRIPT_DIR/plan-tasks.sh" extract "$docs/PLAN.md" 2>/dev/null)" || fresh="[]"
+    # `plan tasks` (lib/graph/driver.py cmd_plan) publishes that extraction with
+    # plan-conflicts.sh's inferred edges folded in, so the comparison folds them in too:
+    # otherwise every inferred edge reads as drift, and a live sonnet run copied the
+    # driver's own edges into PLAN.md by hand to pass here.
+    fresh_file="$(mktemp "${TMPDIR:-/tmp}/plan-exit-fresh.XXXXXX")"
+    printf '%s' "$fresh" > "$fresh_file"
+    inferred="$(bash "$SCRIPT_DIR/plan-conflicts.sh" edges "$fresh_file" 2>/dev/null)" && fresh="$inferred"
+    rm -f "$fresh_file"
     while IFS= read -r finding; do
       [[ -n "$finding" ]] && flag "[tasks] $finding"
     done < <(python3 - "$fresh" "$tasks" <<'PY'

@@ -324,8 +324,11 @@ nothing.
   or `REWIND`. While the session named by `id` is the one calling, `next` repeats the
   handoff answer, and `begin` or `phase-begin` of any other phase exits 4; each writes
   the paused result again, since `begin`'s preflight clears it. The next phase starts in
-  a fresh invocation, whatever tool the lead reaches for. An empty `id` (a harness that
-  stamps no session id) enforces nothing. A graph edge carrying `sameSession` (the
+  a fresh invocation, whatever tool the lead reaches for. A call that carries no session
+  id against a record that has one is refused the same way: the harness that stamped the
+  record stamps every call of that session, so an absent id is the same session with the
+  variable stripped, never a fresh one. An empty recorded `id` (a harness that stamps no
+  session id) enforces nothing. A graph edge carrying `sameSession` (the
   `human.after-spec` to `oneshot` route) writes no record: the driver answers `NEXT`
   and the phase runs in the session that closed SPEC.
 - `driverNext` is written by `lib/cycle-driver.sh next` each time it answers `NEXT`.

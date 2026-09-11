@@ -27,7 +27,7 @@
 #   any caller                       -> a write under docs/loop-spec/features/<slug>/ lands
 #                                       in the checkout that holds that feature's
 #                                       feature.json, when one does
-#   pattern-mapper                   -> docs/loop-spec/features/** + .claude/agent-memory/** (memory: project)
+#   pattern-mapper                   -> docs/loop-spec/features/** + the staging dir below + .claude/agent-memory/** (memory: project)
 #   code-reviewer                    -> .claude/agent-memory/** ONLY (read-only for code; the
 #                                       `memory: project` frontmatter auto-enables Write/Edit,
 #                                       so this case keeps the role's no-code-writes invariant)
@@ -324,8 +324,11 @@ publication_protected_deny() {
 publication_protected_deny
 
 case "$CALLER" in
-  spec-writer|planner)
+  spec-writer|planner|pattern-mapper)
     if path_allowed "docs/loop-spec/features"; then
+      exit 0
+    fi
+    if [[ "$CALLER" == pattern-mapper ]] && path_allowed ".claude/agent-memory"; then
       exit 0
     fi
     # v1 (now the default) protects docs/loop-spec/features/**/{SPEC,PLAN,PATTERNS}.md
@@ -345,13 +348,6 @@ case "$CALLER" in
       fi
     fi
     echo "DENY: $CALLER may only $TOOL_NAME under docs/loop-spec/features/** or .loop-spec/features/<slug>/publication-staging/** (attempted: $FILE_PATH). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
-    exit 2
-    ;;
-  pattern-mapper)
-    if path_allowed "docs/loop-spec/features" || path_allowed ".claude/agent-memory"; then
-      exit 0
-    fi
-    echo "DENY: $CALLER may only $TOOL_NAME under docs/loop-spec/features/** or .claude/agent-memory/** (attempted: $FILE_PATH). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
     exit 2
     ;;
   code-reviewer)
