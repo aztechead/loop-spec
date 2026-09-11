@@ -71,10 +71,10 @@ if [[ -n "$feature_dir" ]]; then
     PYTHONPATH="$(dirname "${BASH_SOURCE[0]}")${PYTHONPATH:+:$PYTHONPATH}" \
       python3 - "$feature_dir" "$spec_path" "$verification_path" "$shape" <<'PYV1'
 import json
-import os
 import re
 import sys
 
+import feature_read
 from requirements import parse_spec
 from execution_observation import eligible_row
 
@@ -88,8 +88,7 @@ def veto(message):
     violations += 1
 
 
-with open(os.path.join(feature_dir, "feature.json"), encoding="utf-8") as fh:
-    state = json.load(fh)
+state = feature_read.load_state(feature_dir)
 contract = state["requirementsContract"]
 workspace = state.get("workspace")
 root = workspace.get("root") if isinstance(workspace, dict) and (workspace.get("mode") or "single") != "single" else None

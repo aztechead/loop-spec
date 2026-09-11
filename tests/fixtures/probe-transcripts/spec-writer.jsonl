@@ -1,1 +1,1 @@
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"loop-spec:spec-writer","prompt":"Write spec for feature foo"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"loop-spec:spec-writer","prompt":"Write spec for feature foo. draft_path: /repo/.loop-spec/features/foo/publication-staging/SPEC.md"}}]}}

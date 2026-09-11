@@ -48,6 +48,7 @@ import os
 import re
 import sys
 
+import feature_read
 from requirements import parse_spec
 from execution_observation import eligible_row
 
@@ -61,8 +62,7 @@ def flag(line, message):
     flags += 1
 
 
-with open(os.path.join(feature_dir, "feature.json"), encoding="utf-8") as fh:
-    contract = json.load(fh)["requirementsContract"]
+contract = feature_read.load_state(feature_dir)["requirementsContract"]
 try:
     spec_text = open(spec_path, encoding="utf-8").read()
     inventory = parse_spec(spec_text, spec_path, contract)

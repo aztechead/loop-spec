@@ -16,7 +16,14 @@
 # bare <role> before matching.
 #
 # Rules (by role):
-#   spec-writer, planner             -> docs/loop-spec/features/** only
+#   spec-writer, planner             -> docs/loop-spec/features/** (legacy pre-v1 features), or
+#                                       .loop-spec/features/<slug>/publication-staging/** for the
+#                                       single feature its own dispatch brief named (mined from
+#                                       the brief's own absolute paths; unknown = denied, never
+#                                       "any feature") -- v1 is the default, so the docs tree is
+#                                       publication_protected_deny's to guard and the maker's copy
+#                                       is the staged draft the lead lands with
+#                                       cycle-driver.sh spec fill / plan write|patterns
 #   any caller                       -> a write under docs/loop-spec/features/<slug>/ lands
 #                                       in the checkout that holds that feature's
 #                                       feature.json, when one does
@@ -130,14 +137,14 @@ fi
 # simplicity: this JSONL walk is near-duplicated in hooks/team/placeholder-question-guard.sh
 # (different outputs: caller name here, open/phase there); extract a shared walker when a
 # third hook needs one.
-CALLER=$(python3 - "$TRANSCRIPT_PATH" <<'PY' 2>/dev/null
-import json, sys
+CALLER_INFO=$(python3 - "$TRANSCRIPT_PATH" <<'PY' 2>/dev/null
+import json, re, sys
 
 transcript_path = sys.argv[1] if len(sys.argv) > 1 else ""
 if not transcript_path:
     sys.exit(0)
 
-dispatches = []          # (tool_use_id or None, subagent_type) in order
+dispatches = []          # (tool_use_id or None, subagent_type, prompt) in order
 result_ids = set()
 
 try:
@@ -161,9 +168,10 @@ try:
                     if not isinstance(part, dict):
                         continue
                     if part.get("type") == "tool_use" and part.get("name") == "Agent":
-                        subtype = part.get("input", {}).get("subagent_type", "")
+                        tool_input = part.get("input", {})
+                        subtype = tool_input.get("subagent_type", "")
                         if subtype:
-                            dispatches.append((part.get("id"), subtype))
+                            dispatches.append((part.get("id"), subtype, tool_input.get("prompt", "")))
             elif entry.get("type") == "user":
                 for part in content:
                     if not isinstance(part, dict):
@@ -174,14 +182,30 @@ except Exception:
     sys.exit(0)
 
 caller = ""
-for tid, subtype in dispatches:
+caller_prompt = ""
+for tid, subtype, prompt in dispatches:
     if tid is not None and tid in result_ids:
         continue  # dispatch finished; not the active caller
     caller = subtype
+    caller_prompt = prompt
+
+# The slug of the feature this dispatch is FOR, mined from the brief's own
+# absolute paths (agents/planner.md's Input names spec_path/patterns_path under
+# <feature_dir>/... or docs/loop-spec/features/<slug>/...): the first
+# "features/<slug>/" segment named in the prompt. Empty when the brief carries
+# no such path -- callers must treat that as "unknown", not "any feature".
+slug = ""
+m = re.search(r"features/([^/\s]+)/", caller_prompt)
+if m:
+    slug = m.group(1)
 
 print(caller)
+print(slug)
 PY
-) || CALLER=""
+) || CALLER_INFO=""
+
+CALLER=$(printf '%s' "$CALLER_INFO" | sed -n '1p')
+CALLER_SLUG=$(printf '%s' "$CALLER_INFO" | sed -n '2p')
 
 # Path match helper: returns 0 if FILE_PATH is under the given prefix segment.
 # Handles both relative and absolute paths by matching on the path fragment.
@@ -291,7 +315,23 @@ case "$CALLER" in
     if path_allowed "docs/loop-spec/features"; then
       exit 0
     fi
-    echo "DENY: $CALLER may only $TOOL_NAME under docs/loop-spec/features/** (attempted: $FILE_PATH). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
+    # v1 (now the default) protects docs/loop-spec/features/**/{SPEC,PLAN,PATTERNS}.md
+    # (publication_protected_deny above already catches those writes); the maker's
+    # own copy is the staged draft under the feature's state dir, scoped to the
+    # single feature this dispatch named in its brief -- never any other feature's
+    # staging, and never when the brief named none (fail closed, not "any feature").
+    if path_allowed ".loop-spec/features"; then
+      rel="${FILE_PATH#*.loop-spec/features/}"
+      if [[ "$rel" != "$FILE_PATH" && "$rel" == */publication-staging/* ]]; then
+        slug="${rel%%/*}"
+        if [[ -n "$CALLER_SLUG" && "$slug" == "$CALLER_SLUG" ]]; then
+          exit 0
+        fi
+        echo "DENY: $CALLER may only $TOOL_NAME under .loop-spec/features/<slug>/publication-staging/** for the feature named in its own dispatch brief (attempted: $FILE_PATH, dispatched for: ${CALLER_SLUG:-unknown}). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
+        exit 2
+      fi
+    fi
+    echo "DENY: $CALLER may only $TOOL_NAME under docs/loop-spec/features/** or .loop-spec/features/<slug>/publication-staging/** (attempted: $FILE_PATH). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
     exit 2
     ;;
   pattern-mapper)

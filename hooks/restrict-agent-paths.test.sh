@@ -94,6 +94,21 @@ check "R4: main thread Write to .loop-spec/profile.json ALLOW" 0 \
 check "R5: a feature.json outside .loop-spec is not a contract file ALLOW" 0 \
   "$(payload "Write" "src/feature.json" "$FIXTURES/main-thread.jsonl")"
 
+# Cases PS: v1 is the default now, so the docs tree is publication_protected_deny's
+# to guard; the maker's own copy is the staged draft under the feature's state dir,
+# scoped to the single feature its own dispatch brief named (task item 1).
+NOFEAT="$(mktemp -d)"
+export CLAUDE_PROJECT_DIR="$NOFEAT"
+check "PS1: planner Write to .loop-spec/features/foo/publication-staging/PLAN.md (own feature) ALLOW" 0 \
+  "$(payload "Write" ".loop-spec/features/foo/publication-staging/PLAN.md" "$FIXTURES/planner.jsonl")"
+check "PS2: planner Write to .loop-spec/features/bar/publication-staging/PLAN.md (another feature) DENY" 2 \
+  "$(payload "Write" ".loop-spec/features/bar/publication-staging/PLAN.md" "$FIXTURES/planner.jsonl")"
+check "PS3: spec-writer Write to .loop-spec/features/foo/publication-staging/SPEC.md (own feature) ALLOW" 0 \
+  "$(payload "Write" ".loop-spec/features/foo/publication-staging/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+check "PS4: spec-writer Write to .loop-spec/features/bar/publication-staging/SPEC.md (another feature) DENY" 2 \
+  "$(payload "Write" ".loop-spec/features/bar/publication-staging/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+unset CLAUDE_PROJECT_DIR; rm -rf "$NOFEAT"
+
 # Case I: spec-writer with absolute path to allowed location -> ALLOW (exit 0)
 check "I: spec-writer Write to /abs/path/docs/loop-spec/features/bar/SPEC.md ALLOW" 0 \
   "$(payload "Write" "/abs/path/docs/loop-spec/features/bar/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
@@ -198,6 +213,17 @@ check "W4: a slug with no feature.json anywhere stays ALLOW" 0 \
 # main checkout again): the rule holds for the main thread and for every other caller.
 check "W4b: main-thread Write of SPEC.md relative to the main checkout DENY" 2 \
   "$(payload "Write" "docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+
+# Cases WV: a v1 feature's PLAN.md/SPEC.md are publication_protected_deny's, not the
+# role case's -- the planner/spec-writer's own copy is the staged draft (task item 1).
+mkdir -p "$WREPO/.loop-spec/features/v1feat"
+printf '{"slug":"v1feat","requirementsContract":{"format":"v1"}}\n' > "$WREPO/.loop-spec/features/v1feat/feature.json"
+check "WV1: planner Write to docs/.../v1feat/PLAN.md under a v1 feature DENY" 2 \
+  "$(payload "Write" "$WREPO/docs/loop-spec/features/v1feat/PLAN.md" "$FIXTURES/planner.jsonl")"
+check "WV2: spec-writer Write to docs/.../v1feat/SPEC.md under a v1 feature DENY" 2 \
+  "$(payload "Write" "$WREPO/docs/loop-spec/features/v1feat/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+check "WV3: planner Write to v1feat's staged draft (own feature dispatch names foo, not v1feat) DENY" 2 \
+  "$(payload "Write" "$WREPO/.loop-spec/features/v1feat/publication-staging/PLAN.md" "$FIXTURES/planner.jsonl")"
 check "W4c: main-thread Edit of the stale parent copy DENY" 2 \
   "$(payload "Edit" "$WREPO/docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/main-thread.jsonl")"
 check "W4d: main-thread Write under the feature worktree ALLOW" 0 \
