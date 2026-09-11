@@ -223,5 +223,24 @@ check "branch: a wrong checkout is not ready" "1" "$ec"
 check "branch: the mismatch is named" "elsewhere" "$(jq -r '.branch.actual' <<<"$out")"
 
 echo ""
+# --- workspace mode ---------------------------------------------------------------
+# featureRoot used to be "" here, and every task step downstream ran git against it.
+WS="$WORK/ws"; mkdir -p "$WS/fe"
+git -C "$WS/fe" init -q -b main; git -C "$WS/fe" commit -q --allow-empty -m init
+(cd "$WS" && bash "$REPO_ROOT/lib/cycle-driver.sh" start --dir "$WS" -- ws feature >/dev/null 2>&1
+  bash "$REPO_ROOT/lib/cycle-driver.sh" init --dir "$WS" --slug ws-feature --title "ws feature" --style auto --profile standard --autonomous 1 \
+    --repos '[{"name":"fe","path":"fe"}]' >/dev/null 2>&1)
+FDW="$WS/.loop-spec/features/ws-feature"
+mkdir -p "$WS/docs/loop-spec/features/ws-feature"; printf '# PLAN\n' > "$WS/docs/loop-spec/features/ws-feature/PLAN.md"
+printf '[{"id":"task-001","subject":"first","repo":"fe","files":["fe/a.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["a"]}]\n' > "$FDW/tasks.json"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FDW" artifacts.tasks "\"$FDW/tasks.json\"" >/dev/null
+ec=0; out="$(bash "$SCRIPT" run --feature-dir "$FDW" 2>/dev/null)" || ec=$?
+check "workspace: ready feature exits 0" "0" "$ec"
+check "workspace: every repo is on the feature branch" "true" "$(jq -r '.branch.ok' <<<"$out")"
+check "workspace: featureRoot is the workspace root" "$WS" "$(jq -r '.featureRoot' <<<"$out")"
+check "workspace: the packet carries the repos for execute-step" "fe:fe" "$(jq -r '.workspace.repos[] | "\(.name):\(.path)"' <<<"$out")"
+check "workspace: the rung is the one-shot subagent" "subagent" "$(jq -r '.rung.rung' <<<"$out")"
+check "single: the packet has no workspace" "null" "$(jq -r '.workspace' "$FD/dispatch/prepare.json")"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

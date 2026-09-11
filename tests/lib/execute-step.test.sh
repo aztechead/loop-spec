@@ -93,6 +93,10 @@ check "integrate: nothing committed is commit-missing" "commit-missing" "$(jq -r
 check "integrate: a missing commit is a stop" "1" "$ec"
 check "integrate: task_end failed" "1" "$(grep -c '"result":"failed"' "$FD/events.jsonl")"
 
+# a replayed integrate (a resumed lead re-issuing the call) is not a second success
+ec=0; out="$(bash "$STEP" integrate --feature-dir "$FD" --task task-001 2>/dev/null)" || ec=$?
+check "integrate in place: a replayed call is commit-missing, not published again" "commit-missing:1" "$(jq -r '.blocked' <<<"$out"):$ec"
+
 # a spent breaker blocks the task
 ec=0; out="$(bash "$STEP" verdict --feature-dir "$FD" --task task-002 --verdict rework --attempt 6 2>/dev/null)" || ec=$?
 check "verdict: the breaker blocks with retry-exhausted" "retry-exhausted" "$(jq -r '.reason' <<<"$out")"
@@ -161,6 +165,75 @@ check "run reviewer: the session completed" "completed" "$(jq -r '.status' <<<"$
 check "run reviewer: the prompt names the package and the verdict path" "1" "$(grep -c '^Review the package in .* against the spec .*\. Write your verdict to .*task-001.report.md.$' "$FDS/dispatch/task-001.reviewer.md")"
 check "run: a failing session is exit 1 with status failed" "failed:1" "$(printf '#!/usr/bin/env bash\nexit 3\n' > "$SBIN/codex"; ec=0; o="$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role implementer 2>/dev/null)" || ec=$?; echo "$(jq -r '.status' <<<"$o"):$ec")"
 check "run: on another rung the answer is in-harness" "in-harness" "$(jq '.rung.rung = "subagent"' "$FDS/dispatch/prepare.json" > "$WORK/p.json" && mv "$WORK/p.json" "$FDS/dispatch/prepare.json"; sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role implementer | jq -r '.action')"
+
+
+# --- workspace mode: the task's repo is the git target, never the workspace root ---------
+# A live 6.6.0 run recorded taskBaseSha="", refused package with "no recorded base SHA",
+# and ran verify in `cd ''`: prepare.json carried featureRoot="" for a workspace feature.
+export LOOP_SPEC_HARNESS=codex LOOP_SPEC_WORKTREES=0
+WS="$WORK/ws"; mkdir -p "$WS"
+for r in fe be svc/api; do
+  mkdir -p "$WS/$r"; git -C "$WS/$r" init -q -b main
+  git -C "$WS/$r" commit -q --allow-empty -m init
+  printf 'print(1)\n' > "$WS/$r/a.py"; git -C "$WS/$r" add a.py; git -C "$WS/$r" commit -q -m base
+done
+(cd "$WS" && bash "$REPO_ROOT/lib/cycle-driver.sh" start --dir "$WS" -- my feature >/dev/null 2>&1
+  bash "$REPO_ROOT/lib/cycle-driver.sh" init --dir "$WS" --slug my-feature --title "my feature" --style auto --profile standard --autonomous 1 \
+    --repos '[{"name":"be","path":"be"},{"name":"fe","path":"fe"},{"name":"api","path":"svc/api"}]' >/dev/null 2>&1)
+FDW="$WS/.loop-spec/features/my-feature"
+mkdir -p "$WS/docs/loop-spec/features/my-feature"; printf '# PLAN\n' > "$WS/docs/loop-spec/features/my-feature/PLAN.md"
+cat > "$FDW/tasks.json" <<'JSON'
+[{"id":"task-001","subject":"change fe a","repo":"fe","files":["fe/a.py"],"blockedBy":[],"verifyCommand":"python3 a.py","acceptanceCriteria":["a prints 2"]},
+ {"id":"task-002","subject":"change be a","repo":"be","files":["be/a.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["b prints 2"]},
+ {"id":"task-003","subject":"no repo","files":["be/b.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["c"]},
+ {"id":"task-004","subject":"unknown repo","repo":"web","files":["web/a.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["d"]},
+ {"id":"task-005","subject":"change api a","repo":"api","files":["api/a.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["e"]},
+ {"id":"task-006","subject":"cross-repo batch","repo":"fe","files":["fe/c.py","be/c.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["f"]}]
+JSON
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FDW" artifacts.tasks "\"$FDW/tasks.json\"" >/dev/null
+check "workspace fixture: the feature is a workspace feature" "workspace" "$(jq -r '.executionRootMode' "$FDW/feature.json")"
+ec=0; bash "$PREP" run --feature-dir "$FDW" >/dev/null 2>&1 || ec=$?
+check "workspace prepare: ready" "0" "$ec"
+out="$(bash "$STEP" dispatch --feature-dir "$FDW" --task task-001)"
+check "workspace dispatch: the packet root is the task's repo" "$WS/fe" "$(jq -r '.featureRoot' <<<"$out")"
+check "workspace dispatch: base SHA is the repo HEAD" "$(git -C "$WS/fe" rev-parse HEAD)" "$(jq -r '.taskBaseSha' <<<"$out")"
+check "workspace dispatch: no worktree" "null" "$(jq -r '.worktreePath' <<<"$out")"
+ec=0; out="$(bash "$STEP" package --feature-dir "$FDW" --task task-001 --head "$(git -C "$WS/fe" rev-parse HEAD)" 2>/dev/null)" || ec=$?
+check "workspace package: answers from the recorded base" "0" "$ec"
+check "workspace package: the reviewer is pointed at the repo" "$WS/fe" "$(jq -r '.worktree' <<<"$out")"
+printf 'print(2)\n' > "$WS/fe/a.py"
+ec=0; out="$(bash "$STEP" integrate --feature-dir "$FDW" --task task-001 2>/dev/null)" || ec=$?
+check "workspace integrate: verify ran in the repo and published" "true" "$(jq -r '.published' <<<"$out")"
+check "workspace integrate: exit 0" "0" "$ec"
+check "workspace integrate: the repo-prefixed file is committed in the repo" "1" "$(git -C "$WS/fe" log --oneline -1 feat/my-feature | grep -c 'change fe a')"
+check "workspace integrate: the repo is clean after the commit" "" "$(git -C "$WS/fe" status --porcelain)"
+check "workspace integrate: the other repo is untouched" "$(git -C "$WS/be" rev-parse HEAD)" "$(git -C "$WS/be" rev-parse feat/my-feature)"
+check "workspace integrate: marked done" "task-001" "$(bash "$REPO_ROOT/lib/task-progress.sh" done "$FDW/tasks.json")"
+check "workspace integrate: task_end merged" "1" "$(grep -c '"result":"merged"' "$FDW/events.jsonl")"
+# The workspace implementer prompt commits in its repo itself (execute-subagent.md Step 4):
+# published is HEAD past the recorded base, not a commit this call made.
+bash "$STEP" dispatch --feature-dir "$FDW" --task task-002 >/dev/null
+printf 'print(2)\n' > "$WS/be/a.py"; git -C "$WS/be" commit -qam "feat: NO_JIRA change be a"
+ec=0; out="$(bash "$STEP" integrate --feature-dir "$FDW" --task task-002 2>/dev/null)" || ec=$?
+check "workspace integrate: an implementer's own commit is published" "true" "$(jq -r '.published' <<<"$out")"
+check "workspace integrate: the published sha is the implementer's commit" "$(git -C "$WS/be" rev-parse HEAD)" "$(jq -r '.sha' <<<"$out")"
+ec=0; bash "$STEP" dispatch --feature-dir "$FDW" --task task-003 >/dev/null 2>&1 || ec=$?
+check "workspace dispatch: a task with no repo is a bad invocation, not a root git call" "2" "$ec"
+ec=0; bash "$STEP" dispatch --feature-dir "$FDW" --task task-004 >/dev/null 2>&1 || ec=$?
+check "workspace dispatch: a repo the feature does not list is a bad invocation" "2" "$ec"
+# files carry the repo NAME; the repo may live at a different PATH
+out="$(bash "$STEP" dispatch --feature-dir "$FDW" --task task-005)"
+check "workspace dispatch: the root is the repo's path, not its name" "$WS/svc/api" "$(jq -r '.featureRoot' <<<"$out")"
+printf 'print(2)\n' > "$WS/svc/api/a.py"
+ec=0; out="$(bash "$STEP" integrate --feature-dir "$FDW" --task task-005 2>/dev/null)" || ec=$?
+check "workspace integrate: the name prefix is stripped when name and path differ" "true:" "$(jq -r '.published' <<<"$out"):$(git -C "$WS/svc/api" status --porcelain)"
+# a batch collapsed across repos would stage half its files and publish the rest as done
+bash "$STEP" dispatch --feature-dir "$FDW" --task task-006 >/dev/null
+printf 'print(3)\n' > "$WS/fe/c.py"; printf 'print(3)\n' > "$WS/be/c.py"
+ec=0; out="$(bash "$STEP" integrate --feature-dir "$FDW" --task task-006 2>/dev/null)" || ec=$?
+check "workspace integrate: files naming another repo are refused before verify" "files-outside-repo:1" "$(jq -r '.blocked' <<<"$out"):$ec"
+check "workspace integrate: the refusal names the foreign file" "be/c.py" "$(jq -r '.detail' <<<"$out" | grep -o 'be/c.py')"
+check "workspace integrate: nothing was committed for the refused task" "0" "$(git -C "$WS/fe" log --oneline | grep -c 'cross-repo')"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

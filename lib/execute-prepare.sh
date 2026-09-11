@@ -14,7 +14,12 @@
 #    tasks[]           the dispatch list: collapsed batches, synthetic blockedBy edges added
 #    conflicts:{rows, stops:[{summary,reason,matched}], rulings:[summary]},
 #    width, rung:{...lib/execute-rung.sh...}, maxRetries, featureRoot, worktreeBase,
-#    greenfield, remediationRegistered, remediationError:string|null, stop:bool}
+#    workspace:{root, repos:[{name,path}]}|null, greenfield, remediationRegistered,
+#    remediationError:string|null, stop:bool}
+#
+# featureRoot is the git toplevel in single mode and the workspace root (orchestration
+# only, never a git target) in workspace mode; lib/execute-step.sh resolves each task's
+# repo from `workspace` and runs every git call there.
 #
 # Side effects: pendingRemediationTasks[] are normalized to full shape, appended to the
 # sidecar, and acknowledged only after publication; dispatch/conflict-table.json,
@@ -41,9 +46,14 @@ fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 
 slug="$(fget '.slug')"
 workspace="$(fget 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace else null end')"
-root=""
+# A live workspace run left root empty here, so every task step downstream recorded an
+# empty base SHA and ran verify outside the repo. The workspace root owns the feature
+# dir, the sidecar, and the runtime file; the task's repo is resolved per task.
 if [[ "$workspace" == "null" ]]; then
   root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null)" || { echo "execute-prepare: $feature_dir is not inside a git work tree" >&2; exit 2; }
+else
+  root="$(fget '.workspace.root')"
+  [[ -n "$root" && -d "$root" ]] || { echo "execute-prepare: feature.workspace.root '$root' is not a directory" >&2; exit 2; }
 fi
 
 # -- branch check --------------------------------------------------------------------
@@ -60,7 +70,7 @@ root = sys.argv[1]; repos = json.load(sys.stdin); bad = []
 for r in repos:
     actual = subprocess.run(["git", "-C", root + "/" + r["path"], "branch", "--show-current"], capture_output=True, text=True).stdout.strip()
     if actual != r["expected"]: bad.append({"repo": r["name"], "expected": r["expected"], "actual": actual})
-print(json.dumps({"ok": not bad, "expected": None, "actual": None, "repos": bad}))' "$(fget '.workspace.root')")"
+print(json.dumps({"ok": not bad, "expected": None, "actual": None, "repos": bad}))' "$root")"
 fi
 
 # -- sidecar + remediation intake -------------------------------------------------------
@@ -186,7 +196,7 @@ PY
 fi
 
 # -- rung, caps, roots -------------------------------------------------------------------
-runtime="$root/.loop-spec/runtime.json"; [[ "$workspace" != "null" ]] && runtime="$(fget '.workspace.root')/.loop-spec/runtime.json"
+runtime="$root/.loop-spec/runtime.json"
 rung='{}'
 if [[ "$workspace" == "null" ]]; then
   rung="$(lib execute-rung select --width "${width:-0}" \
@@ -203,15 +213,17 @@ if [[ "$workspace" == "null" && "$(jq -r '.worktreesEnabled // false' <<<"$rung"
   worktree_base="$(lib worktree-base resolve "$root" task "$slug" | jq -r '.path')"
 fi
 greenfield="$(fget '.greenfield // false')"
+workspace_json=null
+[[ "$workspace" == "null" ]] || workspace_json="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -c --filter '{root:.workspace.root, repos:[.workspace.repos[] | {name, path}]}')"
 
 mkdir -p "$feature_dir/dispatch"
 answer="$(jq -cn --argjson b "$branch_json" --arg sidecar "$sidecar" --argjson sok "$sidecar_ok" --argjson sflags "$sidecar_flags" \
   --argjson done "$done_json" --argjson remaining "$remaining_json" --argjson tasks "$dispatch" \
   --argjson conflicts "$conflicts" --argjson width "${width:-0}" --argjson rung "$rung" --argjson retries "$max_retries" \
-  --arg root "$root" --arg wtb "$worktree_base" --argjson gf "$greenfield" --argjson reg "$remediation_registered" --argjson error "$remediation_error" --argjson stop "$stop" \
+  --arg root "$root" --arg wtb "$worktree_base" --argjson ws "$workspace_json" --argjson gf "$greenfield" --argjson reg "$remediation_registered" --argjson error "$remediation_error" --argjson stop "$stop" \
   '{branch:$b, sidecar:$sidecar, sidecarOk:$sok, sidecarFlags:$sflags, done:$done, remaining:$remaining, tasks:$tasks,
     conflicts:$conflicts, width:$width, rung:$rung, maxRetries:$retries, featureRoot:$root,
-    worktreeBase:(if $wtb == "" then null else $wtb end), greenfield:$gf, remediationRegistered:$reg, remediationError:$error, stop:$stop}')"
+    worktreeBase:(if $wtb == "" then null else $wtb end), workspace:$ws, greenfield:$gf, remediationRegistered:$reg, remediationError:$error, stop:$stop}')"
 # lib/execute-step.sh reads the rung and roots from here per task instead of re-measuring.
 printf '%s\n' "$answer" > "$feature_dir/dispatch/prepare.json"
 printf '%s\n' "$answer"

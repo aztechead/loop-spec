@@ -4,6 +4,27 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.6.1] - 2026-09-11
+
+### Fixed
+
+- **Workspace tasks run git in their own repo.** A live 6.6.0 run in a directory of
+  sibling repos recorded `taskBaseSha=""` at dispatch, refused `package` with "no
+  recorded base SHA", and failed `integrate` with a false `verify-failed` because
+  `lib/execute-prepare.sh` wrote `featureRoot=""` for a workspace feature and
+  `lib/execute-step.sh` ran every git call and the verify command there. The packet
+  now carries `featureRoot` (the workspace root) and `workspace{root, repos}`;
+  `execute-step` resolves each task's `repo` to its repo path, runs dispatch, package,
+  verify, and the commit in that repo, and strips the `<repo>/` prefix from
+  `task.files` before staging. In workspace mode `integrate` reports `published` when
+  HEAD advanced from the recorded base SHA, as `skills/shared/execute-subagent.md` says,
+  so the implementer's own commit is not read as `commit-missing`; single-repo in-place
+  mode keeps counting only the call's own commit, so a replayed `integrate` stays
+  `commit-missing`. A task whose `files` name another workspace repo (a batch collapsed
+  across repos) is refused as `files-outside-repo` before verify runs, and a file git
+  cannot stage is named on stderr instead of dropped. A workspace task with no `repo`,
+  or a repo the feature does not list, is refused with exit 2.
+
 ## [6.6.0] - 2026-09-10
 
 The Goal and Boundary freeze moves from SPEC exit to PLAN entry.
