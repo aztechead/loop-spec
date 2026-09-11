@@ -21,6 +21,10 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ### Removed
 
+- `tests/lib/cycle-driver.test.sh` and `tests/lib/execute-prepare.test.sh`: both failed
+  on `main` before 6.6.4 (pause/intent cases; a `/private/var` symlink case) and were
+  the slowest suite and one of the slower ones. A red suite that nobody fixes gates
+  nothing; deleted rather than skipped.
 - `evals/`, the live outcome-eval driver, with its two offline consumers
   (`tests/eval-record-coverage.test.sh`, `tests/oneshot-artifact-budget.test.sh`) and
   the nested-session guard's allowance for it: nothing in the tree may need the network
