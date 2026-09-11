@@ -107,6 +107,12 @@ check "M: end next exposed" "verify" "$(jq -r '.next' <<<"$end_marker")"
 last="$(tail -1 "$WORK/markers/events.jsonl")"
 check "M: JSONL keeps legacy data.next" "verify" "$(jq -r '.data.next' <<<"$last")"
 check "M: JSONL includes matching attempt" "$attempt_id" "$(jq -r '.attemptId' <<<"$last")"
+check "M: JSONL phase_end outside a checkout has null headSha" "null" "$(jq -r '.headSha' <<<"$last")"
+git -C "$WORK/markers" init -q 2>/dev/null && git -C "$WORK/markers" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+bash "$LIB" emit "$WORK/markers" phase_start --phase verify >/dev/null
+bash "$LIB" emit "$WORK/markers" phase_end --phase verify --data '{"next":"deliver"}' >/dev/null
+check "M: JSONL phase_end inside a checkout records HEAD" "$(git -C "$WORK/markers" rev-parse HEAD)" \
+  "$(tail -1 "$WORK/markers/events.jsonl" | jq -r '.headSha')"
 
 # Case N: verdict derivation is fixed and deterministic.
 bash "$LIB" emit "$WORK/markers" phase_start --phase iterate >/dev/null

@@ -52,7 +52,10 @@ set) until green. Never edit a test to make it pass; a test that is wrong is an
 escalation (step 1).
 
 Commit once on the feature branch with a conventional subject (`fix:` for a bug,
-`feat:` otherwise), the footprint files only. Run the two deterministic scans the full
+`feat:` otherwise), the footprint files only, plus the lockfile or interpreter pin the
+package manager wrote beside a footprint manifest (`uv.lock` and `.python-version` beside
+`pyproject.toml`): the exit gate counts those as that manifest's output, not a fourth
+file, and a file left uncommitted here blocks DELIVER as a dirty worktree. Run the two deterministic scans the full
 path runs at VERIFY and fix what they name before going on:
 
 ```bash

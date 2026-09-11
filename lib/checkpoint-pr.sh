@@ -86,7 +86,9 @@ case "$cmd" in
     fi
 
     repo_dir="$(pwd -P)"
-    remote_url="$(git remote get-url --push origin 2>/dev/null || git remote get-url origin 2>/dev/null)"
+    # The configured URL (`remote get-url` would expand url.<base>.insteadOf, which is
+    # transport; the host probe reads the destination as the operator named it).
+    remote_url="$(git config --get remote.origin.pushurl 2>/dev/null || git config --get remote.origin.url 2>/dev/null)"
     credential_host="$(python3 - "$remote_url" <<'PY'
 import re, sys
 try:
@@ -102,6 +104,7 @@ else:
     print((urlparse(value).hostname or '').lower())
 PY
 )"
+    remote_host="$credential_host"
     [[ -n "$credential_host" ]] || credential_host="${GH_HOST:-github.com}"
 
     command_tmp="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-checkpoint-pr-XXXXXX")" \
@@ -180,6 +183,10 @@ PY
       run_without_auth_retry push git push origin "$state_ref:$state_ref" >/dev/null 2>&1 \
         || echo "checkpoint-pr: state ref $state_ref not pushed (state stays local)" >&2
     fi
+
+    # A remote whose URL names no host (a path, file://) holds the pushed branch but
+    # has no repository gh could open a PR on: stop as pushed, not as a gh failure.
+    [[ -n "$remote_host" ]] || _skip "remote URL names no host: branch '${branch}' pushed, no PR target"
 
     # ── Step 5: Idempotency — check for existing open PR ───────────────────────
     list_rc=0

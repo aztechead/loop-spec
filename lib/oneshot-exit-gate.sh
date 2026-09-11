@@ -15,7 +15,8 @@
 # baseSha (the same bodies VERIFY's gate nodes run; per repo in workspace mode), every
 # footprint file in that diff (an untouched one is a flag naming the one way out,
 # `cycle-driver.sh spec footprint drop`, which records the decision; there is no prose
-# exit), no file in that diff outside the footprint
+# exit), no file in that diff outside the footprint (a lockfile or interpreter pin next
+# to a footprint manifest is that manifest's output and counts as inside)
 # (one is the fourth file the route does not allow: the gate writes `route: full` into
 # SPEC.md with the file named and the run takes the full path), the frozen Intent block
 # unchanged since SPEC committed it, a recorded code-reviewer dispatch, artifact-lint
@@ -70,12 +71,32 @@ while IFS= read -r f; do [[ -n "$f" ]] && footprint+=("$f"); done \
 # The other direction: a changed file the footprint does not name is the fourth file,
 # and the route is over. The gate escalates the run itself, with the file named, so the
 # --after probe routes to DISCUSS and nothing ships past the footprint unchecked.
+# A lockfile or interpreter pin the package manager writes next to a manifest the
+# footprint names is that manifest's output, not a fourth file: the first FastAPI live
+# run (6.6.3) left uv.lock and .python-version uncommitted to stay under the gate, then
+# committed them in DELIVER where no scan or reviewer saw them.
+generated_by_manifest() {
+  # generated_by_manifest <changed path> -> 0 when a footprint manifest owns it
+  local dir="${1%/*}" base="${1##*/}" manifest
+  [[ "$dir" == "$1" ]] && dir=""
+  case "$base" in
+    uv.lock|poetry.lock|pdm.lock|.python-version) manifest="pyproject.toml" ;;
+    package-lock.json|yarn.lock|pnpm-lock.yaml|bun.lock|bun.lockb) manifest="package.json" ;;
+    Cargo.lock) manifest="Cargo.toml" ;;
+    go.sum) manifest="go.mod" ;;
+    Gemfile.lock) manifest="Gemfile" ;;
+    composer.lock) manifest="composer.json" ;;
+    *) return 1 ;;
+  esac
+  printf '%s\n' "${footprint[@]+"${footprint[@]}"}" | grep -qxF "${dir:+$dir/}$manifest"
+}
 if (( ! escalated )); then
   outside=""
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
     [[ "$f" == docs/loop-spec/* || "$f" == .loop-spec/* || "$f" == */docs/loop-spec/* || "$f" == */.loop-spec/* ]] && continue
     printf '%s\n' "${footprint[@]+"${footprint[@]}"}" | grep -qxF "$f" && continue
+    generated_by_manifest "$f" && continue
     outside+="$f "
   done <<<"$changed"
   if [[ -n "$outside" ]]; then

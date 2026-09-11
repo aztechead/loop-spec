@@ -161,6 +161,19 @@ if [[ -z "$workspace_root" ]]; then
   dirty_state=""
   status_ok=1
   dirty_state="$(bash "$SCRIPT_DIR/git-ops.sh" -C "$artifact_root" dirt 2>/dev/null)" || status_ok=0
+  # The commit the last gate advanced on (the phase_end that routed to deliver). Source
+  # committed after it was never scanned or reviewed: the 6.6.3 FastAPI run committed
+  # uv.lock and .python-version inside DELIVER and result.json called that SHA verified.
+  # Artifact paths are DELIVER's own commits and do not count. No recorded headSha
+  # (an older run, or a feature dir outside a checkout) skips the comparison.
+  gated_sha="$(jq -r 'select(.event == "phase_end" and .next == "deliver") | .headSha // empty' \
+    "$feature_dir/events.jsonl" 2>/dev/null | tail -1)"
+  post_gate_drift=""
+  if [[ -n "$gated_sha" && -n "$target_sha" ]] \
+    && git -C "$artifact_root" rev-parse --verify -q "${gated_sha}^{commit}" >/dev/null 2>&1; then
+    post_gate_drift="$(git -C "$artifact_root" diff --name-only "$gated_sha" "$target_sha" -- . \
+      ':(top,exclude)docs/loop-spec' ':(top,exclude).loop-spec' 2>/dev/null | head -5 | paste -sd ' ' -)"
+  fi
   if [[ -z "$target_sha" ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "" "$hint" \
       "git_history_failed" "cannot resolve feature HEAD"
@@ -198,6 +211,10 @@ if [[ -z "$workspace_root" ]]; then
     # a forgotten file from test residue and escalated.
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
       "dirty_worktree" "candidate repository has uncommitted changes: $(printf '%s\n' "$dirty_state" | head -5 | sed 's/^...//' | paste -sd ' ' -)"
+    preflight_ok=0
+  elif [[ -n "$post_gate_drift" ]]; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+      "post_gate_drift" "commits after the last gate (${gated_sha:0:12}) touch $post_gate_drift; re-run the cycle so the gate sees them"
     preflight_ok=0
   elif [[ "$finalize_rc" -ne 0 ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \

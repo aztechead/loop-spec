@@ -4,6 +4,31 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.6.4] - 2026-09-11
+
+### Fixed
+
+Four findings from a 6.6.3 headless Sonnet `oneshot` run (a uv + Python 3.14 FastAPI
+service, 9 minutes, $1.65) against a repository whose `origin` is a local bare path.
+
+- `lib/pr-delivery.sh` and `lib/checkpoint-pr.sh`: a remote whose configured URL names
+  no host (a path, `file://`) is pushed and stopped (`pushed-no-pr`, the checkpoint
+  skip names the reason) instead of asking `gh` to resolve it; the run had escalated on
+  gh's `[HOST/]OWNER/REPO` argument error after the checkpoint reported `gh pr list
+  failed`. Both scripts now read the URL as configured (`remote.<name>.pushurl` /
+  `.url`) rather than through `remote get-url`, which expands `insteadOf` rewrites.
+- `lib/oneshot-exit-gate.sh`: a lockfile or interpreter pin beside a manifest the
+  footprint names (`uv.lock`, `.python-version`, `package-lock.json`, `Cargo.lock`, ...)
+  is that manifest's output, not the fourth file. The lead had left `uv.lock` and
+  `.python-version` uncommitted to stay under the gate, then committed them inside
+  DELIVER. `skills/oneshot/SKILL.md` says so at the commit step.
+- `lib/events.sh` records `headSha` on every `phase_end`; `lib/deliver.sh` refuses a
+  candidate whose non-artifact files differ from the HEAD the last gate advanced on
+  (`post_gate_drift`). The run's `result.json` had named a commit no scan or reviewer
+  saw as `verifiedSha`.
+- `agents/code-reviewer.md` cites `approach-selection.md` through `{probe_dir}`; the
+  reviewer had tried the path relative to the project under review first.
+
 ## [6.6.3] - 2026-09-11
 
 ### Fixed

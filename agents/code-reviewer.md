@@ -27,7 +27,8 @@ You review the full feature diff for code quality and security. Do this review y
 
 ## Procedure
 
-Read `skills/shared/approach-selection.md`. Check material departures against the
+Read `{probe_dir}/../skills/shared/approach-selection.md` (the plugin's copy; the
+project under review has no such path). Check material departures against the
 recorded evidence, original criteria, and binding decisions; an equivalent internal
 method is not a defect merely because it differs from the user's initial suggestion.
 

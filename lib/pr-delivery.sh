@@ -227,20 +227,14 @@ git -C "$repo_dir" remote get-url "$remote" >/dev/null 2>&1 \
 push_urls=()
 while IFS= read -r push_url; do
   [[ -n "$push_url" ]] && push_urls+=("$push_url")
-done < <(git -C "$repo_dir" remote get-url --push --all "$remote" 2>/dev/null)
+done < <(git -C "$repo_dir" config --get-all "remote.$remote.pushurl" 2>/dev/null \
+  || git -C "$repo_dir" config --get-all "remote.$remote.url" 2>/dev/null)
 [[ "${#push_urls[@]}" -gt 0 ]] || fail_bad "remote_missing" "remote '$remote' has no push URL"
 [[ "${#push_urls[@]}" -eq 1 ]] \
   || fail_bad "remote_ambiguous" "remote '$remote' has multiple push URLs; exact delivery requires one destination"
+# The configured URL, not `remote get-url`: that expands url.<base>.insteadOf, which is
+# transport, while the host probe below reads the destination as the operator named it.
 remote_url="${push_urls[0]}"
-# Without gh, final mode still pushes the exact SHA and stops there with its own
-# outcome (pushed-no-pr): a verified commit on the remote is worth more than a blocked
-# run, and a supervisor can tell the two apart. checkpoint and observe need the API.
-have_gh=1
-if ! command -v gh >/dev/null 2>&1; then
-  [[ "$mode" == "final" ]] || fail_bad "gh_missing" "gh is not on PATH"
-  have_gh=0
-fi
-
 credential_host="$(python3 - "$remote_url" <<'PY'
 import re, sys
 try:
@@ -256,6 +250,23 @@ else:
     print((urlparse(value).hostname or '').lower())
 PY
 )"
+# Without gh, final mode still pushes the exact SHA and stops there with its own
+# outcome (pushed-no-pr): a verified commit on the remote is worth more than a blocked
+# run, and a supervisor can tell the two apart. checkpoint and observe need the API.
+# A remote whose URL names no host (a path, file://) is the same case with gh
+# installed: the first FastAPI live run (6.6.3) escalated on "expected the
+# [HOST/]OWNER/REPO format" instead of pushing and stopping.
+have_gh=1
+no_gh_reason=""
+if ! command -v gh >/dev/null 2>&1; then
+  no_gh_reason="gh is not on PATH"
+elif [[ -z "$credential_host" ]]; then
+  no_gh_reason="remote '$remote' URL names no host, so gh has no repository to address"
+fi
+if [[ -n "$no_gh_reason" ]]; then
+  [[ "$mode" == "final" ]] || fail_bad "gh_missing" "$no_gh_reason"
+  have_gh=0
+fi
 
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-pr-delivery-XXXXXX")"
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -408,7 +419,7 @@ if [[ "$have_gh" -eq 0 ]]; then
   remote_sha="$(git -C "$repo_dir" ls-remote "$remote_url" "refs/heads/$branch" 2>/dev/null | cut -f1)"
   [[ "$remote_sha" == "$target_sha" ]] \
     || fail_delivery "remote_sha_mismatch" "remote branch is '$remote_sha', expected '$target_sha'"
-  echo "pr-delivery: gh is not on PATH; pushed $target_sha to $branch and stopped (pushed-no-pr)" >&2
+  echo "pr-delivery: $no_gh_reason; pushed $target_sha to $branch and stopped (pushed-no-pr)" >&2
   emit_result true "pushed-no-pr" "" ""
   exit 0
 fi
