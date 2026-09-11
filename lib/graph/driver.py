@@ -2313,6 +2313,11 @@ def apply_requirements_shape(text, contract):
             json.dumps(contract["owner"], sort_keys=True, separators=(",", ":")))
         text = text.replace("{requirements_frontmatter}\n", declaration)
         text = text.replace("- [ ] `{check command}` exits 0: {what that proves}\n", "")
+        # A fresh oneshot skeleton carries no placeholder Good Enough row: the first
+        # `spec fill --command/--expect` allocates GE-001/SC-001 itself (fill_requirement),
+        # and parse_spec rejects the literal "{GE-001" text as a malformed requirement id,
+        # so leaving the row in would fail every fill before the lead ever touches it.
+        text = text.replace(REQUIREMENTS_V1_GE_ROW, "")
     else:
         text = text.replace("{requirements_frontmatter}\n", "")
         text = text.replace(REQUIREMENTS_V1_GE_ROW, "")
@@ -2411,7 +2416,9 @@ def fill_requirement(text, source, options, contract):
     if isinstance(inputs, str):
         inputs = json.loads(inputs, object_pairs_hook=unique_object)
     if not isinstance(inputs, dict):
-        raise Die("spec fill: v1 requires --execution-inputs with the reviewed JSON input contract", 2)
+        raise Die("spec fill: v1 requires --execution-inputs with the reviewed JSON input contract "
+                  "(docs/loop-spec/requirements-format.md); the minimal declaration is "
+                  '\'{"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}\'', 2)
     command, expect = options["command"].strip(), options["expect"].strip()
     if not command or not expect or "\n" in expect:
         raise Die("spec fill: command and single-line outcome prose must be nonempty", 2)
@@ -2867,6 +2874,11 @@ def author_spec(argv, target_override=None, publication_token=None):
     contract = feat.get("requirementsContract")
     if contract and contract.get("format") == "v1":
         from requirements import parse_spec
+        for no, line in enumerate(body.splitlines(), start=1):
+            if "{GE-" in line:
+                raise Die("spec write: %s:%d still carries the template placeholder (%s); "
+                          "replace it with the real outcome prose before writing "
+                          "(docs/loop-spec/requirements-format.md)" % (target, no, line.strip()), 1)
         body = normalize_v1_draft(body, contract)
         try:
             parse_spec(body, target, contract)

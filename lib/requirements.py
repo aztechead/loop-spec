@@ -203,8 +203,14 @@ def parse_spec(text, source, contract=None):
         target["_prose"].append(line[indent:])
     if fence:
         fail(fence[3], "unclosed fence")
-    if "Good Enough" not in sections or not requirements:
-        fail(1, "Good Enough requires at least one requirement with scenarios")
+    if "Good Enough" not in sections:
+        fail(1, "missing required section heading '### Good Enough'")
+    # A fresh v1 oneshot skeleton declares the contract with an empty '### Good
+    # Enough' (apply_requirements_shape strips its placeholder row) so the first
+    # `spec fill --command/--expect` can parse it, allocate GE-001/SC-001, and
+    # publish -- an inventory with zero requirements is a valid (if incomplete)
+    # v1 document at parse time. Exit still refuses it: artifact-lint's spec mode
+    # flags a '### Good Enough' with no checkbox criteria at phase-exit.
     locations = {}
     for requirement in requirements:
         requirement["text"] = prose(requirement.pop("_prose"))

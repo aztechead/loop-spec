@@ -61,6 +61,11 @@ Read the returned `flags` for current exit-gate findings:
 - `--command "<shell>" --expect "<what exit 0 proves>"` once per observable outcome:
   the driver writes the line and runs that command at the boundary; you never compose
   the sentence (`--row GE-001` replaces a criterion)
+- `--execution-inputs '<JSON>'` alongside `--command`/`--expect` under a v1 contract
+  (required; refused otherwise, naming this flag and the doc below). The minimal
+  declaration when the command touches no tracked toolchain, file, or external
+  identity: `--execution-inputs '{"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}'`
+  (`docs/loop-spec/requirements-format.md`)
 - `--grounding "<file:line - the fact it shows>"` per grounding row
 
 The footprint holds every cited file and the existing test module of each: a test
@@ -69,12 +74,12 @@ module the task does not need leaves it in one call,
 which is refused while the file it tests changes.
 
 When the entry packet's `requirementsContract.format` is `v1` (the default for every new cycle; a resumed pre-7 cycle stays legacy instead -- `docs/loop-spec/requirements-format.md`), the
-skeleton's Good Enough rows are already `- [ ] GE-NNN: outcome` with a nested
-`  - SC-NNN: observable scenario` line, and its frontmatter already carries
-`requirements_version`/`requirements_owner`/`scenario_checks`: nothing to type there.
-Every `--command`/`--expect` fill still allocates its own fresh `GE-NNN` from the
-driver's ledger; `--row` still names a requirement by that stable ID, never a
-position.
+skeleton opens with an empty `### Good Enough` (no placeholder row: the driver
+allocates `GE-NNN`/`SC-NNN` the moment you fill the first criterion, never before),
+and its frontmatter already carries `requirements_version`/`requirements_owner`/
+`scenario_checks`: nothing to type there. Every `--command`/`--expect` fill allocates
+its own fresh `GE-NNN` from the driver's ledger; `--row` names a requirement by that
+stable ID, never a position.
 
 An intent gap is a choice the user would notice in the result that the code cannot
 settle; everything else you decide and record

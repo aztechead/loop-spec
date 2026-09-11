@@ -112,6 +112,28 @@ and never a document position -- a numeric alias (`--row 1`, `--row GE-9`) is re
 with exit 2. A `spec fill --json` batch reconciles in memory between the criteria in
 one call so two new requirements never race for the same fresh ID.
 
+A v1 `--command`/`--expect` fill also requires `--execution-inputs JSON` -- the
+reviewed input contract that binds the eventual observation (`execution_inputs.py`
+above). A fill with no `--execution-inputs` is refused (exit 2) naming this file and
+the minimal declaration that satisfies it:
+
+```
+'{"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}'
+```
+
+A `spec fill --json` batch carries the same contract per criterion as `executionInputs`
+(camelCase, since it rides inside a JSON document rather than a shell flag):
+`{"criteria": [{"command": "...", "expect": "...", "executionInputs": {...}}]}`.
+
+The v1 oneshot skeleton (`spec skeleton`) carries NO Good Enough placeholder row --
+`apply_requirements_shape` strips it the same way it strips the legacy `{check
+command}` row, because the literal placeholder text (`{GE-001: outcome}`) is not a
+valid requirement id and `parse_spec` would reject it. The first `spec fill
+--command/--expect` allocates GE-001/SC-001 itself. The full-route
+`SPEC.md.template` keeps its placeholder row for the human/agent lead to replace by
+hand; `spec write` refuses a draft that still carries a `{GE-` placeholder, naming
+the offending line.
+
 ## Execution inputs (lib/execution_inputs.py)
 
 For a task author declaring `**Execution inputs:**` in PLAN, and for a driver

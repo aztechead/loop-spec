@@ -1252,23 +1252,57 @@ check "v1 skeleton: oneshot route" "oneshot" "$(jq -r '.route' <<<"$outv1")"
 check "v1 skeleton: v1 frontmatter declared" "1" "$(grep -c '^requirements_version: 1$' "$DOCSV1/SPEC.md")"
 check "v1 skeleton: owner declared as single-line JSON" "1" "$(grep -c '^requirements_owner: {' "$DOCSV1/SPEC.md")"
 check "v1 skeleton: the GE/SC placeholder shape, never the legacy row" "0" "$(grep -c '{check command}' "$DOCSV1/SPEC.md")"
-check "v1 skeleton: the GE/SC placeholder is present" "1" "$(grep -c '{GE-001: outcome}' "$DOCSV1/SPEC.md")"
-
-cp "$DOCSV1/SPEC.md" "$WORK/v1-skeleton-filled.md"
-# A suffix argument (even empty-named via .bak, removed after) keeps this -i portable:
-# BSD sed requires one, GNU sed accepts one the same way.
-sed -e 's/{One paragraph:[^}]*}/Dots survive slugify./' \
-    -e 's/{what changes here[^}]*}/strips dots/' \
-    -e 's/{GE-001: outcome}/GE-001: The user sees the fix/' \
-    -e 's/{SC-001: observable scenario}/SC-001: Reload shows the fix/' \
-    -i.bak "$WORK/v1-skeleton-filled.md"
-rm -f "$WORK/v1-skeleton-filled.md.bak"
-check "v1 skeleton once filled: parse_spec accepts it" "0" "$(PYTHONPATH="$REPO_ROOT/lib" python3 -c "
+# A fresh v1 oneshot skeleton carries NO Good Enough placeholder row: parse_spec
+# rejects the literal "{GE-001" text as a malformed requirement id, and the first
+# `spec fill --command/--expect` allocates GE-001/SC-001 itself (fill_requirement) --
+# reproduces the bug this test pins (task 010: apply_requirements_shape must strip
+# REQUIREMENTS_V1_GE_ROW under v1 too, the same as it already does for legacy).
+check "v1 skeleton: no GE/SC placeholder row (spec fill allocates it)" "0" "$(grep -c '{GE-001: outcome}' "$DOCSV1/SPEC.md")"
+check "v1 skeleton: parse_spec accepts the fresh, empty-requirements skeleton" "0" "$(PYTHONPATH="$REPO_ROOT/lib" python3 -c "
 from requirements import parse_spec
 import json
 contract = json.load(open('$FDV1/feature.json'))['requirementsContract']
-parse_spec(open('$WORK/v1-skeleton-filled.md').read(), 'x.md', contract)
+parse_spec(open('$DOCSV1/SPEC.md').read(), 'x.md', contract)
 " >/dev/null 2>&1; echo $?)"
+check "v1 skeleton: an empty Good Enough section flags at exit (zero requirements)" "1" "$(bash "$REPO_ROOT/lib/artifact-lint.sh" spec "$DOCSV1/SPEC.md" --feature-dir "$FDV1" 2>&1 | grep -c 'no .- \[ \]. checkbox criteria')"
+
+# The plain oneshot regression, driven end to end: skeleton -> intent -> file note ->
+# command/expect (v1 requires --execution-inputs) -> grounding -> the spec exit commits
+# `spec: <slug>` on the feature branch (state-ref.test.sh's "driven branch" pins the
+# same shape from the state-ref side).
+out="$(cd "$REPOV1" && drv spec fill --feature-dir "$FDV1" --intent "Dots survive slugify." 2>/dev/null)"
+check "v1 skeleton fill: intent lands" "intent" "$(jq -r '.filled[0]' <<<"$out")"
+out="$(cd "$REPOV1" && drv spec fill --feature-dir "$FDV1" --file slugify.py --note "strip dots" 2>/dev/null)"
+check "v1 skeleton fill: footprint note lands" "1" "$(grep -c '^- slugify.py: strip dots$' "$DOCSV1/SPEC.md")"
+ec=0; errout="$(cd "$REPOV1" && drv spec fill --feature-dir "$FDV1" --command true --expect "it runs" 2>&1 >/dev/null)" || ec=$?
+check "v1 fill without --execution-inputs is refused" "2" "$ec"
+check "v1 fill refusal names the flag and the minimal declaration" "1" "$(grep -c -- '--execution-inputs.*"version":1' <<<"$errout")"
+check "v1 fill refusal names the format doc" "1" "$(grep -c 'docs/loop-spec/requirements-format.md' <<<"$errout")"
+inputs='{"version":1,"toolchains":[],"localInputs":[],"externalInputs":[],"sensitiveInputs":[]}'
+out="$(cd "$REPOV1" && drv spec fill --feature-dir "$FDV1" --command true --expect "it runs" --execution-inputs "$inputs" 2>/dev/null)"
+check "v1 skeleton fill: the first command/expect allocates GE-001" "criterion:GE-001" "$(jq -r '.filled[0]' <<<"$out")"
+check "v1 skeleton fill: the GE-001/SC-001 row lands" "1" "$(grep -c '^- \[ \] GE-001: it runs$' "$DOCSV1/SPEC.md")"
+out="$(cd "$REPOV1" && drv spec fill --feature-dir "$FDV1" --grounding "slugify.py:1 is the transform" 2>/dev/null)"
+check "v1 skeleton fill: grounding lands" "1" "$(grep -c '^- slugify.py:1 is the transform$' "$DOCSV1/SPEC.md")"
+(cd "$REPOV1" && AUTONOMOUS=1 drv next --feature-dir "$FDV1" >/dev/null 2>&1)
+out="$(cd "$REPOV1" && AUTONOMOUS=1 drv next --feature-dir "$FDV1" --returned-from spec --note "spec" 2>/dev/null)"
+check "v1 next --returned-from spec: enters the next phase" "NEXT phase=" "${out:0:11}"
+SLUGV1="$(jq -r '.slug' "$FDV1/feature.json")"
+check "v1 spec exit: the artifact commit landed on the feature branch" "1" "$(git -C "$REPOV1" log --oneline "feat/$SLUGV1" | grep -c "spec: $SLUGV1")"
+
+# `spec write` under v1 refuses a draft that still carries the template placeholder,
+# naming the line (a lead who copied SPEC.md.template by hand and forgot to fill it
+# in) -- a fresh feature with no footprint cite, so no oneshot skeleton exists yet to
+# trip the "fill it with spec fill" guard first.
+REPOWR="$(new_repo v1-write-refusal)"
+printf 'x = 1\n' > "$REPOWR/a.py"
+git -C "$REPOWR" add -A && git -C "$REPOWR" -c commit.gpgsign=false commit -q -m "add a.py"
+outwr="$(cd "$REPOWR" && AUTONOMOUS=1 drv begin -- "autonomous v1 write refusal" 2>/dev/null)"
+FDWR="$(jq -r '.featureDir' <<<"$outwr")"
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - a.py\n---\n# v1 write refusal\n\n## Success criteria\n\n### Good Enough\n\n- [ ] {GE-001: outcome}\n  - {SC-001: observable scenario}\n\n## Grounding\n\n- none\n' > "$WORK/draftv1-placeholder.md"
+ec=0; errout="$(cd "$REPOWR" && drv spec write --feature-dir "$FDWR" --file "$WORK/draftv1-placeholder.md" 2>&1 >/dev/null)" || ec=$?
+check "v1 write: a leftover {GE- placeholder is refused" "1" "$ec"
+check "v1 write: the refusal names the line" "1" "$(grep -c '{GE-001: outcome}' <<<"$errout")"
 
 owner_json="$(jq -c '.requirementsContract.owner' "$FDV1/feature.json")"
 # Both drafts below share this body; only the frontmatter and the plain draft's one
