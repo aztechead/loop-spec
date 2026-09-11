@@ -120,6 +120,13 @@ check "next: SPEC exit records the intent the human saw, not an approval" "true"
 ec=0; err="$(cd "$REPO" && drv phase-begin plan --feature-dir "$FD" 2>&1 >/dev/null)" || ec=$?
 check "phase-begin: PLAN without the recorded approval is refused" "1" "$ec"
 check "phase-begin: the refusal names the record" "1" "$(grep -c 'PLAN needs the recorded Goal and Boundary approval' <<<"$err")"
+# A repeat return skips the exit gate, so the snapshot is the only reader of a spec
+# that lost its Goals: it answers, never a traceback.
+DOCS1="$REPO/docs/loop-spec/features/$(jq -r '.slug' "$FD/feature.json")"
+cp "$DOCS1/SPEC.md" "$DOCS1/SPEC.md.keep"; sed -i '/^## Goals$/,/^## Boundaries/{/^Produce/d}' "$DOCS1/SPEC.md"
+out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from spec 2>/dev/null)"
+check "next: a repeat spec return with an empty Goals section aborts cleanly" "ABORT reason=spec-intent-unreadable" "$out"
+mv "$DOCS1/SPEC.md.keep" "$DOCS1/SPEC.md"
 check "next: journal records the real successor" "1" "$(grep -c 'spec → human.after-spec' "$FD/PROGRESS.md")"
 check "next: state snapshot on the ref at the boundary" "state @ human.after-spec" "$(git -C "$REPO" log -1 --format=%s refs/loop-spec/state/add-a-json-flag)"
 check "next: the feature branch carries no state commit" "0" "$(git -C "$REPO" log --oneline | grep -c 'state @')"
@@ -130,7 +137,6 @@ check "next: re-invoke after pause continues to discuss" 'NEXT phase=discuss lab
 
 # DISCUSS may still rewrite Goal and Boundary (the run that froze them at SPEC exit died
 # when the human answered DISCUSS's follow-ups); the human gate says so, PLAN freezes.
-DOCS1="$REPO/docs/loop-spec/features/$(jq -r '.slug' "$FD/feature.json")"
 sed -i 's/^Produce the requested behavior\.$/Produce the requested behavior and log it./' "$DOCS1/SPEC.md"
 out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from discuss 2>/dev/null)"
 check "next: a Goals edit in DISCUSS pauses at the human gate instead of escalating" "PAUSED node=human.after-discuss intent=changed" "$out"

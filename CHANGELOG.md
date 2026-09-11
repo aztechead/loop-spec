@@ -20,9 +20,10 @@ The Goal and Boundary freeze moves from SPEC exit to PLAN entry.
   `spec approve`; the command remains for tests and out-of-band supervisors.
 - **The DISCUSS human gate says whether intent moved.** `next` answers
   `PAUSED node=human.after-discuss intent=changed|unchanged|unknown` by comparing the
-  sections against `specIntentSeen`, the digest the driver records at SPEC exit. The
-  cycle skill prints Goal and Boundary before that pause when they changed, because
-  PLAN freezes them as they stand.
+  sections against `specIntentSeen`, the digest the driver records at SPEC exit. A
+  feature 6.5 froze at SPEC exit has no snapshot; the gate compares against its
+  approval instead. The cycle skill prints Goal and Boundary before that pause when
+  they changed, because PLAN freezes them as they stand.
 - **PLAN entry requires the record.** `phase-begin plan` refuses a feature with no
   `specApproval`; entering through `next` records it. Before PLAN, artifact lint checks
   only that Goal and Boundary exist and are non-empty; from PLAN on it compares the

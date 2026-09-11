@@ -1160,6 +1160,8 @@ def graph_step(feature_dir, completed):
 def approval_source(feature_dir, feat):
     """Who approved the Goal and Boundary, read from the run, never typed by a lead."""
     if os.environ.get("LOOP_SPEC_NON_INTERACTIVE") == "1" and not feat.get("autonomous"):
+        # Nobody can answer a question on this run, so nobody human approved: the oracle
+        # would say human only because the feature was never marked autonomous.
         return "autonomous"
     line = lib("supervisor/oracle", "mode", "--feature-dir", feature_dir).strip()
     return {"oracle=human": "human", "oracle=supervisor": "supervised"}.get(line.split(" ")[0], "autonomous")
@@ -1350,7 +1352,13 @@ def cmd_next(argv):
             return 1
         if re.search(r"^route: *full\s*$", text, re.M) or not re.search(r"^## Intent$", text, re.M):
             # The oneshot shape has an Intent block and no Goals; it is not the full-spec freeze.
-            fset(feature_dir, "specIntentSeen", {"sha256": intent_digest(text), "at": now()})
+            # The exit gate linted the sections, but a repeat return skips that gate.
+            try:
+                fset(feature_dir, "specIntentSeen", {"sha256": intent_digest(text), "at": now()})
+            except ValueError as exc:
+                print("ABORT reason=spec-intent-unreadable")
+                print("cycle-driver: %s" % exc, file=sys.stderr)
+                return 1
 
     # Graph step: the engine dispatches gates/functions/subgraphs itself and stops at an
     # agent node, a human pause, an abort, or the terminal node.
@@ -1662,7 +1670,9 @@ def intent_since_spec(feature_dir):
     human left their SPEC gate? Unknown when either side cannot be read."""
     from spec_intent import intent_digest
     feat = state(feature_dir)
-    seen = (feat.get("specIntentSeen") or {}).get("sha256")
+    # A feature frozen at SPEC exit by 6.5 has the approval and no snapshot; the approved
+    # digest is what its human saw.
+    seen = (feat.get("specIntentSeen") or feat.get("specApproval") or {}).get("sha256")
     try:
         current = intent_digest(Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8"))
     except (OSError, ValueError):
