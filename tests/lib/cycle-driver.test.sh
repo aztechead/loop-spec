@@ -523,8 +523,8 @@ check "verification fill: the lead cannot supply evidence or a status" "2" "$ec"
 # tests dir on the path) fails: the driver records what happened, not what was hoped.
 printf 'def slugify(s):\n    return s.lower().replace(".", "")\n' > "$REPO7/slugify.py"
 ec=0; out="$(cd "$REPO7" && drv verification run --feature-dir "$FD7" 2>/dev/null)" || ec=$?
-check "verification run: a passing command is PASS from its exit" "1" "$(grep -c '^| GE-001 | .* | PASS | `python3 -c .* -> exit 0 |$' "$DOCS7/VERIFICATION.md")"
-check "verification run: a failing command is FAIL from its exit" "1" "$(grep -c '^| GE-002 | .* | FAIL | `python3 -m unittest .* -> exit [1-9][0-9]* |$' "$DOCS7/VERIFICATION.md")"
+check "verification run: a passing command is PASS from its exit" "1" "$(grep -c '^| GE-001 | .* | PASS | `python3 -c .* -> exit 0 (execution:[0-9a-f]\{32\}) |$' "$DOCS7/VERIFICATION.md")"
+check "verification run: a failing command is FAIL from its exit" "1" "$(grep -c '^| GE-002 | .* | FAIL | `python3 -m unittest .* -> exit [1-9][0-9]* (execution:[0-9a-f]\{32\}) |$' "$DOCS7/VERIFICATION.md")"
 check "verification run: a failing row is exit 1" "1" "$ec"
 check "verification run: the answer lists each row's exit" "PASS FAIL" "$(jq -r '[.ran[] | select(.row | startswith("GE")) | .status] | join(" ")' <<<"$out")"
 check "verification run: the output block is the command's output" "1" "$(grep -c '^(no output, exit 0)$' "$DOCS7/VERIFICATION.md")"
@@ -561,6 +561,38 @@ ec=0; out="$(cd "$REPO7" && drv verification run --feature-dir "$FD7" 2>/dev/nul
 check "verification run: every row passing is exit 0" "0" "$ec"
 check "verification run: the acceptance row follows the revised spec criterion" "1" "$(grep -c '^| GE-002 | `python3 -c "print(1)" \\| grep -c 1` exits 0: prints 1 | PASS |' "$DOCS7/VERIFICATION.md")"
 check "verification run: the test suite block is the command's output with its exit" "1" "$(grep -c '^2 passed$' "$DOCS7/VERIFICATION.md")"
+
+# --- AC3: the row's evidence is a record, not a caller assertion ------------------
+# The GE-002 row's evidence names the execution the driver ran it under (task-007):
+# a caller has no argument anywhere in this CLI that lands a status or an "exit N"
+# text into that cell -- it is always copied from the record verification_run wrote.
+EXEC_GE002="$(grep '^| GE-002 |' "$DOCS7/VERIFICATION.md" | grep -oE 'execution:[0-9a-f]{32}' | cut -d: -f2)"
+check "AC3: the acceptance row names an execution ID" "1" "$([[ -n "$EXEC_GE002" ]] && echo 1 || echo 0)"
+RECORD_GE002="$FD7/observations/$EXEC_GE002.json"
+check "AC3: the observation record exists under feature state" "1" "$([[ -f "$RECORD_GE002" ]] && echo 1 || echo 0)"
+check "AC3: the record carries the exact command that ran" "1" "$(jq -r '.command' "$RECORD_GE002" | grep -c 'print(1)')"
+check "AC3: the record's exit is the actual exit, not an assertion" "0" "$(jq -r '.exitCode' "$RECORD_GE002")"
+check "AC3: a legacy record's owner is null (no v1 binding on this route)" "null" "$(jq -c '.owner' "$RECORD_GE002")"
+check "AC3: a legacy record's revision is null" "null" "$(jq -c '.revision' "$RECORD_GE002")"
+check "AC3: a legacy record's environment is recorded unknown, not silently PASS-worthy" "unknown" "$(jq -r '.environment.status' "$RECORD_GE002")"
+check "AC3: a legacy record is not eligible for v1 grounding" "false" "$(jq -r '.eligibleForV1' "$RECORD_GE002")"
+check "AC3: the record's own status is PASS" "PASS" "$(jq -r '.status' "$RECORD_GE002")"
+ec=0; (cd "$REPO7" && drv verification fill --feature-dir "$FD7" --row GE-002 --evidence "PASS" >/dev/null 2>&1) || ec=$?
+check "AC3: no CLI argument lands a caller-supplied evidence/status on a row" "2" "$ec"
+# Tampering the captured output bytes after the fact is caught by validate_record,
+# never by re-trusting the row text the tampered run already wrote.
+printf 'tampered\n' >> "$FD7/$(jq -r '.output.path' "$RECORD_GE002")"
+check "AC3: a tampered output file makes validate_record refuse the record" "False output digest changed" "$(PYTHONPATH="$REPO_ROOT/lib" python3 -c "
+import json
+from execution_observation import validate_record, read_output_digest, FRESHNESS_FIELDS
+record = json.load(open('$RECORD_GE002'))
+current = {k: record[k] for k in FRESHNESS_FIELDS}
+current['evidenceEpoch'] = record['evidenceEpoch']
+current['outputDigest'] = read_output_digest('$FD7', record)
+eligible, reasons = validate_record(record, current)
+print(eligible, ' '.join(r for r in reasons if 'output' in r))
+" 2>&1 | tail -1)"
+
 # The Code review section comes from the reviewer's report, never the lead's hand
 # (port audit 4, item 3): findings become pending bullets the lead answers; none is none.
 mkdir -p "$FD7/dispatch"

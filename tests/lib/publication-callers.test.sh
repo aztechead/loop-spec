@@ -50,6 +50,7 @@ hooks/restrict-agent-paths.sh
 hooks/team/result-forgery-guard.sh
 hooks/team/result-forgery-guard.test.sh
 lib/cycle-result.sh
+lib/execution_observation.py
 lib/greenfield-bootstrap.sh
 lib/phase-entry.sh
 lib/quality-loop-state.sh

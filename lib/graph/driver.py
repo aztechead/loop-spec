@@ -2797,27 +2797,41 @@ def criteria_commands(spec_path):
     return out
 
 
-def observe(command, root):
-    """Run one command in the feature root and return (exit, output block): the block is
-    the output capped at 200 lines, or the exit when there was none."""
-    try:
-        proc = subprocess.run(["bash", "-c", command], cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                              universal_newlines=True, timeout=int(os.environ.get("LOOP_SPEC_PHASE_TIMEOUT_MINS") or 60) * 60)
-        code, output = proc.returncode, proc.stdout
-    except subprocess.TimeoutExpired:
-        code, output = 124, "(timed out)"
-    lines = output.rstrip("\n").splitlines()
+def observe_command(feature_dir, root, requirement, command):
+    """Run one required command through execution_observation.observe (task-007),
+    on the legacy oneshot criteria route: no owner/revision/scenario and no
+    execution-inputs contract, so the record's environment is `unknown` but
+    `status` still comes from exit code and clean-tree identity alone (see
+    execution_observation's own LEGACY ROUTE docstring for why -- every legacy
+    fixture through the 7.x window keeps working). Returns (status, exit_code,
+    block, execution_id): `status` and `exit_code` are the record's, never
+    derived here a second time, so no caller downstream can compute a
+    different answer than the one the record holds. `block` is the display
+    tail capped at 200 lines, replacing the old unbounded subprocess.PIPE read."""
+    from execution_observation import observe as observe_execution
+    binding = {"owner": None, "requirement": requirement, "revision": None, "scenario": None}
+    record = observe_execution(feature_dir, root, binding, command, None)
+    lines = (record.get("displayTail") or "").rstrip("\n").splitlines()
     if len(lines) > 200:
         lines = lines[:200] + ["... (%d more lines)" % (len(lines) - 200)]
-    return code, ("\n".join(lines) or "(no output, exit %d)" % code)
+    exit_code = record["exitCode"]
+    block = "\n".join(lines) or "(no output, exit %s)" % (exit_code if exit_code is not None else "killed")
+    return record["status"], exit_code, block, record["executionId"]
+
+
+def _exit_label(exit_code):
+    return str(exit_code) if exit_code is not None else "killed"
 
 
 def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests):
     """Observe, never assert: run each Good Enough criterion's command (the first
-    backticked span of its line) in the feature root and write the exit as the row's
-    status, the command and exit as its evidence, and the output as its block; then
-    commands.test into the Final test suite block. The lead supplies no status
-    (port audit 4, items 2 and 4). Returns the rows written."""
+    backticked span of its line) through execution_observation.observe (task-007) and
+    write the record's status as the row's status, the command/exit/execution ID as
+    its evidence, and the record's display tail as its block; then commands.test into
+    the Final test suite block. The lead supplies no status (port audit 4, items 2, 4):
+    the row's status is copied from the record, never recomputed from a caller
+    argument, so a hand-edited or CLI-supplied PASS has nothing here to land in.
+    Returns the rows written."""
     root = feature_root(feature_dir, feat)
     text = open(target, encoding="utf-8").read()
     criteria = good_enough_criteria(spec)
@@ -2829,20 +2843,21 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
         if only_row and row != only_row:
             continue
         command = commands.get(row)
+        execution_id = None
         if command:
             if command in observed:
-                source, code, _ = observed[command]
-                block = "Same command and result as Criterion %d (exit %d)." % (source, code)
+                source, status, code, _, execution_id = observed[command]
+                block = "Same command and result as Criterion %d (exit %s)." % (source, _exit_label(code))
             else:
-                code, block = observe(command, root)
-                observed[command] = (i + 1, code, block)
-            evidence = "`%s` -> exit %d" % (command.replace("|", "\\|"), code)
+                status, code, block, execution_id = observe_command(feature_dir, root, row, command)
+                observed[command] = (i + 1, status, code, block, execution_id)
+            evidence = "`%s` -> exit %s (execution:%s)" % (command.replace("|", "\\|"), _exit_label(code), execution_id)
         else:
             # A criterion the driver never wrote has no command on record: a FAIL the
             # row says out loud, never a crash that leaves every row empty (port audit 5, R1).
-            code, block = 1, "(no command on record for this criterion: the frontmatter criteria map has no %s)" % row
+            status, code = "FAIL", 1
+            block = "(no command on record for this criterion: the frontmatter criteria map has no %s)" % row
             evidence = "no command on record: `spec fill --command --expect --row %s` writes one" % row
-        status = "PASS" if code == 0 else "FAIL"
         cell = re.compile(r"^\| %s \| .* \|$" % re.escape(row), re.M)
         row_text = "| %s | %s | %s | %s |" % (row, criterion.replace("|", "\\|"), status, evidence)
         if cell.search(text):
@@ -2867,7 +2882,7 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
             text = text[:anchor] + "\n### Criterion %d\n\n```\n%s\n```\n" % (i + 1, block) + text[anchor:]
         with open(target, "w", encoding="utf-8") as fh:
             fh.write(text)
-        written.append({"row": row, "status": status, "exit": code})
+        written.append({"row": row, "status": status, "exit": code, "execution": execution_id})
     if with_tests:
         test_cmd = ((feat.get("commands") or {}).get("test") or "").strip()
         span = section_span(text, "Final test suite")
@@ -2875,15 +2890,15 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
             raise Die("verification run: %s has no ## Final test suite section" % target)
         if test_cmd:
             if test_cmd in observed:
-                source, code, _ = observed[test_cmd]
-                block = "Same command and result as Criterion %d (exit %d)." % (source, code)
+                source, status, code, _, execution_id = observed[test_cmd]
+                block = "Same command and result as Criterion %d (exit %s)." % (source, _exit_label(code))
             else:
-                code, out_block = observe(test_cmd, root)
-                block = "$ %s\n%s\n(exit %d)" % (test_cmd, out_block, code)
-            written.append({"row": "tests", "status": "PASS" if code == 0 else "FAIL", "exit": code})
+                status, code, out_block, execution_id = observe_command(feature_dir, root, "tests", test_cmd)
+                block = "$ %s\n%s\n(exit %s) (execution:%s)" % (test_cmd, out_block, _exit_label(code), execution_id)
+            written.append({"row": "tests", "status": status, "exit": code, "execution": execution_id})
         else:
             block = "(no commands.test is configured for this feature)"
-            written.append({"row": "tests", "status": "N/A", "exit": None})
+            written.append({"row": "tests", "status": "N/A", "exit": None, "execution": None})
         text = text[:span[0]] + "\n```\n" + block + "\n```\n" + text[span[1]:]
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(compact_artifact(text))
