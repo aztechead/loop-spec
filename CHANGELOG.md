@@ -150,6 +150,12 @@ below; each task's own SPEC/PLAN/VERIFICATION is the durable record of what it p
   the greenfield flag a placeholder README kept two runs from earning. The backfill had
   also been silently refused: `task-progress mark-done` wrote tasks.json directly and
   moved the hash the parent's token had captured, so it now publishes under that token.
+- The fourth live cycle passed VERIFY and ITERATE's judge scored every criterion full
+  marks, then two things sent it back: the iterate route called the converged floor
+  without `--feature-dir`, so a v1 verification table failed the legacy matcher and the
+  verdict was vetoed (fixed); and the second VERIFY entry refused a driver-edited SPEC.md
+  and a REVIEW-ORDER.md the fixed commit list had not carried, so every phase exit now
+  commits everything under the feature's docs directory, which is plugin-owned end to end.
 
 No comparative measurement of repair rounds, cost, or latency accompanies this release;
 that evaluation is out of scope for 7.0 (SPEC "Exceptional": comparative live

@@ -256,11 +256,15 @@ done
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 out="$(bash "$MODE" plan --feature-dir "$FD")"
 check "mode plan: one small task takes the fast path" "critique=skip" "${out%% *}"
+printf '# Review order\n\n- none yet\n' > "$DOCS/REVIEW-ORDER.md"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: gated plan passes" "0" "$ec"
+check "exit plan: everything under the feature docs dir rides the phase commit" "" "$(git status --porcelain -- "$DOCS")"
 check "exit plan: tasks pointer recorded" "1" "$([[ "$(fj '.artifacts.tasks')" == *tasks.json ]] && echo 1 || echo 0)"
 check "exit plan: patterns source defaulted" "pattern-mapper" "$(fj '.artifacts.patternsSource')"
-check "exit plan: PLAN.md committed" "1" "$(git log --oneline | grep -c 'plan: my-feature')"
+# Two passing exits, two commits: the second carried the REVIEW-ORDER.md that appeared
+# under the feature docs dir between them.
+check "exit plan: PLAN.md committed" "2" "$(git log --oneline | grep -c 'plan: my-feature')"
 # `plan tasks` publishes the extraction with plan-conflicts.sh's inferred edges folded
 # in; the parity check must see the same edges, or a plan whose task prose names an
 # earlier task bounces on an edge the driver itself added.

@@ -302,6 +302,12 @@ if (( flags == 0 )); then
     if [[ "$(nget '.commit // ""')" != "" ]]; then
       paths=()
       while IFS= read -r p; do paths+=("$(resolve "$p")"); done < <(nget '.commit.paths[]')
+      # The feature's docs directory is plugin-owned end to end, so everything a phase
+      # left there rides its commit: a fixed list rotted on a live run (a driver-edited
+      # SPEC.md in VERIFY, a REVIEW-ORDER.md the list named but the add missed) and the
+      # next phase's entry refused the dirt.
+      docs_dir="$(resolve '{docs}')"
+      [[ -d "$docs_dir" ]] && paths+=("$docs_dir")
       commit_paths "$(resolve "$(nget '.commit.message')")" ${paths[@]+"${paths[@]}"}
     fi
     checkpoint="$(nget '.checkpoint // ""')"

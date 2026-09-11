@@ -48,6 +48,7 @@ checks=(
   $'skills/shared/critique-gate-protocol.md\tthe lead does not inline it'
   $'skills/shared/critique-gate-protocol.md\tlib/docs-probe.sh latest|docs <name>'
   $'skills/shared/critique-gate-protocol.md\tthe Agent tool runs no shell'
+  $'lib/iterate-judged.sh\t"$docs/VERIFICATION.md" --feature-dir "$feature_dir"'
   $'hooks/restrict-agent-paths.sh\tthe lead does not edit a maker\'s staged draft'
   $'skills/plan/SKILL.md\t`lib/plan-conflicts.sh edges`'
   $'skills/shared/review-prompts/prose-pruning.md\tprose-lines'
