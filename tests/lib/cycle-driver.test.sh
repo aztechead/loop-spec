@@ -120,6 +120,9 @@ check "next: SPEC exit records the intent the human saw, not an approval" "true"
 ec=0; err="$(cd "$REPO" && drv phase-begin plan --feature-dir "$FD" 2>&1 >/dev/null)" || ec=$?
 check "phase-begin: PLAN without the recorded approval is refused" "1" "$ec"
 check "phase-begin: the refusal names the record" "1" "$(grep -c 'PLAN needs the recorded Goal and Boundary approval' <<<"$err")"
+check "phase-begin: the refusal is on the ledger as a refusal" "1" "$(jq -c 'select(.event == "entry_refused" and .phase == "plan")' "$FD/events.jsonl" | wc -l | tr -d ' ')"
+check "phase-begin: the refusal escalates nothing" "0" "$(jq -c 'select(.event == "escalated")' "$FD/events.jsonl" | wc -l | tr -d ' ')"
+check "phase-begin: the refusal leaves the paused result in place" "paused" "$(jq -r '.status' "$FD/result.json")"
 # A repeat return skips the exit gate, so the snapshot is the only reader of a spec
 # that lost its Goals: it answers, never a traceback.
 DOCS1="$REPO/docs/loop-spec/features/$(jq -r '.slug' "$FD/feature.json")"
@@ -134,6 +137,8 @@ check "next: the project .gitignore is never written" "0" "$([[ -f "$REPO/.gitig
 
 out="$(cd "$REPO" && drv next --feature-dir "$FD" 2>/dev/null)"
 check "next: re-invoke after pause continues to discuss" 'NEXT phase=discuss label="Challenge and refine the specification" effort=system2' "$(head -1 <<<"$out")"
+check "next: the resumed pause record is gone" "0" "$([[ -f "$FD/result.json" ]] && echo 1 || echo 0)"
+check "next: the resumed pause pointer is gone" "0" "$([[ -f "$REPO/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
 
 # DISCUSS may still rewrite Goal and Boundary (the run that froze them at SPEC exit died
 # when the human answered DISCUSS's follow-ups); the human gate says so, PLAN freezes.

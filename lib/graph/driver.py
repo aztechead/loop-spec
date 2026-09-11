@@ -1434,6 +1434,12 @@ def cmd_next(argv):
 
     label, effort = descriptor["label"], descriptor["effort"]
     lib("feature-init", "activate", feature_dir, nxt)
+    # The pause this answer resumes from is over: a reader of result.json (the launcher,
+    # a supervisor) took the stale record for the present on the from-scratch walk.
+    stale = os.path.join(feature_dir, "result.json")
+    if (read_json(stale, {}) or {}).get("status") == "paused":
+        os.remove(stale)
+        lib("cycle-result", "clear", "--result-root", repo_root)
     # preset, tier, and phaseHandoff predate this schema; they are strays the reader keeps
     # out of every typed view, so the one place that drops them reads the strays on purpose.
     strays = json.loads(lib("feature-read", feature_dir, "--strays"))
@@ -1462,19 +1468,26 @@ def cmd_next(argv):
     return 0
 
 
+def entry_refused(feature_dir, phase, reason):
+    """A refused entry is the caller's to fix and try again; the run is not over. It used
+    to write the escalated result and open a checkpoint PR, so a ledger reader counted
+    an escalation the feature never took (the from-scratch walk after 6.6.0)."""
+    lib("events", "emit", feature_dir, "entry_refused", "--phase", phase, "--data", json.dumps({"reason": reason}))
+    raise Die("phase entry refused: " + reason)
+
+
 def instruction_record(feature_dir, phase):
     from phase_snapshot import render, verify
     from spec_intent import verify_intent
     feat = state(feature_dir)
     if phase == "plan" and not feat.get("specApproval"):
-        raise Die("phase entry refused: PLAN needs the recorded Goal and Boundary approval; "
-                  "`cycle-driver.sh next` records it when the cycle enters PLAN, so enter through it")
+        entry_refused(feature_dir, phase, "PLAN needs the recorded Goal and Boundary approval; "
+                      "`cycle-driver.sh next` records it when the cycle enters PLAN, so enter through it")
     if feat.get("specApproval"):
         try:
             verify_intent(Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8"), feat["specApproval"])
         except (OSError, ValueError) as exc:
-            cmd_escalate(["--feature-dir", feature_dir, "--reason", str(exc)], silent=True)
-            raise Die("phase entry refused: " + str(exc))
+            entry_refused(feature_dir, phase, str(exc))
     active = fget(feature_dir, "driverNext", {}) or {}
     if active.get("phase") == phase and active.get("instructions"):
         verify(active["instructions"], REPO_ROOT, feature_dir)

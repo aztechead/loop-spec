@@ -84,6 +84,8 @@
 # }
 #
 # events.jsonl and result.json are local telemetry, deliberately not committed.
+# A paused result.json lives until the driver answers NEXT for the phase that resumes
+# it; the driver removes it and the pointer then, so a running phase has no result.
 #
 # `state` is the probe behind the route-exit contract: a run is armed (`begin`) before
 # any protocol machinery starts and disarmed only by a published terminal result, so

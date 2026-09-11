@@ -30,6 +30,12 @@ The Goal and Boundary freeze moves from SPEC exit to PLAN entry.
   at PLAN; the DISCUSS gate compares against the retired digest. An unattended rewind
   keeps the freeze, as before. `tests/lib/pr-body.test.sh` no longer uses the macOS
   form of `sed -i`.
+- **A refused phase entry is not an escalation.** `phase-begin` refused for a missing or
+  changed approval used to write the escalated result and open a checkpoint PR while the
+  feature stayed in its phase. It now emits `entry_refused` with the reason and exits 1.
+- **A NEXT answer removes the pause it resumes from.** `result.json` and the
+  `.loop-spec/last-result.json` pointer kept the last `paused` record while the next
+  phase ran; the driver removes both when it activates the phase.
 - **PLAN entry requires the record.** `phase-begin plan` refuses a feature with no
   `specApproval`; entering through `next` records it. Before PLAN, artifact lint checks
   only that Goal and Boundary exist and are non-empty; from PLAN on it compares the

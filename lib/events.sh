@@ -40,6 +40,8 @@
 #   verify_failure    - a VERIFY gate failed (data: {"class":"marker|tamper|
 #                       suite-regression|acceptance|code-review|live-probe"};
 #                       mined into the run digest's verifyFailureClasses)
+#   entry_refused     - phase-begin refused the phase (data: {"reason":..}); the caller
+#                       fixes and re-enters, the run is not escalated
 #   completed         - cycle completed successfully
 #   paused            - cycle paused by user
 #   escalated         - cycle escalated due to limit/context
