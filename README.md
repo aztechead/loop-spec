@@ -4,7 +4,7 @@ Spec-driven development loops for [Claude Code](https://claude.com/claude-code),
 
 Use this guide to install loop-spec, start a cycle, and find its operating reference.
 
-Current version: 6.6.2
+Current version: 6.6.3
 
 ## Contents
 
