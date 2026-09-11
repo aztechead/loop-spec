@@ -14,9 +14,9 @@
 #
 # `edges` is print-only: it NEVER writes <tasks.json>. It infers a blockedBy edge for
 # every task whose interfaces.consumes, goal, or brief names another task id it does
-# not already wait on ("consumes: task-003's module path"), and prints the augmented
-# array to stdout (the same JSON `table` readers expect), reporting `edge <task> ->
-# <dep>` per addition on stderr. The caller decides what becomes durable: `cycle-
+# not already wait on ("consumes: task-003's module path"). It prints the updated array on stdout
+# (the same JSON `table` readers expect), reporting `edge <task> -> <dep>` per addition
+# on stderr. The caller decides what becomes durable: `cycle-
 # driver.sh plan tasks` (lib/graph/driver.py cmd_plan) feeds this the extractor's
 # output and publishes what comes back through publish_artifact under its held
 # ingress token -- the one path allowed to write the registered tasks.json

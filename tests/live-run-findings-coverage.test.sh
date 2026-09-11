@@ -46,7 +46,7 @@ checks=(
   $'skills/shared/execute-subagent.md\tpass it according to the harness\'s model contract'
   $'skills/cycle/SKILL.md\tDo not call `init` again'
   $'skills/shared/critique-gate-protocol.md\tthe lead does not inline it'
-  $'skills/plan/SKILL.md\tplan-conflicts.sh" edges'
+  $'skills/plan/SKILL.md\t`lib/plan-conflicts.sh edges`'
   $'skills/shared/review-prompts/prose-pruning.md\tprose-lines'
   $'skills/shared/team-prompts/critic.md\tRead only the cited `EVID-NNN` rows'
   $'lib/graph/driver.py\theadless invocation; working in place'
