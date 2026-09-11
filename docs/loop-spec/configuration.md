@@ -474,9 +474,12 @@ nonzero. `.loop-spec/launcher-result.json` records the stop and session log path
 The lower-level session adapter's `--lead --plugin-root PATH` enables this lead mode;
 ordinary task sessions retain their isolated environment and tool scope.
 
-`cycle-driver.sh spec approve --feature-dir DIR --source human|autonomous|supervised`
-records the full spec's Goal and Boundary digest. No source can replace an existing
-approval. Later edits to either section fail phase entry and artifact lint even if committed.
+The driver records the full spec's Goal and Boundary digest when the cycle enters
+PLAN, after the SPEC interview and the DISCUSS design questions, with the source
+(human, supervised, or autonomous) read from the run. No source can replace an
+existing approval. Later edits to either section fail phase entry and artifact lint
+even if committed. `cycle-driver.sh spec approve --feature-dir DIR [--source ...]`
+is the same record, for tests and out-of-band supervisors; phase skills never call it.
 
 Each phase receives an immutable instruction snapshot with a SHA-256 manifest.
 `feature.json.instructionSnapshots` and the `instructions-rendered` event retain the

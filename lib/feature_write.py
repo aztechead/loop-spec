@@ -12,6 +12,16 @@ import tempfile
 from requirements import reconcile_inventory, validate_transition
 
 
+def retired(state, approved):
+    """The driver reopened the freeze for a human-approved SPEC rewind: the approval is
+    gone and its last record sits at the end of specApprovalHistory. Anything else
+    that moves an approval is the tamper the guard exists for."""
+    history = state.get("specApprovalHistory") or []
+    last = history[-1] if isinstance(history, list) and history else None
+    return state.get("specApproval") is None and isinstance(last, dict) and \
+        all(last.get(key) == approved.get(key) for key in ("sha256", "source", "approvedAt"))
+
+
 def parse_json(value):
     try:
         parsed = json.loads(value)
@@ -134,7 +144,7 @@ def prepare_state(directory, previous, operation, value, keys=()):
 
     if previous is not None:
         approved = parse_json(previous).get("specApproval")
-        if approved is not None and state.get("specApproval") != approved:
+        if approved is not None and state.get("specApproval") != approved and not retired(state, approved):
             raise ValueError("specApproval is immutable; restore approved intent and request a new intent decision")
 
     old_state = parse_json(previous) if previous is not None else {}

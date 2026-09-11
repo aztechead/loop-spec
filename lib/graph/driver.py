@@ -155,8 +155,11 @@ Usage:
         (including none configured); 1 a check failed or a named root is not yet at
         its candidate SHA; 2 bad invocation.
 
-    cycle-driver.sh spec approve --feature-dir DIR --source human|autonomous|supervised
-        Freeze full-spec Goal and Boundary after approval; repeat calls only verify.
+    cycle-driver.sh spec approve --feature-dir DIR [--source human|autonomous|supervised]
+        Record the full spec's Goal and Boundary digest, or verify an existing one. The
+        driver runs this itself when the cycle enters PLAN, with the source read from
+        lib/supervisor/oracle.sh; the flag exists for tests and for a supervisor that
+        approved out of band. Phase skills never call it.
 
     cycle-driver.sh spec write --feature-dir DIR --file PATH
         Copy PATH (or stdin for `-`) to {docs}/SPEC.md, the only target this command
@@ -207,7 +210,10 @@ Usage:
         classes (the bracketed label of every FLAG line), which evals/eval_run.py counts.
         Then post-phase bookkeeping and the graph step. Prints exactly ONE answer line:
           NEXT phase=<id> label="<label>" effort=<system1|system2>
-          PAUSED node=<id>            (human gate; re-invoke the cycle to continue)
+          PAUSED node=<id> [intent=changed|unchanged|unknown]
+                                     (human gate; re-invoke the cycle to continue; the
+                                     DISCUSS gate says whether Goal and Boundary still read
+                                     as they did at the SPEC gate, because PLAN freezes them)
           HANDOFF next=<phase> model=<selector>   (one phase per session; relaunch)
           REWIND next=<phase>         (the graph lists <phase> before the returned one; relaunch)
           DONE status=<completed|escalated|paused> [reason=<r>]
@@ -1317,6 +1323,51 @@ def graph_step(feature_dir, completed):
         return exc.code, None
 
 
+def approval_source(feature_dir, feat):
+    """Who approved the Goal and Boundary, read from the run, never typed by a lead."""
+    if os.environ.get("LOOP_SPEC_NON_INTERACTIVE") == "1" and not feat.get("autonomous"):
+        # Nobody can answer a question on this run, so nobody human approved: the oracle
+        # would say human only because the feature was never marked autonomous.
+        return "autonomous"
+    line = lib("supervisor/oracle", "mode", "--feature-dir", feature_dir).strip()
+    return {"oracle=human": "human", "oracle=supervisor": "supervised"}.get(line.split(" ")[0], "autonomous")
+
+
+def record_spec_approval(feature_dir, feat, source, phase):
+    """Freeze Goal and Boundary once, at the last moment before implementation:
+    PLAN entry, after SPEC's intent interview and DISCUSS's design questions. Recording
+    at SPEC exit ended a run whose human answered DISCUSS's follow-ups. Raises ValueError."""
+    from spec_questions import read_questions
+    from spec_intent import intent_digest, verify_intent
+    target = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
+    text = Path(target).read_text(encoding="utf-8")
+    if feat.get("specApproval"):
+        verify_intent(text, feat["specApproval"])
+        return feat["specApproval"]
+    if read_questions(text):
+        raise ValueError("resolve intent questions before approving SPEC.md")
+    approval = {"sha256": intent_digest(text), "source": source, "approvedAt": now()}
+    fset(feature_dir, "specApproval", approval)
+    lib("events", "emit", feature_dir, "spec-approved", "--phase", phase, "--data", json.dumps(approval))
+    return approval
+
+
+def reopen_spec_approval(feature_dir, feat):
+    """A human approved a SPEC-level rewind: the freeze they approved earlier steps
+    aside so DISCUSS can amend Goal and Boundary, and PLAN records the new one. The
+    old record moves to specApprovalHistory, which is the only shape the state writer
+    lets an approval leave by. Autonomous rewinds never come here: the judge scores
+    against feature_title and the freeze stands."""
+    approval = feat.get("specApproval")
+    if not approval:
+        return
+    retired = dict(approval, reopenedAt=now(), reopenedBy="human.iterate-spec-approval")
+    fappend(feature_dir, "specApprovalHistory", retired)
+    fset(feature_dir, "specApproval", None)
+    fset(feature_dir, "specIntentSeen", {"sha256": approval["sha256"], "at": now()})
+    lib("events", "emit", feature_dir, "spec-reopened", "--phase", "discuss", "--data", json.dumps(retired))
+
+
 def cmd_next(argv):
     o = parse_pairs(argv, ("--feature-dir", "--returned-from", "--note"))
     feature_dir = o.get("feature_dir") or ""
@@ -1486,6 +1537,26 @@ def cmd_next(argv):
                 print(exit_out, file=sys.stderr)
                 return 1
 
+    if returned == "spec":
+        # What the human read at their SPEC gate: the DISCUSS gate names whether the
+        # sections PLAN will freeze still say that, so approval is of text they saw.
+        from spec_intent import intent_digest
+        try:
+            text = Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8")
+        except OSError as exc:
+            print("ABORT reason=spec-unreadable")
+            print("cycle-driver: %s" % exc, file=sys.stderr)
+            return 1
+        if re.search(r"^route: *full\s*$", text, re.M) or not re.search(r"^## Intent$", text, re.M):
+            # The oneshot shape has an Intent block and no Goals; it is not the full-spec freeze.
+            # The exit gate linted the sections, but a repeat return skips that gate.
+            try:
+                fset(feature_dir, "specIntentSeen", {"sha256": intent_digest(text), "at": now()})
+            except ValueError as exc:
+                print("ABORT reason=spec-intent-unreadable")
+                print("cycle-driver: %s" % exc, file=sys.stderr)
+                return 1
+
     # Graph step: the engine dispatches gates/functions/subgraphs itself and stops at an
     # agent node, a human pause, an abort, or the terminal node.
     if run(["bash", GRAPH_DIR / "validate.sh", GRAPH], quiet=True).returncode != 0:
@@ -1501,6 +1572,8 @@ def cmd_next(argv):
         if step_rc == 4:
             nxt = descriptor["node"]
             answer = "PAUSED node=%s" % nxt
+            if nxt == "human.after-discuss":
+                answer += " intent=%s" % intent_since_spec(feature_dir)
             break
         if step_rc == 5:
             print("ABORT reason=graph-route-blocked (see stderr for route or retry-limit diagnostics)")
@@ -1515,6 +1588,22 @@ def cmd_next(argv):
         if descriptor.get("kind") == "agent":
             break
 
+    # The descriptor defers an agent node's edge; the ledger's started entry keeps it.
+    admitted = (engine.latest_checkpoint() or {}).get("edge") or "" if nxt == "discuss" else ""
+    if admitted.endswith("human.iterate-spec-approval->discuss"):
+        reopen_spec_approval(feature_dir, feat)
+        feat = state(feature_dir)
+    if nxt == "plan" and descriptor.get("kind") == "agent":
+        # Every route into PLAN lands here (the DISCUSS gate, the short path, the compact
+        # gate, ITERATE's plan gap), and before any handoff, so a fresh session finds it.
+        try:
+            record_spec_approval(feature_dir, feat, approval_source(feature_dir, feat), "plan")
+        except (OSError, ValueError) as exc:
+            cmd_escalate(["--feature-dir", feature_dir, "--reason", str(exc)], silent=True)
+            print("DONE status=escalated reason=spec-approval-refused")
+            print("cycle-driver: %s" % exc, file=sys.stderr)
+            return 0
+        feat = state(feature_dir)
     if returned:
         handed = record_transition(feature_dir, returned, nxt, note, ws_mode)
         if handed is not None:
@@ -1526,6 +1615,12 @@ def cmd_next(argv):
 
     label, effort = descriptor["label"], descriptor["effort"]
     lib("feature-init", "activate", feature_dir, nxt)
+    # The pause this answer resumes from is over: a reader of result.json (the launcher,
+    # a supervisor) took the stale record for the present on the from-scratch walk.
+    stale = os.path.join(feature_dir, "result.json")
+    if (read_json(stale, {}) or {}).get("status") == "paused":
+        os.remove(stale)
+        lib("cycle-result", "clear", "--result-root", repo_root)
     # preset, tier, and phaseHandoff predate this schema; they are strays the reader keeps
     # out of every typed view, so the one place that drops them reads the strays on purpose.
     strays = json.loads(lib("feature-read", feature_dir, "--strays"))
@@ -1554,16 +1649,26 @@ def cmd_next(argv):
     return 0
 
 
+def entry_refused(feature_dir, phase, reason):
+    """A refused entry is the caller's to fix and try again; the run is not over. It used
+    to write the escalated result and open a checkpoint PR, so a ledger reader counted
+    an escalation the feature never took (the from-scratch walk after 6.6.0)."""
+    lib("events", "emit", feature_dir, "entry_refused", "--phase", phase, "--data", json.dumps({"reason": reason}))
+    raise Die("phase entry refused: " + reason)
+
+
 def instruction_record(feature_dir, phase):
     from phase_snapshot import render, verify
     from spec_intent import verify_intent
     feat = state(feature_dir)
+    if phase == "plan" and not feat.get("specApproval"):
+        entry_refused(feature_dir, phase, "PLAN needs the recorded Goal and Boundary approval; "
+                      "`cycle-driver.sh next` records it when the cycle enters PLAN, so enter through it")
     if feat.get("specApproval"):
         try:
             verify_intent(Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8"), feat["specApproval"])
         except (OSError, ValueError) as exc:
-            cmd_escalate(["--feature-dir", feature_dir, "--reason", str(exc)], silent=True)
-            raise Die("phase entry refused: " + str(exc))
+            entry_refused(feature_dir, phase, str(exc))
     active = fget(feature_dir, "driverNext", {}) or {}
     if active.get("phase") == phase and active.get("instructions"):
         verify(active["instructions"], REPO_ROOT, feature_dir)
@@ -1781,6 +1886,23 @@ def boundary_review(feature_dir, phase):
             written = "; the Code review section could not be written (%s)" % exc.message
     return ("REDO phase=oneshot flags=1\nFLAG [review] the driver ran the one review pass; its verdict and findings are in %s%s: "
             "fix what needs fixing, answer each pending finding with `verification verdict`, then return" % (rec.get("report"), written))
+
+
+def intent_since_spec(feature_dir):
+    """changed|unchanged|unknown: do Goal and Boundary still read as they did when the
+    human left their SPEC gate? Unknown when either side cannot be read."""
+    from spec_intent import intent_digest
+    feat = state(feature_dir)
+    # A feature frozen at SPEC exit by 6.5 has the approval and no snapshot; the approved
+    # digest is what its human saw.
+    seen = (feat.get("specIntentSeen") or feat.get("specApproval") or {}).get("sha256")
+    try:
+        current = intent_digest(Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "unknown"
+    if not seen:
+        return "unknown"
+    return "unchanged" if current == seen else "changed"
 
 
 def returned_checks(feature_dir, phase):
@@ -2777,28 +2899,13 @@ def author_spec(argv, target_override=None, publication_token=None):
     if sub in ("drop", "fill", "escalate") and not os.path.isfile(target):
         raise Die("spec %s: no SPEC.md at %s" % (sub, target), 2)
     if sub == "approve":
-        from spec_questions import read_questions
-        from spec_intent import intent_digest, verify_intent
-        approval_source = o.get("source")
-        if approval_source not in ("human", "autonomous", "supervised"):
+        source_flag = o.get("source") or approval_source(feature_dir, feat)
+        if source_flag not in ("human", "autonomous", "supervised"):
             raise Die("spec approve needs --source human|autonomous|supervised", 2)
-        if approval_source == "autonomous" and not (feat.get("autonomous") or os.environ.get("LOOP_SPEC_NON_INTERACTIVE") == "1"):
+        if source_flag == "autonomous" and not (feat.get("autonomous") or os.environ.get("LOOP_SPEC_NON_INTERACTIVE") == "1"):
             raise Die("spec approve: autonomous approval requires an unattended run", 2)
         try:
-            text = Path(target).read_text(encoding="utf-8")
-            if read_questions(text):
-                raise ValueError("resolve intent questions before approving SPEC.md")
-            if feat.get("specApproval"):
-                verify_intent(text, feat["specApproval"])
-            else:
-                approval = {"sha256": intent_digest(text), "source": approval_source, "approvedAt": now()}
-                if publication_token is not None:
-                    from feature_write import write_operation
-                    refreshed = write_operation(feature_dir, "set", approval, ["specApproval"], token=publication_token)
-                    pub.adopt_output(json.dumps(refreshed))
-                else:
-                    fset(feature_dir, "specApproval", approval)
-                lib("events", "emit", feature_dir, "spec-approved", "--phase", "spec", "--data", json.dumps(approval))
+            record_spec_approval(feature_dir, feat, source_flag, feat.get("currentPhase") or "spec")
         except (OSError, ValueError) as exc:
             raise Die("spec approve: %s" % exc, 1)
         print(json.dumps({"spec": target, "approval": fget(feature_dir, "specApproval")}))

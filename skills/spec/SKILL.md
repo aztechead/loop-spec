@@ -166,19 +166,15 @@ ledger. This pass does not invent a transcript or score.
 Before approval, write Goal and Boundary as outcomes and constraints: for example,
 return all accepted strings. Put revisable choices such as path-versus-query input
 in an implementation section outside Goal and Boundary, unless the user explicitly
-required that interface. After approval, moving that choice out of a frozen section
-is itself an intent change; return the gap to the human.
+required that interface.
 
-After the human approves the written Goal and Boundary, record the freeze:
-
-```bash
-bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" spec approve --feature-dir "$feature_dir" --source human
-```
-
-For unattended runs use `--source autonomous` after recording recommended decisions;
-a supervisor's explicit approval uses `--source supervised`. Never label an assumed
-answer human approval. The digest is immutable: later intent gaps return to the human,
-and cannot be fixed by changing the approval record. Phase exit verifies the digest.
+Get the human's approval of the written Goal and Boundary at this phase's gate, and
+record the answer with `decisions.sh add`. Do not record a freeze here: the driver
+freezes Goal and Boundary when the cycle enters PLAN, after DISCUSS has asked its
+design questions, and reads the approval source from the run (human, supervised, or
+autonomous) itself. DISCUSS may still change these sections; the DISCUSS gate tells the
+human whether they did. From PLAN on the digest is immutable: an intent gap returns to
+the human and cannot be fixed by changing the approval record.
 
 
 Return to the cycle; never invoke a successor phase and never run the exit yourself.

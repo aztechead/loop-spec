@@ -122,7 +122,9 @@ weakest point first; by `.route` (`gap.type`):
   })
   ```
   Ship as-is records the gap in `warnings[]` and exits terminal; Stop pauses through the
-  cycle. Non-interactive reads `LOOP_SPEC_ANSWER_ITERATE_SPEC` (`reopen` default |
+  cycle. Re-open reopens the Goal and Boundary freeze for DISCUSS (the driver retires the
+  record into `specApprovalHistory`) and PLAN freezes them again; an unattended rewind
+  keeps the freeze. Non-interactive reads `LOOP_SPEC_ANSWER_ITERATE_SPEC` (`reopen` default |
   `ship`; anything else exits 2).
 
 The backlog is never an option while rounds remain, and a gap "noted as a follow-up"

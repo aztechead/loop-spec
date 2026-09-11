@@ -100,9 +100,8 @@ Handle the first line of `ans` using these rules. Stop when the selected rule re
 
   and act on that answer with the same list.
 - `REDO phase=<p> flags=<n>` followed by `FLAG ...` lines — `next` ran the phase's exit
-  gates (`lib/phase-exit.sh`) and the artifact is not ready.
-  Follow the same instruction snapshot again with the FLAG lines.
-  The phase fixes its artifact in place and returns.
+  gates (`lib/phase-exit.sh`) and the artifact is not ready. Follow the same instruction
+  snapshot again with the FLAG lines. The phase fixes its artifact in place and returns.
   Then call `next --returned-from <p>` again. Phase skills never run the exit themselves.
 - `HANDOFF next=<p> model=<m>` or `REWIND next=<p>` — the driver saved the next phase and closed this phase. Print
   `LOOP_SPEC_HANDOFF {"slug":..,"next":"<p>","model":"<m>"}` and stop. The caller
@@ -114,6 +113,8 @@ Handle the first line of `ans` using these rules. Stop when the selected rule re
   feature, `ExitWorktree({action:"keep"})` first.
 - `PAUSED node=...` — a human gate (`style:step|interactive`). Print `loop-spec: paused
   at <node>; re-invoke /loop-spec:cycle to continue.`, exit a Claude worktree, stop.
+  `PAUSED node=human.after-discuss intent=changed`: DISCUSS rewrote Goal or Boundary
+  since the SPEC gate. PLAN freezes them as they stand, so print both sections first.
 - `DONE status=completed` — step 4. `DONE ... reason=already-satisfied` — print the
   result summary, exit the worktree, stop. `DONE status=escalated|paused ...` — print
   the reason, exit the worktree, stop. `ABORT ...` (exit 1) — relay stderr and stop.

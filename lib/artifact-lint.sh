@@ -255,13 +255,16 @@ def lint_spec(display, data):
         flag(display, 0, str(exc))
     if feature_dir:
         from feature_read import load_state
-        from spec_intent import verify_intent
+        from spec_intent import intent_digest, verify_intent
         try:
             feature = load_state(feature_dir)
             text = data.decode("utf-8")
-            if (feature.get("specApproval") or re.search(r"^route: *full\s*$", text, re.M)
-                    or not re.search(r"^## Intent$", text, re.M)):
-                verify_intent(text, feature.get("specApproval"))
+            if feature.get("specApproval"):
+                verify_intent(text, feature["specApproval"])
+            elif re.search(r"^route: *full\s*$", text, re.M) or not re.search(r"^## Intent$", text, re.M):
+                # Before PLAN records the freeze, the sections it will cover must exist and
+                # say something; the digest is compared only once it is on record.
+                intent_digest(text)
         except (OSError, ValueError) as exc:
             flag(display, 0, str(exc))
     lines, mask = markdown_scan(display, data, allow_frontmatter=True)
