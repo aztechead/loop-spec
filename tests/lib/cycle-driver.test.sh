@@ -41,6 +41,65 @@ drv() {
     bash "$SCRIPT" "$@"
 }
 
+# write_small_plan DOCS_DIR FEATURE_DIR: the smallest PLAN.md/PATTERNS.md/tasks.json
+# the plan exit accepts (one small task, `bash -n a.sh`), shared by every fixture below
+# that walks the full route through PLAN -- both bodies were byte-identical duplication-scan
+# findings before this extraction. simplicity: duplication-scan still names this body
+# against phase-exit.test.sh's own inline PLAN.md fixture -- every phase-exit suite in
+# this tree keeps its fixture self-contained (no shared cross-file fixture library
+# exists here to lift it into), so the shared part stays local to this file only.
+write_small_plan() {
+  local docs="$1" fd="$2"
+  cat > "$docs/PLAN.md" <<'MD'
+# Implementation Plan
+
+**Spec:** `SPEC.md`
+
+## Architecture overview
+
+One task.
+
+## Task DAG
+
+| ID | Subject | BlockedBy | Files | Est scope |
+|----|---------|-----------|-------|-----------|
+| task-001 | do a thing | - | a.sh | small |
+
+## Spec coverage
+
+- `bash -n a.sh` exits 0 -> task-001
+
+## Tasks
+
+### task-001: do a thing
+
+**Goal:** one sentence.
+
+**Files:**
+- `a.sh`
+
+**Verify:** `bash -n a.sh`
+
+**Acceptance criteria:**
+- [ ] `bash -n a.sh` exits 0
+
+## Grounding
+
+- none
+MD
+  printf '# PATTERNS.md\n\n## Concept: writer\n\ndetail\n' > "$docs/PATTERNS.md"
+  bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$docs/PLAN.md" > "$fd/tasks.json"
+}
+
+# phase_enter/phase_exit REPO FEATURE_DIR [PHASE]: the two-call shape every phase
+# boundary takes (see "next: first step names spec" and its --returned-from pair
+# above) -- a bare `next` enters the phase and snapshots the instructions cmd_next's
+# own hash check reads back, an omitted enter would REDO on "instruction snapshot
+# verification failed". No SESSION is set anywhere below, so handed_off_here never
+# matches and every HANDOFF is answered by the following enter, inline.
+phase_enter() { (cd "$1" && AUTONOMOUS=1 drv next --feature-dir "$2" >/dev/null 2>&1); }
+phase_exit() { (cd "$1" && AUTONOMOUS=1 drv next --feature-dir "$2" --returned-from "$3" >/dev/null 2>&1); }
+
 # write_spec ROOT FEATURE_DIR: the smallest SPEC.md the spec exit accepts, because
 # `next --returned-from spec` now runs that exit and answers REDO without one.
 write_spec() {
@@ -754,6 +813,191 @@ check "migration: finish refuses" "1" "$([[ "$ec" -ne 0 ]] && echo 1 || echo 0)"
 check "migration: finish names the reason" "1" "$(grep -c 'migration' <<<"$err")"
 cmp -s "$WORK/migration-before.json" "$FDMIG/feature.json"
 check "migration: finish changed nothing" "0" "$?"
+
+# --- review_recovery's bad-spec route publishes through the held token (task-004) -----
+# The amended SPEC.md, the archived PLAN.md/tasks.json/VERIFICATION.md, and the retired
+# registered targets all go through the SAME ingress cmd_next captures at entry, never a
+# plain write in place; a token an unrelated write has staled is refused before any of
+# review_recovery's own writes land.
+# simplicity: the repo/feature bootstrap below repeats the new_repo + drv begin + slug/docs
+# shape every other fixture in this file already uses (REPO6, REPO7, REPOV1, ...); it is
+# the file's own established idiom, not a helper worth extracting for two fixtures whose
+# reason to change (a bad-spec token path, a legacy-format full route) differs.
+REPORR="$(new_repo review-recovery)"
+printf 'echo original\n' > "$REPORR/a.sh"
+git -C "$REPORR" add -A && git -C "$REPORR" -c commit.gpgsign=false commit -q -m "add a.sh"
+out="$(cd "$REPORR" && AUTONOMOUS=1 drv begin -- "autonomous review recovery flow" 2>/dev/null)"
+FDRR="$(jq -r '.featureDir' <<<"$out")"
+SLUGRR="$(jq -r '.slug' "$FDRR/feature.json")"
+DOCSRR="$REPORR/docs/loop-spec/features/$SLUGRR"
+mkdir -p "$DOCSRR"
+phase_enter "$REPORR" "$FDRR"
+cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCSRR/SPEC.md"
+(cd "$REPORR" && drv spec approve --feature-dir "$FDRR" --source human >/dev/null)
+phase_exit "$REPORR" "$FDRR" spec
+phase_enter "$REPORR" "$FDRR"
+phase_exit "$REPORR" "$FDRR" discuss
+phase_enter "$REPORR" "$FDRR"
+check "review recovery setup: reached PLAN" "plan" "$(jq -r '.currentPhase' "$FDRR/feature.json")"
+write_small_plan "$DOCSRR" "$FDRR"
+phase_exit "$REPORR" "$FDRR" plan
+phase_enter "$REPORR" "$FDRR"
+check "review recovery setup: reached EXECUTE" "execute" "$(jq -r '.currentPhase' "$FDRR/feature.json")"
+printf 'echo updated\n' > "$REPORR/a.sh"
+git -C "$REPORR" add -A && git -C "$REPORR" -c commit.gpgsign=false commit -q -m "feat: task-001"
+bash "$REPO_ROOT/lib/task-progress.sh" mark-done "$FDRR/tasks.json" task-001 >/dev/null
+phase_exit "$REPORR" "$FDRR" execute
+phase_enter "$REPORR" "$FDRR"
+check "review recovery setup: reached VERIFY" "verify" "$(jq -r '.currentPhase' "$FDRR/feature.json")"
+cat > "$DOCSRR/VERIFICATION.md" <<'MD'
+# review recovery flow - Verification
+
+## Repository grounding
+
+- criterion: GE-001 | implementation: a.sh:1 - proves it | integration: none - covered by unit scope
+
+## Acceptance criteria
+
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| 1 | it works | PASS | `bash -n a.sh` -> ok |
+
+## Code review
+
+- a.sh:1 — wrong helper used | verdict: true — observed while grounding the criterion | routing: {"route":"bad-spec","cause":"wrong helper","section":"Grounding","replacement":"- a.sh:1 implements the corrected helper."}
+MD
+
+# A token an unrelated plain write has staled is refused before any write of its own.
+cp "$FDRR/feature.json" "$WORK/rr-feature-before.json"
+cp "$DOCSRR/SPEC.md" "$WORK/rr-spec-before.md"
+cp "$DOCSRR/PLAN.md" "$WORK/rr-plan-before.md"
+cp "$FDRR/tasks.json" "$WORK/rr-tasks-before.json"
+cp "$DOCSRR/VERIFICATION.md" "$WORK/rr-verification-before.md"
+python3 "$REPO_ROOT/lib/feature_write.py" ingress "$FDRR" > "$WORK/rr-t0.json"
+bash "$REPO_ROOT/lib/feature-write.sh" append "$FDRR" warnings '"rr-bump"' >/dev/null
+cp "$FDRR/feature.json" "$WORK/rr-before-stale-call.json"
+ec=0; err="$(cd "$REPORR" && LOOP_SPEC_PUBLICATION_TOKEN="$WORK/rr-t0.json" AUTONOMOUS=1 \
+  drv next --feature-dir "$FDRR" --returned-from verify 2>&1 1>/dev/null)" || ec=$?
+check "review recovery: a token staled by an unrelated write is refused" "1" "$([[ "$ec" -ne 0 ]] && echo 1 || echo 0)"
+check "review recovery: the refusal names the stale token" "1" "$(grep -c 'stale publication token' <<<"$err")"
+cmp -s "$WORK/rr-before-stale-call.json" "$FDRR/feature.json"
+check "review recovery: the stale attempt changed feature.json not at all" "0" "$?"
+cmp -s "$WORK/rr-spec-before.md" "$DOCSRR/SPEC.md"
+check "review recovery: the stale attempt left SPEC.md untouched" "0" "$?"
+check "review recovery: the stale attempt left PLAN.md, tasks.json, and VERIFICATION.md in place"  "1" \
+  "$([[ -f "$DOCSRR/PLAN.md" && -f "$FDRR/tasks.json" && -f "$DOCSRR/VERIFICATION.md" ]] && echo 1 || echo 0)"
+
+# The real, unstaled run: the driver captures its own fresh ingress and the recovery's
+# writes -- the amended SPEC, the three archived files, and the three retired targets --
+# all land under it.
+gen_before="$(jq -r '.artifactPublication.generation' "$FDRR/feature.json")"
+out="$(cd "$REPORR" && AUTONOMOUS=1 drv next --feature-dir "$FDRR" --returned-from verify 2>/dev/null)"
+check "review recovery: bad-spec routes back to discuss" "1" "$(grep -c 'discuss' <<<"$out")"
+check "review recovery: the amended SPEC bytes are on disk" "1" "$(grep -c 'a.sh:1 implements the corrected helper.' "$DOCSRR/SPEC.md")"
+check "review recovery: the spec change log records the cause" "1" "$(grep -c '^- Review correction: wrong helper$' "$DOCSRR/SPEC.md")"
+check "review recovery: PLAN.md was retired, not left in place" "0" "$([[ -f "$DOCSRR/PLAN.md" ]] && echo 1 || echo 0)"
+check "review recovery: tasks.json was retired, not left in place" "0" "$([[ -f "$FDRR/tasks.json" ]] && echo 1 || echo 0)"
+check "review recovery: VERIFICATION.md was retired, not left in place" "0" "$([[ -f "$DOCSRR/VERIFICATION.md" ]] && echo 1 || echo 0)"
+check "review recovery: PLAN.md was archived as a record" "1" "$(find "$FDRR/review-attempts" -name PLAN.md | wc -l | tr -d ' ')"
+check "review recovery: tasks.json was archived as a record" "1" "$(find "$FDRR/review-attempts" -name tasks.json | wc -l | tr -d ' ')"
+check "review recovery: VERIFICATION.md was archived as a record" "1" "$(find "$FDRR/review-attempts" -name VERIFICATION.md | wc -l | tr -d ' ')"
+check "review recovery: reviewRouting recorded one bad-spec use" "1" "$(jq -r '.reviewRouting.used' "$FDRR/feature.json")"
+check "review recovery: reviewRouting.pending was cleared once rewound" "false" "$(jq -r '.reviewRouting.pending' "$FDRR/feature.json")"
+check "review recovery: only the SPEC phase survives completedPhases" '["spec"]' "$(jq -c '.completedPhases' "$FDRR/feature.json")"
+gen_after="$(jq -r '.artifactPublication.generation' "$FDRR/feature.json")"
+check "review recovery: the publication generation advanced" "1" "$([[ "$gen_after" -gt "$gen_before" ]] && echo 1 || echo 0)"
+
+# --- AC6: a legacy resume drives every phase; format stays legacy, never v1 ------------
+# A pre-7 cycle's feature.json carried neither field; strip what init's own bootstrap
+# already wrote so the first participant below (spec approve) is the one that
+# bootstraps the legacy contract, never this fixture itself.
+REPOAC6="$(new_repo legacy-resume)"
+printf 'echo original\n' > "$REPOAC6/a.sh"
+git -C "$REPOAC6" add -A && git -C "$REPOAC6" -c commit.gpgsign=false commit -q -m "add a.sh"
+out="$(cd "$REPOAC6" && AUTONOMOUS=1 drv begin -- "autonomous legacy resume flow" 2>/dev/null)"
+FDAC6="$(jq -r '.featureDir' <<<"$out")"
+SLUGAC6="$(jq -r '.slug' "$FDAC6/feature.json")"
+DOCSAC6="$REPOAC6/docs/loop-spec/features/$SLUGAC6"
+mkdir -p "$DOCSAC6"
+jq 'del(.artifactPublication) | del(.requirementsContract)' "$FDAC6/feature.json" > "$WORK/ac6.json" && mv "$WORK/ac6.json" "$FDAC6/feature.json"
+check "AC6: the fixture starts with no publication contract" "null" "$(jq -r '.artifactPublication' "$FDAC6/feature.json")"
+check "AC6: the fixture starts with no requirements contract" "null" "$(jq -r '.requirementsContract' "$FDAC6/feature.json")"
+
+phase_enter "$REPOAC6" "$FDAC6"
+cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCSAC6/SPEC.md"
+(cd "$REPOAC6" && drv spec approve --feature-dir "$FDAC6" --source human >/dev/null)
+check "AC6: the first participant bootstraps format legacy, never v1" "legacy" "$(jq -r '.requirementsContract.format' "$FDAC6/feature.json")"
+gen0="$(jq -r '.artifactPublication.generation' "$FDAC6/feature.json")"
+
+phase_exit "$REPOAC6" "$FDAC6" spec
+check "AC6 spec: exit is acknowledged" "spec" "$(jq -r '.completedPhases[-1]' "$FDAC6/feature.json")"
+check "AC6 spec: contract is still legacy" "legacy" "$(jq -r '.requirementsContract.format' "$FDAC6/feature.json")"
+check "AC6 spec: no v1 metadata was written to SPEC.md" "0" "$(grep -Ec '^(route|footprint):' "$DOCSAC6/SPEC.md")"
+gen1="$(jq -r '.artifactPublication.generation' "$FDAC6/feature.json")"
+check "AC6 spec: generation advanced" "1" "$([[ "$gen1" -gt "$gen0" ]] && echo 1 || echo 0)"
+
+phase_enter "$REPOAC6" "$FDAC6"
+phase_exit "$REPOAC6" "$FDAC6" discuss
+check "AC6 discuss: exit is acknowledged" "discuss" "$(jq -r '.completedPhases[-1]' "$FDAC6/feature.json")"
+check "AC6 discuss: contract is still legacy" "legacy" "$(jq -r '.requirementsContract.format' "$FDAC6/feature.json")"
+phase_enter "$REPOAC6" "$FDAC6"
+
+write_small_plan "$DOCSAC6" "$FDAC6"
+gen2="$(jq -r '.artifactPublication.generation' "$FDAC6/feature.json")"
+phase_exit "$REPOAC6" "$FDAC6" plan
+check "AC6 plan: exit is acknowledged" "plan" "$(jq -r '.completedPhases[-1]' "$FDAC6/feature.json")"
+check "AC6 plan: contract is still legacy" "legacy" "$(jq -r '.requirementsContract.format' "$FDAC6/feature.json")"
+gen3="$(jq -r '.artifactPublication.generation' "$FDAC6/feature.json")"
+check "AC6 plan: generation advanced" "1" "$([[ "$gen3" -gt "$gen2" ]] && echo 1 || echo 0)"
+
+phase_enter "$REPOAC6" "$FDAC6"
+printf 'echo updated\n' > "$REPOAC6/a.sh"
+git -C "$REPOAC6" add -A && git -C "$REPOAC6" -c commit.gpgsign=false commit -q -m "feat: task-001"
+bash "$REPO_ROOT/lib/task-progress.sh" mark-done "$FDAC6/tasks.json" task-001 >/dev/null
+phase_exit "$REPOAC6" "$FDAC6" execute
+check "AC6 execute: exit is acknowledged" "execute" "$(jq -r '.completedPhases[-1]' "$FDAC6/feature.json")"
+check "AC6 execute: contract is still legacy" "legacy" "$(jq -r '.requirementsContract.format' "$FDAC6/feature.json")"
+
+phase_enter "$REPOAC6" "$FDAC6"
+cat > "$DOCSAC6/VERIFICATION.md" <<'MD'
+# legacy resume flow - Verification
+
+## Repository grounding
+
+- criterion: GE-001 | implementation: a.sh:1 - proves it | integration: none - covered by unit scope
+
+## Acceptance criteria
+
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| 1 | it works | PASS | `bash -n a.sh` -> ok |
+MD
+phase_exit "$REPOAC6" "$FDAC6" verify
+check "AC6 verify: exit is acknowledged" "verify" "$(jq -r '.completedPhases[-1]' "$FDAC6/feature.json")"
+check "AC6 verify: contract is still legacy" "legacy" "$(jq -r '.requirementsContract.format' "$FDAC6/feature.json")"
+check "AC6 verify: no v1 metadata was written to SPEC.md" "0" "$(grep -Ec '^(route|footprint):' "$DOCSAC6/SPEC.md")"
+
+phase_enter "$REPOAC6" "$FDAC6"
+printf '# Iteration\n' > "$DOCSAC6/ITERATION.md"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FDAC6" iterate.lastVerdict '{"converged":true}' >/dev/null
+phase_exit "$REPOAC6" "$FDAC6" iterate
+check "AC6 iterate: exit is acknowledged" "iterate" "$(jq -r '.completedPhases[-1]' "$FDAC6/feature.json")"
+check "AC6 iterate: contract is still legacy, never v1" "legacy" "$(jq -r '.requirementsContract.format' "$FDAC6/feature.json")"
+check "AC6 iterate: no v1 metadata ever appeared in SPEC.md" "0" "$(grep -Ec '^(route|footprint):' "$DOCSAC6/SPEC.md")"
+
+# An ordinary new cycle (no fixture switch) records no v1 contract at all and runs next.
+REPOORD="$(new_repo ordinary-legacy)"
+out="$(cd "$REPOORD" && AUTONOMOUS=1 drv begin -- "autonomous ordinary cycle" 2>/dev/null)"
+FDORD="$(jq -r '.featureDir' <<<"$out")"
+DOCSORD="$REPOORD/docs/loop-spec/features/$(jq -r '.slug' "$FDORD/feature.json")"
+mkdir -p "$DOCSORD"
+(cd "$REPOORD" && AUTONOMOUS=1 drv next --feature-dir "$FDORD" >/dev/null 2>&1)
+cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCSORD/SPEC.md"
+(cd "$REPOORD" && drv spec approve --feature-dir "$FDORD" --source human >/dev/null)
+check "ordinary cycle: no v1 contract without the fixture switch" "true" "$(jq -r '(.requirementsContract // {}).format != "v1"' "$FDORD/feature.json")"
+(cd "$REPOORD" && AUTONOMOUS=1 drv next --feature-dir "$FDORD" --returned-from spec >/dev/null 2>&1)
+check "ordinary cycle: next runs through SPEC" "spec" "$(jq -r '.completedPhases[-1]' "$FDORD/feature.json")"
+check "ordinary cycle: still no v1 contract after SPEC" "true" "$(jq -r '(.requirementsContract // {}).format != "v1"' "$FDORD/feature.json")"
 
 # --- v1 requirements fixture switch (LOOP_SPEC_REQUIREMENTS_V1_FIXTURE=1, task-009 removes it) ---
 REPOV1="$(new_repo v1fixture)"

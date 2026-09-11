@@ -1657,7 +1657,7 @@ def review_recovery(feature_dir, phase):
             git("-C", repo, "restore", "--source", base, "--staged", "--worktree", "--", *paths)
             git("-C", repo, "commit", "-m", "fix: revert implementation for " + route, "--", *paths)
     if route == "bad-spec":
-        spec.write_text(revised, encoding="utf-8")
+        publish_spec(feature_dir, feat, revised.encode("utf-8"))
     record = {"route": route, "used": used + 1, "pending": True,
               "reportSha256": report_hash, "findings": recovery}
     fset(feature_dir, "reviewRouting", record)
@@ -1670,9 +1670,17 @@ def review_recovery(feature_dir, phase):
                                            "fix_first": "; ".join(g["cause"] for g in recovery)})
     archive = Path(feature_dir) / "review-attempts" / (str(used + 1) + "-" + report_hash)
     archive.mkdir(parents=True, exist_ok=True)
-    for path in (report, docs / "PLAN.md", Path(feature_dir) / "tasks.json"):
+    # Archive a copy first (a record, never a registered artifact), then retire the
+    # registered target through the held token: the old code renamed the file aside
+    # in place, which both wrote outside the publication contract and left no
+    # recoverable original for artifact_publication's own rollback (task-004).
+    retiring = []
+    for path, key in ((report, "verification"), (docs / "PLAN.md", "plan"), (Path(feature_dir) / "tasks.json", "tasks")):
         if path.is_file():
-            path.rename(archive / path.name)
+            shutil.copyfile(path, archive / path.name)
+            retiring.append(key)
+    for key in retiring:
+        retire_artifact(feature_dir, key)
     for key in ("plan", "tasks", "verification", "iteration"):
         fset(feature_dir, "artifacts." + key, None)
     fset(feature_dir, "completedPhases", [p for p in feat.get("completedPhases", []) if p == "spec"])
