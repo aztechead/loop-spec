@@ -287,6 +287,23 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 
 - lib/artifact_sink.py
 
+- lib/publication_participant.py
+- lib/version-ge.sh
+- lib/portability-scan.sh
+- lib/portability_scan.py
+- lib/teams-capability.sh
+- lib/workflow-availability.sh
+- tests/lib/portability-scan.test.sh
+- tests/graph-conformance.test.sh
+- tests/fixtures/publication-intruder-gate.sh
+- tests/lib/review-routing.test.sh
+- tests/lib/graph-gate-dispatch.test.sh
+- tests/lib/cycle-preflight.test.sh
+- tests/lib/pr-body.test.sh
+- docs/loop-spec/configuration.md
+- docs/loop-spec/requirements-format.md
+- CLAUDE.md
+
 **read_first:**
 - lib/graph/driver.py
 - lib/phase-entry.sh
@@ -340,6 +357,8 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 Execution scope refinement: the caller sweep found the quality-loop skill owns separate read/record/mark-clean operations, so it must retain the original ingress token. The existing feature writer also needs a trusted registry argument shared with its CLI transaction policy so relocated absolute task pointers can be resolved without duplicating the writer. The plan and footprint changes record these discovered integration dependencies; approved Goals and Boundaries remain unchanged.
 
 The artifact sink additionally requires the existing publication primitive to accept explicitly trusted external roots and absent desired files. Sink copies, baseline document restoration/deletion, and prepared Git index bytes share the same journal and ingress validation; Git index locking remains the sink controller’s responsibility.
+
+Execution scope refinement (task 004 completion): the driver seam lib/publication_participant.py, the deterministic portability probe (lib/portability-scan.sh, lib/portability_scan.py, its suite, the CLAUDE.md trigger) and lib/version-ge.sh replacing the GNU-only sort -V in the two capability gates were added under the maintainer's rule that the plugin never assumes one *nix. The configuration reference and requirements-format document record the publication environment inputs and the authoring commands. Approved Goals and Boundaries remain unchanged.
 
 ### task-005: Validate coverage against the complete dispatch representation
 
