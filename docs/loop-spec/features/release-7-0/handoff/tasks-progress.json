@@ -12,7 +12,7 @@
       "docs/loop-spec/requirements-format.md"
     ],
     "blockedBy": [],
-    "verifyCommand": "rtk bash tests/lib/requirements.test.sh && rtk bash tests/lib/artifact-lint.test.sh",
+    "verifyCommand": "bash tests/lib/requirements.test.sh && bash tests/lib/artifact-lint.test.sh",
     "acceptanceCriteria": [
       "requirements.test.sh proves reordering, checkbox changes, CRLF and prose wrapping retain revision; scenario text or example edits change revision; command-only edits do not.",
       "requirements.test.sh exits 1 with source line for duplicate/malformed IDs, sections, metadata or JSON keys, empty scenarios, fenced decoys, unknown versions and removed metadata against a v1 contract.",
@@ -52,7 +52,7 @@
     "blockedBy": [
       "task-001"
     ],
-    "verifyCommand": "rtk bash tests/lib/feature-read.test.sh && rtk bash tests/lib/feature-write.test.sh && rtk bash tests/lib/feature-init.test.sh && rtk bash tests/lib/graph-schema.test.sh && rtk bash tests/lib/requirements.test.sh",
+    "verifyCommand": "bash tests/lib/feature-read.test.sh && bash tests/lib/feature-write.test.sh && bash tests/lib/feature-init.test.sh && bash tests/lib/graph-schema.test.sh && bash tests/lib/requirements.test.sh",
     "acceptanceCriteria": [
       "feature-write.test.sh rejects malformed nested state, removal/downgrade of a recorded v1 contract, owner changes, retired requirement/scenario reuse and next-ID rollback, including whole-state replacement.",
       "feature-init.test.sh proves fixture-only v1 contracts have stable owner while ordinary single/workspace initialization remains unchanged until task-009; imported incomplete pre-7 fixtures record legacy through explicit trusted bootstrap and completed legacy state remains byte-identical.",
@@ -90,7 +90,7 @@
     "blockedBy": [
       "task-002"
     ],
-    "verifyCommand": "rtk bash tests/lib/artifact-publication.test.sh && rtk bash tests/lib/feature-write.test.sh && rtk bash tests/lib/supervisor-store.test.sh && rtk bash tests/lib/state-ref.test.sh",
+    "verifyCommand": "bash tests/lib/artifact-publication.test.sh && bash tests/lib/feature-write.test.sh && bash tests/lib/supervisor-store.test.sh && bash tests/lib/state-ref.test.sh",
     "acceptanceCriteria": [
       "artifact-publication.test.sh starts two readers, publishes one, then proves the stale reader exits 1 without replacing artifact/state bytes or acknowledging a phase.",
       "feature-write.test.sh races ordinary state updates with publication and proves lock order publication-first/state-second completes without deadlock or lost updates; recursive writer acquisition is absent from the executed path.",
@@ -249,7 +249,7 @@
     "blockedBy": [
       "task-004"
     ],
-    "verifyCommand": "rtk bash tests/lib/plan-tasks.test.sh && rtk bash tests/lib/plan-render.test.sh && rtk bash tests/lib/criteria-coverage.test.sh && rtk bash tests/lib/phase-exit.test.sh && rtk bash tests/lib/artifact-lint.test.sh",
+    "verifyCommand": "bash tests/lib/plan-tasks.test.sh && bash tests/lib/plan-render.test.sh && bash tests/lib/criteria-coverage.test.sh && bash tests/lib/phase-exit.test.sh && bash tests/lib/artifact-lint.test.sh",
     "acceptanceCriteria": [
       "criteria-coverage.test.sh reproduces and rejects legacy dangling task-999 mappings and notes-only criterion copies while valid legacy coverage remains accepted.",
       "phase-exit.test.sh drives actual PLAN egress: v1 missing scenario/revision, dangling task, unsupported exemption, unknown obligation, and tasks.json with same IDs but altered command/files/coverage all exit 1.",
@@ -267,7 +267,8 @@
     "interfaces": {
       "consumes": "task-004",
       "produces": "Reviewed task relation plus executionInputs and exact sidecar comparison."
-    }
+    },
+    "status": "done"
   },
   {
     "id": "task-006",
@@ -282,7 +283,7 @@
     "blockedBy": [
       "task-005"
     ],
-    "verifyCommand": "rtk bash tests/lib/execution-inputs.test.sh && rtk bash tests/lib/prepare-environment.test.sh",
+    "verifyCommand": "bash tests/lib/execution-inputs.test.sh && bash tests/lib/prepare-environment.test.sh",
     "acceptanceCriteria": [
       "execution-inputs.test.sh changes an ignored installed dependency with unchanged lockfile and changes ignored config; both produce different identity and pre/post failure.",
       "execution-inputs.test.sh rejects escaping symlink, unreadable input, unavailable external identity, mutable external response, absent required declaration and overlapping input/output paths with actionable diagnostics.",
@@ -314,7 +315,7 @@
     "blockedBy": [
       "task-006"
     ],
-    "verifyCommand": "rtk bash tests/lib/execution-observation.test.sh && rtk bash tests/lib/cycle-driver.test.sh",
+    "verifyCommand": "bash tests/lib/execution-observation.test.sh && bash tests/lib/cycle-driver.test.sh",
     "acceptanceCriteria": [
       "execution-observation.test.sh proves exit 0 creates PASS only with identical before/after HEAD, input identity and generation; source edits, new non-ignored inputs, changed authoring artifacts or unknown environment yield non-PASS.",
       "execution-observation.test.sh runs a verbose child and a timed-out child with grandchildren; output spool stays within byte ceiling, retained tail stays within 64 KiB, partial digest is marked and no child survives reaping.",
@@ -369,7 +370,7 @@
     "blockedBy": [
       "task-007"
     ],
-    "verifyCommand": "rtk bash tests/lib/verification-grounding-lint.test.sh && rtk bash tests/lib/converged-floor.test.sh && rtk bash tests/lib/artifact-lint.test.sh && rtk bash tests/lib/oneshot-exit-gate.test.sh && rtk bash tests/lib/cycle-driver.test.sh && rtk bash tests/lib/phase-exit.test.sh && rtk bash tests/verification-grounding-coverage.test.sh && rtk bash tests/lib/final-candidate-observations.test.sh && rtk bash tests/lib/deliver.test.sh && rtk bash tests/lib/delivery-reconcile.test.sh && rtk bash tests/lib/cycle-result.test.sh && rtk bash tests/lib/artifact-sink.test.sh",
+    "verifyCommand": "bash tests/lib/verification-grounding-lint.test.sh && bash tests/lib/converged-floor.test.sh && bash tests/lib/artifact-lint.test.sh && bash tests/lib/oneshot-exit-gate.test.sh && bash tests/lib/cycle-driver.test.sh && bash tests/lib/phase-exit.test.sh && bash tests/verification-grounding-coverage.test.sh && bash tests/lib/final-candidate-observations.test.sh && bash tests/lib/deliver.test.sh && bash tests/lib/delivery-reconcile.test.sh && bash tests/lib/cycle-result.test.sh && bash tests/lib/artifact-sink.test.sh",
     "acceptanceCriteria": [
       "verification-grounding-lint.test.sh rejects fabricated PASS text, missing/unknown/extra scenario references, missing output, altered output digest, stale revision/command/HEAD/environment/input contract and numeric aliases; valid fresh observed rows pass.",
       "phase-exit.test.sh and oneshot-exit-gate.test.sh exercise v1 VERIFY shape and actual egress; converged-floor.test.sh refuses convergence for any uncovered or stale required scenario on both routes.",
@@ -428,7 +429,7 @@
     "blockedBy": [
       "task-008"
     ],
-    "verifyCommand": "rtk bash hooks/team/result-forgery-guard.test.sh && rtk bash hooks/restrict-agent-paths.test.sh && rtk bash tests/opencode-plugin.test.sh && rtk bash tests/adk-extension.test.sh && rtk bash tests/codex-harness-coverage.test.sh && rtk bash tests/opencode-harness-coverage.test.sh && rtk bash tests/adk-harness-coverage.test.sh && rtk bash tests/lib/feature-init.test.sh && rtk bash tests/lib/feature-write.test.sh && rtk bash tests/lib/cycle-driver.test.sh",
+    "verifyCommand": "bash hooks/team/result-forgery-guard.test.sh && bash hooks/restrict-agent-paths.test.sh && bash tests/opencode-plugin.test.sh && bash tests/adk-extension.test.sh && bash tests/codex-harness-coverage.test.sh && bash tests/opencode-harness-coverage.test.sh && bash tests/adk-harness-coverage.test.sh && bash tests/lib/feature-init.test.sh && bash tests/lib/feature-write.test.sh && bash tests/lib/cycle-driver.test.sh",
     "acceptanceCriteria": [
       "Guard tests execute Write/Edit/patch/move and shell-redirection attempts against SPEC/PLAN/VERIFICATION, feature contract, observations and migration journal; each authoritative bypass exits 2 while permitted staging edits and validated driver publication succeed.",
       "Adapter tests inject native tool payloads for Claude, opencode, ADK and Codex and prove denial reaches the caller; unknown harness/probe failure fails safe rather than reporting protected evidence.",
@@ -465,7 +466,7 @@
     "blockedBy": [
       "task-009"
     ],
-    "verifyCommand": "rtk bash tests/lib/requirements-migrate.test.sh",
+    "verifyCommand": "bash tests/lib/requirements-migrate.test.sh",
     "acceptanceCriteria": [
       "requirements-migrate.test.sh runs preview twice and compares identical JSON/digest while all repository and feature-state bytes remain unchanged.",
       "Preview fixtures allocate IDs by original order, preserve Goal/Boundary bytes and approval, derive scenarios only from explicit examples and report ambiguous criteria/task relationships by file/line without invented commands or evidence.",
@@ -501,7 +502,7 @@
     "blockedBy": [
       "task-010"
     ],
-    "verifyCommand": "rtk bash tests/lib/requirements-migrate.test.sh && rtk bash tests/lib/artifact-publication.test.sh && rtk bash tests/lib/phase-exit.test.sh && rtk bash tests/lib/supervisor-store.test.sh",
+    "verifyCommand": "bash tests/lib/requirements-migrate.test.sh && bash tests/lib/artifact-publication.test.sh && bash tests/lib/phase-exit.test.sh && bash tests/lib/supervisor-store.test.sh",
     "acceptanceCriteria": [
       "Migration tests reject changed source inputs or preview digest, simultaneous apply and completed-cycle apply without replacing artifacts; originals and approval hashes are preserved byte-for-byte in immutable generation storage.",
       "Failure injection after backup persistence, marker persistence, each SPEC/PLAN replacement, state publication and receipt persistence proves status/resume finishes or restores the same transaction without reallocated IDs; replay is idempotent.",
@@ -540,7 +541,7 @@
     "blockedBy": [
       "task-011"
     ],
-    "verifyCommand": "rtk bash tests/run-all.sh && rtk bash lib/bump-version.sh --check",
+    "verifyCommand": "bash tests/run-all.sh && bash lib/bump-version.sh --check",
     "acceptanceCriteria": [
       "tests/run-all.sh passes every registered suite including new parsing, publication, input, observation, migration and release-coverage suites; no live eval is invoked.",
       "release-7-0-coverage.test.sh exercises the four-harness/full-short contract wiring and fails if any new helper suite is unregistered; required source probes report no unresolved blocking finding.",
