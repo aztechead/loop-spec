@@ -46,6 +46,8 @@ checks=(
   $'skills/shared/execute-subagent.md\tpass it according to the harness\'s model contract'
   $'skills/cycle/SKILL.md\tDo not call `init` again'
   $'skills/shared/critique-gate-protocol.md\tthe lead does not inline it'
+  $'skills/shared/critique-gate-protocol.md\tlib/docs-probe.sh latest|docs <name>'
+  $'hooks/restrict-agent-paths.sh\tthe lead does not edit a maker\'s staged draft'
   $'skills/plan/SKILL.md\t`lib/plan-conflicts.sh edges`'
   $'skills/shared/review-prompts/prose-pruning.md\tprose-lines'
   $'skills/shared/team-prompts/critic.md\tRead only the cited `EVID-NNN` rows'

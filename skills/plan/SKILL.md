@@ -67,9 +67,11 @@ Include these fields and instructions in the planner brief:
   every new cycle; a resumed pre-7 cycle stays legacy instead --
   `docs/loop-spec/requirements-format.md`), each task also carries
   `**Requirements:**` single-line JSON bullets
-  (`{"owner":{...},"requirement":"GE-NNN","revision":"<sha256>","scenarios":["SC-NNN"]}`)
+  (`{"owner":{...},"requirement":"GE-NNN","revision":"current","scenarios":["SC-NNN"]}`)
   or `**Obligations:**` naming `OBL-` ids from `## Constraints`, taken from
   `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/requirements.sh" inventory --spec <spec_path> --feature-dir "$feature_dir"`.
+  `plan write` stamps `"current"` with the live revision, so a SPEC repaired during
+  PLAN needs only a re-landing, never a hand-copied digest.
   Under a legacy contract, omit both.
 - Check the draft against `agents/planner.md` before submission.
 - Copy `## Global constraints` verbatim, or write `- none`.

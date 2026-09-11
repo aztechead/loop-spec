@@ -307,6 +307,12 @@ check "X14: a staging symlink resolving to the protected SPEC.md is DENY" 2 \
   "$(payload "Write" "$XREPO/.loop-spec/features/one/publication-staging/sneaky.md" "$FIXTURES/main-thread.jsonl")"
 check "X15: a plain (non-symlink) staging file stays ALLOW" 0 \
   "$(payload "Write" "$XREPO/.loop-spec/features/one/publication-staging/plain.md" "$FIXTURES/main-thread.jsonl")"
+check "X16: a lead's edit of the planner's staged PLAN.md is DENY (re-dispatch with a fix list)" 2 \
+  "$(payload "Edit" "$XREPO/.loop-spec/features/one/publication-staging/PLAN.md" "$FIXTURES/main-thread.jsonl")"
+check "X17: a lead's write of the mapper's staged PATTERNS.md is DENY" 2 \
+  "$(payload "Write" "$XREPO/.loop-spec/features/one/publication-staging/PATTERNS.md" "$FIXTURES/main-thread.jsonl")"
+check "X18: the planner's own staged PLAN.md stays ALLOW" 0 \
+  "$(payload "Write" "$XREPO/.loop-spec/features/foo/publication-staging/PLAN.md" "$FIXTURES/planner.jsonl")"
 unset CLAUDE_PROJECT_DIR; rm -rf "$XREPO"
 
 # Cases Y: task-009's driver-owned state -- feature.json.bak, tasks.json,

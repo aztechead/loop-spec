@@ -2816,6 +2816,35 @@ def cmd_spec(argv):
     return 0
 
 
+def stamp_requirement_revisions(content, feature_dir, feat):
+    """Replace `"revision":"current"` (or an omitted revision) in a PLAN draft's
+    `**Requirements:**` bullets with the requirement's live revision from the SPEC
+    inventory. The planner names WHICH requirement a task satisfies; the digest that
+    pins WHEN is the driver's to read, never a lead's to copy: a live sonnet run
+    hand-patched six 64-character digests after a SPEC repair during PLAN. A bullet
+    that already carries a digest is left alone, so a stale one still flags at exit."""
+    from requirements import load_inventory
+    spec_path = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
+    try:
+        inventory = load_inventory(spec_path, feat)
+    except (OSError, ValueError) as exc:
+        raise Die("plan write: cannot stamp requirement revisions: %s" % exc, 1)
+    live = {r["id"]: r["revision"] for r in inventory.get("requirements") or []}
+    out = []
+    for line in content.decode("utf-8").splitlines(keepends=True):
+        bullet = re.match(r"^(\s*- )(\{.*\})\s*$", line)
+        if bullet and '"requirement"' in line:
+            try:
+                ref = json.loads(bullet.group(2))
+            except ValueError:
+                ref = None
+            if isinstance(ref, dict) and ref.get("revision") in ("current", None) and ref.get("requirement") in live:
+                ref["revision"] = live[ref["requirement"]]
+                line = bullet.group(1) + json.dumps(ref, ensure_ascii=False, separators=(",", ":")) + "\n"
+        out.append(line)
+    return "".join(out).encode("utf-8")
+
+
 def cmd_plan(argv):
     """Land the planner's PLAN.md/PATTERNS.md drafts and derive tasks.json, through the
     same staged-then-publish_artifact seam cmd_spec uses (task-009 follow-up): once a
@@ -2846,6 +2875,8 @@ def cmd_plan(argv):
             raise Die("plan %s: --file is required" % sub, 2)
         content = sys.stdin.buffer.read() if file_path == "-" else read_bounded(Path(file_path))
         key, name = ("plan", "PLAN.md") if sub == "write" else ("patterns", "PATTERNS.md")
+        if key == "plan" and (feat.get("requirementsContract") or {}).get("format") == "v1":
+            content = stamp_requirement_revisions(content, feature_dir, feat)
         lint_args = [key, "-"] + (["--feature-dir", feature_dir] if key == "plan" else [])
         lint = lib_run("artifact-lint", *lint_args, stdin_text=content.decode("utf-8"))
         if lint.returncode != 0:

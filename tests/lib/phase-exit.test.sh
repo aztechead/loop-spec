@@ -395,6 +395,17 @@ ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
 check "v1 exit plan: stale revision exits 1" "1" "$ec"
 check "v1 exit plan: stale revision is named" "1" "$(grep -c 'stale revision for GE-001' <<<"$out")"
 
+# b2. the planner writes "current"; plan write stamps the live revision, so a SPEC
+# repaired during PLAN needs a re-landing, never a hand-copied digest.
+write_v1_plan "{\"owner\":$owner_json,\"requirement\":\"GE-001\",\"revision\":\"current\",\"scenarios\":[\"SC-001\"]}" "-"
+cp "$DOCSV1/PLAN.md" "$WORK/plan-current.md"
+landed="$(cd "$REPOV1" && bash "$REPO_ROOT/lib/cycle-driver.sh" plan write --feature-dir "$FDV1" --file "$WORK/plan-current.md" 2>/dev/null)"
+check "v1 plan write: a 'current' revision is stamped from the inventory" "1" "$(grep -c "\"revision\":\"$ge001_revision\"" "$DOCSV1/PLAN.md")"
+check "v1 plan write: no 'current' placeholder is published" "0" "$(grep -c '"revision":"current"' "$DOCSV1/PLAN.md")"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FDV1" 2>&1)" || ec=$?
+check "v1 exit plan: the stamped revision is current" "0" "$(grep -c 'stale revision' <<<"$out")"
+
 # c. a dangling task reference in the derived '## Spec coverage' summary
 write_v1_plan "$valid_req" "-"
 bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCSV1/PLAN.md" > "$FDV1/tasks.json"

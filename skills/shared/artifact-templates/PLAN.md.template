@@ -60,7 +60,7 @@
      and never both empty. One task may list several; several tasks may list the
      same one. Drop both blocks entirely on a legacy cycle. -->
 **Requirements:**
-- {"owner":{"repository":"{repository-id}","feature":"{slug}"},"requirement":"GE-001","revision":"{sha256 from the current inventory}","scenarios":["SC-001"]}
+- {"owner":{"repository":"{repository-id}","feature":"{slug}"},"requirement":"GE-001","revision":"current","scenarios":["SC-001"]}
 
 **Obligations:**
 - OBL-{id declared under SPEC `## Constraints`}

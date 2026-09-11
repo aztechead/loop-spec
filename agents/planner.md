@@ -205,7 +205,7 @@ every new cycle; a resumed pre-7 cycle stays legacy instead --
 `bash lib/requirements.sh inventory --spec <spec_path> --feature-dir <feature_dir>`
 and give each task a `requirements` array naming exactly which of that inventory it
 satisfies: `{"owner": <the inventory's own owner object>, "requirement": "GE-NNN",
-"revision": "<its sha256 revision>", "scenarios": ["SC-NNN", ...]}` per entry, one
+"revision": "current", "scenarios": ["SC-NNN", ...]}` per entry (`plan write` stamps the live revision; never copy a digest), one
 task field, rendered as `**Requirements:**` single-line-JSON bullets in the PLAN.md
 task block. A task that closes a `## Constraints` obligation instead carries
 `obligations: ["OBL-..."]`, rendered `**Obligations:**`. This is authoring only: no

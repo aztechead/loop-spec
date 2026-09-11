@@ -151,12 +151,16 @@ case "$cmd" in
       echo "slugify: empty input" >&2
       exit 1
     fi
-    # Bounded at 64 characters on a word boundary: a slug names a branch and a
-    # worktree directory, and a whole-description title once produced a 470-character
-    # ref that git could not lock. The title keeps the full text; only the slug is cut.
+    # Bounded at six words and 64 characters on a word boundary: a slug names a branch
+    # and a worktree directory, a whole-description title once produced a 470-character
+    # ref that git could not lock, and a live run's eleven-word slug filled every path
+    # it printed. A leading article carries no meaning in a name. The title keeps the
+    # full text; only the slug is cut.
     printf '%s' "$text" \
       | tr '[:upper:]' '[:lower:]' \
       | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g; s/-+/-/g' \
+      | sed -E 's/^(a|an|the)-//' \
+      | sed -E 's/^(([a-z0-9]+-){5}[a-z0-9]+)-.*$/\1/' \
       | sed -E '/^.{65,}/ s/^(.{1,64})-.*$/\1/; /^.{65,}/ s/^(.{64}).*$/\1/; s/-+$//'
     printf '\n'
     ;;

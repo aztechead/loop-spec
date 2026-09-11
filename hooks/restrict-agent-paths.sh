@@ -357,8 +357,23 @@ case "$CALLER" in
     echo "DENY: $CALLER is read-only for code; it may only $TOOL_NAME under .claude/agent-memory/** (attempted: $FILE_PATH). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
     exit 2
     ;;
-  implementer|verifier|"")
-    # Implementers, verifiers, and main thread are unrestricted
+  "")
+    # The main thread is unrestricted except for the planner's and the pattern-mapper's
+    # staged drafts: a live sonnet lead patched publication-staging/PLAN.md eight times
+    # by hand instead of re-dispatching with a fix list, which is the lead doing the
+    # maker's work with no review of its own (the same lesson as the skeleton filled by
+    # hand, port audit 3, N1). The lead's own SPEC draft may sit under staging (Y7 in
+    # the test): only the two files the plan skill dispatches a maker for are named.
+    case "$FILE_PATH_REAL" in
+      */.loop-spec/features/*/publication-staging/PLAN.md|*/.loop-spec/features/*/publication-staging/PATTERNS.md)
+        echo "DENY: the lead does not edit a maker's staged draft ($FILE_PATH). Re-dispatch the maker with a fix list (the planner's fix_list, the pattern-mapper's fix_list), or land what is there with cycle-driver.sh plan write|patterns. (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
+        exit 2
+        ;;
+    esac
+    exit 0
+    ;;
+  implementer|verifier)
+    # Implementers and verifiers are unrestricted
     exit 0
     ;;
   *)

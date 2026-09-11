@@ -391,7 +391,8 @@
           "artifacts.plan",
           "artifacts.tasks",
           "artifactPublication",
-          "commands.prepare"
+          "commands.prepare",
+          "requirementsContract"
         ],
         "artifacts": {
           "plan": "{docs}/PLAN.md",

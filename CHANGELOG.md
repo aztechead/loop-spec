@@ -116,6 +116,14 @@ below; each task's own SPEC/PLAN/VERIFICATION is the durable record of what it p
   folds the driver's inferred task edges into its parity check, so an inferred edge is
   not drift; and a bare `feature-write.sh set` refusal names the token-bound write a
   lead can run, which the plan skill now spells out for `commands.prepare`.
+- The same run's smaller frictions are closed too: a slug keeps six words and drops a
+  leading article instead of the first eleven words of the prompt; the planner writes
+  `"revision":"current"` and `plan write` stamps the live digest, so nobody copies a
+  hash by hand after a SPEC repair during PLAN; that repair (`spec fill` in PLAN) is on
+  the plan node's egress allow-list rather than a warning; a lead may not edit the
+  planner's or pattern-mapper's staged draft and re-dispatches with a fix list instead;
+  and the critique protocol sends version and documentation claims through
+  `lib/docs-probe.sh` rather than hand-rolled fetches.
 
 No comparative measurement of repair rounds, cost, or latency accompanies this release;
 that evaluation is out of scope for 7.0 (SPEC "Exceptional": comparative live
