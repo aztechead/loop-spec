@@ -61,6 +61,8 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_COMMAND_TIMEOUT_SECS` | non-negative integer; `1800` | Default wall-clock timeout used by generic managed command execution. A more specific timeout wins; `0` disables the wall-clock deadline. |
 | `LOOP_SPEC_DIGEST_MAX_LINES` | positive integer; `40` | Lines of command output `lib/output-digest.sh` puts into the agent's context (head and tail, split evenly). The complete output always goes to the log file the digest names, so raising this buys nothing a `grep` of that file does not. `0` is refused; an explicit `--max-lines` outranks this. |
 | `LOOP_SPEC_COMMAND_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | Default no-output timeout used by generic managed command execution. A more specific idle timeout wins; `0` disables the idle deadline. |
+| `LOOP_SPEC_REPOSITORY_ID` | string; unset | Explicit operator repository identity, read once at cycle creation (`lib/feature-init.sh`). Used as the v1 requirements contract's `Owner.repository` when the workspace has no first repo name to resolve it from; otherwise a generated uuid4. |
+| `LOOP_SPEC_REQUIREMENTS_V1_FIXTURE` | `0`/`1`; `0` | Transitional, fixture-only opt-in read once at cycle creation (`lib/feature-init.sh`): `1` also bootstraps a v1 `requirementsContract` and `artifactPublication` into the printed `feature.json`. Not a user-facing downgrade switch; removed at v1 activation ([`docs/loop-spec/requirements-format.md`](requirements-format.md)). Ordinary cycles stay on legacy without it. |
 
 ### Worktrees, dispatch, and runtime capability
 
@@ -96,6 +98,9 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_EGRESS_GUARD` | `warn`/`deny`/`off`; `warn` | How `lib/phase-exit.sh` treats a `feature.json` key a phase changed outside its allow-list, the `egress.writes` of its node in `graph/cycle.graph.json` (state no later phase reads): `warn` prints `WARN [egress]`, `deny` makes it a `FLAG` that keeps the phase open, `off` skips the comparison. |
 | `LOOP_SPEC_EFFORT_NODE` | `system1`/`system2`; unset | Per-node effort override. Most specific form; outranks phase and global. |
 | `LOOP_SPEC_FEATURE_WRITE` | executable path; `lib/feature-write.sh` | Test/seam override for the feature-state writer. Production unset uses the bundled `lib/feature-write.sh`. |
+| `LOOP_SPEC_PUBLICATION_TOKEN` | path to a file holding the caller's held ingress token; unset | Handed to a child cycle participant (`lib/feature-write.sh`, `lib/quality-loop-state.sh`, `lib/publication_participant.py`) so it can read and mutate feature state through the publication contract. The input token is immutable: a participant that also sets `LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT` must point it at a different file. |
+| `LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT` | path; unset | Where a child participant writes its accepted refresh token back for the caller to adopt. Must differ from `LOOP_SPEC_PUBLICATION_TOKEN`; a participant that sets both to the same file exits with an error instead of silently discarding the refresh. |
+| `LOOP_SPEC_QL_FEATURE_DIR` | path to a feature directory; unset | Names the feature directory whose publication contract `lib/quality-loop-state.sh` joins, when the state file does not already live at `<feature dir>/quality-loop.json`. Standalone quality-loop runs (no feature directory resolvable) never need it. |
 | `LOOP_SPEC_EVENTS` | executable path; `lib/events.sh` | Test/seam override for the event emitter used by `lib/graph/trace.sh`. Production unset uses the bundled `lib/events.sh`. |
 | `LOOP_SPEC_EVENT_SINK` | executable path; unset | Event-sink port (`docs/loop-spec/supervisor-interface.md`). `lib/events.sh` writes every emitted line to this executable's stdin after appending it to `events.jsonl`; `lib/cycle-result.sh` sends the terminal result as event `result`. A missing or failing sink is one warning, never an abort. |
 | `LOOP_SPEC_STORE` | executable path; unset | State-store port adapter invoked by `lib/supervisor/store.sh` after every `feature-write.sh` write and every clean `phase-exit.sh`, and at the preflight resume scan. Unset uses `lib/supervisor/store-local.sh` (the checkout is the store, today's behavior). `lib/supervisor/store-mirror.sh` is the bundled second adapter. A `persist` or `open` that fails is loud (exit 2). |
@@ -446,6 +451,8 @@ They are listed to remove ambiguity in wrappers and integrations.
 | `LOOP_SPEC_DIR` | Internal session-learnings path variable. |
 | `LOOP_SPEC_VERSION` | Packaging/test override for plugin-version detection. Production reads the installed manifest. |
 | `LOOP_SPEC_PLUGIN` | Deployment-wrapper path used by the documented cloud recipe; plugin runtime itself does not read it. |
+| `LOOP_SPEC_OPERATION_TOKEN` | Set by `lib/feature-write.sh`'s sourced helpers to the temp file holding the in-flight publication operation's token. Never set by an operator. |
+| `LOOP_SPEC_PUBLICATION_WRITER` | Set by `lib/feature-write.sh`'s sourced helpers to the path of `feature_write.py`. Never set by an operator. |
 
 When integrating loop-spec, depend only on the supported inputs and documented
 machine-result files/lines. Internal variables may change without compatibility

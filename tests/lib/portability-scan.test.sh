@@ -2,8 +2,10 @@
 # Test suite for lib/portability-scan.sh
 #
 # Each bash-4/GNU-only rule gets one fixture line that must fire and, where the same
-# construct has a portable spelling, one that must stay quiet -- `sed -i ''` next to
-# bare `sed -i`, a template ending in XXXXXX next to one that does not. Also covered:
+# construct has a portable spelling, one that must stay quiet -- `sed -i.bak` next to
+# bare `sed -i` and `sed -i ''`, a template ending in XXXXXX next to one that does not.
+# `sed -i` is checked in both directions: bare (GNU-only, fails on BSD) and with an
+# explicit empty suffix (BSD-only, fails on GNU). Also covered:
 # the `python3 - <<'PY'` heredoc convention (scanned as python, not shell), a non-python
 # heredoc (data, skipped), the `# portability:` escape, the timeout/flock lib/hooks-only
 # warning, directory expansion, and the usage/exit-code contract.
@@ -88,10 +90,12 @@ find . -printf '%p\n'
 xargs -d '\n' < file.txt
 t1=$(mktemp /tmp/work)
 t2=$(mktemp -t prefix --suffix=.txt)
+sed -i '' 's/a/b/' file.txt
 EOF
 check "o: readlink -f is GNU-only"   1 "tell=readlink-canonicalize" scan gnu.sh
 check "p: realpath is GNU-only"      1 "tell=realpath:"             scan gnu.sh
-check "q: sed -i with no suffix is GNU-only" 1 "tell=sed-inplace"   scan gnu.sh
+check "q: sed -i with no suffix is GNU-only" 1 "tell=sed-inplace:"   scan gnu.sh
+check "q2: sed -i '' is BSD-only and fails on GNU" 1 "tell=sed-inplace-empty-suffix" scan gnu.sh
 check "r: sed -r is GNU-only"        1 "tell=sed-extended-r"        scan gnu.sh
 check "s: date -d is GNU-only"       1 "tell=date-parse"            scan gnu.sh
 check "t: stat -c is GNU-only"       1 "tell=stat-format"           scan gnu.sh
@@ -105,14 +109,14 @@ check "aa: mktemp -t combined with --suffix is flagged" 1 "tell=mktemp-suffix" s
 
 cat > "$WORK/portable.sh" <<'EOF'
 #!/usr/bin/env bash
-sed -i '' 's/a/b/' file.txt
 sed -i.bak 's/a/b/' file.txt
+sed 's/a/b/' file.txt > file.txt.tmp && mv file.txt.tmp file.txt
 sed -E 's/(a)/\1/' file.txt
 t=$(mktemp "${TMPDIR:-/tmp}/loop-spec-good-XXXXXX")
 EOF
-check "ab: sed -i '' is the portable BSD-compatible spelling" 0 "portability-scan: clean" \
-  scan portable.sh
 check "ac: sed -i.bak (attached suffix) is portable"          0 "portability-scan: clean" \
+  scan portable.sh
+check "ac2: sed to a temp file then mv is portable on GNU and BSD" 0 "portability-scan: clean" \
   scan portable.sh
 check "ad: an mktemp template ending in XXXXXX is portable"   0 "portability-scan: clean" \
   scan portable.sh

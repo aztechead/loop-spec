@@ -13,7 +13,8 @@ Two independent rule sets:
 
   shell    a bash-4-only piece of syntax (`mapfile`, `declare -A`, `${var,,}`, ...), or
            an invocation of a GNU-coreutils-only flag (`readlink -f`, `sed -i` with no
-           suffix, `stat -c`, ...) that BSD's userland does not accept
+           suffix, `stat -c`, ...) that BSD's userland does not accept, or the reverse:
+           `sed -i ''` (BSD's own portable idiom) that GNU sed misreads as the script
   python   a stdlib feature newer than 3.7 (walrus, `match`, `str.removeprefix`,
            `dict | dict`, positional-only `/` parameters, `os.sched_*`,
            `signal.SIGRTMIN`, the f-string `=` debug specifier)
@@ -285,7 +286,13 @@ def sed_findings(args):
     for i, arg in enumerate(args):
         if arg == "-i":
             following = args[i + 1] if i + 1 < len(args) else None
-            if following != "":
+            if following == "":
+                findings.append((
+                    "sed-inplace-empty-suffix",
+                    "sed -i '' is BSD-only; GNU sed reads '' as the script -- "
+                    "write to a temp file and mv instead",
+                ))
+            else:
                 findings.append((
                     "sed-inplace",
                     "sed -i with no suffix is GNU-only; BSD needs sed -i '' or sed -i.bak",
