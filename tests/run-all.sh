@@ -468,4 +468,8 @@ echo "=== Summary ==="
 echo "Suites passed: $TOTAL_PASS"
 echo "Suites failed: $TOTAL_FAIL"
 echo "Suites skipped: $TOTAL_SKIP"
+# The ceiling the maintainer set on 2026-09-11 (157 s, 8 wide, network denied): a run
+# past it is a finding to fix, not a number to raise. Reported, never enforced, because
+# a slower machine is not a slower suite.
+echo "Wall clock: ${SECONDS}s (ceiling 157s)"
 [[ "$TOTAL_FAIL" -gt 0 ]] && exit 1 || exit 0
