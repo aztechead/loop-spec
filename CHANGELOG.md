@@ -6,6 +6,26 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [6.6.4] - 2026-09-11
 
+### Changed
+
+- `lib/python-path.sh`: a new probe that names the directory of the real interpreter
+  behind a pyenv shim (nothing when there is no shim). `lib/cycle-driver.sh` and
+  `tests/run-all.sh` put it first on PATH once, so every script they run skips the
+  shim's `pyenv exec` on each of the hundreds of `python3` launches a phase makes
+  (0.15 s each against 0.02 s for the interpreter). The offline suite's summed time
+  fell from 2767 s to 1635 s on the machine that measured it; a phase exit pays the
+  same tax in a live cycle. The interpreter chosen is the one the shim would have
+  chosen.
+- The whole suite passes with all network denied (`sandbox-exec` on macOS); the tree
+  ships only tests that run with the machine offline.
+
+### Removed
+
+- `evals/`, the live outcome-eval driver, with its two offline consumers
+  (`tests/eval-record-coverage.test.sh`, `tests/oneshot-artifact-budget.test.sh`) and
+  the nested-session guard's allowance for it: nothing in the tree may need the network
+  or a live model. Live runs are launched by hand and their findings live in the PR.
+
 ### Fixed
 
 Four findings from a 6.6.3 headless Sonnet `oneshot` run (a uv + Python 3.14 FastAPI

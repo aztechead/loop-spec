@@ -25,7 +25,6 @@ checks=(
   $'lib/acceptance-lint.sh\t=~ [^[:space:]]'
   $'lib/evidence.sh\trefusing an email address or credential path'
   $'lib/owned-gitignore.sh\tensure <repo> <line>...'
-  $'evals/README.md\tauto-mode classifier'
   $'lib/execute-prepare.sh\tdispatch/environment.txt'
   $'lib/dispatch-files.sh\tdispatch/tasks-collapsed.json'
   $'lib/dispatch-files.sh\tDo not read SPEC.md, PLAN.md, PATTERNS.md, or EVIDENCE.md'

@@ -18,6 +18,10 @@ for arg in "$@"; do
 done
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Skip a python version-manager shim for every suite (lib/python-path.sh): the shim
+# start was half of this runner's wall clock.
+py_dir="$(bash "$REPO_ROOT/lib/python-path.sh")"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 cd "$REPO_ROOT"
 
 # A cycle leaked into another worktree of this repository (the f0959f6 eval run left
@@ -205,7 +209,6 @@ run_suite "codex-harness-coverage"    "bash tests/codex-harness-coverage.test.sh
 run_suite "supervisor-interface-coverage" "bash tests/supervisor-interface-coverage.test.sh"
 run_suite "adk-extension"             "bash tests/adk-extension.test.sh"
 run_suite "sessions-extension"        "bash tests/sessions-extension.test.sh"
-run_suite "oneshot-artifact-budget"   "bash tests/oneshot-artifact-budget.test.sh"
 run_suite "session-start-hook-parity" "bash tests/session-start-hook-parity.test.sh"
 run_suite "cycle-worktree-policy"     "bash tests/cycle-worktree-policy.test.sh"
 run_suite "graph-conformance"         "bash tests/graph-conformance.test.sh"
@@ -255,6 +258,7 @@ run_suite "lib/team-ops"              "bash tests/lib/team-ops.test.sh"
 run_suite "lib/teams-capability"      "bash tests/lib/teams-capability.test.sh"
 run_suite "lib/bounded-run"           "bash tests/lib/bounded-run.test.sh" integration
 run_suite "lib/harness"               "bash tests/lib/harness.test.sh"
+run_suite "lib/python-path"           "bash tests/lib/python-path.test.sh"
 run_suite "lib/plugin-version"        "bash tests/lib/plugin-version.test.sh"
 run_suite "lib/bump-version"          "bash tests/lib/bump-version.test.sh"
 run_suite "lib/execute-rung"          "bash tests/lib/execute-rung.test.sh"
@@ -426,7 +430,6 @@ run_suite "tests/execution-validation-coverage" "bash tests/execution-validation
 run_suite "tests/verification-grounding-coverage" "bash tests/verification-grounding-coverage.test.sh"
 run_suite "tests/prompt-normalize-coverage" "bash tests/prompt-normalize-coverage.test.sh"
 run_suite "tests/live-run-findings-coverage" "bash tests/live-run-findings-coverage.test.sh"
-run_suite "tests/eval-record-coverage"     "bash tests/eval-record-coverage.test.sh"
 run_suite "tests/approach-selection-coverage" "bash tests/approach-selection-coverage.test.sh"
 run_suite "tests/configuration-coverage" "bash tests/configuration-coverage.test.sh"
 run_suite "tests/contract-strings"    "bash tests/contract-strings.test.sh"

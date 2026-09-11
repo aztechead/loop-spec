@@ -10,4 +10,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Every script the driver runs inherits a PATH that skips a python version-manager
+# shim (lib/python-path.sh: the shim was most of a phase exit's wall clock).
+py_dir="$(bash "$SCRIPT_DIR/python-path.sh")"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 exec python3 "$SCRIPT_DIR/graph/driver.py" "$@"

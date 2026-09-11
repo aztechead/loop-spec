@@ -176,7 +176,7 @@ Usage:
           REDO phase=<id> flags=<n> attempt=<k>   followed by the FLAG lines; fix and call again
         The same flags LOOP_SPEC_REDO_MAX (3) times escalate the run with them as the reason.
         Each REDO is also a driver-observed `redo` event in events.jsonl with the flag
-        classes (the bracketed label of every FLAG line), which evals/eval_run.py counts.
+        classes (the bracketed label of every FLAG line).
         Then post-phase bookkeeping and the graph step. Prints exactly ONE answer line:
           NEXT phase=<id> label="<label>" effort=<system1|system2>
           PAUSED node=<id> [intent=changed|unchanged|unknown]
