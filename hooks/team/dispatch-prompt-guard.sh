@@ -15,6 +15,13 @@
 #
 # Kill switch: LOOP_SPEC_DISPATCH_PROMPT_GUARD=0 -> exit 0.
 # Fail-open: no payload, malformed JSON, no python3 -> exit 0.
+#
+# The per-line check only flags a line that is wholly `$(...)`, not a backtick span: a
+# 6.6.1 live run denied a several-hundred-word review brief over a wrapped line that was
+# only a backticked file path, and a spec-compliance brief whose acceptance criterion was
+# a backticked shell command on its own line. Prose legitimately quotes a path or a
+# command in backticks; only `$(...)` is the shape a lead's own dispatch call actually
+# produces when `cat` never ran.
 set -euo pipefail
 
 if [[ "${LOOP_SPEC_DISPATCH_PROMPT_GUARD:-1}" == "0" ]]; then
@@ -47,11 +54,15 @@ if str(payload.get("tool_name") or "") != "Agent":
     raise SystemExit(0)
 prompt = str((payload.get("tool_input") or {}).get("prompt") or "")
 stripped = prompt.strip()
-if re.fullmatch(r"\$\(.*\)|`.*`", stripped, re.S) \
-        or any(re.fullmatch(r"\$\([^)]*\)|`[^`]*`", line.strip()) for line in stripped.splitlines()):
-    # A brief with one line that is only `$(cat ...)` shipped the placeholder, not the
-    # file: a live pruner was dispatched twice for it.
+sub_line = next(((n, line.strip()) for n, line in enumerate(stripped.splitlines(), 1) if re.fullmatch(r"\$\([^)]*\)", line.strip())), None)
+if re.fullmatch(r"\$\(.*\)|`.*`", stripped, re.S):
+    # The whole prompt, not just one line, is a substitution or backtick span.
     print("substitution")
+elif sub_line is not None:
+    # A brief with one line that is only `$(cat ...)` shipped the placeholder, not the
+    # file: a live pruner was dispatched twice for it. A backtick-only line is NOT this
+    # shape (see header): prose legitimately quotes a path or command that way.
+    print("substitution-line\t%d\t%s" % sub_line)
 elif len(stripped) < 40:
     print("short")
 else:
@@ -61,6 +72,10 @@ else:
 case "$VERDICT" in
   substitution)
     echo "DENY: the Agent prompt is a shell substitution, not a brief. The Agent tool runs no shell; the agent would receive the literal text. Read the brief file (the dispatch packet's .brief, or the file you wrote) and pass its contents as the prompt. (Disable: LOOP_SPEC_DISPATCH_PROMPT_GUARD=0)" >&2
+    exit 2 ;;
+  substitution-line*)
+    LINE_NO="$(cut -f2 <<<"$VERDICT")"; LINE_TEXT="$(cut -f3- <<<"$VERDICT")"
+    echo "DENY: line $LINE_NO of the Agent prompt is an unexpanded shell substitution: $LINE_TEXT. The Agent tool runs no shell; the agent would receive the literal text. Read the brief file (the dispatch packet's .brief, or the file you wrote) and pass its contents as the prompt. (Disable: LOOP_SPEC_DISPATCH_PROMPT_GUARD=0)" >&2
     exit 2 ;;
   short)
     echo "DENY: the Agent prompt is under 40 characters; no task fits in that. Pass the full brief as the prompt. (Disable: LOOP_SPEC_DISPATCH_PROMPT_GUARD=0)" >&2

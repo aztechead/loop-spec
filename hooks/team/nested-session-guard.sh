@@ -9,8 +9,13 @@
 #
 # Denies (exit 2, reason on stderr) a Bash command that launches a headless harness CLI
 # (`claude -p`, `claude --print`, `codex exec`, `opencode run`, `adk run`), whether the
-# launch is in the command text or in a script file the command names. The bundled
-# launchers are the exceptions, because spawning sessions is their job:
+# launch is in the command text or in a script file the command runs (a script named in
+# command position, or as the first argument to an interpreter word). Prose about a
+# launcher inside a file the command only reads (grep/wc/sed/head/cat/...) is not a
+# launch, and neither is a launcher named in a `#` comment inside a scanned script (6.6.1
+# live-run finding: a Python module whose docstring said "the top-level ``claude -p``"
+# was denying every `grep`/`wc`/`sed`/`head` call that named it, for the rest of the run).
+# The bundled launchers are the exceptions, because spawning sessions is their job:
 # extensions/sessions/session_run.py (the EXECUTE session rung), the loop-runner
 # scripts (the loop-fleet rung), and evals/eval_run.py (the outcome eval, which drives
 # cycles from outside them).
@@ -32,7 +37,7 @@ fi
 command -v python3 >/dev/null 2>&1 || exit 0
 
 INPUT=$(cat)
-VERDICT=$(printf '%s' "$INPUT" | NESTED_GUARD_CWD="$PWD" python3 -c '
+VERDICT=$(printf '%s' "$INPUT" | NESTED_GUARD_CWD="$PWD" NESTED_GUARD_PROJECT_DIR="$PROJECT_DIR" python3 -c '
 import json
 import os
 import re
@@ -44,6 +49,58 @@ LAUNCH = re.compile(r"(?:^|[\s;&|(`])(claude\s+(?:-p|--print)\b|codex\s+exec\b|o
 # substring anywhere in the line: a comment naming session_run.py next to a `claude -p`
 # was a pass (port audit 1, F8).
 LAUNCHERS = re.compile(r"(?:^|[\s\"\x27=])(?:[\w.~-]*/)*(?:extensions/sessions/session_run\.py|skills/loop-runner/scripts/[\w.-]+\.py|evals/eval_run\.py)(?=$|[\s\"\x27])")
+COMMENT = re.compile(r"(?:^|\s)#.*$", flags=re.M)
+
+# Interpreter words whose next non-flag argument is the script they run. Closed list: an
+# interpreter this hook does not know about is not scanned, same as any other unknown
+# command word (fail toward not-a-script, matching the command-position rule below).
+INTERPRETERS = ("bash", "sh", "zsh", "dash", "ksh", "source", ".", "python", "python3", "node", "perl", "ruby")
+# Prefix words that pass the command position through to the next word unconsumed.
+PREFIXES = ("env", "nohup", "time", "exec", "sudo")
+OPERATORS = (";", "&", "&&", "||", "|", "(", "{")
+CONTROL_WORDS = ("then", "do", "else")
+ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def command_position_words(command):
+    """Indices of tokens the shell would execute: the command word of a simple
+    command, or the first non-flag argument after an interpreter word. Everything
+    else (an argument to grep/wc/sed/head/cat/...) is never a script position."""
+    # A newline separates commands the way `;` does; a backslash-newline joins them.
+    flat = re.sub(r"\\\n", " ", command).replace("\n", " ; ")
+    lex = shlex.shlex(flat, posix=True, punctuation_chars=";&|(){}")
+    lex.whitespace_split = True
+    try:
+        tokens = list(lex)
+    except ValueError:
+        tokens = command.split()
+        return ([0] if tokens else []), tokens
+    positions = []
+    expect_cmd = True
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in OPERATORS:
+            expect_cmd = True
+            i += 1
+            continue
+        if not expect_cmd:
+            i += 1
+            continue
+        if tok in CONTROL_WORDS or ASSIGNMENT.match(tok) or tok in PREFIXES:
+            i += 1
+            continue
+        positions.append(i)
+        if tok in INTERPRETERS:
+            j = i + 1
+            while j < len(tokens) and tokens[j] not in OPERATORS and tokens[j].startswith("-"):
+                j += 1
+            if j < len(tokens) and tokens[j] not in OPERATORS:
+                positions.append(j)
+        expect_cmd = False
+        i += 1
+    return positions, tokens
+
 
 try:
     payload = json.load(sys.stdin)
@@ -55,23 +112,27 @@ if str(payload.get("tool_name") or "") != "Bash":
     raise SystemExit(0)
 command = str((payload.get("tool_input") or {}).get("command") or "")
 # A launcher path in a comment is not a launcher the command runs.
-if LAUNCHERS.search(re.sub(r"(?:^|\s)#.*$", "", command, flags=re.M)):
+if LAUNCHERS.search(COMMENT.sub("", command)):
     print("allow")
     raise SystemExit(0)
 
 found = LAUNCH.search(command)
 where = "the command"
 if not found:
-    # A launch hidden in a script the command runs: read every existing file the
-    # command names (bounded, so a large data file costs nothing).
-    try:
-        words = shlex.split(command)
-    except ValueError:
-        words = command.split()
+    # A launch hidden in a script the command runs: scan only the files that sit in a
+    # position the shell would execute (command word, or interpreter argument) — never
+    # a file the command merely reads (grep/wc/sed/head/... target).
+    positions, tokens = command_position_words(command)
+    project_dir = os.environ.get("NESTED_GUARD_PROJECT_DIR") or os.getcwd()
     cwd = os.environ.get("NESTED_GUARD_CWD") or os.getcwd()
-    for word in words:
-        path = word if os.path.isabs(word) else os.path.join(cwd, word)
-        if not os.path.isfile(path):
+    for idx in positions:
+        word = tokens[idx]
+        if os.path.isabs(word):
+            candidates = [word]
+        else:
+            candidates = [os.path.join(project_dir, word), os.path.join(cwd, word)]
+        path = next((c for c in candidates if os.path.isfile(c)), None)
+        if path is None:
             continue
         try:
             with open(path, "rb") as fh:
@@ -80,7 +141,8 @@ if not found:
             continue
         if LAUNCHERS.search(" " + path):
             continue
-        found = LAUNCH.search(text)
+        # A launcher named only in a `#` comment inside the script is not a launch it runs.
+        found = LAUNCH.search(COMMENT.sub("", text))
         if found:
             where = word
             break

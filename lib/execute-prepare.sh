@@ -145,8 +145,9 @@ PYENV
   [[ -f "$root/.loop-spec/file-conflict-exclude.txt" ]] && excludes="$excludes
 $(cat "$root/.loop-spec/file-conflict-exclude.txt")"
   # Pending tasks whose files overlap get a synthetic edge, lower id first, unless every
-  # overlapping file matches an exclusion glob. Done tasks fall out of the dispatch list
-  # and out of every blockedBy so the width is measured over what is left.
+  # overlapping file matches an exclusion glob or the planner already declared the reverse
+  # edge. Done tasks fall out of the dispatch list and out of every blockedBy so the width
+  # is measured over what is left.
   dispatch="$(EXCLUDES="$excludes" python3 - "$feature_dir/dispatch/tasks-collapsed.json" "$done_json" <<'PY'
 import fnmatch, json, os, sys
 tasks = json.load(open(sys.argv[1])); done = set(json.loads(sys.argv[2]))
@@ -159,7 +160,10 @@ ordered = sorted(pending, key=lambda t: str(t.get("id")))
 for i, a in enumerate(ordered):
     for b in ordered[i + 1:]:
         shared = [f for f in (a.get("files") or []) if f in (b.get("files") or []) and not excluded(f)]
-        if shared and a["id"] not in b["blockedBy"]:
+        # A planner-declared edge wins over a synthetic one: adding both directions makes a
+        # 2-cycle that dag-width refuses to dispatch (the 6.6.1 live run had to renumber 29 tasks
+        # by hand to work around it).
+        if shared and a["id"] not in b["blockedBy"] and b["id"] not in (a.get("blockedBy") or []):
             b["blockedBy"].append(a["id"]); b.setdefault("syntheticBlockedBy", []).append(a["id"])
 print(json.dumps(pending))
 PY

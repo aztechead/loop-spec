@@ -271,6 +271,12 @@ the task worktree. Read the role selector
 from `models.implementer` or `models.specComplianceReviewer`; add the Agent
 `model` field only for an alias and omit it for `inherit`.
 
+Every dispatch on this rung is a nameless, blocking Agent call: no `name` key,
+`run_in_background: false` (see "Call shapes" in `skills/shared/dispatch.md`). A named
+Agent becomes a background teammate whose final message never comes back as a tool
+result, and these reviewer personas have no SendMessage to fall back on -- a live 6.6.1
+run lost a verdict to a named dispatch and had to redispatch.
+
 **Dispatch telemetry (`skills/shared/dispatch.md`):** `task dispatch` and `task package` emit `dispatch` with the resolved model.
 The lead emits no duplicate event. Retries use `task dispatch` again and emit a new event.
 
@@ -395,8 +401,9 @@ Step 5 - Stage and commit inside the worktree branch:
 Do NOT push. Do NOT run git outside the task worktree.
 
 Return JSON: { taskId: "{taskId}", branch: "task/{taskId}-{slug}", committed: <true|false>, sha: "<sha or empty>", notes: "<notes>" }
-Your final message IS the return value. Never call SendMessage to deliver it: you are a
-one-shot subagent, there is no teammate named "main", and the lead reads your completion.
+Your final message IS the return value (the lead dispatched you nameless and blocking).
+Never call SendMessage to deliver it: you are a one-shot subagent, there is no teammate
+named "main", and the lead reads your completion.
 ```
 
 ## Reviewer Agent prompt
@@ -447,8 +454,9 @@ Return one of:
   - verdict "block"  if the implementation is fundamentally wrong or unrecoverable
 
 Return JSON: { verdict: "pass"|"rework"|"block", findings: ["<finding 1>", ...], unverified: [{"requirement":"...","why":"..."}] }
-Your final message IS the verdict. Never call SendMessage to deliver it (a live reviewer
-lost three calls to InputValidationError sending JSON to a "main" that does not exist).
+Your final message IS the verdict (the lead dispatched you nameless and blocking). Never
+call SendMessage to deliver it (a live reviewer lost three calls to InputValidationError
+sending JSON to a "main" that does not exist).
 ```
 
 ## Workspace mode
@@ -524,7 +532,8 @@ Step 4 - Stage and commit using git -C so git does not depend on cwd:
 Do NOT push. Do NOT run git against any path other than {abs_repo}.
 
 Return JSON: { taskId: "{taskId}", repo: "{repo}", committed: <true|false>, sha: "<sha or empty>", notes: "<notes>" }
-Your final message IS the return value; never call SendMessage to deliver it.
+Your final message IS the return value (the lead dispatched you nameless and blocking);
+never call SendMessage to deliver it.
 ```
 
 ### Merge and ff steps (workspace mode -- skipped)

@@ -92,7 +92,7 @@ Usage:
 
     cycle-driver.sh spec fill --feature-dir DIR [--intent TEXT] [--file PATH --note TEXT]
         [--command SHELL --expect TEXT [--row GE-NNN]] [--grounding TEXT [--row N]] | --json PATH|-
-        A criterion is two fields: the driver writes `- [ ] \`<command>\` exits 0: <expect>`
+        A criterion is two fields: the driver writes `- [ ] `<command>` exits 0: <expect>`
         and the command into the frontmatter `criteria:` map that `verification run`
         executes; --row replaces that criterion (or the Nth grounding bullet), no --row
         appends the next one, and the same criterion is never appended twice. --json
@@ -255,7 +255,7 @@ def usage():
 
 
 def now():
-    return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def iso_epoch(stamp):
