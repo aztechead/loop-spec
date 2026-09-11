@@ -11,13 +11,14 @@ All notable changes documented here. Format follows Keep a Changelog.
 - **Teammates report to `team-lead`.** A 6.6.1 user reported that agent-team
   teammates never reported back to the driver. Every team prompt
   (`skills/shared/team-prompts/implementer.md`, `reviewer.md`, `critic.md`) sent its
-  report with `SendMessage({to: "lead"})`. Claude Code reserves `team-lead` for the
+  report with `SendMessage({to: "lead"})`, and the critique protocol and advocate
+  briefs said "reply to lead" in prose. Claude Code reserves `team-lead` for the
   lead; `lead` names no agent, so the harness dropped `REVIEW PASS`, `UNVERIFIED`,
   `TASK BLOCKED`, idle, and `FINDINGS` messages and the lead saw only `TaskList`
   state. The prompts now address `team-lead`; `skills/shared/dispatch.md` records
   the reserved address and that a teammate's final answer rides its idle notification
   on Claude Code >= 2.1.251; `tests/lib/harness-call-shapes.test.sh` fails any prompt
-  that reports to `lead` or `main`.
+  or prose dispatch line that reports to `lead` or `main`.
 
 ## [6.6.1] - 2026-09-11
 

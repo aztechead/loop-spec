@@ -115,7 +115,7 @@ ceiling:
 
 - `{answer: "rerun", fixList}`: the artifact is snapshotted for the diff. Re-dispatch
   `{author}` via `SendMessage` (not a fresh Agent call) with `fixList` as written,
-  instructing it to read the current artifact, apply every item in place, send lead
+  instructing it to read the current artifact, apply every item in place, send team-lead
   its completion message, then go idle. (Phase deltas apply: DISCUSS has the LEAD edit
   directly when there is no spec-writer.)
 - `{answer: "close", reason, residue}`: the gate is closed with `--convergence cap-reached`,
@@ -146,7 +146,7 @@ SendMessage({
 
     Diff: Read {.diffPath} ({.lines} lines).
 
-    Reply to lead with DELTA-VERIFIED or DELTA-FINDINGS, then go idle.
+    Reply to team-lead with DELTA-VERIFIED or DELTA-FINDINGS, then go idle.
   """
 })
 ```

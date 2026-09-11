@@ -8,5 +8,5 @@
 Do not spawn `advocate-{N}` and do not SendMessage to an advocate. Critique is
 challenger-only. The live critic brief is `skills/shared/team-prompts/critic.md`.
 
-If you were given this file anyway: reply to lead
+If you were given this file anyway: reply to team-lead
 `NOT-DISPATCHED: advocate is not part of the critique gate` and go idle.

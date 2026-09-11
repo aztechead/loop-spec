@@ -75,10 +75,12 @@ check "Agent templates do not emit dynamic model placeholders" \
 
 # 3c) The lead's reserved SendMessage address is `team-lead`. A prompt that reports to
 # `lead` or `main` names no teammate, so the report never reaches the driver (the
-# 6.6.1 "teammates do not report back" bug).
-bad=$(grep -rnE 'to: *"(lead|main)"' skills agents --include='*.md' 2>/dev/null \
-  | grep -v 'shared/dispatch.md' | head -5 || true)
+# 6.6.1 "teammates do not report back" bug). Prose dispatch lines ("reply to lead",
+# "send lead") are the same call once a teammate follows them, so they are linted too.
+bad=$(grep -rnEi 'to: *"(lead|main)"|(reply|report|send|message) to lead\b|send lead\b' \
+  skills agents --include='*.md' 2>/dev/null | grep -v 'shared/dispatch.md' | head -5 || true)
 check "teammates report to team-lead, never lead or main" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+# The negative scan above passes on an emptied prompt; the positive one does not.
 grep -q 'to: "team-lead"' skills/shared/team-prompts/implementer.md \
   && grep -q 'to: "team-lead"' skills/shared/team-prompts/reviewer.md \
   && grep -q 'to: "team-lead"' skills/shared/team-prompts/critic.md && v=1 || v=0

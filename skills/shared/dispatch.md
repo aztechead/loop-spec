@@ -107,9 +107,8 @@ wave runs; stop only at the join. Never AskUserQuestion as a wait, keep-alive, o
 (`hooks/team/placeholder-question-guard.sh` blocks it on Claude Code).
 Never `sleep` to join a background Agent, and never poll. A teammate's plain-text output is invisible
 and its last `SendMessage` can be dropped: on the team rung the source of truth is
-`TaskList` state at every wake, not messages. The lead's reserved address is
-`team-lead` (Claude Code agent-teams docs); `main` reaches only the parent of a
-background one-shot Agent, and `lead` names nothing. A teammate's final answer also
+`TaskList` state at every wake, not messages. `main` reaches only the parent of a
+background one-shot Agent, never a team lead. A teammate's final answer also
 arrives inside its idle notification on Claude Code >= 2.1.251 (changelog). A teammate that goes idle without its
 artifact gets ONE re-dispatch; a second miss is a real stuck-teammate question in
 interactive styles and lead-authored output in autonomous mode (recorded in
