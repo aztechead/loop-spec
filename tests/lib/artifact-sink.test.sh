@@ -47,6 +47,50 @@ check "source artifacts removed from candidate" "0" "$([[ -e "$docs/SPEC.md" ]] 
 check "feature records store mode" "store" "$(jq -r '.artifactSink.mode' "$feature/feature.json")"
 check "artifact deletion is staged" "1" \
   "$(git -C "$WORK" diff --cached --name-only | grep -qx 'docs/loop-spec/features/demo/SPEC.md' && echo 1 || echo 0)"
+
+# task-004 AC5: an active migration refuses ordinary publication (artifact_publication.py's
+# refuse_pending, reached through begin_operation before the caller's token is ever
+# compared) even when the caller holds the token captured just before the migration
+# marker landed -- proving a migration in progress, not merely a stale token, is what
+# blocks the sink. Captured the way publication_case in publication-callers.test.sh
+# does: an ingress token via feature_write.py, handed back through the env pair.
+migration_token="$WORK-migration-token.json"
+python3 "$ROOT/lib/feature_write.py" ingress "$feature" > "$migration_token"
+migration_generation="$(jq '.artifactPublication.generation' "$feature/feature.json")"
+migration_digest="$(printf 'a%.0s' {1..64})"
+jq --argjson gen "$migration_generation" --arg digest "$migration_digest" \
+  '.artifactPublication.migration = {"id":"m1","previewDigest":$digest,"phase":"marker","originalGeneration":$gen,"publishedHashes":{}}' \
+  "$feature/feature.json" > "$feature/feature.json.tmp"
+mv "$feature/feature.json.tmp" "$feature/feature.json"
+feature_before_migration="$WORK-feature-before-migration.json"
+cp "$feature/feature.json" "$feature_before_migration"
+index_before_migration="$WORK-index-before-migration"
+cp "$WORK/.git/index" "$index_before_migration"
+sink_listing_before_migration="$(find "$store" -type f | sort)"
+migration_rc=0
+migration_err="$(LOOP_SPEC_ARTIFACTS_IN_PR=0 LOOP_SPEC_ARTIFACT_DIR="$store" \
+  LOOP_SPEC_PUBLICATION_TOKEN="$migration_token" \
+  LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT="$WORK-migration-token-out.json" \
+  bash "$LIB" store "$feature" "$WORK" 2>&1 1>/dev/null)" || migration_rc=$?
+check "active migration: store refuses" "1" "$migration_rc"
+check "active migration: stderr names the migration refusal" "1" \
+  "$(grep -c 'active migration refuses ordinary publication' <<<"$migration_err")"
+check "active migration: feature.json unchanged" "1" \
+  "$(cmp -s "$feature/feature.json" "$feature_before_migration" && echo 1 || echo 0)"
+check "active migration: Git index unchanged" "1" \
+  "$(cmp -s "$WORK/.git/index" "$index_before_migration" && echo 1 || echo 0)"
+check "active migration: docs/SPEC.md unchanged (still removed)" "0" \
+  "$([[ -e "$docs/SPEC.md" ]] && echo 1 || echo 0)"
+check "active migration: no sink destination created" "1" \
+  "$([[ "$(find "$store" -type f | sort)" == "$sink_listing_before_migration" ]] && echo 1 || echo 0)"
+rm -f "$migration_token" "$feature_before_migration" "$index_before_migration"
+
+# With the migration cleared, the very next check (store retry is idempotent) is
+# this fixture's fresh-token success proof: same feature, same destination, a store
+# call that had just been refused now lands clean.
+jq '.artifactPublication.migration = null' "$feature/feature.json" > "$feature/feature.json.tmp"
+mv "$feature/feature.json.tmp" "$feature/feature.json"
+
 check "store retry is idempotent" "$result" \
   "$(LOOP_SPEC_ARTIFACTS_IN_PR=0 LOOP_SPEC_ARTIFACT_DIR="$store" \
     bash "$LIB" store "$feature" "$WORK")"
