@@ -4,6 +4,8 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.6.1] - 2026-09-11
+
 ### Fixed
 
 - **Workspace tasks run git in their own repo.** A live 6.6.0 run in a directory of
