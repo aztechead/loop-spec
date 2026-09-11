@@ -36,8 +36,11 @@ freeze when the cycle enters PLAN. Promotion never grants human approval.
 
 `reentry=true` (ITERATE sent the cycle back for a `spec`-type gap): read
 `iterate.feedback`, refine SPEC.md toward the ORIGINAL goal (`feature_title`) for that
-gap only, and do not restart the interview. `auto`/`review-only` do this without
-questions.
+gap only, and do not restart the interview. When a human approved the rewind
+(`step`/`interactive`), the driver has reopened Goal and Boundary: amend them for that
+gap, record why, and PLAN freezes them again. `auto`/`review-only` do this without
+questions and without a reopen: Goal and Boundary stay frozen there, so the refinement
+lands in the other sections.
 
 ## 2. Grill (by `grill`)
 

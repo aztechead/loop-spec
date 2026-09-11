@@ -1186,6 +1186,22 @@ def record_spec_approval(feature_dir, feat, source, phase):
     return approval
 
 
+def reopen_spec_approval(feature_dir, feat):
+    """A human approved a SPEC-level rewind: the freeze they approved earlier steps
+    aside so DISCUSS can amend Goal and Boundary, and PLAN records the new one. The
+    old record moves to specApprovalHistory, which is the only shape the state writer
+    lets an approval leave by. Autonomous rewinds never come here: the judge scores
+    against feature_title and the freeze stands."""
+    approval = feat.get("specApproval")
+    if not approval:
+        return
+    retired = dict(approval, reopenedAt=now(), reopenedBy="human.iterate-spec-approval")
+    lib("feature-write", "append", feature_dir, "specApprovalHistory", json.dumps(retired))
+    fset(feature_dir, "specApproval", None)
+    fset(feature_dir, "specIntentSeen", {"sha256": approval["sha256"], "at": now()})
+    lib("events", "emit", feature_dir, "spec-reopened", "--phase", "discuss", "--data", json.dumps(retired))
+
+
 def cmd_next(argv):
     o = parse_pairs(argv, ("--feature-dir", "--returned-from", "--note"))
     feature_dir = o.get("feature_dir") or ""
@@ -1391,6 +1407,11 @@ def cmd_next(argv):
         if descriptor.get("kind") == "agent":
             break
 
+    # The descriptor defers an agent node's edge; the ledger's started entry keeps it.
+    admitted = (engine.latest_checkpoint() or {}).get("edge") or "" if nxt == "discuss" else ""
+    if admitted.endswith("human.iterate-spec-approval->discuss"):
+        reopen_spec_approval(feature_dir, feat)
+        feat = state(feature_dir)
     if nxt == "plan" and descriptor.get("kind") == "agent":
         # Every route into PLAN lands here (the DISCUSS gate, the short path, the compact
         # gate, ITERATE's plan gap), and before any handoff, so a fresh session finds it.

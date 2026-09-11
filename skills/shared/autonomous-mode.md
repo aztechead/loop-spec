@@ -129,7 +129,8 @@ Use these recovery paths within existing authorization and gate limits:
 2. **Lead-authored fallback**: a teammate that produces nothing after one fresh
    re-dispatch is replaced by the lead authoring the artifact from the same brief
    (`lead-authored` in the transcript).
-3. **ITERATE rewinds** hands-off; the immutable original goal keeps the oracle honest
+3. **ITERATE rewinds** hands-off; the immutable original goal keeps the oracle honest,
+   the Goal and Boundary freeze stays (only a human-approved rewind reopens it),
    and `iterate.maxIterations` bounds it. While iterations remain, the backlog is never
    used.
 4. **Iteration limit hit** (the only backlog entry point): the confirmation pass, then

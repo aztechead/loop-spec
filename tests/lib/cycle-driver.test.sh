@@ -187,6 +187,27 @@ check "begin: the refusal carries the handoff answer" "1" "$(grep -c 'HANDOFF ne
 check "begin: the refused re-entry emits no phase event pair" "$pairs_before" "$(grep -c '"event":"phase_\(start\|end\)"' "$FD/events.jsonl")"
 check "begin: the refusal puts the result pointer back" "phase-handoff" "$(jq -r '.reason' "$REPO/.loop-spec/last-result.json" 2>/dev/null)"
 
+# A human-approved SPEC rewind reopens the freeze: the engine resumes from the pause
+# record at the approval gate, the driver retires the record, DISCUSS may amend, and
+# the DISCUSS gate compares against what was approved.
+FROZEN="$(jq -r '.specApproval.sha256' "$FD/feature.json")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" handoffSession null >/dev/null
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"step"' >/dev/null
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" iterate '{"used":1,"maxIterations":3,"feedback":{"type":"spec","description":"goal too narrow","fix_first":"widen"}}' >/dev/null
+printf '{"node":"human.iterate-spec-approval"}\n' > "$FD/graph-pause.json"
+out="$(cd "$REPO" && SESSION=s3 drv next --feature-dir "$FD" 2>/dev/null)"
+check "next: the approved spec rewind enters DISCUSS" "NEXT phase=discuss" "${out:0:18}"
+check "next: the approved rewind retires the approval" "null" "$(jq -r '.specApproval' "$FD/feature.json")"
+check "next: the retired record keeps its digest and names the gate" "$FROZEN human.iterate-spec-approval" "$(jq -r '.specApprovalHistory[-1] | "\(.sha256) \(.reopenedBy)"' "$FD/feature.json")"
+check "next: the DISCUSS gate will compare against the retired digest" "$FROZEN" "$(jq -r '.specIntentSeen.sha256' "$FD/feature.json")"
+check "next: the reopen is on the event ledger" "1" "$(jq -c 'select(.event == "spec-reopened")' "$FD/events.jsonl" | wc -l | tr -d ' ')"
+sed -i.bak 's/^Produce the requested behavior and log it\.$/Produce and log the requested behavior for every caller./' "$DOCS1/SPEC.md"; rm -f "$DOCS1/SPEC.md.bak"
+out="$(cd "$REPO" && SESSION=s3 drv next --feature-dir "$FD" --returned-from discuss 2>/dev/null)"
+check "next: the reopened Goals edit pauses at the DISCUSS gate as changed" "PAUSED node=human.after-discuss intent=changed" "$out"
+out="$(cd "$REPO" && SESSION=s3 drv next --feature-dir "$FD" 2>/dev/null)"
+check "next: PLAN freezes the amended text again" "true" "$(jq --arg old "$FROZEN" '.specApproval.sha256 != null and .specApproval.sha256 != $old' "$FD/feature.json")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"auto"' >/dev/null
+
 # --- start: an autonomous re-invocation resumes the one paused feature ------------
 out="$(AUTONOMOUS=1 drv start --dir "$REPO" -- add a json flag reworded 2>/dev/null)"
 check "start: autonomous with one paused feature and a new title resumes it" "add-a-json-flag" "$(jq -r '.resume.autoPick' <<<"$out")"

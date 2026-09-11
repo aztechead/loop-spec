@@ -127,6 +127,14 @@ exit_code=0
 bash "$LIB" set "$WORK/feat" specApproval '{"digest":"changed"}' >/dev/null 2>&1 || exit_code=$?
 check "ack: later writes still cannot change approval" "1" "$exit_code"
 check "ack: rejected approval edit changes nothing" "$before" "$(cat "$WORK/feat/feature.json")"
+# The driver's reopen for a human-approved SPEC rewind: the record retires into the
+# history first, then the approval may clear; a bare clear is still refused.
+exit_code=0
+bash "$LIB" set "$WORK/feat" specApproval null >/dev/null 2>&1 || exit_code=$?
+check "reopen: clearing the approval without retiring it is refused" "1" "$exit_code"
+bash "$LIB" append "$WORK/feat" specApprovalHistory '{"digest":"immutable","reopenedBy":"human.iterate-spec-approval"}' >/dev/null
+bash "$LIB" set "$WORK/feat" specApproval null >/dev/null
+check "reopen: a retired approval may clear" "null" "$(jq -r '.specApproval' "$WORK/feat/feature.json")"
 printf '#!/usr/bin/env bash\necho "injected store persistence failure" >&2\nexit 2\n' > "$WORK/failing-store.sh"
 chmod +x "$WORK/failing-store.sh"
 exit_code=0

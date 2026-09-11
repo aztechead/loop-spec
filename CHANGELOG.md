@@ -24,6 +24,12 @@ The Goal and Boundary freeze moves from SPEC exit to PLAN entry.
   feature 6.5 froze at SPEC exit has no snapshot; the gate compares against its
   approval instead. The cycle skill prints Goal and Boundary before that pause when
   they changed, because PLAN freezes them as they stand.
+- **A human-approved SPEC rewind reopens the freeze.** When ITERATE routes a `spec`
+  gap through `human.iterate-spec-approval` and the human chooses to re-open, the
+  driver retires `specApproval` into `specApprovalHistory`, clears it, and re-records
+  at PLAN; the DISCUSS gate compares against the retired digest. An unattended rewind
+  keeps the freeze, as before. `tests/lib/pr-body.test.sh` no longer uses the macOS
+  form of `sed -i`.
 - **PLAN entry requires the record.** `phase-begin plan` refuses a feature with no
   `specApproval`; entering through `next` records it. Before PLAN, artifact lint checks
   only that Goal and Boundary exist and are non-empty; from PLAN on it compares the

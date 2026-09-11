@@ -895,7 +895,10 @@
       ],
       "writes": [
         "currentPhase",
-        "warnings"
+        "warnings",
+        "specApproval",
+        "specApprovalHistory",
+        "specIntentSeen"
       ],
       "effort": "system1",
       "admit": {
