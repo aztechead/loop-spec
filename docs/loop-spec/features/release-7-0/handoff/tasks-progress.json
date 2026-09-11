@@ -300,7 +300,8 @@
     "interfaces": {
       "consumes": "task-005",
       "produces": "capture_inputs(root, contract, outputs) identity/result API for observed execution."
-    }
+    },
+    "status": "done"
   },
   {
     "id": "task-007",
@@ -333,7 +334,8 @@
     "interfaces": {
       "consumes": "task-006",
       "produces": "Driver-observed schema-1 records and output files, no caller-written status."
-    }
+    },
+    "status": "done"
   },
   {
     "id": "task-008",
