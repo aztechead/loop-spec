@@ -4,6 +4,113 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.0.0] - 2026-09-11
+
+Traceable requirements (`docs/loop-spec/7.x-roadmap.md`, "7.0: connect requirements,
+tasks, and evidence"): a required outcome now carries a stable ID and revision from
+authoring through evidence, a driver owns the artifacts that prove it, and an incomplete
+pre-7 cycle can move onto the new contract instead of only finishing or being abandoned.
+The twelve `docs/loop-spec/features/release-7-0/` tasks that built this are summarized
+below; each task's own SPEC/PLAN/VERIFICATION is the durable record of what it proved.
+
+### Before you update
+
+- **A new cycle records the v1 requirements contract from creation**; there is no
+  operator switch to keep issuing the old positional format for a new feature. SPEC's
+  frontmatter now carries `requirements_version: 1` and `requirements_owner`, and each
+  `### Good Enough` item is a stable `GE-NNN` with its own `SC-NNN` scenarios
+  (`docs/loop-spec/requirements-format.md`).
+- **An incomplete cycle that started before this release keeps working under its
+  original (legacy) contract for the whole 7.x series** — this is never automatic and
+  never required. An operator who wants that one cycle's identities, revisions, and
+  coverage gates on the v1 contract runs `bash lib/requirements-migrate.sh
+  preview|status|apply|resume|rollback --feature-dir DIR`
+  (`docs/loop-spec/requirements-migration.md`). Completed legacy artifacts and approval
+  records are never rewritten.
+- **Every authoritative state write goes through the driver's ingress token.** A staged
+  publication (`lib/artifact-publication.sh capture`/`publish`) carries the generation
+  and input hashes it was captured against; an intervening generation change invalidates
+  the old token rather than being silently accepted (`lib/artifact_publication.py`).
+- **The four harness guards (Claude Code, opencode, ADK, Codex) deny a direct tool write
+  onto a driver-owned publication path** — SPEC/PLAN/VERIFICATION/PATTERNS.md once a
+  feature is on the oneshot route or the v1 format, `feature.json`/`tasks.json`, and
+  `observations/**`, `publication-generations/**`, `migration-generations/**` under
+  runtime state — and name the driver command to use instead
+  (`skills/shared/{claude,opencode,adk,codex}-harness.md`, "Protected publication
+  paths"; `bash lib/harness.sh protected-path`). This guards the tool boundary a normal
+  run goes through, not a host an attacker already controls.
+- **The portability rule now has a probe of its own**: `bash lib/portability-scan.sh
+  scan <files>` names, with `file:line`, a bash>=4-only construct or a
+  GNU-coreutils-only flag the plugin's `bash>=3.2`/BSD-userland floor does not accept
+  (`tests/lib/portability-scan.test.sh`; registered in `tests/run-all.sh` and CLAUDE.md's
+  code-for-humans checklist).
+
+### Added
+
+- `lib/requirements.py` / `lib/requirements.sh`: the pure, stdlib-only requirements
+  parser and inventory reader (`parse_spec`, `load_inventory`, `inventory_digest`);
+  `docs/loop-spec/requirements-format.md` is its grammar and revision-digest reference
+  (task-001).
+- Driver-owned identity state: `feature.json`'s `requirementsContract` records format,
+  owner, and the monotonic issued/retired ledger; format/owner cannot be downgraded by
+  an ordinary write, including whole-state replacement (task-002).
+- `lib/artifact_publication.py` / `lib/artifact-publication.sh`: the shared
+  capture/stage/commit primitive every producer route now stages through, with a
+  generation counter that only moves forward (task-003).
+- `cycle-driver.sh spec skeleton|write|fill` and `verification run` route both full and
+  short (oneshot) authoring through the same identity and publication contract, so a
+  requirement's ID and revision do not change because its execution route did
+  (task-004; `docs/loop-spec/requirements-format.md`, "Authoring commands").
+- `lib/criteria-coverage.sh` (and PLAN's `**Requirements:**`/`**Obligations:**` blocks)
+  validate coverage against the actual dispatch plan, not text that only appears in
+  notes; many-to-many mappings and multiline criteria are supported, dangling or missing
+  mappings fail with a diagnostic (task-005).
+- `lib/execution_inputs.py`: declared toolchain, local, external, and sensitive input
+  identities (`**Execution inputs:**` in PLAN), captured and diffed without treating a
+  preparation receipt or a lockfile as proof of installed bytes (task-006).
+- `lib/execution_observation.py`: bounded, driver-owned command records
+  (`observations/<execution-id>.json`/`.output`) binding a scenario to its requirement
+  revision, exit status, clean HEAD, and the actual input/environment identity examined
+  (task-007).
+- VERIFY and ITERATE (`lib/verification-grounding-lint.sh`, `lib/converged-floor.sh`)
+  cross-check every required scenario against a current observation record before
+  accepting PASS; a fabricated row, an unknown scenario ID, or a changed requirement or
+  code state cannot satisfy the gate (task-008).
+- `bash lib/harness.sh protected-path` and the matching `PreToolUse`/`before_tool_callback`
+  guard on all four harnesses (task-009, see "Before you update").
+- `lib/requirements_migrate.py` / `lib/requirements-migrate.sh`: `preview` (deterministic,
+  read-only, byte-identical on repeat calls against unchanged inputs) and `status`;
+  `apply`, `resume`, and `rollback` publish an approved preview under the same
+  publication lock, preserve the original artifacts under
+  `migration-generations/<transaction-id>/`, and are safe to resume after interruption or
+  roll back without manufacturing historical evidence (tasks 010-011;
+  `docs/loop-spec/requirements-migration.md`).
+- `tests/release-7-0-coverage.test.sh`: pins every 7.0 helper suite's registration, the
+  four-harness protected-path wiring, the short/full VERIFICATION row-shape agreement,
+  the grounding/floor gates' `--feature-dir` wiring, and a ceiling on the required
+  source probes (task-012).
+
+### Changed
+
+- `lib/deliver.sh` and `lib/finalize-delivery-candidate.sh` finalize the tracked
+  artifacts first, resolve the exact final-candidate SHA, then run every required
+  scenario and mandatory command fresh against that candidate
+  (`observations/final/<candidate-digest>/VERIFICATION.md`); an earlier VERIFY
+  observation never authorizes a later, differently-shaped candidate (task-008).
+- `docs/loop-spec/reliability.md` and `docs/loop-spec/7.x-roadmap.md` mark the delivered
+  7.0 items and keep the roadmap's later stages (7.1 capability lifecycle, 7.2 selective
+  reuse) open.
+
+### Fixed
+
+- A copied PASS row, a matching requirement ID, or a source citation is no longer
+  sufficient evidence that a check actually ran: VERIFY and ITERATE now require a
+  driver-owned observation record for every required scenario (task-008).
+
+No comparative measurement of repair rounds, cost, or latency accompanies this release;
+that evaluation is out of scope for 7.0 (SPEC "Exceptional": comparative live
+evaluations require separate authorization and are not an offline acceptance gate).
+
 ## [6.5.0] - 2026-09-09
 
 The orchestrator port's follow-up (`port audit 1`,

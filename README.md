@@ -108,7 +108,7 @@ Or mount it yourself: `from loop_spec_adk import build_app`. Differences:
 
 1. Startup probes cache to `.loop-spec/runtime.json`.
 2. Claude Code creates a feature worktree at `.claude/worktrees/{slug}` on `feat/{slug}`. OpenCode, Codex, and ADK create the branch in place on a clean checkout — none of them has a session-root switch, so `executionRootMode` records the difference rather than faking it.
-3. SPEC investigates, asks one consolidated list of intent questions, records decisions, then writes `docs/loop-spec/features/{slug}/SPEC.md`.
+3. SPEC investigates, asks one consolidated list of intent questions, records decisions, then writes `docs/loop-spec/features/{slug}/SPEC.md`. A new feature never edits SPEC/PLAN/VERIFICATION.md directly — `cycle-driver.sh spec skeleton|write|fill` and `verification run` stage and publish them, assigning each required outcome a stable `GE-NNN` identity and revision (`docs/loop-spec/requirements-format.md`).
 4. DISCUSS critiques the spec. PLAN writes `PATTERNS.md` + `PLAN.md` (task DAG with verify commands).
 5. EXECUTE implements tasks in parallel where the DAG allows, one commit per task.
 6. VERIFY runs marker/tamper scans, acceptance criteria, and a blocking code review.
@@ -117,7 +117,7 @@ Or mount it yourself: `from loop_spec_adk import build_app`. Differences:
 
 VERIFY also writes `REVIEW-ORDER.md` (ordered `path:line` stops for the reviewer); DELIVER inlines it in the PR body. `/loop-spec:walkthrough --walk` presents the same trail conversationally.
 
-Variations: `style:step` pauses after every phase; pass a spec file path to skip the interview; re-invoke `/loop-spec:cycle` to resume from durable state.
+Variations: `style:step` pauses after every phase; pass a spec file path to skip the interview; re-invoke `/loop-spec:cycle` to resume from durable state. An incomplete cycle started before 7.0 keeps finishing under its original contract through the 7.x series; `bash lib/requirements-migrate.sh preview|status|apply|resume|rollback --feature-dir DIR` moves one such cycle onto the v1 contract instead ([docs/loop-spec/requirements-migration.md](docs/loop-spec/requirements-migration.md)).
 
 On Claude Code, installing the plugin binds the `loop-spec` output style (`output-styles/loop-spec.md`): name the phase when it changes, one thought per action, then one outcome-first close. Built-in Concise does not do that. OpenCode, Codex, and ADK have no output-style slot; they follow [`skills/shared/report-style.md`](skills/shared/report-style.md).
 
