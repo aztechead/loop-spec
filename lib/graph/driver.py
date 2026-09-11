@@ -228,6 +228,7 @@ sys.path.insert(0, str(GRAPH_DIR))
 sys.path.insert(0, str(LIB_DIR))
 import engine  # noqa: E402
 import feature_read  # noqa: E402
+import publication_participant as pub  # noqa: E402
 
 GRAPH = os.environ.get("LOOP_SPEC_GRAPH") or str(REPO_ROOT / "graph" / "cycle.graph.json")
 EMPTY_COMMANDS = {"prepare": "", "test": "", "lint": "", "typecheck": ""}
@@ -260,6 +261,30 @@ def iso_epoch(stamp):
     return int((parsed - datetime.datetime(1970, 1, 1)).total_seconds())
 
 
+def run_phase_exit(exit_args):
+    """phase-exit.sh, carrying the active token like any other child (task-004 WP3):
+    it returns its accepted refresh through LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT, adopted
+    here the same as any other participant's."""
+    child_env, received = child_call(None)
+    proc = subprocess.run(["bash", str(LIB_DIR / "phase-exit.sh")] + exit_args,
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True,
+                          env=child_env)
+    pub.adopt(received)
+    return proc
+
+
+def child_call(base_env):
+    """The env for one subprocess and the receipt file to adopt() its refresh from
+    afterward -- the one place every subprocess launch passes through, so a publication
+    operation begun by this command's cmd_* handler reaches every child of it (task-004:
+    "route them through one place so no callsite is missed"). A command that has not
+    begun an operation (pub.active() false, or no operation at all e.g. before
+    feature.json exists) gets back a plain copy of base_env, same as before this
+    existed."""
+    env = pub.child_env(dict(base_env) if base_env is not None else dict(os.environ))
+    return env, env.get("LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT")
+
+
 def sh(args, cwd=None, quiet=False, stdin_text=None, check=True, passthrough=False,
        stderr_to_stdout=False, env=None):
     """Run a command and return its stdout without the trailing newline, the way
@@ -271,19 +296,24 @@ def sh(args, cwd=None, quiet=False, stdin_text=None, check=True, passthrough=Fal
         stderr = subprocess.STDOUT
     else:
         stderr = subprocess.DEVNULL if quiet else None
+    child_env, received = child_call(env)
     proc = subprocess.run([str(a) for a in args], cwd=cwd, input=stdin_text, stdout=stdout,
-                          stderr=stderr, universal_newlines=True, env=env)
+                          stderr=stderr, universal_newlines=True, env=child_env)
+    pub.adopt(received)
     if check and proc.returncode != 0:
         raise Die("", proc.returncode)
     return (proc.stdout or "").rstrip("\n") if not passthrough else ""
 
 
-def run(args, cwd=None, quiet=False, stdin_text=None):
+def run(args, cwd=None, quiet=False, stdin_text=None, env=None):
     """sh without check: the CompletedProcess, for callers that read the code."""
+    child_env, received = child_call(env)
     proc = subprocess.run([str(a) for a in args], cwd=cwd, input=stdin_text,
                           stdout=subprocess.PIPE,
-                          stderr=subprocess.DEVNULL if quiet else None, universal_newlines=True)
+                          stderr=subprocess.DEVNULL if quiet else None, universal_newlines=True,
+                          env=child_env)
     proc.stdout = (proc.stdout or "").rstrip("\n")
+    pub.adopt(received)
     return proc
 
 
@@ -313,12 +343,97 @@ def fget(feature_dir, path, default=None):
     return default if value is None else value
 
 
+def feature_write_call(*args):
+    """feature-write.sh, carrying the active operation's token (task-004): a token
+    prints the refreshed one on stdout, which must be adopted here and never leak into
+    the driver's own protocol stdout the way plain passthrough would."""
+    output = lib("feature-write", *(args + tuple(pub.token_args())))
+    pub.adopt_output(output)
+    return output
+
+
 def fset(feature_dir, key, value):
-    lib("feature-write", "set", feature_dir, key, json.dumps(value), passthrough=False)
+    feature_write_call("set", feature_dir, key, json.dumps(value))
 
 
 def fappend(feature_dir, key, value):
-    lib("feature-write", "append", feature_dir, key, json.dumps(value))
+    feature_write_call("append", feature_dir, key, json.dumps(value))
+
+
+def publish_artifact(feature_dir, key, content_bytes):
+    """Publish a producer's finished bytes for one registered artifact key (spec, plan,
+    patterns, verification, tasks) under this operation's held token -- generalizing
+    cmd_spec's own stage-then-publish_locked shape (task-004) so every direct writer of
+    a registered artifact goes through the same seam. A token-less feature (no
+    artifactPublication -- a completed cycle, or a pre-bootstrap fixture) writes the
+    file plainly through feature_write.publish, same as before task-004."""
+    from artifact_publication import artifact_paths, locked_feature, publish_locked, stage
+    from feature_read import load_state
+    from feature_write import participant_registry, publish as plain_publish
+    import uuid
+    directory = Path(feature_dir)
+    registry = participant_registry(directory)
+    token = pub.current()
+    if token is None:
+        target = artifact_paths(directory, load_state(directory), registry)[key]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        plain_publish(target, content_bytes)
+        return
+    source = stage(directory, key + "-" + uuid.uuid4().hex, content_bytes)
+    with locked_feature(directory):
+        refreshed = publish_locked(directory, token, {"version": 1, "files": [{"source": source, "target": key}], "updates": []},
+                                    registry=registry)
+    pub.adopt_output(json.dumps(refreshed))
+
+
+def retire_artifact(feature_dir, key):
+    """Remove a registered artifact target (a manifest source of null) under this
+    operation's held token: the third-REDO escalation's own VERIFICATION.md, set aside
+    as a record before VERIFY writes its own (task-004)."""
+    from artifact_publication import artifact_paths, locked_feature, publish_locked
+    from feature_read import load_state
+    from feature_write import participant_registry
+    directory = Path(feature_dir)
+    registry = participant_registry(directory)
+    token = pub.current()
+    if token is None:
+        target = artifact_paths(directory, load_state(directory), registry)[key]
+        if target.exists():
+            target.unlink()
+        return
+    with locked_feature(directory):
+        refreshed = publish_locked(directory, token, {"version": 1, "files": [{"source": None, "target": key}], "updates": []},
+                                    registry=registry)
+    pub.adopt_output(json.dumps(refreshed))
+
+
+def publish_spec(feature_dir, feat, content_bytes):
+    """Publish SPEC.md bytes under the held token, reconciling the requirements
+    inventory in the same transaction when the feature has a v1 contract -- the one
+    shape cmd_spec and cmd_next's third-REDO escalation share (task-004)."""
+    from artifact_publication import locked_feature, publish_locked, stage
+    from feature_write import participant_registry, publish as plain_publish
+    import uuid
+    directory = Path(feature_dir)
+    registry = participant_registry(directory)
+    contract = feat.get("requirementsContract")
+    updates = []
+    if contract:
+        from requirements import parse_spec, reconcile_inventory
+        target_hint = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
+        inventory = parse_spec(content_bytes.decode("utf-8"), target_hint, contract)
+        updates = [{"path": "requirementsContract", "value": reconcile_inventory(contract, inventory)}]
+    token = pub.current()
+    if token is None:
+        plain_publish(Path(os.path.join(docs_dir(feature_dir, feat), "SPEC.md")), content_bytes)
+        if updates:
+            fset(feature_dir, "requirementsContract", updates[0]["value"])
+        return
+    source = stage(directory, "accepted-spec-" + uuid.uuid4().hex, content_bytes)
+    with locked_feature(directory):
+        refreshed = publish_locked(directory, token, {"version": 1, "files": [{"source": source, "target": "spec"}], "updates": updates},
+                                    registry=registry, allowed_updates={"requirementsContract"})
+    pub.adopt_output(json.dumps(refreshed))
 
 
 def read_json(path, default=None):
@@ -608,7 +723,12 @@ def cmd_start(argv):
             fdir = os.path.join(c["featureRoot"], ".loop-spec", "features", c["slug"])
             if not os.path.isfile(os.path.join(fdir, "feature.json")):
                 continue
-            fset(fdir, "currentTeamName", None)
+            # A candidate here is one of possibly several OTHER features' state, never
+            # the one this command is about (that is not decided yet) -- each gets its
+            # own self-contained ingress, in-process, rather than the command-wide token
+            # `pub` tracks for the eventual chosen feature.
+            from feature_write import begin_operation, write_operation
+            write_operation(fdir, "set", None, ["currentTeamName"], token=begin_operation(fdir))
             notices.append("feature %s had stale team reference %s; cleared and ready to resume"
                            % (c["slug"], c.get("currentTeamName")))
         candidates = [dict(c, needs_probe=False, currentTeamName=None) for c in candidates]
@@ -925,6 +1045,10 @@ def cmd_init(argv):
     if finalize.returncode != 0:
         raise Die("feature bootstrap failed; a terminal cycle result was written (see stderr above).")
     feature_dir = os.path.join(exec_root, ".loop-spec", "features", slug)
+    # feature-bootstrap.sh finalize is its own operation (it captures and releases its
+    # own token internally for the autonomous/greenfield sets); this command's writes
+    # from here on are ours, so begin now that feature.json exists.
+    pub.begin(feature_dir)
     protected = json.loads(o.get("protected") or "[]")
     if protected:
         # The task's own list (`protected:a,b`), the one source of a read-only footprint
@@ -1021,7 +1145,12 @@ def init_workspace(ws_root, slug, title, style, profile, class_text, autonomous,
     fj["executionProfile"] = effective
     fj["autonomous"] = autonomous == "1"
     fj["greenfield"] = greenfield == "1"
+    # The one token-less write this command makes: a missing feature.json is the only
+    # case feature-write.sh's bare (unconditional-replace) form may touch.
+    assert not os.path.isfile(os.path.join(feature_dir, "feature.json")), \
+        "init_workspace: feature.json already exists at %s" % feature_dir
     lib("feature-write", feature_dir, json.dumps(fj))
+    pub.begin(feature_dir)
     lib("decisions", "migrate", os.path.join(ws_root, ".loop-spec", "decisions-staging"), feature_dir)
     lib("cycle-result", "begin", "--result-root", ws_root, "--cycle-type", "full", "--title", title,
         "--slug", slug, "--feature-dir", feature_dir, "--phase", "startup",
@@ -1067,6 +1196,11 @@ def cmd_resume(argv):
             raise Die("multiple features under %s; pass --slug for the selected resume candidate" % feature_root)
         fj = candidates[0]
     feature_dir = os.path.dirname(fj)
+    # A read-only gate before any side effect: an active migration or an unfinished
+    # publication refuses ordinary participation (begin_operation's refuse_pending
+    # runs before its bootstrap check), and resume's worktree recreation below is a
+    # side effect this must precede, not follow.
+    pub.begin(feature_dir, read_only=True)
     feat = state(feature_dir)
     slug = feat.get("slug")
     if slug != os.path.basename(feature_dir):
@@ -1112,6 +1246,7 @@ def cmd_resume(argv):
         if git("rev-parse", "--abbrev-ref", "HEAD") != feat.get("branch"):
             raise Die("checkout %s first; the feature branch must be checked out to resume in place."
                       % feat.get("branch"))
+    pub.begin(feature_dir)
     fset(feature_dir, "currentTeamName", None)
 
     done_ids = remaining_ids = ""
@@ -1159,6 +1294,7 @@ def cmd_next(argv):
     if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
         usage()
     feature_dir = os.path.realpath(feature_dir)
+    pub.begin(feature_dir)
     feat = state(feature_dir)
     slug = feat.get("slug")
     ws_mode = "workspace" if workspace_of(feat) is not None else "single"
@@ -1232,10 +1368,20 @@ def cmd_next(argv):
             vpath, spath = os.path.join(docs, "VERIFICATION.md"), os.path.join(docs, "SPEC.md")
             if os.path.isfile(vpath) and os.path.isfile(spath) and \
                     not re.search(r"^route: *full\s*$", open(spath, encoding="utf-8").read(), flags=re.M):
+                import uuid
+                staged_verification = os.path.join(feature_dir, "publication-staging", "verification-oneshot-" + uuid.uuid4().hex)
+                os.makedirs(os.path.dirname(staged_verification), exist_ok=True)
+                shutil.copyfile(vpath, staged_verification)
                 try:
-                    verification_run(feature_dir, feat, docs, vpath, spath, None, True)
+                    # verification_run writes its staged copy after every criterion, never
+                    # the registered VERIFICATION.md itself: a long observe() then holds no
+                    # lock, and this operation publishes the final bytes once, however the
+                    # run ends (task-004).
+                    verification_run(feature_dir, feat, docs, staged_verification, spath, None, True)
                 except Die as exc:
                     print("cycle-driver: verification run at the oneshot boundary: %s" % exc.message, file=sys.stderr)
+                finally:
+                    publish_artifact(feature_dir, "verification", Path(staged_verification).read_bytes())
         # The phase's exit gates run here, once, whatever the phase skill did: a lead that
         # skipped them or ran them from the wrong directory was every second eval finding.
         completed = feat.get("completedPhases") or []
@@ -1243,8 +1389,7 @@ def cmd_next(argv):
             exit_args = [returned, "--feature-dir", feature_dir]
             if returned == "iterate" and iterate_is_terminal(feature_dir):
                 exit_args.append("--terminal")
-            exit_proc = subprocess.run(["bash", str(LIB_DIR / "phase-exit.sh")] + exit_args,
-                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+            exit_proc = run_phase_exit(exit_args)
             exit_out = exit_proc.stdout
             flags = [line for line in exit_out.splitlines() if line.startswith("FLAG")]
             if exit_proc.returncode == 1:
@@ -1267,19 +1412,24 @@ def cmd_next(argv):
                         # the lead's: the deadlock's flag classes go on record and the run
                         # takes the full path from DISCUSS (port audit 5, R3).
                         classes = sorted({(re.match(r"^FLAG \[([^\]]+)\]", f) or [None, "unlabeled"])[1] for f in flags})
+                        import uuid
+                        staged_spec = os.path.join(feature_dir, "publication-staging", "spec-escalate-" + uuid.uuid4().hex)
+                        os.makedirs(os.path.dirname(staged_spec), exist_ok=True)
+                        shutil.copyfile(spath, staged_spec)
                         capture(lambda a: spec_escalate(a[0], a[1]),
-                                [spath, "the exit gate held after %d attempts on %s" % (redo_count, ", ".join(classes))])
+                                [staged_spec, "the exit gate held after %d attempts on %s" % (redo_count, ", ".join(classes))])
+                        publish_spec(feature_dir, feat, Path(staged_spec).read_bytes())
                         # The attempt's VERIFICATION.md is a record, not the full route's
                         # artifact: set aside so the escalated exit closes with nothing to
                         # lint, and VERIFY writes its own.
                         vpath = os.path.join(docs_dir(feature_dir, feat), "VERIFICATION.md")
                         if os.path.isfile(vpath):
-                            os.replace(vpath, os.path.join(docs_dir(feature_dir, feat), "VERIFICATION.oneshot-attempt.md"))
+                            shutil.copyfile(vpath, os.path.join(docs_dir(feature_dir, feat), "VERIFICATION.oneshot-attempt.md"))
+                            retire_artifact(feature_dir, "verification")
                         lib("events", "emit", feature_dir, "escalate", "--phase", returned,
                             "--data", json.dumps({"attempts": redo_count, "classes": classes, "messages": flags}))
                         print("NOTE [escalate] the oneshot exit gate held after %d attempts (%s): route: full written; the run continues on the full path" % (redo_count, ", ".join(classes)))
-                        exit_proc = subprocess.run(["bash", str(LIB_DIR / "phase-exit.sh")] + exit_args,
-                                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                        exit_proc = run_phase_exit(exit_args)
                         if exit_proc.returncode != 0:
                             print("ABORT reason=phase-exit-failed exit=%d" % exit_proc.returncode)
                             print(exit_proc.stdout, file=sys.stderr)
@@ -1351,7 +1501,7 @@ def cmd_next(argv):
     if any(key in strays for key in ("preset", "tier", "phaseHandoff")):
         merged = dict(json.loads(lib("feature-read", feature_dir, "--all", "--drop-strays")))
         merged.update({k: v for k, v in strays.items() if k not in ("preset", "tier", "phaseHandoff")})
-        lib("feature-write", feature_dir, json.dumps(merged))
+        feature_write_call(feature_dir, json.dumps(merged))
     feat = state(feature_dir)
     # feature_title is the immutable goal the ITERATE judge scores against; the slug is
     # the only stand-in on features that predate it.
@@ -1672,8 +1822,10 @@ def record_transition(feature_dir, phase, nxt, note, ws_mode):
         if each not in ("0", "1"):
             raise Die("LOOP_SPEC_CHECKPOINT_EACH_PHASE must be 0 or 1", 2)
         if each == "1" and phase != "deliver":
+            child_env, received = child_call(None)
             subprocess.run(["bash", str(LIB_DIR / "checkpoint-pr.sh"), "create", feature_dir,
-                            "--reason", "autonomous phase checkpoint: " + nxt], stdout=sys.stderr)
+                            "--reason", "autonomous phase checkpoint: " + nxt], stdout=sys.stderr, env=child_env)
+            pub.adopt(received)
 
     if nxt == "completed" or nxt.startswith("human.") or nxt == phase:
         return None
@@ -1739,6 +1891,7 @@ def cmd_finish(argv):
     if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
         usage()
     feature_dir = os.path.realpath(feature_dir)
+    pub.begin(feature_dir, read_only=True)  # finish writes result.json and backlog, never feature.json
     delivery = read_json(os.path.join(feature_dir, "delivery.json"), {}) or {}
     status = delivery.get("status") or ""
     if status not in ("ready-for-review", "delivered-draft", "pushed-no-pr"):
@@ -1814,14 +1967,17 @@ def cmd_escalate(argv, silent=False):
     if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")) or not reason:
         usage()
     feature_dir = os.path.realpath(feature_dir)
+    pub.begin(feature_dir)
     fset(feature_dir, "currentTeamName", None)
     fset(feature_dir, "currentTeammates", [])
     feat = state(feature_dir)
     phase = feat.get("currentPhase")
     lib_run("cycle-result", "write", feature_dir, "--status", "escalated", "--reason", reason,
             "--summary", "Cycle stopped during %s: %s" % (phase, reason))
+    child_env, received = child_call(None)
     subprocess.run(["bash", str(LIB_DIR / "checkpoint-pr.sh"), "create", feature_dir, "--reason", reason],
-                   stdout=sys.stderr)
+                   stdout=sys.stderr, env=child_env)
+    pub.adopt(received)
     if silent:
         return 0
     print(json.dumps({
@@ -1940,8 +2096,12 @@ def cmd_deliver(argv):
     if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
         usage()
     feature_dir = os.path.realpath(feature_dir)
+    pub.begin(feature_dir)
+    child_env, received = child_call(None)
     deliver = subprocess.run(["bash", str(LIB_DIR / "deliver.sh"), "run", feature_dir],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, universal_newlines=True)
+                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, universal_newlines=True,
+                             env=child_env)
+    pub.adopt(received)
     rc = deliver.returncode
     err = deliver.stderr.rstrip("\n")
     sidecar_path = os.path.join(feature_dir, "delivery.json")
@@ -2067,9 +2227,13 @@ def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=No
     return compact_artifact(text) if template.endswith("-oneshot.md.template") else text
 
 
+SKELETON_ARTIFACT_KEYS = {"SPEC.md": "spec", "PLAN.md": "plan", "VERIFICATION.md": "verification", "PATTERNS.md": "patterns"}
+
+
 def write_skeletons(feature_dir, feat, node):
     """Each absent file the node's ingress lists under `skeletons`, written from its
-    template. Returns the paths written."""
+    template through publish_artifact -- every skeleton names a registered artifact
+    (graph/schema.json's own description of the field). Returns the paths written."""
     written = []
     docs = docs_dir(feature_dir, feat)
     spec = (feat.get("artifacts") or {}).get("spec") or os.path.join(docs, "SPEC.md")
@@ -2082,9 +2246,10 @@ def write_skeletons(feature_dir, feat, node):
         template = REPO_ROOT / entry["template"]
         if not template.is_file():
             raise Die("skeleton template missing: %s (graph node %s)" % (template, node.get("id")), 2)
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, "w", encoding="utf-8") as fh:
-            fh.write(render_skeleton(str(template), feat, spec_path=spec))
+        key = SKELETON_ARTIFACT_KEYS.get(os.path.basename(target))
+        if key is None:
+            raise Die("skeleton path is not a registered artifact: %s (graph node %s)" % (target, node.get("id")), 2)
+        publish_artifact(feature_dir, key, render_skeleton(str(template), feat, spec_path=spec).encode("utf-8"))
         written.append(target)
     return written
 
@@ -2304,10 +2469,10 @@ def spec_escalate(target, reason):
 
 
 def cmd_spec(argv):
-    """Author a private candidate, then publish its inventory with the original token."""
-    from artifact_publication import capture_locked, locked_feature, publish_locked, stage
-    from feature_write import begin_operation, participant_registry, read_bounded
-    from requirements import parse_spec, reconcile_inventory
+    """Author a private candidate, then publish its inventory with the original token
+    (the model publish_artifact/publish_spec generalize for every other registered
+    artifact: task-004)."""
+    from feature_write import read_bounded
     import uuid
     if "--feature-dir" not in argv:
         return author_spec(argv)
@@ -2317,17 +2482,17 @@ def cmd_spec(argv):
     directory = Path(argv[index + 1]).resolve()
     if not (directory / "feature.json").is_file():
         return author_spec(argv)
-    token_path = Path(os.environ["LOOP_SPEC_PUBLICATION_TOKEN"]) if os.environ.get("LOOP_SPEC_PUBLICATION_TOKEN") else None
+    token_path = None
     if "--token" in argv:
         index = argv.index("--token")
         if index + 1 == len(argv):
             usage()
-        token_path = Path(argv[index + 1])
+        token_path = argv[index + 1]
         argv = argv[:index] + argv[index + 2:]
-    supplied = json.loads(read_bounded(token_path)) if token_path else None
-    token = current = begin_operation(directory, token=supplied)
+    # An explicit --token PATH overrides an inherited env pair; both funnel through the
+    # same seam, so this carries no private token handling of its own (task-004 WP2).
+    token = current = pub.begin(directory, token_path=token_path)
     feat = state(directory)
-    registry = participant_registry(directory)
     if current is None:
         return author_spec(argv)
     if argv[:1] == ["approve"]:
@@ -2339,18 +2504,7 @@ def cmd_spec(argv):
         staged.write_bytes(read_bounded(target))
     output = capture(lambda args: author_spec(args, str(staged)), argv)
     if staged.exists():
-        content = read_bounded(staged)
-        contract = feat.get("requirementsContract")
-        updates = []
-        if contract:
-            inventory = parse_spec(content.decode("utf-8"), str(target), contract)
-            updates = [{"path": "requirementsContract", "value": reconcile_inventory(contract, inventory)}]
-        source = stage(directory, "accepted-spec-" + uuid.uuid4().hex, content)
-        with locked_feature(directory):
-            refreshed = publish_locked(directory, token, {"version": 1, "files": [{"source": source, "target": "spec"}],
-                                                         "updates": updates}, registry=registry, allowed_updates={"requirementsContract"})
-        if os.environ.get("LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT"):
-            Path(os.environ["LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT"]).write_text(json.dumps(refreshed), encoding="utf-8")
+        publish_spec(str(directory), feat, read_bounded(staged))
     print(output.replace(str(staged), str(target)), end="")
     return 0
 
@@ -2396,8 +2550,7 @@ def author_spec(argv, target_override=None, publication_token=None):
                 if publication_token is not None:
                     from feature_write import write_operation
                     refreshed = write_operation(feature_dir, "set", approval, ["specApproval"], token=publication_token)
-                    if os.environ.get("LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT"):
-                        Path(os.environ["LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT"]).write_text(json.dumps(refreshed), encoding="utf-8")
+                    pub.adopt_output(json.dumps(refreshed))
                 else:
                     fset(feature_dir, "specApproval", approval)
                 lib("events", "emit", feature_dir, "spec-approved", "--phase", "spec", "--data", json.dumps(approval))
@@ -2647,18 +2800,25 @@ def verification_review(target, report, model):
 
 def verification_paths(o, what):
     """The feature and its two artifacts for a `verification` subcommand: (feature_dir,
-    feat, docs, VERIFICATION.md, SPEC.md, root). The skeleton must exist: phase-begin
-    oneshot writes it."""
+    feat, docs, a private staged copy of VERIFICATION.md to author against, SPEC.md,
+    root, VERIFICATION.md's real registered path). The skeleton must exist: phase-begin
+    oneshot writes it. Every subcommand is one publication operation (task-004): begin
+    here, author against the staged copy, and publish_artifact the result once."""
+    import uuid
     feature_dir = o.get("feature_dir") or ""
     if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
         usage()
     feature_dir = os.path.realpath(feature_dir)
+    pub.begin(feature_dir)
     feat = state(feature_dir)
     docs = docs_dir(feature_dir, feat)
-    target, spec = os.path.join(docs, "VERIFICATION.md"), os.path.join(docs, "SPEC.md")
-    if not os.path.isfile(target):
-        raise Die("verification %s: no VERIFICATION.md at %s (phase-begin oneshot writes the skeleton)" % (what, target), 2)
-    return feature_dir, feat, docs, target, spec, feature_root(feature_dir, feat)
+    real_target, spec = os.path.join(docs, "VERIFICATION.md"), os.path.join(docs, "SPEC.md")
+    if not os.path.isfile(real_target):
+        raise Die("verification %s: no VERIFICATION.md at %s (phase-begin oneshot writes the skeleton)" % (what, real_target), 2)
+    target = os.path.join(feature_dir, "publication-staging", "verification-" + uuid.uuid4().hex)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    shutil.copyfile(real_target, target)
+    return feature_dir, feat, docs, target, spec, feature_root(feature_dir, feat), real_target
 
 
 def cmd_verification(argv):
@@ -2666,14 +2826,15 @@ def cmd_verification(argv):
         usage()
     if argv[0] in ("review", "verdict"):
         o = parse_pairs(argv[1:], ("--feature-dir", "--report", "--reviewer-model", "--finding", "--verdict", "--reason", "--routing"))
-        feature_dir, feat, docs, target, spec, root = verification_paths(o, argv[0])
+        feature_dir, feat, docs, target, spec, root, real_target = verification_paths(o, argv[0])
         if argv[0] == "review":
             report = o.get("report") or os.path.join(feature_dir, "dispatch", "oneshot.review.md")
             if not os.path.isfile(report):
                 raise Die("verification review: no report at %s (the reviewer writes it; in-harness, save the reviewer's result there first)" % report, 2)
             model = o.get("reviewer_model") or (feat.get("models") or {}).get("codeReviewer") or "inherit"
             findings, verdict = verification_review(target, report, model)
-            print(json.dumps({"verification": target, "report": report, "reviewerVerdict": verdict or None,
+            publish_artifact(feature_dir, "verification", Path(target).read_bytes())
+            print(json.dumps({"verification": real_target, "report": report, "reviewerVerdict": verdict or None,
                               "findings": findings,
                               "routingInstructions": str(Path(instruction_record(feature_dir, feat.get("currentPhase") or "oneshot")["manifest"]).parent / "skills/shared/review-routing.md") if findings else None,
                               "flags": verification_lint_flags(root, target, spec)}))
@@ -2692,22 +2853,29 @@ def cmd_verification(argv):
         text = open(target, encoding="utf-8").read()
         line = re.compile(r"^(- %s — .*?) \| verdict: pending$" % re.escape(finding), re.M)
         if not line.search(text):
-            raise Die("verification verdict: no pending finding at %s in %s (verification review writes them from the report)" % (finding, target))
+            raise Die("verification verdict: no pending finding at %s in %s (verification review writes them from the report)" % (finding, real_target))
         text = line.sub(lambda m: "%s | verdict: %s — %s%s" % (m.group(1), verdict, reason, routing), text, count=1)
         with open(target, "w", encoding="utf-8") as fh:
             fh.write(text)
-        print(json.dumps({"verification": target, "finding": finding, "verdict": verdict,
+        publish_artifact(feature_dir, "verification", Path(target).read_bytes())
+        print(json.dumps({"verification": real_target, "finding": finding, "verdict": verdict,
                           "flags": verification_lint_flags(root, target, spec)}))
         return 0
     if argv[0] == "run":
         o = parse_pairs(argv[1:], ("--feature-dir", "--row"))
-        feature_dir, feat, docs, target, spec, root = verification_paths(o, "run")
-        rows = verification_run(feature_dir, feat, docs, target, spec, o.get("row"), not o.get("row"))
-        print(json.dumps({"verification": target, "ran": rows, "flags": verification_lint_flags(root, target, spec)}))
+        feature_dir, feat, docs, target, spec, root, real_target = verification_paths(o, "run")
+        try:
+            # verification_run writes the staged copy after every criterion, never the
+            # registered VERIFICATION.md itself: this publishes the final bytes once,
+            # however the run ends (task-004), the same shape as the oneshot boundary.
+            rows = verification_run(feature_dir, feat, docs, target, spec, o.get("row"), not o.get("row"))
+        finally:
+            publish_artifact(feature_dir, "verification", Path(target).read_bytes())
+        print(json.dumps({"verification": real_target, "ran": rows, "flags": verification_lint_flags(root, target, spec)}))
         return 0 if all(r["status"] != "FAIL" for r in rows) else 1
     o = parse_pairs(argv[1:], ("--feature-dir", "--row", "--implementation", "--proof", "--integration",
                                "--integration-proof"))
-    feature_dir, feat, docs, target, spec, root = verification_paths(o, "fill")
+    feature_dir, feat, docs, target, spec, root, real_target = verification_paths(o, "fill")
     text = open(target, encoding="utf-8").read()
     filled = []
     row = o.get("row")
@@ -2724,7 +2892,7 @@ def cmd_verification(argv):
                 raise Die("verification fill: --integration FILE:LINE goes with --integration-proof TEXT", 2)
             line = re.compile(r"^- criterion: %s \|.*$" % re.escape(row), re.M)
             if not line.search(text):
-                raise Die("verification fill: %s has no grounding row for %s" % (target, row))
+                raise Die("verification fill: %s has no grounding row for %s" % (real_target, row))
             text = line.sub(lambda _: "- criterion: %s | implementation: %s - %s | integration: %s - %s" % (
                 row, o["implementation"], o["proof"].strip(), integ, iproof.strip()), text, count=1)
             filled.append("grounding:" + row)
@@ -2732,7 +2900,8 @@ def cmd_verification(argv):
         raise Die("verification fill: nothing to fill", 2)
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(text)
-    print(json.dumps({"verification": target, "filled": filled, "flags": verification_lint_flags(root, target, spec)}))
+    publish_artifact(feature_dir, "verification", Path(target).read_bytes())
+    print(json.dumps({"verification": real_target, "filled": filled, "flags": verification_lint_flags(root, target, spec)}))
     return 0
 
 
@@ -2744,6 +2913,7 @@ def cmd_oneshot(argv):
     if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
         usage()
     feature_dir = os.path.realpath(feature_dir)
+    pub.begin(feature_dir, read_only=True)  # oneshot review emits an event; never writes feature.json
     feat = state(feature_dir)
     if lib("harness", "session-layer") != "session":
         print(json.dumps({"action": "in-harness", "reason": lib("harness", "session-layer-reason")}))
@@ -2810,6 +2980,7 @@ def cmd_phase_begin(argv):
     if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
         usage()
     feature_dir = os.path.realpath(feature_dir)
+    pub.begin(feature_dir)
     handed = handed_off_here(state(feature_dir))
     if handed is not None and phase != (handed.get("from") or ""):
         print("cycle-driver: this session handed off after %s; %s starts in a fresh invocation (%s)"
@@ -2818,8 +2989,11 @@ def cmd_phase_begin(argv):
     node = next((n for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == phase), {})
     instructions = instruction_record(feature_dir, phase)
     skeletons = write_skeletons(feature_dir, state(feature_dir), node)
+    child_env, received = child_call(None)
     entry = subprocess.run(["bash", str(LIB_DIR / "phase-entry.sh"), phase, "--feature-dir", feature_dir],
-                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True,
+                           env=child_env)
+    pub.adopt(received)  # phase-entry.sh is read-only; nothing to adopt today
     if entry.returncode > 1:
         print(entry.stdout, file=sys.stderr)
         return 2
@@ -2891,8 +3065,22 @@ def main(argv):
 
 if __name__ == "__main__":
     try:
-        sys.exit(main(sys.argv[1:]))
+        code = main(sys.argv[1:])
     except Die as die:
         if die.message:
             print("cycle-driver: %s" % die.message, file=sys.stderr)
-        sys.exit(die.code)
+        code = die.code
+    except ValueError as exc:
+        # begin_operation/write_operation refuse with ValueError (stale token, an
+        # active migration, an unfinished publication): the same clean report
+        # feature_write.py's and artifact_publication.py's own CLIs give it, not a
+        # traceback that still names the reason but buries it under a stack.
+        print("cycle-driver: %s" % exc, file=sys.stderr)
+        code = 1
+    finally:
+        # Whatever this operation's current token is -- accepted, or never begun --
+        # goes back to our own parent's LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT, on every exit
+        # path including Die and delegate()'s pre-begin commands (finish() is a no-op
+        # when begin() was never called).
+        pub.finish()
+    sys.exit(code)

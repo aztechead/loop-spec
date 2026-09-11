@@ -368,6 +368,49 @@ rm -f "$FD/.phase-entry.json"
 ec=0; out="$(bash "$EXIT" iterate --feature-dir "$FD" 2>&1)" || ec=$?
 check "egress: no snapshot means nothing to judge" "0" "$(grep -c '\[egress\]' <<<"$out")"
 
+# --- publication contract --------------------------------------------------------------
+# Point LOOP_SPEC_GRAPH at a copy of the real graph whose spec node's gates also run an
+# intruder script: it proves whether the gate ran (a marker file) and, when told to,
+# performs a plain write that races the token this exit captured at ingress.
+PUB_GRAPH="$WORK/graph-publication.json"
+jq --arg body "tests/fixtures/publication-intruder-gate.sh" \
+  '(.nodes[] | select(.id == "spec") | .egress.gates) += [{label:"intruder",body:$body,args:[]}]' \
+  "$REPO_ROOT/graph/cycle.graph.json" > "$PUB_GRAPH"
+MARKER="$WORK/intruder-marker"
+
+# AC2: the gate's plain write (LOOP_SPEC_PUBLICATION_TOKEN unset inside it) advances the
+# generation behind this exit's back; the exit must FLAG and accept nothing of its own.
+before_completed="$(fj '.completedPhases')"
+before_pointer="$(fj '.artifacts.spec')"
+before_commits="$(git -C "$REPO" log --oneline | wc -l | tr -d ' ')"
+before_tags="$(git -C "$REPO" tag | wc -l | tr -d ' ')"
+rm -f "$MARKER"
+ec=0
+out="$(LOOP_SPEC_GRAPH="$PUB_GRAPH" MARKER_FILE="$MARKER" INTRUDE_FEATURE_DIR="$FD" \
+  INTRUDE_LIB="$REPO_ROOT/lib/feature-write.sh" bash "$EXIT" spec --feature-dir "$FD" 2>&1)" || ec=$?
+check "publication AC2: an intervening plain write during a gate fails the exit" "1" "$ec"
+check "publication AC2: the publication FLAG is printed" "1" \
+  "$(grep -c 'FLAG \[publication\] feature state changed since this exit began; run the exit again' <<<"$out")"
+check "publication AC2: completedPhases is unchanged" "$before_completed" "$(fj '.completedPhases')"
+check "publication AC2: no artifacts pointer was written" "$before_pointer" "$(fj '.artifacts.spec')"
+check "publication AC2: no commit was created" "$before_commits" "$(git -C "$REPO" log --oneline | wc -l | tr -d ' ')"
+check "publication AC2: no tag was created" "$before_tags" "$(git -C "$REPO" tag | wc -l | tr -d ' ')"
+check "publication AC2: the gate did run" "1" "$([[ -f "$MARKER" ]] && echo 1 || echo 0)"
+check "publication AC2: the intruder's write was accepted" '["intruder"]' "$(jq -c '.warnings' "$FD/feature.json")"
+
+# A migration in progress refuses entry before any gate runs -- prove it with the same
+# gate body: the marker must stay absent, since begin_operation refuses before gates run.
+rm -f "$MARKER"
+digest64="$(printf 'a%.0s' {1..64})"
+jq --arg d "$digest64" '.artifactPublication.migration = {id:"m1",previewDigest:$d,phase:"marker",originalGeneration:0,publishedHashes:{}}' \
+  "$FD/feature.json" > "$FD/feature.json.tmp" && mv "$FD/feature.json.tmp" "$FD/feature.json"
+ec=0
+LOOP_SPEC_GRAPH="$PUB_GRAPH" MARKER_FILE="$MARKER" INTRUDE_FEATURE_DIR="$FD" \
+  INTRUDE_LIB="$REPO_ROOT/lib/feature-write.sh" bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
+check "publication: migration in progress exits non-zero" "1" "$([[ "$ec" -ne 0 ]] && echo 1 || echo 0)"
+check "publication: no gate ran during a migration refusal" "0" "$([[ -f "$MARKER" ]] && echo 1 || echo 0)"
+jq '.artifactPublication.migration = null' "$FD/feature.json" > "$FD/feature.json.tmp" && mv "$FD/feature.json.tmp" "$FD/feature.json"
+
 echo
 echo "phase-exit: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

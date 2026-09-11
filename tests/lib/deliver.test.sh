@@ -39,6 +39,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 cp "$body" "${FAKE_DELIVERY_BODY:?}"
+# Simulates a write racing the parent's publication token: this shim runs as an
+# ordinary subprocess deliver.sh never wraps with the token env, exactly like a
+# stray process would, so its feature-write call is genuinely unparticipating.
+if [[ -n "${FAKE_DELIVERY_INTRUDE:-}" ]]; then
+  bash "${FAKE_DELIVERY_LIB:?}" set "$FAKE_DELIVERY_INTRUDE" warnings '["intruder"]' >/dev/null
+fi
 # Distinct URL per repo so workspace aggregates can be checked.
 url="https://github.com/test/$(basename "$repo")/pull/7"
 [[ "$(basename "$repo")" == "repo" || "$(basename "$repo")" == "single" ]] \
@@ -125,6 +131,7 @@ jq -n --arg base "$BASE" '{schemaVersion:7,slug:"demo",feature_title:"Demo featu
   currentPhase:"deliver",branch:"feat/demo",baseSha:$base,baseBranch:"main",workspace:null,
   prUrl:null,checkpointPrUrl:"https://github.com/test/repo/pull/7",warnings:[],
   artifacts:{spec:"docs/loop-spec/features/demo/SPEC.md",verification:"docs/loop-spec/features/demo/VERIFICATION.md",iteration:"docs/loop-spec/features/demo/ITERATION.md"},
+  artifactPublication:{version:1,generation:0,evidenceEpoch:0,migration:null,participantsVersion:1},
   delivery:{status:"pending",attemptedAt:null,finishedAt:null,targets:[]}}' > "$FDIR/feature.json"
 git -C "$SINGLE" add .gitignore ".loop-spec/features/demo/feature.json" \
   "docs/loop-spec/features/demo"
@@ -359,6 +366,7 @@ jq -n --arg root "$WS" --arg cb "$CHANGED_BASE" --arg ub "$UNCHANGED_BASE" \
   '{schemaVersion:7,slug:"ws",feature_title:"Workspace feature",currentPhase:"deliver",
     branch:null,baseSha:null,baseBranch:null,prUrl:null,checkpointPrUrl:null,warnings:[],
     artifacts:{spec:"docs/loop-spec/features/ws/SPEC.md",verification:"docs/loop-spec/features/ws/VERIFICATION.md",iteration:"docs/loop-spec/features/ws/ITERATION.md"},
+    artifactPublication:{version:1,generation:0,evidenceEpoch:0,migration:null,participantsVersion:1},
     workspace:{root:$root,repos:[
       {name:"changed",path:"changed",branch:"feat/ws",baseSha:$cb,baseBranch:"main"},
       {name:"unchanged",path:"unchanged",branch:"feat/ws",baseSha:$ub,baseBranch:"main"}]},
@@ -412,7 +420,8 @@ PF_BASE="$(git -C "$PF" rev-parse HEAD)"
 PFDIR="$PF/.loop-spec/features/pf"; mkdir -p "$PFDIR"
 jq -n --arg base "$PF_BASE" '{schemaVersion:7,slug:"pf",feature_title:"PF",currentPhase:"deliver",
   branch:"feat/pf",baseSha:$base,baseBranch:"main",workspace:null,prUrl:null,checkpointPrUrl:null,
-  warnings:[],artifacts:{}}' > "$PFDIR/feature.json"
+  warnings:[],artifacts:{},
+  artifactPublication:{version:1,generation:0,evidenceEpoch:0,migration:null,participantsVersion:1}}' > "$PFDIR/feature.json"
 : > "$LOG"; ec=0
 out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
   LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$PFDIR")" || ec=$?
@@ -441,7 +450,8 @@ printf 'feature\n' > "$DIRTY/b"; git -C "$DIRTY" add b; git -C "$DIRTY" commit -
 DDIR="$DIRTY/.loop-spec/features/dirty"; mkdir -p "$DDIR"
 printf '/.loop-spec/features/*/*\n!/.loop-spec/features/*/feature.json\n' > "$DIRTY/.gitignore"
 jq -n --arg base "$DIRTY_BASE" '{schemaVersion:7,slug:"dirty",feature_title:"Dirty",currentPhase:"deliver",
-  branch:"feat/dirty",baseSha:$base,baseBranch:"main",workspace:null,warnings:[],artifacts:{}}' > "$DDIR/feature.json"
+  branch:"feat/dirty",baseSha:$base,baseBranch:"main",workspace:null,warnings:[],artifacts:{},
+  artifactPublication:{version:1,generation:0,evidenceEpoch:0,migration:null,participantsVersion:1}}' > "$DDIR/feature.json"
 git -C "$DIRTY" add .gitignore ".loop-spec/features/dirty/feature.json"; git -C "$DIRTY" commit -q -m state
 printf 'uncommitted\n' >> "$DIRTY/b"
 : > "$LOG"; ec=0
@@ -488,7 +498,8 @@ printf 'orphan\n' > "$DIV/orphan"; git -C "$DIV" add orphan; git -C "$DIV" commi
 VDIR="$DIV/.loop-spec/features/div"; mkdir -p "$VDIR"
 printf '/.loop-spec/features/*/*\n!/.loop-spec/features/*/feature.json\n' > "$DIV/.gitignore"
 jq -n --arg base "$DIV_BASE" '{schemaVersion:7,slug:"div",feature_title:"Div",currentPhase:"deliver",
-  branch:"feat/div",baseSha:$base,baseBranch:"main",workspace:null,warnings:[],artifacts:{}}' > "$VDIR/feature.json"
+  branch:"feat/div",baseSha:$base,baseBranch:"main",workspace:null,warnings:[],artifacts:{},
+  artifactPublication:{version:1,generation:0,evidenceEpoch:0,migration:null,participantsVersion:1}}' > "$VDIR/feature.json"
 git -C "$DIV" add .gitignore ".loop-spec/features/div/feature.json"; git -C "$DIV" commit -q -m state
 : > "$LOG"; ec=0
 out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
@@ -507,7 +518,8 @@ BINDDIR="$BIND/.loop-spec/features/bind"; mkdir -p "$BINDDIR"
 printf '/.loop-spec/features/*/*\n!/.loop-spec/features/*/feature.json\n' > "$BIND/.gitignore"
 jq -n --arg base "$BIND_BASE" '{schemaVersion:7,slug:"bind",feature_title:"Bind",currentPhase:"deliver",
   branch:"feat/bind",baseSha:$base,baseBranch:"main",workspace:null,prUrl:null,checkpointPrUrl:null,
-  warnings:[],artifacts:{}}' > "$BINDDIR/feature.json"
+  warnings:[],artifacts:{},
+  artifactPublication:{version:1,generation:0,evidenceEpoch:0,migration:null,participantsVersion:1}}' > "$BINDDIR/feature.json"
 git -C "$BIND" add .gitignore ".loop-spec/features/bind/feature.json"; git -C "$BIND" commit -q -m state
 PRE_BIND_SHA="$(git -C "$BIND" rev-parse HEAD)"
 : > "$LOG"; ec=0
@@ -546,7 +558,8 @@ git -C "$RUNTIME" checkout -q -b feat/runtime
 printf 'feature\n' > "$RUNTIME/b"; git -C "$RUNTIME" add b; git -C "$RUNTIME" commit -q -m feature
 RDIR="$RUNTIME/.loop-spec/features/runtime"; mkdir -p "$RDIR"
 jq -n --arg base "$RUNTIME_BASE" '{schemaVersion:7,slug:"runtime",feature_title:"Runtime",currentPhase:"deliver",
-  branch:"feat/runtime",baseSha:$base,baseBranch:"main",workspace:null,warnings:[],artifacts:{}}' > "$RDIR/feature.json"
+  branch:"feat/runtime",baseSha:$base,baseBranch:"main",workspace:null,warnings:[],artifacts:{},
+  artifactPublication:{version:1,generation:0,evidenceEpoch:0,migration:null,participantsVersion:1}}' > "$RDIR/feature.json"
 git -C "$RUNTIME" add "$RDIR/feature.json"; git -C "$RUNTIME" commit -q -m state
 printf '{}\n' > "$RDIR/feature.json.bak"
 printf '{}\n' > "$RDIR/events.jsonl"
@@ -565,7 +578,8 @@ git -C "$STATUS" checkout -q -b feat/status
 printf 'feature\n' > "$STATUS/b"; git -C "$STATUS" add b; git -C "$STATUS" commit -q -m feature
 STDIR="$STATUS/.loop-spec/features/status"; mkdir -p "$STDIR"
 jq -n --arg base "$STATUS_BASE" '{schemaVersion:7,slug:"status",feature_title:"Status",currentPhase:"deliver",
-  branch:"feat/status",baseSha:$base,baseBranch:"main",workspace:null,warnings:[],artifacts:{}}' > "$STDIR/feature.json"
+  branch:"feat/status",baseSha:$base,baseBranch:"main",workspace:null,warnings:[],artifacts:{},
+  artifactPublication:{version:1,generation:0,evidenceEpoch:0,migration:null,participantsVersion:1}}' > "$STDIR/feature.json"
 git -C "$STATUS" add "$STDIR/feature.json"; git -C "$STATUS" commit -q -m state
 cp "$STATUS/.git/index" "$STATUS/.git/index.saved"
 printf 'corrupt-index' > "$STATUS/.git/index"
@@ -592,6 +606,7 @@ jq -n --arg root "$STAGE" --arg ab "$A_BASE" --arg bb "$B_BASE" \
   '{schemaVersion:7,slug:"stage",feature_title:"Stage",currentPhase:"deliver",
     branch:null,baseSha:null,baseBranch:null,prUrl:null,checkpointPrUrl:null,warnings:[],
     artifacts:{iteration:"docs/loop-spec/features/stage/ITERATION.md"},
+    artifactPublication:{version:1,generation:0,evidenceEpoch:0,migration:null,participantsVersion:1},
     workspace:{root:$root,repos:[
       {name:"a",path:"a",branch:"feat/stage",baseSha:$ab,baseBranch:"main"},
       {name:"b",path:"b",branch:"feat/stage",baseSha:$bb,baseBranch:"main"}]},
@@ -693,6 +708,7 @@ jq -n --arg base "$DBASE" '{schemaVersion:7,slug:"defer",feature_title:"Gated wa
   currentPhase:"deliver",branch:"feat/defer",baseSha:$base,baseBranch:"main",workspace:null,
   prUrl:null,checkpointPrUrl:null,warnings:["reviewer guide deferred; feature verification passed"],
   artifacts:{spec:"docs/loop-spec/features/defer/SPEC.md",verification:"docs/loop-spec/features/defer/VERIFICATION.md",iteration:"docs/loop-spec/features/defer/ITERATION.md"},
+  artifactPublication:{version:1,generation:0,evidenceEpoch:0,migration:null,participantsVersion:1},
   delivery:{status:"pending",attemptedAt:null,finishedAt:null,targets:[]}}' > "$DFDIR/feature.json"
 git -C "$DEFER" add .gitignore ".loop-spec/features/defer/feature.json" \
   "docs/loop-spec/features/defer"
@@ -717,6 +733,49 @@ out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
   LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$DFDIR")" || ec=$?
 check "deferral gate: map warning delivers" "0" "$ec"
 check "deferral gate: map warning ready" "ready-for-review" "$(jq -r '.status' "$DFDIR/delivery.json")"
+
+# --- publication contract -------------------------------------------------------------
+# A migration in progress refuses deliver before any side effect: no controller call,
+# no sidecar.
+PUB="$WORK/publication"; init_repo "$PUB"
+PUB_BASE="$(git -C "$PUB" rev-parse HEAD)"
+git -C "$PUB" checkout -q -b feat/pub
+printf 'feature\n' > "$PUB/b"; git -C "$PUB" add b; git -C "$PUB" commit -q -m feature
+PUBDIR="$PUB/.loop-spec/features/pub"; PUBDOCS="$PUB/docs/loop-spec/features/pub"
+mkdir -p "$PUBDIR" "$PUBDOCS"
+printf '/.loop-spec/features/*/*\n!/.loop-spec/features/*/feature.json\n' > "$PUB/.gitignore"
+printf '# Spec\nThe goal.\n' > "$PUBDOCS/SPEC.md"
+printf '# Verification\nAll pass.\n' > "$PUBDOCS/VERIFICATION.md"
+printf '# Iteration\nConverged.\n' > "$PUBDOCS/ITERATION.md"
+digest64="$(printf 'a%.0s' {1..64})"
+jq -n --arg base "$PUB_BASE" --arg digest "$digest64" '{schemaVersion:7,slug:"pub",feature_title:"Pub",
+  currentPhase:"deliver",branch:"feat/pub",baseSha:$base,baseBranch:"main",workspace:null,
+  prUrl:null,checkpointPrUrl:null,warnings:[],
+  artifacts:{spec:"docs/loop-spec/features/pub/SPEC.md",verification:"docs/loop-spec/features/pub/VERIFICATION.md",iteration:"docs/loop-spec/features/pub/ITERATION.md"},
+  artifactPublication:{version:1,generation:0,evidenceEpoch:0,participantsVersion:1,
+    migration:{id:"m1",previewDigest:$digest,phase:"marker",originalGeneration:0,publishedHashes:{}}},
+  delivery:{status:"pending",attemptedAt:null,finishedAt:null,targets:[]}}' > "$PUBDIR/feature.json"
+git -C "$PUB" add .gitignore ".loop-spec/features/pub/feature.json" "docs/loop-spec/features/pub"
+git -C "$PUB" commit -q -m "final candidate"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$PUBDIR" 2>&1)" || ec=$?
+check "publication: migration in progress exits 2" "2" "$ec"
+check "publication: no controller call during migration" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+check "publication: no sidecar written during migration" "0" "$([[ -f "$PUBDIR/delivery.json" ]] && echo 1 || echo 0)"
+
+# Clear the migration; an intervening unrelated write between ingress and the sidecar
+# write must abort before the sidecar lands, leaving only the intruder's change.
+jq '.artifactPublication.migration = null' "$PUBDIR/feature.json" > "$PUBDIR/feature.json.tmp"
+mv "$PUBDIR/feature.json.tmp" "$PUBDIR/feature.json"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  FAKE_DELIVERY_INTRUDE="$PUBDIR" FAKE_DELIVERY_LIB="$ROOT/lib/feature-write.sh" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$PUBDIR" 2>&1)" || ec=$?
+check "publication: intervening write aborts the sidecar publish" "2" "$ec"
+check "publication: no sidecar written after an intervening write" "0" "$([[ -f "$PUBDIR/delivery.json" ]] && echo 1 || echo 0)"
+check "publication: only the intruder's change landed" '["intruder"]' "$(jq -c '.warnings' "$PUBDIR/feature.json")"
+check "publication: intruder's write is untouched by our refusal" "pub" "$(jq -r '.slug' "$PUBDIR/feature.json")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

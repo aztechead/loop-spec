@@ -7,6 +7,13 @@
 # changed repository. Successful/external delivery observations are written to the
 # ignored delivery.json sidecar so the exact checked SHA stays clean; code-remediation
 # failures atomically route tracked feature.json back to EXECUTE.
+#
+# Publication participant (lib/feature-write.sh, lib/artifact_publication.py): one
+# ingress token captured before any side effect (an active migration or an unfinished
+# publication exits 2 first), rechecked fresh immediately before the delivery.json
+# sidecar lands and again before the EXECUTE-routing feature.json write -- a write that
+# raced in between exits 2 with neither file written, leaving the intervening writer's
+# change as the only one that landed.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,6 +40,15 @@ feature_json="$feature_dir/feature.json"
 delivery_file="$feature_dir/delivery.json"
 bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '.schemaVersion == 7 and (.currentPhase == "deliver")' >/dev/null 2>&1 || {
   echo "deliver: feature must be schema 7 at currentPhase=deliver" >&2
+  exit 2
+}
+
+# One ingress token for the whole delivery attempt, captured before any git side effect
+# (pr-body render, finalize-delivery-candidate.sh, pr-delivery.sh): also refuses an
+# active migration or an unfinished publication before any of that runs.
+. "$SCRIPT_DIR/feature-write.sh"
+loop_spec_publication_begin "$feature_dir" || {
+  echo "deliver: publication refuses entry (migration in progress or unfinished publication); run requirements-migrate.sh status/resume or artifact-publication.sh recover" >&2
   exit 2
 }
 
@@ -480,6 +496,13 @@ aggregate="$(jq -cn --argjson ok "$ok" --arg status "$status" --arg nextPhase "$
     ciRemediationAttempts:$ciAttempts,ciRemediationLimit:$ciLimit,targets:$targets}')"
 
 # The sidecar is the local observation record. It must not change the candidate commit.
+# Recheck freshness right before it lands: an unrelated write since ingress (a stray
+# process, a concurrent attempt) means this attempt's view of the feature is stale, and
+# publishing an observation over it would be as wrong as publishing a state change over it.
+if ! loop_spec_publication_fresh "$feature_dir"; then
+  echo "deliver: feature state changed since this delivery attempt began; retry deliver" >&2
+  exit 2
+fi
 printf '%s\n' "$aggregate" > "$delivery_file.tmp" || exit 2
 sync
 mv "$delivery_file.tmp" "$delivery_file" || exit 2
@@ -500,7 +523,11 @@ if [[ "$next_phase" == "execute" ]]; then
     echo "deliver: failed to build updated feature state" >&2
     exit 2
   }
-  bash "$SCRIPT_DIR/feature-write.sh" "$feature_dir" "$updated" || exit 2
+  if ! loop_spec_publication_fresh "$feature_dir"; then
+    echo "deliver: feature state changed since this delivery attempt began; retry deliver" >&2
+    exit 2
+  fi
+  loop_spec_feature_write "$feature_dir" "$updated" || exit 2
 fi
 
 printf '%s\n' "$aggregate"

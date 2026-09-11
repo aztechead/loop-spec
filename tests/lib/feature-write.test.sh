@@ -107,6 +107,57 @@ err=$(bash "$LIB" set "$WORK/feat" 'workspace.repos[0]' '"x"' 2>&1 >/dev/null) &
 check "L: array-index dot_path rejected" "1" "$exit_code"
 check "L: error names the limitation" "1" "$(grep -c 'array indices are not' <<<"$err")"
 
+# Case M-P: batch, in its own directory so its artifactPublication contract never
+# leaks into the plain-write fixtures the rest of this suite reuses.
+mkdir -p "$WORK/batch-feat"
+bash "$LIB" "$WORK/batch-feat" '{"slug":"batch-base","warnings":["keep"],"currentPhase":"plan"}' >/dev/null
+
+# Case M: batch applies set+append atomically under one write
+batch='[{"op":"set","path":"currentPhase","value":"execute"},{"op":"append","path":"warnings","value":"w3"}]'
+bash "$LIB" batch "$WORK/batch-feat" "$batch" >/dev/null
+check "M: batch set lands" "execute" "$(jq -r '.currentPhase' "$WORK/batch-feat/feature.json")"
+check "M: batch append lands" '["keep","w3"]' "$(jq -c '.warnings' "$WORK/batch-feat/feature.json")"
+
+# Case N: a batch whose last entry is invalid changes nothing (atomic, one write)
+before_batch="$(cat "$WORK/batch-feat/feature.json")"
+bad_batch='[{"op":"set","path":"currentPhase","value":"verify"},{"op":"set","path":"bogus path","value":1}]'
+exit_code=0
+bash "$LIB" batch "$WORK/batch-feat" "$bad_batch" >/dev/null 2>&1 || exit_code=$?
+check "N: batch with an invalid trailing entry rejected" "1" "$exit_code"
+check "N: file untouched after a malformed batch entry" "$before_batch" "$(cat "$WORK/batch-feat/feature.json")"
+
+# Case O: an empty batch array is rejected, nothing written
+exit_code=0
+bash "$LIB" batch "$WORK/batch-feat" '[]' >/dev/null 2>&1 || exit_code=$?
+check "O: empty batch rejected" "1" "$exit_code"
+check "O: file untouched after empty batch" "$before_batch" "$(cat "$WORK/batch-feat/feature.json")"
+
+# Case P: batch with a stale token changes nothing
+PYTHONPATH="$(dirname "$LIB")" python3 - "$WORK/batch-feat" <<'PYBATCH'
+import json, sys
+from pathlib import Path
+folder = Path(sys.argv[1])
+state = json.loads((folder / "feature.json").read_text())
+state["artifactPublication"] = {"version": 1, "generation": 0, "evidenceEpoch": 0, "migration": None, "participantsVersion": 1}
+(folder / "feature.json").write_text(json.dumps(state))
+PYBATCH
+PYTHONPATH="$(dirname "$LIB")" python3 - "$WORK/batch-feat" "$WORK/batch-token.json" <<'PYBATCH2'
+import json, sys
+from pathlib import Path
+from artifact_publication import capture_locked, locked_feature
+folder = Path(sys.argv[1])
+with locked_feature(folder):
+    token = capture_locked(folder)
+Path(sys.argv[2]).write_text(json.dumps(token))
+PYBATCH2
+# advance the generation behind the captured token's back
+bash "$LIB" set "$WORK/batch-feat" warnings '["moved-on"]' >/dev/null
+before_stale="$(cat "$WORK/batch-feat/feature.json")"
+exit_code=0
+bash "$LIB" batch "$WORK/batch-feat" '[{"op":"set","path":"currentPhase","value":"iterate"}]' --token "$WORK/batch-token.json" >/dev/null 2>&1 || exit_code=$?
+check "P: batch with a stale token rejected" "1" "$exit_code"
+check "P: file untouched after a stale-token batch" "$before_stale" "$(cat "$WORK/batch-feat/feature.json")"
+
 # Acknowledgment removes only the published prefix under the writer's lock.
 bash "$LIB" "$WORK/feat" '{"slug":"ack","pendingRemediationTasks":[{"id":"a"},{"id":"b"}],"artifacts":{"tasks":"tasks.json"},"warnings":["keep"],"specApproval":{"digest":"immutable"}}' >/dev/null
 ack='{"snapshot":[{"id":"a"}],"generation":null,"receipt":"first"}'

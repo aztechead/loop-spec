@@ -56,6 +56,38 @@ def publish(path, content):
             pass
 
 
+def _validate_write_keys(dot_path):
+    """The set/append path grammar, shared by a single write and every batch entry."""
+    if not isinstance(dot_path, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*", dot_path):
+        raise ValueError("invalid feature write path")
+    keys = dot_path.split(".")
+    if keys[0] in ("currentGate", "gateHistory") and os.environ.get("LOOP_SPEC_GATE_WRITE") != "1":
+        raise ValueError("{} is written only by lib/graph/gate.sh; use gate.sh open|round|fail|pass".format(keys[0]))
+    return keys
+
+
+def _apply_set_or_append(state, operation, value, keys):
+    """Mutate state in place at the dotted path; the one traversal set/append and
+    every batch entry share, so a batch's atomicity is just prepare_state's own
+    single-pass mutation run more than once before the tail checks below run."""
+    dot_path = ".".join(keys)
+    target = state
+    for key in keys[:-1]:
+        if not isinstance(target, dict):
+            raise ValueError("{} crosses a non-object value".format(dot_path))
+        if target.get(key) is None:
+            target[key] = {}
+        target = target[key]
+    if not isinstance(target, dict):
+        raise ValueError("{} requires an object parent".format(dot_path))
+    if operation == "append":
+        current = target.get(keys[-1])
+        if current is not None and not isinstance(current, list):
+            raise ValueError("append target at {} is not an array".format(dot_path))
+        value = (current or []) + [value]
+    target[keys[-1]] = value
+
+
 def prepare_state(directory, previous, operation, value, keys=()):
     dot_path = ".".join(keys)
     if operation == "replace":
@@ -84,22 +116,21 @@ def prepare_state(directory, previous, operation, value, keys=()):
             if "requirementsContract" not in state:
                 raise ValueError("reconcile-inventory requires an initialized requirementsContract")
             state["requirementsContract"] = reconcile_inventory(state["requirementsContract"], value)
-        target = state
-        if operation not in ("ack-remediation", "reconcile-inventory"):
-            for key in keys[:-1]:
-                if not isinstance(target, dict):
-                    raise ValueError("{} crosses a non-object value".format(dot_path))
-                if target.get(key) is None:
-                    target[key] = {}
-                target = target[key]
-            if not isinstance(target, dict):
-                raise ValueError("{} requires an object parent".format(dot_path))
-            if operation == "append":
-                current = target.get(keys[-1])
-                if current is not None and not isinstance(current, list):
-                    raise ValueError("append target at {} is not an array".format(dot_path))
-                value = (current or []) + [value]
-            target[keys[-1]] = value
+        if operation == "batch":
+            # Every entry applies to the SAME in-memory state before it is ever written,
+            # so a later entry's failure raises before write_state_locked runs and the
+            # whole batch is still atomic even though prepare_state has no rollback.
+            if not isinstance(value, list) or not value:
+                raise ValueError("batch requires a non-empty JSON array of entries")
+            for entry in value:
+                if not isinstance(entry, dict) or set(entry) != {"op", "path", "value"}:
+                    raise ValueError("invalid batch entry; each requires op, path, and value")
+                if entry["op"] not in ("set", "append"):
+                    raise ValueError("batch entries support set or append only")
+                entry_keys = _validate_write_keys(entry["path"])
+                _apply_set_or_append(state, entry["op"], entry["value"], entry_keys)
+        if operation not in ("ack-remediation", "reconcile-inventory", "batch"):
+            _apply_set_or_append(state, operation, value, keys)
 
     if previous is not None:
         approved = parse_json(previous).get("specApproval")
@@ -186,13 +217,10 @@ def write_operation(directory, operation, value, keys=(), token=None, registry=N
     Registry paths come from the controller, never from token input paths.
     """
     directory = Path(directory)
-    if operation not in ("replace", "set", "append", "ack-remediation", "reconcile-inventory"):
+    if operation not in ("replace", "set", "append", "ack-remediation", "reconcile-inventory", "batch"):
         raise ValueError("unknown feature write operation: {}".format(operation))
     if operation in ("set", "append"):
-        if not keys or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*", ".".join(keys)):
-            raise ValueError("invalid feature write path")
-        if keys[0] in ("currentGate", "gateHistory") and os.environ.get("LOOP_SPEC_GATE_WRITE") != "1":
-            raise ValueError("{} is written only by lib/graph/gate.sh; use gate.sh open|round|fail|pass".format(keys[0]))
+        _validate_write_keys(".".join(keys))
     if operation == "replace" and not isinstance(value, dict):
         raise ValueError("feature state must be one JSON object")
     from artifact_publication import capture_locked, locked_feature, refuse_pending
@@ -237,12 +265,12 @@ def main(args):
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*", dot_path):
             raise ValueError("invalid dot_path: {}; array indices are not supported".format(dot_path))
         keys = dot_path.split(".")
-    elif len(args) == 3 and args[0] in ("ack-remediation", "reconcile-inventory"):
+    elif len(args) == 3 and args[0] in ("ack-remediation", "reconcile-inventory", "batch"):
         operation, directory, raw = args
     elif len(args) == 2:
         directory, raw = args
     else:
-        raise ValueError("usage: feature-write.sh <dir> <json-object> | set|append <dir> <dot_path> <json-value>")
+        raise ValueError("usage: feature-write.sh <dir> <json-object> | set|append <dir> <dot_path> <json-value> | batch <dir> <json-array>")
 
     directory = Path(directory)
     if not directory.is_dir():
@@ -250,6 +278,8 @@ def main(args):
     value = parse_json(raw)
     if operation == "replace" and not isinstance(value, dict):
         raise ValueError("feature state must be one JSON object")
+    if operation == "batch" and not isinstance(value, list):
+        raise ValueError("batch requires a JSON array")
 
     refreshed = write_operation(directory, operation, value, keys, token=token)
     if refreshed is not None:

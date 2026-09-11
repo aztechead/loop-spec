@@ -177,7 +177,10 @@ check "resume: in-place feature refuses another root" "1" "$ec"
 
 OTHER="$REPO/.loop-spec/features/aaa-other"
 mkdir -p "$OTHER"
-jq '.slug="aaa-other" | .currentTeamName="untouched"' "$FD/feature.json" > "$OTHER/feature.json"
+# .artifacts is cleared: FD's own (docs/loop-spec/features/add-a-json-flag/...) would
+# name a path outside aaa-other's own artifact root, which publication's capture now
+# checks on every write (task-004) -- a real feature never carries another one's paths.
+jq '.slug="aaa-other" | .currentTeamName="untouched" | .artifacts={}' "$FD/feature.json" > "$OTHER/feature.json"
 ec=0; drv resume --dir "$REPO" --feature-root "$REPO" >/dev/null 2>&1 || ec=$?
 check "resume: shared root without identity refuses ambiguity" "1" "$ec"
 out="$(drv resume --dir "$REPO" --feature-root "$REPO" --slug add-a-json-flag 2>/dev/null)"
@@ -714,6 +717,43 @@ init="$(HARNESS=claude drv init --dir "$REPO9" --slug ship-it --title "ship it" 
 check "init: gitfile checkout enters no worktree" "null" "$(jq -r '.enterWorktree' <<<"$init")"
 check "init: gitfile checkout names the reason" "1" "$(grep -c 'working in place' /tmp/gitfile.err)"
 
+
+# --- an active migration refuses next/resume/finish before any side effect ---------
+# .artifactPublication.migration is a durable pointer (recover_locked's own consumer);
+# refuse_pending checks it before begin_operation's bootstrap step even runs, so every
+# command that begins its own operation must see the SAME refusal, on the first thing
+# it does, before whatever side effect it would otherwise make first (next's phase-exit,
+# resume's worktree recreation, finish's delivery-status read).
+REPOMIG="$(new_repo migration)"
+initmig="$(drv init --dir "$REPOMIG" --slug migrating --title "migrating feature" --style auto --profile standard --autonomous 0 2>/dev/null)"
+FDMIG="$(jq -r '.featureDir' <<<"$initmig")"
+DIGEST64="$(printf 'a%.0s' $(seq 1 64))"
+jq --arg d "$DIGEST64" '.artifactPublication.migration = {"id":"m1","previewDigest":$d,"phase":"marker","originalGeneration":0,"publishedHashes":{}}' \
+  "$FDMIG/feature.json" > "$FDMIG/feature.json.tmp" && mv "$FDMIG/feature.json.tmp" "$FDMIG/feature.json"
+cp "$FDMIG/feature.json" "$WORK/migration-before.json"
+events_before="$([[ -f "$FDMIG/events.jsonl" ]] && wc -l < "$FDMIG/events.jsonl" || echo 0)"
+result_before="$([[ -f "$REPOMIG/.loop-spec/last-result.json" ]] && cat "$REPOMIG/.loop-spec/last-result.json" || echo "")"
+
+ec=0; err="$(drv next --feature-dir "$FDMIG" 2>&1 1>/dev/null)" || ec=$?
+check "migration: next refuses" "1" "$([[ "$ec" -ne 0 ]] && echo 1 || echo 0)"
+check "migration: next names the reason" "1" "$(grep -c 'migration' <<<"$err")"
+cmp -s "$WORK/migration-before.json" "$FDMIG/feature.json"
+check "migration: next changed nothing" "0" "$?"
+check "migration: next wrote no events" "$events_before" "$([[ -f "$FDMIG/events.jsonl" ]] && wc -l < "$FDMIG/events.jsonl" || echo 0)"
+check "migration: next wrote no result" "$result_before" "$([[ -f "$REPOMIG/.loop-spec/last-result.json" ]] && cat "$REPOMIG/.loop-spec/last-result.json" || echo "")"
+
+ec=0; err="$(drv resume --dir "$REPOMIG" --feature-root "$REPOMIG" --slug migrating 2>&1 1>/dev/null)" || ec=$?
+check "migration: resume refuses" "1" "$([[ "$ec" -ne 0 ]] && echo 1 || echo 0)"
+check "migration: resume names the reason" "1" "$(grep -c 'migration' <<<"$err")"
+cmp -s "$WORK/migration-before.json" "$FDMIG/feature.json"
+check "migration: resume changed nothing" "0" "$?"
+
+echo '{"status":"ready-for-review","targets":[]}' > "$FDMIG/delivery.json"
+ec=0; err="$(drv finish --feature-dir "$FDMIG" 2>&1 1>/dev/null)" || ec=$?
+check "migration: finish refuses" "1" "$([[ "$ec" -ne 0 ]] && echo 1 || echo 0)"
+check "migration: finish names the reason" "1" "$(grep -c 'migration' <<<"$err")"
+cmp -s "$WORK/migration-before.json" "$FDMIG/feature.json"
+check "migration: finish changed nothing" "0" "$?"
 
 echo
 echo "cycle-driver: $PASS passed, $FAIL failed"

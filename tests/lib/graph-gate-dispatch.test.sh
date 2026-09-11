@@ -64,7 +64,7 @@ mkdir -p "$FEAT"
 seed_feature() {
   jq -n --arg base "$BASE_SHA" \
     '{slug:"gatecheck", schemaVersion:7, baseSha:$base, warnings:[],
-      artifacts:{tasks:".loop-spec/features/gatecheck/tasks.json"},
+      artifacts:{tasks:"tasks.json"},
       commands:{test:"true", lint:"", typecheck:"", prepare:""}}' \
     > "$FEAT/feature.json"
   rm -f "$FEAT/graph-checkpoints.jsonl" "$FEAT/events.jsonl" "$FEAT/graph-pause.json"

@@ -432,11 +432,15 @@ echo "--- Case 9: cycle participation ---"
 # accepted publication.
 FDB="$(make_feature "$WORK/cycle-b")"
 TOK_B1="$WORK/cycle-b/tok1.json"
+# cycle-driver.sh init is itself a publication participant (task-004 WP3): it
+# bootstraps the legacy contract as part of init, so a feature is never without one
+# by the time the cycle can touch it -- record-round and mark-clean below each then
+# advance that same contract by one generation, rather than establishing it lazily.
 gen0="$(jq -r '.artifactPublication.generation // "absent"' "$FDB/feature.json")"
-if [[ "$gen0" == absent ]]; then
-  pass "in-cycle: feature starts with no publication contract yet (lazy bootstrap)"
+if [[ "$gen0" == "0" ]]; then
+  pass "in-cycle: init bootstraps the publication contract at generation 0"
 else
-  fail "in-cycle: feature starts with no publication contract yet (got generation=$gen0)"
+  fail "in-cycle: init bootstraps the publication contract at generation 0 (got generation=$gen0)"
 fi
 
 LOOP_SPEC_QL_STATE="$FDB/quality-loop.json" LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT="$TOK_B1" \

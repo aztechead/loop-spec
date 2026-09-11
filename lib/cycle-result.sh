@@ -98,8 +98,15 @@
 # Missing feature.json → one-line stderr warning, exit 0 (observability never aborts).
 # Bad --status value → one-line stderr warning, exit 0, write nothing.
 #
-# Exit codes: writes always return 0 (observability never aborts); `clear` returns 1
-# when it cannot safely remove the stale pointer so an entry point cannot reuse it.
+# PUBLICATION EXCEPTION (`write` only): a feature mid-migration or with an unfinished
+# publication REFUSES the write outright -- one-line stderr reason, exit 1, no
+# result.json and no last-result.json pointer change. This is a refusal, not the
+# fail-open observability path above: the transaction has not said its final word on
+# this feature.json yet, so a published outcome would be misleading, not merely absent.
+#
+# Exit codes: writes otherwise always return 0 (observability never aborts), except
+# `write`'s publication refusal above (exit 1); `clear` returns 1 when it cannot safely
+# remove the stale pointer so an entry point cannot reuse it.
 set -uo pipefail
 
 VALID_STATUSES="completed paused escalated terminal failed"
@@ -143,6 +150,19 @@ _is_nonblank() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# _publication_refusal DIR: prints a one-line reason and returns true (0) when DIR is
+# mid-migration or has an unfinished publication; prints nothing and returns false (1)
+# otherwise. `write` REFUSES on this -- unlike every other failure path here, which
+# degrades to a warning and exit 0 (the header's OBSERVABILITY CONTRACT): a result
+# published over a feature mid-transaction would tell a headless supervisor "here is
+# the outcome" about state that is not the transaction's final word yet.
+_publication_refusal() {
+  local reason
+  reason="$(python3 "$SCRIPT_DIR/feature_write.py" ingress-read "$1" 2>&1 >/dev/null)" && return 1
+  echo "cycle-result.sh: refusing to publish over ${reason#feature-write: }" >&2
+  return 0
+}
 
 # Stamped into every terminal result so a consumer can date the run against the
 # version that produced it. Resolved once; never fails (degrades to "unknown").
@@ -713,6 +733,10 @@ PY
       echo "cycle-result.sh: feature.json not found in $feature_dir" >&2
       exit 0
     fi
+    # Before building result.json: a feature mid-migration or with an unfinished
+    # publication REFUSES (exit 1), not the fail-open path above -- see
+    # _publication_refusal's own comment for why this one call is not observability.
+    _publication_refusal "$feature_dir" && exit 1
     # The driver answered NEXT and the lead is publishing a failure instead of invoking
     # the phase: a supervisor reads that as a dead run. Not refused outright, because a
     # phase can genuinely die; refused without a reason, because "interrupted" with no
@@ -957,6 +981,10 @@ PY
       echo "cycle-result.sh: failed to build result.json from feature.json in $feature_dir" >&2
       exit 0
     }
+
+    # Recheck immediately before the atomic result publish: still a refusal, not the
+    # fail-open path (see _publication_refusal).
+    _publication_refusal "$feature_dir" && exit 1
 
     # Write result.json to feature dir
     _write_atomic "$result_json" "$feature_dir/result.json" || {

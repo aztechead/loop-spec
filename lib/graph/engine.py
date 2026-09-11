@@ -22,7 +22,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from paths import repo_path  # noqa: E402
+import publication_participant as pub  # noqa: E402
 
 graph_path = feature_dir = repo_root = script_dir = completed_node = ""
 dry_run = resume = step_mode = False
@@ -543,8 +545,12 @@ def dispatch_body(node_id, node, kind):
             return UNRESOLVED_BODY_ARG, "unresolved bodyArgs placeholder %s on node %s" % (
                 ", ".join(sorted(set(unresolved))), node_id)
         args.append(_substitute(raw, node_id))
+    if not pub.has_begun():
+        pub.begin(feature_dir)
+    child_env = pub.child_env(os.environ)
     proc = subprocess.run(["bash", body_path] + args, cwd=repo_root,
-                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=child_env)
+    pub.adopt(child_env.get("LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT"))
     return proc.returncode, proc.stdout.decode("utf-8", errors="replace").strip()
 
 
@@ -560,9 +566,14 @@ def dispatch_subgraph(node):
     cmd = ["bash", os.path.join(script_dir, "run.sh"), "--feature-dir", feature_dir, nested_path]
     if dry_run:
         cmd.insert(2, "--dry-run")
+    if not pub.has_begun():
+        pub.begin(feature_dir)
+    child_env = pub.child_env(os.environ)
     # --step reserves stdout for the one descriptor line; the nested run's
     # per-node traversal lines go to stderr so the parent's caller can parse it.
-    return subprocess.call(cmd, stdout=sys.stderr if step_mode else None)
+    rc = subprocess.call(cmd, stdout=sys.stderr if step_mode else None, env=child_env)
+    pub.adopt(child_env.get("LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT"))
+    return rc
 
 
 def process_node(current, admitting, defer_agent_routing):
@@ -610,14 +621,20 @@ def process_node(current, admitting, defer_agent_routing):
     if not dry_run and current in PHASE_POINTER_IDS:
         feat_path = os.path.join(feature_dir, "feature.json")
         if os.path.isfile(feat_path):
+            # In-process under driver.py (graph_step), begin() already ran for this
+            # command and pub carries its token; standalone under run.sh, this is the
+            # engine's own first write and opens the operation here.
+            if not pub.has_begun():
+                pub.begin(feature_dir)
             fw = os.environ.get("LOOP_SPEC_FEATURE_WRITE") or os.path.join(
                 repo_root, "lib", "feature-write.sh")
-            write_rc = subprocess.call(
-                ["bash", fw, "set", feature_dir, "currentPhase", json.dumps(current)],
-                stdout=subprocess.DEVNULL)
-            if write_rc:
+            proc = subprocess.run(
+                ["bash", fw, "set", feature_dir, "currentPhase", json.dumps(current)] + pub.token_args(),
+                stdout=subprocess.PIPE, universal_newlines=True)
+            if proc.returncode:
                 print("run.sh: cannot persist phase %s; refusing dispatch" % current, file=sys.stderr)
                 raise EngineExit(1)
+            pub.adopt_output(proc.stdout)
 
     if not step_mode:
         print("%s\t%s\t%s\t%s" % (current, admitting, kind, label))
@@ -866,4 +883,10 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    try:
+        code = main(sys.argv)
+    finally:
+        # Standalone only (lib/graph/run.sh): in-process under driver.py, the driver's
+        # own exit path owns finish() and this module never reaches its own __main__.
+        pub.finish()
+    sys.exit(code)

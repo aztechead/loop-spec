@@ -35,6 +35,42 @@ new_feat() {
   jq -n "$@" > "$dir/feature.json"
 }
 
+## --- AC5: a graph transition preserves the original node ingress token ------------
+## run.sh --step through a phase node, given an env token pair: the output token's
+## generation advances by exactly the writes the step made (one: currentPhase), the
+## original input file is untouched, and replaying the same (now stale) original token
+## fails without changing feature.json (task-004).
+mkdir -p "$WORK/tok-feat"
+jq -n '{slug:"tok", schemaVersion:7, feature_title:"tok", execStyle:"auto", warnings:[], artifacts:{}}' \
+  > "$WORK/tok-feat/feature.json"
+jq --arg id "spec" '{entry: $id, nodes: [.nodes[] | select(.id == $id) | del(.routeDefault)], edges: []}' \
+  "$ROOT/graph/cycle.graph.json" > "$WORK/tok-onenode.json"
+python3 "$ROOT/lib/feature_write.py" ingress "$WORK/tok-feat" > "$WORK/tok-t0.json"
+tok_gen0="$(jq '.generation' "$WORK/tok-t0.json")"
+cp "$WORK/tok-t0.json" "$WORK/tok-t0.orig.json"
+set +e
+LOOP_SPEC_PUBLICATION_TOKEN="$WORK/tok-t0.json" LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT="$WORK/tok-o0.json" \
+  bash "$SCRIPT" --step --feature-dir "$WORK/tok-feat" "$WORK/tok-onenode.json" >/dev/null 2>"$WORK/tok-step0.err"
+tok_rc0=$?
+set -e
+check "AC5: run.sh --step with a valid token exits 0" "0" "$tok_rc0"
+tok_gen1="$(jq -r '.generation // empty' "$WORK/tok-o0.json" 2>/dev/null)"
+check "AC5: the output token's generation advances by exactly one write" "$((tok_gen0 + 1))" "$tok_gen1"
+cmp -s "$WORK/tok-t0.orig.json" "$WORK/tok-t0.json"
+check "AC5: the original input token file is byte-identical afterward" "0" "$?"
+
+cp "$WORK/tok-feat/feature.json" "$WORK/tok-accepted.json"
+set +e
+tok_err="$(LOOP_SPEC_PUBLICATION_TOKEN="$WORK/tok-t0.json" LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT="$WORK/tok-o1.json" \
+  bash "$SCRIPT" --step --feature-dir "$WORK/tok-feat" "$WORK/tok-onenode.json" 2>&1 1>/dev/null)"
+tok_rc1=$?
+set -e
+check "AC5: re-running with the original (now stale) token fails" "1" "$([[ "$tok_rc1" -ne 0 ]] && echo 1 || echo 0)"
+check "AC5: the stale re-run names the stale token" "1" "$(grep -c 'stale publication token' <<<"$tok_err")"
+cmp -s "$WORK/tok-accepted.json" "$WORK/tok-feat/feature.json"
+check "AC5: the stale re-run changed nothing" "0" "$?"
+
+
 ## --- 0. cycle.graph.json.
 ##      Route conditions ARE evaluated during --dry-run (only body dispatch is
 ##      skipped), so a real feature.json is seeded to route past every gate
@@ -209,6 +245,16 @@ out="$(cd "$remrepo" && GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAM
 check "remediation: real VERIFY failure queues both findings" "remediate:2" "$(jq -r '.route + ":" + (.tasks | length | tostring)' <<<"$out")"
 check "remediation: real VERIFY reports failure" "1" "$rc"
 queued="$(jq -c '.pendingRemediationTasks' "$rfd/feature.json")"
+# cp -R below forks the VERIFY boundary into independent directories for the priority,
+# ceiling, and invalid-queue scenarios; each keeps the absolute artifacts.tasks pointer
+# set at line 200 (real remediation:GE-001), which named the ORIGINAL directory. A
+# publication participant's ingress resolves every registered artifact path (it hashes
+# them into the capture), so a fork must repoint tasks.json at itself the way a real
+# migration would -- not something later routing ever has reason to do on its own.
+retarget_tasks_pointer() {
+  jq --arg t "$1/tasks.json" '.artifacts.tasks = $t' "$1/feature.json" > "$1/feature.json.tmp" \
+    && mv "$1/feature.json.tmp" "$1/feature.json"
+}
 cp -R "$rfd" "$WORK/remediation-boundary"
 out="$(bash "$SCRIPT" --step --completed-node verify --feature-dir "$rfd" "$ROOT/graph/cycle.graph.json")"
 check "remediation: completed VERIFY dispatches EXECUTE before ITERATE" "execute" "$(jq -r '.node' <<<"$out")"
@@ -222,12 +268,14 @@ for attempt in 1 2; do
   prepared="$(cd "$remrepo" && LOOP_SPEC_HARNESS=codex LOOP_SPEC_WORKTREES=0 bash "$ROOT/lib/execute-prepare.sh" run --feature-dir "$rfd")"
   check "review recurrence $attempt: fallback task is executable" "1" "$(jq '[.tasks[] | select(.id | startswith("task-verify-code-review-1"))] | length' <<<"$prepared")"
   fallback_id="$(jq -r '.tasks[] | select(.id | startswith("task-verify-code-review-1")) | .id' <<<"$prepared")"
+  check "review recurrence $attempt: fallback id is present" "1" "$([[ -n "$fallback_id" ]] && echo 1 || echo 0)"
   bash "$ROOT/lib/task-progress.sh" mark-done "$rfd/tasks.json" "$fallback_id" >/dev/null
 done
 
 # Fresh copies retain the same VERIFY boundary while isolating priority and budgets.
 cp -R "$WORK/remediation-boundary" "$remrepo/.loop-spec/features/bad-spec-priority"
 bfd="$remrepo/.loop-spec/features/bad-spec-priority"
+retarget_tasks_pointer "$bfd"
 bash "$ROOT/lib/feature-write.sh" set "$bfd" reviewRouting '{"route":"bad-spec","pending":true}' >/dev/null
 out="$(bash "$SCRIPT" --step --completed-node verify --feature-dir "$bfd" "$ROOT/graph/cycle.graph.json")"
 check "remediation: bad-spec keeps priority over queued work" "discuss" "$(jq -r '.node' <<<"$out")"
@@ -235,6 +283,7 @@ check "remediation: bad-spec leaves queued findings intact" "$queued" "$(jq -c '
 
 cp -R "$WORK/remediation-boundary" "$remrepo/.loop-spec/features/ceiling"
 cfd="$remrepo/.loop-spec/features/ceiling"
+retarget_tasks_pointer "$cfd"
 for round in 1 2 3 4 5; do
   out="$(bash "$SCRIPT" --step --completed-node verify --feature-dir "$cfd" "$ROOT/graph/cycle.graph.json")"
   check "remediation: traversal $round reaches EXECUTE" "execute" "$(jq -r '.node' <<<"$out")"
@@ -256,6 +305,7 @@ check "remediation: exhausted route cannot advance to ITERATE or DELIVER" "verif
 for invalid in false '{}' null; do
   invalid_dir="$remrepo/.loop-spec/features/invalid-queue-$invalid"
   cp -R "$WORK/remediation-boundary" "$invalid_dir"
+  retarget_tasks_pointer "$invalid_dir"
   bash "$ROOT/lib/feature-write.sh" set "$invalid_dir" pendingRemediationTasks "$invalid" >/dev/null
   rc=0; out="$(bash "$SCRIPT" --step --completed-node verify --feature-dir "$invalid_dir" "$ROOT/graph/cycle.graph.json" 2>"$WORK/invalid-route.err")" || rc=$?
   check "remediation: invalid queue $invalid aborts routing" "5" "$rc"

@@ -52,6 +52,20 @@ loop_spec_feature_write() {
   fi
 }
 
+loop_spec_publication_fresh() {
+  # Read-only recheck: is the token captured at ingress still the current generation?
+  # A participant runs this immediately before its final acknowledgement, so a write
+  # that raced in between (a child that did not carry the token forward, or an
+  # unrelated writer skipping the contract) is caught before anything commits.
+  local pending
+  pending="$(loop_spec_publication_read "$LOOP_SPEC_OPERATION_TOKEN")" || return 1
+  if [[ "$pending" == null ]]; then
+    python3 "$LOOP_SPEC_PUBLICATION_WRITER" ingress-read "$1" >/dev/null
+  else
+    python3 "$LOOP_SPEC_PUBLICATION_WRITER" ingress-read "$1" --token "$LOOP_SPEC_OPERATION_TOKEN" >/dev/null
+  fi
+}
+
 loop_spec_publication_run() {
   local received result=0 refreshed
   received="$(mktemp "${TMPDIR:-/tmp}/loop-spec-publication-child.XXXXXX")"

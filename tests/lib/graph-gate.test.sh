@@ -222,6 +222,32 @@ rc=0; LOOP_SPEC_CRITIQUE_ROUNDS=lots bash "$SCRIPT" next --feature-dir "$WORK/fe
 check "malformed LOOP_SPEC_CRITIQUE_ROUNDS is a configuration error" "2" "$rc"
 check "next never writes" "3" "$(feat '.gateHistory | length')"
 
+## --- AC5: open/fail/pass with a stale token change nothing -------------------------
+## gate.sh sources feature-write.sh and calls loop_spec_publication_begin before its own
+## `case` dispatch (every subcommand, not just the writing ones), so a stale token is
+## refused before any subcommand-specific precondition (e.g. "a gate must be open" for
+## fail/pass) is even checked -- one fixture per subcommand is enough; none needs an
+## open gate staged first.
+FW="$ROOT/lib/feature_write.py"
+for sub in open fail pass; do
+  seed
+  t0="$WORK/ac5-$sub-t0.json"
+  python3 "$FW" ingress "$WORK/feature" > "$t0"
+  bash "$ROOT/lib/feature-write.sh" append "$WORK/feature" warnings "\"ac5-$sub-bump\"" >/dev/null
+  cp "$WORK/feature/feature.json" "$WORK/ac5-$sub-before.json"
+  rc=0
+  case "$sub" in
+    open) args=(--phase plan --gate plan-critique) ;;
+    fail) args=(--rounds 1 --convergence x --challenger-model none) ;;
+    pass) args=(--rounds 1 --convergence x --challenger-model none) ;;
+  esac
+  err="$(LOOP_SPEC_PUBLICATION_TOKEN="$t0" bash "$SCRIPT" "$sub" --feature-dir "$WORK/feature" "${args[@]}" 2>&1 1>/dev/null)" || rc=$?
+  check "AC5: gate.sh $sub with a stale token exits non-zero" "1" "$([[ "$rc" -ne 0 ]] && echo 1 || echo 0)"
+  check "AC5: gate.sh $sub names the stale token" "1" "$(grep -c 'stale publication token' <<<"$err")"
+  cmp -s "$WORK/ac5-$sub-before.json" "$WORK/feature/feature.json"
+  check "AC5: gate.sh $sub changed nothing" "0" "$?"
+done
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]
