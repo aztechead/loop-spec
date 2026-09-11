@@ -51,30 +51,48 @@ LAUNCH = re.compile(r"(?:^|[\s;&|(`])(claude\s+(?:-p|--print)\b|codex\s+exec\b|o
 LAUNCHERS = re.compile(r"(?:^|[\s\"\x27=])(?:[\w.~-]*/)*(?:extensions/sessions/session_run\.py|skills/loop-runner/scripts/[\w.-]+\.py|evals/eval_run\.py)(?=$|[\s\"\x27])")
 COMMENT = re.compile(r"(?:^|\s)#.*$", flags=re.M)
 
+
+def strip_comments(text):
+    # A hash inside a quoted string is data, not a comment: an echo of a quoted hash
+    # followed by a launch on the same line still launches.
+    out = []
+    for line in text.splitlines():
+        m = COMMENT.search(line)
+        while m and (line[:m.start()].count("\"") % 2 or line[:m.start()].count("\x27") % 2):
+            m = COMMENT.search(line, m.start() + 1)
+        out.append(line[:m.start()] if m else line)
+    return "\n".join(out)
+
 # Interpreter words whose next non-flag argument is the script they run. Closed list: an
 # interpreter this hook does not know about is not scanned, same as any other unknown
 # command word (fail toward not-a-script, matching the command-position rule below).
 INTERPRETERS = ("bash", "sh", "zsh", "dash", "ksh", "source", ".", "python", "python3", "node", "perl", "ruby")
-# Prefix words that pass the command position through to the next word unconsumed.
-PREFIXES = ("env", "nohup", "time", "exec", "sudo")
+# Prefix words that pass the command position through to the next word unconsumed
+# (their own flags and flag values skipped, as for an interpreter).
+PREFIXES = ("env", "nohup", "time", "exec", "sudo", "command", "timeout", "stdbuf", "setsid", "xargs")
 OPERATORS = (";", "&", "&&", "||", "|", "(", "{")
-CONTROL_WORDS = ("then", "do", "else")
+CONTROL_WORDS = ("if", "then", "elif", "else", "fi", "for", "while", "until", "in", "do", "done", "case", "esac")
+# After an interpreter, these end the script search: the program comes from stdin, a
+# string, or a module, so the next word is data (`python3 - tasks.json <<PY` is the
+# idiom this repo itself uses, and was a false deny).
+NO_SCRIPT_FLAGS = ("-", "--", "-c", "-m", "-e", "-s")
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+PREFIX_ARG = re.compile(r"^(?:-|\d+[smhd]?$|[A-Za-z_][A-Za-z0-9_]*=|\{\}$)")
 
 
 def command_position_words(command):
     """Indices of tokens the shell would execute: the command word of a simple
     command, or the first non-flag argument after an interpreter word. Everything
     else (an argument to grep/wc/sed/head/cat/...) is never a script position."""
-    # A newline separates commands the way `;` does; a backslash-newline joins them.
+    # The shell reads a newline as `;`, and a backslash-newline as a space.
     flat = re.sub(r"\\\n", " ", command).replace("\n", " ; ")
     lex = shlex.shlex(flat, posix=True, punctuation_chars=";&|(){}")
     lex.whitespace_split = True
     try:
         tokens = list(lex)
     except ValueError:
-        tokens = command.split()
-        return ([0] if tokens else []), tokens
+        # An unbalanced quote must not switch the scan off: walk the raw words instead.
+        tokens = flat.split()
     positions = []
     expect_cmd = True
     i = 0
@@ -87,15 +105,22 @@ def command_position_words(command):
         if not expect_cmd:
             i += 1
             continue
-        if tok in CONTROL_WORDS or ASSIGNMENT.match(tok) or tok in PREFIXES:
+        if tok in CONTROL_WORDS or ASSIGNMENT.match(tok):
             i += 1
+            continue
+        if tok in PREFIXES:
+            # Its flags, KEY=value words, and bare counts or durations (`timeout 60`,
+            # `xargs -n 1`) sit between the prefix and the command it wraps.
+            i += 1
+            while i < len(tokens) and tokens[i] not in OPERATORS and PREFIX_ARG.match(tokens[i]):
+                i += 1
             continue
         positions.append(i)
         if tok in INTERPRETERS:
             j = i + 1
-            while j < len(tokens) and tokens[j] not in OPERATORS and tokens[j].startswith("-"):
+            while j < len(tokens) and tokens[j] not in OPERATORS and tokens[j].startswith("-") and tokens[j] not in NO_SCRIPT_FLAGS:
                 j += 1
-            if j < len(tokens) and tokens[j] not in OPERATORS:
+            if j < len(tokens) and tokens[j] not in OPERATORS and tokens[j] not in NO_SCRIPT_FLAGS:
                 positions.append(j)
         expect_cmd = False
         i += 1
@@ -131,20 +156,22 @@ if not found:
             candidates = [word]
         else:
             candidates = [os.path.join(project_dir, word), os.path.join(cwd, word)]
-        path = next((c for c in candidates if os.path.isfile(c)), None)
-        if path is None:
-            continue
-        try:
-            with open(path, "rb") as fh:
-                text = fh.read(64 * 1024).decode("utf-8", errors="replace")
-        except OSError:
-            continue
-        if LAUNCHERS.search(" " + path):
-            continue
-        # A launcher named only in a `#` comment inside the script is not a launch it runs.
-        found = LAUNCH.search(COMMENT.sub("", text))
+        # Both roots are scanned: a script shadowed by a same-named file in the other
+        # root would otherwise decide the verdict for the one the shell runs.
+        for path in (c for c in candidates if os.path.isfile(c)):
+            try:
+                with open(path, "rb") as fh:
+                    text = fh.read(64 * 1024).decode("utf-8", errors="replace")
+            except OSError:
+                continue
+            if LAUNCHERS.search(" " + path):
+                continue
+            # A launcher named only in a `#` comment inside the script is not a launch it runs.
+            found = LAUNCH.search(strip_comments(text))
+            if found:
+                where = word
+                break
         if found:
-            where = word
             break
 if found:
     print("deny\t%s\t%s" % (found.group(1).split()[0] + " " + found.group(1).split()[1], where))

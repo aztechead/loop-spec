@@ -91,6 +91,24 @@ check "a script on a second line is denied" 2 "$(bash_cmd "cd $ROOT
 bash round.sh")" CLAUDE_PROJECT_DIR="$ROOT"
 check "a script after a backgrounding & is denied" 2 "$(bash_cmd "sleep 1 & bash $ROOT/round.sh")" CLAUDE_PROJECT_DIR="$ROOT"
 check "a redirection does not hide a read-only target" 0 "$(bash_cmd "grep -n x $ROOT/docmod.py 2>&1 | head")" CLAUDE_PROJECT_DIR="$ROOT"
+# Review findings on the 6.6.3 fix: data after a stdin/string/module flag is not a
+# script, both roots are scanned, an unbalanced quote does not switch the scan off, a
+# quoted `#` is not a comment, and wrapper prefixes pass the command position through.
+printf '{"note":"run claude -p to reproduce"}\n' > "$ROOT/data.json"
+check "python3 - data.json reads data, not a script" 0 "$(bash_cmd "python3 - $ROOT/data.json <<'PY'
+import sys
+PY")" CLAUDE_PROJECT_DIR="$ROOT"
+check "bash -s -- data.json reads data, not a script" 0 "$(bash_cmd "bash -s -- $ROOT/data.json < /dev/null")" CLAUDE_PROJECT_DIR="$ROOT"
+check "python3 -c with a data file argument is allowed" 0 "$(bash_cmd "python3 -c 'pass' $ROOT/data.json")" CLAUDE_PROJECT_DIR="$ROOT"
+mkdir -p "$ROOT/sub"; cp "$ROOT/round.sh" "$ROOT/sub/x.sh"; cp "$ROOT/tests.sh" "$ROOT/x.sh"
+CASE_CWD="$ROOT/sub" check "a launcher shadowed by a benign root script is still denied" 2 "$(bash_cmd 'bash x.sh')" CLAUDE_PROJECT_DIR="$ROOT"
+check "an unbalanced quote does not switch the script scan off" 2 "$(bash_cmd "bash $ROOT/round.sh && echo it's fine")" CLAUDE_PROJECT_DIR="$ROOT"
+printf 'echo " # note"; claude -p "/loop-spec:cycle x"\n' > "$ROOT/hash.sh"
+check "a quoted # is not a comment" 2 "$(bash_cmd "bash $ROOT/hash.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+check "timeout wraps the command position" 2 "$(bash_cmd "timeout 60 bash $ROOT/round.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+check "stdbuf wraps the command position" 2 "$(bash_cmd "stdbuf -o0 bash $ROOT/round.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+check "xargs -I wraps the command position" 2 "$(bash_cmd "echo x | xargs -I{} bash $ROOT/round.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+check "for loop bodies are command positions" 2 "$(bash_cmd "for f in x; do bash $ROOT/round.sh; done")" CLAUDE_PROJECT_DIR="$ROOT"
 
 msg="$((cd "$ROOT" && env CLAUDE_PROJECT_DIR="$ROOT" bash "$HOOK") 2>&1 >/dev/null <<<"$(bash_cmd 'claude -p x')" || true)"
 if grep -q 'claude -p in the command' <<<"$msg" && grep -q 'session_run.py' <<<"$msg"; then

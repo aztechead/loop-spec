@@ -163,7 +163,7 @@ for i, a in enumerate(ordered):
         # A planner-declared edge wins over a synthetic one: adding both directions makes a
         # 2-cycle that dag-width refuses to dispatch (the 6.6.1 live run had to renumber 29 tasks
         # by hand to work around it).
-        if shared and a["id"] not in b["blockedBy"] and b["id"] not in (a.get("blockedBy") or []):
+        if shared and a["id"] not in b["blockedBy"] and b["id"] not in a["blockedBy"]:
             b["blockedBy"].append(a["id"]); b.setdefault("syntheticBlockedBy", []).append(a["id"])
 print(json.dumps(pending))
 PY
