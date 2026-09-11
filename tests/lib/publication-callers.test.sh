@@ -21,7 +21,10 @@ check() {
 # that actually write (a read-only mention, or a comment naming the convention, is not
 # a caller). Manual audit of every hit below (2026-09-10, task-004 WP2) found none
 # outside the first grep's set; the filter still runs so a NEW one fails loudly instead
-# of silently passing as "already covered".
+# of silently passing as "already covered". lib/requirements_migrate.py (task-011) was
+# added the same way: it writes feature.json directly under locked_feature, and
+# tests/lib/requirements-migrate.test.sh proves a token captured before its marker
+# becomes durable is refused afterward, same as any other enrolled participant.
 ALLOWLIST_HANDLED="
 lib/artifact_sink.py
 lib/checkpoint-pr.sh
@@ -38,6 +41,7 @@ lib/graph/gate.sh
 lib/graph/state.sh
 lib/iterate-judged.sh
 lib/phase-exit.sh
+lib/requirements_migrate.py
 lib/revise-state.sh
 lib/verify-gate.sh
 lib/verify-prepare.sh

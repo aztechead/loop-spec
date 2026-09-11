@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
-"""Convert an incomplete legacy cycle to the v1 requirements contract, read-only.
+"""Convert an incomplete legacy cycle to the v1 requirements contract.
 
 Purpose: `preview` inspects a feature directory whose requirementsContract is
 "legacy" or absent and prints one canonical JSON candidate -- proposed v1 SPEC
 text, proposed PLAN text, proposed requirementsContract and artifactPublication
 changes -- without writing anything. `status` reports the feature's current
-migration marker and journal read-only. `apply`, `resume` and `rollback` are
-task-011's job; here they only fix the CLI contract (see "Future commands"
-below) and refuse with exit 2.
+migration marker and journal read-only. `apply` publishes an operator-approved
+preview under the publication lock, durably preserving originals first;
+`resume` finishes an interrupted transaction from its recorded phase without
+reallocating IDs; `rollback` restores a committed transaction's originals when
+the migrated artifacts are still untouched.
 
 Commands:
   requirements-migrate.sh preview --feature-dir DIR
   requirements-migrate.sh status  --feature-dir DIR
-  requirements-migrate.sh apply|resume|rollback --feature-dir DIR ...  (not yet)
+  requirements-migrate.sh apply   --feature-dir DIR --preview PATH --digest SHA256
+  requirements-migrate.sh resume   --feature-dir DIR --transaction ID
+  requirements-migrate.sh rollback --feature-dir DIR --transaction ID
 
 Preview JSON schema (sorted keys, no timestamps, no absolute paths):
   {
@@ -41,46 +45,77 @@ Preview JSON schema (sorted keys, no timestamps, no absolute paths):
                      JSON, sorted keys, separators (",", ":")
   }
 
-Journal/receipt schema apply/resume/rollback will use (task-011; fixed now so
-the CLI contract in the plan does not change under it):
-  Durable transaction state lives at
-  `migration-generations/<transaction-id>/` inside feature state, mirroring
-  lib/artifact_publication.py's publication-generations journal one level up:
-    marker.json    -- {"version":1,"id":str,"previewDigest":str,"phase":
-                       "staged"|"replaced"|"published"|"committed",
-                       "originalGeneration":int,"publishedHashes":{path:sha256}}
-                       Published into feature.json's artifactPublication.migration
-                       as soon as it is durable (SPEC "Migration preserves
-                       originals"); phase advances left-to-right and never back.
-    <n>/original   -- exact pre-migration bytes of the n-th replaced artifact
-                       (SPEC.md, PLAN.md, feature.json), 0400, one per entry,
-                       named the same way as publication-generations/<txn>/<n>.
-    receipt.json   -- written last, once phase == "committed":
-                       {"version":1,"id":str,"previewDigest":str,
-                        "requirementsContractDigest":sha256,
-                        "publishedHashes":{path:sha256},
-                        "completedGeneration":int}
-  resume reads marker.json's phase and expected hashes and finishes the same
-  transaction without reallocating IDs; rollback restores the <n>/original
-  bytes only when the current artifact still hashes to publishedHashes[path],
-  then increments generation and clears artifactPublication.migration. Neither
-  command fabricates historical observations or touches specApproval.
+Journal/receipt schema apply/resume/rollback use. Durable transaction state
+lives at `migration-generations/<transaction-id>/` inside feature state,
+mirroring lib/artifact_publication.py's publication-generations journal one
+level up:
+  marker.json     -- {"version":1,"id":str,"previewDigest":str,"phase":
+                      "staged"|"replaced"|"published"|"committed"|"rolled-back",
+                      "originalGeneration":int,"publishedHashes":{path:sha256},
+                      "preview":{...the approved preview object, replayed by
+                      resume so no ID is ever reallocated...},
+                      "originalContract":{...the requirementsContract exactly
+                      as it read before this transaction, restored verbatim by
+                      rollback...},"files":[names backed up]}.
+                      The public subset {id,previewDigest,phase,
+                      originalGeneration,publishedHashes} is published into
+                      feature.json's artifactPublication.migration as soon as
+                      it is durable (SPEC "Migration preserves originals");
+                      phase advances left-to-right and never back, except that
+                      "committed" may become "rolled-back".
+  originals/<name> -- exact pre-migration bytes of each replaced artifact
+                      (SPEC.md, PLAN.md, tasks.json if present, feature.json),
+                      written 0400 before any authoritative byte changes.
+  receipt.json     -- written once phase reaches "published":
+                      {"version":1,"id":str,"previewDigest":str,
+                       "requirementsContractDigest":sha256,
+                       "publishedHashes":{path:sha256},
+                       "completedGeneration":int}
 
-Exit codes: 0 success (preview or status JSON on stdout); 1 refusal with a
-file/line or field diagnostic on stderr (no repository file is ever written on
-this path); 2 bad invocation, or apply/resume/rollback (not implemented in
-this revision).
+`apply` recomputes and rechecks the preview under the same publication lock it
+mutates state through, so a change to any source or feature-state field
+between preview and apply refuses naming the first differing top-level key.
+`resume` re-derives every remaining step from marker.json's stored preview and
+current phase, comparing live bytes to the expected target before writing, so
+replaying a finished ("committed") transaction is a no-op (exit 0). `rollback`
+restores the originals only when the live artifacts still hash to
+publishedHashes; a later edit is refused by naming the file and both hashes.
+Neither command fabricates historical observations or touches specApproval;
+rollback bypasses ordinary requirementsContract monotonicity the same way
+lib/artifact_publication.py's recover_locked bypasses prepare_state, because
+restoring the pre-migration contract on an explicit operator rollback is the
+extraordinary recovery path itself, not an ordinary write.
+
+Two generation bumps happen per committed migration, both compare-and-swap
+protection rather than an evidence-freshness test: once when the migration
+marker becomes durable in feature.json (before any artifact byte changes, so
+any reader holding an earlier token fails its own publish), and again when the
+final contract/receipt are published. evidenceEpoch advances once, at the
+final publish, invalidating prior observation records project-wide.
+
+Failure injection: pass `failure=callable` to apply/resume/rollback (a
+callable invoked as failure(point) at each durable boundary) for tests, or set
+LOOP_SPEC_MIGRATION_FAIL_AT to one of backup|marker|spec|plan|state|receipt to
+raise RuntimeError at that boundary in a real subprocess. Points fire only
+after the corresponding write is durable, so failure always leaves a resumable
+transaction, never a torn write.
+
+Exit codes: 0 success (preview/status/apply/resume/rollback JSON on stdout);
+1 refusal with a file/line or field diagnostic on stderr (a refused preview or
+apply-precheck writes no repository file); 2 bad invocation.
 
 Limits: SPEC.md and PLAN.md are each refused above requirements.MAX_BYTES (16
 MiB), checked by file size before any byte is read or hashed. File hashing
 streams in 64 KiB chunks (see `stream_digest`).
 """
 import argparse
+import copy
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import sys
 import uuid
 
@@ -377,28 +412,35 @@ def resolve_owner(state, feature_dir):
     return {"repository": repository, "feature": state.get("slug", "")}
 
 
+def artifact_targets(feature_dir, state):
+    """The same {spec,plan,verification} resolution build_preview, apply and
+    rollback all need, so a relocated checkout or a custom artifacts pointer
+    is honored identically wherever a migration touches these paths."""
+    feature_dir = Path(feature_dir)
+    slug = state.get("slug")
+    root = next((p for p in feature_dir.parents if (p / ".git").exists()), None)
+    docs_dir = root / "docs" / "loop-spec" / "features" / slug if root is not None and isinstance(slug, str) and slug else None
+    artifacts = state.get("artifacts", {}) if isinstance(state.get("artifacts"), dict) else {}
+    targets = {}
+    for key, default_name in (("spec", "SPEC.md"), ("plan", "PLAN.md"), ("verification", "VERIFICATION.md")):
+        pointer = artifacts.get(key)
+        if not pointer:
+            targets[key] = docs_dir / default_name if docs_dir else None
+            continue
+        path = Path(pointer)
+        # A persisted pointer is the same relative-to-repo-root shape publish_locked
+        # writes (docs/loop-spec/features/<slug>/...); an absolute pointer is used as-is.
+        targets[key] = path if path.is_absolute() or root is None else root / path
+    return targets
+
+
 def build_preview(feature_dir):
     feature_dir = Path(feature_dir)
     state = load_raw_state(feature_dir)
     refuse_unmigratable(state, feature_dir)
 
-    slug = state.get("slug")
-    root = next((p for p in feature_dir.parents if (p / ".git").exists()), None)
-    docs_dir = root / "docs" / "loop-spec" / "features" / slug if root is not None and isinstance(slug, str) and slug else None
-    artifacts = state.get("artifacts", {}) if isinstance(state.get("artifacts"), dict) else {}
-
-    def resolve(key, default_name):
-        pointer = artifacts.get(key)
-        if not pointer:
-            return docs_dir / default_name if docs_dir else None
-        path = Path(pointer)
-        # A persisted pointer is the same relative-to-repo-root shape publish_locked
-        # writes (docs/loop-spec/features/<slug>/...); an absolute pointer is used as-is.
-        return path if path.is_absolute() or root is None else root / path
-
-    spec_path = resolve("spec", "SPEC.md")
-    plan_path = resolve("plan", "PLAN.md")
-    verification_path = resolve("verification", "VERIFICATION.md")
+    targets = artifact_targets(feature_dir, state)
+    spec_path, plan_path, verification_path = targets["spec"], targets["plan"], targets["verification"]
     tasks_path = feature_dir / "tasks.json"
     if not spec_path or not spec_path.is_file():
         raise ValueError("feature-dir %s: no readable SPEC.md to migrate" % feature_dir)
@@ -441,7 +483,7 @@ def build_preview(feature_dir):
 
     publication = state.get("artifactPublication") or {"version": 1, "generation": 0, "evidenceEpoch": 0,
                                                         "migration": None, "participantsVersion": 1}
-    migration_id = str(uuid.uuid5(NAMESPACE, "migration:" + digest({"spec": spec_text, "plan": plan_text, "slug": slug})))
+    migration_id = str(uuid.uuid5(NAMESPACE, "migration:" + digest({"spec": spec_text, "plan": plan_text, "slug": state.get("slug")})))
     proposed_publication = {
         "evidenceEpoch": publication["evidenceEpoch"] + 1,
         "migration": {"id": migration_id, "previewDigest": None, "phase": "staged",
@@ -477,6 +519,23 @@ def build_preview(feature_dir):
     return body
 
 
+def _read_marker(transaction_dir):
+    path = transaction_dir / "marker.json"
+    if not path.is_file():
+        return None
+    with path.open("r", encoding="utf-8") as stream:
+        return json.load(stream)
+
+
+def _write_json(path, value):
+    from feature_write import publish
+    publish(path, (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8"))
+
+
+def _write_marker(transaction_dir, marker):
+    _write_json(transaction_dir / "marker.json", marker)
+
+
 def build_status(feature_dir):
     feature_dir = Path(feature_dir)
     state = load_raw_state(feature_dir)
@@ -484,8 +543,273 @@ def build_status(feature_dir):
     if migration is None:
         return {"migration": "none"}
     directory = feature_dir / "migration-generations" / migration["id"]
+    marker = _read_marker(directory)
     return {"migration": migration,
-            "journal": {"transactionDir": str(directory), "present": directory.is_dir()}}
+            "journal": {"transactionDir": str(directory), "present": directory.is_dir(),
+                        "phase": marker.get("phase") if marker else None}}
+
+
+def _default_failure(point):
+    """Production no-op unless a test names this exact boundary."""
+    if os.environ.get("LOOP_SPEC_MIGRATION_FAIL_AT") == point:
+        raise RuntimeError("LOOP_SPEC_MIGRATION_FAIL_AT=%s" % point)
+
+
+def _first_difference(fresh, approved):
+    """The one top-level key that no longer agrees, so a refusal names exactly
+    what changed instead of forcing the operator to diff two JSON blobs."""
+    for key in sorted(set(fresh) | set(approved)):
+        if fresh.get(key) != approved.get(key):
+            return key
+    return None
+
+
+ORIGINAL_NAMES = ("SPEC.md", "PLAN.md", "tasks.json", "feature.json")
+
+
+def _backup_originals(feature_dir, transaction_dir, spec_path, plan_path):
+    """Preserve exact pre-migration bytes 0400 before any authoritative byte
+    changes; returns the subset of ORIGINAL_NAMES that actually existed."""
+    from feature_write import publish, read_bounded
+    originals_dir = transaction_dir / "originals"
+    originals_dir.mkdir(parents=True)
+    sources = {"SPEC.md": spec_path, "PLAN.md": plan_path,
+               "tasks.json": feature_dir / "tasks.json", "feature.json": feature_dir / "feature.json"}
+    present = []
+    for name in ORIGINAL_NAMES:
+        source = sources[name]
+        if source is not None and source.is_file():
+            content = read_bounded(source)
+            target = originals_dir / name
+            publish(target, content)
+            os.chmod(target, 0o400)
+            present.append(name)
+    return present
+
+
+def _advance(feature_dir, transaction_dir, marker, failure):
+    """Drive marker["phase"] forward to "committed", comparing live bytes to
+    the stored preview's targets before writing so every step is a no-op on
+    replay. Shared by apply (from "staged") and resume (from any phase)."""
+    from artifact_publication import persist_deferred
+    from feature_write import publish, read_bounded, state_snapshot, write_state_locked
+    from feature_read import load_state
+    preview = marker["preview"]
+    state = load_state(feature_dir)
+    if marker["phase"] == "staged":
+        current_migration = (state.get("artifactPublication") or {}).get("migration") or {}
+        if current_migration.get("id") != marker["id"]:
+            raise ValueError("feature state does not reference transaction %s; nothing to resume" % marker["id"])
+    targets = artifact_targets(feature_dir, state)
+    failures = []
+
+    if marker["phase"] == "staged":
+        for name, path, text in (("SPEC.md", targets["spec"], preview["proposedSpec"]["text"]),
+                                  ("PLAN.md", targets["plan"], preview["proposedPlan"]["text"])):
+            content = text.encode("utf-8")
+            if not (path.is_file() and read_bounded(path) == content):
+                publish(path, content)
+                persist_deferred(feature_dir, failures)
+            marker["publishedHashes"][name] = hashlib.sha256(content).hexdigest()
+            failure("spec" if name == "SPEC.md" else "plan")
+        marker["phase"] = "replaced"
+        _write_marker(transaction_dir, marker)
+        persist_deferred(feature_dir, failures)
+
+    if marker["phase"] == "replaced":
+        state = load_state(feature_dir)
+        if (state.get("artifactPublication") or {}).get("migration") is not None:
+            final_state = copy.deepcopy(state)
+            final_state["requirementsContract"] = preview["proposedRequirementsContract"]
+            final_state["artifactPublication"]["evidenceEpoch"] += 1
+            final_state["artifactPublication"]["generation"] += 1
+            final_state["artifactPublication"]["migration"] = None
+            write_state_locked(feature_dir, final_state, state_snapshot(feature_dir))
+            persist_deferred(feature_dir, failures)
+        failure("state")
+        marker["phase"] = "published"
+        _write_marker(transaction_dir, marker)
+        persist_deferred(feature_dir, failures)
+
+    if marker["phase"] == "published":
+        receipt_path = transaction_dir / "receipt.json"
+        if not receipt_path.is_file():
+            receipt = {"version": 1, "id": marker["id"], "previewDigest": marker["previewDigest"],
+                       "requirementsContractDigest": digest(preview["proposedRequirementsContract"]),
+                       "publishedHashes": marker["publishedHashes"],
+                       "completedGeneration": load_state(feature_dir)["artifactPublication"]["generation"]}
+            _write_json(receipt_path, receipt)
+            persist_deferred(feature_dir, failures)
+        failure("receipt")
+        marker["phase"] = "committed"
+        _write_marker(transaction_dir, marker)
+        persist_deferred(feature_dir, failures)
+
+    if failures:
+        raise failures[0]
+    return marker
+
+
+def apply(feature_dir, preview_path, expected_digest, failure=None):
+    from artifact_publication import locked_feature, persist_deferred, refuse_pending
+    from feature_read import load_state
+    from feature_write import state_snapshot, write_state_locked
+
+    feature_dir = Path(feature_dir)
+    failure = failure or _default_failure
+    try:
+        with open(preview_path, "r", encoding="utf-8") as stream:
+            preview = json.load(stream)
+    except (OSError, ValueError) as exc:
+        raise ValueError("--preview %s: cannot read preview: %s" % (preview_path, exc))
+    if not isinstance(preview, dict) or "previewDigest" not in preview:
+        raise ValueError("--preview %s: not a migration preview file" % preview_path)
+    if preview["previewDigest"] != expected_digest:
+        raise ValueError("--digest %s does not match the preview file's own previewDigest %s"
+                          % (expected_digest, preview["previewDigest"]))
+    if digest({k: v for k, v in preview.items() if k != "previewDigest"}) != expected_digest:
+        raise ValueError("--preview %s is not self-consistent; take a fresh preview" % preview_path)
+
+    with locked_feature(feature_dir):
+        state = load_state(feature_dir)
+        if not state.get("artifactPublication"):
+            # build_preview tolerates a not-yet-bootstrapped legacy cycle (it
+            # only *reads* a default), but apply mutates real generation/
+            # evidenceEpoch counters and must not silently bootstrap them here:
+            # doing so would change build_preview's own "sources" digest out
+            # from under the very preview being approved. Any cycle a migration
+            # is offered for has already been touched by an ordinary phase
+            # transition (feature_write.begin_operation's bootstrap) by the
+            # time task-009 activates migration, so this is a real precondition.
+            raise ValueError("feature-dir %s: run an ordinary phase transition first "
+                              "to initialize artifactPublication before migrating" % feature_dir)
+        migration = (state.get("artifactPublication") or {}).get("migration")
+        if migration is not None:
+            raise ValueError("feature-dir %s: migration %s (phase=%s) is already staged; run status/resume"
+                              % (feature_dir, migration["id"], migration["phase"]))
+        refuse_pending(feature_dir)
+
+        fresh = build_preview(feature_dir)
+        differing = _first_difference(fresh, preview)
+        if differing:
+            raise ValueError("feature-dir %s: %s changed since this preview was approved; take a fresh preview"
+                              % (feature_dir, differing))
+        if fresh["previewDigest"] != expected_digest:
+            raise ValueError("feature-dir %s: current inputs no longer match --digest %s; take a fresh preview"
+                              % (feature_dir, expected_digest))
+
+        transaction_dir = feature_dir / "migration-generations" / preview["id"]
+        if transaction_dir.is_dir() and not (transaction_dir / "marker.json").is_file():
+            # Backups were written but the transaction never became durable
+            # (a crash before marker.json); nothing authoritative changed, so
+            # the stale directory is simply discarded and apply starts clean.
+            shutil.rmtree(transaction_dir)
+        if (transaction_dir / "marker.json").is_file():
+            raise ValueError("feature-dir %s: transaction %s already recorded; run status/resume"
+                              % (feature_dir, preview["id"]))
+
+        targets = artifact_targets(feature_dir, state)
+        transaction_dir.mkdir(parents=True)
+        failures = []
+        present = _backup_originals(feature_dir, transaction_dir, targets["spec"], targets["plan"])
+        persist_deferred(feature_dir, failures)
+        failure("backup")
+
+        original_generation = state["artifactPublication"]["generation"]
+        public_marker = {"id": preview["id"], "previewDigest": preview["previewDigest"], "phase": "staged",
+                          "originalGeneration": original_generation, "publishedHashes": {}}
+        marker = dict(public_marker, version=1, preview=preview,
+                      originalContract=state.get("requirementsContract"), files=present)
+        _write_marker(transaction_dir, marker)
+        new_state = copy.deepcopy(state)
+        new_state["artifactPublication"]["generation"] = original_generation + 1
+        new_state["artifactPublication"]["migration"] = public_marker
+        write_state_locked(feature_dir, new_state, state_snapshot(feature_dir))
+        persist_deferred(feature_dir, failures)
+        failure("marker")
+
+        if failures:
+            raise failures[0]
+        marker = _advance(feature_dir, transaction_dir, marker, failure)
+
+    return {"transaction": preview["id"], "phase": marker["phase"]}
+
+
+def resume(feature_dir, transaction_id, failure=None):
+    from artifact_publication import locked_feature
+    from feature_read import load_state
+
+    feature_dir = Path(feature_dir)
+    failure = failure or _default_failure
+    transaction_dir = feature_dir / "migration-generations" / transaction_id
+    with locked_feature(feature_dir):
+        marker = _read_marker(transaction_dir)
+        if marker is None:
+            if transaction_dir.is_dir():
+                shutil.rmtree(transaction_dir)
+                raise ValueError("transaction %s never became durable; nothing to resume, re-run apply" % transaction_id)
+            raise ValueError("unknown migration transaction: %s" % transaction_id)
+        if marker["phase"] == "committed":
+            state = load_state(feature_dir)
+            if (state.get("requirementsContract") or {}).get("inventoryDigest") != marker["preview"]["proposedRequirementsContract"]["inventoryDigest"]:
+                raise ValueError("transaction %s is committed but state no longer matches; manual review required" % transaction_id)
+            return {"transaction": transaction_id, "phase": "committed", "resumed": False}
+        if marker["phase"] == "rolled-back":
+            raise ValueError("transaction %s was already rolled back; nothing to resume" % transaction_id)
+        marker = _advance(feature_dir, transaction_dir, marker, failure)
+    return {"transaction": transaction_id, "phase": marker["phase"], "resumed": True}
+
+
+def rollback(feature_dir, transaction_id):
+    from artifact_publication import digest as file_digest, locked_feature, persist_deferred, refuse_pending
+    from feature_read import load_state
+    from feature_write import publish, read_bounded, state_snapshot, write_state_locked
+
+    feature_dir = Path(feature_dir)
+    transaction_dir = feature_dir / "migration-generations" / transaction_id
+    with locked_feature(feature_dir):
+        marker = _read_marker(transaction_dir)
+        if marker is None:
+            raise ValueError("unknown migration transaction: %s" % transaction_id)
+        if marker["phase"] != "committed":
+            raise ValueError("transaction %s is not committed (phase=%s); resume it before rollback"
+                              % (transaction_id, marker["phase"]))
+        refuse_pending(feature_dir)
+        state = load_state(feature_dir)
+        targets = artifact_targets(feature_dir, state)
+        conflicts = []
+        for name, path in (("SPEC.md", targets["spec"]), ("PLAN.md", targets["plan"])):
+            expected = marker["publishedHashes"].get(name)
+            actual = file_digest(path) if path is not None else None
+            if actual != expected:
+                conflicts.append("%s: expected %s, found %s" % (name, expected, actual))
+        if conflicts:
+            raise ValueError("rollback refuses changed artifact(s) since migration: " + "; ".join(conflicts))
+
+        originals_dir = transaction_dir / "originals"
+        failures = []
+        for name, path in (("SPEC.md", targets["spec"]), ("PLAN.md", targets["plan"])):
+            publish(path, read_bounded(originals_dir / name))
+        persist_deferred(feature_dir, failures)
+
+        new_state = copy.deepcopy(state)
+        new_state["requirementsContract"] = marker["originalContract"]
+        new_state["artifactPublication"]["evidenceEpoch"] = state["artifactPublication"]["evidenceEpoch"] + 1
+        new_state["artifactPublication"]["generation"] = state["artifactPublication"]["generation"] + 1
+        new_state["artifactPublication"]["migration"] = None
+        # Restoring the pre-migration contract deliberately bypasses ordinary
+        # requirementsContract monotonicity (prepare_state/validate_transition):
+        # rollback IS the extraordinary recovery path, the same way
+        # artifact_publication.recover_locked calls write_state_locked directly.
+        write_state_locked(feature_dir, new_state, state_snapshot(feature_dir))
+        persist_deferred(feature_dir, failures)
+
+        marker["phase"] = "rolled-back"
+        _write_marker(transaction_dir, marker)
+        persist_deferred(feature_dir, failures)
+        if failures:
+            raise failures[0]
+    return {"transaction": transaction_id, "phase": "rolled-back"}
 
 
 def main(argv):
@@ -496,17 +820,25 @@ def main(argv):
     parser.add_argument("--digest")
     parser.add_argument("--transaction")
     args = parser.parse_args(argv)
-    if args.command in ("apply", "resume", "rollback"):
-        print("requirements-migrate: %s is not implemented in this revision" % args.command, file=sys.stderr)
-        return 2
     feature_dir = Path(args.feature_dir)
     if not feature_dir.is_dir():
         print("requirements-migrate: feature-dir does not exist: %s" % feature_dir, file=sys.stderr)
         return 2
     if args.command == "preview":
         print(json.dumps(build_preview(feature_dir), sort_keys=True, ensure_ascii=False))
-    else:
+    elif args.command == "status":
         print(json.dumps(build_status(feature_dir), sort_keys=True, ensure_ascii=False))
+    elif args.command == "apply":
+        if not args.preview or not args.digest:
+            print("requirements-migrate: apply requires --preview PATH --digest SHA256", file=sys.stderr)
+            return 2
+        print(json.dumps(apply(feature_dir, args.preview, args.digest), sort_keys=True, ensure_ascii=False))
+    else:
+        if not args.transaction:
+            print("requirements-migrate: %s requires --transaction ID" % args.command, file=sys.stderr)
+            return 2
+        result = resume(feature_dir, args.transaction) if args.command == "resume" else rollback(feature_dir, args.transaction)
+        print(json.dumps(result, sort_keys=True, ensure_ascii=False))
     return 0
 
 
