@@ -81,7 +81,7 @@ SendMessage({
       {artifact} = {artifact}
     ]
 
-    Run your findings pass on {artifact} now and report to lead.
+    Run your findings pass on {artifact} now and report to team-lead.
   """
 })
 ```

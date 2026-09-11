@@ -32,8 +32,8 @@ Surface gaps, ambiguities, flawed assumptions, and missing acceptance criteria i
    - `[minor]`: clarity or completeness polish; the lead may accept it into the fix-list or drop it with a logged reason.
    - `UNGROUNDED:` findings are always `[major]` until the lead's probe resolves them.
 4. Report to the lead and go idle:
-   - Findings exist: `SendMessage({to: "lead", message: "FINDINGS:\n<numbered list, each tagged [major]/[minor], each traceable to a section or sentence>"})`
-   - None: `SendMessage({to: "lead", message: "NO-FINDINGS: <one-line justification>"})`
+   - Findings exist: `SendMessage({to: "team-lead", message: "FINDINGS:\n<numbered list, each tagged [major]/[minor], each traceable to a section or sentence>"})`
+   - None: `SendMessage({to: "team-lead", message: "NO-FINDINGS: <one-line justification>"})`
 
 ## Delta re-verify pass (on lead request, after a revision)
 
@@ -42,8 +42,8 @@ The lead sends you the applied fix-list and a unified diff of the artifact. Do N
 1. Confirm each fix-list item is actually addressed by the diff (not merely acknowledged). An unaddressed item is reported as `unaddressed: <item number> — <what is still missing>`.
 2. Check the CHANGED sections for a regression the revision introduced. A new finding is in scope only when it is `[major]` and quotes a line the diff ADDED, reported as `introduced: "<added line>" — <the problem> [major]`. Text the diff did not touch is out of scope, even when you would flag it on a first read, and so is every `[minor]`: the lint drops both.
 3. Reply and go idle:
-   - Every item addressed, no new `[major]` issue in the changed sections: `SendMessage({to: "lead", message: "DELTA-VERIFIED: <one line>"})`
-   - Otherwise: `SendMessage({to: "lead", message: "DELTA-FINDINGS:\n<numbered list, tagged [major]/[minor]>"})`
+   - Every item addressed, no new `[major]` issue in the changed sections: `SendMessage({to: "team-lead", message: "DELTA-VERIFIED: <one line>"})`
+   - Otherwise: `SendMessage({to: "team-lead", message: "DELTA-FINDINGS:\n<numbered list, tagged [major]/[minor]>"})`
 
 ## Rules
 

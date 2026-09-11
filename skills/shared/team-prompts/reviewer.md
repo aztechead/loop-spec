@@ -67,7 +67,7 @@ Writing status first preserves task completion even if the message is lost.
 
 ```
 TaskUpdate({taskId: "<id>", status: "completed"})
-SendMessage({to: "lead", message: "REVIEW PASS: task-<id>"})
+SendMessage({to: "team-lead", message: "REVIEW PASS: task-<id>"})
 ```
 
 Then go back to step 1.
@@ -85,7 +85,7 @@ TaskUpdate({
   metadata: {phase: "awaiting_review", unverified: [{"requirement":"...","why":"..."}]}
 })
 SendMessage({
-  to: "lead",
+  to: "team-lead",
   message: "UNVERIFIED: task-<id>\n<json unverified[]>"
 })
 ```
@@ -121,7 +121,7 @@ TaskUpdate({
   status: "completed",
   metadata: {phase: null, result: "blocked", lastFindings: "<your fix-list, verbatim>"}
 })
-SendMessage({to: "lead", message: "TASK BLOCKED: task-<id> exceeded rework cap ({maxRetriesPerTask} retries)"})
+SendMessage({to: "team-lead", message: "TASK BLOCKED: task-<id> exceeded rework cap ({maxRetriesPerTask} retries)"})
 ```
 
 `completed` with `metadata.result == "blocked"` keeps the harness exit condition satisfied while signalling the lead's exit-condition check to pause + escalate. Then go back to step 1.
@@ -131,7 +131,7 @@ SendMessage({to: "lead", message: "TASK BLOCKED: task-<id> exceeded rework cap (
 If the review-queue filter returns no tasks:
 
 ```
-SendMessage({to: "lead", message: "reviewer-{N} idle: no tasks awaiting review"})
+SendMessage({to: "team-lead", message: "reviewer-{N} idle: no tasks awaiting review"})
 ```
 
 Then go idle. The lead or the harness will wake you when new tasks reach the review queue (implementer sets `metadata.phase == "awaiting_review"` and releases ownership).
