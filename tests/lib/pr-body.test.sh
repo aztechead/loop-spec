@@ -163,7 +163,7 @@ check "5: spec quality follows reviewer-facing verification" "1" \
   "$(awk '/^## Verification/{v=NR} /^### Spec quality/{q=NR} END{print (v && q && v<q)?1:0}' "$OUT")"
 check "5: resolved questions rendered" "1" "$(grep -c 'No unresolved intent questions' "$OUT")"
 check "5: summary fallback skips frontmatter" "1" "$(grep -c 'adds a demo capability' "$OUT")"
-sed -i '' 's/unresolved_questions: .*/unresolved_questions: ["Which output format is required?"]/' "$DOCS/SPEC.md"
+sed -i.bak 's/unresolved_questions: .*/unresolved_questions: ["Which output format is required?"]/' "$DOCS/SPEC.md"; rm -f "$DOCS/SPEC.md.bak"
 bash "$LIB" render "$WORK/feature.json" "$WORK" "$OUT"
 check "5: unresolved question is visible" "1" "$(grep -c 'Which output format is required?' "$OUT")"
 

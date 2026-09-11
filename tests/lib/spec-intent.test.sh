@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Approval survives implementation edits, commits, and attempts to replace state.
+# Approval is recorded once, survives implementation edits, commits, and attempts to
+# replace state, and before it exists the lint asks only that the sections it will
+# cover are present.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 python3 - "$root" <<'PY'
@@ -52,7 +54,10 @@ Use existing helpers.
         assert result.returncode == expected, result.stdout
         return result.stdout
 
-    call("artifact-lint.sh", "spec", str(spec), "--feature-dir", str(feature), expected=1)
+    call("artifact-lint.sh", "spec", str(spec), "--feature-dir", str(feature))
+    spec.write_text(original.replace("Return the requested output.", "Return different output."))
+    call("artifact-lint.sh", "spec", str(spec), "--feature-dir", str(feature))
+    spec.write_text(original)
     call("cycle-driver.sh", "spec", "approve", "--feature-dir", str(feature), "--source", "autonomous")
     approval = json.loads((feature / "feature.json").read_text())["specApproval"]
     assert approval["source"] == "autonomous"
@@ -78,8 +83,16 @@ Use existing helpers.
     (promoted / "feature.json").write_text(json.dumps({"slug":"promoted"}))
     short = (plugin / "tests/fixtures/oneshot-SPEC.md").read_text()
     spec.write_text(short.replace("---\n", "---\nroute: full\n", 1))
-    assert "no recorded approval" in call("artifact-lint.sh", "spec", str(spec),
-                                         "--feature-dir", str(promoted), expected=1)
+    assert "non-empty goal" in call("artifact-lint.sh", "spec", str(spec),
+                                    "--feature-dir", str(promoted), expected=1)
+    attended = repo / ".loop-spec/features/attended"
+    attended.mkdir()
+    (attended / "feature.json").write_text(json.dumps({"slug": "attended", "currentPhase": "discuss"}))
+    adocs = repo / "docs/loop-spec/features/attended"
+    adocs.mkdir(parents=True)
+    (adocs / "SPEC.md").write_text(original)
+    call("cycle-driver.sh", "spec", "approve", "--feature-dir", str(attended))
+    assert json.loads((attended / "feature.json").read_text())["specApproval"]["source"] == "human"
     for invalid in (original.replace("## Goals", "## Other"), original + "\n## Goals\nDuplicate\n"):
         try:
             intent_digest(invalid)
@@ -87,5 +100,5 @@ Use existing helpers.
             pass
         else:
             raise AssertionError("missing/duplicate frozen section accepted")
-print("PASS: intent approval, tamper detection after commit, state protection, autonomous source, idempotency")
+print("PASS: pre-freeze edits pass lint, intent approval, tamper detection after commit, state protection, derived source, idempotency")
 PY

@@ -11,6 +11,16 @@ import sys
 import tempfile
 
 
+def retired(state, approved):
+    """The driver reopened the freeze for a human-approved SPEC rewind: the approval is
+    gone and its last record sits at the end of specApprovalHistory. Anything else
+    that moves an approval is the tamper the guard exists for."""
+    history = state.get("specApprovalHistory") or []
+    last = history[-1] if isinstance(history, list) and history else None
+    return state.get("specApproval") is None and isinstance(last, dict) and \
+        all(last.get(key) == approved.get(key) for key in ("sha256", "source", "approvedAt"))
+
+
 def parse_json(value):
     try:
         parsed = json.loads(value)
@@ -113,7 +123,7 @@ def main(args):
 
         if previous is not None:
             approved = parse_json(previous).get("specApproval")
-            if approved is not None and state.get("specApproval") != approved:
+            if approved is not None and state.get("specApproval") != approved and not retired(state, approved):
                 raise ValueError("specApproval is immutable; restore approved intent and request a new intent decision")
 
         content = (json.dumps(state, indent=2, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")

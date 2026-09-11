@@ -4,6 +4,43 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.6.0] - 2026-09-10
+
+The Goal and Boundary freeze moves from SPEC exit to PLAN entry.
+
+### Before you update
+
+- **DISCUSS may change Goal and Boundary again.** A live run froze them when SPEC
+  exited; DISCUSS then asked its design questions in a fresh session, the human's
+  answers changed those sections, and the return escalated `frozen-intent-changed`
+  with the human present. The driver now records `specApproval` when the cycle enters
+  PLAN, on every route in (the DISCUSS gate, the short and compact paths, ITERATE's
+  plan gap), with the source read from `lib/supervisor/oracle.sh` rather than typed by
+  the lead. `skills/spec/SKILL.md` and `skills/discuss/SKILL.md` no longer call
+  `spec approve`; the command remains for tests and out-of-band supervisors.
+- **The DISCUSS human gate says whether intent moved.** `next` answers
+  `PAUSED node=human.after-discuss intent=changed|unchanged|unknown` by comparing the
+  sections against `specIntentSeen`, the digest the driver records at SPEC exit. A
+  feature 6.5 froze at SPEC exit has no snapshot; the gate compares against its
+  approval instead. The cycle skill prints Goal and Boundary before that pause when
+  they changed, because PLAN freezes them as they stand.
+- **A human-approved SPEC rewind reopens the freeze.** When ITERATE routes a `spec`
+  gap through `human.iterate-spec-approval` and the human chooses to re-open, the
+  driver retires `specApproval` into `specApprovalHistory`, clears it, and re-records
+  at PLAN; the DISCUSS gate compares against the retired digest. An unattended rewind
+  keeps the freeze, as before. `tests/lib/pr-body.test.sh` no longer uses the macOS
+  form of `sed -i`.
+- **A refused phase entry is not an escalation.** `phase-begin` refused for a missing or
+  changed approval used to write the escalated result and open a checkpoint PR while the
+  feature stayed in its phase. It now emits `entry_refused` with the reason and exits 1.
+- **A NEXT answer removes the pause it resumes from.** `result.json` and the
+  `.loop-spec/last-result.json` pointer kept the last `paused` record while the next
+  phase ran; the driver removes both when it activates the phase.
+- **PLAN entry requires the record.** `phase-begin plan` refuses a feature with no
+  `specApproval`; entering through `next` records it. Before PLAN, artifact lint checks
+  only that Goal and Boundary exist and are non-empty; from PLAN on it compares the
+  digest as before, and the state writer still refuses replacement or deletion.
+
 ## [6.5.0] - 2026-09-09
 
 The orchestrator port's follow-up (`port audit 1`,

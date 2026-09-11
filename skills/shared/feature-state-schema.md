@@ -48,7 +48,9 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "currentPhase": "a phase id of lib/graph/phases.sh list (spec | oneshot | discuss | plan | execute | verify | iterate | deliver) | completed",
   "currentPhaseStartedAt": "ISO-8601 timestamp or null; set by cycle-driver.sh next when it answers NEXT for a phase (the watchdog reads it)",
   "completedPhases": ["array of phase names"],
+  "specIntentSeen": {"sha256":"Goal and Boundary digest at SPEC exit", "at":"ISO-8601 timestamp"},
   "specApproval": {"sha256":"approved Goal and Boundary digest", "source":"human | supervised | autonomous", "approvedAt":"ISO-8601 timestamp"},
+  "specApprovalHistory": [{"sha256":"...", "source":"...", "approvedAt":"...", "reopenedAt":"ISO-8601 timestamp", "reopenedBy":"human.iterate-spec-approval"}],
   "instructionSnapshots": [{"phase":"phase id", "manifest":"absolute path", "sha256":"manifest digest", "prompt":"absolute path", "promptSha256":"rendered body digest"}],
   "reviewRouting": {"route":"intent-gap | bad-spec", "used":0, "pending":false, "reportSha256":"review digest", "findings":[]},
   "branch": "string (feat/{slug})",
@@ -358,8 +360,15 @@ On `cycle` skill startup, candidate `feature.json` files are enumerated, filtere
 ## Approved full-spec intent
 
 `specApproval` records `sha256`, `source` (`human`, `supervised`, or `autonomous`),
-and `approvedAt`. `cycle-driver.sh spec approve --feature-dir DIR --source SOURCE`
-creates it after the questions are resolved and the Goal and Boundary are approved.
-The state writer refuses replacement or deletion. Phase exit passes the feature dir
-to artifact lint, which compares those sections with the approved digest even after
-intervening commits. Implementation and acceptance details remain editable.
+and `approvedAt`. The driver creates it when the cycle enters PLAN, on every route in
+(the DISCUSS gate, the short and compact paths, ITERATE's plan gap), with the source
+read from `lib/supervisor/oracle.sh`. Until then Goal and Boundary may change: SPEC's
+interview settles intent and DISCUSS's design questions may refine it. `specIntentSeen`
+holds their digest at SPEC exit so the DISCUSS gate can say `intent=changed`. Once
+recorded, the state writer refuses replacement or deletion, PLAN entry requires it,
+and phase exit passes the feature dir to artifact lint, which compares those sections
+with the approved digest even after intervening commits. Implementation and
+acceptance details remain editable throughout. The one exit is a human-approved SPEC
+rewind (`human.iterate-spec-approval`): the driver retires the record to
+`specApprovalHistory`, clears `specApproval`, and PLAN records the next one. The
+writer accepts that shape and no other. An unattended rewind keeps the freeze.
