@@ -250,7 +250,9 @@ cite "deliver CI budget defers to cycle graph"     skills/deliver/SKILL.md "grap
 
 # Negative case: a synthetic skill carrying each banned declaration class must be
 # flagged — a residual check that cannot fail is not a check.
-neg="$(mktemp "${TMPDIR:-/tmp}/residual-neg.XXXXXX.md")"
+neg="$(mktemp "${TMPDIR:-/tmp}/residual-neg.XXXXXX")"
+mv "$neg" "$neg.md"
+neg="$neg.md"
 cat > "$neg" <<'MD'
 # synthetic phase skill
 - Set `currentPhase = "execute"` and go to Phase exit.
