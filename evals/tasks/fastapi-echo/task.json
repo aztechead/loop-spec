@@ -1,0 +1,8 @@
+{
+  "id": "fastapi-echo",
+  "size": "small",
+  "kind": "greenfield",
+  "prompt": "a Python 3.14 web service built with FastAPI. GET /echo?text=<string> returns the JSON object {\"text\": <that string>}. POST /echo accepts the JSON object {\"text\": <string>}, rejects a body whose text is not a string, and returns the same object back. The ASGI app object is `app` in `main.py`. Declare the project in pyproject.toml with requires-python >=3.14 and the runtime dependencies listed, with tests runnable by pytest and a README that says how to install and run it.",
+  "reference_app_lines": 50,
+  "protected": []
+}
