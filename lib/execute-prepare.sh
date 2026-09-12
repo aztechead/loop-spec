@@ -34,7 +34,7 @@
 # Exit: 0 ready to dispatch; 1 not ready (branch mismatch, unreadable sidecar, or a
 # stop-class conflict; .stop and the reason are in the JSON); 2 bad invocation;
 # 3 dependency cycle (dag-width).
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
