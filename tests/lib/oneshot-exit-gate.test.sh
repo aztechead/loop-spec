@@ -263,40 +263,16 @@ spec; sed -i.bak 's|^footprint:$|footprint: [src/slugify.py, README.md]|; /^  - 
 bash "$DRV" spec footprint drop --feature-dir "$FD" --file README.md --reason "flow form" >/dev/null 2>&1
 check "a flow-form footprint loses the file too" "1" "$(grep -c '^footprint: \[src/slugify.py\]$' "$DOCS/SPEC.md")"
 spec
-# A lockfile the package manager writes next to a footprint manifest is that
-# manifest's output, not a fourth file (the 6.6.3 FastAPI run left uv.lock for DELIVER).
-spec; sed -i.bak 's|^  - src/slugify.py$|  - src/slugify.py\
-  - pyproject.toml|' "$DOCS/SPEC.md"
-printf '[project]\nname = "x"\n' > "$REPO/pyproject.toml"; printf 'version = 1\n' > "$REPO/uv.lock"; printf '3.14\n' > "$REPO/.python-version"; printf '.venv/\n' > "$REPO/.gitignore"
-git -C "$REPO" add pyproject.toml uv.lock .python-version .gitignore && git -C "$REPO" commit -q -m "build: manifest, lock, ignore"
+# A diff file the footprint does not name is the reviewer's finding, not the gate's: the
+# gate used to escalate on it and grew a list of what scaffolders write (the PR 100
+# audit named the next file every time). It ships past this gate with no route change.
+printf 'extra\n' >> "$REPO/README.md"; printf 'version = 1\n' > "$REPO/uv.lock"
+git -C "$REPO" add README.md uv.lock && git -C "$REPO" commit -q -m "docs: touch readme, add a lock"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
-check "a lockfile beside a footprint manifest is inside the footprint" "0" "$(grep -c 'outside SPEC.md' <<<"$out")"
-check "the frontmatter is not escalated by the lockfile" "0" "$(sed -n '1,/^---$/!d; /^route: full$/p' "$DOCS/SPEC.md" | grep -c 'route: full')"
-git -C "$REPO" rm -q pyproject.toml uv.lock .python-version .gitignore && git -C "$REPO" commit -q -m "build: drop manifest"
-# The map is not uv's alone: a Pipfile owns its lock, and a node version pin beside
-# package.json is the .python-version analogue (the PR 100 audit named both gaps).
-spec; sed -i.bak 's|^  - src/slugify.py$|  - src/slugify.py\
-  - Pipfile\
-  - package.json|' "$DOCS/SPEC.md"
-printf '[packages]\n' > "$REPO/Pipfile"; printf '{}\n' > "$REPO/Pipfile.lock"; printf '{}\n' > "$REPO/package.json"; printf '20\n' > "$REPO/.nvmrc"
-git -C "$REPO" add Pipfile Pipfile.lock package.json .nvmrc && git -C "$REPO" commit -q -m "build: pipfile and node pin"
-ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
-check "Pipfile.lock and .nvmrc beside their manifests are inside the footprint" "0" "$(grep -c 'outside SPEC.md' <<<"$out")"
-git -C "$REPO" rm -q Pipfile Pipfile.lock package.json .nvmrc && git -C "$REPO" commit -q -m "build: drop pipfile and node pin"
-spec; printf 'version = 2\n' > "$REPO/uv.lock"; git -C "$REPO" add uv.lock && git -C "$REPO" commit -q -m "build: orphan lock"
-ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
-check "a lockfile with no footprint manifest is still the fourth file" "1" "$(grep -c 'the diff touches uv.lock outside SPEC.md' <<<"$out")"
-git -C "$REPO" rm -q uv.lock && git -C "$REPO" commit -q -m "build: drop orphan lock"
-spec
-# The other direction: a changed file outside the footprint is the fourth file. The
-# gate escalates the run itself, names the file, and the --after probe routes to DISCUSS.
-printf 'extra\n' >> "$REPO/README.md"; git -C "$REPO" add README.md && git -C "$REPO" commit -q -m "docs: touch readme"
-ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
-check "a diff file outside the footprint escalates instead of shipping" "0" "$ec"
-check "the gate names the file" "1" "$(grep -c '^NOTE \[footprint\] the diff touches README.md outside SPEC.md.s footprint: route: full written' <<<"$out")"
-check "route: full is written into the frontmatter" "1" "$(sed -n '1,/^---$/!d; /^route: full$/p' "$DOCS/SPEC.md" | grep -c 'route: full')"
-check "the escalation note names the file under Implementation notes" "1" "$(grep -c '^- escalated by lib/oneshot-exit-gate.sh: the diff touches README.md, outside the footprint' "$DOCS/SPEC.md")"
-check "the --after probe now routes to the full path" "route=full" "$(bash "$REPO_ROOT/lib/graph/probes/oneshot.sh" --feature-dir "$FD" --after | cut -d' ' -f1)"
+check "a diff file outside the footprint is not the gate's finding" "0" "$ec"
+check "the gate writes no route: full for it" "0" "$(sed -n '1,/^---$/!d; /^route: full$/p' "$DOCS/SPEC.md" | grep -c 'route: full')"
+check "the gate names no outside file" "0" "$(grep -c 'outside' <<<"$out")"
+check "the --after probe still routes the oneshot" "route=oneshot" "$(bash "$REPO_ROOT/lib/graph/probes/oneshot.sh" --feature-dir "$FD" --after | cut -d' ' -f1)"
 git -C "$REPO" reset -q --hard HEAD~1
 spec
 # The converged floor is the full one: a FAIL row is a finding, not a shape.
@@ -336,7 +312,8 @@ check "workspace mode: the changed file in repo a satisfies the footprint" "0" "
 printf 'z = 1\n' > "$WS/b/z.py"; git -C "$WS/b" add -A && git -C "$WS/b" commit -q -m "feat: z"
 sed -i.bak 's|^  - a/tests/test_x.py$||' "$WDOCS/SPEC.md"; sed -i.bak '/^- b\/y.py: unchanged; dropped/d; /^route: full$/d; /^- escalated by/d' "$WDOCS/SPEC.md"
 ec=0; out="$(cd "$WS" && bash "$GATE" "$WFD" 2>&1)" || ec=$?
-check "workspace mode: a changed file outside the footprint in repo b escalates" "1" "$(grep -c '^NOTE \[footprint\] the diff touches b/z.py outside' <<<"$out")"
+check "workspace mode: a changed file outside the footprint in repo b is the reviewer's, not the gate's" "0" "$(grep -c 'b/z.py' <<<"$out")"
+check "workspace mode: no route: full written for it" "0" "$(sed -n '1,/^---$/!d; /^route: full$/p' "$WDOCS/SPEC.md" | grep -c 'route: full')"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

@@ -36,6 +36,7 @@ method is not a defect merely because it differs from the user's initial suggest
 2. `git diff {base_sha}..{branch}` - full diff
 3. Read changed files with Read tool for context
 4. Read the `## Boundaries (what NOT to do)` section in `spec_path`. Check the diff against each anti-goal; any violation is a **Critical** finding (the feature produced a behavior the spec forbade).
+   When `spec_path` carries a `footprint:` list (the oneshot route), the scope is yours to hold: no gate counts files. A diff file outside that list that the change authored (source, tests, docs) is an **Important** finding naming the file; a change whose authored files have outgrown the footprint (the route was chosen on at most three) is **Critical**, and the fix you name is `route: full`, never a squeeze. Files a scaffolder or package manager wrote beside a footprint manifest (a lockfile, an interpreter pin, an ignore file) are the manifest's output: mention them, never flag them.
 5. **Shortcut / cheat scan (reject-on-sight).** Flag each of these as **Critical** with file:line - they fake quality or dodge real fixes:
    - Suppression markers added to silence a diagnostic instead of fixing it: `# type: ignore`, `ty: ignore`, `# noqa`, `# pyright: ignore`, `eslint-disable`, or new warning-filter calls.
    - Re-exports / shims / aliases added solely to keep an old import or test green instead of updating the caller or test.

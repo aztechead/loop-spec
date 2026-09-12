@@ -61,8 +61,6 @@ All notable changes documented here. Format follows Keep a Changelog.
 - `lib/oneshot-spec-lint.sh` stands down under `LOOP_SPEC_ROUTE=full` or a `route: full`
   frontmatter line: a forced-full run writes the full shape (live run 3 drew two REDOs
   for a missing Intent block).
-- `lib/oneshot-exit-gate.sh` also counts `.gitignore` beside a footprint manifest as
-  that manifest's output (`uv init` writes it; live run 2 escalated on it alone).
 - `lib/cycle-driver.sh` and `tests/run-all.sh` put the `python-path.sh` directory first
   on PATH once, so every script they run skips the shim's `pyenv exec` on each of the
   hundreds of `python3` launches a phase makes (0.15 s each against 0.02 s for the
@@ -99,9 +97,16 @@ All notable changes documented here. Format follows Keep a Changelog.
 - `lib/pr-delivery.sh` checkpoint and observe modes refuse a hostless remote as
   `remote_hostless`, not `gh_missing`: a supervisor could not tell "install gh" from
   "this remote is a path".
-- `lib/oneshot-exit-gate.sh`'s manifest map also owns `Pipfile.lock` (`Pipfile`),
-  `requirements.lock` / `requirements-dev.lock` (`pyproject.toml`), `.nvmrc` /
-  `.node-version` (`package.json`), and `.ruby-version` (`Gemfile`).
+- The oneshot exit gate's fourth-file escalation and its `generated_by_manifest`
+  allowlist are gone. The footprint still selects the route (at most three files) and
+  still has to be in the diff; a diff file outside it is the code reviewer's finding
+  (`agents/code-reviewer.md`: Important per file, Critical when the authored files
+  outgrow the footprint, `route: full` as the fix), and scaffold output beside a
+  manifest is mentioned, never flagged. The gate had needed a new filename every live
+  run (lockfiles in 6.6.3, `.gitignore` in 6.6.4, README.md and main.py next); none of
+  Spec Kit, OpenSpec, or Superpowers gates a diff on a declared file list, and BMAD,
+  which does, is replacing its agent-declared list with git's (its issue 1789).
+  `skills/oneshot/SKILL.md` commits everything the change wrote.
 - `lib/oneshot-spec-lint.sh` reads a quoted `route: "full"` as the probe does.
 - `lib/python-path.sh` refuses a private directory it does not own (a symlink or
   someone else's directory planted at the predictable `/tmp` name), creates it 0700,
@@ -135,11 +140,9 @@ service, 9 minutes, $1.65) against a repository whose `origin` is a local bare p
   gh's `[HOST/]OWNER/REPO` argument error after the checkpoint reported `gh pr list
   failed`. Both scripts now read the URL as configured (`remote.<name>.pushurl` /
   `.url`) rather than through `remote get-url`, which expands `insteadOf` rewrites.
-- `lib/oneshot-exit-gate.sh`: a lockfile or interpreter pin beside a manifest the
-  footprint names (`uv.lock`, `.python-version`, `package-lock.json`, `Cargo.lock`, ...)
-  is that manifest's output, not the fourth file. The lead had left `uv.lock` and
-  `.python-version` uncommitted to stay under the gate, then committed them inside
-  DELIVER. `skills/oneshot/SKILL.md` says so at the commit step.
+- `lib/oneshot-exit-gate.sh` no longer escalates on a file outside the footprint (see
+  the audit section below); the lead had left `uv.lock` and `.python-version`
+  uncommitted to stay under that check, then committed them inside DELIVER.
 - `lib/events.sh` records `headSha` on every `phase_end`; `lib/deliver.sh` refuses a
   candidate whose non-artifact files differ from the HEAD the last gate advanced on
   (`post_gate_drift`). The run's `result.json` had named a commit no scan or reviewer

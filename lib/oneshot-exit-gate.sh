@@ -15,10 +15,7 @@
 # baseSha (the same bodies VERIFY's gate nodes run; per repo in workspace mode), every
 # footprint file in that diff (an untouched one is a flag naming the one way out,
 # `cycle-driver.sh spec footprint drop`, which records the decision; there is no prose
-# exit), no file in that diff outside the footprint (a lockfile or interpreter pin next
-# to a footprint manifest is that manifest's output and counts as inside)
-# (one is the fourth file the route does not allow: the gate writes `route: full` into
-# SPEC.md with the file named and the run takes the full path), the frozen Intent block
+# exit), the frozen Intent block
 # unchanged since SPEC committed it, a recorded code-reviewer dispatch, artifact-lint
 # verification, verification-grounding-lint, review-triage-lint over the findings, and
 # the converged floor (every Good Enough row PASS).
@@ -68,60 +65,12 @@ fi
 footprint=()
 while IFS= read -r f; do [[ -n "$f" ]] && footprint+=("$f"); done \
   < <(sed -n '/^footprint:/,/^[^ ]/p' "$spec" | sed -n 's/^  - //p; s/^footprint: *\[\(.*\)\]$/\1/p' | tr ',' '\n' | sed 's/^ *//; s/ *$//' | sed '/^$/d')
-# The other direction: a changed file the footprint does not name is the fourth file,
-# and the route is over. The gate escalates the run itself, with the file named, so the
-# --after probe routes to DISCUSS and nothing ships past the footprint unchecked.
-# A lockfile or interpreter pin the package manager writes next to a manifest the
-# footprint names is that manifest's output, not a fourth file: the first FastAPI live
-# run (6.6.3) left uv.lock and .python-version uncommitted to stay under the gate, then
-# committed them in DELIVER where no scan or reviewer saw them.
-generated_by_manifest() {
-  # generated_by_manifest <changed path> -> 0 when a footprint manifest owns it
-  local dir="${1%/*}" base="${1##*/}" manifest
-  [[ "$dir" == "$1" ]] && dir=""
-  case "$base" in
-    # uv init and its peers write the ignore file with the manifest (live run 2 escalated
-    # on .gitignore alone); any manifest in the same directory owns it.
-    .gitignore)
-      for manifest in pyproject.toml Pipfile package.json Cargo.toml go.mod Gemfile composer.json; do
-        printf '%s\n' "${footprint[@]+"${footprint[@]}"}" | grep -qxF "${dir:+$dir/}$manifest" && return 0
-      done
-      return 1 ;;
-    uv.lock|poetry.lock|pdm.lock|requirements.lock|requirements-dev.lock|.python-version) manifest="pyproject.toml" ;;
-    Pipfile.lock) manifest="Pipfile" ;;
-    package-lock.json|yarn.lock|pnpm-lock.yaml|bun.lock|bun.lockb|.nvmrc|.node-version) manifest="package.json" ;;
-    Cargo.lock) manifest="Cargo.toml" ;;
-    go.sum) manifest="go.mod" ;;
-    Gemfile.lock|.ruby-version) manifest="Gemfile" ;;
-    composer.lock) manifest="composer.json" ;;
-    *) return 1 ;;
-  esac
-  printf '%s\n' "${footprint[@]+"${footprint[@]}"}" | grep -qxF "${dir:+$dir/}$manifest"
-}
-if (( ! escalated )); then
-  outside=""
-  while IFS= read -r f; do
-    [[ -n "$f" ]] || continue
-    [[ "$f" == docs/loop-spec/* || "$f" == .loop-spec/* || "$f" == */docs/loop-spec/* || "$f" == */.loop-spec/* ]] && continue
-    printf '%s\n' "${footprint[@]+"${footprint[@]}"}" | grep -qxF "$f" && continue
-    generated_by_manifest "$f" && continue
-    outside+="$f "
-  done <<<"$changed"
-  if [[ -n "$outside" ]]; then
-    python3 - "$spec" "$outside" <<'PY'
-import re, sys
-path, files = sys.argv[1], sys.argv[2].strip()
-text = open(path, encoding="utf-8").read()
-if not re.search(r"^route: *full\s*$", text, flags=re.M):
-    text = re.sub(r"^---\n(.*?)^---\n", lambda m: "---\n" + m.group(1) + "route: full\n---\n", text, count=1, flags=re.M | re.S)
-note = "- escalated by lib/oneshot-exit-gate.sh: the diff touches %s, outside the footprint; the run takes the full path\n" % files
-text = text.replace("## Implementation notes\n", "## Implementation notes\n" + note, 1)
-open(path, "w", encoding="utf-8").write(text)
-PY
-    echo "NOTE [footprint] the diff touches ${outside% } outside SPEC.md's footprint: route: full written to $spec; the run continues on the full path (DISCUSS)"
-    escalated=1
-  fi
-fi
+# A diff file the footprint does not name is the reviewer's finding, not this gate's:
+# the gate used to escalate on it and grew a by-name list of what scaffolders write
+# (lockfiles, pins, .gitignore, then README.md, main.py, ...) that trailed every live
+# run. The reviewer reads the whole diff from baseSha and holds the scope
+# (agents/code-reviewer.md); the peers that gate on a declared file list are repairing
+# theirs the same way.
 if (( ! escalated )) && [[ -n "$base_sha" ]]; then
   for f in "${footprint[@]+"${footprint[@]}"}"; do
     [[ -n "$f" ]] || continue

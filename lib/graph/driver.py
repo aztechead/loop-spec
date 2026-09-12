@@ -2411,8 +2411,8 @@ def cmd_spec(argv):
     if sub == "footprint" and argv[1:2] == ["drop"]:
         sub, argv = "drop", argv[1:]
     if sub == "escalate":
-        raise Die("spec escalate is not the lead's call: a gate escalates from evidence (a diff outside the footprint, "
-                  "a reviewer BLOCK, or the third identical REDO), with the reason on record (port audit 5, R3)", 2)
+        raise Die("spec escalate is not the lead's call: a gate escalates from evidence (a reviewer BLOCK that stands, "
+                  "or the third identical REDO), with the reason on record (port audit 5, R3)", 2)
     if sub not in ("skeleton", "write", "drop", "fill", "approve"):
         usage()
     opts = {"approve": ("--feature-dir", "--source"), "write": ("--feature-dir", "--file"), "drop": ("--feature-dir", "--file", "--reason"),
