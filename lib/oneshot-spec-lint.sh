@@ -47,6 +47,10 @@ for raw in front:
         in_list = False
 if footprint is None or not (1 <= len(footprint) <= footprint_max):
     sys.exit(0)
+# A run the operator or the gate already put on the full route writes the full shape:
+# LOOP_SPEC_ROUTE=full drew two REDOs for a missing Intent block (live run 3, 6.6.4).
+if os.environ.get("LOOP_SPEC_ROUTE") == "full" or any(re.match(r"^route:\s*full\s*$", raw) for raw in front):
+    sys.exit(0)
 flags = []
 if len(lines) > max_lines:
     flags.append("FLAG [oneshot-shape] SPEC.md is %d lines; a spec with a oneshot footprint keeps to %d (skills/shared/artifact-templates/SPEC-oneshot.md.template): cut narrative, keep the frozen Intent block, Implementation notes, the Good Enough criteria with their check commands, and Grounding" % (len(lines), max_lines))

@@ -54,6 +54,9 @@ All notable changes documented here. Format follows Keep a Changelog.
   earlier cut of this change printed the interpreter's own directory, which put
   Homebrew's bin first on PATH and shadowed a newer `claude` with the cask's old one;
   live run 2's nested reviewer session failed on "does not support this model".
+- `lib/oneshot-spec-lint.sh` stands down under `LOOP_SPEC_ROUTE=full` or a `route: full`
+  frontmatter line: a forced-full run writes the full shape (live run 3 drew two REDOs
+  for a missing Intent block).
 - `lib/oneshot-exit-gate.sh` also counts `.gitignore` beside a footprint manifest as
   that manifest's output (`uv init` writes it; live run 2 escalated on it alone). `lib/cycle-driver.sh` and
   `tests/run-all.sh` put it first on PATH once, so every script they run skips the

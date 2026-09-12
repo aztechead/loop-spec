@@ -85,6 +85,13 @@ check "a oneshot spec over 60 lines flags" "1" "$ec"
 check "the flag names the line count and the template" "1" "$(grep -c 'FLAG \[oneshot-shape\] SPEC.md is 7[0-9] lines; a spec with a oneshot footprint keeps to 60' <<<"$out")"
 sed 's/^## Implementation notes$/## Notes/' "$DOCS/SPEC.md" > "$WORK/nonotes.md"
 check "a oneshot spec without Implementation notes flags" "1" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nonotes.md" 2>&1 | grep -c 'no .## Implementation notes. section')"
+# A run already on the full route writes the full shape: the same missing section passes
+# under LOOP_SPEC_ROUTE=full and under a `route: full` frontmatter line (live run 3 drew
+# two REDOs on a forced-full spec).
+check "a forced-full run is not held to the oneshot shape" "0" "$(LOOP_SPEC_ROUTE=full bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nonotes.md" >/dev/null 2>&1; echo $?)"
+sed '1a\
+route: full' "$WORK/nonotes.md" > "$WORK/routed.md"
+check "a route: full spec is not held to the oneshot shape" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/routed.md" >/dev/null 2>&1; echo $?)"
 sed 's/^## Intent$/## Problem/' "$DOCS/SPEC.md" > "$WORK/nointent.md"
 # The variant stays inside the repository: the rule resolves the test module against
 # the spec's own git toplevel.
