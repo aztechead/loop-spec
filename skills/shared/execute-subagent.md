@@ -270,16 +270,17 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
 
 ## Agent dispatch convention
 
-Dispatch every implementer and reviewer with the **default** agent, exactly as
-`lib/workflows/execute-dag.js` does, unless
-`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/harness.sh" agent-type implementer` (or
-`spec-compliance-reviewer` for the reviewer) answers something other than `default` --
-that only happens under Codex with the matching `~/.codex/agents/loop-spec-<role>.toml`
-installed, and there `subagent_type` is that answer. Either way the prompts below are
-self-contained -- they carry the implement, verify, commit, and review
-instructions in full. The template below is the WORKTREE-mode prompt; with
+Dispatch every implementer and reviewer with the **default** agent (do NOT pass
+`subagent_type`), exactly as `lib/workflows/execute-dag.js` does, on every harness. The
+prompts below are self-contained -- they carry the implement, verify, commit, and review
+instructions in full, and the implementer stanza below is true only because no role
+charter rides along. The template below is the WORKTREE-mode prompt; with
 `worktreesEnabled == false` compose the in-place prompt from "In-place single-repository
-mode" above instead. Read the role selector
+mode" above instead. Do NOT pass `subagent_type: "loop-spec:implementer"`: this path
+uses the default Agent with a self-contained prompt, and the lead already created
+the task worktree. A harness whose dispatch tool requires a type names the role its
+own contract maps an omitted type to (`opencode-harness.md`, `adk-harness.md`) and
+still sends the same self-contained prompt. Read the role selector
 from `models.implementer` or `models.specComplianceReviewer`; add the Agent
 `model` field only for an alias and omit it for `inherit`.
 

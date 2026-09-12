@@ -38,9 +38,6 @@ All notable changes documented here. Format follows Keep a Changelog.
 - `cycle-driver.sh task add-files --feature-dir DIR --task ID <file...>` widens an open
   task's write scope for a rework attempt across the sidecar, the collapsed list, and
   `prepare.json`; it refuses an integrated task.
-- `lib/harness.sh agent-type <role>` answers the registered Codex agent
-  (`loop-spec-<role>`) when its TOML is installed, `default` everywhere else;
-  `execute-subagent.md` passes `subagent_type` only on that answer.
 - Docs: verify-only tasks commit `--allow-empty`; worktree sessions call the driver by
   inline path; `configuration.md` lists the two new variables.
 - Already true on this tree, no change: `dispatch-prompt-guard.sh` accepts the
@@ -91,6 +88,14 @@ All notable changes documented here. Format follows Keep a Changelog.
 - `lib/execute-prepare.sh` fails (exit 2, the reason on stderr) when the artifact
   commit fails; it used to report the previous HEAD as `artifactsCommitted` with the
   dirty SPEC still in place.
+- Workspace DELIVER gets the same two refusals as the single-repo path: `lib/events.sh`
+  records `repoHeadShas` (HEAD per workspace repo) on `phase_end`, since the feature
+  dir sits at the workspace root and `headSha` was null there, and `lib/deliver.sh`
+  refuses `post_gate_drift` / `no_gate_record` per repo. The whole check had sat under
+  the single-repo branch.
+- `adk-harness.md` names the mapping for an EXECUTE dispatch that omits
+  `subagent_type` (`implementer` / `spec-compliance-reviewer`): `dispatch_subagent` has
+  no default-agent form, and the contract had no clause for the omission.
 - `lib/pr-delivery.sh` checkpoint and observe modes refuse a hostless remote as
   `remote_hostless`, not `gh_missing`: a supervisor could not tell "install gh" from
   "this remote is a path".
@@ -101,6 +106,12 @@ All notable changes documented here. Format follows Keep a Changelog.
 - `lib/python-path.sh` refuses a private directory it does not own (a symlink or
   someone else's directory planted at the predictable `/tmp` name), creates it 0700,
   and also resolves asdf and mise shims.
+- EXECUTE's implementer/reviewer rung dispatches the default agent on every harness,
+  Codex included. An earlier 6.6.4 cut added `harness.sh agent-type <role>`, which
+  passed the Codex role charter into a prompt whose first stanza says the charter does
+  not apply, and only saw user-level installs (`--project` writes `.codex/agents/`).
+  The probe is gone; `codex-harness.md` says `spawn_agent` carries no `agent_type` on
+  that rung.
 - `skills/oneshot/SKILL.md` records the reviewer dispatch BEFORE the `Agent` call so
   the `.pending-dispatch` marker stands while the reviewer runs; recorded after, it
   guarded nothing. `execute-subagent.md` says `task add-files` never reaches a running

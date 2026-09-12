@@ -377,6 +377,32 @@ check "workspace: one controller call" "1" "$(wc -l < "$LOG" | tr -d ' ')"
 check "workspace: representative PR url surfaced" "https://github.com/test/changed/pull/7" \
   "$(jq -r '.prUrl' "$WFDIR/delivery.json")"
 
+# Workspace drift: the gate record is per repo (events.sh repoHeadShas), and a commit
+# after the gate in any repo is refused the way the single-repo path refuses it; the
+# audit of PR 100 found the whole check sat under the single-repo branch.
+WS_GATED="$(git -C "$WS/changed" rev-parse HEAD)"
+jq -cn --arg c "$WS_GATED" --arg u "$UNCHANGED_BASE" '{ts:"t",slug:"ws",event:"phase_end",phase:"verify",data:{next:"deliver"},verdict:"advanced",next:"deliver",headSha:null,repoHeadShas:{changed:$c,unchanged:$u}}' > "$WFDIR/events.jsonl"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$WFDIR")" || ec=$?
+check "workspace gate record: a candidate at the gated HEAD delivers" "0" "$ec"
+printf 'late\n' > "$WS/changed/c"; git -C "$WS/changed" add c; git -C "$WS/changed" commit -q -m "sneaked after the gate"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$WFDIR")" || ec=$?
+check "workspace post-gate commit: exit 1" "1" "$ec"
+check "workspace post-gate commit: structured error on that repo" "post_gate_drift" \
+  "$(jq -r '.targets[] | select(.name=="changed") | .errorCode' "$WFDIR/delivery.json")"
+check "workspace post-gate commit: the refusal names the file" "1" "$(grep -c 'touch c;' "$WFDIR/delivery.json")"
+check "workspace post-gate commit: no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+jq -cn --arg c "$WS_GATED" --arg u "$UNCHANGED_BASE" '{ts:"t",slug:"ws",event:"phase_end",phase:"verify",data:{next:"discuss"},verdict:"advanced",next:"discuss",headSha:null,repoHeadShas:{changed:$c,unchanged:$u}}' > "$WFDIR/events.jsonl"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$WFDIR")" || ec=$?
+check "workspace no phase_end to deliver: structured error" "no_gate_record" \
+  "$(jq -r '.targets[] | select(.name=="changed") | .errorCode' "$WFDIR/delivery.json")"
+rm -f "$WFDIR/events.jsonl"; git -C "$WS/changed" reset -q --hard "$WS_GATED"
+
 # A repo on the wrong branch is blocked, never misreported as no changes.
 git -C "$WS/changed" checkout -q main
 : > "$LOG"; ec=0

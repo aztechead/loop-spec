@@ -22,8 +22,8 @@ check() {
 
 # run <verb> [env assignments...] [-- positional args...]
 # Invokes the lib in a clean env so the real session's harness vars can't leak in.
-# A bare token (no `NAME=value` shape) is a positional arg forwarded after the verb
-# (agent-type's <role> and --explain), never an env assignment.
+# A bare token (no `NAME=value` shape) is a positional arg forwarded after the verb,
+# never an env assignment.
 run() {
   local verb="$1"; shift
   local envs=() args=()
@@ -114,20 +114,6 @@ check "subagents under adk -> true" "true" "$got"
 
 got=$(run subagents LOOP_SPEC_HARNESS=codex)
 check "subagents under codex -> true" "true" "$got"
-
-# --- agent-type: only Codex ever answers a per-role custom agent ---
-got=$(run agent-type implementer LOOP_SPEC_HARNESS=claude)
-check "agent-type under claude -> default" "default" "$got"
-
-CODEX_AGENTS_HOME="${TMPDIR:-/tmp}/harness-agent-type-test.$$"
-mkdir -p "$CODEX_AGENTS_HOME/agents"
-got=$(run agent-type implementer LOOP_SPEC_HARNESS=codex CODEX_HOME="$CODEX_AGENTS_HOME")
-check "agent-type under codex with no matching agent file -> default" "default" "$got"
-
-touch "$CODEX_AGENTS_HOME/agents/loop-spec-implementer.toml"
-got=$(run agent-type implementer LOOP_SPEC_HARNESS=codex CODEX_HOME="$CODEX_AGENTS_HOME")
-check "agent-type under codex with a matching agent file -> loop-spec-<role>" "loop-spec-implementer" "$got"
-rm -rf "$CODEX_AGENTS_HOME"
 
 # --- loop runtime ---
 got=$(run loop-runtime LOOP_SPEC_NON_INTERACTIVE=1)

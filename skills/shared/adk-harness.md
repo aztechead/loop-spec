@@ -143,7 +143,12 @@ team rung survives, and every one-shot dispatch a phase skill (or
   and returns. Follow-up work is a new dispatch carrying its own context.
 
 An unknown `subagent_type` returns a structured error listing the known roles
-rather than dispatching something else.
+rather than dispatching something else. `dispatch_subagent` has no default-agent
+form: when a Claude Code dispatch intentionally omits `subagent_type` (the generic
+EXECUTE dispatches in `execute-subagent.md`), pass `implementer` for implementer
+prompts and `spec-compliance-reviewer` for review prompts, with the same
+self-contained prompt; `AgentTool` runs the role once and creates no nested
+worktree, which is what the Claude Code omission avoids.
 
 Gates, artifacts, and delivery semantics do not change. DELIVER still calls the
 same explicit-path `lib/deliver.sh` / `lib/pr-delivery.sh` controller as Claude

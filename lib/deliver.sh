@@ -247,6 +247,10 @@ if [[ -z "$workspace_root" ]]; then
 else
   # Pass 1 - preflight every configured repo. Blocked/zero-commit repos are recorded
   # now; repos with real commits are collected as deliverables for pass 2.
+  # The gate record is per repo here (events.sh writes repoHeadShas on phase_end in
+  # workspace mode); the two refusals mirror the single-repo path above.
+  gate_records=0
+  jq -e 'select(.event == "phase_end" and ((.repoHeadShas // {}) | length) > 0)' "$feature_dir/events.jsonl" >/dev/null 2>&1 && gate_records=1
   deliverables="[]"
   while IFS= read -r repo_entry; do
     name="$(jq -r '.name' <<<"$repo_entry")"
@@ -322,6 +326,22 @@ else
           checks:{status:"skipped",required:[]},observedAt:null,errorCode:null,error:null}')"
       targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
       continue
+    fi
+    gated_sha="$(jq -r --arg n "$name" 'select(.event == "phase_end" and .next == "deliver") | .repoHeadShas[$n]? // empty' \
+      "$feature_dir/events.jsonl" 2>/dev/null | tail -1)"
+    if [[ -z "$gated_sha" && "$gate_records" -eq 1 ]]; then
+      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
+        "no_gate_record" "no phase returned to deliver through the driver (events.jsonl has no phase_end routing to deliver with this repo's HEAD); run the cycle so a gate binds the candidate"
+      continue
+    fi
+    if [[ -n "$gated_sha" ]] && git -C "$repo_dir" rev-parse --verify -q "${gated_sha}^{commit}" >/dev/null 2>&1; then
+      post_gate_drift="$(git -C "$repo_dir" diff --name-only "$gated_sha" "$target_sha" -- . \
+        ':(top,exclude)docs/loop-spec' ':(top,exclude).loop-spec' 2>/dev/null | head -5 | paste -sd ' ' -)"
+      if [[ -n "$post_gate_drift" ]]; then
+        append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
+          "post_gate_drift" "commits after the last gate (${gated_sha:0:12}) touch $post_gate_drift; re-run the cycle so the gate sees them"
+        continue
+      fi
     fi
     bound="$(bound_target_sha "$name")"
     if [[ -n "$bound" && "$bound" != "$target_sha" ]]; then
