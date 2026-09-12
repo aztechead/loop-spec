@@ -83,15 +83,16 @@ generated_by_manifest() {
     # uv init and its peers write the ignore file with the manifest (live run 2 escalated
     # on .gitignore alone); any manifest in the same directory owns it.
     .gitignore)
-      for manifest in pyproject.toml package.json Cargo.toml go.mod Gemfile composer.json; do
+      for manifest in pyproject.toml Pipfile package.json Cargo.toml go.mod Gemfile composer.json; do
         printf '%s\n' "${footprint[@]+"${footprint[@]}"}" | grep -qxF "${dir:+$dir/}$manifest" && return 0
       done
       return 1 ;;
-    uv.lock|poetry.lock|pdm.lock|.python-version) manifest="pyproject.toml" ;;
-    package-lock.json|yarn.lock|pnpm-lock.yaml|bun.lock|bun.lockb) manifest="package.json" ;;
+    uv.lock|poetry.lock|pdm.lock|requirements.lock|requirements-dev.lock|.python-version) manifest="pyproject.toml" ;;
+    Pipfile.lock) manifest="Pipfile" ;;
+    package-lock.json|yarn.lock|pnpm-lock.yaml|bun.lock|bun.lockb|.nvmrc|.node-version) manifest="package.json" ;;
     Cargo.lock) manifest="Cargo.toml" ;;
     go.sum) manifest="go.mod" ;;
-    Gemfile.lock) manifest="Gemfile" ;;
+    Gemfile.lock|.ruby-version) manifest="Gemfile" ;;
     composer.lock) manifest="composer.json" ;;
     *) return 1 ;;
   esac

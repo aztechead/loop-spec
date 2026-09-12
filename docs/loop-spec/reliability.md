@@ -42,7 +42,7 @@ file. Resume carries the selected slug rather than choosing the first directory 
 shared checkout. The complete offline test command includes integration and harness
 suites; selecting a suite cannot silently omit it.
 
-Evidence: `tests/lib/feature-write.test.sh` and
+Evidence: `tests/lib/feature-write.test.sh`, `tests/lib/cycle-driver.test.sh`, and
 `tests/run-all.test.sh`. Concurrent callers serialize per feature; state processing is
 linear in the state document's size. Full snapshot replacement is still an overwrite,
 so concurrent callers use field operations.

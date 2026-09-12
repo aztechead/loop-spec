@@ -92,6 +92,9 @@ check "a forced-full run is not held to the oneshot shape" "0" "$(LOOP_SPEC_ROUT
 sed '1a\
 route: full' "$WORK/nonotes.md" > "$WORK/routed.md"
 check "a route: full spec is not held to the oneshot shape" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/routed.md" >/dev/null 2>&1; echo $?)"
+# The probe strips YAML quotes from the value; the lint reads the same spelling.
+sed 's/^route: full$/route: "full"/' "$WORK/routed.md" > "$WORK/routed-quoted.md"
+check "a quoted route: \"full\" spec is not held to the oneshot shape either" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/routed-quoted.md" >/dev/null 2>&1; echo $?)"
 sed 's/^## Intent$/## Problem/' "$DOCS/SPEC.md" > "$WORK/nointent.md"
 # The variant stays inside the repository: the rule resolves the test module against
 # the spec's own git toplevel.
@@ -270,6 +273,16 @@ ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "a lockfile beside a footprint manifest is inside the footprint" "0" "$(grep -c 'outside SPEC.md' <<<"$out")"
 check "the frontmatter is not escalated by the lockfile" "0" "$(sed -n '1,/^---$/!d; /^route: full$/p' "$DOCS/SPEC.md" | grep -c 'route: full')"
 git -C "$REPO" rm -q pyproject.toml uv.lock .python-version .gitignore && git -C "$REPO" commit -q -m "build: drop manifest"
+# The map is not uv's alone: a Pipfile owns its lock, and a node version pin beside
+# package.json is the .python-version analogue (the PR 100 audit named both gaps).
+spec; sed -i.bak 's|^  - src/slugify.py$|  - src/slugify.py\
+  - Pipfile\
+  - package.json|' "$DOCS/SPEC.md"
+printf '[packages]\n' > "$REPO/Pipfile"; printf '{}\n' > "$REPO/Pipfile.lock"; printf '{}\n' > "$REPO/package.json"; printf '20\n' > "$REPO/.nvmrc"
+git -C "$REPO" add Pipfile Pipfile.lock package.json .nvmrc && git -C "$REPO" commit -q -m "build: pipfile and node pin"
+ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
+check "Pipfile.lock and .nvmrc beside their manifests are inside the footprint" "0" "$(grep -c 'outside SPEC.md' <<<"$out")"
+git -C "$REPO" rm -q Pipfile Pipfile.lock package.json .nvmrc && git -C "$REPO" commit -q -m "build: drop pipfile and node pin"
 spec; printf 'version = 2\n' > "$REPO/uv.lock"; git -C "$REPO" add uv.lock && git -C "$REPO" commit -q -m "build: orphan lock"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "a lockfile with no footprint manifest is still the fourth file" "1" "$(grep -c 'the diff touches uv.lock outside SPEC.md' <<<"$out")"

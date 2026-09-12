@@ -65,26 +65,53 @@ All notable changes documented here. Format follows Keep a Changelog.
   frontmatter line: a forced-full run writes the full shape (live run 3 drew two REDOs
   for a missing Intent block).
 - `lib/oneshot-exit-gate.sh` also counts `.gitignore` beside a footprint manifest as
-  that manifest's output (`uv init` writes it; live run 2 escalated on it alone). `lib/cycle-driver.sh` and
-  `tests/run-all.sh` put it first on PATH once, so every script they run skips the
-  shim's `pyenv exec` on each of the hundreds of `python3` launches a phase makes
-  (0.15 s each against 0.02 s for the interpreter). The offline suite's summed time
-  fell from 2767 s to 1635 s on the machine that measured it; a phase exit pays the
-  same tax in a live cycle. The interpreter chosen is the one the shim would have
-  chosen.
+  that manifest's output (`uv init` writes it; live run 2 escalated on it alone).
+- `lib/cycle-driver.sh` and `tests/run-all.sh` put the `python-path.sh` directory first
+  on PATH once, so every script they run skips the shim's `pyenv exec` on each of the
+  hundreds of `python3` launches a phase makes (0.15 s each against 0.02 s for the
+  interpreter). The offline suite's summed time fell from 2767 s to 1635 s on the
+  machine that measured it; a phase exit pays the same tax in a live cycle. The
+  interpreter chosen is the one the shim would have chosen.
 - The whole suite passes with all network denied (`sandbox-exec` on macOS); the tree
   ships only tests that run with the machine offline.
 
+### Fixed (PR 100 audit, `docs/reviews/pr-100.md` on `chore/pr-100-audit`)
+
+- `lib/graph/driver.py` prints `NOTE [snapshot]` and `NOTE [escalate]` on stderr. Both
+  were on stdout, where `skills/cycle/SKILL.md` acts on the first line; on the exact
+  path the snapshot note exists for, the first line was the note and `NEXT` came after.
+- `tests/lib/cycle-driver.test.sh` and `tests/lib/execute-prepare.test.sh` are back with
+  their red cases fixed instead of deleted: the four driver cases pinned behavior 6.6.4
+  changed on purpose (a repeat return reruns the gate; one paused feature resumes
+  without a question) and now pin the new behavior; the prepare suite resolves its
+  work directory physically (`/private/var` on macOS). The 6.6.3 `next`, handoff,
+  REDO, and workspace-packet pins this release depends on are live again.
+- `tests/oneshot-artifact-budget.test.sh` is back: it was an offline fixture copier,
+  not a live eval. Its two fixtures live under `tests/fixtures/oneshot-artifact-budget/`.
+- `lib/execute-prepare.sh` fails (exit 2, the reason on stderr) when the artifact
+  commit fails; it used to report the previous HEAD as `artifactsCommitted` with the
+  dirty SPEC still in place.
+- `lib/pr-delivery.sh` checkpoint and observe modes refuse a hostless remote as
+  `remote_hostless`, not `gh_missing`: a supervisor could not tell "install gh" from
+  "this remote is a path".
+- `lib/oneshot-exit-gate.sh`'s manifest map also owns `Pipfile.lock` (`Pipfile`),
+  `requirements.lock` / `requirements-dev.lock` (`pyproject.toml`), `.nvmrc` /
+  `.node-version` (`package.json`), and `.ruby-version` (`Gemfile`).
+- `lib/oneshot-spec-lint.sh` reads a quoted `route: "full"` as the probe does.
+- `lib/python-path.sh` refuses a private directory it does not own (a symlink or
+  someone else's directory planted at the predictable `/tmp` name), creates it 0700,
+  and also resolves asdf and mise shims.
+- `skills/oneshot/SKILL.md` records the reviewer dispatch BEFORE the `Agent` call so
+  the `.pending-dispatch` marker stands while the reviewer runs; recorded after, it
+  guarded nothing. `execute-subagent.md` says `task add-files` never reaches a running
+  attempt's brief: a rework is a new dispatch.
+
 ### Removed
 
-- `tests/lib/cycle-driver.test.sh` and `tests/lib/execute-prepare.test.sh`: both failed
-  on `main` before 6.6.4 (pause/intent cases; a `/private/var` symlink case) and were
-  the slowest suite and one of the slower ones. A red suite that nobody fixes gates
-  nothing; deleted rather than skipped.
-- `evals/`, the live outcome-eval driver, with its two offline consumers
-  (`tests/eval-record-coverage.test.sh`, `tests/oneshot-artifact-budget.test.sh`) and
-  the nested-session guard's allowance for it: nothing in the tree may need the network
-  or a live model. Live runs are launched by hand and their findings live in the PR.
+- `evals/`, the live outcome-eval driver, with its offline consumer
+  `tests/eval-record-coverage.test.sh` and the nested-session guard's allowance for it:
+  nothing in the tree may need the network or a live model. Live runs are launched by
+  hand and their findings live in the PR.
 
 ### Fixed
 

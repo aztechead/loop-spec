@@ -257,14 +257,15 @@ PY
 # installed: the first FastAPI live run (6.6.3) escalated on "expected the
 # [HOST/]OWNER/REPO format" instead of pushing and stopping.
 have_gh=1
-no_gh_reason=""
+no_gh_reason="" no_gh_code=""
 if ! command -v gh >/dev/null 2>&1; then
-  no_gh_reason="gh is not on PATH"
+  no_gh_code="gh_missing"; no_gh_reason="gh is not on PATH"
 elif [[ -z "$credential_host" ]]; then
-  no_gh_reason="remote '$remote' URL names no host, so gh has no repository to address"
+  # Its own code: a supervisor reading gh_missing would tell the operator to install gh.
+  no_gh_code="remote_hostless"; no_gh_reason="remote '$remote' URL names no host, so gh has no repository to address"
 fi
 if [[ -n "$no_gh_reason" ]]; then
-  [[ "$mode" == "final" ]] || fail_bad "gh_missing" "$no_gh_reason"
+  [[ "$mode" == "final" ]] || fail_bad "$no_gh_code" "$no_gh_reason"
   have_gh=0
 fi
 

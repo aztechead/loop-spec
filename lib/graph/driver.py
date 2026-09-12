@@ -1272,7 +1272,9 @@ def cmd_next(argv):
                     raise
                 note = ("NOTE [snapshot] plugin source changed since the phase was rendered: %s; "
                         "the rendered instructions were verified as written" % str(exc).split(": ", 1)[-1])
-                print(note)
+                # stderr: the cycle skill acts on the FIRST stdout line (NEXT/REDO/...), and
+                # a note there hid the protocol line on the very path this note exists for.
+                print(note, file=sys.stderr)
                 fappend(feature_dir, "warnings", note)
         except (OSError, ValueError, KeyError) as exc:
             cmd_escalate(["--feature-dir", feature_dir, "--reason", "instruction snapshot verification failed: " + str(exc)], silent=True)
@@ -1358,7 +1360,7 @@ def cmd_next(argv):
                             os.replace(vpath, os.path.join(docs_dir(feature_dir, feat), "VERIFICATION.oneshot-attempt.md"))
                         lib("events", "emit", feature_dir, "escalate", "--phase", returned,
                             "--data", json.dumps({"attempts": redo_count, "classes": classes, "messages": flags}))
-                        print("NOTE [escalate] the oneshot exit gate held after %d attempts (%s): route: full written; the run continues on the full path" % (redo_count, ", ".join(classes)))
+                        print("NOTE [escalate] the oneshot exit gate held after %d attempts (%s): route: full written; the run continues on the full path" % (redo_count, ", ".join(classes)), file=sys.stderr)
                         exit_proc = subprocess.run(["bash", str(LIB_DIR / "phase-exit.sh")] + exit_args,
                                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
                         if exit_proc.returncode != 0:

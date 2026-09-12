@@ -76,8 +76,11 @@ packet, `run_in_background: false`; then stop and read its result, never
 `probe_dir` (absolute `${LOOP_SPEC_SKILL_DIR}/../../lib`); include
 `skills/shared/review-prompts/no-prejudge.md`; report
 `CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <findings>`. Record the launch as
-`skills/shared/dispatch.md#Telemetry (dispatch telemetry contract)` says, in the same
-Bash call that reads the result; the exit gate reads this event as the proof:
+`skills/shared/dispatch.md#Telemetry (dispatch telemetry contract)` says, in a Bash call
+BEFORE the `Agent` call: the event writes the `.pending-dispatch` marker that lets a
+turn end while the reviewer runs (`hooks/team/cycle-stamp-guard.sh`), and a marker
+written after the reviewer returns guards nothing. The exit gate reads this event as
+the proof:
 
 ```bash
 bash "${LOOP_SPEC_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" dispatch \

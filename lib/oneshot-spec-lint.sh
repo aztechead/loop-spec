@@ -49,7 +49,8 @@ if footprint is None or not (1 <= len(footprint) <= footprint_max):
     sys.exit(0)
 # A run the operator or the gate already put on the full route writes the full shape:
 # LOOP_SPEC_ROUTE=full drew two REDOs for a missing Intent block (live run 3, 6.6.4).
-if os.environ.get("LOOP_SPEC_ROUTE") == "full" or any(re.match(r"^route:\s*full\s*$", raw) for raw in front):
+# The value may be quoted (YAML): the route probe strips the quotes, so the lint does too.
+if os.environ.get("LOOP_SPEC_ROUTE") == "full" or any(re.match(r"^route:\s*[\"']?full[\"']?\s*$", raw) for raw in front):
     sys.exit(0)
 flags = []
 if len(lines) > max_lines:

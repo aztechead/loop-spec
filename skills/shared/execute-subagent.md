@@ -229,7 +229,10 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
      file outside `task.files`, widen the task's write scope first with
      `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task add-files
      --feature-dir "$fdir" --task "{taskId}" <file...>` before re-dispatching; it
-     refuses once the task is already integrated.
+     refuses once the task is already integrated. It widens the sidecar, the collapsed
+     list, and `prepare.json` only: the brief and worktree allow-list already rendered
+     for the running attempt keep the old `task.files`, so the rework is always a new
+     dispatch, never a nudge to the agent that is still running.
    - `block`: `.action == "blocked"`, `blocked.push({taskId, reason: "spec-compliance-block"})`.
    - implementer `committed == false`: `blocked.push({taskId, reason: "commit-missing"})`.
 6. **Integrate the passed tasks** (inline, serial, in `wave` order). For each task

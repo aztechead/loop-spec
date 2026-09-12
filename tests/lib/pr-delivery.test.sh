@@ -798,7 +798,7 @@ check "hostless remote: gh was not asked to resolve it" "0" "$(grep -c 'repo vie
 out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
   bash "$SCRIPT" checkpoint -C "$WORK/repo" --remote local --branch feat/local --base main --sha "$TARGET_SHA" \
   --title "t" --body-file "$BODY" 2>/dev/null)"
-check "hostless remote: checkpoint mode refuses with the reason" "gh_missing" "$(jq -r '.errorCode' <<<"$out")"
+check "hostless remote: checkpoint mode refuses with its own code, not gh_missing" "remote_hostless" "$(jq -r '.errorCode' <<<"$out")"
 git -C "$WORK/repo" remote remove local
 
 echo ""

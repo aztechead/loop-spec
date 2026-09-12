@@ -209,6 +209,7 @@ run_suite "codex-harness-coverage"    "bash tests/codex-harness-coverage.test.sh
 run_suite "supervisor-interface-coverage" "bash tests/supervisor-interface-coverage.test.sh"
 run_suite "adk-extension"             "bash tests/adk-extension.test.sh"
 run_suite "sessions-extension"        "bash tests/sessions-extension.test.sh"
+run_suite "oneshot-artifact-budget"   "bash tests/oneshot-artifact-budget.test.sh"
 run_suite "session-start-hook-parity" "bash tests/session-start-hook-parity.test.sh"
 run_suite "cycle-worktree-policy"     "bash tests/cycle-worktree-policy.test.sh"
 run_suite "graph-conformance"         "bash tests/graph-conformance.test.sh"
@@ -316,6 +317,7 @@ run_suite "lib/decisions"             "bash tests/lib/decisions.test.sh"
 run_suite "lib/debug-init"            "bash tests/lib/debug-init.test.sh"
 run_suite "lib/greenfield-bootstrap"  "bash tests/lib/greenfield-bootstrap.test.sh"
 run_suite "lib/cycle-preflight"       "bash tests/lib/cycle-preflight.test.sh" integration
+run_suite "lib/cycle-driver"          "bash tests/lib/cycle-driver.test.sh" integration
 run_suite "lib/cycle-start-resume"    "bash tests/lib/cycle-start-resume.test.sh" integration
 run_suite "lib/phase-exit"            "bash tests/lib/phase-exit.test.sh" integration
 run_suite "lib/phase-entry"           "bash tests/lib/phase-entry.test.sh" integration
@@ -342,6 +344,7 @@ run_suite "lib/task-batch"            "bash tests/lib/task-batch.test.sh"
 run_suite "lib/plan-conflicts"        "bash tests/lib/plan-conflicts.test.sh"
 run_suite "lib/execute-stop"          "bash tests/lib/execute-stop.test.sh"
 run_suite "lib/task-route"            "bash tests/lib/task-route.test.sh"
+run_suite "lib/execute-prepare"  "bash tests/lib/execute-prepare.test.sh"
 run_suite "lib/execute-step"  "bash tests/lib/execute-step.test.sh"
 run_suite "lib/phase-bundles"  "bash tests/lib/phase-bundles.test.sh"
 run_suite "lib/verify-prepare"  "bash tests/lib/verify-prepare.test.sh"

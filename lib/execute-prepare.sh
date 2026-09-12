@@ -66,9 +66,12 @@ if [[ "$workspace" == "null" ]]; then
   # SPEC.md approved at a human gate stayed uncommitted in the feature worktree, and
   # integrate-task refused task-001 as dirty (Codex live run): commit any pending
   # phase artifact before dispatch so the first task starts from a clean base.
+  # A commit that fails (no identity, a hook) leaves the same dirty SPEC that blocked
+  # integrate-task, so it is this call's failure, never a stale HEAD reported as committed.
   if [[ -n "$(git -C "$root" status --porcelain -- "docs/loop-spec/features/$slug" 2>/dev/null)" ]]; then
-    git -C "$root" add -- "docs/loop-spec/features/$slug"
-    git -C "$root" commit -q -m "docs: loop-spec artifacts before EXECUTE ($slug)" >/dev/null
+    git -C "$root" add -- "docs/loop-spec/features/$slug" \
+      && git -C "$root" commit -q -m "docs: loop-spec artifacts before EXECUTE ($slug)" >/dev/null \
+      || { echo "execute-prepare: could not commit pending docs/loop-spec/features/$slug artifacts (git exit $?); the first task would start from a dirty base" >&2; exit 2; }
     artifacts_committed="$(git -C "$root" rev-parse HEAD)"
   fi
 fi
