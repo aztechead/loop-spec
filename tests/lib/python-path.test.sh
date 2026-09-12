@@ -19,7 +19,7 @@ check() {
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-python-path.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
-mkdir -p "$WORK/.pyenv/shims" "$WORK/real" "$WORK/bin" "$WORK/plain"
+mkdir -p "$WORK/.pyenv/shims" "$WORK/real" "$WORK/bin" "$WORK/plain" "$WORK/tmp"
 printf '#!/bin/sh\nexit 0\n' > "$WORK/.pyenv/shims/python3"
 printf '#!/bin/sh\nexit 0\n' > "$WORK/real/python3"
 printf '#!/bin/sh\nexit 0\n' > "$WORK/plain/python3"
@@ -28,10 +28,12 @@ printf '#!/bin/sh\n[ "$1 $2" = "which python3" ] && echo "%s/real/python3"\n' "$
 chmod +x "$WORK/.pyenv/shims/python3" "$WORK/real/python3" "$WORK/plain/python3" "$WORK/bin/pyenv"
 CORE="/usr/bin:/bin"
 
-out="$(PATH="$WORK/.pyenv/shims:$WORK/bin:$CORE" bash "$LIB")"
-check "pyenv shim: prints the real interpreter's directory" "$WORK/real" "$out"
-err="$(PATH="$WORK/.pyenv/shims:$WORK/bin:$CORE" bash "$LIB" --explain 2>&1 >/dev/null)"
-check "pyenv shim: --explain names the shim and the answer" "1" "$(grep -c "ANSWER=$WORK/real REASON=pyenv shim at $WORK/.pyenv/shims/python3" <<<"$err")"
+out="$(TMPDIR="$WORK/tmp" PATH="$WORK/.pyenv/shims:$WORK/bin:$CORE" bash "$LIB")"
+check "pyenv shim: prints a private directory" "$WORK/tmp/loop-spec-python-$(id -u)" "$out"
+check "pyenv shim: that directory links only python3 to the real interpreter" "python3 -> $WORK/real/python3" \
+  "$(ls "$out" | paste -sd' ' -) -> $(readlink "$out/python3")"
+err="$(TMPDIR="$WORK/tmp" PATH="$WORK/.pyenv/shims:$WORK/bin:$CORE" bash "$LIB" --explain 2>&1 >/dev/null)"
+check "pyenv shim: --explain names the shim and the link" "1" "$(grep -c "ANSWER=$WORK/tmp/loop-spec-python-$(id -u) REASON=pyenv shim at $WORK/.pyenv/shims/python3; pyenv which -> $WORK/real/python3, linked" <<<"$err")"
 
 out="$(PATH="$WORK/.pyenv/shims:$CORE" bash "$LIB"; echo "rc=$?")"
 check "pyenv shim without pyenv: prints nothing, exit 0" "rc=0" "$out"

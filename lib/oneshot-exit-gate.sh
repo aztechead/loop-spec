@@ -80,6 +80,13 @@ generated_by_manifest() {
   local dir="${1%/*}" base="${1##*/}" manifest
   [[ "$dir" == "$1" ]] && dir=""
   case "$base" in
+    # uv init and its peers write the ignore file with the manifest (live run 2 escalated
+    # on .gitignore alone); any manifest in the same directory owns it.
+    .gitignore)
+      for manifest in pyproject.toml package.json Cargo.toml go.mod Gemfile composer.json; do
+        printf '%s\n' "${footprint[@]+"${footprint[@]}"}" | grep -qxF "${dir:+$dir/}$manifest" && return 0
+      done
+      return 1 ;;
     uv.lock|poetry.lock|pdm.lock|.python-version) manifest="pyproject.toml" ;;
     package-lock.json|yarn.lock|pnpm-lock.yaml|bun.lock|bun.lockb) manifest="package.json" ;;
     Cargo.lock) manifest="Cargo.toml" ;;

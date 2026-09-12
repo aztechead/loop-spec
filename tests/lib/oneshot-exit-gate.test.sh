@@ -257,12 +257,12 @@ spec
 # manifest's output, not a fourth file (the 6.6.3 FastAPI run left uv.lock for DELIVER).
 spec; sed -i.bak 's|^  - src/slugify.py$|  - src/slugify.py\
   - pyproject.toml|' "$DOCS/SPEC.md"
-printf '[project]\nname = "x"\n' > "$REPO/pyproject.toml"; printf 'version = 1\n' > "$REPO/uv.lock"; printf '3.14\n' > "$REPO/.python-version"
-git -C "$REPO" add pyproject.toml uv.lock .python-version && git -C "$REPO" commit -q -m "build: manifest and lock"
+printf '[project]\nname = "x"\n' > "$REPO/pyproject.toml"; printf 'version = 1\n' > "$REPO/uv.lock"; printf '3.14\n' > "$REPO/.python-version"; printf '.venv/\n' > "$REPO/.gitignore"
+git -C "$REPO" add pyproject.toml uv.lock .python-version .gitignore && git -C "$REPO" commit -q -m "build: manifest, lock, ignore"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "a lockfile beside a footprint manifest is inside the footprint" "0" "$(grep -c 'outside SPEC.md' <<<"$out")"
 check "the frontmatter is not escalated by the lockfile" "0" "$(sed -n '1,/^---$/!d; /^route: full$/p' "$DOCS/SPEC.md" | grep -c 'route: full')"
-git -C "$REPO" rm -q pyproject.toml uv.lock .python-version && git -C "$REPO" commit -q -m "build: drop manifest"
+git -C "$REPO" rm -q pyproject.toml uv.lock .python-version .gitignore && git -C "$REPO" commit -q -m "build: drop manifest"
 spec; printf 'version = 2\n' > "$REPO/uv.lock"; git -C "$REPO" add uv.lock && git -C "$REPO" commit -q -m "build: orphan lock"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "a lockfile with no footprint manifest is still the fourth file" "1" "$(grep -c 'the diff touches uv.lock outside SPEC.md' <<<"$out")"

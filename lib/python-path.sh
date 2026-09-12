@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# python-path.sh - the directory of the real python3 behind a version-manager shim, so
-# a PATH prefix skips the shim on every launch that follows.
+# python-path.sh - a directory holding only the real python3 behind a version-manager
+# shim, so a PATH prefix skips the shim on every launch that follows.
 #
 # Usage: python-path.sh            prints one directory, or nothing when there is no shim
 #        python-path.sh --explain  the same, then ANSWER=<dir|none> REASON=... on stderr
+#
+# The directory is private (${TMPDIR:-/tmp}/loop-spec-python-<uid>) and holds one
+# symlink, python3. Printing the interpreter's own directory put Homebrew's whole bin
+# first on PATH, which shadowed the operator's newer `claude` with the cask's old one
+# and every nested session then failed on "does not support this model" (6.6.4 live
+# run 2). Only the interpreter moves; nothing else on PATH changes order.
 #
 # Why: a pyenv shim is a bash script that runs `pyenv exec` to pick a version on EVERY
 # `python3` launch, about 0.15 s against 0.02 s for the interpreter itself. The plugin
@@ -28,7 +34,12 @@ case "$resolved" in
     if command -v pyenv >/dev/null 2>&1; then
       real="$(pyenv which python3 2>/dev/null || true)"
       if [[ -n "$real" && -x "$real" ]]; then
-        answer="${real%/*}"; reason="pyenv shim at $resolved; pyenv which -> $real"
+        answer="${TMPDIR:-/tmp}/loop-spec-python-$(id -u)"
+        if mkdir -p "$answer" 2>/dev/null && ln -sfn "$real" "$answer/python3" 2>/dev/null; then
+          reason="pyenv shim at $resolved; pyenv which -> $real, linked as $answer/python3"
+        else
+          answer=""; reason="pyenv shim at $resolved but cannot write $answer"
+        fi
       else
         reason="pyenv shim at $resolved but pyenv which python3 answered nothing"
       fi

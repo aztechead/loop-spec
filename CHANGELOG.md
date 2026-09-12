@@ -49,8 +49,13 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ### Changed
 
-- `lib/python-path.sh`: a new probe that names the directory of the real interpreter
-  behind a pyenv shim (nothing when there is no shim). `lib/cycle-driver.sh` and
+- `lib/python-path.sh`: a new probe that links the real interpreter behind a pyenv shim
+  into a private directory holding only `python3` (nothing when there is no shim). An
+  earlier cut of this change printed the interpreter's own directory, which put
+  Homebrew's bin first on PATH and shadowed a newer `claude` with the cask's old one;
+  live run 2's nested reviewer session failed on "does not support this model".
+- `lib/oneshot-exit-gate.sh` also counts `.gitignore` beside a footprint manifest as
+  that manifest's output (`uv init` writes it; live run 2 escalated on it alone). `lib/cycle-driver.sh` and
   `tests/run-all.sh` put it first on PATH once, so every script they run skips the
   shim's `pyenv exec` on each of the hundreds of `python3` launches a phase makes
   (0.15 s each against 0.02 s for the interpreter). The offline suite's summed time
