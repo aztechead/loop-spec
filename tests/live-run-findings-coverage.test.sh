@@ -59,6 +59,8 @@ checks=(
   $'skills/cycle/SKILL.md\t--completed <N>'
   $'skills/shared/execute-subagent.md\tno `name` key'
   $'lib/graph/driver.py\tdatetime.timezone.utc'
+  $'lib/graph/driver.py\tThe gate runs on every return'
+  $'lib/graph/driver.py\tLOOP_SPEC_SAME_SESSION must be 0 or 1'
 )
 
 check_fixed_strings "${checks[@]}"

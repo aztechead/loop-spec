@@ -6,6 +6,47 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [6.6.4] - 2026-09-11
 
+### Fixed (second live-run report: a 6.6.2 attended run and a Codex EXECUTE run)
+
+- `lib/graph/driver.py next` runs the phase exit gate on every return. A phase that
+  closed clean once and was edited after (23 acceptance-lint flags in PLAN.md) advanced
+  to EXECUTE on its stale close; `phase-exit.sh` is idempotent, so the skip was only a
+  hole.
+- `lib/phase-exit.sh --check` runs the gates and prints the flags without committing,
+  closing, or writing state; an operator who ran the gate to read it got a `plan:` commit.
+- `lib/events.sh` writes `<feature>/.pending-dispatch` on the `dispatch` event, the
+  driver clears it on its next call, and `hooks/team/cycle-stamp-guard.sh` lets a turn
+  end while the marker is fresh (`LOOP_SPEC_DISPATCH_WAIT_MINS`, 90). The guard had
+  denied three turn ends while an agent was legitimately running.
+- `lib/acceptance-lint.sh` flags a grep invocation, not a name containing `grep`
+  (`grep_symbol` cost a planner round), and reads `-w` inside a flag cluster (`-qw`).
+- `lib/graph/gate.sh`: the critique ceiling grows one delta round per 20 findings in
+  the failed round, capped at +3, and `critique-step.sh` names the unresolved count and
+  residue path on stderr when the ceiling closes a gate. A 22-task plan drew 72
+  findings and closed with 8 majors parked silently.
+- `cycle-driver.sh start` (attended): exactly one paused feature resumes without a
+  question, none or several start a new cycle with a notice, and a leading `new` token
+  in a git repository skips resume outright (it used to refuse as "already a git repo").
+- `LOOP_SPEC_SAME_SESSION=1` runs every phase in one session: `next` never answers
+  `HANDOFF` and the handoff guard stands down.
+- The instruction snapshot's source-hash check is a `NOTE [snapshot]` plus a warning,
+  not an escalation: the plugin checkout is a development clone that moves while a
+  phase runs. The rendered instructions and prompt are still verified.
+- `lib/execute-prepare.sh` commits pending `docs/loop-spec/features/<slug>` artifacts
+  before the first dispatch (`artifactsCommitted`); an approved SPEC.md left uncommitted
+  made `integrate-task` refuse task-001 as dirty.
+- `cycle-driver.sh task add-files --feature-dir DIR --task ID <file...>` widens an open
+  task's write scope for a rework attempt across the sidecar, the collapsed list, and
+  `prepare.json`; it refuses an integrated task.
+- `lib/harness.sh agent-type <role>` answers the registered Codex agent
+  (`loop-spec-<role>`) when its TOML is installed, `default` everywhere else;
+  `execute-subagent.md` passes `subagent_type` only on that answer.
+- Docs: verify-only tasks commit `--allow-empty`; worktree sessions call the driver by
+  inline path; `configuration.md` lists the two new variables.
+- Already true on this tree, no change: `dispatch-prompt-guard.sh` accepts the
+  backticked `UNGROUNDED:` template line; `driver.py` emits no SyntaxWarning or
+  utcnow DeprecationWarning.
+
 ### Changed
 
 - `lib/python-path.sh`: a new probe that names the directory of the real interpreter

@@ -15,7 +15,11 @@
 #    conflicts:{rows, stops:[{summary,reason,matched}], rulings:[summary]},
 #    width, rung:{...lib/execute-rung.sh...}, maxRetries, featureRoot, worktreeBase,
 #    workspace:{root, repos:[{name,path}]}|null, greenfield, remediationRegistered,
-#    remediationError:string|null, stop:bool}
+#    remediationError:string|null, stop:bool, artifactsCommitted:sha|null}
+#
+# artifactsCommitted (single-repo mode only) is the commit sha when a pending phase
+# artifact under docs/loop-spec/features/<slug> was still uncommitted at prepare time
+# (a human-gate approval that never landed a commit), null when nothing was pending.
 #
 # featureRoot is the git toplevel in single mode and the workspace root (orchestration
 # only, never a git target) in workspace mode; lib/execute-step.sh resolves each task's
@@ -54,6 +58,19 @@ if [[ "$workspace" == "null" ]]; then
 else
   root="$(fget '.workspace.root')"
   [[ -n "$root" && -d "$root" ]] || { echo "execute-prepare: feature.workspace.root '$root' is not a directory" >&2; exit 2; }
+fi
+
+# -- commit pending phase artifacts ------------------------------------------------------
+artifacts_committed=""
+if [[ "$workspace" == "null" ]]; then
+  # SPEC.md approved at a human gate stayed uncommitted in the feature worktree, and
+  # integrate-task refused task-001 as dirty (Codex live run): commit any pending
+  # phase artifact before dispatch so the first task starts from a clean base.
+  if [[ -n "$(git -C "$root" status --porcelain -- "docs/loop-spec/features/$slug" 2>/dev/null)" ]]; then
+    git -C "$root" add -- "docs/loop-spec/features/$slug"
+    git -C "$root" commit -q -m "docs: loop-spec artifacts before EXECUTE ($slug)" >/dev/null
+    artifacts_committed="$(git -C "$root" rev-parse HEAD)"
+  fi
 fi
 
 # -- branch check --------------------------------------------------------------------
@@ -225,9 +242,11 @@ answer="$(jq -cn --argjson b "$branch_json" --arg sidecar "$sidecar" --argjson s
   --argjson done "$done_json" --argjson remaining "$remaining_json" --argjson tasks "$dispatch" \
   --argjson conflicts "$conflicts" --argjson width "${width:-0}" --argjson rung "$rung" --argjson retries "$max_retries" \
   --arg root "$root" --arg wtb "$worktree_base" --argjson ws "$workspace_json" --argjson gf "$greenfield" --argjson reg "$remediation_registered" --argjson error "$remediation_error" --argjson stop "$stop" \
+  --arg ac "$artifacts_committed" \
   '{branch:$b, sidecar:$sidecar, sidecarOk:$sok, sidecarFlags:$sflags, done:$done, remaining:$remaining, tasks:$tasks,
     conflicts:$conflicts, width:$width, rung:$rung, maxRetries:$retries, featureRoot:$root,
-    worktreeBase:(if $wtb == "" then null else $wtb end), workspace:$ws, greenfield:$gf, remediationRegistered:$reg, remediationError:$error, stop:$stop}')"
+    worktreeBase:(if $wtb == "" then null else $wtb end), workspace:$ws, greenfield:$gf, remediationRegistered:$reg, remediationError:$error, stop:$stop,
+    artifactsCommitted:(if $ac == "" then null else $ac end)}')"
 # lib/execute-step.sh reads the rung and roots from here per task instead of re-measuring.
 printf '%s\n' "$answer" > "$feature_dir/dispatch/prepare.json"
 printf '%s\n' "$answer"

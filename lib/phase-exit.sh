@@ -25,9 +25,11 @@
 # is selected with LOOP_SPEC_GRAPH (tests/lib/graph-phases.test.sh).
 #
 # Usage:
-#   phase-exit.sh <phase> --feature-dir DIR [--terminal]
+#   phase-exit.sh <phase> --feature-dir DIR [--terminal] [--check]
 # A phase whose node declares no `egress` (DELIVER: its terminal states are
 # observation-only, cycle-driver.sh) is a bad invocation.
+# --check runs the gates and reports the flags without writing anything: an operator
+# who ran the gate to read its state got a `plan:` commit instead (6.6.2 live run).
 #
 # Egress guard: when phase-entry.sh left <DIR>/.phase-entry.json, every feature.json
 # path the phase changed is checked against the node's `egress.writes` plus the paths
@@ -53,16 +55,17 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 GRAPH="${LOOP_SPEC_GRAPH:-$PLUGIN_ROOT/graph/cycle.graph.json}"
 
 phase="${1:-}"; shift || true
-feature_dir="" terminal=0
+feature_dir="" terminal=0 check=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --feature-dir) feature_dir="${2:-}"; shift 2 ;;
     --terminal) terminal=1; shift ;;
-    *) echo "usage: phase-exit.sh <phase> --feature-dir DIR [--terminal]" >&2; exit 2 ;;
+    --check) check=1; shift ;;
+    *) echo "usage: phase-exit.sh <phase> --feature-dir DIR [--terminal] [--check]" >&2; exit 2 ;;
   esac
 done
 bash "$SCRIPT_DIR/graph/phases.sh" validate "$phase" >/dev/null 2>&1 \
-  || { echo "usage: phase-exit.sh <phase> --feature-dir DIR [--terminal] ($(bash "$SCRIPT_DIR/graph/phases.sh" validate "$phase" 2>&1 || true))" >&2; exit 2; }
+  || { echo "usage: phase-exit.sh <phase> --feature-dir DIR [--terminal] [--check] ($(bash "$SCRIPT_DIR/graph/phases.sh" validate "$phase" 2>&1 || true))" >&2; exit 2; }
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] \
   || { echo "phase-exit: --feature-dir must hold a feature.json" >&2; exit 2; }
 node="$(jq -c --arg p "$phase" '.nodes[] | select(.id == $p) | .egress // empty' "$GRAPH" 2>/dev/null || true)"
@@ -241,7 +244,7 @@ if [[ -f "$docs/SPEC.md" && ( "$(fget '.specApproval // null')" != null || "$(ng
 fi
 [[ "$(nget '.oracle // false')" != "true" ]] || oracle_gate
 
-if (( flags == 0 )); then
+if (( flags == 0 && check == 0 )); then
   while IFS=$'\t' read -r key path; do
     [[ -n "$key" ]] || continue
     fset "artifacts.$key" "\"$(resolve "$path")\""
@@ -257,7 +260,7 @@ if (( flags == 0 )); then
   done < <(nget '.artifactsDefault // {} | to_entries[] | [.key, .value] | @tsv')
   run_bodies onOk
 fi
-if (( flags == 0 )); then
+if (( flags == 0 && check == 0 )); then
   if [[ "$(nget '.commit // ""')" != "" ]]; then
     paths=()
     while IFS= read -r p; do paths+=("$(resolve "$p")"); done < <(nget '.commit.paths[]')
@@ -277,8 +280,9 @@ if (( flags == 0 )); then
   bash "$SCRIPT_DIR/supervisor/store.sh" persist "$feature_dir" "phase-exit:$phase" >/dev/null \
     || flag "[store] persist failed for $feature_dir (LOOP_SPEC_STORE)"
 fi
+suffix=""; (( check == 0 )) || suffix=" [check]"
 if (( flags == 0 )); then
-  echo "phase-exit: ok ($phase)"
+  echo "phase-exit: ok ($phase)$suffix"
 else
-  echo "phase-exit: $flags flag(s) ($phase)"; exit 1
+  echo "phase-exit: $flags flag(s) ($phase)$suffix"; exit 1
 fi

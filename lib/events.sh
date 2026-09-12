@@ -34,7 +34,11 @@
 #   gate_round        - a gate round completed (data: {"gate":..,"round":N})
 #   iterate_verdict   - an iterate judge verdict landed
 #   dispatch          - an agent was launched (data: {"role":..,"model":..,"rung":..};
-#                       contract: skills/shared/dispatch.md)
+#                       contract: skills/shared/dispatch.md); also writes
+#                       <feature_dir>/.pending-dispatch (empty; its mtime), which
+#                       hooks/team/cycle-stamp-guard.sh reads to stand down while the
+#                       dispatch is still in its wait window; cycle-driver.sh removes
+#                       it the moment the lead calls the driver again
 #   task_start        - an EXECUTE task began (data: {"index":N,"total":M,
 #                       "id":"task-003","subject":"..."}) -> "[EXECUTE] task 2/5 start"
 #   task_end          - an EXECUTE task finished (same, plus {"result":"merged|failed|..."})
@@ -404,6 +408,17 @@ case "${1:-}" in
     fi
     if ! printf '%s\n' "$event_json" >> "$feature_dir/$EVENTS_FILE" 2>/dev/null; then
       echo "events.sh: failed to append event '$event' to $feature_dir/$EVENTS_FILE" >&2
+    fi
+    # A dispatched agent is running unattended; hooks/team/cycle-stamp-guard.sh reads
+    # this marker's age to tell that apart from a lead that stopped with the phase
+    # still open (the Stop guard denied three legitimate dispatch waits, #3 6.6.4
+    # live run). cycle-driver.sh removes it the moment the lead is back at a driver call.
+    if [[ "$event" == "dispatch" ]]; then
+      # Empty on purpose: the guard reads the mtime, and a file whose content never
+      # changes stays clean in a checkout that tracks the feature dir (a fixture that
+      # committed a timestamped marker then failed its next revert on it).
+      : > "$feature_dir/.pending-dispatch" 2>/dev/null \
+        || echo "events.sh: cannot write $feature_dir/.pending-dispatch" >&2
     fi
     [[ -z "$marker" ]] || printf '%s %s\n' "$marker" "$event_json"
     _console_line "$event" "$phase_str" "$data_val" "${elapsed:-}" "${verdict:-}"

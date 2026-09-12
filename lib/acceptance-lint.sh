@@ -48,15 +48,19 @@ flagged=0
 # Emit "taskId<TAB>criterion" for every criterion mentioning grep.
 while IFS=$'\t' read -r tid crit; do
   [[ -z "$crit" ]] && continue
-  # Only consider criteria that invoke grep at all.
-  case "$crit" in
-    *grep*) : ;;
-    *) continue ;;
-  esac
+  # Only consider criteria that INVOKE grep, not a tool whose name merely contains it
+  # (a criterion calling `grep_symbol` read as a grep invocation and flagged six
+  # behavioral criteria, 6.6.2 live run).
+  grep_invocation='(^|[[:space:]|;($`])grep([[:space:]]|$)'
+  [[ "$crit" =~ $grep_invocation ]] || continue
   # Anchored / behavioral markers that exempt the grep.
   exempt=0
+  # A flag cluster ending in -w (`grep -qw`) is still a whole-word match; the old
+  # exact-token check only matched a standalone ` -w`/`-w ` and missed the cluster,
+  # defeating the anchor test and costing a planner round (6.6.2 live run).
+  word_flag_cluster='(^|[[:space:]])-[A-Za-z]*w([[:space:]]|$)'
+  [[ "$crit" =~ $word_flag_cluster ]] && exempt=1
   case "$crit" in
-    *" -w"*|*"-w "*) exempt=1 ;;            # whole-word match
     *'\b'*) exempt=1 ;;                      # word-boundary regex
     *'grep -v'*) exempt=1 ;;                 # comment/line exclusion pipeline
     *'grep -E'*'^'*) exempt=1 ;;             # anchored extended regex

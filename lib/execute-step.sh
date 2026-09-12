@@ -27,6 +27,14 @@
 #       HEAD advanced. Either way a published task is marked done, task_end is emitted,
 #       and task-001 of a greenfield feature runs the command backfill.
 #       Prints {published, reason, detail, sha, blocked}.
+#   execute-step.sh add-files --feature-dir DIR --task ID <file...>
+#       Widens a task's write scope for a rework attempt: appends the files
+#       (deduplicated, repo-relative, no absolute paths or `..`) to task.files in the
+#       tasks.json sidecar, dispatch/tasks-collapsed.json, and dispatch/prepare.json, so
+#       every copy of the task the wave loop reads agrees. Refuses a task
+#       task-progress.sh already marked done (add-files is for an open rework, not a
+#       closed one). Prints {task, files, updated: [paths]}.
+#       Exit 0 done; 1 already integrated; 2 bad invocation or path.
 #   execute-step.sh run       --feature-dir DIR --task ID --role implementer|reviewer
 #       The session rung's launch, in the driver and never in the lead
 #       (the port principles, rule 12). On rung=session it
@@ -53,18 +61,22 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
-usage() { sed -n '2,40p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,48p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 cmd="${1:-}"; shift || true
 feature_dir="" task_id="" attempt=0 head_sha="" verdict="" role="implementer"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --feature-dir) feature_dir="${2:-}" ;; --task) task_id="${2:-}" ;; --attempt) attempt="${2:-0}" ;;
-    --head) head_sha="${2:-}" ;; --verdict) verdict="${2:-}" ;; --role) role="${2:-}" ;; *) usage ;;
+    --head) head_sha="${2:-}" ;; --verdict) verdict="${2:-}" ;; --role) role="${2:-}" ;;
+    # add-files' trailing paths are not --flags; every other subcommand keeps the strict
+    # flags-only grammar, so a stray positional argument there still fails usage.
+    *) [[ "$cmd" == "add-files" ]] && break; usage ;;
   esac
   shift 2
 done
-case "$cmd" in dispatch|package|verdict|integrate|run) ;; *) usage ;; esac
+files=("$@")
+case "$cmd" in dispatch|package|verdict|integrate|run|add-files) ;; *) usage ;; esac
 case "$role" in implementer|reviewer) ;; *) usage ;; esac
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" && -n "$task_id" ]] || usage
 feature_dir="$(cd "$feature_dir" && pwd -P)"
@@ -288,5 +300,43 @@ case "$cmd" in
     esac
     task_end failed
     jq -c --arg b "$(sget '.blocked')" '.blocked = $b' <<<"$answer"; exit 1
+    ;;
+  add-files)
+    [[ ${#files[@]} -gt 0 ]] || usage
+    for f in "${files[@]}"; do
+      [[ "$f" != /* ]] || { echo "execute-step: add-files path must be repo-relative, got absolute '$f'" >&2; exit 2; }
+      case "$f" in *..*) echo "execute-step: add-files path escapes the repo: '$f'" >&2; exit 2 ;; esac
+    done
+    # A rework attempt widens scope on an OPEN task; the `integrate` case above marks a
+    # task done via task-progress.sh once it publishes, so a widen past that point is a
+    # stale rework request against a task that already shipped.
+    if grep -qxF "$task_id" <<<"$(lib task-progress done "$sidecar")"; then
+      echo "execute-step: $task_id is already integrated; add-files is for a rework attempt on an open task" >&2
+      exit 1
+    fi
+    add_json="$(printf '%s\n' "${files[@]}" | jq -R . | jq -cs 'unique')"
+    final_files="$(jq -cn --argjson e "$(jq -c '.files // []' <<<"$task_json")" --argjson a "$add_json" '($e + $a) | unique')"
+    collapsed="$feature_dir/dispatch/tasks-collapsed.json"
+    # The task lives in three copies (sidecar, the collapsed dispatch list, and the
+    # frozen prepare.json); every reader downstream picks one, so all three widen
+    # together. A batch merge erases every member id but the first (lib/task-batch.sh),
+    # so bump matches on the surviving id's memberIds too.
+    tmp="$sidecar.tmp"
+    jq --arg id "$task_id" --argjson f "$final_files" '
+      def bump: if .id == $id or (.memberIds // [] | index($id)) then .files = $f else . end;
+      if type == "object" and has("tasks") then .tasks |= map(bump) else map(bump) end
+    ' "$sidecar" > "$tmp" && mv "$tmp" "$sidecar"
+    tmp="$collapsed.tmp"
+    jq --arg id "$task_id" --argjson f "$final_files" '
+      def bump: if .id == $id or (.memberIds // [] | index($id)) then .files = $f else . end;
+      map(bump)
+    ' "$collapsed" > "$tmp" && mv "$tmp" "$collapsed"
+    tmp="$prep.tmp"
+    jq --arg id "$task_id" --argjson f "$final_files" '
+      def bump: if .id == $id or (.memberIds // [] | index($id)) then .files = $f else . end;
+      .tasks |= map(bump)
+    ' "$prep" > "$tmp" && mv "$tmp" "$prep"
+    jq -cn --arg t "$task_id" --argjson f "$final_files" --arg s "$sidecar" --arg c "$collapsed" --arg p "$prep" \
+      '{task:$t, files:$f, updated:[$s,$c,$p]}'
     ;;
 esac

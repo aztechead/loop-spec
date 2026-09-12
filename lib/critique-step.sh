@@ -138,6 +138,10 @@ case "$cmd" in
       { printf '# %s residue (%s)\n\n' "$gate_name" "$reason"; jq -r '.[] | "- " + .' <<<"$items"; } > "$residue"
       gate pass --feature-dir "$feature_dir" --rounds "$round" --convergence cap-reached \
         --challenger-model "$model" --notes "$(jq -r 'join("; ")' <<<"$items")" >/dev/null || exit 1
+      # A ceiling close used to be silent: a 22-task PLAN critique closed with 8 new
+      # majors still open and nothing said so at the phase boundary. Name the count
+      # and the residue path so an operator sees what shipped unresolved.
+      echo "NOTE [critique] $(jq 'length' <<<"$items") finding(s) unresolved at the ceiling: $residue" >&2
       jq -n --arg r "$reason" --arg p "$residue" '{answer:"close", reason:$r, residue:$p}'
     fi
     ;;

@@ -55,6 +55,10 @@ checks=(
   "lib/execute-rung.sh	session-layer"
   "skills/shared/codex-harness.md	session-layer"
   "skills/shared/execute-rungs.md	session-layer"
+  # -- the implementer/reviewer rung probes for a registered Codex agent type, never guesses
+  "lib/harness.sh	agent-type"
+  "skills/shared/execute-subagent.md	harness.sh\" agent-type implementer"
+  "skills/shared/codex-harness.md	agent-type <role>"
   # -- capability gates are non-claude-gated
   "lib/teams-capability.sh	!= \"claude\""
   "lib/workflow-availability.sh	!= \"claude\""

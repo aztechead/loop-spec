@@ -45,6 +45,14 @@
 #                               harness's CLI, the CLI is on PATH, and python3 has
 #                               tomllib; every unknown leg answers "in-harness")
 #   harness.sh session-layer-reason -> stable reason for rung telemetry
+#   harness.sh agent-type <role> [--explain]
+#                           -> the harness agent type the subagent rung passes for
+#                              <role>: "default" on every harness except Codex with a
+#                              matching ~/.codex/agents/loop-spec-<role>.toml (else
+#                              "default" there too — fail safe, never guess a name
+#                              spawn_agent cannot resolve). --explain also prints
+#                              ANSWER=... REASON=... on stderr (lib/python-path.sh's
+#                              shape).
 #
 # Detection order (first match wins):
 #   1. LOOP_SPEC_HARNESS=claude|opencode|adk|codex   explicit override. The retired
@@ -200,6 +208,23 @@ case "$cmd" in
       *) echo "false" ;;
     esac
     ;;
+  agent-type)
+    role="${2:-}"
+    [[ -n "$role" ]] || { echo "harness.sh: agent-type requires a role" >&2; exit 2; }
+    explain=0; [[ "${3:-}" == "--explain" ]] && explain=1
+    harness="$(detect)" || exit $?
+    answer="default"; reason="$harness has no per-role custom agent registry; every dispatch uses the default agent"
+    if [[ "$harness" == "codex" ]]; then
+      toml="${CODEX_HOME:-$HOME/.codex}/agents/loop-spec-$role.toml"
+      if [[ -f "$toml" ]]; then
+        answer="loop-spec-$role"; reason="$toml exists (lib/codex-install.sh writes it)"
+      else
+        reason="$toml does not exist; spawn_agent falls back to the default agent"
+      fi
+    fi
+    echo "$answer"
+    [[ "$explain" -eq 0 ]] || echo "ANSWER=$answer REASON=$reason" >&2
+    ;;
   entrypoint)
     entrypoint
     ;;
@@ -279,7 +304,7 @@ case "$cmd" in
     if [[ "$cmd" == "loop-runtime" ]]; then echo "$runtime"; else echo "$reason"; fi
     ;;
   *)
-    echo "harness.sh: unknown command '${cmd}' (detect|cli|subagents|entrypoint|headless|attended|attended-reason|loop-runtime|loop-runtime-reason|session-layer|session-layer-reason)" >&2
+    echo "harness.sh: unknown command '${cmd}' (detect|cli|subagents|agent-type|entrypoint|headless|attended|attended-reason|loop-runtime|loop-runtime-reason|session-layer|session-layer-reason)" >&2
     exit 2
     ;;
 esac

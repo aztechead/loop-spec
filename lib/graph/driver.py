@@ -153,6 +153,9 @@ Usage:
 
     cycle-driver.sh task dispatch|package|verdict|integrate --feature-dir DIR --task ID ...
         One EXECUTE task step per call; lib/execute-step.sh owns the contract.
+    cycle-driver.sh task add-files --feature-dir DIR --task ID <file...>
+        Widens an open task's write scope for a rework attempt (sidecar, collapsed
+        list, and prepare.json together); refuses an integrated task.
 
     cycle-driver.sh critique open|findings|fail|revised|delta|pass --feature-dir DIR ...
         One critique-gate step per call for DISCUSS and PLAN; lib/critique-step.sh owns
@@ -559,6 +562,7 @@ def cmd_start(argv):
     ws_root = "null" if ws_root is None else str(ws_root)
     repos = pf["workspace"].get("repos") or []
     greenfield = False
+    skip_resume = False
     if ws_mode == "none":
         if inv.get("greenfield") is True or (autonomous and title):
             greenfield = True
@@ -576,9 +580,10 @@ def cmd_start(argv):
                   file=sys.stderr)
             raise Die("", 3)
     elif inv.get("greenfield") is True:
-        lib_run("greenfield-bootstrap", "bootstrap", directory, quiet=True)   # prints the refusal for its exit code
-        raise Die("already a git repo — greenfield is for empty directories. Run the normal cycle, "
-                  "or cd into an empty directory for a new app.", 3)
+        # Already a git repo: a leading `new` means skip resume and start a fresh
+        # feature, not bootstrap a project — attended resume auto-picked a paused
+        # candidate over a deliberate `new` invocation (#9, 6.6.4 live run).
+        skip_resume = True
     if ws_mode == "workspace":
         notices.append("workspace mode: %d repos (%s); state rooted at %s"
                        % (len(repos), ", ".join(r["name"] for r in repos), ws_root))
@@ -604,7 +609,7 @@ def cmd_start(argv):
 
     # -- resume ------------------------------------------------------------------
     teams_mode = pf["teams"]["mode"]
-    candidates = (pf.get("resume") or {}).get("candidates") or []
+    candidates = [] if skip_resume else (pf.get("resume") or {}).get("candidates") or []
     cleanup = []
     if teams_mode != "explicit":
         # No cross-session team can survive here: clear stale references and resume.
@@ -646,11 +651,22 @@ def cmd_start(argv):
                     raise Die("this session handed off after %s; %s starts in a fresh invocation (%s)"
                               % (handed.get("from"), handed.get("next"), handoff_answer(fdir, handed)), 4)
         elif not non_interactive:
-            options = ["Resume %s - phase %s (updated %s)" % (c["slug"], c["currentPhase"], c["updatedAt"])
-                       for c in candidates] + ["New feature"]
-            decisions.append({"id": "resume",
-                              "question": "Resume an in-progress feature, or start a new one?",
-                              "options": options, "default": "New feature"})
+            if len(candidates) == 1:
+                resume_pick = candidates[0]["slug"]
+                record("Resume %s or start new?" % resume_pick, "resume " + resume_pick,
+                       "attended: the one paused feature resumes")
+                fdir = os.path.join(candidates[0]["featureRoot"], ".loop-spec", "features", resume_pick)
+                handed = handed_off_here(state(fdir))
+                if handed is not None:
+                    raise Die("this session handed off after %s; %s starts in a fresh invocation (%s)"
+                              % (handed.get("from"), handed.get("next"), handoff_answer(fdir, handed)), 4)
+            else:
+                # More than one paused feature is a human decision an attended run no
+                # longer stops to ask for (#9, 6.6.4 live run): a new cycle starts, and
+                # the notice says how to reach one of the others instead.
+                notices.append("%d resumable features (%s); starting a new cycle — "
+                               "/loop-spec:cycle <slug> resumes one."
+                               % (len(candidates), ", ".join(c["slug"] for c in candidates)))
 
     # -- title (bare) ----------------------------------------------------------
     if not title and not resume_pick and mode == "bare":
@@ -1244,7 +1260,20 @@ def cmd_next(argv):
         try:
             if not instructions or (feat.get("driverNext") or {}).get("phase") != returned:
                 raise ValueError("returned phase has no matching instruction snapshot")
-            verify(instructions, REPO_ROOT, feature_dir)
+            verify(instructions, None, feature_dir)
+            try:
+                verify(instructions, REPO_ROOT, feature_dir)
+            except ValueError as exc:
+                # The plugin checkout is a development clone that moves while a phase
+                # runs (Codex live run: execute-subagent.md updated upstream mid-EXECUTE).
+                # The rendered outputs and prompt already passed the strict-free check
+                # above, so this is a note, not an escalation.
+                if not str(exc).startswith("phase instruction source hash mismatch"):
+                    raise
+                note = ("NOTE [snapshot] plugin source changed since the phase was rendered: %s; "
+                        "the rendered instructions were verified as written" % str(exc).split(": ", 1)[-1])
+                print(note)
+                fappend(feature_dir, "warnings", note)
         except (OSError, ValueError, KeyError) as exc:
             cmd_escalate(["--feature-dir", feature_dir, "--reason", "instruction snapshot verification failed: " + str(exc)], silent=True)
             print("DONE status=escalated reason=instruction-hash-mismatch")
@@ -1287,10 +1316,11 @@ def cmd_next(argv):
                     verification_run(feature_dir, feat, docs, vpath, spath, None, True)
                 except Die as exc:
                     print("cycle-driver: verification run at the oneshot boundary: %s" % exc.message, file=sys.stderr)
-        # The phase's exit gates run here, once, whatever the phase skill did: a lead that
-        # skipped them or ran them from the wrong directory was every second eval finding.
-        completed = feat.get("completedPhases") or []
-        if returned != "deliver" and (completed[-1] if completed else "") != returned:
+        # The gate runs on every return, because a phase that closed clean once and was
+        # edited after advanced to EXECUTE on the stale close (23 acceptance-lint flags
+        # in PLAN.md, 6.6.2 live run). phase-exit.sh is idempotent (close_phase records a
+        # phase once, commit_paths commits only a diff), so re-running is safe.
+        if returned != "deliver":
             exit_args = [returned, "--feature-dir", feature_dir]
             if returned == "iterate" and iterate_is_terminal(feature_dir):
                 exit_args.append("--terminal")
@@ -1798,6 +1828,14 @@ def record_transition(feature_dir, phase, nxt, note, ws_mode):
                             "--reason", "autonomous phase checkpoint: " + nxt], stdout=sys.stderr)
 
     if nxt == "completed" or nxt.startswith("human.") or nxt == phase:
+        return None
+    same_session = os.environ.get("LOOP_SPEC_SAME_SESSION", "")
+    if same_session not in ("", "0", "1"):
+        raise Die("LOOP_SPEC_SAME_SESSION must be 0 or 1", 2)
+    if same_session == "1":
+        # The operator opted into one session end to end: the graph's sameSession
+        # edges below are the default exception, this env makes every edge one
+        # (#10, 6.6.4 live run). hooks/team/phase-handoff-guard.sh reads the same flag.
         return None
     # The graph names the one exception to one phase per session: an edge carrying
     # sameSession (spec -> oneshot, oneshot -> deliver: the short route is one session end
@@ -2857,7 +2895,23 @@ def delegate(script, argv):
     os.execv("/usr/bin/env", ["/usr/bin/env", "bash", str(LIB_DIR / script)] + argv)
 
 
+def _clear_pending_dispatch(argv):
+    # A driver call is the lead back at the keyboard: the dispatch events.sh marked
+    # (lib/events.sh, the `dispatch` event) has returned or been abandoned either way,
+    # so hooks/team/cycle-stamp-guard.sh has nothing left to stand down for.
+    for i, tok in enumerate(argv):
+        if tok in ("--feature-dir", "--dir") and i + 1 < len(argv):
+            try:
+                os.remove(os.path.join(argv[i + 1], ".pending-dispatch"))
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                print("cycle-driver: cannot clear pending-dispatch marker: %s" % exc, file=sys.stderr)
+            return
+
+
 def main(argv):
+    _clear_pending_dispatch(argv)
     if not argv:
         usage()
     command, rest = argv[0], argv[1:]

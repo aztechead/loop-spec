@@ -21,6 +21,10 @@
 # here would be the second declaration tests/graph-conformance.test.sh bans.
 # LOOP_SPEC_CRITIQUE_ROUNDS outranks the graph: a positive integer replaces the ceiling,
 # 0 means unbounded (every answer is rerun), anything else is a configuration error.
+# The graph ceiling (never the override) also scales with load: one extra delta round
+# per 20 findings in the round that just failed, capped at +3. A 22-task PLAN critique
+# drew 72 findings in one round; the fixed ceiling closed the gate with 8 new majors
+# still open and no round left to fix them.
 # A field run spent over an hour bouncing PLAN.md between the challenger and the planner
 # because the protocol prose said retries were unbounded and the graph's ceiling was
 # inside a `contain` loop the engine never counts; this subcommand is what counts it.
@@ -163,6 +167,15 @@ critique_ceiling() {
     echo "gate.sh: $CRITIQUE_GRAPH declares a non-integer critique ceiling '$ceiling'; cannot bound the gate" >&2
     return 1
   }
+  if [[ -n "$ceiling" ]]; then
+    local last_count extra
+    last_count="$(jq -r --arg phase "$open_phase" \
+      --arg gate "$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" -r --filter '.currentGate.gate // ""')" '
+      [.gateHistory[]? | select(.phase == $phase and .gate == $gate and .result == "fail")]
+      | last | (.findingsAddressed // []) | length' "$feature_json")" || return 1
+    extra=$(( last_count / 20 )); (( extra > 3 )) && extra=3
+    ceiling=$(( ceiling + extra ))
+  fi
   echo "$ceiling"
 }
 

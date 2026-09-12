@@ -225,7 +225,11 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
      `retry-exhausted` is the breaker: park residuals in `warnings[]` and
      `blocked.push({taskId, reason: "retry-exhausted"})`.
      Re-review is scoped (`skills/shared/review-prompts/re-review.md`) against
-     `FIX_BASE..HEAD`, not a full-task re-read.
+     `FIX_BASE..HEAD`, not a full-task re-read. When the findings require touching a
+     file outside `task.files`, widen the task's write scope first with
+     `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task add-files
+     --feature-dir "$fdir" --task "{taskId}" <file...>` before re-dispatching; it
+     refuses once the task is already integrated.
    - `block`: `.action == "blocked"`, `blocked.push({taskId, reason: "spec-compliance-block"})`.
    - implementer `committed == false`: `blocked.push({taskId, reason: "commit-missing"})`.
 6. **Integrate the passed tasks** (inline, serial, in `wave` order). For each task
@@ -252,7 +256,10 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    and `detail`, then stop. Never remove or reset a failed task worktree manually.
    The helper runs `verifyCommand` after any required rebase and before publication,
    so each task's focused proof covers exactly the commit that fast-forwards the feature
-   branch.
+   branch. A task whose files need no edit (the review already matches the spec) commits
+   `git commit --allow-empty -m "{task.subject}: verified, no change"` so integrate-task
+   has a commit to integrate. `zero-commit` is for a task that forgot to commit, never
+   for a task with nothing to change.
 7. Loop back to step 1. EXECUTE runs no repository-wide suite of its own: every task's
    focused `verifyCommand` runs after any rebase and before publication, and the
    test/lint/typecheck comparison runs exactly once per cycle, at VERIFY Step 1.75,
@@ -260,14 +267,16 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
 
 ## Agent dispatch convention
 
-Dispatch every implementer and reviewer with the **default** agent (do NOT pass
-`subagent_type`), exactly as `lib/workflows/execute-dag.js` does. The prompts below are
+Dispatch every implementer and reviewer with the **default** agent, exactly as
+`lib/workflows/execute-dag.js` does, unless
+`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/harness.sh" agent-type implementer` (or
+`spec-compliance-reviewer` for the reviewer) answers something other than `default` --
+that only happens under Codex with the matching `~/.codex/agents/loop-spec-<role>.toml`
+installed, and there `subagent_type` is that answer. Either way the prompts below are
 self-contained -- they carry the implement, verify, commit, and review
 instructions in full. The template below is the WORKTREE-mode prompt; with
 `worktreesEnabled == false` compose the in-place prompt from "In-place single-repository
-mode" above instead. Do NOT pass `subagent_type: "loop-spec:implementer"`: this path
-uses the default Agent with a self-contained prompt, and the lead already created
-the task worktree. Read the role selector
+mode" above instead. Read the role selector
 from `models.implementer` or `models.specComplianceReviewer`; add the Agent
 `model` field only for an alias and omit it for `inherit`.
 
