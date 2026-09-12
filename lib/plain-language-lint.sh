@@ -31,7 +31,7 @@
 #
 # Exit codes: 0 clean, 1 any flag (including unreadable/empty input -- fail safe),
 # 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 MAX_FLAGS=0
 SHOW_RULES=0

@@ -29,11 +29,11 @@
 # cleared. On pass: the acceptance gate records a pass entry.
 #
 # Exit: 0 pass; 1 redo or remediate (the route says which); 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
-usage() { sed -n '2,30p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,30p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2 || true; exit 2; }
 
 [[ "${1:-}" == "run" ]] || usage
 shift
@@ -67,7 +67,9 @@ slug="$(fget '.slug')"
 default_verify="$(fget '.commands.test // ""')"
 
 exit_rc=0; exit_out="$(lib phase-exit verify --feature-dir "$feature_dir" 2>&1)" || exit_rc=$?
-flags="$(grep '^FLAG' <<<"$exit_out" | jq -R . | jq -cs .)"
+# grep finds nothing on a clean exit (no FLAG lines); that is the common case, not
+# a script error, so pipefail's non-zero must not abort the assignment.
+flags="$(grep '^FLAG' <<<"$exit_out" | jq -R . | jq -cs .)" || true
 exit_ok=true; (( exit_rc == 0 )) || exit_ok=false
 
 # An exit FLAG is VERIFICATION.md drifting from its format or its evidence rows: the lead

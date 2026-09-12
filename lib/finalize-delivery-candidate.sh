@@ -4,7 +4,7 @@
 # Usage:
 #   finalize-delivery-candidate.sh bound-sha <delivery.json> <target-name>
 #   finalize-delivery-candidate.sh run <feature_dir> [--commit]
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARTIFACT_SINK="$SCRIPT_DIR/artifact-sink.sh"

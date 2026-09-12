@@ -3,7 +3,7 @@
 #
 # Usage: pr-feedback.sh check <pr-number | --fixture file> [--repo owner/repo]
 # Modes: LOOP_SPEC_PR_FEEDBACK_MODE=local (default) | external
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMENTS_BIN="${LOOP_SPEC_PR_COMMENTS_BIN:-$SCRIPT_DIR/pr-comments.sh}"

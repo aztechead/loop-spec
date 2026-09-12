@@ -14,7 +14,7 @@
 # OBSERVABILITY CONTRACT: this script must NEVER abort a cycle. All internal
 # failures print a one-line warning to stderr and exit 0. Same contract as
 # lib/events.sh and lib/cycle-result.sh.
-set -uo pipefail
+set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=credential-refresh.sh
@@ -88,7 +88,7 @@ case "$cmd" in
     repo_dir="$(pwd -P)"
     # The configured URL (`remote get-url` would expand url.<base>.insteadOf, which is
     # transport; the host probe reads the destination as the operator named it).
-    remote_url="$(git config --get remote.origin.pushurl 2>/dev/null || git config --get remote.origin.url 2>/dev/null)"
+    remote_url="$(git config --get remote.origin.pushurl 2>/dev/null || git config --get remote.origin.url 2>/dev/null)" || true
     credential_host="$(python3 - "$remote_url" <<'PY'
 import re, sys
 try:
@@ -178,7 +178,7 @@ PY
     fi
 
     # The branch carries no state (lib/state-ref.sh); the ref rides along, best effort.
-    state_ref="refs/loop-spec/state/$(bash "$script_dir/feature-read.sh" "$feature_dir" -r --filter '.slug // ""' 2>/dev/null)"
+    state_ref="refs/loop-spec/state/$(bash "$script_dir/feature-read.sh" "$feature_dir" -r --filter '.slug // ""' 2>/dev/null || true)"
     if git rev-parse -q --verify "$state_ref^{commit}" >/dev/null 2>&1; then
       run_without_auth_retry push git push origin "$state_ref:$state_ref" >/dev/null 2>&1 \
         || echo "checkpoint-pr: state ref $state_ref not pushed (state stays local)" >&2
@@ -299,7 +299,7 @@ Resuming \`/loop-spec:cycle\` on this branch continues the run. Re-review this P
     # ── Step 7: Persist + emit (both best-effort) ───────────────────────────────
     bash "$(dirname "${BASH_SOURCE[0]}")/feature-write.sh" set "$feature_dir" checkpointPrUrl "\"$pr_url\"" 2>/dev/null || true
 
-    data_json=$(jq -cn --arg url "$pr_url" '{"url": $url}')
+    data_json=$(jq -cn --arg url "$pr_url" '{"url": $url}') || true
     bash "$(dirname "${BASH_SOURCE[0]}")/events.sh" emit "$feature_dir" checkpoint_pr --data "$data_json" 2>/dev/null || true
 
     echo "checkpoint-pr: ${pr_kind} PR $pr_url"

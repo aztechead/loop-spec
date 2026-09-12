@@ -39,7 +39,7 @@
 # lib/status.sh metrics contract. A `watch` object appended post-merge by
 # lib/watch.sh (C2) is PRESERVED across re-runs — this writer owns every other
 # field, watch.sh owns that one.
-set -uo pipefail
+set -euo pipefail
 
 DIGEST_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Dates every entry in the telemetry corpus, so a digest can be read against the
@@ -73,7 +73,7 @@ if [[ -f "$feature_dir/events.jsonl" ]]; then
   events="$(jq -cs 'map(select(type == "object"))' "$feature_dir/events.jsonl" 2>/dev/null || echo '[]')"
 fi
 
-slug="$(jq -r '.slug // empty' <<<"$fstate")"
+slug="$(jq -r '.slug // empty' <<<"$fstate" || echo '')"
 [[ -n "$slug" ]] || slug="$(basename "$feature_dir")"
 
 if [[ -z "$OUT_DIR" ]]; then

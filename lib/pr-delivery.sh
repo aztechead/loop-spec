@@ -29,7 +29,7 @@
 #
 # stdout is exactly one JSON result. Diagnostics go to stderr.
 # Exit 0: delivered/checkpointed/observed; 1: operational or policy failure; 2: bad input.
-set -uo pipefail
+set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=credential-refresh.sh
@@ -417,7 +417,7 @@ if [[ "$have_gh" -eq 0 ]]; then
     git -C "$repo_dir" push "$remote_url" "$target_sha:refs/heads/$branch" || push_rc=$?
   [[ "$push_rc" -eq 0 ]] \
     || fail_delivery "push_failed" "exact-SHA push failed: $(tr '\n' ' ' < "$tmp_dir/git-push.err")"
-  remote_sha="$(git -C "$repo_dir" ls-remote "$remote_url" "refs/heads/$branch" 2>/dev/null | cut -f1)"
+  remote_sha="$(git -C "$repo_dir" ls-remote "$remote_url" "refs/heads/$branch" 2>/dev/null | cut -f1)" || true
   [[ "$remote_sha" == "$target_sha" ]] \
     || fail_delivery "remote_sha_mismatch" "remote branch is '$remote_sha', expected '$target_sha'"
   echo "pr-delivery: $no_gh_reason; pushed $target_sha to $branch and stopped (pushed-no-pr)" >&2
@@ -430,9 +430,9 @@ fi
 if ! run_gh "$gh_out" "$gh_err" gh repo view "$remote_url" --json nameWithOwner,url; then
   fail_delivery "gh_error" "cannot resolve GitHub repository: $(tr '\n' ' ' < "$gh_err")"
 fi
-repo_identity="$(jq -r '.nameWithOwner // empty' "$gh_out" 2>/dev/null)"
+repo_identity="$(jq -r '.nameWithOwner // empty' "$gh_out" 2>/dev/null)" || true
 [[ -n "$repo_identity" ]] || fail_delivery "gh_error" "gh repo view returned no repository identity"
-canonical_repo_url="$(jq -r '.url // empty' "$gh_out" 2>/dev/null)"
+canonical_repo_url="$(jq -r '.url // empty' "$gh_out" 2>/dev/null)" || true
 [[ -n "$canonical_repo_url" ]] || fail_delivery "gh_error" "gh repo view returned no canonical repository URL"
 repo_host="$(python3 - "$canonical_repo_url" <<'PY'
 import sys

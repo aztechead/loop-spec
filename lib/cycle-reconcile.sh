@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Complete the terminal-result contract after an interrupted full cycle.
 # Intended for an out-of-band supervisor after the agent process exits.
-set -uo pipefail
+set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 result_root=""
@@ -9,8 +9,8 @@ reason="agent process terminated before emitting a terminal result"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --result-root) result_root="${2:-}"; shift 2 ;;
-    --reason) reason="${2:-}"; shift 2 ;;
+    --result-root) result_root="${2:-}"; shift 2 || { echo "cycle-reconcile: $1 needs a value" >&2; exit 2; } ;;
+    --reason) reason="${2:-}"; shift 2 || { echo "cycle-reconcile: $1 needs a value" >&2; exit 2; } ;;
     *) echo "cycle-reconcile: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -32,15 +32,18 @@ if [[ ! -f "$active" ]]; then
   exit 1
 fi
 
-title="$(jq -r '.title // "Interrupted loop-spec cycle"' "$active")"
-cycle_type="$(jq -r '.cycleType // "full"' "$active")"
+# An unreadable/corrupt active-run.json must still let reconciliation fall through
+# to the write-terminal fallback below, so each read degrades to empty rather than
+# aborting the one script that recovers a crashed run.
+title="$(jq -r '.title // "Interrupted loop-spec cycle"' "$active")" || title=""
+cycle_type="$(jq -r '.cycleType // "full"' "$active")" || cycle_type=""
 case "$cycle_type" in full|micro|debug) ;; *) cycle_type="full" ;; esac
-slug="$(jq -r '.slug // empty' "$active")"
-branch="$(jq -r '.branch // empty' "$active")"
-base_branch="$(jq -r '.baseBranch // empty' "$active")"
-phase="$(jq -r '.phase // "startup"' "$active")"
-feature_dir="$(jq -r '.featureDir // empty' "$active")"
-autonomous="$(jq -r '.autonomous // false' "$active")"
+slug="$(jq -r '.slug // empty' "$active")" || slug=""
+branch="$(jq -r '.branch // empty' "$active")" || branch=""
+base_branch="$(jq -r '.baseBranch // empty' "$active")" || base_branch=""
+phase="$(jq -r '.phase // "startup"' "$active")" || phase=""
+feature_dir="$(jq -r '.featureDir // empty' "$active")" || feature_dir=""
+autonomous="$(jq -r '.autonomous // false' "$active")" || autonomous="false"
 summary="Cycle interrupted during ${phase}: ${reason}"
 
 # A delivered PR in this run is not an interruption. Reconcile used to stamp
@@ -87,7 +90,7 @@ if [[ ! -f "$feature_dir/feature.json" && -n "$slug" ]]; then
               break
             fi
           done
-    )"
+    )" || true
     [[ -z "$candidate" ]] || feature_dir="$candidate"
   fi
 fi
@@ -99,9 +102,9 @@ if [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]]; then
     if ! jq -en --arg s "$delivered_summary" '$s | test("\\S")' >/dev/null 2>&1; then
       delivered_summary="Cycle completed; a PR was delivered."
     fi
+    final_rc=0
     LOOP_SPEC_RESULT_ROOT="$result_root" bash "$script_dir/cycle-result.sh" write \
-      "$feature_dir" --status completed --summary "$delivered_summary"
-    final_rc=$?
+      "$feature_dir" --status completed --summary "$delivered_summary" || final_rc=$?
     if [[ "$final_rc" -ne 0 ]]; then
       echo "cycle-reconcile: delivered terminal result could not be published (rc=$final_rc)" >&2
       exit "$final_rc"
@@ -111,7 +114,7 @@ if [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]]; then
   # Establish the local terminal result before attempting network I/O. A second
   # write below picks up checkpointPrUrl if the best-effort push succeeds.
   LOOP_SPEC_RESULT_ROOT="$result_root" bash "$script_dir/cycle-result.sh" write "$feature_dir" \
-    --status failed --reason "$reason" --summary "$summary"
+    --status failed --reason "$reason" --summary "$summary" || true  # the terminal write below is the one that must land
   repo_root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null || true)"
   if [[ -n "$repo_root" ]]; then
     (

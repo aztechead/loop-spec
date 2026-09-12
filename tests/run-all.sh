@@ -414,6 +414,7 @@ run_suite "tests/tdd-red-green-coverage" "bash tests/tdd-red-green-coverage.test
 run_suite "tests/execute-dispatch-contract" "bash tests/execute-dispatch-contract.test.sh"
 run_suite "tests/design-coverage"     "bash tests/design-coverage.test.sh"
 run_suite "tests/human-code-coverage" "bash tests/human-code-coverage.test.sh"
+run_suite "tests/shell-mode-coverage" "bash tests/shell-mode-coverage.test.sh"
 run_suite "tests/human-docs-coverage" "bash tests/human-docs-coverage.test.sh"
 run_suite "tests/feature-read-coverage" "bash tests/feature-read-coverage.test.sh"
 run_suite "tests/plain-language-coverage" "bash tests/plain-language-coverage.test.sh"

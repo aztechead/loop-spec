@@ -57,11 +57,11 @@
 #
 # Exit: 0 the step answered; 1 the step's answer is a stop (blocked, escalation, not
 # published) with the reason in the JSON; 2 bad invocation or missing prepare.json.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
-usage() { sed -n '2,48p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,48p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2 || true; exit 2; }
 
 cmd="${1:-}"; shift || true
 feature_dir="" task_id="" attempt=0 head_sha="" verdict="" role="implementer"
@@ -73,7 +73,7 @@ while [[ $# -gt 0 ]]; do
     # flags-only grammar, so a stray positional argument there still fails usage.
     *) [[ "$cmd" == "add-files" ]] && break; usage ;;
   esac
-  shift 2
+  shift 2 || usage
 done
 files=("$@")
 case "$cmd" in dispatch|package|verdict|integrate|run|add-files) ;; *) usage ;; esac

@@ -6,6 +6,7 @@
 #   FAIL  - integer fail counter (the helpers increment it)
 # Not a test suite itself (not *.test.sh); tests/all-tests-registered.test.sh
 # intentionally does not require it in run-all.sh.
+set -euo pipefail
 
 check_output() {
   local name="$1" expected_exit="$2" grep_pattern="$3"; shift 3

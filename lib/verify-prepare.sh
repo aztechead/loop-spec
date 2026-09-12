@@ -23,7 +23,7 @@
 # lib/graph/gate.sh, a verify_failure event is emitted, and the team fields are cleared.
 #
 # Exit: 0 continue; 1 remediate; 21 escalate (infrastructure); 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }

@@ -23,7 +23,7 @@
 # else would make the link THEIR python3) prints nothing and PATH stays as it was. The
 # interpreter chosen is the one the shim would have chosen (`<manager> which python3`
 # honours the version files and env the shim reads), never a different python.
-set -uo pipefail
+set -euo pipefail
 
 explain=0
 [[ "${1:-}" == "--explain" ]] && explain=1
@@ -32,7 +32,9 @@ explain=0
 # or nothing (with the reason on stderr) when it cannot be made this user's own.
 private_dir() {
   local real="$1" dir="${TMPDIR:-/tmp}/loop-spec-python-$(id -u)"
-  [[ -e "$dir" || -L "$dir" ]] || mkdir -m 700 "$dir" 2>/dev/null
+  # A failed mkdir (a race, no permission) falls through to the ownership check
+  # below, which answers "not this user's" instead of aborting the probe.
+  [[ -e "$dir" || -L "$dir" ]] || mkdir -m 700 "$dir" 2>/dev/null || true
   if [[ -L "$dir" || ! -d "$dir" || ! -O "$dir" ]]; then
     echo "$dir is not a directory this user owns" >&2; return 1
   fi

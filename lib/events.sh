@@ -57,7 +57,7 @@
 # events.jsonl and result.json are local telemetry, deliberately not committed.
 #
 # Exit codes: always 0 (observability never aborts).
-set -uo pipefail
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 EVENTS_FILE="events.jsonl"

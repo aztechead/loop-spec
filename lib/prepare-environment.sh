@@ -2,7 +2,7 @@
 # Resolve and run deterministic dependency preparation for one repository root.
 # Exit: 0 prepared/shared/cached/noop; 2 invocation; 10 setup command failed;
 # 11 setup left non-ignored worktree changes; 12 Git state unreadable.
-set -uo pipefail
+set -euo pipefail
 
 die2() { echo "prepare-environment: $*" >&2; exit 2; }
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -16,9 +16,9 @@ shift || true
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --root) root="${2:-}"; shift 2 ;;
-    --command) explicit_set=1; explicit_command="${2:-}"; shift 2 ;;
-    --reuse-from) reuse_from="${2:-}"; shift 2 ;;
+    --root) root="${2:-}"; shift 2 || die2 "$1 needs a value" ;;
+    --command) explicit_set=1; explicit_command="${2:-}"; shift 2 || die2 "$1 needs a value" ;;
+    --reuse-from) reuse_from="${2:-}"; shift 2 || die2 "$1 needs a value" ;;
     *) die2 "unknown argument '$1'" ;;
   esac
 done
@@ -29,7 +29,7 @@ done
 root="$(cd "$root" && pwd -P)"
 git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
   || die2 "not a git worktree: $root"
-top="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)"
+top="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)" || true
 top="$(cd "$top" && pwd -P)"
 [[ "$top" == "$root" ]] || die2 "--root must be the repository root: $top"
 if [[ -n "$reuse_from" ]]; then
@@ -384,9 +384,9 @@ fi
 watchdog="$script_dir/run-with-watchdog.sh"
 prepare_timeout="${LOOP_SPEC_PREPARE_TIMEOUT_SECS:-1800}"
 prepare_idle_timeout="${LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS:-300}"
+rc=0
 bash "$watchdog" --root "$root" --command "$command" --log "$log" \
-  --timeout-secs "$prepare_timeout" --idle-timeout-secs "$prepare_idle_timeout"
-rc=$?
+  --timeout-secs "$prepare_timeout" --idle-timeout-secs "$prepare_idle_timeout" || rc=$?
 if [[ "$rc" -ne 0 ]]; then
   if ! worktree_status="$(read_worktree_status)"; then
     state_unreadable "setup_state_unreadable" "$rc"

@@ -28,14 +28,15 @@
 #
 # Environment: LOOP_SPEC_DOCS_CACHE_DIR, LOOP_SPEC_DOCS_CACHE_TTL_SECS (default 3600),
 # LOOP_SPEC_DOCS_FIXTURES (canned responses; the offline test double).
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 case "${1:-}" in
   latest|resolve|docs) [[ $# -ge 2 ]] || { sed -n '12,22p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
   *) sed -n '12,22p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac
-python3 "$SCRIPT_DIR/docs-probe.py" "$@"
-rc=$?
-(( rc == 2 )) && sed -n '12,22p' "$0" | sed 's/^# \{0,1\}//' >&2
-exit $rc
+# docs-probe.py's exit 1 (unverified) and 2 (bad invocation) are designed answers,
+# not bugs; capture the code instead of letting it abort here.
+python3 "$SCRIPT_DIR/docs-probe.py" "$@" || rc=$?
+(( ${rc:-0} == 2 )) && sed -n '12,22p' "$0" | sed 's/^# \{0,1\}//' >&2
+exit "${rc:-0}"

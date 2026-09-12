@@ -7,7 +7,7 @@
 #
 # Exit: the command's exit code, or 124 for either watchdog deadline.
 # A JSON sidecar is always written to <log>.watchdog.json.
-set -uo pipefail
+set -euo pipefail
 
 die2() { echo "run-with-watchdog: $*" >&2; exit 2; }
 
@@ -19,11 +19,11 @@ idle_timeout_secs="${LOOP_SPEC_COMMAND_IDLE_TIMEOUT_SECS:-300}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --root) root="${2:-}"; shift 2 ;;
-    --command) command="${2:-}"; shift 2 ;;
-    --log) log="${2:-}"; shift 2 ;;
-    --timeout-secs) timeout_secs="${2:-}"; shift 2 ;;
-    --idle-timeout-secs) idle_timeout_secs="${2:-}"; shift 2 ;;
+    --root) root="${2:-}"; shift 2 || { echo "run-with-watchdog: $1 needs a value" >&2; exit 2; } ;;
+    --command) command="${2:-}"; shift 2 || { echo "run-with-watchdog: $1 needs a value" >&2; exit 2; } ;;
+    --log) log="${2:-}"; shift 2 || { echo "run-with-watchdog: $1 needs a value" >&2; exit 2; } ;;
+    --timeout-secs) timeout_secs="${2:-}"; shift 2 || { echo "run-with-watchdog: $1 needs a value" >&2; exit 2; } ;;
+    --idle-timeout-secs) idle_timeout_secs="${2:-}"; shift 2 || { echo "run-with-watchdog: $1 needs a value" >&2; exit 2; } ;;
     *) die2 "unknown argument '$1'" ;;
   esac
 done

@@ -23,7 +23,7 @@
 # Exit codes: 0 clean, 1 any flagged criterion, 2 bad invocation -- unreadable, empty, or
 # non-JSON input is a usage error, never a finding. Conflating the two made an unreadable
 # input read as "criteria are bad", which is a different instruction to whoever acts on it.
-set -uo pipefail
+set -euo pipefail
 
 source_path="${1:--}"
 if [[ "$source_path" == "-" ]]; then

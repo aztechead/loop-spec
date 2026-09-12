@@ -19,7 +19,7 @@
 #    reviewTrail:{present, rc, findings[]}}    lib/review-trail.sh lint when REVIEW-ORDER.md exists
 #
 # Exit: 0 always with the object (every pass is advisory; a failed live probe is in .live.rc); 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
@@ -51,7 +51,9 @@ fi
 
 prc=0; pout="$(lib plain-language-lint prose "$docs"/*.md --max-flags 40 2>/dev/null)" || prc=$?
 changed_code=""
-[[ -n "$base" ]] && changed_code="$(git diff --name-only "$base" HEAD -- '*.sh' '*.py' 2>/dev/null | while IFS= read -r f; do [[ -f "$f" ]] && printf '%s\n' "$f"; done)"
+# No base at all is the ordinary case (the && list ends false), and a base this worktree
+# no longer holds (a rewritten history) makes git diff fail; neither aborts the advisory pass.
+[[ -n "$base" ]] && changed_code="$(git diff --name-only "$base" HEAD -- '*.sh' '*.py' 2>/dev/null | while IFS= read -r f; do [[ -f "$f" ]] && printf '%s\n' "$f"; done)" || true
 crc=0; cout=""
 if [[ -n "$changed_code" ]]; then cout="$(printf '%s\n' "$changed_code" | xargs bash "$SCRIPT_DIR/plain-language-lint.sh" comments --max-flags 40 2>/dev/null)" || crc=$?; fi
 plain="$(jq -cn --argjson prc "$prc" --argjson pf "$(grep '^FLAG' <<<"$pout" | lines_json)" --argjson crc "$crc" --argjson cf "$(grep '^FLAG' <<<"$cout" | lines_json)" \
@@ -63,7 +65,9 @@ if [[ -n "$base" ]]; then
   doc="$(jq -cn --argjson rc "$drc" --argjson l "$(grep -vE '^doc-tells:' <<<"$dout" | grep . | lines_json)" '{rc:$rc, lines:$l}')"
 fi
 
-layers="$(lib extension-points layers verify 2>/dev/null | lines_json)"
+# extension-points exits non-zero when a layer errors; the advisory pass still
+# reports whatever lines_json could format from its output.
+layers="$(lib extension-points layers verify 2>/dev/null | lines_json)" || true
 
 trail='{"present":false,"rc":0,"findings":[]}'
 if [[ -f "$docs/REVIEW-ORDER.md" && -n "$base" ]]; then

@@ -9,7 +9,7 @@
 #
 # Usage: oneshot-spec-lint.sh <SPEC.md>
 # Output: `FLAG <what>` lines; exit 1 when any, 0 when clean (or no file), 2 bad call.
-set -uo pipefail
+set -euo pipefail
 
 spec="${1:-}"
 [[ -n "$spec" ]] || { echo "usage: oneshot-spec-lint.sh <SPEC.md>" >&2; exit 2; }

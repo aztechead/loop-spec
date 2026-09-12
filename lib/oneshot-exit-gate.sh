@@ -24,13 +24,16 @@
 # review, and floor checks are the oneshot's own. A SPEC.md the probe cannot read as
 # either shape is a flag, never a pass: a gate that passes on an unreadable input is
 # the failure class the determinism audit exists to remove (port audit 1, F6).
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/exit-gate-prelude.sh" "${1:-}"
 spec="$(fget '.artifacts.spec // ""')"; [[ -n "$spec" ]] || spec="$docs/SPEC.md"
 
-answer="$(bash "$SCRIPT_DIR/graph/probes/oneshot.sh" --feature-dir "$feature_dir" --after 2>/dev/null)"
+# A probe error falls through to the case's catch-all below, which already turns an
+# unreadable answer into a FLAG; losing that message to a bare -e abort would trade a
+# diagnosed exit 1 for an undiagnosed one.
+answer="$(bash "$SCRIPT_DIR/graph/probes/oneshot.sh" --feature-dir "$feature_dir" --after 2>/dev/null)" || true
 escalated=0
 case "$answer" in
   "route=full reason=SPEC.md frontmatter says route: full"*) escalated=1 ;;
@@ -56,7 +59,9 @@ changed=""
 if [[ -n "$ws_root" ]]; then
   while IFS=$'\t' read -r rpath rsha; do
     [[ -n "$rpath" && -n "$rsha" ]] || continue
-    changed+="$(git -C "$root/$rpath" diff --name-only "$rsha" HEAD -- 2>/dev/null | sed "s|^|${rpath%/}/|")"$'\n'
+    # rsha can be a ref this workspace repo no longer holds; the footprint check
+    # below still needs to run over whatever repos DID diff cleanly.
+    changed+="$(git -C "$root/$rpath" diff --name-only "$rsha" HEAD -- 2>/dev/null | sed "s|^|${rpath%/}/|")"$'\n' || true
   done < <(fget '.workspace.repos[]? | [.path, .baseSha] | @tsv')
   base_sha="per-repo baseSha"
 elif [[ -n "$base_sha" ]]; then
@@ -83,7 +88,9 @@ if (( ! escalated )); then
   # the block to meet the code. A changed ask is an escalation (route: full), not an edit.
   intent_block() { sed -n '/^<!-- intent: frozen/,/^<!-- \/intent -->$/p'; }
   rel="${spec#"$root/"}"
-  committed="$(git show "HEAD:$rel" 2>/dev/null | intent_block)"
+  # git show fails for a path not yet committed at HEAD; committed then stays empty
+  # and the comparison below reads as "nothing to compare" rather than aborting.
+  committed="$(git show "HEAD:$rel" 2>/dev/null | intent_block)" || true
   if [[ -n "$committed" && "$committed" != "$(intent_block < "$spec")" ]]; then
     flag "[intent] the frozen Intent block of $rel changed since its commit: restore it (git show HEAD:$rel); when the ask itself is wrong, escalate with route: full instead"
   fi

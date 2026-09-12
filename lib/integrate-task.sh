@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Transactionally verify and fast-forward a task branch into a feature branch.
 # stdout is always one compact JSON result; command output is redirected to stderr.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -226,7 +226,7 @@ fi
 if [[ "$verify_rc" -ne 0 ]]; then
   # The last lines of the output ride in the detail: a refusal that said only
   # "command-exited-nonzero" made a lead re-run the command to learn which step failed.
-  verify_tail="$(tail -n 5 "$verify_log" | tr '\n' ' ' | cut -c1-400)"
+  verify_tail="$(tail -n 5 "$verify_log" | tr '\n' ' ' | cut -c1-400)" || true
   rm -f "$verify_log"
   fail verify-failed "command-exited-nonzero: ${verify_tail}"
 fi
@@ -267,7 +267,7 @@ fi
 
 if [[ "$cleanup_requested" == true ]]; then
   if ! bash "$SCRIPT_DIR/git-ops.sh" -C "$feature_root" remove-task-worktree "$task_worktree" >/dev/null; then
-    dirty="$(git -C "$task_worktree" status --porcelain 2>/dev/null | tr '\n' ' ')"
+    dirty="$(git -C "$task_worktree" status --porcelain 2>/dev/null | tr '\n' ' ')" || true
     fail cleanup-failed "worktree-remove-refused:${dirty:-unknown}"
   fi
   if ! git -C "$feature_root" branch -d "$task_branch" >&2; then

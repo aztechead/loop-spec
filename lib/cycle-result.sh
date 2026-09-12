@@ -102,7 +102,7 @@
 #
 # Exit codes: writes always return 0 (observability never aborts); `clear` returns 1
 # when it cannot safely remove the stale pointer so an entry point cannot reuse it.
-set -uo pipefail
+set -euo pipefail
 
 VALID_STATUSES="completed paused escalated terminal failed"
 VALID_NO_CHANGE_REASONS="already-satisfied diagnostic-only"
@@ -222,7 +222,7 @@ _resolve_result_root() {
     first_worktree_line="$(git -C "$abs" worktree list --porcelain 2>/dev/null | {
       IFS= read -r line || true
       printf '%s' "${line:-}"
-    })"
+    })" || true
     if [[ "$first_worktree_line" == worktree\ * ]]; then
       printf '%s\n' "${first_worktree_line#worktree }"
       return 0

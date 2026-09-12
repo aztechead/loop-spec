@@ -72,6 +72,24 @@ All notable changes documented here. Format follows Keep a Changelog.
 - The whole suite passes with all network denied (`sandbox-exec` on macOS); the tree
   ships only tests that run with the machine offline.
 
+### Changed (one shell mode)
+
+- Every shipped script under `lib/` and `hooks/` opens with `set -euo pipefail`; the
+  one sanctioned relaxation is `set -uo pipefail` with a same-line reason, and no script
+  needs it today. `tests/shell-mode-coverage.test.sh` enforces the rule;
+  `skills/shared/human-code.md` states it under "fail loudly". The tree had run two
+  modes side by side, decided per file with nothing recording the choice, so reviewers
+  relitigated one script at a time; the peers with a bash layer run one mode with one
+  rule (Spec Kit `set -e`, Superpowers `set -euo pipefail`). Sixty-eight scripts moved,
+  each with only the guards its covering suites needed. Found on the way: `lib/graph/
+  probes/oneshot.sh`'s footprint check returned 1 on every relative path;
+  `lib/prepare-environment.sh` captured the watchdog's exit code on the line after the
+  call, so its documented exit 10 and 12 were unreachable; `lib/deliver.sh` and
+  `lib/pr-delivery.sh` piped a failing first stage into `tail`/`cut` and read the
+  empty result as an answer. A trailing flag with no value now says so and exits 2 in
+  the converted scripts (it used to loop forever); the at-end EXECUTE squash says on
+  stderr when it left the task commits as they were instead of failing the gate.
+
 ### Fixed (PR 100 audit, `docs/reviews/pr-100.md` on `chore/pr-100-audit`)
 
 - `lib/graph/driver.py` prints `NOTE [snapshot]` and `NOTE [escalate]` on stderr. Both

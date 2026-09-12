@@ -23,7 +23,7 @@
 # Exit: 0 with one `path=<compact|short|full> reason=<text>` line. Anything undeterminable
 # answers `path=full` -- the long path is the safe direction, and an unresolved probe
 # never satisfies a route (graph-contract.md, route-condition rule).
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECURITY_SIGNAL="$SCRIPT_DIR/../../security-signal.sh"
@@ -41,7 +41,7 @@ full() {
 feature_dir=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --feature-dir) feature_dir="${2:-}"; shift 2 ;;
+    --feature-dir) feature_dir="${2:-}"; shift 2 || { echo "short-path.sh: $1 needs a value" >&2; exit 2; } ;;
     *) echo "usage: short-path.sh --feature-dir DIR | --answers" >&2; exit 2 ;;
   esac
 done

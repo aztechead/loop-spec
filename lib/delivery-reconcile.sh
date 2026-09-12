@@ -24,7 +24,7 @@
 #
 # stdout is the sidecar JSON on success/no-op. Diagnostics go to stderr.
 # Exit 0: canonical sidecar present or written; 1: nothing to record; 2: bad input.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PR_DELIVERY="${LOOP_SPEC_PR_DELIVERY_BIN:-$SCRIPT_DIR/pr-delivery.sh}"

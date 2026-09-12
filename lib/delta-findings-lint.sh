@@ -30,7 +30,7 @@
 #
 # Exit codes: 0 filtered; 1 unreadable diff or reply (fail safe: nothing can be
 # verified, so the caller relays the message and stops); 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 usage() { echo "usage: delta-findings-lint.sh filter --diff <unified diff> <reply path|->" >&2; exit 2; }
 

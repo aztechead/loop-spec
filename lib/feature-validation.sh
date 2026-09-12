@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prepare and compare repository-wide quality commands for one feature candidate.
 # Exit: 0 no new failures; 2 invocation/state; 20 regression; 21 infrastructure.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

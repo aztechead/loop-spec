@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Shared credential refresh and one-retry authentication seam.
 # Source this file, then call loop_spec_run_authenticated with a command runner.
+set -euo pipefail
 
 # shellcheck source=bounded-run.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/bounded-run.sh"

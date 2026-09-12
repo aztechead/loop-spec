@@ -770,7 +770,13 @@ check "observe auth failure: one auth refresh" "1" \
 # --- no gh: final mode pushes the exact SHA and stops with its own outcome ----------
 NOGH="$WORK/nogh-bin"; mkdir -p "$NOGH"; ln -sf "$REAL_GIT" "$NOGH/git"
 ln -sf "$(python3 -c 'import sys; print(sys.executable)')" "$NOGH/python3"
-for tool in jq bash cut tr date mktemp rm cat sed grep head; do
+# dirname resolves script_dir at the top of pr-delivery.sh; omitting it used to be
+# masked by `cd ""` silently landing in the caller's cwd, and the have_gh=0 path
+# never touched the now-wrongly-sourced credential-refresh.sh. Under set -e that
+# stray `.` source failure aborts the script instead of hiding it, so this shim
+# needs dirname present the same as any real PATH does (CLAUDE.md's bash/git/jq/
+# python3 floor already assumes standard coreutils, dirname included).
+for tool in jq bash cut tr date mktemp rm cat sed grep head dirname; do
   p="$(command -v "$tool")"; [[ -n "$p" ]] && ln -sf "$p" "$NOGH/$tool"
 done
 out="$(PATH="$NOGH" bash "$SCRIPT" final -C "$WORK/repo" --branch feat/nogh --base main --sha "$TARGET_SHA" \

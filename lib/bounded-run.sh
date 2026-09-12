@@ -33,6 +33,7 @@
 #
 # python3 is a hard runtime dependency of loop-spec (see CLAUDE.md), and is already
 # required by the callers that use this seam.
+set -euo pipefail
 
 # Export the "never ask a human" environment for git and gh.
 loop_spec_disable_interactive_prompts() {

@@ -18,7 +18,7 @@
 # Environment variables (all optional):
 #   LOOP_SPEC_INVOCATION_STAMP   Set to "0" to disable. Default: 1 (active).
 #   CLAUDE_PROJECT_DIR           Project root; default $PWD.
-set -uo pipefail
+set -euo pipefail
 
 [[ "${LOOP_SPEC_INVOCATION_STAMP:-1}" == "0" ]] && exit 0
 command -v python3 >/dev/null 2>&1 || exit 0

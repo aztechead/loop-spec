@@ -36,7 +36,7 @@
 # Always ends with one ANSWER+REASON line:
 #   converged-floor: ok (N criteria verified)  |  converged-floor: N violation(s)
 #   converged-floor: shape ok (N criteria)     (--shape)
-set -uo pipefail
+set -euo pipefail
 
 shape=0
 [[ "${1:-}" == "--shape" ]] && { shape=1; shift; }

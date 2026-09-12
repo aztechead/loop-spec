@@ -39,7 +39,7 @@
 #   default          -> ${CODEX_HOME:-~/.codex}
 #
 # Exit codes: 0 ok; 1 partial failure (a collision was skipped); 2 bad usage.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"

@@ -42,12 +42,12 @@
 #
 # Exit: 0 the step answered; 1 no open gate, an unreadable input, or a failed write
 # (message on stderr); 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
 gate() { bash "$SCRIPT_DIR/graph/gate.sh" "$@"; }
-usage() { sed -n '2,40p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,40p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2 || true; exit 2; }
 die() { echo "critique-step: $*" >&2; exit 1; }
 
 cmd="${1:-}"; shift || true
@@ -148,7 +148,9 @@ case "$cmd" in
   revised)
     load_state
     [[ -f "$snapshot" ]] || die "$snapshot missing: 'findings' was never called, or 'fail' answered close"
-    diff -u "$snapshot" "$artifact" > "$delta_diff"; changed=$(( $? == 1 ))
+    # diff exits 1 on the ordinary case (the revision changed the artifact); capture that.
+    diff -u "$snapshot" "$artifact" > "$delta_diff" || diff_rc=$?
+    changed=$(( ${diff_rc:-0} == 1 ))
     fixlist="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '
       [.gateHistory[]? | select(.phase == $p and .gate == $g and .result == "fail")] | last
       | (.findingsAddressed // []) | to_entries[] | "\(.key + 1). \(.value)"' -- --arg p "$phase" --arg g "$gate_name")"

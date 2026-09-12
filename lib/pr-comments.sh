@@ -52,7 +52,7 @@
 # so offline tests exercise exactly the jq the live path uses. Requires no gh.
 #
 # Exit codes: 0 ok; 1 fetch/parse failure; 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=credential-refresh.sh
@@ -233,7 +233,7 @@ if [[ -z "$REPO" ]]; then
   [[ -z "$LOOP_SPEC_AUTH_ERROR_CODE" ]] || _die_auth
   [[ "$resolve_rc" -eq 0 ]] \
     || { echo "pr-comments.sh: cannot resolve repo (pass --repo <owner/repo>)" >&2; exit 1; }
-  REPO="$(jq -r '.nameWithOwner // empty' "$gh_out" 2>/dev/null)"
+  REPO="$(jq -r '.nameWithOwner // empty' "$gh_out" 2>/dev/null)" || true
   [[ -n "$REPO" ]] \
     || { echo "pr-comments.sh: cannot resolve repo (pass --repo <owner/repo>)" >&2; exit 1; }
 fi
