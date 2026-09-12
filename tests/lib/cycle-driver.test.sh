@@ -777,6 +777,40 @@ init="$(HARNESS=claude drv init --dir "$REPO9" --slug ship-it --title "ship it" 
 check "init: gitfile checkout enters no worktree" "null" "$(jq -r '.enterWorktree' <<<"$init")"
 check "init: gitfile checkout names the reason" "1" "$(grep -c 'working in place' /tmp/gitfile.err)"
 
+# --- the plugin checkout moves while a phase runs -----------------------------------
+# A development clone edited mid-phase (the Codex EXECUTE live run) is a NOTE, not an
+# escalation, and the note rides stderr: skills/cycle/SKILL.md acts on the FIRST stdout
+# line, and the note there hid the protocol line on this exact path (PR 100 audit). A
+# copy of the plugin stands in for the moving clone so the tree under test stays put.
+PLUGIN="$WORK/plugin"; mkdir -p "$PLUGIN"
+tar -C "$REPO_ROOT" --exclude=.git --exclude=tests --exclude='__pycache__' -cf - . | tar -C "$PLUGIN" -xf -
+REPO11="$(new_repo moving-plugin)"
+(cd "$REPO11" && SCRIPT="$PLUGIN/lib/cycle-driver.sh" drv start --dir "$REPO11" -- move it >/dev/null 2>&1
+  SCRIPT="$PLUGIN/lib/cycle-driver.sh" drv init --dir "$REPO11" --slug move-it --title "move it" --style step --profile standard --autonomous 0 >/dev/null 2>&1)
+FD11="$REPO11/.loop-spec/features/move-it"
+out="$(cd "$REPO11" && SCRIPT="$PLUGIN/lib/cycle-driver.sh" drv next --feature-dir "$FD11" 2>/dev/null)"
+check "moving plugin: the copy renders the spec phase" "NEXT phase=spec" "$(head -1 <<<"$out" | cut -d' ' -f1,2)"
+moved="$(jq -r '.driverNext.instructions.manifest' "$FD11/feature.json" | xargs -I{} jq -r '.sources | keys[0]' {})"
+printf '\n<!-- moved mid-phase -->\n' >> "$PLUGIN/$moved"
+write_spec "$REPO11" "$FD11"
+out="$(cd "$REPO11" && SCRIPT="$PLUGIN/lib/cycle-driver.sh" drv next --feature-dir "$FD11" --returned-from spec 2>"$WORK/moving.err")"
+check "moving plugin: the first stdout line is the protocol line" "PAUSED node=human.after-spec" "$(head -1 <<<"$out")"
+check "moving plugin: no NOTE line on stdout" "0" "$(grep -c '^NOTE ' <<<"$out")"
+check "moving plugin: the snapshot note names the moved source on stderr" "1" "$(grep -c "^NOTE \[snapshot\] plugin source changed since the phase was rendered: $moved;" "$WORK/moving.err")"
+check "moving plugin: the note is on the feature's warnings" "1" "$(jq -r '.warnings[]' "$FD11/feature.json" | grep -c '^NOTE \[snapshot\]')"
+check "moving plugin: no escalation" "0" "$(jq -c 'select(.event == "escalated")' "$FD11/events.jsonl" | wc -l | tr -d ' ')"
+
+# --- a quoted route: "full" is the same escalation as an unquoted one -----------------
+# The probe and the shape lint strip YAML quotes; the driver's unquoted match let the
+# gate's escalation write a second route: full line under a quoted one.
+printf -- '---\nroute: "full"\nfootprint:\n  - a.py\n---\n## Intent\n\n## Implementation notes\n' > "$WORK/quoted.md"
+python3 - "$REPO_ROOT/lib/graph/driver.py" "$WORK/quoted.md" >/dev/null <<'PY_'
+import sys, importlib.util
+spec = importlib.util.spec_from_file_location("driver", sys.argv[1]); d = importlib.util.module_from_spec(spec); spec.loader.exec_module(d)
+d.spec_escalate(sys.argv[2], "held")
+PY_
+check "spec escalate: a quoted route: \"full\" gets no second route line" "1" "$(sed -n '1,/^---$/!d; /^route:/p' "$WORK/quoted.md" | grep -c '^route:')"
+check "spec escalate: the reason is still recorded under Implementation notes" "1" "$(grep -c '^- escalated (route: full): held$' "$WORK/quoted.md")"
 
 echo
 echo "cycle-driver: $PASS passed, $FAIL failed"

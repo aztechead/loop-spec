@@ -61,6 +61,9 @@ else
 fi
 
 # -- commit pending phase artifacts ------------------------------------------------------
+# Single-repo only: in workspace mode the artifacts live at the workspace root, outside
+# every repo, so no repo's integrate-task can see them as dirt and there is nothing to
+# commit before dispatch.
 artifacts_committed=""
 if [[ "$workspace" == "null" ]]; then
   # SPEC.md approved at a human gate stayed uncommitted in the feature worktree, and

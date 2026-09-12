@@ -1313,7 +1313,7 @@ def cmd_next(argv):
             docs = docs_dir(feature_dir, feat)
             vpath, spath = os.path.join(docs, "VERIFICATION.md"), os.path.join(docs, "SPEC.md")
             if os.path.isfile(vpath) and os.path.isfile(spath) and \
-                    not re.search(r"^route: *full\s*$", open(spath, encoding="utf-8").read(), flags=re.M):
+                    not route_is_full(open(spath, encoding="utf-8").read()):
                 try:
                     verification_run(feature_dir, feat, docs, vpath, spath, None, True)
                 except Die as exc:
@@ -1345,7 +1345,7 @@ def cmd_next(argv):
                         returned, redo_count, "".join(f + " " for f in flags[:3]))
                     spath = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
                     if returned == "oneshot" and os.path.isfile(spath) and \
-                            not re.search(r"^route: *full\s*$", open(spath, encoding="utf-8").read(), flags=re.M):
+                            not route_is_full(open(spath, encoding="utf-8").read()):
                         # The one escalation the short route has, and it is the gate's, never
                         # the lead's: the deadlock's flag classes go on record and the run
                         # takes the full path from DISCUSS (port audit 5, R3).
@@ -1398,7 +1398,7 @@ def cmd_next(argv):
             print("ABORT reason=spec-unreadable")
             print("cycle-driver: %s" % exc, file=sys.stderr)
             return 1
-        if re.search(r"^route: *full\s*$", text, re.M) or not re.search(r"^## Intent$", text, re.M):
+        if route_is_full(text) or not re.search(r"^## Intent$", text, re.M):
             # The oneshot shape has an Intent block and no Goals; it is not the full-spec freeze.
             # The exit gate linted the sections, but a repeat return skips that gate.
             try:
@@ -2146,6 +2146,13 @@ def cmd_deliver(argv):
 TEMPLATES = REPO_ROOT / "skills" / "shared" / "artifact-templates"
 
 
+def route_is_full(text):
+    """SPEC.md frontmatter says route: full. The value may be YAML-quoted; the route
+    probe and the shape lint strip the quotes, so this reads the same spelling (an
+    unquoted match alone let spec_escalate write a second route: full line)."""
+    return re.search(r"^route:\s*[\"']?full[\"']?\s*$", text, flags=re.M) is not None
+
+
 def compact_artifact(text):
     """Headings already separate short records; preserve whitespace inside evidence fences."""
     lines = text.splitlines()
@@ -2397,7 +2404,7 @@ def spec_fill(target, o):
 
 def spec_escalate(target, reason):
     text = open(target, encoding="utf-8").read()
-    if not re.search(r"^route: *full\s*$", text, flags=re.M):
+    if not route_is_full(text):
         text = re.sub(r"^---\n(.*?)^---\n", lambda m: "---\n" + m.group(1) + "route: full\n---\n", text, count=1, flags=re.M | re.S)
     text = text.replace("## Implementation notes\n", "## Implementation notes\n- escalated (route: full): %s\n" % reason, 1)
     with open(target, "w", encoding="utf-8") as fh:

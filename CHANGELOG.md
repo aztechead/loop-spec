@@ -75,6 +75,9 @@ All notable changes documented here. Format follows Keep a Changelog.
 - `lib/graph/driver.py` prints `NOTE [snapshot]` and `NOTE [escalate]` on stderr. Both
   were on stdout, where `skills/cycle/SKILL.md` acts on the first line; on the exact
   path the snapshot note exists for, the first line was the note and `NEXT` came after.
+  `tests/lib/cycle-driver.test.sh` drives a plugin copy whose source moves mid-phase
+  and pins the first stdout line as the protocol line, with the note on stderr and in
+  `warnings`.
 - `tests/lib/cycle-driver.test.sh` and `tests/lib/execute-prepare.test.sh` are back with
   their red cases fixed instead of deleted: the four driver cases pinned behavior 6.6.4
   changed on purpose (a repeat return reruns the gate; one paused feature resumes
@@ -107,7 +110,9 @@ All notable changes documented here. Format follows Keep a Changelog.
   Spec Kit, OpenSpec, or Superpowers gates a diff on a declared file list, and BMAD,
   which does, is replacing its agent-declared list with git's (its issue 1789).
   `skills/oneshot/SKILL.md` commits everything the change wrote.
-- `lib/oneshot-spec-lint.sh` reads a quoted `route: "full"` as the probe does.
+- `lib/oneshot-spec-lint.sh` and `lib/graph/driver.py` (`route_is_full`, its four
+  sites) read a quoted `route: "full"` as the probe does; the driver's unquoted match
+  had let `spec escalate` write a second `route: full` line under a quoted one.
 - `lib/python-path.sh` refuses a private directory it does not own (a symlink or
   someone else's directory planted at the predictable `/tmp` name), creates it 0700,
   and also resolves asdf and mise shims.
