@@ -164,10 +164,15 @@ if [[ -z "$workspace_root" ]]; then
   # The commit the last gate advanced on (the phase_end that routed to deliver). Source
   # committed after it was never scanned or reviewed: the 6.6.3 FastAPI run committed
   # uv.lock and .python-version inside DELIVER and result.json called that SHA verified.
-  # Artifact paths are DELIVER's own commits and do not count. No recorded headSha
-  # (an older run, or a feature dir outside a checkout) skips the comparison.
+  # Artifact paths are DELIVER's own commits and do not count. A run whose phase_end
+  # records carry no headSha at all (before 6.6.4) skips the comparison; a run that
+  # records them but never routed a phase to deliver has no gate to compare against
+  # and is refused (a sneaked commit on a feature whose last gate routed to DISCUSS
+  # shipped as pushed-no-pr in the 6.6.4 live-run attack).
   gated_sha="$(jq -r 'select(.event == "phase_end" and .next == "deliver") | .headSha // empty' \
     "$feature_dir/events.jsonl" 2>/dev/null | tail -1)"
+  gate_records=0
+  jq -e 'select(.event == "phase_end" and (.headSha // "") != "")' "$feature_dir/events.jsonl" >/dev/null 2>&1 && gate_records=1
   post_gate_drift=""
   if [[ -n "$gated_sha" && -n "$target_sha" ]] \
     && git -C "$artifact_root" rev-parse --verify -q "${gated_sha}^{commit}" >/dev/null 2>&1; then
@@ -211,6 +216,10 @@ if [[ -z "$workspace_root" ]]; then
     # a forgotten file from test residue and escalated.
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
       "dirty_worktree" "candidate repository has uncommitted changes: $(printf '%s\n' "$dirty_state" | head -5 | sed 's/^...//' | paste -sd ' ' -)"
+    preflight_ok=0
+  elif [[ -z "$gated_sha" && "$gate_records" -eq 1 ]]; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+      "no_gate_record" "no phase returned to deliver through the driver (events.jsonl has no phase_end routing to deliver); run the cycle so a gate binds the candidate"
     preflight_ok=0
   elif [[ -n "$post_gate_drift" ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \

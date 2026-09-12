@@ -54,6 +54,13 @@ All notable changes documented here. Format follows Keep a Changelog.
   earlier cut of this change printed the interpreter's own directory, which put
   Homebrew's bin first on PATH and shadowed a newer `claude` with the cask's old one;
   live run 2's nested reviewer session failed on "does not support this model".
+- `lib/deliver.sh` refuses `no_gate_record`: a run whose phase_end records carry
+  `headSha` but never routed a phase to deliver has no gate to compare a candidate
+  against. A direct attack on live run 2's state (a commit after the gate, feature
+  forced to DELIVER) had pushed as `pushed-no-pr` through that gap; with a gate record
+  the same attack is `post_gate_drift`.
+- `lib/runtime-ignore.sh` excludes `.loop-spec/BACKLOG.md`: DELIVER's dirt check read
+  the pruning pass's file as an uncommitted change (integrate-task already knew it).
 - `lib/oneshot-spec-lint.sh` stands down under `LOOP_SPEC_ROUTE=full` or a `route: full`
   frontmatter line: a forced-full run writes the full shape (live run 3 drew two REDOs
   for a missing Intent block).

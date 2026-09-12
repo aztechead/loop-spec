@@ -855,7 +855,7 @@ PY
        ($fj.gatePlan // $fj.autonomousGatePlan // ($classification.gatePlan // null) //
         $active.gatePlan // null) as $gatePlan |
          def local_delivery_error: ["repo_invalid","repo_root_mismatch","branch_mismatch",
-           "git_status_failed","dirty_worktree","post_gate_drift","base_sha_missing","base_sha_invalid",
+           "git_status_failed","dirty_worktree","post_gate_drift","no_gate_record","base_sha_missing","base_sha_invalid",
            "base_not_ancestor","no_commits","git_history_failed","local_artifact_policy_failed"];
          def delivery_target_eligible:
            . as $target |

@@ -479,6 +479,14 @@ check "post-gate source commit: exit 1" "1" "$ec"
 check "post-gate source commit: structured error" "post_gate_drift" "$(jq -r '.targets[0].errorCode' "$GDIR/delivery.json")"
 check "post-gate source commit: the refusal names the file" "1" "$(grep -c 'touch uv.lock' "$GDIR/delivery.json")"
 check "post-gate source commit: controller not called" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+# A modern run whose last gate routed elsewhere has no gate to compare against: refused,
+# not skipped (the 6.6.4 live-run attack pushed a sneaked commit through that gap).
+jq -cn --arg sha "$GATED" '{ts:"t",slug:"drift",event:"phase_end",phase:"oneshot",data:{next:"discuss"},verdict:"advanced",next:"discuss",headSha:$sha}' > "$GDIR/events.jsonl"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$GDIR")" || ec=$?
+check "no phase_end to deliver: exit 1" "1" "$ec"
+check "no phase_end to deliver: structured error" "no_gate_record" "$(jq -r '.targets[0].errorCode' "$GDIR/delivery.json")"
 check "single dirty: no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
 
 git -C "$DIRTY" checkout -q -- b
