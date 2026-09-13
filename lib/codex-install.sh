@@ -71,7 +71,7 @@ while [[ $# -gt 0 ]]; do
       fi
       MODEL_ROUTES_JSON="$(jq -c --arg role "$role" --arg model "$model" \
         '.[$role] = $model' <<<"$MODEL_ROUTES_JSON")"
-      shift 2
+      shift 2 || _die2 "$1 needs a value"
       ;;
     *) _die2 "unknown flag '$1'" ;;
   esac

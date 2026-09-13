@@ -46,7 +46,7 @@ if [[ "${1:-}" == "-C" ]]; then
     shift
   else
     repo_dir="$2"
-    shift 2
+    shift 2 || { parse_error="-C requires a value"; shift; }
   fi
 fi
 
@@ -75,7 +75,7 @@ while [[ $# -gt 0 ]]; do
         shift
         break
       fi
-      option="$1"; value="$2"; shift 2
+      option="$1"; value="$2"; shift 2 || { parse_error="$option requires a value"; shift; }
       case "$option" in
         --branch) branch="$value" ;;
         --base) base_branch="$value" ;;
@@ -277,7 +277,7 @@ export LOOP_SPEC_PR_DELIVERY_CWD="$repo_dir"
 # Run a network command with a per-call timeout. Python 3.6 supports communicate(timeout=).
 run_gh_once() {
   local stdout_file="$1" stderr_file="$2"
-  shift 2
+  shift 2 || { echo "run_gh_once: needs 2 arguments" >&2; return 2; }
   python3 - "$command_timeout" "$stdout_file" "$stderr_file" "$@" <<'PY'
 import os, signal, subprocess, sys
 
@@ -312,7 +312,7 @@ PY
 
 run_gh() {
   local stdout_file="$1" stderr_file="$2" stage="github"
-  shift 2
+  shift 2 || { echo "run_gh: needs 2 arguments" >&2; return 2; }
   if [[ "${1:-}" == "git" && " $* " == *" push "* ]]; then
     stage="push"
   elif [[ "${1:-}" == "git" ]]; then
@@ -330,7 +330,7 @@ run_gh() {
 
 run_gh_no_auth_retry() {
   local stdout_file="$1" stderr_file="$2" stage="$3"
-  shift 3
+  shift 3 || { echo "run_gh_no_auth_retry: needs 3 arguments" >&2; return 2; }
   LOOP_SPEC_AUTH_ERROR_CODE=""
   LOOP_SPEC_AUTH_ERROR_MESSAGE=""
   loop_spec_credential_refresh "$repo_dir" "$stage" "pre-stage" "$credential_host" || return 125

@@ -68,7 +68,7 @@ loop_spec_resolve_timeout() {
 # git/gh against a specific checkout.
 loop_spec_run_bounded() {
   local timeout_secs="$1" stdout_file="$2" stderr_file="$3"
-  shift 3
+  shift 3 || { echo "loop_spec_run_bounded: needs 3 arguments" >&2; return 2; }
   python3 - "$timeout_secs" "$stdout_file" "$stderr_file" "$@" <<'PY'
 import os, signal, subprocess, sys
 
@@ -111,7 +111,7 @@ PY
 # of those properties, so `bash -c "$fragment"` and a temp script are both wrong.
 loop_spec_run_bounded_stdin() {
   local timeout_secs="$1" stdout_file="$2" stderr_file="$3" stdin_text="$4"
-  shift 4
+  shift 4 || { echo "loop_spec_run_bounded_stdin: needs 4 arguments" >&2; return 2; }
   LOOP_SPEC_BOUNDED_RUN_STDIN="$stdin_text" \
   python3 - "$timeout_secs" "$stdout_file" "$stderr_file" "$@" <<'PY'
 import os, signal, subprocess, sys

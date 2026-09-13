@@ -31,7 +31,7 @@ lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
 [[ "${1:-}" == "run" ]] || { echo "usage: verify-prepare.sh run --feature-dir DIR" >&2; exit 2; }
 shift
 feature_dir=""
-while [[ $# -gt 0 ]]; do case "$1" in --feature-dir) feature_dir="${2:-}"; shift 2 ;; *) echo "verify-prepare: unknown argument '$1'" >&2; exit 2 ;; esac; done
+while [[ $# -gt 0 ]]; do case "$1" in --feature-dir) feature_dir="${2:-}"; shift 2 || { echo "verify-prepare: $1 needs a value" >&2; exit 2; } ;; *) echo "verify-prepare: unknown argument '$1'" >&2; exit 2 ;; esac; done
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || { echo "usage: verify-prepare.sh run --feature-dir DIR" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"

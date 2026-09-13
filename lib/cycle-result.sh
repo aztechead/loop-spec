@@ -125,7 +125,7 @@ _is_valid_no_change_reason() {
 
 _resolve_autonomous() {
   local explicit="$1" value="$2" stored
-  shift 2
+  shift 2 || { echo "_resolve_autonomous: needs 2 arguments" >&2; return 2; }
   if [[ "$explicit" != "true" ]]; then
     value="false"
     [[ "${LOOP_SPEC_AUTONOMOUS:-}" != "1" ]] || value="true"

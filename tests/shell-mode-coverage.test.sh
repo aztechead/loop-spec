@@ -12,6 +12,8 @@
 # library takes the full mode: every sourcer runs it already, and `set -uo` in a sourced
 # file cannot clear a caller's -e anyway. Tests (*.test.sh) are outside the rule: a
 # runner that stops at its first failing check loses the rest of its report.
+# The second check below holds the same line for `shift N`: a script that cannot shift
+# says so rather than exiting 1 in silence.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -32,6 +34,15 @@ while IFS= read -r f; do
     fail=$((fail+1))
   fi
 done < <(find "$REPO_ROOT/lib" "$REPO_ROOT/hooks" -name '*.sh' -not -name '*.test.sh' -not -path '*/node_modules/*' | sort)
+
+# A `shift N` past the end of the arguments returns 1 and prints nothing, so under -e a
+# flag with no value ended the script silently (and under the old -uo mode the parse
+# loop never ended at all). Every such shift names the problem on its own line.
+while IFS= read -r hit; do
+  echo "FAIL: $hit: a shift past the end says nothing (add || usage, or || { echo ...; exit 2; })"
+  fail=$((fail+1))
+done < <(grep -rnE '(^|[;[:space:]])shift [2-9][[:space:]]*(;;|$)' "$REPO_ROOT/lib" "$REPO_ROOT/hooks" --include='*.sh' \
+  | grep -v '\.test\.sh:' | grep -v '||' | sed "s#^$REPO_ROOT/##" || true)
 
 echo "Results: $pass passed, $fail failed"
 [[ "$fail" -eq 0 ]]

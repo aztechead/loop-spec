@@ -37,7 +37,7 @@ usage() {
 cmd="${1:-}"
 feature_dir="${2:-}"
 [[ "$cmd" == "observe" && -n "$feature_dir" ]] || usage
-shift 2
+shift 2 || usage
 accept_checkpoint=0
 while [[ $# -gt 0 ]]; do
   case "$1" in

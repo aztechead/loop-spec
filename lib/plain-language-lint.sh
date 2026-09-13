@@ -41,7 +41,7 @@ while [[ $# -gt 0 ]]; do
     --rules) SHOW_RULES=1; shift ;;
     --max-flags)
       [[ "${2:-}" =~ ^[0-9]+$ ]] || { echo "usage: plain-language-lint.sh --max-flags N (N is a non-negative integer)" >&2; exit 2; }
-      MAX_FLAGS="$2"; shift 2 ;;
+      MAX_FLAGS="$2"; shift 2 || { echo "plain-language-lint: $1 needs a value" >&2; exit 2; } ;;
     --max-flags=*)
       MAX_FLAGS="${1#*=}"
       [[ "$MAX_FLAGS" =~ ^[0-9]+$ ]] || { echo "usage: plain-language-lint.sh --max-flags N (N is a non-negative integer)" >&2; exit 2; }

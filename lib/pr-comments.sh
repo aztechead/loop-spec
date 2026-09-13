@@ -204,13 +204,13 @@ trap 'rm -rf "$auth_tmp"' EXIT
 
 _run_gh_once() {
   local stdout_file="$1" stderr_file="$2"
-  shift 2
+  shift 2 || { echo "_run_gh_once: needs 2 arguments" >&2; return 2; }
   loop_spec_run_bounded "$_pr_comments_timeout" "$stdout_file" "$stderr_file" "$@"
 }
 
 _run_gh() {
   local stage="$1" stdout_file="$2" stderr_file="$3"
-  shift 3
+  shift 3 || { echo "_run_gh: needs 3 arguments" >&2; return 2; }
   loop_spec_run_authenticated "$repo_dir" "$stage" "$credential_host" \
     "$stdout_file" "$stderr_file" _run_gh_once "$stdout_file" "$stderr_file" "$@"
 }

@@ -58,7 +58,7 @@ phase="${1:-}"; shift || true
 feature_dir="" terminal=0 check=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --feature-dir) feature_dir="${2:-}"; shift 2 ;;
+    --feature-dir) feature_dir="${2:-}"; shift 2 || { echo "phase-exit: $1 needs a value" >&2; exit 2; } ;;
     --terminal) terminal=1; shift ;;
     --check) check=1; shift ;;
     *) echo "usage: phase-exit.sh <phase> --feature-dir DIR [--terminal] [--check]" >&2; exit 2 ;;

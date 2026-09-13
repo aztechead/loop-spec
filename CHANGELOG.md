@@ -86,9 +86,11 @@ All notable changes documented here. Format follows Keep a Changelog.
   `lib/prepare-environment.sh` captured the watchdog's exit code on the line after the
   call, so its documented exit 10 and 12 were unreachable; `lib/deliver.sh` and
   `lib/pr-delivery.sh` piped a failing first stage into `tail`/`cut` and read the
-  empty result as an answer. A trailing flag with no value now says so and exits 2 in
-  the converted scripts (it used to loop forever); the at-end EXECUTE squash says on
-  stderr when it left the task commits as they were instead of failing the gate.
+  empty result as an answer. Every `shift N` under `lib/` and `hooks/` (161 sites) now
+  says so when it cannot shift, through the script's own usage or die path: a trailing
+  flag with no value used to loop forever under `-uo` and exit 1 in silence under `-e`;
+  the coverage suite holds that line too. The at-end EXECUTE squash says on stderr when
+  it left the task commits as they were instead of failing the gate.
 
 ### Fixed (PR 100 audit, `docs/reviews/pr-100.md` on `chore/pr-100-audit`)
 

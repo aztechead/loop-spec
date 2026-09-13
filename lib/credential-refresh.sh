@@ -97,7 +97,7 @@ loop_spec_is_auth_failure() {
 # The runner must write to the supplied files and return the wrapped command's status.
 loop_spec_run_authenticated() {
   local repo_dir="$1" stage="$2" host="$3" stdout_file="$4" stderr_file="$5"
-  shift 5
+  shift 5 || { echo "loop_spec_run_authenticated: needs 5 arguments" >&2; return 2; }
   local rc=0 stage_key prepared_stage stage_prepared=0
 
   LOOP_SPEC_AUTH_ERROR_CODE=""

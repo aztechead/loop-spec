@@ -43,7 +43,7 @@ while [[ $# -gt 0 ]]; do
     --feature-dir) feature_dir="${2:-}" ;; --verifier) verifier="${2:-}" ;; --suite) suite="${2:-}" ;;
     --reviewer) reviewer="${2:-}" ;; --remediation-tasks) tasks="${2:-[]}" ;; --minors) minors="${2:-[]}" ;; *) usage ;;
   esac
-  shift 2
+  shift 2 || usage
 done
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || usage
 case "$verifier" in ALL_PASS|FAIL) ;; *) usage ;; esac

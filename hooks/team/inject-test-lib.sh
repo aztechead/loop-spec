@@ -9,7 +9,7 @@
 set -euo pipefail
 
 check_output() {
-  local name="$1" expected_exit="$2" grep_pattern="$3"; shift 3
+  local name="$1" expected_exit="$2" grep_pattern="$3"; shift 3 || { echo "inject-test-lib: $1 needs a value" >&2; exit 2; }
   local actual_exit=0 actual_output=""
   actual_output=$(env "$@" bash "$HOOK" 2>/dev/null) || actual_exit=$?
   local exit_ok=0 output_ok=0
@@ -26,7 +26,7 @@ check_output() {
 }
 
 check_no_pattern() {
-  local name="$1" expected_exit="$2" absent_pattern="$3"; shift 3
+  local name="$1" expected_exit="$2" absent_pattern="$3"; shift 3 || { echo "inject-test-lib: $1 needs a value" >&2; exit 2; }
   local actual_exit=0 actual_output=""
   actual_output=$(env "$@" bash "$HOOK" 2>/dev/null) || actual_exit=$?
   local exit_ok=0 output_ok=0

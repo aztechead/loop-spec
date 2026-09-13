@@ -74,14 +74,14 @@ rounds=""; convergence=""; challenger_model=""; findings="[]"; notes="null"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --feature-dir) feature_dir="${2:-}"; shift 2 ;;
-    --phase) phase="${2:-}"; shift 2 ;;
-    --gate) gate="${2:-}"; shift 2 ;;
-    --challenger) challenger="${2:-}"; shift 2 ;;
-    --now) now="${2:-}"; shift 2 ;;
-    --rounds) rounds="${2:-}"; shift 2 ;;
-    --convergence) convergence="${2:-}"; shift 2 ;;
-    --challenger-model) challenger_model="${2:-}"; shift 2 ;;
+    --feature-dir) feature_dir="${2:-}"; shift 2 || usage ;;
+    --phase) phase="${2:-}"; shift 2 || usage ;;
+    --gate) gate="${2:-}"; shift 2 || usage ;;
+    --challenger) challenger="${2:-}"; shift 2 || usage ;;
+    --now) now="${2:-}"; shift 2 || usage ;;
+    --rounds) rounds="${2:-}"; shift 2 || usage ;;
+    --convergence) convergence="${2:-}"; shift 2 || usage ;;
+    --challenger-model) challenger_model="${2:-}"; shift 2 || usage ;;
     --findings)
       findings="${2:-}"
       # @path: the file holds the JSON array, or one finding per line.
@@ -89,8 +89,8 @@ while [[ $# -gt 0 ]]; do
         findings="$(cat "${findings#@}")"
         jq -e 'type == "array"' <<<"$findings" >/dev/null 2>&1 || findings="$(jq -R . <<<"$findings" | jq -cs 'map(select(. != ""))')"
       fi
-      shift 2 ;;
-    --notes) notes="$(jq -Rn --arg n "${2:-}" '$n')"; shift 2 ;;
+      shift 2 || usage ;;
+    --notes) notes="$(jq -Rn --arg n "${2:-}" '$n')"; shift 2 || usage ;;
     *) usage ;;
   esac
 done

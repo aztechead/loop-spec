@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
         --verify|--verify-command) verify_command="$2" ;;
         --prepare|--prepare-command) prepare_command="$2" ;;
       esac
-      shift 2
+      shift 2 || { echo "integrate-task: $1 needs a value" >&2; exit 2; }
       ;;
     --cleanup) cleanup_requested=true; shift ;;
     --preflight-only) preflight_only=true; shift ;;

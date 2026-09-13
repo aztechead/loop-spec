@@ -116,7 +116,7 @@ PY
 
     run_once() {
       local stdout_file="$1" stderr_file="$2"
-      shift 2
+      shift 2 || { echo "run_once: needs 2 arguments" >&2; return 2; }
       LOOP_SPEC_BOUNDED_RUN_CWD="$repo_dir" \
         loop_spec_run_bounded "$_checkpoint_timeout" "$stdout_file" "$stderr_file" "$@"
     }

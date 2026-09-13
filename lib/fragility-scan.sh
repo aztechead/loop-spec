@@ -51,7 +51,7 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       SINCE="$2"
-      shift 2
+      shift 2 || { usage; exit 1; }
       ;;
     --top)
       if [[ -z "${2:-}" ]]; then
@@ -60,7 +60,7 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       TOP="$2"
-      shift 2
+      shift 2 || { usage; exit 1; }
       ;;
     -*)
       echo "fragility-scan.sh: unknown option: $1" >&2
