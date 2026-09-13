@@ -124,6 +124,12 @@ check_value "JSONL transcript: denial writes paused result" "paused:phase-handof
 check "JSONL transcript: same-phase retry allowed" 0 "$JSONL_SAME" \
   CLAUDE_PROJECT_DIR="$ROOT"
 
+# LOOP_SPEC_SAME_SESSION=1 makes every edge one, not only the graph's declared
+# sameSession edges (#10, 6.6.4 live run): a second, non-sameSession phase is allowed.
+rm -f "$ROOT/.loop-spec/last-result.json"
+check "LOOP_SPEC_SAME_SESSION=1 allows a non-sameSession edge too" 0 "$SECOND" \
+  CLAUDE_PROJECT_DIR="$ROOT" LOOP_SPEC_SAME_SESSION=1
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

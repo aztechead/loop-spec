@@ -4,6 +4,179 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.6.4] - 2026-09-11
+
+### Fixed (second live-run report: a 6.6.2 attended run and a Codex EXECUTE run)
+
+- `lib/graph/driver.py next` runs the phase exit gate on every return. A phase that
+  closed clean once and was edited after (23 acceptance-lint flags in PLAN.md) advanced
+  to EXECUTE on its stale close; `phase-exit.sh` is idempotent, so the skip was only a
+  hole.
+- `lib/phase-exit.sh --check` runs the gates and prints the flags without committing,
+  closing, or writing state; an operator who ran the gate to read it got a `plan:` commit.
+- `lib/events.sh` writes `<feature>/.pending-dispatch` on the `dispatch` event, the
+  driver clears it on its next call, and `hooks/team/cycle-stamp-guard.sh` lets a turn
+  end while the marker is fresh (`LOOP_SPEC_DISPATCH_WAIT_MINS`, 90). The guard had
+  denied three turn ends while an agent was legitimately running.
+- `lib/acceptance-lint.sh` flags a grep invocation, not a name containing `grep`
+  (`grep_symbol` cost a planner round), and reads `-w` inside a flag cluster (`-qw`).
+- `lib/graph/gate.sh`: the critique ceiling grows one delta round per 20 findings in
+  the failed round, capped at +3, and `critique-step.sh` names the unresolved count and
+  residue path on stderr when the ceiling closes a gate. A 22-task plan drew 72
+  findings and closed with 8 majors parked silently.
+- `cycle-driver.sh start` (attended): exactly one paused feature resumes without a
+  question, none or several start a new cycle with a notice, and a leading `new` token
+  in a git repository skips resume outright (it used to refuse as "already a git repo").
+- `LOOP_SPEC_SAME_SESSION=1` runs every phase in one session: `next` never answers
+  `HANDOFF` and the handoff guard stands down.
+- The instruction snapshot's source-hash check is a `NOTE [snapshot]` plus a warning,
+  not an escalation: the plugin checkout is a development clone that moves while a
+  phase runs. The rendered instructions and prompt are still verified.
+- `lib/execute-prepare.sh` commits pending `docs/loop-spec/features/<slug>` artifacts
+  before the first dispatch (`artifactsCommitted`); an approved SPEC.md left uncommitted
+  made `integrate-task` refuse task-001 as dirty.
+- `cycle-driver.sh task add-files --feature-dir DIR --task ID <file...>` widens an open
+  task's write scope for a rework attempt across the sidecar, the collapsed list, and
+  `prepare.json`; it refuses an integrated task.
+- Docs: verify-only tasks commit `--allow-empty`; worktree sessions call the driver by
+  inline path; `configuration.md` lists the two new variables.
+- Already true on this tree, no change: `dispatch-prompt-guard.sh` accepts the
+  backticked `UNGROUNDED:` template line; `driver.py` emits no SyntaxWarning or
+  utcnow DeprecationWarning.
+
+### Changed
+
+- `lib/python-path.sh`: a new probe that links the real interpreter behind a version
+  manager's shim (pyenv, asdf, or mise) into a private 0700 directory holding only
+  `python3` (nothing when there is no shim, and nothing when the directory at that
+  predictable `/tmp` name is a symlink or someone else's). An earlier cut of this change
+  printed the interpreter's own directory, which put Homebrew's bin first on PATH and
+  shadowed a newer `claude` with the cask's old one; live run 2's nested reviewer
+  session failed on "does not support this model".
+- `lib/deliver.sh` refuses `no_gate_record`: a run whose phase_end records carry
+  `headSha` but never routed a phase to deliver has no gate to compare a candidate
+  against. A direct attack on live run 2's state (a commit after the gate, feature
+  forced to DELIVER) had pushed as `pushed-no-pr` through that gap; with a gate record
+  the same attack is `post_gate_drift`.
+- `lib/runtime-ignore.sh` excludes `.loop-spec/BACKLOG.md`: DELIVER's dirt check read
+  the pruning pass's file as an uncommitted change (integrate-task already knew it).
+- `lib/oneshot-spec-lint.sh` stands down under `LOOP_SPEC_ROUTE=full` or a `route: full`
+  frontmatter line: a forced-full run writes the full shape (live run 3 drew two REDOs
+  for a missing Intent block).
+- `lib/cycle-driver.sh` and `tests/run-all.sh` put the `python-path.sh` directory first
+  on PATH once, so every script they run skips the shim's manager call on each of the
+  hundreds of `python3` launches a phase makes (0.15 s each against 0.02 s for the
+  interpreter). The offline suite's summed time fell from 2767 s to 1635 s on the
+  machine that measured it; a phase exit pays the same tax in a live cycle. The
+  interpreter chosen is the one the shim would have chosen.
+- The whole suite passes with all network denied (`sandbox-exec` on macOS); the tree
+  ships only tests that run with the machine offline.
+
+### Changed (one shell mode)
+
+- Every shipped script under `lib/` and `hooks/` opens with `set -euo pipefail`; the
+  one sanctioned relaxation is `set -uo pipefail` with a same-line reason, and no script
+  needs it today. `tests/shell-mode-coverage.test.sh` enforces the rule;
+  `skills/shared/human-code.md` states it under "fail loudly". The tree had run two
+  modes side by side, decided per file with nothing recording the choice, so reviewers
+  relitigated one script at a time; the peers with a bash layer run one mode with one
+  rule (Spec Kit `set -e`, Superpowers `set -euo pipefail`). Sixty-eight scripts moved,
+  each with only the guards its covering suites needed. Found on the way: `lib/graph/
+  probes/oneshot.sh`'s footprint check returned 1 on every relative path;
+  `lib/prepare-environment.sh` captured the watchdog's exit code on the line after the
+  call, so its documented exit 10 and 12 were unreachable; `lib/deliver.sh` and
+  `lib/pr-delivery.sh` piped a failing first stage into `tail`/`cut` and read the
+  empty result as an answer. Every `shift N` under `lib/` and `hooks/` (161 sites) now
+  says so when it cannot shift, through the script's own usage or die path: a trailing
+  flag with no value used to loop forever under `-uo` and exit 1 in silence under `-e`;
+  the coverage suite holds that line too. The at-end EXECUTE squash says on stderr when
+  it left the task commits as they were instead of failing the gate.
+
+### Fixed (PR 100 audit, `docs/reviews/pr-100.md` on `chore/pr-100-audit`)
+
+- `lib/graph/driver.py` prints `NOTE [snapshot]` and `NOTE [escalate]` on stderr. Both
+  were on stdout, where `skills/cycle/SKILL.md` acts on the first line; on the exact
+  path the snapshot note exists for, the first line was the note and `NEXT` came after.
+  `tests/lib/cycle-driver.test.sh` drives a plugin copy whose source moves mid-phase
+  and pins the first stdout line as the protocol line, with the note on stderr and in
+  `warnings`.
+- `tests/lib/cycle-driver.test.sh` and `tests/lib/execute-prepare.test.sh` are back with
+  their red cases fixed instead of deleted: the four driver cases pinned behavior 6.6.4
+  changed on purpose (a repeat return reruns the gate; one paused feature resumes
+  without a question) and now pin the new behavior; the prepare suite resolves its
+  work directory physically (`/private/var` on macOS). The 6.6.3 `next`, handoff,
+  REDO, and workspace-packet pins this release depends on are live again.
+- `tests/oneshot-artifact-budget.test.sh` is back: it was an offline fixture copier,
+  not a live eval. Its two fixtures live under `tests/fixtures/oneshot-artifact-budget/`.
+- `lib/execute-prepare.sh` fails (exit 2, the reason on stderr) when the artifact
+  commit fails; it used to report the previous HEAD as `artifactsCommitted` with the
+  dirty SPEC still in place.
+- Workspace DELIVER gets the same two refusals as the single-repo path: `lib/events.sh`
+  records `repoHeadShas` (HEAD per workspace repo) on `phase_end`, since the feature
+  dir sits at the workspace root and `headSha` was null there, and `lib/deliver.sh`
+  refuses `post_gate_drift` / `no_gate_record` per repo. The whole check had sat under
+  the single-repo branch.
+- `adk-harness.md` names the mapping for an EXECUTE dispatch that omits
+  `subagent_type` (`implementer` / `spec-compliance-reviewer`): `dispatch_subagent` has
+  no default-agent form, and the contract had no clause for the omission.
+- `lib/pr-delivery.sh` checkpoint and observe modes refuse a hostless remote as
+  `remote_hostless`, not `gh_missing`: a supervisor could not tell "install gh" from
+  "this remote is a path".
+- The oneshot exit gate's fourth-file escalation and its `generated_by_manifest`
+  allowlist are gone. The footprint still selects the route (at most three files) and
+  still has to be in the diff; a diff file outside it is the code reviewer's finding
+  (`agents/code-reviewer.md`: Important per file, Critical when the authored files
+  outgrow the footprint, `route: full` as the fix), and scaffold output beside a
+  manifest is mentioned, never flagged. The gate had needed a new filename every live
+  run (lockfiles in 6.6.3, `.gitignore` in 6.6.4, README.md and main.py next); none of
+  Spec Kit, OpenSpec, or Superpowers gates a diff on a declared file list, and BMAD,
+  which does, is replacing its agent-declared list with git's (its issue 1789).
+  `skills/oneshot/SKILL.md` commits everything the change wrote.
+- `lib/oneshot-spec-lint.sh` and `lib/graph/driver.py` (`route_is_full`, its four
+  sites) read a quoted `route: "full"` as the probe does; the driver's unquoted match
+  had let `spec escalate` write a second `route: full` line under a quoted one.
+- `lib/python-path.sh` refuses a private directory it does not own (a symlink or
+  someone else's directory planted at the predictable `/tmp` name), creates it 0700,
+  and also resolves asdf and mise shims.
+- EXECUTE's implementer/reviewer rung dispatches the default agent on every harness,
+  Codex included. An earlier 6.6.4 cut added `harness.sh agent-type <role>`, which
+  passed the Codex role charter into a prompt whose first stanza says the charter does
+  not apply, and only saw user-level installs (`--project` writes `.codex/agents/`).
+  The probe is gone; `codex-harness.md` says `spawn_agent` carries no `agent_type` on
+  that rung.
+- `skills/oneshot/SKILL.md` records the reviewer dispatch BEFORE the `Agent` call so
+  the `.pending-dispatch` marker stands while the reviewer runs; recorded after, it
+  guarded nothing. `execute-subagent.md` says `task add-files` never reaches a running
+  attempt's brief: a rework is a new dispatch.
+
+### Removed
+
+- `evals/`, the live outcome-eval driver, with its offline consumer
+  `tests/eval-record-coverage.test.sh` and the nested-session guard's allowance for it:
+  nothing in the tree may need the network or a live model. Live runs are launched by
+  hand and their findings live in the PR.
+
+### Fixed
+
+Four findings from a 6.6.3 headless Sonnet `oneshot` run (a uv + Python 3.14 FastAPI
+service, 9 minutes, $1.65) against a repository whose `origin` is a local bare path.
+
+- `lib/pr-delivery.sh` and `lib/checkpoint-pr.sh`: a remote whose configured URL names
+  no host (a path, `file://`) is pushed and stopped (`pushed-no-pr`, the checkpoint
+  skip names the reason) instead of asking `gh` to resolve it; the run had escalated on
+  gh's `[HOST/]OWNER/REPO` argument error after the checkpoint reported `gh pr list
+  failed`. Both scripts now read the URL as configured (`remote.<name>.pushurl` /
+  `.url`) rather than through `remote get-url`, which expands `insteadOf` rewrites.
+- `lib/oneshot-exit-gate.sh` no longer escalates on a file outside the footprint (see
+  the audit section below); the lead had left `uv.lock` and `.python-version`
+  uncommitted to stay under that check, then committed them inside DELIVER.
+- `lib/events.sh` records `headSha` on every `phase_end`; `lib/deliver.sh` refuses a
+  candidate whose non-artifact files differ from the HEAD the last gate advanced on
+  (`post_gate_drift`). The run's `result.json` had named a commit no scan or reviewer
+  saw as `verifiedSha`.
+- `agents/code-reviewer.md` cites `approach-selection.md` through `{probe_dir}`; the
+  reviewer had tried the path relative to the project under review first.
+
 ## [6.6.3] - 2026-09-11
 
 ### Fixed

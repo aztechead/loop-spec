@@ -14,7 +14,7 @@
 # OBSERVABILITY CONTRACT: this script must NEVER abort a cycle. All internal
 # failures print a one-line warning to stderr and exit 0. Same contract as
 # lib/events.sh and lib/cycle-result.sh.
-set -uo pipefail
+set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=credential-refresh.sh
@@ -86,7 +86,9 @@ case "$cmd" in
     fi
 
     repo_dir="$(pwd -P)"
-    remote_url="$(git remote get-url --push origin 2>/dev/null || git remote get-url origin 2>/dev/null)"
+    # The configured URL (`remote get-url` would expand url.<base>.insteadOf, which is
+    # transport; the host probe reads the destination as the operator named it).
+    remote_url="$(git config --get remote.origin.pushurl 2>/dev/null || git config --get remote.origin.url 2>/dev/null)" || true
     credential_host="$(python3 - "$remote_url" <<'PY'
 import re, sys
 try:
@@ -102,6 +104,7 @@ else:
     print((urlparse(value).hostname or '').lower())
 PY
 )"
+    remote_host="$credential_host"
     [[ -n "$credential_host" ]] || credential_host="${GH_HOST:-github.com}"
 
     command_tmp="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-checkpoint-pr-XXXXXX")" \
@@ -113,7 +116,7 @@ PY
 
     run_once() {
       local stdout_file="$1" stderr_file="$2"
-      shift 2
+      shift 2 || { echo "run_once: needs 2 arguments" >&2; return 2; }
       LOOP_SPEC_BOUNDED_RUN_CWD="$repo_dir" \
         loop_spec_run_bounded "$_checkpoint_timeout" "$stdout_file" "$stderr_file" "$@"
     }
@@ -175,11 +178,15 @@ PY
     fi
 
     # The branch carries no state (lib/state-ref.sh); the ref rides along, best effort.
-    state_ref="refs/loop-spec/state/$(bash "$script_dir/feature-read.sh" "$feature_dir" -r --filter '.slug // ""' 2>/dev/null)"
+    state_ref="refs/loop-spec/state/$(bash "$script_dir/feature-read.sh" "$feature_dir" -r --filter '.slug // ""' 2>/dev/null || true)"
     if git rev-parse -q --verify "$state_ref^{commit}" >/dev/null 2>&1; then
       run_without_auth_retry push git push origin "$state_ref:$state_ref" >/dev/null 2>&1 \
         || echo "checkpoint-pr: state ref $state_ref not pushed (state stays local)" >&2
     fi
+
+    # A remote whose URL names no host (a path, file://) holds the pushed branch but
+    # has no repository gh could open a PR on: stop as pushed, not as a gh failure.
+    [[ -n "$remote_host" ]] || _skip "remote URL names no host: branch '${branch}' pushed, no PR target"
 
     # ── Step 5: Idempotency — check for existing open PR ───────────────────────
     list_rc=0
@@ -292,7 +299,7 @@ Resuming \`/loop-spec:cycle\` on this branch continues the run. Re-review this P
     # ── Step 7: Persist + emit (both best-effort) ───────────────────────────────
     bash "$(dirname "${BASH_SOURCE[0]}")/feature-write.sh" set "$feature_dir" checkpointPrUrl "\"$pr_url\"" 2>/dev/null || true
 
-    data_json=$(jq -cn --arg url "$pr_url" '{"url": $url}')
+    data_json=$(jq -cn --arg url "$pr_url" '{"url": $url}') || true
     bash "$(dirname "${BASH_SOURCE[0]}")/events.sh" emit "$feature_dir" checkpoint_pr --data "$data_json" 2>/dev/null || true
 
     echo "checkpoint-pr: ${pr_kind} PR $pr_url"

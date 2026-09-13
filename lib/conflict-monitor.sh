@@ -40,23 +40,23 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --test-exit)
       [[ $# -ge 2 ]] || usage
-      test_exit="$2"; shift 2
+      test_exit="$2"; shift 2 || usage
       ;;
     --gate-log)
       [[ $# -ge 2 ]] || usage
-      gate_log="$2"; shift 2
+      gate_log="$2"; shift 2 || usage
       ;;
     --agent-outputs)
       [[ $# -ge 3 ]] || usage
-      agent_a="$2"; agent_b="$3"; shift 3
+      agent_a="$2"; agent_b="$3"; shift 3 || usage
       ;;
     --consecutive)
       [[ $# -ge 2 ]] || usage
-      consecutive="$2"; shift 2
+      consecutive="$2"; shift 2 || usage
       ;;
     --checkpoint-ledger)
       [[ $# -ge 2 ]] || usage
-      checkpoint_ledger="$2"; shift 2
+      checkpoint_ledger="$2"; shift 2 || usage
       ;;
     *)
       usage

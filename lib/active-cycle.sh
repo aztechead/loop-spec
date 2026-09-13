@@ -3,7 +3,7 @@
 #
 # Usage: active-cycle.sh has-active [root ...]
 # Exit 0: active feature found; 1: no active feature; 2: resolution failed.
-set -uo pipefail
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 [[ "${1:-}" == "has-active" ]] || {

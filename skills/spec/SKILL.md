@@ -82,7 +82,7 @@ Never omit a file to qualify for a shorter route.
 - No intent questions remain unresolved.
 - SPEC.md and the footprint files have no security signal.
 
-ONESHOT implements, reviews once, verifies, and delivers. A fourth file requires promotion to the full route.
+ONESHOT implements, reviews once, verifies, and delivers. A change that outgrows the footprint is promoted to the full route by the reviewer's BLOCK.
 Name each footprint file's existing test module. Include it in the footprint if it changes, or mark it unchanged in Implementation notes.
 `lib/oneshot-spec-lint.sh` flags omitted test modules.
 

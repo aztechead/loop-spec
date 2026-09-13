@@ -54,7 +54,11 @@ Relevant phases:
    that turns a five-minute diagnosis into an afternoon. Log it, re-raise it, or state the
    reason the failure is genuinely uninteresting. A narrow exception type states it for
    you (`except FileNotFoundError` says which case this is); a bare `except Exception:
-   pass` states nothing.
+   pass` states nothing. In shell that rule is one line: every script under `lib/` and
+   `hooks/` opens with `set -euo pipefail`, and a script that must keep running through
+   a non-zero exit (a probe that collects exit codes into one answer, a sourced library
+   whose caller owns the mode) says so in a comment on its `set` line
+   (`tests/shell-mode-coverage.test.sh`).
 7. **An error message names what broke and, where you know it, the next move.** "Invalid
    input" is not something a person can act on. Which file, which field, which limit, what
    to do instead — the message is the only thing the operator has at 03:00, and it costs

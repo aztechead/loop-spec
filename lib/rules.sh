@@ -95,7 +95,7 @@ case "$cmd" in
     check=""
     while [[ $# -gt 0 ]]; do
       case "$1" in
-        --check) check="${2:-}"; shift 2 ;;
+        --check) check="${2:-}"; shift 2 || { echo "rules: $1 needs a value" >&2; exit 2; } ;;
         *) rule="${rule:+$rule }$1"; shift ;;
       esac
     done

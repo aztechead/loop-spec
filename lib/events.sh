@@ -29,11 +29,18 @@
 #
 # Canonical event names:
 #   phase_start       - a phase is about to run
-#   phase_end         - a phase returned (data: {"next":"<next_phase>"})
+#   phase_end         - a phase returned (data: {"next":"<next_phase>"}; headSha is
+#                       the checkout HEAD at that moment, null outside a git checkout;
+#                       in workspace mode repoHeadShas is {<repo name>: HEAD} per repo,
+#                       since the feature dir sits at the workspace root)
 #   gate_round        - a gate round completed (data: {"gate":..,"round":N})
 #   iterate_verdict   - an iterate judge verdict landed
 #   dispatch          - an agent was launched (data: {"role":..,"model":..,"rung":..};
-#                       contract: skills/shared/dispatch.md)
+#                       contract: skills/shared/dispatch.md); also writes
+#                       <feature_dir>/.pending-dispatch (empty; its mtime), which
+#                       hooks/team/cycle-stamp-guard.sh reads to stand down while the
+#                       dispatch is still in its wait window; cycle-driver.sh removes
+#                       it the moment the lead calls the driver again
 #   task_start        - an EXECUTE task began (data: {"index":N,"total":M,
 #                       "id":"task-003","subject":"..."}) -> "[EXECUTE] task 2/5 start"
 #   task_end          - an EXECUTE task finished (same, plus {"result":"merged|failed|..."})
@@ -50,7 +57,7 @@
 # events.jsonl and result.json are local telemetry, deliberately not committed.
 #
 # Exit codes: always 0 (observability never aborts).
-set -uo pipefail
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 EVENTS_FILE="events.jsonl"
@@ -381,14 +388,34 @@ case "${1:-}" in
       elapsed="${attempt_record#*$'\t'}"
       next="$(jq -r '.next // empty' <<<"$data_val" 2>/dev/null || true)"
       verdict="$(_phase_verdict "$phase_str" "$next")"
+      # The commit the phase returned on: DELIVER compares it with the candidate so a
+      # commit made after the last gate cannot ship as the verified SHA (6.6.3 FastAPI
+      # run). Empty outside a git checkout; DELIVER skips the comparison then.
+      head_sha="$(git -C "$feature_dir" rev-parse --verify -q HEAD 2>/dev/null || true)"
+      # Workspace mode: the feature dir sits at the workspace root, which is no checkout,
+      # so the gate's HEAD is recorded per repo (the single-repo check alone left a
+      # workspace DELIVER able to ship an ungated commit; PR 100 audit).
+      repo_heads="null"
+      ws="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -c --filter \
+        'if (.workspace != null and (.workspace.mode // "") != "single") then {root:.workspace.root, repos:[.workspace.repos[]? | {name, path}]} else empty end' 2>/dev/null || true)"
+      if [[ -n "$ws" ]]; then
+        repo_heads="{}"; ws_root="$(jq -r '.root // ""' <<<"$ws")"
+        while IFS=$'\t' read -r rname rpath; do
+          [[ -n "$rname" ]] || continue
+          rsha="$(git -C "$ws_root/$rpath" rev-parse --verify -q HEAD 2>/dev/null || true)"
+          repo_heads="$(jq -c --arg n "$rname" --arg s "$rsha" '.[$n] = (if $s == "" then null else $s end)' <<<"$repo_heads")"
+        done < <(jq -r '.repos[] | [.name, .path] | @tsv' <<<"$ws")
+      fi
       event_json="$(jq -cn --arg ts "$ts" --arg slug "$slug" --arg event "$event" \
         --argjson has_phase "$has_phase" --arg phase_str "$phase_str" --argjson data "$data_val" \
         --arg attempt "$attempt_id" --arg next "$next" --arg verdict "$verdict" \
-        --argjson elapsed "$elapsed" '
+        --argjson elapsed "$elapsed" --arg head "$head_sha" --argjson repo_heads "$repo_heads" '
           {ts:$ts,slug:$slug,event:$event,
            phase:(if $has_phase == 1 then $phase_str else null end),data:$data,
            attemptId:$attempt,timestamp:$ts,elapsedSeconds:$elapsed,
-           verdict:$verdict,next:(if $next == "" then null else $next end)}')"
+           verdict:$verdict,next:(if $next == "" then null else $next end),
+           headSha:(if $head == "" then null else $head end)}
+          + (if $repo_heads == null then {} else {repoHeadShas:$repo_heads} end)')"
       marker="LOOP_SPEC_PHASE_END"
     else
       event_json="$(jq -cn --arg ts "$ts" --arg slug "$slug" --arg event "$event" \
@@ -398,6 +425,17 @@ case "${1:-}" in
     fi
     if ! printf '%s\n' "$event_json" >> "$feature_dir/$EVENTS_FILE" 2>/dev/null; then
       echo "events.sh: failed to append event '$event' to $feature_dir/$EVENTS_FILE" >&2
+    fi
+    # A dispatched agent is running unattended; hooks/team/cycle-stamp-guard.sh reads
+    # this marker's age to tell that apart from a lead that stopped with the phase
+    # still open (the Stop guard denied three legitimate dispatch waits, #3 6.6.4
+    # live run). cycle-driver.sh removes it the moment the lead is back at a driver call.
+    if [[ "$event" == "dispatch" ]]; then
+      # Empty on purpose: the guard reads the mtime, and a file whose content never
+      # changes stays clean in a checkout that tracks the feature dir (a fixture that
+      # committed a timestamped marker then failed its next revert on it).
+      : > "$feature_dir/.pending-dispatch" 2>/dev/null \
+        || echo "events.sh: cannot write $feature_dir/.pending-dispatch" >&2
     fi
     [[ -z "$marker" ]] || printf '%s %s\n' "$marker" "$event_json"
     _console_line "$event" "$phase_str" "$data_val" "${elapsed:-}" "${verdict:-}"

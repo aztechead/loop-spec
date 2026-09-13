@@ -15,7 +15,7 @@
 # Usage: review-triage-lint.sh <VERIFICATION.md>
 # Output: `FLAG <path>:<line>: <message>` per finding; exit 1 when any, 0 when clean
 # (or when the file has no `## Code review` findings), 2 bad call.
-set -uo pipefail
+set -euo pipefail
 
 artifact="${1:-}"
 [[ -n "$artifact" && $# -eq 1 ]] || { echo "usage: review-triage-lint.sh <VERIFICATION.md>" >&2; exit 2; }

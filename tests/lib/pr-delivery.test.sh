@@ -30,7 +30,9 @@ printf 'base\n' > "$WORK/repo/base.txt"
 git -C "$WORK/repo" add base.txt
 git -C "$WORK/repo" commit -q -m base
 git init --bare -q "$WORK/origin.git"
-git -C "$WORK/repo" remote add origin "$WORK/origin.git"
+# The remote names a host (what gh needs); insteadOf carries the bytes to the bare repo.
+git -C "$WORK/repo" remote add origin https://github.com/test/repo.git
+git -C "$WORK/repo" config url."$WORK/origin.git".insteadOf https://github.com/test/repo.git
 git -C "$WORK/repo" push -q -u origin main
 git -C "$WORK/repo" checkout -q -b feat/delivery
 printf 'feature\n' > "$WORK/repo/feature.txt"
@@ -281,7 +283,7 @@ check "create: required checks passed" "passed" "$(jq -r '.checks.status' <<<"$o
 check "create: PR ready" "false" "$(jq -r '.prs[0].isDraft' "$GH_STATE")"
 check "create: one PR create" "1" "$(grep -c '^pr create ' "$GH_LOG" || true)"
 check "create: identity resolved from push remote" "1" \
-  "$(grep -cF "repo view $WORK/origin.git --json nameWithOwner,url" "$GH_LOG" || true)"
+  "$(grep -cF "repo view https://github.com/test/repo.git --json nameWithOwner,url" "$GH_LOG" || true)"
 
 # Rerun reuses the same PR and performs no duplicate create/readiness mutation.
 : > "$GH_LOG"
@@ -293,8 +295,9 @@ check "rerun: no ready mutation" "0" "$(grep -c '^pr ready ' "$GH_LOG" || true)"
 
 # Push and verification use the same configured push URL even when fetch differs.
 git init --bare -q "$WORK/fetch-only.git"
-git -C "$WORK/repo" remote set-url origin "$WORK/fetch-only.git"
-git -C "$WORK/repo" config remote.origin.pushurl "$WORK/origin.git"
+git -C "$WORK/repo" config url."$WORK/fetch-only.git".insteadOf https://github.com/test/fetch-only.git
+git -C "$WORK/repo" remote set-url origin https://github.com/test/fetch-only.git
+git -C "$WORK/repo" config remote.origin.pushurl https://github.com/test/repo.git
 : > "$GH_LOG"; ec=0; out="$(run_delivery 2>"$WORK/err")" || ec=$?
 check "push URL: exit 0" "0" "$ec"
 check "push URL: exact target remains at push destination" "$TARGET_SHA" \
@@ -302,11 +305,11 @@ check "push URL: exact target remains at push destination" "$TARGET_SHA" \
 check "push URL: fetch destination untouched" "1" \
   "$(git --git-dir="$WORK/fetch-only.git" show-ref --verify --quiet refs/heads/feat/delivery; echo $?)"
 git -C "$WORK/repo" config --unset-all remote.origin.pushurl || true
-git -C "$WORK/repo" remote set-url origin "$WORK/origin.git"
+git -C "$WORK/repo" remote set-url origin https://github.com/test/repo.git
 
 # Multiple push destinations are ambiguous and rejected before transport.
-git -C "$WORK/repo" config --add remote.origin.pushurl "$WORK/origin.git"
-git -C "$WORK/repo" config --add remote.origin.pushurl "$WORK/fetch-only.git"
+git -C "$WORK/repo" config --add remote.origin.pushurl https://github.com/test/repo.git
+git -C "$WORK/repo" config --add remote.origin.pushurl https://github.com/test/fetch-only.git
 ec=0; out="$(run_delivery 2>"$WORK/err")" || ec=$?
 check "multiple push URLs: exit 2" "2" "$ec"
 check "multiple push URLs: structured code" "remote_ambiguous" "$(jq -r '.errorCode' <<<"$out")"
@@ -767,7 +770,13 @@ check "observe auth failure: one auth refresh" "1" \
 # --- no gh: final mode pushes the exact SHA and stops with its own outcome ----------
 NOGH="$WORK/nogh-bin"; mkdir -p "$NOGH"; ln -sf "$REAL_GIT" "$NOGH/git"
 ln -sf "$(python3 -c 'import sys; print(sys.executable)')" "$NOGH/python3"
-for tool in jq bash cut tr date mktemp rm cat sed grep head; do
+# dirname resolves script_dir at the top of pr-delivery.sh; omitting it used to be
+# masked by `cd ""` silently landing in the caller's cwd, and the have_gh=0 path
+# never touched the now-wrongly-sourced credential-refresh.sh. Under set -e that
+# stray `.` source failure aborts the script instead of hiding it, so this shim
+# needs dirname present the same as any real PATH does (CLAUDE.md's bash/git/jq/
+# python3 floor already assumes standard coreutils, dirname included).
+for tool in jq bash cut tr date mktemp rm cat sed grep head dirname; do
   p="$(command -v "$tool")"; [[ -n "$p" ]] && ln -sf "$p" "$NOGH/$tool"
 done
 out="$(PATH="$NOGH" bash "$SCRIPT" final -C "$WORK/repo" --branch feat/nogh --base main --sha "$TARGET_SHA" \
@@ -779,6 +788,24 @@ check "no gh: no PR url" "null" "$(jq -r '.prUrl' <<<"$out")"
 out="$(PATH="$NOGH" bash "$SCRIPT" checkpoint -C "$WORK/repo" --branch feat/nogh --base main --sha "$TARGET_SHA" \
   --title "t" --body-file "$BODY" 2>/dev/null)"
 check "no gh: checkpoint mode still refuses" "gh_missing" "$(jq -r '.errorCode' <<<"$out")"
+
+# --- gh present, remote names no host: the same push-and-stop, reason named -----------
+# (the 6.6.3 FastAPI run escalated on gh's "[HOST/]OWNER/REPO" argument error instead)
+git -C "$WORK/repo" remote add local "$WORK/origin.git"
+: > "$GH_LOG"
+out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
+  bash "$SCRIPT" final -C "$WORK/repo" --remote local --branch feat/local --base main --sha "$TARGET_SHA" \
+  --title "t" --body-file "$BODY" 2>"$WORK/local.err")"
+check "hostless remote: final mode succeeds" "true" "$(jq -r '.ok' <<<"$out")"
+check "hostless remote: outcome is pushed-no-pr" "pushed-no-pr" "$(jq -r '.outcome' <<<"$out")"
+check "hostless remote: the remote branch holds the exact SHA" "$TARGET_SHA" "$(git -C "$WORK/origin.git" rev-parse refs/heads/feat/local)"
+check "hostless remote: the reason names the remote" "1" "$(grep -c "remote 'local' URL names no host" "$WORK/local.err")"
+check "hostless remote: gh was not asked to resolve it" "0" "$(grep -c 'repo view' "$GH_LOG" || true)"
+out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
+  bash "$SCRIPT" checkpoint -C "$WORK/repo" --remote local --branch feat/local --base main --sha "$TARGET_SHA" \
+  --title "t" --body-file "$BODY" 2>/dev/null)"
+check "hostless remote: checkpoint mode refuses with its own code, not gh_missing" "remote_hostless" "$(jq -r '.errorCode' <<<"$out")"
+git -C "$WORK/repo" remote remove local
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

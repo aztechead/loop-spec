@@ -19,7 +19,7 @@
 #     run-details block links committed evidence or records that an external store owns it.
 #
 # Exit codes: 0 ok; 1 render failure; 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 cmd="${1:-}"
 [[ "$cmd" == "render" ]] || { echo "pr-body.sh: unknown subcommand '${cmd:-}' (usage: pr-body.sh render <feature.json> <artifact-root> <output-file>)" >&2; exit 2; }

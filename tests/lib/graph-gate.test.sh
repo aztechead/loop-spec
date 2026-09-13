@@ -222,6 +222,15 @@ rc=0; LOOP_SPEC_CRITIQUE_ROUNDS=lots bash "$SCRIPT" next --feature-dir "$WORK/fe
 check "malformed LOOP_SPEC_CRITIQUE_ROUNDS is a configuration error" "2" "$rc"
 check "next never writes" "3" "$(feat '.gateHistory | length')"
 
+# A heavy finding count earns extra ceiling headroom: one delta round per 20 findings
+# in the round that just failed, capped at +3 (a 22-task PLAN critique drew 72 findings
+# and closed the gate on 8 new majors it never got a round to fix, 6.6.3 live run).
+findings_40="$(jq -cn '[range(40) | "finding " + (. | tostring)]')"
+open_with_fails "$findings_40"
+check "critique ceiling scales with findings: 40 findings -> graph+2" \
+  "ANSWER=rerun REASON=0 of $((CEILING + 2)) delta rounds spent" \
+  "$(bash "$SCRIPT" next --feature-dir "$WORK/feature")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

@@ -14,7 +14,7 @@
 #                                              commits into one when the workflow's
 #                                              commit strategy is at-end (single-repo)
 # Exit 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cmd="${1:-}"
@@ -55,7 +55,11 @@ case "$cmd" in
   finish)
     if [[ -z "$ws_root" && "$(lib workflow-config commit-strategy)" == "at-end" ]]; then
       base="$(fget '.baseBranch')"
-      git reset -q --soft "$(git merge-base "$base" HEAD)" && git commit -q -m "feat: $slug"
+      # The squash is a courtesy, not the gate: nothing above the merge-base, a base ref
+      # that is gone, or a hook that refuses leave the task commits as they are, and
+      # EXECUTE still closes. Under -e a silent abort here would have failed the gate.
+      rc=0; git reset -q --soft "$(git merge-base "$base" HEAD)" && git commit -q -m "feat: $slug" || rc=$?
+      [[ "$rc" -eq 0 ]] || echo "execute-exit-gate: at-end squash left the task commits as they were (git exit $rc)" >&2
     fi
     ;;
   *) echo "usage: execute-exit-gate.sh check|finish <feature-dir>" >&2; exit 2 ;;

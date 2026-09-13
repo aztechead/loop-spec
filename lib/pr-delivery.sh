@@ -29,7 +29,7 @@
 #
 # stdout is exactly one JSON result. Diagnostics go to stderr.
 # Exit 0: delivered/checkpointed/observed; 1: operational or policy failure; 2: bad input.
-set -uo pipefail
+set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=credential-refresh.sh
@@ -46,7 +46,7 @@ if [[ "${1:-}" == "-C" ]]; then
     shift
   else
     repo_dir="$2"
-    shift 2
+    shift 2 || { parse_error="-C requires a value"; shift; }
   fi
 fi
 
@@ -75,7 +75,7 @@ while [[ $# -gt 0 ]]; do
         shift
         break
       fi
-      option="$1"; value="$2"; shift 2
+      option="$1"; value="$2"; shift 2 || { parse_error="$option requires a value"; shift; }
       case "$option" in
         --branch) branch="$value" ;;
         --base) base_branch="$value" ;;
@@ -227,20 +227,14 @@ git -C "$repo_dir" remote get-url "$remote" >/dev/null 2>&1 \
 push_urls=()
 while IFS= read -r push_url; do
   [[ -n "$push_url" ]] && push_urls+=("$push_url")
-done < <(git -C "$repo_dir" remote get-url --push --all "$remote" 2>/dev/null)
+done < <(git -C "$repo_dir" config --get-all "remote.$remote.pushurl" 2>/dev/null \
+  || git -C "$repo_dir" config --get-all "remote.$remote.url" 2>/dev/null)
 [[ "${#push_urls[@]}" -gt 0 ]] || fail_bad "remote_missing" "remote '$remote' has no push URL"
 [[ "${#push_urls[@]}" -eq 1 ]] \
   || fail_bad "remote_ambiguous" "remote '$remote' has multiple push URLs; exact delivery requires one destination"
+# The configured URL, not `remote get-url`: that expands url.<base>.insteadOf, which is
+# transport, while the host probe below reads the destination as the operator named it.
 remote_url="${push_urls[0]}"
-# Without gh, final mode still pushes the exact SHA and stops there with its own
-# outcome (pushed-no-pr): a verified commit on the remote is worth more than a blocked
-# run, and a supervisor can tell the two apart. checkpoint and observe need the API.
-have_gh=1
-if ! command -v gh >/dev/null 2>&1; then
-  [[ "$mode" == "final" ]] || fail_bad "gh_missing" "gh is not on PATH"
-  have_gh=0
-fi
-
 credential_host="$(python3 - "$remote_url" <<'PY'
 import re, sys
 try:
@@ -256,6 +250,24 @@ else:
     print((urlparse(value).hostname or '').lower())
 PY
 )"
+# Without gh, final mode still pushes the exact SHA and stops there with its own
+# outcome (pushed-no-pr): a verified commit on the remote is worth more than a blocked
+# run, and a supervisor can tell the two apart. checkpoint and observe need the API.
+# A remote whose URL names no host (a path, file://) is the same case with gh
+# installed: the first FastAPI live run (6.6.3) escalated on "expected the
+# [HOST/]OWNER/REPO format" instead of pushing and stopping.
+have_gh=1
+no_gh_reason="" no_gh_code=""
+if ! command -v gh >/dev/null 2>&1; then
+  no_gh_code="gh_missing"; no_gh_reason="gh is not on PATH"
+elif [[ -z "$credential_host" ]]; then
+  # Its own code: a supervisor reading gh_missing would tell the operator to install gh.
+  no_gh_code="remote_hostless"; no_gh_reason="remote '$remote' URL names no host, so gh has no repository to address"
+fi
+if [[ -n "$no_gh_reason" ]]; then
+  [[ "$mode" == "final" ]] || fail_bad "$no_gh_code" "$no_gh_reason"
+  have_gh=0
+fi
 
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-pr-delivery-XXXXXX")"
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -265,7 +277,7 @@ export LOOP_SPEC_PR_DELIVERY_CWD="$repo_dir"
 # Run a network command with a per-call timeout. Python 3.6 supports communicate(timeout=).
 run_gh_once() {
   local stdout_file="$1" stderr_file="$2"
-  shift 2
+  shift 2 || { echo "run_gh_once: needs 2 arguments" >&2; return 2; }
   python3 - "$command_timeout" "$stdout_file" "$stderr_file" "$@" <<'PY'
 import os, signal, subprocess, sys
 
@@ -300,7 +312,7 @@ PY
 
 run_gh() {
   local stdout_file="$1" stderr_file="$2" stage="github"
-  shift 2
+  shift 2 || { echo "run_gh: needs 2 arguments" >&2; return 2; }
   if [[ "${1:-}" == "git" && " $* " == *" push "* ]]; then
     stage="push"
   elif [[ "${1:-}" == "git" ]]; then
@@ -318,7 +330,7 @@ run_gh() {
 
 run_gh_no_auth_retry() {
   local stdout_file="$1" stderr_file="$2" stage="$3"
-  shift 3
+  shift 3 || { echo "run_gh_no_auth_retry: needs 3 arguments" >&2; return 2; }
   LOOP_SPEC_AUTH_ERROR_CODE=""
   LOOP_SPEC_AUTH_ERROR_MESSAGE=""
   loop_spec_credential_refresh "$repo_dir" "$stage" "pre-stage" "$credential_host" || return 125
@@ -405,10 +417,10 @@ if [[ "$have_gh" -eq 0 ]]; then
     git -C "$repo_dir" push "$remote_url" "$target_sha:refs/heads/$branch" || push_rc=$?
   [[ "$push_rc" -eq 0 ]] \
     || fail_delivery "push_failed" "exact-SHA push failed: $(tr '\n' ' ' < "$tmp_dir/git-push.err")"
-  remote_sha="$(git -C "$repo_dir" ls-remote "$remote_url" "refs/heads/$branch" 2>/dev/null | cut -f1)"
+  remote_sha="$(git -C "$repo_dir" ls-remote "$remote_url" "refs/heads/$branch" 2>/dev/null | cut -f1)" || true
   [[ "$remote_sha" == "$target_sha" ]] \
     || fail_delivery "remote_sha_mismatch" "remote branch is '$remote_sha', expected '$target_sha'"
-  echo "pr-delivery: gh is not on PATH; pushed $target_sha to $branch and stopped (pushed-no-pr)" >&2
+  echo "pr-delivery: $no_gh_reason; pushed $target_sha to $branch and stopped (pushed-no-pr)" >&2
   emit_result true "pushed-no-pr" "" ""
   exit 0
 fi
@@ -418,9 +430,9 @@ fi
 if ! run_gh "$gh_out" "$gh_err" gh repo view "$remote_url" --json nameWithOwner,url; then
   fail_delivery "gh_error" "cannot resolve GitHub repository: $(tr '\n' ' ' < "$gh_err")"
 fi
-repo_identity="$(jq -r '.nameWithOwner // empty' "$gh_out" 2>/dev/null)"
+repo_identity="$(jq -r '.nameWithOwner // empty' "$gh_out" 2>/dev/null)" || true
 [[ -n "$repo_identity" ]] || fail_delivery "gh_error" "gh repo view returned no repository identity"
-canonical_repo_url="$(jq -r '.url // empty' "$gh_out" 2>/dev/null)"
+canonical_repo_url="$(jq -r '.url // empty' "$gh_out" 2>/dev/null)" || true
 [[ -n "$canonical_repo_url" ]] || fail_delivery "gh_error" "gh repo view returned no canonical repository URL"
 repo_host="$(python3 - "$canonical_repo_url" <<'PY'
 import sys

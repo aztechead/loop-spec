@@ -166,8 +166,12 @@ PRIOR=$(printf '%s' "$PARSED" | python3 -c \
 
 # The graph's one exception: an edge into the target that carries sameSession (the
 # short route, spec -> oneshot). The driver answers NEXT across it, never HANDOFF.
+# LOOP_SPEC_SAME_SESSION=1 makes every edge one, an operator's opt into one session
+# end to end (#10, 6.6.4 live run); lib/graph/driver.py record_transition reads the
+# same variable.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if bash "$SCRIPT_DIR/../../lib/graph/phases.sh" same-session "$PRIOR" "$TARGET" 2>/dev/null; then
+if [[ "${LOOP_SPEC_SAME_SESSION:-}" == "1" ]] \
+    || bash "$SCRIPT_DIR/../../lib/graph/phases.sh" same-session "$PRIOR" "$TARGET" 2>/dev/null; then
   exit 0
 fi
 

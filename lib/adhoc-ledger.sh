@@ -73,13 +73,13 @@ cmd_add() {
   local grounding_count=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --title)    require_value "$1" $#; title="$2"; shift 2;;
-      --criteria) require_value "$1" $#; criteria+=("$2"); shift 2;;
-      --grounding) require_value "$1" $#; grounding[$grounding_count]="$2"; grounding_count=$((grounding_count+1)); shift 2;;
-      --verify)   require_value "$1" $#; verify="$2"; shift 2;;
-      --result)   require_value "$1" $#; result="$2"; shift 2;;
-      --notes)    require_value "$1" $#; notes="$2"; shift 2;;
-      --pr)       require_value "$1" $#; pr="$2"; shift 2;;
+      --title)    require_value "$1" $#; title="$2"; shift 2 || { usage >&2; exit 2; };;
+      --criteria) require_value "$1" $#; criteria+=("$2"); shift 2 || { usage >&2; exit 2; };;
+      --grounding) require_value "$1" $#; grounding[$grounding_count]="$2"; grounding_count=$((grounding_count+1)); shift 2 || { usage >&2; exit 2; };;
+      --verify)   require_value "$1" $#; verify="$2"; shift 2 || { usage >&2; exit 2; };;
+      --result)   require_value "$1" $#; result="$2"; shift 2 || { usage >&2; exit 2; };;
+      --notes)    require_value "$1" $#; notes="$2"; shift 2 || { usage >&2; exit 2; };;
+      --pr)       require_value "$1" $#; pr="$2"; shift 2 || { usage >&2; exit 2; };;
       *) echo "adhoc-ledger.sh: unknown flag '$1'" >&2; exit 2;;
     esac
   done
@@ -159,7 +159,7 @@ cmd_list() {
   local limit=20
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --limit) require_value "$1" $#; limit="$2"; shift 2;;
+      --limit) require_value "$1" $#; limit="$2"; shift 2 || { usage >&2; exit 2; };;
       *) echo "adhoc-ledger.sh: unknown flag '$1'" >&2; exit 2;;
     esac
   done

@@ -102,7 +102,7 @@
 #
 # Exit codes: writes always return 0 (observability never aborts); `clear` returns 1
 # when it cannot safely remove the stale pointer so an entry point cannot reuse it.
-set -uo pipefail
+set -euo pipefail
 
 VALID_STATUSES="completed paused escalated terminal failed"
 VALID_NO_CHANGE_REASONS="already-satisfied diagnostic-only"
@@ -125,7 +125,7 @@ _is_valid_no_change_reason() {
 
 _resolve_autonomous() {
   local explicit="$1" value="$2" stored
-  shift 2
+  shift 2 || { echo "_resolve_autonomous: needs 2 arguments" >&2; return 2; }
   if [[ "$explicit" != "true" ]]; then
     value="false"
     [[ "${LOOP_SPEC_AUTONOMOUS:-}" != "1" ]] || value="true"
@@ -222,7 +222,7 @@ _resolve_result_root() {
     first_worktree_line="$(git -C "$abs" worktree list --porcelain 2>/dev/null | {
       IFS= read -r line || true
       printf '%s' "${line:-}"
-    })"
+    })" || true
     if [[ "$first_worktree_line" == worktree\ * ]]; then
       printf '%s\n' "${first_worktree_line#worktree }"
       return 0
@@ -855,7 +855,7 @@ PY
        ($fj.gatePlan // $fj.autonomousGatePlan // ($classification.gatePlan // null) //
         $active.gatePlan // null) as $gatePlan |
          def local_delivery_error: ["repo_invalid","repo_root_mismatch","branch_mismatch",
-           "git_status_failed","dirty_worktree","base_sha_missing","base_sha_invalid",
+           "git_status_failed","dirty_worktree","post_gate_drift","no_gate_record","base_sha_missing","base_sha_invalid",
            "base_not_ancestor","no_commits","git_history_failed","local_artifact_policy_failed"];
          def delivery_target_eligible:
            . as $target |

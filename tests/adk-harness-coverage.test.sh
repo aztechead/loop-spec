@@ -17,6 +17,8 @@ checks=(
   "skills/shared/adk-harness.md	autonomous-mode.md"
   "skills/shared/adk-harness.md	--agent-cli adk"
   "skills/shared/adk-harness.md	lib/adk-install.sh"
+  # -- an omitted EXECUTE subagent_type has a named mapping here (PR 100 audit)
+  "skills/shared/adk-harness.md	no default-agent"
   "skills/shared/adk-harness.md	dispatch_subagent"
   "skills/shared/adk-harness.md	subagent_type"
   "skills/shared/adk-harness.md	LOOP_SPEC_ADK_AGENT_DIR"

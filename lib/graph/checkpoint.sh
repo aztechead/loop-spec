@@ -34,12 +34,12 @@ loop_counts='{}'
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --feature-dir) feature_dir="${2:-}"; shift 2 ;;
-    --node) node="${2:-}"; shift 2 ;;
-    --edge) edge="${2:-}"; shift 2 ;;
-    --effort) effort="${2:-}"; shift 2 ;;
-    --status) status="${2:-}"; shift 2 ;;
-    --loop-counts) loop_counts="${2:-}"; shift 2 ;;
+    --feature-dir) feature_dir="${2:-}"; shift 2 || usage ;;
+    --node) node="${2:-}"; shift 2 || usage ;;
+    --edge) edge="${2:-}"; shift 2 || usage ;;
+    --effort) effort="${2:-}"; shift 2 || usage ;;
+    --status) status="${2:-}"; shift 2 || usage ;;
+    --loop-counts) loop_counts="${2:-}"; shift 2 || usage ;;
     *) usage ;;
   esac
 done

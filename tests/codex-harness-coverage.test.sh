@@ -55,6 +55,10 @@ checks=(
   "lib/execute-rung.sh	session-layer"
   "skills/shared/codex-harness.md	session-layer"
   "skills/shared/execute-rungs.md	session-layer"
+  # -- the implementer/reviewer rung runs the default agent here as everywhere: no
+  #    agent_type, so the self-contained prompt is the whole charter (PR 100 audit)
+  "skills/shared/execute-subagent.md	Do NOT pass \`subagent_type: \"loop-spec:implementer\"\`"
+  "skills/shared/codex-harness.md	carries no \`agent_type\`"
   # -- capability gates are non-claude-gated
   "lib/teams-capability.sh	!= \"claude\""
   "lib/workflow-availability.sh	!= \"claude\""

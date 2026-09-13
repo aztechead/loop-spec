@@ -30,10 +30,11 @@ the Good Enough criteria with their check commands) and every footprint file; fo
 callers and imports far enough to know the change stays inside the footprint.
 
 You never escalate; a gate does, from evidence, and the run then takes the full path
-from DISCUSS with the reason on record: a file outside the footprint in the diff, a
-reviewer BLOCK that stands after your fix, or the exit gate held three times on the
-same flags. When the change needs a fourth file, make it and return: the gate reads
-the diff. When a criterion's command is wrong, the spec's owner is the driver:
+from DISCUSS with the reason on record: a reviewer BLOCK that stands after your fix
+(a change that outgrew the footprint is one), or the exit gate held three times on
+the same flags. When the change needs a file the footprint does not name, make it and
+say so in the commit: the reviewer reads the whole diff and holds the scope; no gate
+counts files. When a criterion's command is wrong, the spec's owner is the driver:
 `spec fill --command --expect --row GE-NNN` replaces it. A question the spec leaves
 open is a decision you record (`decisions.sh add`). A oneshot never turns a full run
 into a oneshot, and you never pick the next phase. The driver is the only writer of
@@ -52,7 +53,10 @@ set) until green. Never edit a test to make it pass; a test that is wrong is an
 escalation (step 1).
 
 Commit once on the feature branch with a conventional subject (`fix:` for a bug,
-`feat:` otherwise), the footprint files only. Run the two deterministic scans the full
+`feat:` otherwise), everything the change wrote: the footprint files and whatever a
+scaffolder or package manager put beside them (a manifest's lockfile, interpreter pin,
+and ignore file are the change, not dirt). A file left uncommitted here blocks DELIVER
+as a dirty worktree. Run the two deterministic scans the full
 path runs at VERIFY and fix what they name before going on:
 
 ```bash
@@ -73,8 +77,11 @@ packet, `run_in_background: false`; then stop and read its result, never
 `probe_dir` (absolute `${LOOP_SPEC_SKILL_DIR}/../../lib`); include
 `skills/shared/review-prompts/no-prejudge.md`; report
 `CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <findings>`. Record the launch as
-`skills/shared/dispatch.md#Telemetry (dispatch telemetry contract)` says, in the same
-Bash call that reads the result; the exit gate reads this event as the proof:
+`skills/shared/dispatch.md#Telemetry (dispatch telemetry contract)` says, in a Bash call
+BEFORE the `Agent` call: the event writes the `.pending-dispatch` marker that lets a
+turn end while the reviewer runs (`hooks/team/cycle-stamp-guard.sh`), and a marker
+written after the reviewer returns guards nothing. The exit gate reads this event as
+the proof:
 
 ```bash
 bash "${LOOP_SPEC_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" dispatch \

@@ -123,13 +123,16 @@ check "phase-begin: the refusal names the record" "1" "$(grep -c 'PLAN needs the
 check "phase-begin: the refusal is on the ledger as a refusal" "1" "$(jq -c 'select(.event == "entry_refused" and .phase == "plan")' "$FD/events.jsonl" | wc -l | tr -d ' ')"
 check "phase-begin: the refusal escalates nothing" "0" "$(jq -c 'select(.event == "escalated")' "$FD/events.jsonl" | wc -l | tr -d ' ')"
 check "phase-begin: the refusal leaves the paused result in place" "paused" "$(jq -r '.status' "$FD/result.json")"
-# A repeat return skips the exit gate, so the snapshot is the only reader of a spec
-# that lost its Goals: it answers, never a traceback.
+# A repeat return reruns the exit gate (6.6.4: a phase edited after a clean close no
+# longer advances on the stale close), so a spec that lost its Goals draws the gate's
+# REDO before the snapshot reader sees it. Either way the driver answers, never a
+# traceback.
 DOCS1="$REPO/docs/loop-spec/features/$(jq -r '.slug' "$FD/feature.json")"
 cp "$DOCS1/SPEC.md" "$DOCS1/SPEC.md.keep"; sed -i '/^## Goals$/,/^## Boundaries/{/^Produce/d}' "$DOCS1/SPEC.md"
-out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from spec 2>/dev/null)"
-check "next: a repeat spec return with an empty Goals section aborts cleanly" "ABORT reason=spec-intent-unreadable" "$out"
+ec=0; out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from spec 2>/dev/null)" || ec=$?
+check "next: a repeat spec return with an empty Goals section is the gate's REDO, not a traceback" "REDO phase=spec rc=0" "$(head -1 <<<"$out" | cut -d' ' -f1,2) rc=$ec"
 mv "$DOCS1/SPEC.md.keep" "$DOCS1/SPEC.md"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" driverRedo 'null' >/dev/null
 check "next: journal records the real successor" "1" "$(grep -c 'spec → human.after-spec' "$FD/PROGRESS.md")"
 check "next: state snapshot on the ref at the boundary" "state @ human.after-spec" "$(git -C "$REPO" log -1 --format=%s refs/loop-spec/state/add-a-json-flag)"
 check "next: the feature branch carries no state commit" "0" "$(git -C "$REPO" log --oneline | grep -c 'state @')"
@@ -282,8 +285,16 @@ check "begin: an autonomous run initializes without a second call" "init" "$(jq 
 check "begin: the feature dir is created" "1" "$([[ -d "$(jq -r '.featureDir' <<<"$out")" ]] && echo 1 || echo 0)"
 check "begin: start's notices ride along" "1" "$(jq '.notices | length > 0' <<<"$out" | grep -c true)"
 FD6="$(jq -r '.featureDir' <<<"$out")"
+# Attended, exactly one paused feature: it resumes without a question (6.6.4; the
+# question used to be a resume decision).
 out="$(cd "$REPO6" && drv begin -- "add a flag to the tool" 2>/dev/null)"
+check "begin: the one paused feature resumes without a question" "resume" "$(jq -r '.action' <<<"$out")"
+check "begin: the resumed feature is the paused one" "$FD6" "$(jq -r '.featureDir' <<<"$out")"
+# Attended with nothing to go on: the title and commands are the human's decisions.
+REPO6B="$(new_repo undecided)"
+out="$(cd "$REPO6B" && drv begin -- 2>/dev/null)"
 check "begin: a human decision is handed back" "decisions" "$(jq -r '.action' <<<"$out")"
+check "begin: the decisions name the title and the commands" "title commands" "$(jq -r '[.decisions[].id] | join(" ")' <<<"$out")"
 check "begin: the init command the lead runs next is rendered with start's values" "1" "$(jq -r '.next.init' <<<"$out" | grep -c '^bash "\$DRV" init --dir .* --slug <slug> --title "<title>" --style .* --greenfield <0|1> ')"
 check "begin: the resume command is rendered for a pick" "1" "$(jq -r '.next.resume' <<<"$out" | grep -c '^bash "\$DRV" resume --dir .* --feature-root <featureRoot of the pick> --slug <slug of the pick>$')"
 
@@ -640,9 +651,12 @@ check "next from oneshot in-harness: the driver launches nothing and the gate na
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" driverRedo 'null' >/dev/null
 out1="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
 out2="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
-out3="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
+out3="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>"$WORK/out3.err")"
 check "next from oneshot: the first two identical gates are REDOs" "REDO REDO" "$(printf '%s %s' "$(head -1 <<<"$out1" | cut -d' ' -f1)" "$(head -1 <<<"$out2" | cut -d' ' -f1)")"
-check "next from oneshot: the third identical gate escalates the route, never the lead" "1" "$(grep -c '^NOTE \[escalate\] the oneshot exit gate held after 3 attempts' <<<"$out3")"
+# The note rides stderr: the cycle skill acts on the FIRST stdout line, and a NOTE there
+# hid the protocol line (PR 100 audit, finding 1).
+check "next from oneshot: the third identical gate escalates the route, never the lead (note on stderr)" "1" "$(grep -c '^NOTE \[escalate\] the oneshot exit gate held after 3 attempts' "$WORK/out3.err")"
+check "next from oneshot: no NOTE line on stdout" "0" "$(grep -c '^NOTE ' <<<"$out3")"
 check "next from oneshot: route: full is on the spec with the deadlock's classes" "1" "$(grep -c '^- escalated (route: full): the exit gate held after 3 attempts on ' "$DOCS7/SPEC.md")"
 check "next from oneshot: the escalation is an event with its classes" "1" "$(jq -c 'select(.event == "escalate" and .phase == "oneshot" and (.data.classes | length) > 0)' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
 check "next from oneshot: the attempt's verification record is set aside" "1" "$([[ -f "$DOCS7/VERIFICATION.oneshot-attempt.md" ]] && echo 1 || echo 0)"
@@ -763,6 +777,40 @@ init="$(HARNESS=claude drv init --dir "$REPO9" --slug ship-it --title "ship it" 
 check "init: gitfile checkout enters no worktree" "null" "$(jq -r '.enterWorktree' <<<"$init")"
 check "init: gitfile checkout names the reason" "1" "$(grep -c 'working in place' /tmp/gitfile.err)"
 
+# --- the plugin checkout moves while a phase runs -----------------------------------
+# A development clone edited mid-phase (the Codex EXECUTE live run) is a NOTE, not an
+# escalation, and the note rides stderr: skills/cycle/SKILL.md acts on the FIRST stdout
+# line, and the note there hid the protocol line on this exact path (PR 100 audit). A
+# copy of the plugin stands in for the moving clone so the tree under test stays put.
+PLUGIN="$WORK/plugin"; mkdir -p "$PLUGIN"
+tar -C "$REPO_ROOT" --exclude=.git --exclude=tests --exclude='__pycache__' -cf - . | tar -C "$PLUGIN" -xf -
+REPO11="$(new_repo moving-plugin)"
+(cd "$REPO11" && SCRIPT="$PLUGIN/lib/cycle-driver.sh" drv start --dir "$REPO11" -- move it >/dev/null 2>&1
+  SCRIPT="$PLUGIN/lib/cycle-driver.sh" drv init --dir "$REPO11" --slug move-it --title "move it" --style step --profile standard --autonomous 0 >/dev/null 2>&1)
+FD11="$REPO11/.loop-spec/features/move-it"
+out="$(cd "$REPO11" && SCRIPT="$PLUGIN/lib/cycle-driver.sh" drv next --feature-dir "$FD11" 2>/dev/null)"
+check "moving plugin: the copy renders the spec phase" "NEXT phase=spec" "$(head -1 <<<"$out" | cut -d' ' -f1,2)"
+moved="$(jq -r '.driverNext.instructions.manifest' "$FD11/feature.json" | xargs -I{} jq -r '.sources | keys[0]' {})"
+printf '\n<!-- moved mid-phase -->\n' >> "$PLUGIN/$moved"
+write_spec "$REPO11" "$FD11"
+out="$(cd "$REPO11" && SCRIPT="$PLUGIN/lib/cycle-driver.sh" drv next --feature-dir "$FD11" --returned-from spec 2>"$WORK/moving.err")"
+check "moving plugin: the first stdout line is the protocol line" "PAUSED node=human.after-spec" "$(head -1 <<<"$out")"
+check "moving plugin: no NOTE line on stdout" "0" "$(grep -c '^NOTE ' <<<"$out")"
+check "moving plugin: the snapshot note names the moved source on stderr" "1" "$(grep -c "^NOTE \[snapshot\] plugin source changed since the phase was rendered: $moved;" "$WORK/moving.err")"
+check "moving plugin: the note is on the feature's warnings" "1" "$(jq -r '.warnings[]' "$FD11/feature.json" | grep -c '^NOTE \[snapshot\]')"
+check "moving plugin: no escalation" "0" "$(jq -c 'select(.event == "escalated")' "$FD11/events.jsonl" | wc -l | tr -d ' ')"
+
+# --- a quoted route: "full" is the same escalation as an unquoted one -----------------
+# The probe and the shape lint strip YAML quotes; the driver's unquoted match let the
+# gate's escalation write a second route: full line under a quoted one.
+printf -- '---\nroute: "full"\nfootprint:\n  - a.py\n---\n## Intent\n\n## Implementation notes\n' > "$WORK/quoted.md"
+python3 - "$REPO_ROOT/lib/graph/driver.py" "$WORK/quoted.md" >/dev/null <<'PY_'
+import sys, importlib.util
+spec = importlib.util.spec_from_file_location("driver", sys.argv[1]); d = importlib.util.module_from_spec(spec); spec.loader.exec_module(d)
+d.spec_escalate(sys.argv[2], "held")
+PY_
+check "spec escalate: a quoted route: \"full\" gets no second route line" "1" "$(sed -n '1,/^---$/!d; /^route:/p' "$WORK/quoted.md" | grep -c '^route:')"
+check "spec escalate: the reason is still recorded under Implementation notes" "1" "$(grep -c '^- escalated (route: full): held$' "$WORK/quoted.md")"
 
 echo
 echo "cycle-driver: $PASS passed, $FAIL failed"

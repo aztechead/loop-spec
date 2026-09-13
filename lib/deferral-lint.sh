@@ -35,7 +35,7 @@
 # an assertion that feature scope was dropped, and therefore never trigger this gate.
 # It never scans SPEC.md. A spec's "Out of scope" boundary is the design
 # deciding scope up front, which is exactly what this probe protects.
-set -uo pipefail
+set -euo pipefail
 
 type="${1:-}"
 case "$type" in

@@ -377,6 +377,32 @@ check "workspace: one controller call" "1" "$(wc -l < "$LOG" | tr -d ' ')"
 check "workspace: representative PR url surfaced" "https://github.com/test/changed/pull/7" \
   "$(jq -r '.prUrl' "$WFDIR/delivery.json")"
 
+# Workspace drift: the gate record is per repo (events.sh repoHeadShas), and a commit
+# after the gate in any repo is refused the way the single-repo path refuses it; the
+# audit of PR 100 found the whole check sat under the single-repo branch.
+WS_GATED="$(git -C "$WS/changed" rev-parse HEAD)"
+jq -cn --arg c "$WS_GATED" --arg u "$UNCHANGED_BASE" '{ts:"t",slug:"ws",event:"phase_end",phase:"verify",data:{next:"deliver"},verdict:"advanced",next:"deliver",headSha:null,repoHeadShas:{changed:$c,unchanged:$u}}' > "$WFDIR/events.jsonl"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$WFDIR")" || ec=$?
+check "workspace gate record: a candidate at the gated HEAD delivers" "0" "$ec"
+printf 'late\n' > "$WS/changed/c"; git -C "$WS/changed" add c; git -C "$WS/changed" commit -q -m "sneaked after the gate"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$WFDIR")" || ec=$?
+check "workspace post-gate commit: exit 1" "1" "$ec"
+check "workspace post-gate commit: structured error on that repo" "post_gate_drift" \
+  "$(jq -r '.targets[] | select(.name=="changed") | .errorCode' "$WFDIR/delivery.json")"
+check "workspace post-gate commit: the refusal names the file" "1" "$(grep -c 'touch c;' "$WFDIR/delivery.json")"
+check "workspace post-gate commit: no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+jq -cn --arg c "$WS_GATED" --arg u "$UNCHANGED_BASE" '{ts:"t",slug:"ws",event:"phase_end",phase:"verify",data:{next:"discuss"},verdict:"advanced",next:"discuss",headSha:null,repoHeadShas:{changed:$c,unchanged:$u}}' > "$WFDIR/events.jsonl"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$WFDIR")" || ec=$?
+check "workspace no phase_end to deliver: structured error" "no_gate_record" \
+  "$(jq -r '.targets[] | select(.name=="changed") | .errorCode' "$WFDIR/delivery.json")"
+rm -f "$WFDIR/events.jsonl"; git -C "$WS/changed" reset -q --hard "$WS_GATED"
+
 # A repo on the wrong branch is blocked, never misreported as no changes.
 git -C "$WS/changed" checkout -q main
 : > "$LOG"; ec=0
@@ -450,6 +476,43 @@ out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
 check "single dirty: exit 1" "1" "$ec"
 check "single dirty: structured error" "dirty_worktree" "$(jq -r '.targets[0].errorCode' "$DDIR/delivery.json")"
 check "single dirty: the refusal names the path" "1" "$(grep -c 'uncommitted changes: b' "$DDIR/delivery.json")"
+
+# Source committed after the last gate was never scanned or reviewed: the phase_end that
+# routed to deliver records HEAD, and a candidate whose non-artifact files differ from it
+# is refused. Artifact-only commits (docs/loop-spec, .loop-spec) after the gate are fine.
+DRIFT="$WORK/drift"; init_repo "$DRIFT"
+DRIFT_BASE="$(git -C "$DRIFT" rev-parse HEAD)"
+git -C "$DRIFT" checkout -q -b feat/drift
+printf 'feature\n' > "$DRIFT/b"; git -C "$DRIFT" add b; git -C "$DRIFT" commit -q -m feature
+GDIR="$DRIFT/.loop-spec/features/drift"; mkdir -p "$GDIR"
+printf '/.loop-spec/features/*/*\n!/.loop-spec/features/*/feature.json\n' > "$DRIFT/.gitignore"
+jq -n --arg base "$DRIFT_BASE" '{schemaVersion:7,slug:"drift",feature_title:"Drift",currentPhase:"deliver",
+  branch:"feat/drift",baseSha:$base,baseBranch:"main",workspace:null,warnings:[],artifacts:{}}' > "$GDIR/feature.json"
+git -C "$DRIFT" add .gitignore ".loop-spec/features/drift/feature.json"; git -C "$DRIFT" commit -q -m state
+GATED="$(git -C "$DRIFT" rev-parse HEAD)"
+jq -cn --arg sha "$GATED" '{ts:"t",slug:"drift",event:"phase_end",phase:"oneshot",data:{next:"deliver"},verdict:"advanced",next:"deliver",headSha:$sha}' > "$GDIR/events.jsonl"
+mkdir -p "$DRIFT/docs/loop-spec/features/drift"; printf 'v\n' > "$DRIFT/docs/loop-spec/features/drift/VERIFICATION.md"
+git -C "$DRIFT" add docs; git -C "$DRIFT" commit -q -m "oneshot: artifacts"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$GDIR")" || ec=$?
+check "post-gate artifact commit: still delivers" "0" "$ec"
+printf 'lock\n' > "$DRIFT/uv.lock"; git -C "$DRIFT" add uv.lock; git -C "$DRIFT" commit -q -m "chore: lockfile after the gate"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$GDIR")" || ec=$?
+check "post-gate source commit: exit 1" "1" "$ec"
+check "post-gate source commit: structured error" "post_gate_drift" "$(jq -r '.targets[0].errorCode' "$GDIR/delivery.json")"
+check "post-gate source commit: the refusal names the file" "1" "$(grep -c 'touch uv.lock' "$GDIR/delivery.json")"
+check "post-gate source commit: controller not called" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+# A modern run whose last gate routed elsewhere has no gate to compare against: refused,
+# not skipped (the 6.6.4 live-run attack pushed a sneaked commit through that gap).
+jq -cn --arg sha "$GATED" '{ts:"t",slug:"drift",event:"phase_end",phase:"oneshot",data:{next:"discuss"},verdict:"advanced",next:"discuss",headSha:$sha}' > "$GDIR/events.jsonl"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$GDIR")" || ec=$?
+check "no phase_end to deliver: exit 1" "1" "$ec"
+check "no phase_end to deliver: structured error" "no_gate_record" "$(jq -r '.targets[0].errorCode' "$GDIR/delivery.json")"
 check "single dirty: no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
 
 git -C "$DIRTY" checkout -q -- b

@@ -38,6 +38,17 @@ with tempfile.TemporaryDirectory() as temp:
     shared.write_text("Changed decision contract.\n")
     assert captured.read_text() == "Original decision contract.\n"
     verify(record)
+    # The driver's returned-phase recheck: verify(instructions, None, dir) still passes
+    # after a source file changes (the rendered outputs and prompt are untouched), while
+    # the strict call with the same feature_dir raises the source-mismatch prefix the
+    # driver matches to downgrade the escalation to a NOTE.
+    assert verify(record, None, restored) == manifest
+    try:
+        verify(record, plugin, restored)
+    except ValueError as exc:
+        assert str(exc).startswith("phase instruction source hash mismatch: ")
+    else:
+        raise AssertionError("changed source accepted with a feature_dir")
     try:
         verify(record, plugin)
     except ValueError as exc:

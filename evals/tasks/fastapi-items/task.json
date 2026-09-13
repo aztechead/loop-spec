@@ -1,8 +1,0 @@
-{
-  "id": "fastapi-items",
-  "size": "small",
-  "kind": "greenfield",
-  "prompt": "a Python 3.14 web service built with FastAPI and pydantic. POST /items accepts a JSON item with a name (string) and a quantity (integer), validates it, stores it in memory, and returns the stored item; GET /items returns every stored item in insertion order. The ASGI app object is `app` in `main.py`. Declare the project in pyproject.toml with requires-python >=3.14 and the runtime dependencies listed, with tests runnable by pytest and a README that says how to install and run it.",
-  "reference_app_lines": 70,
-  "protected": []
-}

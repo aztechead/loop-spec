@@ -1,8 +1,0 @@
-{
-  "id": "todo-due",
-  "size": "medium",
-  "kind": "existing-feature",
-  "prompt": "add optional due dates to the todo CLI: `add` accepts --due YYYY-MM-DD and stores it, `list` shows the due date after the title when one is set, and `list --sort due` orders items by due date with undated items last. Validate the date format and exit 2 on a bad date. Add tests for the new behavior and keep the existing ones passing.",
-  "reference_app_lines": 60,
-  "protected": []
-}

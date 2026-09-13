@@ -63,6 +63,7 @@ touch "$WORK/.loop-spec/features/demo/feature.json" \
   "$WORK/.loop-spec/active-run.json" \
   "$WORK/.loop-spec/last-result.json" \
   "$WORK/.loop-spec/results/run.json" \
+  "$WORK/.loop-spec/BACKLOG.md" \
   "$WORK/.loop-spec/decisions-staging/decisions.jsonl" \
   "$WORK/graphify-out/cache/deadbeef.json" \
   "$WORK/graphify-out/cost.json" \

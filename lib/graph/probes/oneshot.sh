@@ -33,7 +33,7 @@
 #
 # Exit: 0 with one `route=<oneshot|full> reason=<text>` line. Anything undeterminable
 # answers `route=full`: the long path is the safe direction.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECURITY_SIGNAL="$SCRIPT_DIR/../../security-signal.sh"
@@ -52,7 +52,7 @@ full() {
 feature_dir="" after=0 candidate=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --feature-dir) feature_dir="${2:-}"; shift 2 ;;
+    --feature-dir) feature_dir="${2:-}"; shift 2 || { echo "oneshot.sh: $1 needs a value" >&2; exit 2; } ;;
     --after) after=1; shift ;;
     --candidate) candidate=1; shift ;;
     *) echo "usage: oneshot.sh --feature-dir DIR [--after | --candidate] | --answers" >&2; exit 2 ;;
@@ -70,9 +70,9 @@ feature_json="$feature_dir/feature.json"
 [[ -f "$feature_json" ]] || full "no feature.json in $feature_dir"
 slug="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.slug // ""' 2>/dev/null)" || full "feature.json could not be read"
 [[ -n "$slug" ]] || full "feature.json has no slug"
-ws_root="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end')"
+ws_root="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end' 2>/dev/null)" || full "feature.json could not be read (workspace field)"
 if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null)" || full "$feature_dir is not inside a git repository"; fi
-spec="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.artifacts.spec // ""')"
+spec="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.artifacts.spec // ""' 2>/dev/null)" || spec=""
 [[ -n "$spec" ]] || spec="docs/loop-spec/features/$slug/SPEC.md"
 [[ "$spec" == /* ]] || spec="$root/$spec"
 
@@ -96,6 +96,7 @@ footprint_shape() {
   for p in "$@"; do
     [[ "$p" == /* ]] && full "footprint path $p is absolute (repository-relative paths only)"
   done
+  return 0
 }
 footprint_existing() {
   local p

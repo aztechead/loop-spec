@@ -14,6 +14,8 @@
 # the other's gates as a literal path. What {docs} resolves TO is the caller's (absolute
 # in phase-entry.sh so a `read=` line opens from any cwd, relative in phase-exit.sh
 # because that is what artifacts.* pointers record); this file only substitutes.
+set -euo pipefail
+
 loop_spec_resolve_phase_path() {
   local s="$1" key
   s="${s//\{docs\}/$docs}"; s="${s//\{featureDir\}/$feature_dir}"; s="${s//\{root\}/$root}"

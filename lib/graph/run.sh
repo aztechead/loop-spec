@@ -51,8 +51,8 @@ while [[ $# -gt 0 ]]; do
     --dry-run) DRY_RUN=1; shift ;;
     --resume) RESUME=1; shift ;;
     --step) STEP=1; shift ;;
-    --completed-node) COMPLETED_NODE="${2:-}"; shift 2 ;;
-    --feature-dir) FEATURE_DIR="${2:-}"; shift 2 ;;
+    --completed-node) COMPLETED_NODE="${2:-}"; shift 2 || { echo "run: $1 needs a value" >&2; exit 2; } ;;
+    --feature-dir) FEATURE_DIR="${2:-}"; shift 2 || { echo "run: $1 needs a value" >&2; exit 2; } ;;
     -*)
       echo "usage: run.sh [--dry-run] [--resume] [--step] --feature-dir DIR <graph.json>" >&2
       exit 2

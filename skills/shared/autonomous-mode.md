@@ -28,7 +28,7 @@ input. Per harness: `claude -p "/loop-spec:auto <description>"` (or the Claude A
 `adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run: <description>" --jsonl`,
 and `LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write '$loop-spec-auto <description>'`.
 Claude stamps `CLAUDE_CODE_ENTRYPOINT`. Peer harnesses use explicit non-interactive settings that `lib/harness.sh headless` reads.
-Full-route phases return a paused `phase-handoff` result. Graph-declared same-session transitions continue without a new invocation.
+Full-route phases return a paused `phase-handoff` result. Graph-declared same-session transitions continue without a new invocation. `LOOP_SPEC_SAME_SESSION=1` makes every transition one, for an operator who wants the whole cycle end to end in one session.
 `lib/cycle-launch.sh` owns
 CLI relaunches; SDK and ADK supervisors may retain their native relaunch loop. The next
 phase starts in a fresh context.

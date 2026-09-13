@@ -197,7 +197,10 @@ https://developers.openai.com/codex/subagents):
 - `subagent_type: "loop-spec:<role>"` → `agent_type: "loop-spec-<role>"`
   (the installer writes `~/.codex/agents/loop-spec-<role>.toml` or
   `.codex/agents/loop-spec-<role>.toml`; hyphens are the Codex custom-agent
-  `name`).
+  `name`). `execute-subagent.md`'s implementer/reviewer rung passes no
+  `subagent_type` on any harness, so its `spawn_agent` carries no `agent_type`
+  and the default agent runs the self-contained prompt; the role TOMLs serve the
+  phase-skill dispatches that name a role.
 - `prompt` becomes `message`.
 - Omit `run_in_background`. A `spawn_agent` result may be a child handle rather than the completed report.
   Use the current schema's wait or completion notification mechanism to collect that report before dependent work.
