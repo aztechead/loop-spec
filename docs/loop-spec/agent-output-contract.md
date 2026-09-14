@@ -207,7 +207,13 @@ terminal JSON object and reads only:
   "num_turns": 3,
   "session_id": "string",
   "result": "final assistant text",
-  "total_cost_usd": 1.25
+  "total_cost_usd": 1.25,
+  "usage": {
+    "input_tokens": 100,
+    "cache_creation_input_tokens": 50,
+    "cache_read_input_tokens": 900,
+    "output_tokens": 40
+  }
 }
 ```
 

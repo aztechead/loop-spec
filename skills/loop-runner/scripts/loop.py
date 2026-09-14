@@ -57,6 +57,10 @@ HALT_BUDGET = "budget_exhausted"
 
 MIN_TICK_TIMEOUT = 60.0  # minimum per-tick subprocess timeout; tests may lower this
 
+# The four meters claude -p reports under "usage"; summed so a headless run can read its
+# own cache hit rate instead of only a dollar total.
+USAGE_KEYS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
+
 # Values `claude --permission-mode` accepts (verified against the shipped CLI).
 # This set is deliberately NOT the Agent SDK's PermissionMode literal: the SDK
 # accepts "default" — which the CLI rejects — and has no "manual". Copying a
@@ -243,6 +247,7 @@ class LoopState:
     iteration: int = 0
     total_turns: int = 0
     total_cost_usd: Optional[float] = None  # summed claude -p total_cost_usd; None when never reported
+    total_usage: dict = field(default_factory=dict)  # summed USAGE_KEYS; empty when never reported
     session_id: Optional[str] = None
     start_sha: str = ""
     protected_hash: str = ""
@@ -468,6 +473,8 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         # cost accounting: None when the CLI did not report a number (older CLIs,
         # error paths) so callers can distinguish "free" from "unknown".
         "cost_usd": float(cost) if isinstance(cost, (int, float)) else None,
+        "usage": {k: int(v) for k, v in (data.get("usage") or {}).items()
+                  if k in USAGE_KEYS and isinstance(v, (int, float))},
     }
 
 
@@ -1000,6 +1007,8 @@ def run_loop(cfg: LoopConfig) -> dict:
         state.total_turns += res["turns"]
         if res.get("cost_usd") is not None:
             state.total_cost_usd = (state.total_cost_usd or 0.0) + res["cost_usd"]
+        for k, v in (res.get("usage") or {}).items():
+            state.total_usage[k] = state.total_usage.get(k, 0) + v
         if res["session_id"]:
             state.session_id = res["session_id"]
         if not res["ok"]:
@@ -1098,6 +1107,7 @@ def run_loop(cfg: LoopConfig) -> dict:
         "max_turns_per_tick": cfg.max_turns or None,
         "effort": cfg.effort or None,
         "total_cost_usd": round(state.total_cost_usd, 6) if state.total_cost_usd is not None else None,
+        "total_usage": state.total_usage or None,
         "max_budget_usd": cfg.max_budget_usd or None,
         "wall_clock_seconds": round(elapsed, 1),
         "verifier": {

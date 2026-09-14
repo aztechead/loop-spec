@@ -6,6 +6,13 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [6.6.5] - 2026-09-14
 
+### Added (cost pass)
+
+- `skills/loop-runner/scripts/loop.py` sums the four `usage` meters `claude -p` already
+  reports (`input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`,
+  `output_tokens`) into `result.json` as `total_usage`, beside `total_cost_usd`. A
+  headless run can now read its own cache hit rate; before, only the dollar total survived.
+
 ### Changed (prompt audit against Opus 5, Sonnet 5, Fable, and Gemini)
 
 - `output-styles/loop-spec.md` drops the 8-line, 80-word, and 12-word ceilings and the

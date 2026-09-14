@@ -53,6 +53,7 @@ check "verifier.passed"   "$(python3 -c "import json;print(json.load(open('.loop
 check "iter raw log kept" "$(test -f .loop/done/iter-001.raw.json && echo yes)" "yes"
 check "progress notes"    "$(test -f .loop/done/PROGRESS.md && echo yes)" "yes"
 check "cost summed"       "$(python3 -c "import json;c=json.load(open('.loop/done/result.json'))['total_cost_usd'];print(isinstance(c,float) and c>0)")" "True"
+check "usage summed"      "$(python3 -c "import json;u=json.load(open('.loop/done/result.json'))['total_usage'];print(u['cache_read_input_tokens']>0 and u['output_tokens']>0)")" "True"
 
 echo "== 3. stall: no file changes =="
 newrepo
