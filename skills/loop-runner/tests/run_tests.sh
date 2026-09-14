@@ -160,7 +160,7 @@ FLEET_OK=$(python3 -c "import json;f=json.load(open('.loop/fleet-result.json'));
 check "fleet-result.json" "$FLEET_OK" "True"
 check "fleet terminal status" "$(python3 -c "import json;print(json.load(open('.loop/fleet-result.json'))['status'])")" "complete"
 check "fleet cost summed" "$(python3 -c "import json;c=json.load(open('.loop/fleet-result.json'))['total_cost_usd'];print(isinstance(c,float) and c>0)")" "True"
-check "fleet usage summed" "$(python3 -c "import json;u=json.load(open('.loop/fleet-result.json'))['total_usage'];print(isinstance(u,dict) and u['output_tokens']>0)")" "True"
+check "fleet usage is the sum of its tasks" "$(python3 -c "import json;f=json.load(open('.loop/fleet-result.json'));ts=[r['total_usage'] for r in f['tasks'].values() if r.get('total_usage')];print(len(ts)==2 and f['total_usage']=={k:sum(t[k] for t in ts) for k in ts[0]})")" "True"
 
 SUPERVISOR_CANDIDATE=$(PYTHONPATH="$SCRIPTS" python3 - << 'EOF'
 import json
@@ -548,6 +548,7 @@ check "adk halt_reason"     "$(reason .loop/adkdone/result.json)" "complete"
 check "adk raw log kept"    "$(test -f .loop/adkdone/iter-001.raw.json && echo yes)" "yes"
 # ADK reports tokens, not money: cost stays unknown rather than being invented.
 check "adk cost unknown"    "$(python3 -c "import json;print(json.load(open('.loop/adkdone/result.json'))['total_cost_usd'])")" "None"
+check "adk usage unknown"   "$(python3 -c "import json;print(json.load(open('.loop/adkdone/result.json'))['total_usage'])")" "None"
 
 # 16b. flag shape: adk gets adk flags, never claude-only ones
 newrepo; mkadkagent
@@ -788,6 +789,7 @@ python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id cxdone \
 check "cx exit 0"          "$?" "0"
 check "cx halt_reason"     "$(reason .loop/cxdone/result.json)" "complete"
 check "cx cost unknown"    "$(python3 -c "import json;print(json.load(open('.loop/cxdone/result.json'))['total_cost_usd'])")" "None"
+check "cx usage unknown"   "$(python3 -c "import json;print(json.load(open('.loop/cxdone/result.json'))['total_usage'])")" "None"
 check "cx raw log kept"    "$(test -f .loop/cxdone/iter-001.raw.json && echo yes)" "yes"
 
 # 18b. flag shape: codex gets exec --json --sandbox, never claude-only ones

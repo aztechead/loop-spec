@@ -82,7 +82,7 @@ When another rule demands a full evidence trail, write that trail into its durab
 
 - Code, diffs, commit messages, PR bodies — full fidelity. Identifiers, paths, and literals stay verbatim.
 - Errors and test failures — quoted exact.
-- Security warnings and irreversible-action confirmations — clarity over brevity. The sentence rules above yield here.
+- Security warnings and irreversible-action confirmations — clarity over brevity. The sentence rules above give way here.
 - Anything the user asked to have explained — requested depth is the deliverable. Give it in sentences. The sentence rules above still apply to each sentence, not to the whole answer.
 
 ## Subagents

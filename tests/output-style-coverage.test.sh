@@ -75,6 +75,19 @@ else
   bad "report-style.md no longer names the slot, one-thought-per-action, auto-vs-autonomous, or wait forbid"
 fi
 
+for stale in "~5 items" '"Let me' '"Hope this helps'; do
+  if grep -Fq "$stale" skills/shared/report-style.md; then
+    bad "report-style carries a dated cap or phrase ban: $stale"
+  else
+    ok "report-style free of: $stale"
+  fi
+done
+if grep -Fq "Inline only the load-bearing items" skills/shared/report-style.md; then
+  ok "report-style inlines only the load-bearing items"
+else
+  bad "report-style lost the load-bearing-items rule"
+fi
+
 if grep -Fq "output-styles/loop-spec.md" skills/shared/claude-harness.md &&
    grep -Fq "force-for-plugin" skills/shared/claude-harness.md &&
    grep -Fq "one thought per action" skills/shared/claude-harness.md; then
