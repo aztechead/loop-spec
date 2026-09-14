@@ -41,7 +41,7 @@ repo_dir="$PWD"
 if [[ "${1:-}" == "--dir" ]]; then
   repo_dir="${2:-}"
   [[ -d "$repo_dir" ]] || { echo "debug-init: no such directory: $repo_dir" >&2; exit 1; }
-  shift 2
+  shift 2 || { echo "debug-init: --dir requires a directory" >&2; exit 1; }
 fi
 bash "$SCRIPT_DIR/cycle-result.sh" clear --result-root "$repo_dir"
 bash "$SCRIPT_DIR/runtime-preflight.sh" check-jq

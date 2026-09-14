@@ -25,7 +25,7 @@ shift
 [[ $# -ge 2 ]] || die "ensure requires <revision_root> <slug>"
 revision_root="$1"
 slug="$2"
-shift 2
+shift 2 || die "ensure requires <revision_root> <slug>"
 
 branch=""
 base_branch=""

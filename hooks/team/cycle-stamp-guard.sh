@@ -39,6 +39,12 @@
 #     ignores such a stamp too, and a phase past its own watchdog ceiling was left by
 #     a session that died, not this session's contract
 #   - stop_hook_active: Claude Code is already continuing from a previous block
+#   - <feature_dir>/.pending-dispatch (lib/events.sh, the `dispatch` event) exists,
+#     is newer than the open phase's phase_start, and is within
+#     LOOP_SPEC_DISPATCH_WAIT_MINS: a dispatched agent is legitimately still running
+#     the phase, not a lead that walked out on it (#3, 6.6.4 live run). cycle-driver.sh
+#     removes the marker on the next driver call, whether the dispatch returned or was
+#     abandoned.
 #
 # Fail-open: missing python3, an unreadable stamp or ledger, or a malformed payload
 # -> exit 0.
@@ -53,6 +59,8 @@
 #                                 the driver. Default: 30.
 #   LOOP_SPEC_PHASE_TIMEOUT_MINS  Stand-down age of an open phase in minutes, the
 #                                 driver's watchdog ceiling. Default: 60.
+#   LOOP_SPEC_DISPATCH_WAIT_MINS  How long a fresh .pending-dispatch marker stands
+#                                 down deny 2. Default: 90.
 #   CLAUDE_PROJECT_DIR            Project root; default $PWD.
 set -euo pipefail
 
@@ -79,11 +87,11 @@ fi
 # One line: `stamp <args>` for an unconsumed cycle invocation, `phase <feature_dir> <phase>`
 # for an open phase, else `allow`. The stamp is read first: a session that never began
 # the cycle has no phase of its own to close.
-verdict="$(python3 - "$PROJECT_DIR" "$STAMP" "$RESULT" "${LOOP_SPEC_STAMP_MAX_AGE_MIN:-30}" "${LOOP_SPEC_PHASE_TIMEOUT_MINS:-60}" <<'PY'
+verdict="$(python3 - "$PROJECT_DIR" "$STAMP" "$RESULT" "${LOOP_SPEC_STAMP_MAX_AGE_MIN:-30}" "${LOOP_SPEC_PHASE_TIMEOUT_MINS:-60}" "${LOOP_SPEC_DISPATCH_WAIT_MINS:-90}" <<'PY'
 import glob, json, os, sys, time, calendar
-project, stamp_path, result_path, max_age, phase_age = sys.argv[1:6]
+project, stamp_path, result_path, max_age, phase_age, dispatch_wait = sys.argv[1:7]
 try:
-    max_age, phase_age = int(max_age), int(phase_age)
+    max_age, phase_age, dispatch_wait = int(max_age), int(phase_age), int(dispatch_wait)
 except ValueError:
     print("allow"); sys.exit(0)
 result_at = os.path.getmtime(result_path) if os.path.isfile(result_path) else None
@@ -138,6 +146,18 @@ for ledger in sorted(ledgers):
     if opened is None:
         continue
     at, phase = opened
+    # A dispatched agent is running the phase unattended (lib/events.sh, the `dispatch`
+    # event): the lead has not walked out on it, it just has not returned yet. The
+    # guard denied three legitimate dispatch waits before this marker existed (#3
+    # 6.6.4 live run). cycle-driver.sh removes the marker the moment a driver call
+    # happens, so a stale one past its own window is dead, not a reason to stand down.
+    pending = os.path.join(os.path.dirname(ledger), ".pending-dispatch")
+    try:
+        pending_at = os.path.getmtime(pending)
+    except OSError:
+        pending_at = None
+    if pending_at is not None and pending_at > at and time.time() - pending_at <= dispatch_wait * 60:
+        continue
     if time.time() - at > phase_age * 60:
         continue
     if result_at is not None and result_at >= at:

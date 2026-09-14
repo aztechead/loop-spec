@@ -29,8 +29,8 @@ teams_mode=""
 selector=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --teams-mode) teams_mode="${2:-}"; shift 2 ;;
-    --selector) selector="${2:-}"; shift 2 ;;
+    --teams-mode) teams_mode="${2:-}"; shift 2 || { echo "implicit-team-model: $1 needs a value" >&2; exit 2; } ;;
+    --selector) selector="${2:-}"; shift 2 || { echo "implicit-team-model: $1 needs a value" >&2; exit 2; } ;;
     *) echo "implicit-team-model: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done

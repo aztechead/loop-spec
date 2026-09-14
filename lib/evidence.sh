@@ -14,7 +14,7 @@
 #   evidence.sh next-id <ledger_path>
 #
 # Exit codes: 0 success, 1 bad invocation or unwritable path.
-set -uo pipefail
+set -euo pipefail
 
 HEADING="# Evidence ledger"
 

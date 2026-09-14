@@ -33,7 +33,9 @@ DEFAULT_BRANCH=$(git -C "$WORK/repo" rev-parse --abbrev-ref HEAD)
 
 # Bare repo as origin
 git init --bare -q "$WORK/bare"
-git -C "$WORK/repo" remote add origin "$WORK/bare"
+# The remote names a host (what gh needs); insteadOf carries the push to the bare repo.
+git -C "$WORK/repo" remote add origin https://github.com/test/repo.git
+git -C "$WORK/repo" config url."$WORK/bare".insteadOf https://github.com/test/repo.git
 
 # Feature branch with a commit (so there is something to push)
 git -C "$WORK/repo" checkout -q -b feat/my-feature
@@ -198,6 +200,22 @@ check "3: gating passed (not interactive-skip)" \
 check "3: stopped at gh precondition" \
   "1" "$([[ "$out" == *"'gh' not on PATH"* ]] && echo 1 || echo 0)"
 reset_fixture
+
+# ── Case 3b: origin names no host → pushed, PR step skipped, gh never asked ──
+# (the 6.6.3 FastAPI run reported "gh pr list failed" against a bare-path origin)
+reset_fixture
+git -C "$REPO" remote set-url origin "$WORK/bare"
+GH_LOG3B="$WORK/gh-case3b.log"
+ec=0
+out=$( (cd "$REPO"; PATH="$SHIMS:$PATH" LOOP_SPEC_CHECKPOINT_PR=1 SHIM_GH_LOG="$GH_LOG3B" \
+  bash "$LIB" create "$FEAT_DIR") 2>&1 ) || ec=$?
+check "3b: exit 0" "0" "$ec"
+check "3b: branch pushed to bare" \
+  "1" "$(git -C "$WORK/bare" rev-parse --verify refs/heads/feat/my-feature >/dev/null 2>&1 && echo 1 || echo 0)"
+check "3b: the skip names the reason" "1" "$([[ "$out" == *"remote URL names no host"* ]] && echo 1 || echo 0)"
+check "3b: gh never asked to create a PR" "0" "$([[ -f "$GH_LOG3B" ]] && grep -c 'pr create' "$GH_LOG3B" || echo 0)"
+git -C "$REPO" remote set-url origin https://github.com/test/repo.git
+git -C "$WORK/bare" branch -D feat/my-feature >/dev/null 2>&1 || true
 
 # ── Case 4: Happy path (LOOP_SPEC_CHECKPOINT_PR=1) ───────────────────────────
 reset_fixture

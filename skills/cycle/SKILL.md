@@ -20,6 +20,9 @@ DRV="${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh"
 ```
 
 Run the driver directly. Do not check its path with `ls`, `stat`, or `cat` first.
+In a Claude Code worktree session (`EnterWorktree`), the permission classifier refuses
+the `$DRV` variable form; write `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" ...`
+inline instead, with the same arguments.
 
 The frontmatter lists the tools this skill and its phase skills use.
 Phases may use other available tools, subject to their role instructions.
@@ -37,7 +40,10 @@ st="$(bash "$DRV" begin -- "$ARGUMENTS")"
 ```
 
 `begin` runs `start`, then `init` or `resume` when no user decision is pending.
-This includes autonomous runs and invocations that continue a feature.
+This includes autonomous runs and invocations that continue a feature: an attended
+run with exactly one paused feature resumes it the same way, without a question;
+two or more print a notice (`.notices[]`) and start a new cycle instead. A leading
+`new` token skips resume even with one paused feature and starts fresh.
 Print only the lines from `.notices[]` and `.warnings[]`.
 On exit 3, relay the abort message from stderr and stop.
 Otherwise, read `.action`:
@@ -56,7 +62,6 @@ Otherwise, read `.action`:
 | id | On the answer |
 |---|---|
 | `greenfield` | "Abort" ends the run. "Start new project here" is `--greenfield 1`. |
-| `resume` | A "Resume <slug>" pick runs `.next.resume` with that candidate's `featureRoot` and `slug`; "New feature" continues. |
 | `repos` | "Customize": ask for a comma-separated repo list and pass only those in `--repos`. |
 | `title` | The answer is the title; slug it with `lib/git-ops.sh slugify`. |
 | `commands` | "Customize": ask for each of prepare/test/lint/typecheck and pass them in `--commands`. |

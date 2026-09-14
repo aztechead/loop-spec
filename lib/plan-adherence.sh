@@ -10,6 +10,7 @@
 #
 # Exit codes:
 #   0 always (fail-open)
+set -euo pipefail
 
 plan_path="${1:-}"
 
@@ -24,10 +25,11 @@ if [[ "$plan_path" != "/dev/stdin" && ! -f "$plan_path" ]]; then
   exit 0
 fi
 
-# Extract task IDs from headings matching ^### task-[0-9]+:
+# Extract task IDs from headings matching ^### task-[0-9]+: -- a PLAN.md with none is
+# the ordinary empty-ids case below, not a failure grep must not abort the script over.
 ids=$(grep -E '^### task-[0-9]+:' "$plan_path" \
   | sed 's/^### //' \
-  | cut -d: -f1)
+  | cut -d: -f1) || true
 
 # Build JSON array using jq -n with --args
 if [[ -z "$ids" ]]; then

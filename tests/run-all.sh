@@ -18,6 +18,10 @@ for arg in "$@"; do
 done
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Skip a python version-manager shim for every suite (lib/python-path.sh): the shim
+# start was half of this runner's wall clock.
+py_dir="$(bash "$REPO_ROOT/lib/python-path.sh")"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 cd "$REPO_ROOT"
 
 # A cycle leaked into another worktree of this repository (the f0959f6 eval run left
@@ -255,6 +259,7 @@ run_suite "lib/team-ops"              "bash tests/lib/team-ops.test.sh"
 run_suite "lib/teams-capability"      "bash tests/lib/teams-capability.test.sh"
 run_suite "lib/bounded-run"           "bash tests/lib/bounded-run.test.sh" integration
 run_suite "lib/harness"               "bash tests/lib/harness.test.sh"
+run_suite "lib/python-path"           "bash tests/lib/python-path.test.sh"
 run_suite "lib/plugin-version"        "bash tests/lib/plugin-version.test.sh"
 run_suite "lib/bump-version"          "bash tests/lib/bump-version.test.sh"
 run_suite "lib/execute-rung"          "bash tests/lib/execute-rung.test.sh"
@@ -313,6 +318,7 @@ run_suite "lib/debug-init"            "bash tests/lib/debug-init.test.sh"
 run_suite "lib/greenfield-bootstrap"  "bash tests/lib/greenfield-bootstrap.test.sh"
 run_suite "lib/cycle-preflight"       "bash tests/lib/cycle-preflight.test.sh" integration
 run_suite "lib/cycle-driver"          "bash tests/lib/cycle-driver.test.sh" integration
+run_suite "lib/cycle-start-resume"    "bash tests/lib/cycle-start-resume.test.sh" integration
 run_suite "lib/phase-exit"            "bash tests/lib/phase-exit.test.sh" integration
 run_suite "lib/phase-entry"           "bash tests/lib/phase-entry.test.sh" integration
 run_suite "lib/plan-adherence"        "bash tests/lib/plan-adherence.test.sh"
@@ -408,6 +414,7 @@ run_suite "tests/tdd-red-green-coverage" "bash tests/tdd-red-green-coverage.test
 run_suite "tests/execute-dispatch-contract" "bash tests/execute-dispatch-contract.test.sh"
 run_suite "tests/design-coverage"     "bash tests/design-coverage.test.sh"
 run_suite "tests/human-code-coverage" "bash tests/human-code-coverage.test.sh"
+run_suite "tests/shell-mode-coverage" "bash tests/shell-mode-coverage.test.sh"
 run_suite "tests/human-docs-coverage" "bash tests/human-docs-coverage.test.sh"
 run_suite "tests/feature-read-coverage" "bash tests/feature-read-coverage.test.sh"
 run_suite "tests/plain-language-coverage" "bash tests/plain-language-coverage.test.sh"
@@ -426,7 +433,6 @@ run_suite "tests/execution-validation-coverage" "bash tests/execution-validation
 run_suite "tests/verification-grounding-coverage" "bash tests/verification-grounding-coverage.test.sh"
 run_suite "tests/prompt-normalize-coverage" "bash tests/prompt-normalize-coverage.test.sh"
 run_suite "tests/live-run-findings-coverage" "bash tests/live-run-findings-coverage.test.sh"
-run_suite "tests/eval-record-coverage"     "bash tests/eval-record-coverage.test.sh"
 run_suite "tests/approach-selection-coverage" "bash tests/approach-selection-coverage.test.sh"
 run_suite "tests/configuration-coverage" "bash tests/configuration-coverage.test.sh"
 run_suite "tests/contract-strings"    "bash tests/contract-strings.test.sh"
@@ -467,4 +473,8 @@ echo "=== Summary ==="
 echo "Suites passed: $TOTAL_PASS"
 echo "Suites failed: $TOTAL_FAIL"
 echo "Suites skipped: $TOTAL_SKIP"
+# The ceiling the maintainer set on 2026-09-11 (157 s, 8 wide, network denied): a run
+# past it is a finding to fix, not a number to raise. Reported, never enforced, because
+# a slower machine is not a slower suite.
+echo "Wall clock: ${SECONDS}s (ceiling 157s)"
 [[ "$TOTAL_FAIL" -gt 0 ]] && exit 1 || exit 0

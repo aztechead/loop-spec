@@ -29,7 +29,7 @@
 # graph, or a test that adds a phase to a copy); --graph outranks it.
 # Exit codes: 0 answered; 1 not a phase (or not a same-session edge); 2 bad invocation or
 # unreadable graph.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cmd="${1:-}"; shift || true
@@ -41,7 +41,7 @@ case "$cmd" in
 esac
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --graph) graph="${2:-}"; shift 2 ;;
+    --graph) graph="${2:-}"; shift 2 || { echo "phases.sh: $1 needs a value" >&2; exit 2; } ;;
     *) echo "usage: phases.sh list|regex|validate <id>|suffix <id>|same-session <from> <to> [--graph PATH]" >&2; exit 2 ;;
   esac
 done

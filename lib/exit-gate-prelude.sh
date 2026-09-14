@@ -18,6 +18,11 @@
 # lists them as data (graph/cycle.graph.json egress.gates), so the fourth gate a graph
 # adds should cost its checks and nothing else. A gate ends with
 # `(( flags == 0 )) || exit 1`.
+#
+# Every caller (plan-exit-gate.sh, execute-exit-gate.sh, oneshot-exit-gate.sh) runs
+# under `set -euo pipefail`; this line matches it so sourcing never changes the
+# caller's mode underneath it.
+set -euo pipefail
 [[ -n "${1:-}" && -f "$1/feature.json" ]] || { echo "usage: $(basename "$0") ${gate_usage:-<feature-dir>}" >&2; exit 2; }
 feature_dir="$(cd "$1" && pwd -P)"
 fj="$feature_dir/feature.json"

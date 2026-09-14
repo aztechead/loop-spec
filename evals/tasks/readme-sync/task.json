@@ -1,8 +1,0 @@
-{
-  "id": "readme-sync",
-  "size": "trivial",
-  "kind": "docs-only",
-  "prompt": "README.md is stale: it documents flags backup.py no longer has and misses flags it does have. Update README.md to match the real command-line interface of backup.py. Do not change backup.py.",
-  "reference_app_lines": 20,
-  "protected": ["backup.py"]
-}

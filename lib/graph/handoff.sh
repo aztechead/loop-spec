@@ -21,15 +21,15 @@ cmd="$1"; shift
 feature_dir=""; node=""; verify=""; out=""; bundle=""; graph=""; task=""; brief=""; files="[]"
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --feature-dir) feature_dir="${2:-}"; shift 2 ;;
-    --node) node="${2:-}"; shift 2 ;;
-    --task) task="${2:-}"; shift 2 ;;
-    --verify) verify="${2:-}"; shift 2 ;;
-    --out) out="${2:-}"; shift 2 ;;
-    --bundle) bundle="${2:-}"; shift 2 ;;
-    --graph) graph="${2:-}"; shift 2 ;;
-    --brief) brief="${2:-}"; shift 2 ;;
-    --files) files="${2:-}"; shift 2 ;;
+    --feature-dir) feature_dir="${2:-}"; shift 2 || usage ;;
+    --node) node="${2:-}"; shift 2 || usage ;;
+    --task) task="${2:-}"; shift 2 || usage ;;
+    --verify) verify="${2:-}"; shift 2 || usage ;;
+    --out) out="${2:-}"; shift 2 || usage ;;
+    --bundle) bundle="${2:-}"; shift 2 || usage ;;
+    --graph) graph="${2:-}"; shift 2 || usage ;;
+    --brief) brief="${2:-}"; shift 2 || usage ;;
+    --files) files="${2:-}"; shift 2 || usage ;;
     *) usage ;;
   esac
 done

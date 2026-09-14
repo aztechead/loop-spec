@@ -27,7 +27,7 @@
 # Exit: 0 with one `gate=<run|skip|compact> reason=<text>` line. Compact's
 # durable gate plan owns this decision, so this legacy probe must not supply a
 # second competing answer.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECURITY_SIGNAL="$SCRIPT_DIR/../../security-signal.sh"
@@ -50,7 +50,7 @@ skip() {
 feature_dir=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --feature-dir) feature_dir="${2:-}"; shift 2 ;;
+    --feature-dir) feature_dir="${2:-}"; shift 2 || { echo "discuss-critique.sh: $1 needs a value" >&2; exit 2; } ;;
     *) echo "usage: discuss-critique.sh --feature-dir DIR | --answers" >&2; exit 2 ;;
   esac
 done

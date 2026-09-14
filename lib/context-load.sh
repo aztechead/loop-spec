@@ -26,7 +26,7 @@
 # Exit: 0 answered; 2 bad invocation, unreadable root, or an entry that names a file or
 # section the tree does not hold (named on stderr: a cite to nothing is the failure this
 # probe must not average away).
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cmd="${1:-}"; shift || true
@@ -34,7 +34,7 @@ case "$cmd" in sum|cites) ;; *) echo "usage: context-load.sh sum|cites <entry> [
 root="$SCRIPT_DIR/.."; transitive=0; entries=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --root) root="${2:-}"; shift 2 ;;
+    --root) root="${2:-}"; shift 2 || { echo "context-load: $1 needs a value" >&2; exit 2; } ;;
     --transitive) transitive=1; shift ;;
     *) entries+=("$1"); shift ;;
   esac

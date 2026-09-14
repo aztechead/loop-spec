@@ -32,10 +32,10 @@ value=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --feature-dir) feature_dir="${2:-}"; shift 2 ;;
-    --node) node_id="${2:-}"; shift 2 ;;
-    --graph) graph_path="${2:-}"; shift 2 ;;
-    --key) key="${2:-}"; shift 2 ;;
+    --feature-dir) feature_dir="${2:-}"; shift 2 || usage ;;
+    --node) node_id="${2:-}"; shift 2 || usage ;;
+    --graph) graph_path="${2:-}"; shift 2 || usage ;;
+    --key) key="${2:-}"; shift 2 || usage ;;
     *)
       if [[ "$cmd" == "write" && -z "$value" && "$1" != --* ]]; then
         value="$1"; shift

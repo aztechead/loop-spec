@@ -107,6 +107,25 @@ check "M: end next exposed" "verify" "$(jq -r '.next' <<<"$end_marker")"
 last="$(tail -1 "$WORK/markers/events.jsonl")"
 check "M: JSONL keeps legacy data.next" "verify" "$(jq -r '.data.next' <<<"$last")"
 check "M: JSONL includes matching attempt" "$attempt_id" "$(jq -r '.attemptId' <<<"$last")"
+check "M: JSONL phase_end outside a checkout has null headSha" "null" "$(jq -r '.headSha' <<<"$last")"
+git -C "$WORK/markers" init -q 2>/dev/null && git -C "$WORK/markers" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+bash "$LIB" emit "$WORK/markers" phase_start --phase verify >/dev/null
+bash "$LIB" emit "$WORK/markers" phase_end --phase verify --data '{"next":"deliver"}' >/dev/null
+check "M: JSONL phase_end inside a checkout records HEAD" "$(git -C "$WORK/markers" rev-parse HEAD)" \
+  "$(tail -1 "$WORK/markers/events.jsonl" | jq -r '.headSha')"
+
+# Case M2: in workspace mode the feature dir is no checkout, so phase_end records HEAD
+# per repo; a single-repo record carries no repoHeadShas key at all.
+check "M: single-repo phase_end has no repoHeadShas" "false" "$(tail -1 "$WORK/markers/events.jsonl" | jq -r 'has("repoHeadShas")')"
+mkdir -p "$WORK/ws/.loop-spec/features/wsf" "$WORK/ws/api" "$WORK/ws/web"
+for r in api web; do git -C "$WORK/ws/$r" init -q && git -C "$WORK/ws/$r" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init; done
+jq -n --arg root "$WORK/ws" '{slug:"wsf",workspace:{root:$root,repos:[{name:"api",path:"api"},{name:"web",path:"web"}]}}' \
+  > "$WORK/ws/.loop-spec/features/wsf/feature.json"
+bash "$LIB" emit "$WORK/ws/.loop-spec/features/wsf" phase_start --phase verify >/dev/null
+bash "$LIB" emit "$WORK/ws/.loop-spec/features/wsf" phase_end --phase verify --data '{"next":"deliver"}' >/dev/null
+check "M: workspace phase_end records each repo's HEAD" "$(git -C "$WORK/ws/api" rev-parse HEAD) $(git -C "$WORK/ws/web" rev-parse HEAD)" \
+  "$(tail -1 "$WORK/ws/.loop-spec/features/wsf/events.jsonl" | jq -r '"\(.repoHeadShas.api) \(.repoHeadShas.web)"')"
+check "M: workspace phase_end headSha is null (the root is no checkout)" "null" "$(tail -1 "$WORK/ws/.loop-spec/features/wsf/events.jsonl" | jq -r '.headSha')"
 
 # Case N: verdict derivation is fixed and deterministic.
 bash "$LIB" emit "$WORK/markers" phase_start --phase iterate >/dev/null

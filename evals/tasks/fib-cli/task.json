@@ -1,8 +1,0 @@
-{
-  "id": "fib-cli",
-  "size": "trivial",
-  "kind": "greenfield",
-  "prompt": "a Python command-line tool fib.py that prints the n-th Fibonacci number (fib 0 = 0, fib 1 = 1), with unit tests runnable by python3 -m unittest and a README",
-  "reference_app_lines": 60,
-  "protected": []
-}

@@ -28,17 +28,17 @@
 #
 # Exit: 0 answered; 1 the judge's output holds no usable verdict (re-dispatch once, then
 # escalate); 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
-usage() { sed -n '2,30p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,30p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2 || true; exit 2; }
 
 cmd="${1:-}"; shift || true
 feature_dir="" judge_out="" confirmation=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --feature-dir) feature_dir="${2:-}"; shift 2 ;; --judge-out) judge_out="${2:-}"; shift 2 ;;
+    --feature-dir) feature_dir="${2:-}"; shift 2 || usage ;; --judge-out) judge_out="${2:-}"; shift 2 || usage ;;
     --confirmation) confirmation=1; shift ;; *) usage ;;
   esac
 done
@@ -101,7 +101,9 @@ PY
       if (( frc == 0 )); then
         fset iterate.feedback null; route=deliver
       else
-        floor="$(grep '^FLOOR' <<<"$fout" | jq -R . | jq -cs .)"
+        # converged-floor's violation path always prints FLOOR lines, but a bad
+        # invocation would not; grep finding none must not abort under pipefail.
+        floor="$(grep '^FLOOR' <<<"$fout" | jq -R . | jq -cs . || true)"
         first="$(jq -r '.[0] // "verification record does not support the verdict"' <<<"$floor")"
         # A FAIL row is code work; anything else (a missing grounding row, a non-PASS
         # result) is a verification record VERIFY has to complete. Rewinding those to

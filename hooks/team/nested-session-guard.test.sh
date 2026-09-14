@@ -45,14 +45,13 @@ check "a script without a launch is allowed" 0 "$(bash_cmd "bash $ROOT/tests.sh"
 check "a data file named by the command is not a launch" 0 "$(bash_cmd "wc -l $ROOT/data.txt")" CLAUDE_PROJECT_DIR="$ROOT"
 check "the session rung launcher is allowed" 0 "$(bash_cmd 'python3 /plugin/extensions/sessions/session_run.py --profile claude --cwd . --prompt-file p.md')" CLAUDE_PROJECT_DIR="$ROOT"
 check "the loop-runner launcher is allowed" 0 "$(bash_cmd 'python3 skills/loop-runner/scripts/supervisor.py --agent-cli claude')" CLAUDE_PROJECT_DIR="$ROOT"
-check "the eval driver is allowed" 0 "$(bash_cmd 'LOOP_SPEC_EVAL_LIVE=1 python3 evals/eval_run.py --model haiku')" CLAUDE_PROJECT_DIR="$ROOT"
 # The allow-list is the launcher's path token, not a substring: a script that mentions
 # session_run.py in a comment and then launches a session is still a launch, and a
 # lookalike name is not a launcher.
 printf '#!/usr/bin/env bash\n# not extensions/sessions/session_run.py, but mentions it\nclaude -p "x"\n' > "$ROOT/mentions.sh"
 check "a script that mentions a launcher and launches is denied" 2 "$(bash_cmd "bash $ROOT/mentions.sh")" CLAUDE_PROJECT_DIR="$ROOT"
 check "a lookalike launcher name is denied" 2 "$(bash_cmd 'python3 my_session_run.py && claude -p hi')" CLAUDE_PROJECT_DIR="$ROOT"
-check "a launcher named in a comment does not allow a launch on the same line" 2 "$(bash_cmd 'claude -p hi # evals/eval_run.py')" CLAUDE_PROJECT_DIR="$ROOT"
+check "a launcher named in a comment does not allow a launch on the same line" 2 "$(bash_cmd 'claude -p hi # extensions/sessions/session_run.py')" CLAUDE_PROJECT_DIR="$ROOT"
 check "kill switch stands down" 0 "$(bash_cmd 'claude -p hi')" CLAUDE_PROJECT_DIR="$ROOT" LOOP_SPEC_NESTED_SESSION_GUARD=0
 check "a non-Bash tool is allowed" 0 '{"tool_name":"Write","tool_input":{"file_path":"x","content":"claude -p hi"}}' CLAUDE_PROJECT_DIR="$ROOT"
 check "malformed payload fails open" 0 "not json" CLAUDE_PROJECT_DIR="$ROOT"

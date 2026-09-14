@@ -138,6 +138,22 @@ check "k8: an open phase in the feature's linked worktree -> BLOCK" 2 "$WTROOT"
 BADLEDGER="$ROOT/bad-ledger"; mkdir -p "$BADLEDGER/.loop-spec/features/x"; printf 'not json\n' > "$BADLEDGER/.loop-spec/features/x/events.jsonl"
 check "k7: an unreadable ledger -> ALLOW (fail-open)" 0 "$BADLEDGER"
 
+# l: a dispatched agent is legitimately still running the open phase (lib/events.sh
+# writes .pending-dispatch on the `dispatch` event) -> ALLOW; the same marker past its
+# own window is a dead dispatch's, not a reason to stand down -> BLOCK.
+# LOOP_SPEC_PHASE_TIMEOUT_MINS is pinned huge throughout so the normal watchdog
+# (which the phase's own age would otherwise satisfy) never masks what is under test.
+DISPATCHED="$ROOT/dispatched"; mkdir -p "$DISPATCHED/.loop-spec"
+ledger "$DISPATCHED" fix-slug phase_start execute 14400
+check "l0: open phase, no marker -> BLOCK" 2 "$DISPATCHED" LOOP_SPEC_PHASE_TIMEOUT_MINS=99999
+touch "$DISPATCHED/.loop-spec/features/fix-slug/.pending-dispatch"
+check "l: fresh .pending-dispatch marker -> ALLOW" 0 "$DISPATCHED" LOOP_SPEC_PHASE_TIMEOUT_MINS=99999
+python3 -c 'import os,sys,time; t=time.time()-7200; os.utime(sys.argv[1], (t, t))' \
+  "$DISPATCHED/.loop-spec/features/fix-slug/.pending-dispatch"
+check "l2: a marker past LOOP_SPEC_DISPATCH_WAIT_MINS -> BLOCK" 2 "$DISPATCHED" LOOP_SPEC_PHASE_TIMEOUT_MINS=99999
+check "l3: the window is the driver's setting" 0 "$DISPATCHED" \
+  LOOP_SPEC_PHASE_TIMEOUT_MINS=99999 LOOP_SPEC_DISPATCH_WAIT_MINS=99999
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

@@ -85,6 +85,16 @@ check "a oneshot spec over 60 lines flags" "1" "$ec"
 check "the flag names the line count and the template" "1" "$(grep -c 'FLAG \[oneshot-shape\] SPEC.md is 7[0-9] lines; a spec with a oneshot footprint keeps to 60' <<<"$out")"
 sed 's/^## Implementation notes$/## Notes/' "$DOCS/SPEC.md" > "$WORK/nonotes.md"
 check "a oneshot spec without Implementation notes flags" "1" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nonotes.md" 2>&1 | grep -c 'no .## Implementation notes. section')"
+# A run already on the full route writes the full shape: the same missing section passes
+# under LOOP_SPEC_ROUTE=full and under a `route: full` frontmatter line (live run 3 drew
+# two REDOs on a forced-full spec).
+check "a forced-full run is not held to the oneshot shape" "0" "$(LOOP_SPEC_ROUTE=full bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nonotes.md" >/dev/null 2>&1; echo $?)"
+sed '1a\
+route: full' "$WORK/nonotes.md" > "$WORK/routed.md"
+check "a route: full spec is not held to the oneshot shape" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/routed.md" >/dev/null 2>&1; echo $?)"
+# The probe strips YAML quotes from the value; the lint reads the same spelling.
+sed 's/^route: full$/route: "full"/' "$WORK/routed.md" > "$WORK/routed-quoted.md"
+check "a quoted route: \"full\" spec is not held to the oneshot shape either" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/routed-quoted.md" >/dev/null 2>&1; echo $?)"
 sed 's/^## Intent$/## Problem/' "$DOCS/SPEC.md" > "$WORK/nointent.md"
 # The variant stays inside the repository: the rule resolves the test module against
 # the spec's own git toplevel.
@@ -253,15 +263,16 @@ spec; sed -i.bak 's|^footprint:$|footprint: [src/slugify.py, README.md]|; /^  - 
 bash "$DRV" spec footprint drop --feature-dir "$FD" --file README.md --reason "flow form" >/dev/null 2>&1
 check "a flow-form footprint loses the file too" "1" "$(grep -c '^footprint: \[src/slugify.py\]$' "$DOCS/SPEC.md")"
 spec
-# The other direction: a changed file outside the footprint is the fourth file. The
-# gate escalates the run itself, names the file, and the --after probe routes to DISCUSS.
-printf 'extra\n' >> "$REPO/README.md"; git -C "$REPO" add README.md && git -C "$REPO" commit -q -m "docs: touch readme"
+# A diff file the footprint does not name is the reviewer's finding, not the gate's: the
+# gate used to escalate on it and grew a list of what scaffolders write (the PR 100
+# audit named the next file every time). It ships past this gate with no route change.
+printf 'extra\n' >> "$REPO/README.md"; printf 'version = 1\n' > "$REPO/uv.lock"
+git -C "$REPO" add README.md uv.lock && git -C "$REPO" commit -q -m "docs: touch readme, add a lock"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
-check "a diff file outside the footprint escalates instead of shipping" "0" "$ec"
-check "the gate names the file" "1" "$(grep -c '^NOTE \[footprint\] the diff touches README.md outside SPEC.md.s footprint: route: full written' <<<"$out")"
-check "route: full is written into the frontmatter" "1" "$(sed -n '1,/^---$/!d; /^route: full$/p' "$DOCS/SPEC.md" | grep -c 'route: full')"
-check "the escalation note names the file under Implementation notes" "1" "$(grep -c '^- escalated by lib/oneshot-exit-gate.sh: the diff touches README.md, outside the footprint' "$DOCS/SPEC.md")"
-check "the --after probe now routes to the full path" "route=full" "$(bash "$REPO_ROOT/lib/graph/probes/oneshot.sh" --feature-dir "$FD" --after | cut -d' ' -f1)"
+check "a diff file outside the footprint is not the gate's finding" "0" "$ec"
+check "the gate writes no route: full for it" "0" "$(sed -n '1,/^---$/!d; /^route: full$/p' "$DOCS/SPEC.md" | grep -c 'route: full')"
+check "the gate names no outside file" "0" "$(grep -c 'outside' <<<"$out")"
+check "the --after probe still routes the oneshot" "route=oneshot" "$(bash "$REPO_ROOT/lib/graph/probes/oneshot.sh" --feature-dir "$FD" --after | cut -d' ' -f1)"
 git -C "$REPO" reset -q --hard HEAD~1
 spec
 # The converged floor is the full one: a FAIL row is a finding, not a shape.
@@ -301,7 +312,8 @@ check "workspace mode: the changed file in repo a satisfies the footprint" "0" "
 printf 'z = 1\n' > "$WS/b/z.py"; git -C "$WS/b" add -A && git -C "$WS/b" commit -q -m "feat: z"
 sed -i.bak 's|^  - a/tests/test_x.py$||' "$WDOCS/SPEC.md"; sed -i.bak '/^- b\/y.py: unchanged; dropped/d; /^route: full$/d; /^- escalated by/d' "$WDOCS/SPEC.md"
 ec=0; out="$(cd "$WS" && bash "$GATE" "$WFD" 2>&1)" || ec=$?
-check "workspace mode: a changed file outside the footprint in repo b escalates" "1" "$(grep -c '^NOTE \[footprint\] the diff touches b/z.py outside' <<<"$out")"
+check "workspace mode: a changed file outside the footprint in repo b is the reviewer's, not the gate's" "0" "$(grep -c 'b/z.py' <<<"$out")"
+check "workspace mode: no route: full written for it" "0" "$(sed -n '1,/^---$/!d; /^route: full$/p' "$WDOCS/SPEC.md" | grep -c 'route: full')"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

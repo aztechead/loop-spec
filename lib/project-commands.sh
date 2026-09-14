@@ -32,19 +32,19 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --prepare)
       [[ $# -ge 2 ]] || { echo "project-commands: --prepare requires a value" >&2; exit 2; }
-      prepare="$2"; seen_prepare=1; shift 2
+      prepare="$2"; seen_prepare=1; shift 2 || { echo "project-commands: $1 needs a value" >&2; exit 2; }
       ;;
     --test)
       [[ $# -ge 2 ]] || { echo "project-commands: --test requires a value" >&2; exit 2; }
-      test_cmd="$2"; seen_test=1; shift 2
+      test_cmd="$2"; seen_test=1; shift 2 || { echo "project-commands: $1 needs a value" >&2; exit 2; }
       ;;
     --lint)
       [[ $# -ge 2 ]] || { echo "project-commands: --lint requires a value" >&2; exit 2; }
-      lint="$2"; seen_lint=1; shift 2
+      lint="$2"; seen_lint=1; shift 2 || { echo "project-commands: $1 needs a value" >&2; exit 2; }
       ;;
     --typecheck)
       [[ $# -ge 2 ]] || { echo "project-commands: --typecheck requires a value" >&2; exit 2; }
-      typecheck="$2"; seen_typecheck=1; shift 2
+      typecheck="$2"; seen_typecheck=1; shift 2 || { echo "project-commands: $1 needs a value" >&2; exit 2; }
       ;;
     *)
       echo "project-commands: unknown argument '$1'" >&2

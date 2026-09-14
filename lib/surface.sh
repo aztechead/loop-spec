@@ -25,7 +25,7 @@
 #   surface.sh covers <path> [path ...]  the suites run-all.sh registers that name each path
 #
 # Exit: 0 with results, 1 when a query matches nothing, 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"

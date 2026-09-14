@@ -28,7 +28,7 @@
 #
 # Exit codes: 0 extracted; 1 no task blocks or unreadable file (fail safe: nothing
 # to dispatch is a message, never an empty array); 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 [[ "${1:-}" == "extract" && $# -eq 2 ]] || { echo "usage: plan-tasks.sh extract <PLAN.md>" >&2; exit 2; }
 plan="$2"

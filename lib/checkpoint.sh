@@ -57,7 +57,7 @@ if [[ "${1:-}" == "-C" ]]; then
     exit 2
   fi
   G=(git -C "$2")
-  shift 2
+  shift 2 || { usage; exit 2; }
 fi
 
 cmd="${1:-}"

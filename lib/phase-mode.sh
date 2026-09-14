@@ -29,7 +29,7 @@ eval "$(bash "$SCRIPT_DIR/profile.sh" env 2>/dev/null || true)"
 phase="${1:-}"; shift || true
 feature_dir=""
 while [[ $# -gt 0 ]]; do
-  case "$1" in --feature-dir) feature_dir="${2:-}"; shift 2 ;;
+  case "$1" in --feature-dir) feature_dir="${2:-}"; shift 2 || { echo "phase-mode: $1 needs a value" >&2; exit 2; } ;;
     *) echo "usage: phase-mode.sh <spec|discuss|plan|verify> --feature-dir DIR" >&2; exit 2 ;;
   esac
 done

@@ -46,7 +46,7 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       FEATURE_DIR="$2"
-      shift 2
+      shift 2 || { echo "pause-snapshot: --feature-dir requires a path argument" >&2; exit 1; }
       ;;
     *)
       echo "pause-snapshot: unknown argument: $1" >&2

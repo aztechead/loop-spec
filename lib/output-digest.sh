@@ -21,7 +21,7 @@
 #
 # Exit: the command's exit code (`run`); 0 (`print`); 1 unreadable/unwritable log;
 # 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 DEFAULT_MAX_LINES=40
 
@@ -40,10 +40,10 @@ log=""; label="output"; max_lines=""; status=""
 argv=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --log) log="${2:-}"; shift 2 ;;
-    --label) label="${2:-}"; shift 2 ;;
-    --max-lines) max_lines="${2:-}"; shift 2 ;;
-    --status) status="${2:-}"; shift 2 ;;
+    --log) log="${2:-}"; shift 2 || usage ;;
+    --label) label="${2:-}"; shift 2 || usage ;;
+    --max-lines) max_lines="${2:-}"; shift 2 || usage ;;
+    --status) status="${2:-}"; shift 2 || usage ;;
     --) shift; argv=("$@"); break ;;
     *) usage ;;
   esac
@@ -82,8 +82,9 @@ case "$cmd" in
       echo "output-digest: cannot write log: $log" >&2
       exit 1
     }
-    "${argv[@]}" > "$log" 2>&1
-    status=$?
+    # The wrapped command's own exit is the whole point of `run`; it must not abort here.
+    status=0
+    "${argv[@]}" > "$log" 2>&1 || status=$?
     emit_digest
     exit "$status"
     ;;

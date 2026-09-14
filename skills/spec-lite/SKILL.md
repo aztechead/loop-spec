@@ -45,7 +45,7 @@ sk="$(bash "$DRV" spec skeleton --feature-dir "$feature_dir")"
 signal): read the snapshot path in `.fullSpec` and continue from its step 1; your cites
 stand and it extends the scout. `.route` is `oneshot`: the driver wrote the skeleton
 at `.spec`, and the rest of SPEC is the list below. The route lengthens only, and a
-gate lengthens it: a fourth file in the diff, a reviewer BLOCK, or a held exit.
+gate lengthens it: a reviewer BLOCK (one on scope included) or a held exit.
 
 ## 3. Fill the skeleton
 

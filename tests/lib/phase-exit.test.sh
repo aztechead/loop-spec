@@ -130,6 +130,13 @@ check "exit spec: well-formed SPEC.md passes" "0" "$ec"
 check "exit spec: artifact pointer recorded" "docs/loop-spec/features/my-feature/SPEC.md" "$(fj '.artifacts.spec')"
 check "exit spec: no interview transcript is recorded" "null" "$(fj '.artifacts.specInterview')"
 check "exit spec: phase closed" "spec" "$(fj '.completedPhases[-1]')"
+# --check: an operator reading the gate's state must not get a `plan:` commit for it
+# (6.6.2 live run) -- same gates and answer line, nothing written.
+head_before="$(git rev-parse HEAD)"; completed_before="$(fj '.completedPhases')"
+out="$(bash "$EXIT" spec --feature-dir "$FD" --check 2>&1)"
+check "exit spec --check: reports ok with the [check] suffix" "phase-exit: ok (spec) [check]" "$(tail -1 <<<"$out")"
+check "exit spec --check: leaves completedPhases unchanged" "$completed_before" "$(fj '.completedPhases')"
+check "exit spec --check: creates no commit" "$head_before" "$(git rev-parse HEAD)"
 bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || true
 check "exit spec: a re-entered phase closes once" "1" "$(fj '[.completedPhases[] | select(. == "spec")] | length')"
 check "exit spec: SPEC.md committed" "1" "$(git log --oneline | grep -c 'spec: my-feature')"

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Measure filled artifacts from the shipped driver, including real test output.
+# Measure filled artifacts from the shipped driver, including real test output, against
+# the offline fixtures under tests/fixtures/oneshot-artifact-budget (copied per run; no
+# network, no model).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 python3 - <<'PY'
@@ -26,7 +28,7 @@ for task, source, count in [('slugify-bug', 'slugify.py', 1), ('wc-json', 'wc_to
     observations.clear()
     with tempfile.TemporaryDirectory() as directory:
         project = Path(directory) / 'project'
-        shutil.copytree(root / 'evals/tasks' / task / 'fixture', project)
+        shutil.copytree(root / 'tests/fixtures/oneshot-artifact-budget' / task / 'fixture', project)
         footprint = [source]
         readonly = [str(p.relative_to(project)) for p in (project / 'tests').glob('test_*.py')]
         if task == 'wc-json':
@@ -75,7 +77,7 @@ class JsonTests(unittest.TestCase):
         spec.write_text(driver.render_skeleton(str(driver.TEMPLATES / 'SPEC-oneshot.md.template'), feat,
                         footprint=footprint, read_only=readonly))
         with contextlib.redirect_stdout(io.StringIO()):
-            task_data = json.loads((root / 'evals/tasks' / task / 'task.json').read_text())
+            task_data = json.loads((root / 'tests/fixtures/oneshot-artifact-budget' / task / 'task.json').read_text())
             driver.spec_fill(str(spec), {'intent': task_data['prompt']})
             for path in footprint:
                 driver.spec_fill(str(spec), {'file': path, 'note': 'Implement and test the requested output behavior.'})
@@ -106,7 +108,7 @@ class JsonTests(unittest.TestCase):
             subprocess.run(['bash', str(root / 'lib' / (name + '.sh'))] + args, check=True)
         assert not driver.verification_lint_flags(str(project), str(verification), str(spec))
         total = sum(len(p.read_text().splitlines()) for p in docs.iterdir())
-        limit = json.loads((root / 'evals/tasks' / task / 'task.json').read_text())['bar']['artifact_lines']
+        limit = json.loads((root / 'tests/fixtures/oneshot-artifact-budget' / task / 'task.json').read_text())['bar']['artifact_lines']
         print('%s: %d artifact lines (limit %d)' % (task, total, limit))
         assert total <= limit, (spec.read_text(), verification.read_text())
 PY

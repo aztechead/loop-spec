@@ -26,7 +26,7 @@
 # Task fields read: id, subject|title, goal, files[], read_first[], interfaces{consumes,
 # produces}, blockedBy[], verifyCommand, expected, acceptanceCriteria[], steps[], scope.
 # Exit: 0 rendered, 1 unreadable or non-array tasks.json, 2 usage.
-set -uo pipefail
+set -euo pipefail
 
 tasks=""; plan=""; spec=""; mode=render
 while [[ $# -gt 0 ]]; do
@@ -39,7 +39,9 @@ while [[ $# -gt 0 ]]; do
     --plan) plan="${2:-}"; shift ;;
     *) echo "usage: plan-render.sh render --tasks <tasks.json> [--plan <PLAN.md>]" >&2; exit 2 ;;
   esac
-  shift
+  # A flag with no value already shifted itself away above; nothing left to shift
+  # here must fall through to the usage checks below, not abort.
+  shift || true
 done
 if [[ "$mode" == "decisions" ]]; then
   [[ -n "$spec" && -n "$plan" ]] || { echo "usage: plan-render.sh decisions --spec <SPEC.md> --plan <PLAN.md>" >&2; exit 2; }

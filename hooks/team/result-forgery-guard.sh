@@ -23,7 +23,7 @@
 #
 # Stands down (exit 0) when the project has no .loop-spec/ dir, when python3 is
 # missing, or when the payload is malformed. Kill switch: LOOP_SPEC_FORGERY_GUARD=0.
-set -uo pipefail
+set -euo pipefail
 
 [[ "${LOOP_SPEC_FORGERY_GUARD:-1}" == "0" ]] && exit 0
 if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.loop-spec" && ! -d "$PWD/.loop-spec" ]]; then exit 0; fi

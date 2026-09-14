@@ -30,7 +30,7 @@
 # acceptance-lint.sh (criterion quality), grounding-lint.sh (## Grounding content),
 # criteria-coverage.sh / decision-coverage.sh (SPEC->PLAN handoff),
 # verification-grounding-lint.sh (grounding row evidence).
-set -uo pipefail
+set -euo pipefail
 
 type="${1:-}"
 case "$type" in

@@ -12,7 +12,7 @@
 #
 # Usage: plan-exit-gate.sh <feature-dir>
 # Output: `FLAG [<gate>] <finding>` lines; exit 1 when any, 0 when clean, 2 bad call.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/exit-gate-prelude.sh" "${1:-}"
@@ -26,7 +26,9 @@ if [[ -f "$tasks" ]]; then
   run_gate artifact-lint lib artifact-lint tasks "$tasks"
   # PLAN.md is the source of tasks.json; a sidecar copied from a chat message can
   # be empty or stale while the plan is whole, and EXECUTE reads only the sidecar.
-  plan_ids="$(lib plan-adherence "$docs/PLAN.md" | jq -r '.plan_task_ids | sort | join(" ")')"
+  # plan-adherence can fail on a PLAN.md the artifact-lint call above already
+  # flagged; the mismatch check right below still needs to run and report it.
+  plan_ids="$(lib plan-adherence "$docs/PLAN.md" | jq -r '.plan_task_ids | sort | join(" ")')" || true
   sidecar_ids="$(jq -r 'if type == "array" then [.[] | .id // empty] | sort | join(" ") else "" end' "$tasks" 2>/dev/null || true)"
   [[ "$plan_ids" == "$sidecar_ids" ]] \
     || flag "[tasks] PLAN.md task ids (${plan_ids:-none}) differ from $tasks (${sidecar_ids:-none}): derive it from PLAN.md ($extract)"
@@ -48,7 +50,7 @@ if [[ -f "$tasks" ]]; then
   rc=0; lib dag-width < "$tasks" >/dev/null 2>&1 || rc=$?
   (( rc == 3 )) && flag "[feasibility] task DAG has a dependency cycle"
   if [[ -n "$ws_root" ]]; then
-    names="$(fget '[.workspace.repos[].name] | join(" ")')"
+    names="$(fget '[.workspace.repos[].name] | join(" ")')" || true
     while IFS=$'\t' read -r id repo; do
       [[ " $names " == *" $repo "* ]] || flag "[workspace] $id repo '${repo:-missing}' is not a workspace repo ($names)"
     done < <(jq -r '.[] | [.id, (.repo // "")] | @tsv' "$tasks")

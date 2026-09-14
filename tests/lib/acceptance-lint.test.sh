@@ -25,6 +25,14 @@ check "behavioral criterion ok (exit 0)" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
 echo '[{"id":"task-001","acceptanceCriteria":["grep -w \"allVersions\" src/app.ts exits 0"]}]' | bash "$LIB" >/dev/null 2>&1
 check "grep -w exempt (exit 0)" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
 
+# grep_symbol is a tool NAME, not a grep invocation -> not flagged (exit 0).
+echo '[{"id":"task-001","acceptanceCriteria":["grep_symbol \"allVersions\" src/app.ts returns a hit"]}]' | bash "$LIB" >/dev/null 2>&1
+check "grep_symbol name is not an invocation (exit 0)" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
+
+# A flag cluster ending in -w (grep -qw) is still whole-word -> exempt (exit 0).
+echo '[{"id":"task-001","acceptanceCriteria":["grep -qw \"allVersions\" src/app.ts exits 0"]}]' | bash "$LIB" >/dev/null 2>&1
+check "grep -qw flag cluster exempt (exit 0)" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
+
 # A whole-line or key = value grep against a declarative file is behavioral (exit 0);
 # a bare word against the same file is still flagged.
 echo '[{"id":"task-001","acceptanceCriteria":["grep -qF '"'"'expose = true'"'"' root.hcl exits 0","grep -qE '"'"'^terraform_version_constraint'"'"' root.hcl exits 0","grep -c '"'"'image: nginx'"'"' deploy.yaml returns 1"]}]' | bash "$LIB" >/dev/null 2>&1

@@ -18,11 +18,11 @@ workflow_optin="false"
 implementer_model="inherit"
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --width) width="${2:-}"; shift 2 ;;
-    --teams-mode) teams_mode="${2:-}"; shift 2 ;;
-    --workflows-available) workflows_available="${2:-}"; shift 2 ;;
-    --workflow-optin) workflow_optin="${2:-}"; shift 2 ;;
-    --implementer-model) implementer_model="${2:-inherit}"; shift 2 ;;
+    --width) width="${2:-}"; shift 2 || { echo "execute-rung: $1 needs a value" >&2; exit 2; } ;;
+    --teams-mode) teams_mode="${2:-}"; shift 2 || { echo "execute-rung: $1 needs a value" >&2; exit 2; } ;;
+    --workflows-available) workflows_available="${2:-}"; shift 2 || { echo "execute-rung: $1 needs a value" >&2; exit 2; } ;;
+    --workflow-optin) workflow_optin="${2:-}"; shift 2 || { echo "execute-rung: $1 needs a value" >&2; exit 2; } ;;
+    --implementer-model) implementer_model="${2:-inherit}"; shift 2 || { echo "execute-rung: $1 needs a value" >&2; exit 2; } ;;
     *) echo "execute-rung: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done

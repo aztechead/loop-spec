@@ -15,7 +15,11 @@
 #    conflicts:{rows, stops:[{summary,reason,matched}], rulings:[summary]},
 #    width, rung:{...lib/execute-rung.sh...}, maxRetries, featureRoot, worktreeBase,
 #    workspace:{root, repos:[{name,path}]}|null, greenfield, remediationRegistered,
-#    remediationError:string|null, stop:bool}
+#    remediationError:string|null, stop:bool, artifactsCommitted:sha|null}
+#
+# artifactsCommitted (single-repo mode only) is the commit sha when a pending phase
+# artifact under docs/loop-spec/features/<slug> was still uncommitted at prepare time
+# (a human-gate approval that never landed a commit), null when nothing was pending.
 #
 # featureRoot is the git toplevel in single mode and the workspace root (orchestration
 # only, never a git target) in workspace mode; lib/execute-step.sh resolves each task's
@@ -30,7 +34,7 @@
 # Exit: 0 ready to dispatch; 1 not ready (branch mismatch, unreadable sidecar, or a
 # stop-class conflict; .stop and the reason are in the JSON); 2 bad invocation;
 # 3 dependency cycle (dag-width).
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
@@ -38,7 +42,7 @@ lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
 [[ "${1:-}" == "run" ]] || { echo "usage: execute-prepare.sh run --feature-dir DIR" >&2; exit 2; }
 shift
 feature_dir=""
-while [[ $# -gt 0 ]]; do case "$1" in --feature-dir) feature_dir="${2:-}"; shift 2 ;; *) echo "execute-prepare: unknown argument '$1'" >&2; exit 2 ;; esac; done
+while [[ $# -gt 0 ]]; do case "$1" in --feature-dir) feature_dir="${2:-}"; shift 2 || { echo "execute-prepare: $1 needs a value" >&2; exit 2; } ;; *) echo "execute-prepare: unknown argument '$1'" >&2; exit 2 ;; esac; done
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || { echo "usage: execute-prepare.sh run --feature-dir DIR" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
@@ -54,6 +58,25 @@ if [[ "$workspace" == "null" ]]; then
 else
   root="$(fget '.workspace.root')"
   [[ -n "$root" && -d "$root" ]] || { echo "execute-prepare: feature.workspace.root '$root' is not a directory" >&2; exit 2; }
+fi
+
+# -- commit pending phase artifacts ------------------------------------------------------
+# Single-repo only: in workspace mode the artifacts live at the workspace root, outside
+# every repo, so no repo's integrate-task can see them as dirt and there is nothing to
+# commit before dispatch.
+artifacts_committed=""
+if [[ "$workspace" == "null" ]]; then
+  # SPEC.md approved at a human gate stayed uncommitted in the feature worktree, and
+  # integrate-task refused task-001 as dirty (Codex live run): commit any pending
+  # phase artifact before dispatch so the first task starts from a clean base.
+  # A commit that fails (no identity, a hook) leaves the same dirty SPEC that blocked
+  # integrate-task, so it is this call's failure, never a stale HEAD reported as committed.
+  if [[ -n "$(git -C "$root" status --porcelain -- "docs/loop-spec/features/$slug" 2>/dev/null)" ]]; then
+    git -C "$root" add -- "docs/loop-spec/features/$slug" \
+      && git -C "$root" commit -q -m "docs: loop-spec artifacts before EXECUTE ($slug)" >/dev/null \
+      || { echo "execute-prepare: could not commit pending docs/loop-spec/features/$slug artifacts (git exit $?); the first task would start from a dirty base" >&2; exit 2; }
+    artifacts_committed="$(git -C "$root" rev-parse HEAD)"
+  fi
 fi
 
 # -- branch check --------------------------------------------------------------------
@@ -225,9 +248,11 @@ answer="$(jq -cn --argjson b "$branch_json" --arg sidecar "$sidecar" --argjson s
   --argjson done "$done_json" --argjson remaining "$remaining_json" --argjson tasks "$dispatch" \
   --argjson conflicts "$conflicts" --argjson width "${width:-0}" --argjson rung "$rung" --argjson retries "$max_retries" \
   --arg root "$root" --arg wtb "$worktree_base" --argjson ws "$workspace_json" --argjson gf "$greenfield" --argjson reg "$remediation_registered" --argjson error "$remediation_error" --argjson stop "$stop" \
+  --arg ac "$artifacts_committed" \
   '{branch:$b, sidecar:$sidecar, sidecarOk:$sok, sidecarFlags:$sflags, done:$done, remaining:$remaining, tasks:$tasks,
     conflicts:$conflicts, width:$width, rung:$rung, maxRetries:$retries, featureRoot:$root,
-    worktreeBase:(if $wtb == "" then null else $wtb end), workspace:$ws, greenfield:$gf, remediationRegistered:$reg, remediationError:$error, stop:$stop}')"
+    worktreeBase:(if $wtb == "" then null else $wtb end), workspace:$ws, greenfield:$gf, remediationRegistered:$reg, remediationError:$error, stop:$stop,
+    artifactsCommitted:(if $ac == "" then null else $ac end)}')"
 # lib/execute-step.sh reads the rung and roots from here per task instead of re-measuring.
 printf '%s\n' "$answer" > "$feature_dir/dispatch/prepare.json"
 printf '%s\n' "$answer"

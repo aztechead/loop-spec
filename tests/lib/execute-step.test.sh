@@ -235,5 +235,37 @@ check "workspace integrate: files naming another repo are refused before verify"
 check "workspace integrate: the refusal names the foreign file" "be/c.py" "$(jq -r '.detail' <<<"$out" | grep -o 'be/c.py')"
 check "workspace integrate: nothing was committed for the refused task" "0" "$(git -C "$WS/fe" log --oneline | grep -c 'cross-repo')"
 
+# --- artifactsCommitted: a phase artifact stranded uncommitted gets committed before dispatch ---
+export LOOP_SPEC_HARNESS=codex LOOP_SPEC_WORKTREES=0
+FD="$(new_feature artifacts)"; ROOT="$(git -C "$FD" rev-parse --show-toplevel)"
+echo "pending" >> "$ROOT/docs/loop-spec/features/my-feature/PLAN.md"
+prep_out="$(bash "$PREP" run --feature-dir "$FD")"
+sha="$(jq -r '.artifactsCommitted' <<<"$prep_out")"
+check "artifactsCommitted: a stranded phase artifact gets a commit sha" "40" "${#sha}"
+check "artifactsCommitted: the working tree is clean after prepare" "" \
+  "$(git -C "$ROOT" status --porcelain -- docs/loop-spec/features/my-feature)"
+
+# --- add-files: widens a task's write scope, refuses once integrated -----------------
+export LOOP_SPEC_HARNESS=codex LOOP_SPEC_WORKTREES=0
+FDA="$(new_feature addfiles)"; ROOTA="$(git -C "$FDA" rev-parse --show-toplevel)"
+bash "$PREP" run --feature-dir "$FDA" >/dev/null
+bash "$STEP" dispatch --feature-dir "$FDA" --task task-001 >/dev/null
+out="$(bash "$STEP" add-files --feature-dir "$FDA" --task task-001 c.py)"
+check "add-files: reports the widened file list" "a.py c.py" "$(jq -r '.files | join(" ")' <<<"$out")"
+check "add-files: sidecar carries the new file" "a.py c.py" \
+  "$(jq -r '.[] | select(.id=="task-001") | .files | join(" ")' "$FDA/tasks.json")"
+check "add-files: tasks-collapsed.json carries the new file" "a.py c.py" \
+  "$(jq -r '.[] | select(.id=="task-001") | .files | join(" ")' "$FDA/dispatch/tasks-collapsed.json")"
+check "add-files: prepare.json carries the new file" "a.py c.py" \
+  "$(jq -r '.tasks[] | select(.id=="task-001") | .files | join(" ")' "$FDA/dispatch/prepare.json")"
+ec=0; bash "$STEP" add-files --feature-dir "$FDA" --task task-001 /etc/passwd >/dev/null 2>&1 || ec=$?
+check "add-files: an absolute path is a bad invocation" "2" "$ec"
+ec=0; bash "$STEP" add-files --feature-dir "$FDA" --task task-001 ../escape.py >/dev/null 2>&1 || ec=$?
+check "add-files: a path that escapes the repo is a bad invocation" "2" "$ec"
+printf 'x\n' > "$ROOTA/c.py"
+bash "$STEP" integrate --feature-dir "$FDA" --task task-001 >/dev/null
+ec=0; bash "$STEP" add-files --feature-dir "$FDA" --task task-001 d.py >/dev/null 2>&1 || ec=$?
+check "add-files: refuses a task task-progress.sh already marked done" "1" "$ec"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

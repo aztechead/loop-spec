@@ -21,6 +21,10 @@
 # here would be the second declaration tests/graph-conformance.test.sh bans.
 # LOOP_SPEC_CRITIQUE_ROUNDS outranks the graph: a positive integer replaces the ceiling,
 # 0 means unbounded (every answer is rerun), anything else is a configuration error.
+# The graph ceiling (never the override) also scales with load: one extra delta round
+# per 20 findings in the round that just failed, capped at +3. A 22-task PLAN critique
+# drew 72 findings in one round; the fixed ceiling closed the gate with 8 new majors
+# still open and no round left to fix them.
 # A field run spent over an hour bouncing PLAN.md between the challenger and the planner
 # because the protocol prose said retries were unbounded and the graph's ceiling was
 # inside a `contain` loop the engine never counts; this subcommand is what counts it.
@@ -70,14 +74,14 @@ rounds=""; convergence=""; challenger_model=""; findings="[]"; notes="null"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --feature-dir) feature_dir="${2:-}"; shift 2 ;;
-    --phase) phase="${2:-}"; shift 2 ;;
-    --gate) gate="${2:-}"; shift 2 ;;
-    --challenger) challenger="${2:-}"; shift 2 ;;
-    --now) now="${2:-}"; shift 2 ;;
-    --rounds) rounds="${2:-}"; shift 2 ;;
-    --convergence) convergence="${2:-}"; shift 2 ;;
-    --challenger-model) challenger_model="${2:-}"; shift 2 ;;
+    --feature-dir) feature_dir="${2:-}"; shift 2 || usage ;;
+    --phase) phase="${2:-}"; shift 2 || usage ;;
+    --gate) gate="${2:-}"; shift 2 || usage ;;
+    --challenger) challenger="${2:-}"; shift 2 || usage ;;
+    --now) now="${2:-}"; shift 2 || usage ;;
+    --rounds) rounds="${2:-}"; shift 2 || usage ;;
+    --convergence) convergence="${2:-}"; shift 2 || usage ;;
+    --challenger-model) challenger_model="${2:-}"; shift 2 || usage ;;
     --findings)
       findings="${2:-}"
       # @path: the file holds the JSON array, or one finding per line.
@@ -85,8 +89,8 @@ while [[ $# -gt 0 ]]; do
         findings="$(cat "${findings#@}")"
         jq -e 'type == "array"' <<<"$findings" >/dev/null 2>&1 || findings="$(jq -R . <<<"$findings" | jq -cs 'map(select(. != ""))')"
       fi
-      shift 2 ;;
-    --notes) notes="$(jq -Rn --arg n "${2:-}" '$n')"; shift 2 ;;
+      shift 2 || usage ;;
+    --notes) notes="$(jq -Rn --arg n "${2:-}" '$n')"; shift 2 || usage ;;
     *) usage ;;
   esac
 done
@@ -163,6 +167,15 @@ critique_ceiling() {
     echo "gate.sh: $CRITIQUE_GRAPH declares a non-integer critique ceiling '$ceiling'; cannot bound the gate" >&2
     return 1
   }
+  if [[ -n "$ceiling" ]]; then
+    local last_count extra
+    last_count="$(jq -r --arg phase "$open_phase" \
+      --arg gate "$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" -r --filter '.currentGate.gate // ""')" '
+      [.gateHistory[]? | select(.phase == $phase and .gate == $gate and .result == "fail")]
+      | last | (.findingsAddressed // []) | length' "$feature_json")" || return 1
+    extra=$(( last_count / 20 )); (( extra > 3 )) && extra=3
+    ceiling=$(( ceiling + extra ))
+  fi
   echo "$ceiling"
 }
 

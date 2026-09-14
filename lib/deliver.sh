@@ -7,7 +7,7 @@
 # changed repository. Successful/external delivery observations are written to the
 # ignored delivery.json sidecar so the exact checked SHA stays clean; code-remediation
 # failures atomically route tracked feature.json back to EXECUTE.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PR_DELIVERY="${LOOP_SPEC_PR_DELIVERY_BIN:-$SCRIPT_DIR/pr-delivery.sh}"
@@ -161,6 +161,24 @@ if [[ -z "$workspace_root" ]]; then
   dirty_state=""
   status_ok=1
   dirty_state="$(bash "$SCRIPT_DIR/git-ops.sh" -C "$artifact_root" dirt 2>/dev/null)" || status_ok=0
+  # The commit the last gate advanced on (the phase_end that routed to deliver). Source
+  # committed after it was never scanned or reviewed: the 6.6.3 FastAPI run committed
+  # uv.lock and .python-version inside DELIVER and result.json called that SHA verified.
+  # Artifact paths are DELIVER's own commits and do not count. A run whose phase_end
+  # records carry no headSha at all (before 6.6.4) skips the comparison; a run that
+  # records them but never routed a phase to deliver has no gate to compare against
+  # and is refused (a sneaked commit on a feature whose last gate routed to DISCUSS
+  # shipped as pushed-no-pr in the 6.6.4 live-run attack).
+  gated_sha="$(jq -r 'select(.event == "phase_end" and .next == "deliver") | .headSha // empty' \
+    "$feature_dir/events.jsonl" 2>/dev/null | tail -1)" || true
+  gate_records=0
+  jq -e 'select(.event == "phase_end" and (.headSha // "") != "")' "$feature_dir/events.jsonl" >/dev/null 2>&1 && gate_records=1
+  post_gate_drift=""
+  if [[ -n "$gated_sha" && -n "$target_sha" ]] \
+    && git -C "$artifact_root" rev-parse --verify -q "${gated_sha}^{commit}" >/dev/null 2>&1; then
+    post_gate_drift="$(git -C "$artifact_root" diff --name-only "$gated_sha" "$target_sha" -- . \
+      ':(top,exclude)docs/loop-spec' ':(top,exclude).loop-spec' 2>/dev/null | head -5 | paste -sd ' ' -)" || true
+  fi
   if [[ -z "$target_sha" ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "" "$hint" \
       "git_history_failed" "cannot resolve feature HEAD"
@@ -199,6 +217,14 @@ if [[ -z "$workspace_root" ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
       "dirty_worktree" "candidate repository has uncommitted changes: $(printf '%s\n' "$dirty_state" | head -5 | sed 's/^...//' | paste -sd ' ' -)"
     preflight_ok=0
+  elif [[ -z "$gated_sha" && "$gate_records" -eq 1 ]]; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+      "no_gate_record" "no phase returned to deliver through the driver (events.jsonl has no phase_end routing to deliver); run the cycle so a gate binds the candidate"
+    preflight_ok=0
+  elif [[ -n "$post_gate_drift" ]]; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+      "post_gate_drift" "commits after the last gate (${gated_sha:0:12}) touch $post_gate_drift; re-run the cycle so the gate sees them"
+    preflight_ok=0
   elif [[ "$finalize_rc" -ne 0 ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
       "candidate_finalization_failed" "deterministic pre-delivery candidate finalization failed"
@@ -221,6 +247,10 @@ if [[ -z "$workspace_root" ]]; then
 else
   # Pass 1 - preflight every configured repo. Blocked/zero-commit repos are recorded
   # now; repos with real commits are collected as deliverables for pass 2.
+  # The gate record is per repo here (events.sh writes repoHeadShas on phase_end in
+  # workspace mode); the two refusals mirror the single-repo path above.
+  gate_records=0
+  jq -e 'select(.event == "phase_end" and ((.repoHeadShas // {}) | length) > 0)' "$feature_dir/events.jsonl" >/dev/null 2>&1 && gate_records=1
   deliverables="[]"
   while IFS= read -r repo_entry; do
     name="$(jq -r '.name' <<<"$repo_entry")"
@@ -231,9 +261,9 @@ else
     base_branch="$(jq -r '.baseBranch // "main"' <<<"$repo_entry")"
     hint=""
     [[ -f "$delivery_file" ]] && hint="$(jq -r --arg name "$name" \
-      '.targets[]? | select(.name == $name) | .prUrl // empty' "$delivery_file" 2>/dev/null | head -1)"
+      '.targets[]? | select(.name == $name) | .prUrl // empty' "$delivery_file" 2>/dev/null | head -1)" || true
     [[ -n "$hint" ]] || hint="$(jq -r --arg name "$name" \
-      '.delivery.targets[]? | select(.name == $name) | .prUrl // empty' "$feature_json" | head -1)"
+      '.delivery.targets[]? | select(.name == $name) | .prUrl // empty' "$feature_json" | head -1)" || true
 
     if [[ ! -d "$repo_dir" ]] || ! git -C "$repo_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "" "$hint" \
@@ -296,6 +326,22 @@ else
           checks:{status:"skipped",required:[]},observedAt:null,errorCode:null,error:null}')"
       targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
       continue
+    fi
+    gated_sha="$(jq -r --arg n "$name" 'select(.event == "phase_end" and .next == "deliver") | .repoHeadShas[$n]? // empty' \
+      "$feature_dir/events.jsonl" 2>/dev/null | tail -1)" || true
+    if [[ -z "$gated_sha" && "$gate_records" -eq 1 ]]; then
+      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
+        "no_gate_record" "no phase returned to deliver through the driver (events.jsonl has no phase_end routing to deliver with this repo's HEAD); run the cycle so a gate binds the candidate"
+      continue
+    fi
+    if [[ -n "$gated_sha" ]] && git -C "$repo_dir" rev-parse --verify -q "${gated_sha}^{commit}" >/dev/null 2>&1; then
+      post_gate_drift="$(git -C "$repo_dir" diff --name-only "$gated_sha" "$target_sha" -- . \
+        ':(top,exclude)docs/loop-spec' ':(top,exclude).loop-spec' 2>/dev/null | head -5 | paste -sd ' ' -)" || true
+      if [[ -n "$post_gate_drift" ]]; then
+        append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
+          "post_gate_drift" "commits after the last gate (${gated_sha:0:12}) touch $post_gate_drift; re-run the cycle so the gate sees them"
+        continue
+      fi
     fi
     bound="$(bound_target_sha "$name")"
     if [[ -n "$bound" && "$bound" != "$target_sha" ]]; then
@@ -457,7 +503,7 @@ if [[ "$next_phase" == "execute" ]]; then
                        (if (.link // "") == "" then "" else " " + .link end)) ]
                   | join("; "))
         }
-    ]')"
+    ]')" || true  # an empty list here is caught below: --argjson refuses it and deliver exits 2
 fi
 
 # Surface a clickable PR. Single-repo has one; a workspace has one per changed repo,

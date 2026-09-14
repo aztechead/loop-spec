@@ -17,13 +17,13 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --repo)
       [[ $# -ge 2 ]] || { usage; exit 2; }
-      repos+=("$2"); shift 2;;
+      repos+=("$2"); shift 2 || { usage; exit 2; };;
     --criterion)
       [[ $# -ge 2 ]] || { usage; exit 2; }
-      criteria[$criteria_count]="$2"; criteria_count=$((criteria_count+1)); shift 2;;
+      criteria[$criteria_count]="$2"; criteria_count=$((criteria_count+1)); shift 2 || { usage; exit 2; };;
     --spec)
       [[ $# -ge 2 ]] || { usage; exit 2; }
-      spec="$2"; shift 2;;
+      spec="$2"; shift 2 || { usage; exit 2; };;
     *) usage; exit 2;;
   esac
 done

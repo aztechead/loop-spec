@@ -60,7 +60,7 @@ feature_dir="${2:-}"
   echo "autonomous-chain: feature.json not found in '${feature_dir}'" >&2
   exit 1
 }
-shift 2
+shift 2 || { echo "autonomous-chain: too few arguments" >&2; exit 1; }
 
 completed=0
 scope="backlog"

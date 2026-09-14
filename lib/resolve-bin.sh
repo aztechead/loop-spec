@@ -15,7 +15,7 @@
 #       defaults to the cwd) -- preferring the direct binary over npx/npm-run wrappers.
 #
 # Exit codes: 0 found (path on stdout); 1 not resolvable.
-set -uo pipefail
+set -euo pipefail
 
 tool="${1:-}"
 project_dir="${2:-$PWD}"

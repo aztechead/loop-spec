@@ -14,7 +14,7 @@
 # Missing ledger is only an error when an EVID-NNN token needs resolving.
 #
 # Exit codes: 0 all clear (prints 'grounding-lint: ok'), 1 any FLAG or bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 artifact="${1:-}"
 if [[ -z "$artifact" ]]; then
@@ -201,7 +201,9 @@ while IFS= read -r token; do
   # Use -- to prevent grep/ugrep from treating the leading "- " as an option flag.
   if [[ ! -f "$ledger" ]] || ! grep -qF -- "- $token | " "$ledger"; then
     # Find the first line in the artifact that contains this token for the lineno.
-    ref_lineno="$(grep -n "$token" "$artifact" | head -1 | cut -d: -f1)"
+    # The token came from a grep over this same file, so a match is guaranteed; the
+    # guard is only against pipefail turning that guarantee into an -e abort.
+    ref_lineno="$(grep -n "$token" "$artifact" | head -1 | cut -d: -f1)" || true
     echo "FLAG $artifact:${ref_lineno:-0}: EVID token $token referenced in artifact but has no matching entry in ledger ($ledger)"
     flags=$((flags+1))
   fi

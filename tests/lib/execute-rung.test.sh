@@ -48,7 +48,10 @@ out="$(env -u LOOP_SPEC_SESSION_LAYER PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=c
 check "an attended run never selects the session rung" "subagent" "$(jq -r '.rung' <<<"$out")"
 check "the attended answer is in-harness" "in-harness" "$(jq -r '.sessionLayer.answer' <<<"$out")"
 rc=0
-out="$(env PATH="$WORK/nobin:$(dirname "$(command -v bash)"):$(dirname "$(command -v jq)"):$(dirname "$(command -v python3)")" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=1 \
+# Only the three tools, each by symlink: the directory python3 lives in may also hold
+# the claude CLI (Homebrew's bin once lib/python-path.sh skips a pyenv shim).
+mkdir -p "$WORK/three"; for t in bash jq python3; do ln -sf "$(command -v "$t")" "$WORK/three/$t"; done
+out="$(env PATH="$WORK/nobin:$WORK/three:/usr/bin:/bin" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=1 \
   bash "$SCRIPT" select --width 1 --teams-mode none --workflows-available false --workflow-optin false)" || rc=$?
 check "a forced session layer without the CLI fails loudly" "1" "$rc"
 check "the forced session error is structured" "session-layer-unavailable" "$(jq -r '.error' <<<"$out")"

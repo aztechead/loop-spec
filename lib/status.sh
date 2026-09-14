@@ -28,7 +28,7 @@
 # --root defaults to ${CLAUDE_PROJECT_DIR:-.}/.loop-spec.
 # Unlike the writers (events.sh/cycle-result.sh) this is a USER-FACING reader:
 # it uses normal exit codes. 0 = ok (including "no features yet"), 2 = bad args.
-set -uo pipefail
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ROOT=""

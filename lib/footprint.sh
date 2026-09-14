@@ -35,7 +35,7 @@
 #
 # Ledger: <feature_dir>/footprint.jsonl, append-only, {path, line, readOnly, why, at}.
 # Exit 0; 1 bad cite (no <path>:<line>, an absolute path); 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 cmd="${1:-}"; feature_dir="${2:-}"; shift 2 || true
 [[ -n "$cmd" && -d "$feature_dir" ]] || { echo "usage: footprint.sh cite|list|show <feature_dir> ..." >&2; exit 2; }

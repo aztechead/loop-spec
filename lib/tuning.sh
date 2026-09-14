@@ -51,7 +51,7 @@
 #       report; =1 -> apply; unset -> apply iff feature.json.autonomous.
 #
 # Exit codes: 0 ok, 1 has-check miss, 2 bad invocation (auto: always 0).
-set -uo pipefail
+set -euo pipefail
 
 _die2() { echo "tuning.sh: $*" >&2; exit 2; }
 
@@ -124,7 +124,7 @@ case "$cmd" in
       exit 0
     fi
     val="$(_current | jq -r --arg p "$GET_PARAM" '
-      [.adjustments[].params | select(has($p)) | .[$p]] | last // empty' 2>/dev/null)"
+      [.adjustments[].params | select(has($p)) | .[$p]] | last // empty' 2>/dev/null)" || true
     if [[ -n "$val" && "$val" != "null" ]]; then
       printf '%s\n' "$val"
     else

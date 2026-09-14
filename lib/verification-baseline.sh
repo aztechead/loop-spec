@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Capture and compare test/lint/typecheck results against an exact base commit.
 # Exit: 0 accepted; 2 invocation; 20 regression; 21 infrastructure error.
-set -uo pipefail
+set -euo pipefail
 
 die2() { echo "verification-baseline: $*" >&2; exit 2; }
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -24,14 +24,14 @@ typecheck_cmd=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --root) root="${2:-}"; shift 2 ;;
-    --base-sha) base_sha="${2:-}"; shift 2 ;;
-    --prepare-key) prepare_key="${2:-}"; shift 2 ;;
-    --log-dir) log_dir="${2:-}"; shift 2 ;;
-    --baseline) baseline_file="${2:-}"; shift 2 ;;
-    --test) test_cmd="${2:-}"; shift 2 ;;
-    --lint) lint_cmd="${2:-}"; shift 2 ;;
-    --typecheck) typecheck_cmd="${2:-}"; shift 2 ;;
+    --root) root="${2:-}"; shift 2 || { echo "verification-baseline: $1 needs a value" >&2; exit 2; } ;;
+    --base-sha) base_sha="${2:-}"; shift 2 || { echo "verification-baseline: $1 needs a value" >&2; exit 2; } ;;
+    --prepare-key) prepare_key="${2:-}"; shift 2 || { echo "verification-baseline: $1 needs a value" >&2; exit 2; } ;;
+    --log-dir) log_dir="${2:-}"; shift 2 || { echo "verification-baseline: $1 needs a value" >&2; exit 2; } ;;
+    --baseline) baseline_file="${2:-}"; shift 2 || { echo "verification-baseline: $1 needs a value" >&2; exit 2; } ;;
+    --test) test_cmd="${2:-}"; shift 2 || { echo "verification-baseline: $1 needs a value" >&2; exit 2; } ;;
+    --lint) lint_cmd="${2:-}"; shift 2 || { echo "verification-baseline: $1 needs a value" >&2; exit 2; } ;;
+    --typecheck) typecheck_cmd="${2:-}"; shift 2 || { echo "verification-baseline: $1 needs a value" >&2; exit 2; } ;;
     *) die2 "unknown argument '$1'" ;;
   esac
 done
@@ -133,10 +133,12 @@ run_command() {
     return
   fi
   assert_repo_state "$expected_head" "before $name command" || return 21
+  # A failing command is the expected outcome this function classifies below, not a
+  # script error; rc must capture it without aborting.
+  rc=0
   bash "$script_dir/run-with-watchdog.sh" --root "$root" --command "$command" --log "$log" \
     --timeout-secs "${LOOP_SPEC_BASELINE_TIMEOUT_SECS:-1800}" \
-    --idle-timeout-secs "${LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS:-300}"
-  rc=$?
+    --idle-timeout-secs "${LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS:-300}" || rc=$?
   failure_kind="$(jq -r '.status // "command_failed"' "$log.watchdog.json" 2>/dev/null \
     || printf 'command_failed')"
   assert_repo_state "$expected_head" "after $name command" || return 21

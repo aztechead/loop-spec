@@ -25,7 +25,6 @@ checks=(
   $'lib/acceptance-lint.sh\t=~ [^[:space:]]'
   $'lib/evidence.sh\trefusing an email address or credential path'
   $'lib/owned-gitignore.sh\tensure <repo> <line>...'
-  $'evals/README.md\tauto-mode classifier'
   $'lib/execute-prepare.sh\tdispatch/environment.txt'
   $'lib/dispatch-files.sh\tdispatch/tasks-collapsed.json'
   $'lib/dispatch-files.sh\tDo not read SPEC.md, PLAN.md, PATTERNS.md, or EVIDENCE.md'
@@ -60,6 +59,11 @@ checks=(
   $'skills/cycle/SKILL.md\t--completed <N>'
   $'skills/shared/execute-subagent.md\tno `name` key'
   $'lib/graph/driver.py\tdatetime.timezone.utc'
+  $'lib/graph/driver.py\tThe gate runs on every return'
+  $'lib/graph/driver.py\tLOOP_SPEC_SAME_SESSION must be 0 or 1'
+  # The snapshot NOTE rides stderr (the escalate NOTE and the first-stdout-line rule are
+  # behavior cases in tests/lib/cycle-driver.test.sh).
+  $'lib/graph/driver.py\tprint(note, file=sys.stderr)'
 )
 
 check_fixed_strings "${checks[@]}"

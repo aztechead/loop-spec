@@ -32,15 +32,15 @@ node_id=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --node-kind) node_kind="${2:-}"; shift 2 ;;
-    --security-signal) security_signal="${2:-}"; shift 2 ;;
-    --width) width="${2:-}"; shift 2 ;;
-    --changed-files) changed_files="${2:-}"; shift 2 ;;
-    --task-count) task_count="${2:-}"; shift 2 ;;
-    --attempt) attempt="${2:-}"; shift 2 ;;
-    --authorizes-delivery) authorizes_delivery="${2:-}"; shift 2 ;;
-    --phase) phase="${2:-}"; shift 2 ;;
-    --node-id) node_id="${2:-}"; shift 2 ;;
+    --node-kind) node_kind="${2:-}"; shift 2 || usage ;;
+    --security-signal) security_signal="${2:-}"; shift 2 || usage ;;
+    --width) width="${2:-}"; shift 2 || usage ;;
+    --changed-files) changed_files="${2:-}"; shift 2 || usage ;;
+    --task-count) task_count="${2:-}"; shift 2 || usage ;;
+    --attempt) attempt="${2:-}"; shift 2 || usage ;;
+    --authorizes-delivery) authorizes_delivery="${2:-}"; shift 2 || usage ;;
+    --phase) phase="${2:-}"; shift 2 || usage ;;
+    --node-id) node_id="${2:-}"; shift 2 || usage ;;
     *) usage ;;
   esac
 done

@@ -15,7 +15,9 @@ check() {
 }
 WORK="${TMPDIR:-/tmp}"; WORK="${WORK%/}/execute-prepare-test.$$"
 trap 'rm -rf "$WORK"' EXIT
-REPO="$WORK/repo"; mkdir -p "$REPO"
+# The physical path: on macOS $TMPDIR is under /var, a symlink to /private/var, and the
+# script answers `git rev-parse --show-toplevel` paths (this case was red there).
+REPO="$WORK/repo"; mkdir -p "$REPO"; WORK="$(cd "$WORK" && pwd -P)"; REPO="$WORK/repo"
 git -C "$REPO" init -q -b main
 git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
@@ -250,6 +252,16 @@ git -C "$REPO" checkout -q -b elsewhere 2>/dev/null
 ec=0; out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)" || ec=$?
 check "branch: a wrong checkout is not ready" "1" "$ec"
 check "branch: the mismatch is named" "elsewhere" "$(jq -r '.branch.actual' <<<"$out")"
+
+# --- a failed artifact commit is this call's failure, never a stale HEAD --------------
+git -C "$REPO" checkout -q feat/my-feature 2>/dev/null
+mkdir -p "$REPO/docs/loop-spec/features/my-feature"; printf 'pending\n' >> "$REPO/docs/loop-spec/features/my-feature/PLAN.md"
+mkdir -p "$REPO/.git/hooks"; printf '#!/bin/sh\nexit 1\n' > "$REPO/.git/hooks/pre-commit"; chmod +x "$REPO/.git/hooks/pre-commit"
+ec=0; err="$(bash "$SCRIPT" run --feature-dir "$FD" 2>&1 >/dev/null)" || ec=$?
+check "artifact commit refused by a hook: exit 2" "2" "$ec"
+check "artifact commit refused by a hook: the failure is named" "1" "$(grep -c 'could not commit pending docs/loop-spec/features/my-feature artifacts' <<<"$err")"
+check "artifact commit refused by a hook: nothing claims to be committed" "0" "$(grep -c artifactsCommitted <<<"$err")"
+rm -f "$REPO/.git/hooks/pre-commit"; git -C "$REPO" checkout -q -- docs 2>/dev/null; git -C "$REPO" reset -q
 
 echo ""
 # --- workspace mode ---------------------------------------------------------------

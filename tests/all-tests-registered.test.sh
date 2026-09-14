@@ -29,8 +29,7 @@ while IFS= read -r f; do
     fail=$((fail+1))
   fi
 # Tracked and untracked, never ignored: a suite someone forgot to `git add` is still an
-# orphan, while evals/.runs/ holds ignored plugin snapshots that carry a copy of every
-# suite, and a copy is not one.
+# orphan, while an ignored plugin snapshot carrying a copy of every suite is not one.
 done < <(git -C "$REPO_ROOT" ls-files --cached --others --exclude-standard -- '*.test.sh' | sed "s#^#$REPO_ROOT/#" | sort)
 
 echo "Results: $pass registered, $fail orphaned"

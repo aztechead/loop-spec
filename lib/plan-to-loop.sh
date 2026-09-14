@@ -29,11 +29,11 @@ SLUG="" SPEC="" PLAN="" MAX_ITER="10" TASKS_FILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --slug)           SLUG="$2"; shift 2 ;;
-    --spec)           SPEC="$2"; shift 2 ;;
-    --plan)           PLAN="$2"; shift 2 ;;
-    --max-iterations) MAX_ITER="$2"; shift 2 ;;
-    --tasks-file)     TASKS_FILE="$2"; shift 2 ;;
+    --slug)           SLUG="$2"; shift 2 || { echo "plan-to-loop: $1 needs a value" >&2; exit 2; } ;;
+    --spec)           SPEC="$2"; shift 2 || { echo "plan-to-loop: $1 needs a value" >&2; exit 2; } ;;
+    --plan)           PLAN="$2"; shift 2 || { echo "plan-to-loop: $1 needs a value" >&2; exit 2; } ;;
+    --max-iterations) MAX_ITER="$2"; shift 2 || { echo "plan-to-loop: $1 needs a value" >&2; exit 2; } ;;
+    --tasks-file)     TASKS_FILE="$2"; shift 2 || { echo "plan-to-loop: $1 needs a value" >&2; exit 2; } ;;
     *) echo "plan-to-loop: unknown arg '$1'" >&2; exit 2 ;;
   esac
 done

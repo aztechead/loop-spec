@@ -41,7 +41,7 @@
 #   default               -> ${XDG_CONFIG_HOME:-~/.config}/opencode  (global)
 #
 # Exit codes: 0 ok; 1 partial failure (a collision was skipped); 2 bad usage.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -75,7 +75,7 @@ while [[ $# -gt 0 ]]; do
       fi
       MODEL_ROUTES_JSON="$(jq -c --arg role "$role" --arg model "$model" \
         '.[$role] = $model' <<<"$MODEL_ROUTES_JSON")"
-      shift 2
+      shift 2 || _die2 "$1 needs a value"
       ;;
     *) _die2 "unknown flag '$1'" ;;
   esac

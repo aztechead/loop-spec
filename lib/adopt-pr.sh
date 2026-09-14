@@ -46,8 +46,8 @@ repo=""
 request=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --repo) repo="${2:-}"; shift 2 ;;
-    --request) request="${2:-}"; shift 2 ;;
+    --repo) repo="${2:-}"; shift 2 || usage ;;
+    --request) request="${2:-}"; shift 2 || usage ;;
     *) usage ;;
   esac
 done

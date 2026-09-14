@@ -41,7 +41,7 @@
 #
 # Exit codes: 0 = ran (possibly zero eligible issues); 1 = a processed issue
 # failed; 2 = bad invocation / missing prerequisite.
-set -uo pipefail
+set -euo pipefail
 
 _die2() { echo "issue-intake.sh: $*" >&2; exit 2; }
 
@@ -170,9 +170,9 @@ Source: GitHub issue #${number}"
   result_is_current=0
   if bash "$SCRIPT_DIR/cycle-result.sh" clear --result-root "$RESULT_ROOT"; then
     result_is_current=1
+    claude_ec=0
     # shellcheck disable=SC2086  # CLAUDE_FLAGS is intentionally word-split
-    "$AGENT_CLI" "${AGENT_ARGS[@]}" "${INTAKE_CMD} autonomous ${intake_text}" $CLAUDE_FLAGS
-    claude_ec=$?
+    "$AGENT_CLI" "${AGENT_ARGS[@]}" "${INTAKE_CMD} autonomous ${intake_text}" $CLAUDE_FLAGS || claude_ec=$?
   else
     echo "issue-intake: cannot safely clear the prior terminal result" >&2
     claude_ec=2

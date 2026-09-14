@@ -26,7 +26,7 @@ HARNESS=""
 ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --harness) HARNESS="${2:-}"; shift 2 ;;
+    --harness) HARNESS="${2:-}"; shift 2 || { echo "model-tier: $1 needs a value" >&2; exit 2; } ;;
     *) ARGS+=("$1"); shift ;;
   esac
 done

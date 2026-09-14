@@ -36,12 +36,12 @@ BASE=""
 HEAD=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --feature-dir) FEATURE_DIR="${2:-}"; shift 2 ;;
-    --task-id) TASK_ID="${2:-}"; shift 2 ;;
-    --out) OUT="${2:-}"; shift 2 ;;
-    --repo) REPO="${2:-}"; shift 2 ;;
-    --base) BASE="${2:-}"; shift 2 ;;
-    --head) HEAD="${2:-}"; shift 2 ;;
+    --feature-dir) FEATURE_DIR="${2:-}"; shift 2 || { echo "dispatch-files: $1 needs a value" >&2; exit 2; } ;;
+    --task-id) TASK_ID="${2:-}"; shift 2 || { echo "dispatch-files: $1 needs a value" >&2; exit 2; } ;;
+    --out) OUT="${2:-}"; shift 2 || { echo "dispatch-files: $1 needs a value" >&2; exit 2; } ;;
+    --repo) REPO="${2:-}"; shift 2 || { echo "dispatch-files: $1 needs a value" >&2; exit 2; } ;;
+    --base) BASE="${2:-}"; shift 2 || { echo "dispatch-files: $1 needs a value" >&2; exit 2; } ;;
+    --head) HEAD="${2:-}"; shift 2 || { echo "dispatch-files: $1 needs a value" >&2; exit 2; } ;;
     *) echo "dispatch-files.sh: unknown option $1" >&2; exit 2 ;;
   esac
 done

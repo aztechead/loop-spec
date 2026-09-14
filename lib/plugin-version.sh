@@ -13,7 +13,7 @@
 #
 # Never fails: an unknown version is a usable datum, an aborted terminal result is
 # not. Always exits 0 with the answer on stdout.
-set -uo pipefail
+set -euo pipefail
 
 if [[ -n "${LOOP_SPEC_VERSION:-}" ]]; then
   echo "${LOOP_SPEC_VERSION}"

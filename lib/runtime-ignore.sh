@@ -44,6 +44,9 @@ patterns=(
   '/.loop-spec/decisions-staging/'
   '/.loop-spec/last-result.json'
   '/.loop-spec/results/'
+  # The pruning pass writes it and DELIVER's dirt check read it as an uncommitted change
+  # (live run 2 attack, 6.6.4); integrate-task already treats it as runtime state.
+  '/.loop-spec/BACKLOG.md'
   '/.loop-spec/worktrees/'
   '/.loop-spec/learnings.jsonl'
   '/docs/loop-spec/telemetry/'

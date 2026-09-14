@@ -16,9 +16,8 @@
 # live-run finding: a Python module whose docstring said "the top-level ``claude -p``"
 # was denying every `grep`/`wc`/`sed`/`head` call that named it, for the rest of the run).
 # The bundled launchers are the exceptions, because spawning sessions is their job:
-# extensions/sessions/session_run.py (the EXECUTE session rung), the loop-runner
-# scripts (the loop-fleet rung), and evals/eval_run.py (the outcome eval, which drives
-# cycles from outside them).
+# extensions/sessions/session_run.py (the EXECUTE session rung) and the loop-runner
+# scripts (the loop-fleet rung).
 #
 # Stands down (exit 0) when LOOP_SPEC_NESTED_SESSION_GUARD=0, when the project has no
 # .loop-spec/ directory (never hijack an unrelated project), when the tool is not Bash,
@@ -48,7 +47,7 @@ LAUNCH = re.compile(r"(?:^|[\s;&|(`])(claude\s+(?:-p|--print)\b|codex\s+exec\b|o
 # The bundled launchers, matched as the path token the command runs, never as a
 # substring anywhere in the line: a comment naming session_run.py next to a `claude -p`
 # was a pass (port audit 1, F8).
-LAUNCHERS = re.compile(r"(?:^|[\s\"\x27=])(?:[\w.~-]*/)*(?:extensions/sessions/session_run\.py|skills/loop-runner/scripts/[\w.-]+\.py|evals/eval_run\.py)(?=$|[\s\"\x27])")
+LAUNCHERS = re.compile(r"(?:^|[\s\"\x27=])(?:[\w.~-]*/)*(?:extensions/sessions/session_run\.py|skills/loop-runner/scripts/[\w.-]+\.py)(?=$|[\s\"\x27])")
 COMMENT = re.compile(r"(?:^|\s)#.*$", flags=re.M)
 
 

@@ -28,7 +28,7 @@
 #
 # Output: one line, ANSWER + REASON: `profile=<compact|maintenance|standard> reason=<text>`.
 # Exit: 0 resolved, 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 validate_gate_plan() {
   jq -e '
@@ -59,9 +59,9 @@ if [[ "${1:-}" == "validate-gate-plan" ]]; then
     exit 2
   }
   if [[ "$source_path" == "-" ]]; then
-    raw="$(cat)"
+    raw="$(cat)" || raw=""
   elif [[ -f "$source_path" ]]; then
-    raw="$(<"$source_path")"
+    raw="$(<"$source_path")" || raw=""
   else
     echo "cycle-profile.sh: classification file not found: $source_path" >&2
     exit 2

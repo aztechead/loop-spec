@@ -20,14 +20,21 @@ check() {
   fi
 }
 
-# run <verb> [env assignments...]
+# run <verb> [env assignments...] [-- positional args...]
 # Invokes the lib in a clean env so the real session's harness vars can't leak in.
+# A bare token (no `NAME=value` shape) is a positional arg forwarded after the verb,
+# never an env assignment.
 run() {
   local verb="$1"; shift
-  env -u LOOP_SPEC_HARNESS -u CLAUDECODE -u PI_CODING_AGENT_DIR \
+  local envs=() args=()
+  for a in "$@"; do
+    if [[ "$a" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then envs+=("$a"); else args+=("$a"); fi
+  done
+  env -u LOOP_SPEC_HARNESS -u CLAUDECODE -u PI_CODING_AGENT_DIR -u CODEX_HOME \
     -u LOOP_SPEC_NON_INTERACTIVE -u LOOP_SPEC_EXECUTION_PROFILE \
-    -u LOOP_SPEC_LOOP_RUNTIME -u CLAUDE_CODE_ENTRYPOINT -u LOOP_SPEC_SESSION_LAYER "$@" \
-    bash "$LIB" "$verb"
+    -u LOOP_SPEC_LOOP_RUNTIME -u CLAUDE_CODE_ENTRYPOINT -u LOOP_SPEC_SESSION_LAYER \
+    ${envs[@]+"${envs[@]}"} \
+    bash "$LIB" "$verb" ${args[@]+"${args[@]}"}
 }
 
 # --- detect: override wins over everything ---

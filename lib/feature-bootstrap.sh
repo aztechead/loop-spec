@@ -129,26 +129,26 @@ prepare_key="" baseline_json=null
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --root)           prep_root="$2"; shift 2 ;;
-    --repo-root)      repo_root="$2"; shift 2 ;;
-    --execution-root) execution_root="$2"; shift 2 ;;
-    --result-root)    result_root="$2"; shift 2 ;;
-    --slug)           slug="$2"; shift 2 ;;
-    --title)          title="$2"; shift 2 ;;
-    --branch)         feature_branch="$2"; shift 2 ;;
-    --base-branch)    base_branch="$2"; shift 2 ;;
-    --base-sha)       base_sha="$2"; shift 2 ;;
-    --worktree)       worktree_state_path="$2"; shift 2 ;;
-    --style)          execStyle="$2"; shift 2 ;;
-    --profile)        cycle_profile="$2"; shift 2 ;;
-    --autonomous)     autonomous="$2"; shift 2 ;;
-    --greenfield)     greenfield="$2"; shift 2 ;;
-    --classification) classification_raw="$2"; shift 2 ;;
-    --prepare)        cmd_prepare="$2"; shift 2 ;;
-    --test)           cmd_test="$2"; shift 2 ;;
-    --lint)           cmd_lint="$2"; shift 2 ;;
-    --typecheck)      cmd_typecheck="$2"; shift 2 ;;
-    --repo-label)     repo_label="$2"; shift 2 ;;
+    --root)           prep_root="$2"; shift 2 || usage ;;
+    --repo-root)      repo_root="$2"; shift 2 || usage ;;
+    --execution-root) execution_root="$2"; shift 2 || usage ;;
+    --result-root)    result_root="$2"; shift 2 || usage ;;
+    --slug)           slug="$2"; shift 2 || usage ;;
+    --title)          title="$2"; shift 2 || usage ;;
+    --branch)         feature_branch="$2"; shift 2 || usage ;;
+    --base-branch)    base_branch="$2"; shift 2 || usage ;;
+    --base-sha)       base_sha="$2"; shift 2 || usage ;;
+    --worktree)       worktree_state_path="$2"; shift 2 || usage ;;
+    --style)          execStyle="$2"; shift 2 || usage ;;
+    --profile)        cycle_profile="$2"; shift 2 || usage ;;
+    --autonomous)     autonomous="$2"; shift 2 || usage ;;
+    --greenfield)     greenfield="$2"; shift 2 || usage ;;
+    --classification) classification_raw="$2"; shift 2 || usage ;;
+    --prepare)        cmd_prepare="$2"; shift 2 || usage ;;
+    --test)           cmd_test="$2"; shift 2 || usage ;;
+    --lint)           cmd_lint="$2"; shift 2 || usage ;;
+    --typecheck)      cmd_typecheck="$2"; shift 2 || usage ;;
+    --repo-label)     repo_label="$2"; shift 2 || usage ;;
     *) echo "feature-bootstrap: unknown argument '$1'" >&2; usage ;;
   esac
 done

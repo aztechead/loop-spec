@@ -36,7 +36,7 @@
 #       allPass}. Exit 0 = all probes passed (or unconfigured); exit 1 = the
 #       launch/ready/probe path failed (VERIFY routes remediation, class
 #       "live-probe"); exit 2 = bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 _die2() { echo "verify-live.sh: $*" >&2; exit 2; }
 
@@ -111,7 +111,9 @@ case "$cmd" in
       esac
     done
 
-    cfg="$(_config_of "$FILE")"; rc=$?
+    # rc=1 (unconfigured) is a normal, handled outcome below, not a script error;
+    # the assignment must survive it to reach that handling.
+    rc=0; cfg="$(_config_of "$FILE")" || rc=$?
     if [[ "$rc" == "1" ]]; then
       echo "live-verify: not configured (no verifyCommands block) — suite-only VERIFY" >&2
       jq -cn '{configured: false, ready: null, probes: [], allPass: null}'

@@ -33,8 +33,8 @@ feature_dir=""
 gate_name=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --feature-dir) feature_dir="${2:-}"; shift 2 ;;
-    --gate) gate_name="${2:-}"; shift 2 ;;
+    --feature-dir) feature_dir="${2:-}"; shift 2 || usage ;;
+    --gate) gate_name="${2:-}"; shift 2 || usage ;;
     *) usage ;;
   esac
 done

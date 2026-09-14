@@ -9,7 +9,7 @@
 # Usage:
 #   trace.sh emit <feature_dir> <event> [--phase PHASE] [--data JSON]
 #     --node ID --edge EDGE --probe PATH --probe-reason TEXT --effort MODE
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"

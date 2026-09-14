@@ -15,9 +15,7 @@
 # baseSha (the same bodies VERIFY's gate nodes run; per repo in workspace mode), every
 # footprint file in that diff (an untouched one is a flag naming the one way out,
 # `cycle-driver.sh spec footprint drop`, which records the decision; there is no prose
-# exit), no file in that diff outside the footprint
-# (one is the fourth file the route does not allow: the gate writes `route: full` into
-# SPEC.md with the file named and the run takes the full path), the frozen Intent block
+# exit), the frozen Intent block
 # unchanged since SPEC committed it, a recorded code-reviewer dispatch, artifact-lint
 # verification, verification-grounding-lint, review-triage-lint over the findings, and
 # the converged floor (every Good Enough row PASS).
@@ -26,13 +24,16 @@
 # review, and floor checks are the oneshot's own. A SPEC.md the probe cannot read as
 # either shape is a flag, never a pass: a gate that passes on an unreadable input is
 # the failure class the determinism audit exists to remove (port audit 1, F6).
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/exit-gate-prelude.sh" "${1:-}"
 spec="$(fget '.artifacts.spec // ""')"; [[ -n "$spec" ]] || spec="$docs/SPEC.md"
 
-answer="$(bash "$SCRIPT_DIR/graph/probes/oneshot.sh" --feature-dir "$feature_dir" --after 2>/dev/null)"
+# A probe error falls through to the case's catch-all below, which already turns an
+# unreadable answer into a FLAG; losing that message to a bare -e abort would trade a
+# diagnosed exit 1 for an undiagnosed one.
+answer="$(bash "$SCRIPT_DIR/graph/probes/oneshot.sh" --feature-dir "$feature_dir" --after 2>/dev/null)" || true
 escalated=0
 case "$answer" in
   "route=full reason=SPEC.md frontmatter says route: full"*) escalated=1 ;;
@@ -58,7 +59,9 @@ changed=""
 if [[ -n "$ws_root" ]]; then
   while IFS=$'\t' read -r rpath rsha; do
     [[ -n "$rpath" && -n "$rsha" ]] || continue
-    changed+="$(git -C "$root/$rpath" diff --name-only "$rsha" HEAD -- 2>/dev/null | sed "s|^|${rpath%/}/|")"$'\n'
+    # rsha can be a ref this workspace repo no longer holds; the footprint check
+    # below still needs to run over whatever repos DID diff cleanly.
+    changed+="$(git -C "$root/$rpath" diff --name-only "$rsha" HEAD -- 2>/dev/null | sed "s|^|${rpath%/}/|")"$'\n' || true
   done < <(fget '.workspace.repos[]? | [.path, .baseSha] | @tsv')
   base_sha="per-repo baseSha"
 elif [[ -n "$base_sha" ]]; then
@@ -67,32 +70,12 @@ fi
 footprint=()
 while IFS= read -r f; do [[ -n "$f" ]] && footprint+=("$f"); done \
   < <(sed -n '/^footprint:/,/^[^ ]/p' "$spec" | sed -n 's/^  - //p; s/^footprint: *\[\(.*\)\]$/\1/p' | tr ',' '\n' | sed 's/^ *//; s/ *$//' | sed '/^$/d')
-# The other direction: a changed file the footprint does not name is the fourth file,
-# and the route is over. The gate escalates the run itself, with the file named, so the
-# --after probe routes to DISCUSS and nothing ships past the footprint unchecked.
-if (( ! escalated )); then
-  outside=""
-  while IFS= read -r f; do
-    [[ -n "$f" ]] || continue
-    [[ "$f" == docs/loop-spec/* || "$f" == .loop-spec/* || "$f" == */docs/loop-spec/* || "$f" == */.loop-spec/* ]] && continue
-    printf '%s\n' "${footprint[@]+"${footprint[@]}"}" | grep -qxF "$f" && continue
-    outside+="$f "
-  done <<<"$changed"
-  if [[ -n "$outside" ]]; then
-    python3 - "$spec" "$outside" <<'PY'
-import re, sys
-path, files = sys.argv[1], sys.argv[2].strip()
-text = open(path, encoding="utf-8").read()
-if not re.search(r"^route: *full\s*$", text, flags=re.M):
-    text = re.sub(r"^---\n(.*?)^---\n", lambda m: "---\n" + m.group(1) + "route: full\n---\n", text, count=1, flags=re.M | re.S)
-note = "- escalated by lib/oneshot-exit-gate.sh: the diff touches %s, outside the footprint; the run takes the full path\n" % files
-text = text.replace("## Implementation notes\n", "## Implementation notes\n" + note, 1)
-open(path, "w", encoding="utf-8").write(text)
-PY
-    echo "NOTE [footprint] the diff touches ${outside% } outside SPEC.md's footprint: route: full written to $spec; the run continues on the full path (DISCUSS)"
-    escalated=1
-  fi
-fi
+# A diff file the footprint does not name is the reviewer's finding, not this gate's:
+# the gate used to escalate on it and grew a by-name list of what scaffolders write
+# (lockfiles, pins, .gitignore, then README.md, main.py, ...) that trailed every live
+# run. The reviewer reads the whole diff from baseSha and holds the scope
+# (agents/code-reviewer.md); the peers that gate on a declared file list are repairing
+# theirs the same way.
 if (( ! escalated )) && [[ -n "$base_sha" ]]; then
   for f in "${footprint[@]+"${footprint[@]}"}"; do
     [[ -n "$f" ]] || continue
@@ -105,7 +88,9 @@ if (( ! escalated )); then
   # the block to meet the code. A changed ask is an escalation (route: full), not an edit.
   intent_block() { sed -n '/^<!-- intent: frozen/,/^<!-- \/intent -->$/p'; }
   rel="${spec#"$root/"}"
-  committed="$(git show "HEAD:$rel" 2>/dev/null | intent_block)"
+  # git show fails for a path not yet committed at HEAD; committed then stays empty
+  # and the comparison below reads as "nothing to compare" rather than aborting.
+  committed="$(git show "HEAD:$rel" 2>/dev/null | intent_block)" || true
   if [[ -n "$committed" && "$committed" != "$(intent_block < "$spec")" ]]; then
     flag "[intent] the frozen Intent block of $rel changed since its commit: restore it (git show HEAD:$rel); when the ask itself is wrong, escalate with route: full instead"
   fi

@@ -57,7 +57,7 @@
 # holds as evidence accumulates; counts live in the finding's evidence field.
 #
 # Exit codes: 0 ok (including zero findings); 2 bad invocation.
-set -uo pipefail
+set -euo pipefail
 
 _die2() { echo "retro.sh: $*" >&2; exit 2; }
 
@@ -249,6 +249,7 @@ if [[ -f "$LEARNINGS_FILE" ]]; then
   jq -e 'type == "array"' >/dev/null 2>&1 <<<"$LEARNING_PATTERNS" || LEARNING_PATTERNS="[]"
 fi
 
+# `auto` must never abort the cycle over a mining bug; degrade to no findings.
 FINDINGS="$(jq -cn --argjson feats "$FEATS" --argjson min "$MIN" --argjson fleetCost "$FLEET_COST" \
               --argjson adhoc "$ADHOC_ENTRIES" --argjson bounces "$SENTINEL_BOUNCES" \
               --argjson learnings "$LEARNING_PATTERNS" '
@@ -343,7 +344,7 @@ FINDINGS="$(jq -cn --argjson feats "$FEATS" --argjson min "$MIN" --argjson fleet
        rule: {text: ("Loop-fleet cost to date: $" + ($fleetCost | tostring) + " (.loop/fleet-result.json)"), check: null}}
      else empty end)
   ]
-')"
+')" || FINDINGS="[]"
 
 if [[ "$cmd" == "report" && "$JSON" == "1" ]]; then
   jq . <<<"$FINDINGS"
@@ -354,7 +355,8 @@ _render() {
   echo "loop-spec retro ($FEATURES_DIR, min-repeats $MIN)"
   echo ""
   local n
-  n="$(jq 'map(select(.kind == "rule-candidate")) | length' <<<"$FINDINGS")"
+  # `_render` runs on the auto-apply path too; a mining bug must not abort the cycle.
+  n="$(jq 'map(select(.kind == "rule-candidate")) | length' <<<"$FINDINGS" || echo 0)"
   jq -r '
     def sec(k; title): (map(select(.kind == k)) | if length == 0 then empty else
       title, (.[] | "  - [\(.id)] \(.rule.text)" +
@@ -362,7 +364,7 @@ _render() {
     sec("rule-candidate"; "RULE CANDIDATES (apply with: retro.sh apply / /loop-spec:retro apply):"),
     sec("suggestion"; "SUGGESTIONS (your call, never auto-applied):"),
     sec("info"; "INFO:")
-  ' <<<"$FINDINGS"
+  ' <<<"$FINDINGS" || true
   if [[ "$n" == "0" ]]; then
     echo "no rule candidates at this threshold - the loop is not repeating itself"
   fi
@@ -385,7 +387,7 @@ fi
 # ── apply (also the auto-apply half of `auto`) ────────────────────────────────
 _render
 echo ""
-count="$(jq 'map(select(.kind == "rule-candidate")) | length' <<<"$FINDINGS")"
+count="$(jq 'map(select(.kind == "rule-candidate")) | length' <<<"$FINDINGS" || echo 0)"
 if [[ "$count" == "0" ]]; then
   echo "retro apply: nothing to apply"
   exit 0

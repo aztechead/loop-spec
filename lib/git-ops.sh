@@ -70,7 +70,7 @@ if [[ "${1:-}" == "-C" ]]; then
     exit 1
   fi
   G=(git -C "$2")
-  shift 2
+  shift 2 || { echo "git-ops.sh: -C requires a path argument" >&2; exit 1; }
 fi
 
 cmd="${1:-}"

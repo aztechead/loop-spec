@@ -4,13 +4,13 @@
 # Usage:
 #   finalize-delivery-candidate.sh bound-sha <delivery.json> <target-name>
 #   finalize-delivery-candidate.sh run <feature_dir> [--commit]
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARTIFACT_SINK="$SCRIPT_DIR/artifact-sink.sh"
 
 binding_query='def local_error: ["repo_invalid","repo_root_mismatch","branch_mismatch","git_status_failed",
-  "dirty_worktree","base_sha_missing","base_sha_invalid","base_not_ancestor","no_commits",
+  "dirty_worktree","post_gate_drift","no_gate_record","base_sha_missing","base_sha_invalid","base_not_ancestor","no_commits",
   "git_history_failed","local_artifact_policy_failed"];
   [.targets[]? | select(.name == $name and (.targetSha // "") != "") as $target
    | select($target.bindingEligible == true or

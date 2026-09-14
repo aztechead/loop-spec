@@ -460,21 +460,21 @@ case "${1:-}" in
     ws_root="" repos_json="[]"
     while [[ $# -gt 0 ]]; do
       case "$1" in
-        --mode)        mode="$2"; shift 2;;
-        --slug)        slug="$2"; shift 2;;
-        --title)       title="$2"; shift 2;;
-        --now)         now="$2"; shift 2;;
-        --style)       style="$2"; shift 2;;
-        --branch)      branch="$2"; shift 2;;
-        --base-sha)    base_sha="$2"; shift 2;;
-        --base-branch) base_branch="$2"; shift 2;;
-        --worktree)    worktree="$2"; shift 2;;
-        --prepare)     prepare_cmd="$2"; shift 2;;
-        --test)        test_cmd="$2"; shift 2;;
-        --lint)        lint_cmd="$2"; shift 2;;
-        --typecheck)   typecheck_cmd="$2"; shift 2;;
-        --ws-root)     ws_root="$2"; shift 2;;
-        --repos)       repos_json="$2"; shift 2;;
+        --mode)        mode="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
+        --slug)        slug="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
+        --title)       title="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
+        --now)         now="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
+        --style)       style="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
+        --branch)      branch="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
+        --base-sha)    base_sha="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
+        --base-branch) base_branch="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
+        --worktree)    worktree="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
+        --prepare)     prepare_cmd="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
+        --test)        test_cmd="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
+        --lint)        lint_cmd="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
+        --typecheck)   typecheck_cmd="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
+        --ws-root)     ws_root="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
+        --repos)       repos_json="$2"; shift 2 || { echo "feature-init: $1 needs a value" >&2; exit 2; };;
         *) echo "feature-init: unknown flag '$1'" >&2; exit 1;;
       esac
     done
