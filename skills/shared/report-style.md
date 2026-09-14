@@ -99,9 +99,9 @@ For every report returned to a human (phase summaries, completion reports, escal
 - **Numbered steps for anything the user must do** — commands first, rationale after.
 - **Matter-of-fact errors**: state what failed, the evidence, and the route — no
   hedging, no apology, no "unfortunately".
-- **No preamble, no closers**: never "Great!", "Let me...", "Hope this helps", and no
+- **Open on the outcome and end on the last fact**: no greeting, no sign-off, and no
   restating the request back.
-- **Cap lists at the load-bearing few** (~5 items); the rest belongs in the committed
+- **Inline only the load-bearing items**; the rest belongs in the committed
   artifact, linked, not inlined.
 - **No self-authored deferrals** — a report never invents "next steps" or "follow-ups"
   (`skills/shared/no-deferral.md`); the only forward pointer a completion report may

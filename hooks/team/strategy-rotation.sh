@@ -148,12 +148,9 @@ if [[ "$IS_FAILURE" == "true" ]] && command -v jq &>/dev/null; then
     [[ "$TOOL_KEY" == "edit" ]]  && TOOL_DISPLAY="Edit"
     [[ "$TOOL_KEY" == "write" ]] && TOOL_DISPLAY="Write"
 
-    MSG="STOP. This approach failed ${CONSECUTIVE} consecutive times using ${TOOL_DISPLAY}."
-    MSG="${MSG} Before your next attempt you must verbalize:"
-    MSG="${MSG} (1) what the failure mode is,"
-    MSG="${MSG} (2) a completely different approach you will try instead,"
-    MSG="${MSG} (3) why the new approach avoids the same failure."
-    MSG="${MSG} Do not retry the same command or edit pattern again."
+    MSG="This approach failed ${CONSECUTIVE} consecutive times using ${TOOL_DISPLAY}; stop and change approach."
+    MSG="${MSG} Say in one line what the failure mode was and why the new approach avoids it."
+    MSG="${MSG} Do not repeat the same command or edit pattern."
 
     printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"%s"}}\n' "$MSG"
     trace "$TOOL_KEY" "rotation" "emitted consecutive=$CONSECUTIVE"
