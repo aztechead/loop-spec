@@ -57,6 +57,10 @@ HALT_BUDGET = "budget_exhausted"
 
 MIN_TICK_TIMEOUT = 60.0  # minimum per-tick subprocess timeout; tests may lower this
 
+# The four meters claude -p reports under "usage"; summed so a headless run can read its
+# own cache hit rate instead of only a dollar total.
+USAGE_KEYS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
+
 # Values `claude --permission-mode` accepts (verified against the shipped CLI).
 # This set is deliberately NOT the Agent SDK's PermissionMode literal: the SDK
 # accepts "default" — which the CLI rejects — and has no "manual". Copying a
@@ -243,6 +247,7 @@ class LoopState:
     iteration: int = 0
     total_turns: int = 0
     total_cost_usd: Optional[float] = None  # summed claude -p total_cost_usd; None when never reported
+    total_usage: dict = field(default_factory=dict)  # summed USAGE_KEYS; empty when never reported
     session_id: Optional[str] = None
     start_sha: str = ""
     protected_hash: str = ""
@@ -468,6 +473,8 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         # cost accounting: None when the CLI did not report a number (older CLIs,
         # error paths) so callers can distinguish "free" from "unknown".
         "cost_usd": float(cost) if isinstance(cost, (int, float)) else None,
+        "usage": {k: int(v) for k, v in (data.get("usage") or {}).items()
+                  if k in USAGE_KEYS and isinstance(v, (int, float))},
     }
 
 
@@ -819,14 +826,16 @@ def run_verifier(cmd: str, timeout: int, out_file: Path) -> tuple[bool, str]:
 
 
 def judge_done(cfg: LoopConfig, verifier_output: str, start_sha: str, *,
-               budget_usd: Optional[float] = None) -> tuple[bool, Optional[float]]:
+               budget_usd: Optional[float] = None) -> tuple[bool, Optional[float], dict]:
     """Optional cheap second opinion AFTER the verifier passes. The judge sees the
     actual diff of the work, not just the verifier's say-so — otherwise it is
     rubber-stamping the verifier rather than validating the work.
 
-    Returns (done, cost_usd). The cost is reported rather than swallowed so the
+    Returns (done, cost_usd, usage). The cost is reported rather than swallowed so the
     caller can bill it to the loop's cumulative spend: a judge call is a real
-    priced invocation, and a total that silently omits it is wrong."""
+    priced invocation, and a total that silently omits it is wrong. usage is the
+    tick's claude -p meters, empty when unreported, so tokens are billed the same
+    way dollars are."""
     diff_stat = diff_full = ""
     if start_sha:
         try:
@@ -853,11 +862,12 @@ def judge_done(cfg: LoopConfig, verifier_output: str, start_sha: str, *,
     res = run_claude(prompt, jcfg, resume=None, permission_mode="plan", timeout=600,
                      budget_usd=budget_usd)
     cost = res.get("cost_usd")
+    usage = res.get("usage") or {}
     if not res["ok"]:
         print(f"⚠ judge run failed ({res['error']}); treating as NOT_DONE")
-        return False, cost
+        return False, cost, usage
     up = res["result"].upper()
-    return ("DONE" in up and "NOT_DONE" not in up), cost
+    return ("DONE" in up and "NOT_DONE" not in up), cost, usage
 
 
 def git_commit_scoped(message: str, ignore_dir: str) -> str:
@@ -1000,6 +1010,8 @@ def run_loop(cfg: LoopConfig) -> dict:
         state.total_turns += res["turns"]
         if res.get("cost_usd") is not None:
             state.total_cost_usd = (state.total_cost_usd or 0.0) + res["cost_usd"]
+        for k, v in (res.get("usage") or {}).items():
+            state.total_usage[k] = state.total_usage.get(k, 0) + v
         if res["session_id"]:
             state.session_id = res["session_id"]
         if not res["ok"]:
@@ -1074,11 +1086,13 @@ def run_loop(cfg: LoopConfig) -> dict:
                               "— halting; completion is unvalidated.")
                         status = HALT_BUDGET
                         break
-                judge_ok, judge_cost = judge_done(cfg, verifier_output, state.start_sha,
+                judge_ok, judge_cost, judge_usage = judge_done(cfg, verifier_output, state.start_sha,
                                                   budget_usd=judge_budget)
                 if judge_cost is not None:
                     state.total_cost_usd = (state.total_cost_usd or 0.0) + judge_cost
-                    state.save(state_path)
+                for k, v in judge_usage.items():
+                    state.total_usage[k] = state.total_usage.get(k, 0) + v
+                state.save(state_path)
             if judge_ok:
                 status = HALT_COMPLETE
                 break
@@ -1098,6 +1112,7 @@ def run_loop(cfg: LoopConfig) -> dict:
         "max_turns_per_tick": cfg.max_turns or None,
         "effort": cfg.effort or None,
         "total_cost_usd": round(state.total_cost_usd, 6) if state.total_cost_usd is not None else None,
+        "total_usage": state.total_usage or None,
         "max_budget_usd": cfg.max_budget_usd or None,
         "wall_clock_seconds": round(elapsed, 1),
         "verifier": {

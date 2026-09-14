@@ -30,6 +30,7 @@ checks=(
   "skills/execute/SKILL.md	skills/shared/engineering-directives.md"
   "agents/code-reviewer.md	scale:"
   "agents/challenger.md	Does this scale"
+  "agents/implementer.md	Co-Authored-By: Claude <noreply@anthropic.com>"
 )
 
 check_fixed_strings "${checks[@]}"

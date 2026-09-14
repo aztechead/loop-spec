@@ -104,6 +104,11 @@ budget. With a judge configured, "verified" means verifier *and* judge, so a loo
 that cannot afford the judge halts `budget_exhausted` rather than claiming a
 completion it never validated — `verifier.passed` is still recorded in the result.
 
+The same ticks' `usage` meters (`input_tokens`, `cache_creation_input_tokens`,
+`cache_read_input_tokens`, `output_tokens`) are summed into `result.json`
+`total_usage`, judge ticks included, and rolled up per fleet in `fleet-result.json`.
+Backends that report no meters leave it `null`.
+
 Unset means unbounded and passes no flag — iteration, wall-clock and stall caps
 do not bound cost on their own. The per-tick cap is a claude flag; under adk and
 opencode only the cumulative check applies.

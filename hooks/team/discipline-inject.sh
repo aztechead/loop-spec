@@ -38,7 +38,7 @@ fi
 # Discipline is ON - inject the 5-gate directive.
 DIRECTIVE='DISCIPLINE MODE ACTIVE: Five behavioral gates are enforced this session.
 
-1. brainstorm-before-coding: Before writing code or making changes, confirm the approach has been discussed. If not, pause and brainstorm first. Even simple changes require an explicit plan.
+1. brainstorm-before-coding: When the request leaves a real design choice open, confirm the approach before writing code. A change with one obvious shape needs no plan.
 2. verification-before-claims: Before claiming work is done, fixed, or passing - run the actual verification command and show the output. No "should work" or "looks correct." Evidence only.
 3. investigation-before-fixes: When encountering any bug, error, or test failure - investigate root cause before proposing fixes. No guessing.
 4. decision-gate: When comparing options or choosing between approaches - present a structured comparison with criteria and a recommendation. Do not just list pros and cons in prose.

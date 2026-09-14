@@ -128,7 +128,7 @@ check "phase-begin: the refusal leaves the paused result in place" "paused" "$(j
 # REDO before the snapshot reader sees it. Either way the driver answers, never a
 # traceback.
 DOCS1="$REPO/docs/loop-spec/features/$(jq -r '.slug' "$FD/feature.json")"
-cp "$DOCS1/SPEC.md" "$DOCS1/SPEC.md.keep"; sed -i '/^## Goals$/,/^## Boundaries/{/^Produce/d}' "$DOCS1/SPEC.md"
+cp "$DOCS1/SPEC.md" "$DOCS1/SPEC.md.keep"; sed -i.bak '/^## Goals$/,/^## Boundaries/{/^Produce/d;}' "$DOCS1/SPEC.md"; rm -f "$DOCS1/SPEC.md.bak"
 ec=0; out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from spec 2>/dev/null)" || ec=$?
 check "next: a repeat spec return with an empty Goals section is the gate's REDO, not a traceback" "REDO phase=spec rc=0" "$(head -1 <<<"$out" | cut -d' ' -f1,2) rc=$ec"
 mv "$DOCS1/SPEC.md.keep" "$DOCS1/SPEC.md"
@@ -145,7 +145,7 @@ check "next: the resumed pause pointer is gone" "0" "$([[ -f "$REPO/.loop-spec/l
 
 # DISCUSS may still rewrite Goal and Boundary (the run that froze them at SPEC exit died
 # when the human answered DISCUSS's follow-ups); the human gate says so, PLAN freezes.
-sed -i 's/^Produce the requested behavior\.$/Produce the requested behavior and log it./' "$DOCS1/SPEC.md"
+sed -i.bak 's/^Produce the requested behavior\.$/Produce the requested behavior and log it./' "$DOCS1/SPEC.md"; rm -f "$DOCS1/SPEC.md.bak"
 out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from discuss 2>/dev/null)"
 check "next: a Goals edit in DISCUSS pauses at the human gate instead of escalating" "PAUSED node=human.after-discuss intent=changed" "$out"
 check "next: nothing is frozen before PLAN" "null" "$(jq -r '.specApproval' "$FD/feature.json")"

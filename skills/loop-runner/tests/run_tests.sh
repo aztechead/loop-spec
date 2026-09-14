@@ -53,6 +53,7 @@ check "verifier.passed"   "$(python3 -c "import json;print(json.load(open('.loop
 check "iter raw log kept" "$(test -f .loop/done/iter-001.raw.json && echo yes)" "yes"
 check "progress notes"    "$(test -f .loop/done/PROGRESS.md && echo yes)" "yes"
 check "cost summed"       "$(python3 -c "import json;c=json.load(open('.loop/done/result.json'))['total_cost_usd'];print(isinstance(c,float) and c>0)")" "True"
+check "usage summed exact" "$(python3 -c "import json;r=json.load(open('.loop/done/result.json'));u=r['total_usage'];n=r['iterations'];print(u=={'input_tokens':10*n,'cache_creation_input_tokens':20*n,'cache_read_input_tokens':300*n,'output_tokens':5*n})")" "True"
 
 echo "== 3. stall: no file changes =="
 newrepo
@@ -159,6 +160,7 @@ FLEET_OK=$(python3 -c "import json;f=json.load(open('.loop/fleet-result.json'));
 check "fleet-result.json" "$FLEET_OK" "True"
 check "fleet terminal status" "$(python3 -c "import json;print(json.load(open('.loop/fleet-result.json'))['status'])")" "complete"
 check "fleet cost summed" "$(python3 -c "import json;c=json.load(open('.loop/fleet-result.json'))['total_cost_usd'];print(isinstance(c,float) and c>0)")" "True"
+check "fleet usage is the sum of its tasks" "$(python3 -c "import json;f=json.load(open('.loop/fleet-result.json'));ts=[r['total_usage'] for r in f['tasks'].values() if r.get('total_usage')];print(len(ts)==2 and f['total_usage']=={k:sum(t[k] for t in ts) for k in ts[0]})")" "True"
 
 SUPERVISOR_CANDIDATE=$(PYTHONPATH="$SCRIPTS" python3 - << 'EOF'
 import json
@@ -546,6 +548,7 @@ check "adk halt_reason"     "$(reason .loop/adkdone/result.json)" "complete"
 check "adk raw log kept"    "$(test -f .loop/adkdone/iter-001.raw.json && echo yes)" "yes"
 # ADK reports tokens, not money: cost stays unknown rather than being invented.
 check "adk cost unknown"    "$(python3 -c "import json;print(json.load(open('.loop/adkdone/result.json'))['total_cost_usd'])")" "None"
+check "adk usage unknown"   "$(python3 -c "import json;print(json.load(open('.loop/adkdone/result.json'))['total_usage'])")" "None"
 
 # 16b. flag shape: adk gets adk flags, never claude-only ones
 newrepo; mkadkagent
@@ -786,6 +789,7 @@ python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id cxdone \
 check "cx exit 0"          "$?" "0"
 check "cx halt_reason"     "$(reason .loop/cxdone/result.json)" "complete"
 check "cx cost unknown"    "$(python3 -c "import json;print(json.load(open('.loop/cxdone/result.json'))['total_cost_usd'])")" "None"
+check "cx usage unknown"   "$(python3 -c "import json;print(json.load(open('.loop/cxdone/result.json'))['total_usage'])")" "None"
 check "cx raw log kept"    "$(test -f .loop/cxdone/iter-001.raw.json && echo yes)" "yes"
 
 # 18b. flag shape: codex gets exec --json --sandbox, never claude-only ones
@@ -953,6 +957,8 @@ FAKE_COST=0.5 FAKE_JUDGE=NOT_DONE python3 "$SCRIPTS/loop.py" "spin" --task-id ju
   >/dev/null 2>&1
 check "judge NOT_DONE keeps going" "$(reason .loop/judgeno/result.json)" "max_iterations"
 check "every judge call billed"    "$(python3 -c "import json;print(json.load(open('.loop/judgeno/result.json'))['total_cost_usd'])")" "2.0"
+# 2 work ticks + 2 judge calls, same run as "every judge call billed" above.
+check "judge usage included"       "$(python3 -c "import json;u=json.load(open('.loop/judgeno/result.json'))['total_usage'];print(u=={'input_tokens':10*2+1*2,'cache_creation_input_tokens':20*2+2*2,'cache_read_input_tokens':300*2+3*2,'output_tokens':5*2+4*2})")" "True"
 
 # The judge is capped at what the loop has left, not run unbounded.
 newrepo

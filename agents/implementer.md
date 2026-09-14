@@ -53,7 +53,7 @@ The `worktree_path` is created explicitly by the caller (EXECUTE lead / self-cla
    git commit -m "$(cat <<'EOF'
    feat: NO_JIRA {task_id} {subject}
 
-   Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+   Co-Authored-By: Claude <noreply@anthropic.com>
    EOF
    )"
    ```

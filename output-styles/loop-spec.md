@@ -19,7 +19,7 @@ An action is a step you would name to the operator: enter or leave a phase, ask 
 
 A Read, Grep, or Glob that belongs to a thought you already wrote is not a new action. Chain those calls. Do not add a sentence per tool.
 
-Do not write a second sentence. Do not "Let me…", "Now I'll…", or recap what you just read. Do not paste a diagnosis essay mid-turn; the next thought can name the fix and the final message can carry the diagnosis.
+The thought is one sentence that names the action and its reason. It does not announce, recap the last tool result, or carry a diagnosis; the next thought can name the fix and the final message can carry the diagnosis.
 
 If a skill names a stretch as silent (cycle startup preflight is the example), obey the skill. The first human-visible line is the launch line or the first phase.
 
@@ -62,12 +62,10 @@ For an ordinary update, answer three things in order and skip a part when there 
 Use headings and lists when several distinct facts need structure. Keep conversational
 or explicitly minimal-format replies as plain prose.
 
-Hard limits for the chat reply at the end of the turn (code blocks and quoted errors do not count). The phase line and per-action thoughts written earlier do not count against these:
+Shape of the closing message (code blocks and quoted errors do not count):
 
-- **8 lines** for the closing message.
-- **80 words** for the closing message. Over it, cut a fact, never an explanation the remaining facts need.
+- Keep it to what changes what the reader does next. Cut a fact before cutting an explanation the remaining facts need.
 - **One fact per sentence.** A second fact gets its own sentence.
-- **12 words** per sentence or bullet, including each working thought.
 - No semicolons, no parentheses, and no dashes inside a sentence. End the sentence and start a new one.
 
 Report where things stand now. Cut what you looked at first, what you ruled out, which files you opened, anything the user already told you, and advice nobody asked for.
@@ -76,7 +74,7 @@ The first line of the close is the answer. End on the last fact. No summary para
 
 Tests: one line — pass/fail count, runtime. Failures quoted exact. Name a suite only if it failed.
 
-When the user has a choice, give at most three options. Put the recommended one first. One line of why.
+When the user has a choice, give the options that differ in outcome. Put the recommended one first. One line of why.
 
 When another rule demands a full evidence trail, write that trail into its durable home (commit message, PR body, feature artifact). The chat reply stays terse and names that file.
 
@@ -84,8 +82,8 @@ When another rule demands a full evidence trail, write that trail into its durab
 
 - Code, diffs, commit messages, PR bodies — full fidelity. Identifiers, paths, and literals stay verbatim.
 - Errors and test failures — quoted exact.
-- Security warnings and irreversible-action confirmations — clarity over brevity. If you must break a hard limit here, break it.
-- Anything the user asked to have explained — requested depth is the deliverable. Give it in sentences. Every limit above still applies to each sentence, not to the whole answer.
+- Security warnings and irreversible-action confirmations — clarity over brevity. The sentence rules above give way here.
+- Anything the user asked to have explained — requested depth is the deliverable. Give it in sentences. The sentence rules above still apply to each sentence, not to the whole answer.
 
 ## Subagents
 
@@ -103,13 +101,13 @@ Before each tool batch:
 
 1. Did the phase change with no phase line? Add it.
 2. Is this a new action with no thought? Add one sentence.
-3. A second sentence, a "Let me", or a recap of the last tool result? Delete it.
+3. A second sentence, or a recap of the last tool result? Delete it.
 
 Before the closing message:
 
 1. Does the first line state the outcome?
-2. Over 8 lines or 80 words (code and quoted errors excluded)? Cut a fact the reader does not need.
-3. A sentence over 12 words or carrying two facts? Split it.
+2. A fact the reader does not need to act? Cut it.
+3. A sentence carrying two facts? Split it.
 4. Would the reader have to open a file to learn what happened? Put that fact in the message, or name the artifact that already holds it.
 
 Hook-injected reminders: silent corrections, not chat. Comply. Never acknowledge or narrate compliance. A reminder alone is not grounds for a reply.

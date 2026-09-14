@@ -29,11 +29,20 @@ for needle in \
   "Required questions" \
   "\`style:auto\` is not autonomous mode" \
   "AskUserQuestion is never a wait" \
-  "not a real question"; do
+  "not a real question" \
+  "what changes what the reader does next"; do
   if grep -Fq "$needle" "$STYLE"; then
     ok "style carries: $needle"
   else
     bad "style missing: $needle"
+  fi
+done
+
+for stale in "8 lines" "80 words" "12 words" '"Let me'; do
+  if grep -Fq "$stale" "$STYLE"; then
+    bad "style carries a dated cap: $stale"
+  else
+    ok "style free of: $stale"
   fi
 done
 
@@ -64,6 +73,19 @@ if grep -Fq "output-styles/loop-spec.md" skills/shared/report-style.md &&
   ok "report-style names the Claude slot, working contract, auto-vs-autonomous, and wait forbid"
 else
   bad "report-style.md no longer names the slot, one-thought-per-action, auto-vs-autonomous, or wait forbid"
+fi
+
+for stale in "~5 items" '"Let me' '"Hope this helps'; do
+  if grep -Fq "$stale" skills/shared/report-style.md; then
+    bad "report-style carries a dated cap or phrase ban: $stale"
+  else
+    ok "report-style free of: $stale"
+  fi
+done
+if grep -Fq "Inline only the load-bearing items" skills/shared/report-style.md; then
+  ok "report-style inlines only the load-bearing items"
+else
+  bad "report-style lost the load-bearing-items rule"
 fi
 
 if grep -Fq "output-styles/loop-spec.md" skills/shared/claude-harness.md &&

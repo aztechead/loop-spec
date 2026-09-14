@@ -4,6 +4,34 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.6.5] - 2026-09-14
+
+### Added (cost pass)
+
+- `skills/loop-runner/scripts/loop.py` sums the four `usage` meters `claude -p` already
+  reports (`input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`,
+  `output_tokens`) into `result.json` as `total_usage`, beside `total_cost_usd`; judge
+  ticks are included, and `supervisor.py` rolls the per-task totals into
+  `fleet-result.json`. A headless run can now read its own cache hit rate; before, only
+  the dollar total survived. The meter is Claude Code ticks only: ADK, OpenCode, and Codex
+  report tokens in their own shapes and leave `total_usage` null for now.
+
+### Changed (prompt audit against Opus 5, Sonnet 5, Fable, and Gemini)
+
+- `output-styles/loop-spec.md` drops the 8-line, 80-word, and 12-word ceilings and the
+  "Let me" phrase ban; the closing message keeps what changes what the reader does
+  next, one fact per sentence. Numeric caps starved multi-part reports on current models.
+- `skills/shared/report-style.md` opens on the outcome and inlines only the load-bearing
+  items instead of a banned-phrase list and a five-item cap.
+- `skills/shared/engineering-stances.md` Debug stance no longer says "reason step by
+  step"; depth belongs to the model's own reasoning.
+- `hooks/team/discipline-inject.sh` asks for a plan only when the request leaves a real
+  design choice open; an unconditional plan mandate caused over-planning.
+- `hooks/team/strategy-rotation.sh` states the failure count and asks for a one-line
+  change of approach instead of a caps STOP and a three-part verbalize script.
+- `agents/implementer.md` commit template says `Co-Authored-By: Claude`, matching the
+  repo rule, instead of a pinned Sonnet 4.6 name.
+
 ## [6.6.4] - 2026-09-11
 
 ### Fixed (second live-run report: a 6.6.2 attended run and a Codex EXECUTE run)

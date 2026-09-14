@@ -134,6 +134,7 @@ check "threshold trigger: second failure exit 0" 0 \
 check_output "threshold trigger: additionalContext emitted at threshold" "additionalContext"
 check_output "threshold trigger: message mentions STOP or stop" "STOP\|[Ss]top"
 check_output "threshold trigger: message mentions failure mode or approach" "approach\|[Ff]ailure"
+check_no_output "threshold trigger: message does not say verbalize" "verbalize"
 
 # ── Case 4: success reset ─────────────────────────────────────────────────
 # After the above 2 failures (counter=2), send a success -> counter resets.
