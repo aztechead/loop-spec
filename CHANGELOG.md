@@ -4,6 +4,24 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.6.5] - 2026-09-14
+
+### Changed (prompt audit against Opus 5, Sonnet 5, Fable, and Gemini)
+
+- `output-styles/loop-spec.md` drops the 8-line, 80-word, and 12-word ceilings and the
+  "Let me" phrase ban; the closing message keeps what changes what the reader does
+  next, one fact per sentence. Numeric caps starved multi-part reports on current models.
+- `skills/shared/report-style.md` opens on the outcome and inlines only the load-bearing
+  items instead of a banned-phrase list and a five-item cap.
+- `skills/shared/engineering-stances.md` Debug stance no longer says "reason step by
+  step"; depth belongs to the model's own reasoning.
+- `hooks/team/discipline-inject.sh` asks for a plan only when the request leaves a real
+  design choice open; an unconditional plan mandate caused over-planning.
+- `hooks/team/strategy-rotation.sh` states the failure count and asks for a one-line
+  change of approach instead of a caps STOP and a three-part verbalize script.
+- `agents/implementer.md` commit template says `Co-Authored-By: Claude`, matching the
+  repo rule, instead of a pinned Sonnet 4.6 name.
+
 ## [6.6.4] - 2026-09-11
 
 ### Fixed (second live-run report: a 6.6.2 attended run and a Codex EXECUTE run)
