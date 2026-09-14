@@ -182,13 +182,19 @@ marker.
   "turns": 3,
   "session_id": "string or null",
   "result": "final assistant text",
-  "cost_usd": 1.25
+  "cost_usd": 1.25,
+  "usage": {"input_tokens": 100, "cache_creation_input_tokens": 50, "cache_read_input_tokens": 900, "output_tokens": 40}
 }
 ```
 
 `cost_usd` is `null` when the backend does not report cost. `turns` is a backend-derived
 unit, not a claim that Claude turns, ADK text events, OpenCode `step_finish`
 events, and Codex `turn.completed` events are semantically identical.
+
+`usage` carries the four `claude -p` meters and is `{}` on backends that do not report them
+(ADK, OpenCode, Codex today). `loop.py` sums it across work ticks and judge ticks into
+`result.json` as `total_usage`, and `supervisor.py` sums those into `fleet-result.json` as
+`total_usage`; both are `null` when no tick reported meters.
 
 ## Observed Backend Profiles
 

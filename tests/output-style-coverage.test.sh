@@ -29,11 +29,20 @@ for needle in \
   "Required questions" \
   "\`style:auto\` is not autonomous mode" \
   "AskUserQuestion is never a wait" \
-  "not a real question"; do
+  "not a real question" \
+  "what changes what the reader does next"; do
   if grep -Fq "$needle" "$STYLE"; then
     ok "style carries: $needle"
   else
     bad "style missing: $needle"
+  fi
+done
+
+for stale in "8 lines" "80 words" "12 words" '"Let me'; do
+  if grep -Fq "$stale" "$STYLE"; then
+    bad "style carries a dated cap: $stale"
+  else
+    ok "style free of: $stale"
   fi
 done
 

@@ -181,6 +181,12 @@ class Supervisor:
         skipped = list(skipped or [])
         costs = [r.get("total_cost_usd") for r in self.results.values()
                  if isinstance(r.get("total_cost_usd"), (int, float))]
+        usages = [r.get("total_usage") for r in self.results.values()
+                  if isinstance(r.get("total_usage"), dict)]
+        total_usage: dict = {}
+        for u in usages:
+            for k, v in u.items():
+                total_usage[k] = total_usage.get(k, 0) + v
         fleet = {
             "status": status,
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -190,6 +196,7 @@ class Supervisor:
             "skipped": skipped,
             "fleet_fatal": self.fleet_fatal,
             "total_cost_usd": round(sum(costs), 6) if costs else None,
+            "total_usage": total_usage or None,
             "tasks": self.results,
         }
         out = self.repo / ".loop" / "fleet-result.json"

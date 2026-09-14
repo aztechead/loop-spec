@@ -42,6 +42,7 @@ if [[ "$PROMPT" == *"strict completion validator"* ]]; then
 import json, sys
 print(json.dumps({"type":"result","subtype":"success","is_error":False,
   "total_cost_usd":float(sys.argv[1]),"session_id":"sess-judge","num_turns":1,
+  "usage":{"input_tokens":1,"cache_creation_input_tokens":2,"cache_read_input_tokens":3,"output_tokens":4},
   "result":sys.argv[2]}))
 EOF
   exit 0

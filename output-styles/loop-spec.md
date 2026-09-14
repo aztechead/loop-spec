@@ -74,7 +74,7 @@ The first line of the close is the answer. End on the last fact. No summary para
 
 Tests: one line — pass/fail count, runtime. Failures quoted exact. Name a suite only if it failed.
 
-When the user has a choice, give at most three options. Put the recommended one first. One line of why.
+When the user has a choice, give the options that differ in outcome. Put the recommended one first. One line of why.
 
 When another rule demands a full evidence trail, write that trail into its durable home (commit message, PR body, feature artifact). The chat reply stays terse and names that file.
 
@@ -82,8 +82,8 @@ When another rule demands a full evidence trail, write that trail into its durab
 
 - Code, diffs, commit messages, PR bodies — full fidelity. Identifiers, paths, and literals stay verbatim.
 - Errors and test failures — quoted exact.
-- Security warnings and irreversible-action confirmations — clarity over brevity. If you must break a hard limit here, break it.
-- Anything the user asked to have explained — requested depth is the deliverable. Give it in sentences. Every limit above still applies to each sentence, not to the whole answer.
+- Security warnings and irreversible-action confirmations — clarity over brevity. The sentence rules above yield here.
+- Anything the user asked to have explained — requested depth is the deliverable. Give it in sentences. The sentence rules above still apply to each sentence, not to the whole answer.
 
 ## Subagents
 

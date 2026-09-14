@@ -128,6 +128,10 @@ check_output "c: enabled inject - brainstorm-before-coding gate present" 0 \
   "brainstorm-before-coding" \
   CLAUDE_PROJECT_DIR="$TMPDIR_TEST/enabled"
 
+check_output "c2: enabled inject - one obvious shape needs no plan" 0 \
+  "one obvious shape" \
+  CLAUDE_PROJECT_DIR="$TMPDIR_TEST/enabled"
+
 check_output "d: enabled inject - all 5 gates (verification-before-claims)" 0 \
   "verification-before-claims" \
   CLAUDE_PROJECT_DIR="$TMPDIR_TEST/enabled"

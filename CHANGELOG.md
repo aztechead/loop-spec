@@ -10,8 +10,11 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 - `skills/loop-runner/scripts/loop.py` sums the four `usage` meters `claude -p` already
   reports (`input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`,
-  `output_tokens`) into `result.json` as `total_usage`, beside `total_cost_usd`. A
-  headless run can now read its own cache hit rate; before, only the dollar total survived.
+  `output_tokens`) into `result.json` as `total_usage`, beside `total_cost_usd`; judge
+  ticks are included, and `supervisor.py` rolls the per-task totals into
+  `fleet-result.json`. A headless run can now read its own cache hit rate; before, only
+  the dollar total survived. The meter is Claude Code ticks only: ADK, OpenCode, and Codex
+  report tokens in their own shapes and leave `total_usage` null for now.
 
 ### Changed (prompt audit against Opus 5, Sonnet 5, Fable, and Gemini)
 

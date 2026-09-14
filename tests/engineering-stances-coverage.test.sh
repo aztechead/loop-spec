@@ -55,4 +55,11 @@ for f in lib/task-route.sh lib/graph/driver.py lib/parse-invocation.sh; do
   fi
 done
 
+# A stance names a mindset and its deliverables, never a step-by-step incantation.
+if grep -qF "reason step by step" skills/shared/engineering-stances.md; then
+  FAIL=$((FAIL+1)); echo "FAIL: skills/shared/engineering-stances.md carries 'reason step by step'"
+else
+  PASS=$((PASS+1)); echo "PASS: skills/shared/engineering-stances.md free of 'reason step by step'"
+fi
+
 finish_fixed_string_coverage

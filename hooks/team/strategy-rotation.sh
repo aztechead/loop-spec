@@ -6,8 +6,8 @@
 #
 # Tracks consecutive tool failures per tool name in a per-session JSON state
 # file. When failures reach the threshold the hook emits a JSON
-# hookSpecificOutput.additionalContext block instructing the agent to stop and
-# verbalize a different approach before retrying.
+# hookSpecificOutput.additionalContext block asking the agent to stop and
+# change approach before retrying.
 #
 # Configuration (all optional):
 #   LOOP_SPEC_STRATEGY_ROTATION_THRESHOLD  failures before rotation (default: 2)
@@ -59,7 +59,6 @@ STATE_FILE="${TMPDIR:-/tmp}/loop-spec-failures-${SESSION}.json"
 INPUT=""
 INPUT=$(cat 2>/dev/null) || true
 
-# Detect tool name from payload
 TOOL_NAME=""
 if [[ -n "$INPUT" ]] && command -v jq &>/dev/null; then
   TOOL_NAME=$(printf '%s' "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null) || TOOL_NAME=""

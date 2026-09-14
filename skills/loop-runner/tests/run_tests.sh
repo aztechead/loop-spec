@@ -53,7 +53,7 @@ check "verifier.passed"   "$(python3 -c "import json;print(json.load(open('.loop
 check "iter raw log kept" "$(test -f .loop/done/iter-001.raw.json && echo yes)" "yes"
 check "progress notes"    "$(test -f .loop/done/PROGRESS.md && echo yes)" "yes"
 check "cost summed"       "$(python3 -c "import json;c=json.load(open('.loop/done/result.json'))['total_cost_usd'];print(isinstance(c,float) and c>0)")" "True"
-check "usage summed"      "$(python3 -c "import json;u=json.load(open('.loop/done/result.json'))['total_usage'];print(u['cache_read_input_tokens']>0 and u['output_tokens']>0)")" "True"
+check "usage summed exact" "$(python3 -c "import json;r=json.load(open('.loop/done/result.json'));u=r['total_usage'];n=r['iterations'];print(u=={'input_tokens':10*n,'cache_creation_input_tokens':20*n,'cache_read_input_tokens':300*n,'output_tokens':5*n})")" "True"
 
 echo "== 3. stall: no file changes =="
 newrepo
@@ -160,6 +160,7 @@ FLEET_OK=$(python3 -c "import json;f=json.load(open('.loop/fleet-result.json'));
 check "fleet-result.json" "$FLEET_OK" "True"
 check "fleet terminal status" "$(python3 -c "import json;print(json.load(open('.loop/fleet-result.json'))['status'])")" "complete"
 check "fleet cost summed" "$(python3 -c "import json;c=json.load(open('.loop/fleet-result.json'))['total_cost_usd'];print(isinstance(c,float) and c>0)")" "True"
+check "fleet usage summed" "$(python3 -c "import json;u=json.load(open('.loop/fleet-result.json'))['total_usage'];print(isinstance(u,dict) and u['output_tokens']>0)")" "True"
 
 SUPERVISOR_CANDIDATE=$(PYTHONPATH="$SCRIPTS" python3 - << 'EOF'
 import json
@@ -954,6 +955,8 @@ FAKE_COST=0.5 FAKE_JUDGE=NOT_DONE python3 "$SCRIPTS/loop.py" "spin" --task-id ju
   >/dev/null 2>&1
 check "judge NOT_DONE keeps going" "$(reason .loop/judgeno/result.json)" "max_iterations"
 check "every judge call billed"    "$(python3 -c "import json;print(json.load(open('.loop/judgeno/result.json'))['total_cost_usd'])")" "2.0"
+# 2 work ticks + 2 judge calls, same run as "every judge call billed" above.
+check "judge usage included"       "$(python3 -c "import json;u=json.load(open('.loop/judgeno/result.json'))['total_usage'];print(u=={'input_tokens':10*2+1*2,'cache_creation_input_tokens':20*2+2*2,'cache_read_input_tokens':300*2+3*2,'output_tokens':5*2+4*2})")" "True"
 
 # The judge is capped at what the loop has left, not run unbounded.
 newrepo
