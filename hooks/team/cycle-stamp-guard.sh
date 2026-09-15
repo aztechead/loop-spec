@@ -31,9 +31,16 @@
 #   - no stamp, or the stamp names another skill (auto arms a run that
 #     route-terminal-guard.sh holds accountable; micro, debug, and intake consume
 #     nothing and are not the cycle), and no feature has an open phase
-#   - .loop-spec/last-result.json is newer than the stamp or the open phase_start: a
+#   - .loop-spec/last-result.json is newer than the stamp (the project's copy) or the
+#     open phase_start (the copy in the feature's own root, which is where the driver
+#     publishes it; a worktree feature's result never lands in the project's copy): a
 #     route exit was published (write-terminal for a request that is not repository
 #     work), or the driver ended the session, which are the honest ways past it
+#   - the open phase_start carries a `session` (lib/events.sh stamps the harness
+#     session id) that differs from the payload's session_id: a peer session in the
+#     same repo owns that phase. Two cycle sessions in one checkout denied each other
+#     before this, because the ledger named no owner and the result file was shared.
+#     Either id missing -> the phase is treated as this session's (fail safe)
 #   - the stamp is older than LOOP_SPEC_STAMP_MAX_AGE_MIN (default 30), or the open
 #     phase_start is older than LOOP_SPEC_PHASE_TIMEOUT_MINS (default 60): the driver
 #     ignores such a stamp too, and a phase past its own watchdog ceiling was left by
@@ -52,7 +59,7 @@
 # No kill switch of its own: a guard adds no variable (the port principles,
 # rule 9). LOOP_SPEC_INVOCATION_STAMP=0 stops the stamp, and with it deny 1; deny 2
 # reads the driver's own ledger and has no switch, because a phase the driver opened
-# is closed by the driver or not at all.
+# is closed by the driver or not at all, by the session that opened it.
 #
 # Environment variables (all optional):
 #   LOOP_SPEC_STAMP_MAX_AGE_MIN   Stand-down age of the stamp in minutes, shared with
@@ -78,6 +85,7 @@ command -v python3 >/dev/null 2>&1 || exit 0
 
 STAMP="$PROJECT_DIR/.loop-spec/invocation-stamp.json"
 RESULT="$PROJECT_DIR/.loop-spec/last-result.json"
+SESSION="$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("session_id") or "")' 2>/dev/null || true)"
 
 if printf '%s' "$INPUT" | python3 -c \
   "import json,sys; sys.exit(0 if json.load(sys.stdin).get('stop_hook_active') else 1)" 2>/dev/null; then
@@ -87,9 +95,9 @@ fi
 # One line: `stamp <args>` for an unconsumed cycle invocation, `phase <feature_dir> <phase>`
 # for an open phase, else `allow`. The stamp is read first: a session that never began
 # the cycle has no phase of its own to close.
-verdict="$(python3 - "$PROJECT_DIR" "$STAMP" "$RESULT" "${LOOP_SPEC_STAMP_MAX_AGE_MIN:-30}" "${LOOP_SPEC_PHASE_TIMEOUT_MINS:-60}" "${LOOP_SPEC_DISPATCH_WAIT_MINS:-90}" <<'PY'
+verdict="$(python3 - "$PROJECT_DIR" "$STAMP" "$RESULT" "${LOOP_SPEC_STAMP_MAX_AGE_MIN:-30}" "${LOOP_SPEC_PHASE_TIMEOUT_MINS:-60}" "${LOOP_SPEC_DISPATCH_WAIT_MINS:-90}" "$SESSION" <<'PY'
 import glob, json, os, sys, time, calendar
-project, stamp_path, result_path, max_age, phase_age, dispatch_wait = sys.argv[1:7]
+project, stamp_path, result_path, max_age, phase_age, dispatch_wait, session = sys.argv[1:8]
 try:
     max_age, phase_age, dispatch_wait = int(max_age), int(phase_age), int(dispatch_wait)
 except ValueError:
@@ -138,14 +146,19 @@ for ledger in sorted(ledgers):
             if at is None:
                 continue
             if e.get("event") == "phase_start":
-                opened = (at, e.get("phase") or "")
+                opened = (at, e.get("phase") or "", e.get("session") or "")
             elif e.get("event") == "phase_end":
                 opened = None
     except OSError:
         continue
     if opened is None:
         continue
-    at, phase = opened
+    at, phase, owner = opened
+    # A peer session's phase is its own to close. With no id on either side the
+    # phase is treated as this session's: an unknown owner is never a reason to
+    # stand down.
+    if session and owner and owner != session:
+        continue
     # A dispatched agent is running the phase unattended (lib/events.sh, the `dispatch`
     # event): the lead has not walked out on it, it just has not returned yet. The
     # guard denied three legitimate dispatch waits before this marker existed (#3
@@ -160,7 +173,12 @@ for ledger in sorted(ledgers):
         continue
     if time.time() - at > phase_age * 60:
         continue
-    if result_at is not None and result_at >= at:
+    # The driver publishes the result into the feature's own root (cycle-result.sh
+    # copies it to <feature_dir>/../../last-result.json); the project's copy is the
+    # stamp's arbiter, not this phase's.
+    own_result = os.path.join(os.path.dirname(ledger), "..", "..", "last-result.json")
+    own_result_at = os.path.getmtime(own_result) if os.path.isfile(own_result) else None
+    if own_result_at is not None and own_result_at >= at:
         continue
     print("phase %s %s" % (os.path.dirname(ledger), phase)); sys.exit(0)
 print("allow")

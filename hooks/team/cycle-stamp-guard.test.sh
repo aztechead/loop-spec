@@ -154,6 +154,31 @@ check "l2: a marker past LOOP_SPEC_DISPATCH_WAIT_MINS -> BLOCK" 2 "$DISPATCHED" 
 check "l3: the window is the driver's setting" 0 "$DISPATCHED" \
   LOOP_SPEC_PHASE_TIMEOUT_MINS=99999 LOOP_SPEC_DISPATCH_WAIT_MINS=99999
 
+# m: two cycle sessions in one repo. A phase_start stamped with a peer session's id is
+# the peer's to close -> ALLOW; the same id, or no id on either side, is this
+# session's -> BLOCK. The result arbiter for a phase is the feature's own root, so a
+# peer's result in the project root neither quiets nor flags a worktree feature.
+owned() { # owned <project> <slug> <phase> <session> <age seconds>
+  mkdir -p "$1/.loop-spec/features/$2"
+  printf '{"ts":"%s","slug":"%s","event":"phase_start","phase":"%s","data":{},"session":"%s"}\n' \
+    "$(python3 -c 'import sys,time; print(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time()-int(sys.argv[1]))))' "$5")" "$2" "$3" "$4" >> "$1/.loop-spec/features/$2/events.jsonl"
+}
+PEER="$ROOT/peer"; mkdir -p "$PEER/.loop-spec"
+owned "$PEER" peer-slug execute sess-A 100
+PAYLOAD='{"session_id":"sess-B"}' check "m1: open phase owned by a peer session -> ALLOW" 0 "$PEER"
+PAYLOAD='{"session_id":"sess-A"}' check "m2: open phase owned by this session -> BLOCK" 2 "$PEER"
+PAYLOAD='{}' check "m3: payload names no session -> BLOCK (fail safe)" 2 "$PEER"
+NOID="$ROOT/no-id"; mkdir -p "$NOID/.loop-spec"; ledger "$NOID" fix-slug phase_start execute 100
+PAYLOAD='{"session_id":"sess-B"}' check "m4: phase_start with no session field -> BLOCK (fail safe)" 2 "$NOID"
+WT2="$ROOT/wt-result"; mkdir -p "$WT2/.loop-spec"
+git -C "$WT2" init -q -b main && git -C "$WT2" commit -q --allow-empty -m init
+git -C "$WT2" worktree add -q "$WT2/.claude/worktrees/wt-slug" -b feat/wt-slug
+ledger "$WT2/.claude/worktrees/wt-slug" wt-slug phase_start execute 100
+printf '{"schema":1,"status":"paused"}\n' > "$WT2/.loop-spec/last-result.json"
+check "m5: a newer result in the project root does not close a worktree feature's phase -> BLOCK" 2 "$WT2"
+printf '{"schema":1,"status":"paused"}\n' > "$WT2/.claude/worktrees/wt-slug/.loop-spec/last-result.json"
+check "m6: the result in the feature's own root closes it -> ALLOW" 0 "$WT2"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

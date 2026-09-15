@@ -36,6 +36,11 @@ bash "$LIB" emit "$WORK/feat" phase_start --phase execute >/dev/null 2>&1
 last="$(tail -1 "$WORK/feat/events.jsonl")"
 check "C: phase field set" "execute" "$(echo "$last" | jq -r '.phase')"
 
+# Session ownership: phase_start records the harness session id so the Stop guard
+# can tell its own open phase from a peer session's.
+CLAUDE_CODE_SESSION_ID=sess-test bash "$LIB" emit "$WORK/feat" phase_start --phase spec >/dev/null 2>&1
+check "S: phase_start carries the harness session id" "sess-test" "$(tail -n1 "$WORK/feat/events.jsonl" | jq -r '.session')"
+
 # Case D: no --phase → phase is null
 bash "$LIB" emit "$WORK/feat" completed >/dev/null 2>&1
 last="$(tail -1 "$WORK/feat/events.jsonl")"

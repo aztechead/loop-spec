@@ -375,12 +375,15 @@ case "${1:-}" in
     marker=""
     if [[ "$event" == "phase_start" ]]; then
       attempt_id="$(_phase_start_attempt "$feature_dir" "$slug" "$phase_str" "$ts" "$epoch")"
+      # The session that opened the phase, so the Stop guard can tell its own open
+      # phase from a peer session's in the same repo. Empty where the harness stamps
+      # none; the guard then denies as before.
       event_json="$(jq -cn --arg ts "$ts" --arg slug "$slug" --arg event "$event" \
         --argjson has_phase "$has_phase" --arg phase_str "$phase_str" --argjson data "$data_val" \
-        --arg attempt "$attempt_id" '
+        --arg attempt "$attempt_id" --arg session "${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}" '
           {ts:$ts,slug:$slug,event:$event,
            phase:(if $has_phase == 1 then $phase_str else null end),data:$data,
-           attemptId:$attempt,timestamp:$ts}')"
+           attemptId:$attempt,timestamp:$ts,session:$session}')"
       marker="LOOP_SPEC_PHASE_START"
     elif [[ "$event" == "phase_end" ]]; then
       attempt_record="$(_phase_end_attempt "$feature_dir" "$slug" "$phase_str" "$epoch")"
