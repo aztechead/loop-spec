@@ -213,7 +213,7 @@ fi
 feature_dir="${rest% *}"; phase="${rest##* }"
 cat >&2 <<MESSAGE
 DENY: phase ${phase} of the feature in ${feature_dir} is open: its phase_start has no
-phase_end and no newer .loop-spec/last-result.json. Only the driver closes a phase; a
+phase_end and no newer result.json in that directory. Only the driver closes a phase; a
 phase declared complete in prose is a phase the exit gate never saw.
 
 Return the phase to the cycle now, with DRV as skills/cycle/SKILL.md binds it, and act

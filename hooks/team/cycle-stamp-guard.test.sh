@@ -119,7 +119,7 @@ ledger "$OPEN" fix-slug phase_end spec 200
 ledger "$OPEN" fix-slug phase_start oneshot 100
 check "k: phase_start with no phase_end and no newer result -> BLOCK" 2 "$OPEN"
 msg="$(env CLAUDE_PROJECT_DIR="$OPEN" bash "$HOOK" 2>&1 >/dev/null <<<'{}' || true)"
-for needle in 'next --feature-dir "'"$OPEN"'/.loop-spec/features/fix-slug" --returned-from oneshot' 'escalate --feature-dir'; do
+for needle in 'next --feature-dir "'"$OPEN"'/.loop-spec/features/fix-slug" --returned-from oneshot' 'escalate --feature-dir' 'no newer result.json'; do
   if grep -qF -- "$needle" <<<"$msg"; then echo "PASS: k2: denial carries: $needle"; PASS=$((PASS+1)); else echo "FAIL: k2: denial carries: $needle"; FAIL=$((FAIL+1)); echo "$msg"; fi
 done
 printf '{"schema":1,"status":"paused","reason":"phase-handoff"}\n' > "$OPEN/.loop-spec/features/fix-slug/result.json"
@@ -183,12 +183,12 @@ ledger "$WT2/.claude/worktrees/wt-slug" wt-slug phase_start execute 100
 OTHER_FEAT="$WT2/.loop-spec/features/other-slug"; mkdir -p "$OTHER_FEAT"
 jq -n '{schemaVersion:7,slug:"other-slug",feature_title:"other",currentPhase:"execute",branch:"feat/other",baseBranch:"main",autonomous:false,createdAt:"2026-01-01T00:00:00Z",updatedAt:"2026-01-01T00:00:00Z",warnings:[]}' > "$OTHER_FEAT/feature.json"
 bash "$HERE/../../lib/cycle-result.sh" write "$OTHER_FEAT" --status paused --reason phase-handoff --summary "peer paused" >/dev/null 2>&1
-[[ -f "$WT2/.loop-spec/last-result.json" ]] || echo "FAIL: m5 fixture: the writer left no control pointer"
+if [[ -f "$WT2/.loop-spec/last-result.json" ]]; then echo "PASS: m5 fixture: the writer left the control pointer"; PASS=$((PASS+1)); else echo "FAIL: m5 fixture: the writer left no control pointer"; FAIL=$((FAIL+1)); fi
 check "m5: a peer feature's newer pointer in the control checkout does not close a worktree feature's phase -> BLOCK" 2 "$WT2"
 # This feature's own close, through the same writer.
 jq -n '{schemaVersion:7,slug:"wt-slug",feature_title:"wt",currentPhase:"execute",branch:"feat/wt-slug",baseBranch:"main",autonomous:false,createdAt:"2026-01-01T00:00:00Z",updatedAt:"2026-01-01T00:00:00Z",warnings:[]}' > "$WT2_FEAT/feature.json"
 bash "$HERE/../../lib/cycle-result.sh" write "$WT2_FEAT" --status paused --reason phase-handoff --summary "handed off" >/dev/null 2>&1
-[[ -f "$WT2_FEAT/result.json" ]] || echo "FAIL: m6 fixture: the writer left no result.json"
+if [[ -f "$WT2_FEAT/result.json" ]]; then echo "PASS: m6 fixture: the writer left result.json"; PASS=$((PASS+1)); else echo "FAIL: m6 fixture: the writer left no result.json"; FAIL=$((FAIL+1)); fi
 check "m6: the feature's own result.json from the writer closes it -> ALLOW" 0 "$WT2"
 # Round trip through the real emitter: the id the guard compares is the one the
 # emitter stamped, so this session's own phase is never mistaken for a peer's.
