@@ -14,6 +14,9 @@ trap 'rm -rf "$ROOT"' EXIT
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 export LOOP_SPEC_HARNESS=codex LOOP_SPEC_TEAMS_MODE=none LOOP_SPEC_WORKFLOWS_AVAILABLE=0
 unset LOOP_SPEC_STAMP_MAX_AGE_MIN
+# The guard reads this session's id from the shell; the harness that runs this suite
+# must not leak its own into the fixtures.
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
 
 PASS=0
 FAIL=0
@@ -119,9 +122,9 @@ msg="$(env CLAUDE_PROJECT_DIR="$OPEN" bash "$HOOK" 2>&1 >/dev/null <<<'{}' || tr
 for needle in 'next --feature-dir "'"$OPEN"'/.loop-spec/features/fix-slug" --returned-from oneshot' 'escalate --feature-dir'; do
   if grep -qF -- "$needle" <<<"$msg"; then echo "PASS: k2: denial carries: $needle"; PASS=$((PASS+1)); else echo "FAIL: k2: denial carries: $needle"; FAIL=$((FAIL+1)); echo "$msg"; fi
 done
-printf '{"schema":1,"status":"paused","reason":"phase-handoff"}\n' > "$OPEN/.loop-spec/last-result.json"
+printf '{"schema":1,"status":"paused","reason":"phase-handoff"}\n' > "$OPEN/.loop-spec/features/fix-slug/result.json"
 check "k3: a result newer than the open phase_start (the driver ended the session) -> ALLOW" 0 "$OPEN"
-rm -f "$OPEN/.loop-spec/last-result.json"
+rm -f "$OPEN/.loop-spec/features/fix-slug/result.json"
 ledger "$OPEN" fix-slug phase_end oneshot 50
 check "k4: phase_end after the phase_start -> ALLOW" 0 "$OPEN"
 STALEPHASE="$ROOT/stale-phase"; mkdir -p "$STALEPHASE/.loop-spec"
@@ -156,8 +159,9 @@ check "l3: the window is the driver's setting" 0 "$DISPATCHED" \
 
 # m: two cycle sessions in one repo. A phase_start stamped with a peer session's id is
 # the peer's to close -> ALLOW; the same id, or no id on either side, is this
-# session's -> BLOCK. The result arbiter for a phase is the feature's own root, so a
-# peer's result in the project root neither quiets nor flags a worktree feature.
+# session's -> BLOCK. The result arbiter for a phase is <feature_dir>/result.json, the
+# file cycle-result.sh write always leaves, so the shared pointer it copies to the
+# control checkout neither quiets nor flags a worktree feature.
 owned() { # owned <project> <slug> <phase> <session> <age seconds>
   mkdir -p "$1/.loop-spec/features/$2"
   printf '{"ts":"%s","slug":"%s","event":"phase_start","phase":"%s","data":{},"session":"%s"}\n' \
@@ -173,11 +177,26 @@ PAYLOAD='{"session_id":"sess-B"}' check "m4: phase_start with no session field -
 WT2="$ROOT/wt-result"; mkdir -p "$WT2/.loop-spec"
 git -C "$WT2" init -q -b main && git -C "$WT2" commit -q --allow-empty -m init
 git -C "$WT2" worktree add -q "$WT2/.claude/worktrees/wt-slug" -b feat/wt-slug
+WT2_FEAT="$WT2/.claude/worktrees/wt-slug/.loop-spec/features/wt-slug"
 ledger "$WT2/.claude/worktrees/wt-slug" wt-slug phase_start execute 100
-printf '{"schema":1,"status":"paused"}\n' > "$WT2/.loop-spec/last-result.json"
-check "m5: a newer result in the project root does not close a worktree feature's phase -> BLOCK" 2 "$WT2"
-printf '{"schema":1,"status":"paused"}\n' > "$WT2/.claude/worktrees/wt-slug/.loop-spec/last-result.json"
-check "m6: the result in the feature's own root closes it -> ALLOW" 0 "$WT2"
+# A peer feature's honest close: the writer's pointer lands in the control checkout.
+OTHER_FEAT="$WT2/.loop-spec/features/other-slug"; mkdir -p "$OTHER_FEAT"
+jq -n '{schemaVersion:7,slug:"other-slug",feature_title:"other",currentPhase:"execute",branch:"feat/other",baseBranch:"main",autonomous:false,createdAt:"2026-01-01T00:00:00Z",updatedAt:"2026-01-01T00:00:00Z",warnings:[]}' > "$OTHER_FEAT/feature.json"
+bash "$HERE/../../lib/cycle-result.sh" write "$OTHER_FEAT" --status paused --reason phase-handoff --summary "peer paused" >/dev/null 2>&1
+[[ -f "$WT2/.loop-spec/last-result.json" ]] || echo "FAIL: m5 fixture: the writer left no control pointer"
+check "m5: a peer feature's newer pointer in the control checkout does not close a worktree feature's phase -> BLOCK" 2 "$WT2"
+# This feature's own close, through the same writer.
+jq -n '{schemaVersion:7,slug:"wt-slug",feature_title:"wt",currentPhase:"execute",branch:"feat/wt-slug",baseBranch:"main",autonomous:false,createdAt:"2026-01-01T00:00:00Z",updatedAt:"2026-01-01T00:00:00Z",warnings:[]}' > "$WT2_FEAT/feature.json"
+bash "$HERE/../../lib/cycle-result.sh" write "$WT2_FEAT" --status paused --reason phase-handoff --summary "handed off" >/dev/null 2>&1
+[[ -f "$WT2_FEAT/result.json" ]] || echo "FAIL: m6 fixture: the writer left no result.json"
+check "m6: the feature's own result.json from the writer closes it -> ALLOW" 0 "$WT2"
+# Round trip through the real emitter: the id the guard compares is the one the
+# emitter stamped, so this session's own phase is never mistaken for a peer's.
+RT="$ROOT/round-trip"; mkdir -p "$RT/.loop-spec/features/rt-slug"
+CLAUDE_CODE_SESSION_ID=sess-A bash "$HERE/../../lib/events.sh" emit "$RT/.loop-spec/features/rt-slug" phase_start --phase execute >/dev/null 2>&1
+PAYLOAD='{"session_id":"sess-A"}' check "m7: emitted under sess-A, Stop payload sess-A -> BLOCK" 2 "$RT"
+PAYLOAD='{"session_id":"sess-B"}' check "m8: the env var the emitter read outranks the payload -> BLOCK" 2 "$RT" CLAUDE_CODE_SESSION_ID=sess-A
+PAYLOAD='{"session_id":"sess-B"}' check "m9: no env var, payload names a peer -> ALLOW" 0 "$RT"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

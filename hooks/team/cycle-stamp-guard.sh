@@ -31,16 +31,20 @@
 #   - no stamp, or the stamp names another skill (auto arms a run that
 #     route-terminal-guard.sh holds accountable; micro, debug, and intake consume
 #     nothing and are not the cycle), and no feature has an open phase
-#   - .loop-spec/last-result.json is newer than the stamp (the project's copy) or the
-#     open phase_start (the copy in the feature's own root, which is where the driver
-#     publishes it; a worktree feature's result never lands in the project's copy): a
-#     route exit was published (write-terminal for a request that is not repository
-#     work), or the driver ended the session, which are the honest ways past it
+#   - .loop-spec/last-result.json is newer than the stamp: a route exit was published
+#     (write-terminal for a request that is not repository work), the honest way past it
+#   - <feature_dir>/result.json is newer than the open phase_start: the driver ended
+#     the session (cycle-result.sh write always writes it there, then copies the pointer
+#     to the control checkout, which every feature in the repo shares; the pointer
+#     therefore cannot say which feature it closed)
 #   - the open phase_start carries a `session` (lib/events.sh stamps the harness
-#     session id) that differs from the payload's session_id: a peer session in the
-#     same repo owns that phase. Two cycle sessions in one checkout denied each other
-#     before this, because the ledger named no owner and the result file was shared.
-#     Either id missing -> the phase is treated as this session's (fail safe)
+#     session id) that differs from this session's id: a peer session in the same repo
+#     owns that phase. Two cycle sessions in one checkout denied each other before
+#     this, because the ledger named no owner and the pointer was shared. This
+#     session's id is the same env var the emitter read, with the Stop payload's
+#     session_id as the fallback; either id missing -> the phase is treated as this
+#     session's (fail safe). Only Claude Code exports the id to the shell, so on the
+#     other harnesses the owner is empty and the guard denies as it did before
 #   - the stamp is older than LOOP_SPEC_STAMP_MAX_AGE_MIN (default 30), or the open
 #     phase_start is older than LOOP_SPEC_PHASE_TIMEOUT_MINS (default 60): the driver
 #     ignores such a stamp too, and a phase past its own watchdog ceiling was left by
@@ -85,7 +89,8 @@ command -v python3 >/dev/null 2>&1 || exit 0
 
 STAMP="$PROJECT_DIR/.loop-spec/invocation-stamp.json"
 RESULT="$PROJECT_DIR/.loop-spec/last-result.json"
-SESSION="$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("session_id") or "")' 2>/dev/null || true)"
+SESSION="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
+[[ -n "$SESSION" ]] || SESSION="$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("session_id") or "")' 2>/dev/null || true)"
 
 if printf '%s' "$INPUT" | python3 -c \
   "import json,sys; sys.exit(0 if json.load(sys.stdin).get('stop_hook_active') else 1)" 2>/dev/null; then
@@ -173,10 +178,9 @@ for ledger in sorted(ledgers):
         continue
     if time.time() - at > phase_age * 60:
         continue
-    # The driver publishes the result into the feature's own root (cycle-result.sh
-    # copies it to <feature_dir>/../../last-result.json); the project's copy is the
-    # stamp's arbiter, not this phase's.
-    own_result = os.path.join(os.path.dirname(ledger), "..", "..", "last-result.json")
+    # cycle-result.sh write always leaves <feature_dir>/result.json; the shared pointer
+    # in the control checkout is the stamp's arbiter, not this phase's.
+    own_result = os.path.join(os.path.dirname(ledger), "result.json")
     own_result_at = os.path.getmtime(own_result) if os.path.isfile(own_result) else None
     if own_result_at is not None and own_result_at >= at:
         continue
