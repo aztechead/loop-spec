@@ -4,6 +4,21 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.6.6] - 2026-09-15
+
+### Fixed
+
+- `hooks/team/cycle-stamp-guard.sh` no longer denies a Stop for a phase another
+  session opened. Two `/loop-spec:cycle` sessions in one repo, each on its own feature,
+  denied each other: the guard sweeps every linked worktree for an open `phase_start`,
+  the ledger named no owner, and the result it checked was the one `last-result.json`
+  pointer every feature in the repo shares. `lib/events.sh` now stamps the harness
+  session id on `phase_start`, the guard skips a phase whose session differs from its
+  own (either id missing still denies), and the phase's result arbiter is
+  `<feature_dir>/result.json`, which the writer always leaves. Claude Code is the only
+  harness that exports the session id to the shell; on the others the owner stays
+  empty and the guard denies as before.
+
 ## [6.6.5] - 2026-09-14
 
 ### Added (cost pass)

@@ -161,7 +161,7 @@ can skip — so a run that `--step`s the graph and then works inline still surfa
 micro and debug still emit from their skills.
 
 ```text
-LOOP_SPEC_PHASE_START {"event":"phase_start","attemptId":"...","timestamp":"...",...}
+LOOP_SPEC_PHASE_START {"event":"phase_start","attemptId":"...","timestamp":"...","session":"...",...}
 LOOP_SPEC_PHASE_END {"event":"phase_end","attemptId":"...","timestamp":"...","elapsedSeconds":4,"verdict":"advanced","next":"verify",...}
 ```
 

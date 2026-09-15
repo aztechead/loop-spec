@@ -36,8 +36,9 @@
 #     (DELIVER's own word); it is not a write-terminal success record.
 #
 # Reads <feature_dir>/feature.json and writes <feature_dir>/result.json, then
-# copies it to <feature_dir>/../../last-result.json (i.e., .loop-spec/last-result.json,
-# since feature dirs live at .loop-spec/features/<slug>).
+# copies it to .loop-spec/last-result.json in the control checkout (LOOP_SPEC_RESULT_ROOT,
+# else the first line of `git worktree list`, else <feature_dir>/../..), the one
+# pointer every feature in the repo shares.
 #
 # Also emits a matching event via lib/events.sh (event = the status value) so
 # events.jsonl and result.json can't disagree.
