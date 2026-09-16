@@ -96,7 +96,10 @@ wait_for_slot() {
   local running
   while :; do
     report_finished_suites
-    running="$(jobs -pr | wc -l | tr -d ' ')"
+    running=0
+    while IFS= read -r _job; do
+      running=$((running + 1))
+    done < <(jobs -pr)
     (( running < RUN_ALL_JOBS )) && return
     sleep 0.05
   done
@@ -200,6 +203,27 @@ flush_suites() {
 
 echo "run-all: profile=$RUN_ALL_PROFILE jobs=$RUN_ALL_JOBS"
 
+# Start measured long suites first so eight worker slots stay full and the short
+# registry tail does not wait behind a late integration suite.
+run_suite "lib/graph-run"             "bash tests/lib/graph-run.test.sh" integration
+run_suite "lib/cycle-driver-redo"     "bash tests/lib/cycle-driver-redo.test.sh" integration
+run_suite "lib/deliver"               "bash tests/lib/deliver.test.sh" integration
+run_suite "lib/pr-delivery"           "bash tests/lib/pr-delivery.test.sh" integration
+run_suite "lib/cycle-driver-phases"   "bash tests/lib/cycle-driver-phases.test.sh" integration
+run_suite "lib/cycle-driver-short-route" "bash tests/lib/cycle-driver-short-route.test.sh" integration
+run_suite "lib/phase-exit"            "bash tests/lib/phase-exit.test.sh" integration
+run_suite "lib/cycle-result"          "bash tests/lib/cycle-result.test.sh"
+run_suite "lib/execute-step"          "bash tests/lib/execute-step.test.sh"
+run_suite "lib/codex-install"         "bash tests/lib/codex-install.test.sh" integration
+run_suite "lib/opencode-install"      "bash tests/lib/opencode-install.test.sh" integration
+run_suite "lib/execute-prepare"       "bash tests/lib/execute-prepare.test.sh"
+run_suite "skills/loop-runner"        "bash skills/loop-runner/tests/run_tests.sh" integration
+run_suite "lib/graph-validate"        "bash tests/lib/graph-validate.test.sh"
+run_suite "lib/oneshot-exit-gate"     "bash tests/lib/oneshot-exit-gate.test.sh"
+run_suite "lib/phase-bundles"         "bash tests/lib/phase-bundles.test.sh"
+run_suite "lib/task-route"            "bash tests/lib/task-route.test.sh"
+run_suite "lib/state-ref"             "bash tests/lib/state-ref.test.sh"
+
 run_suite "validate-agents"           "bash tests/validate-agents.sh"
 run_suite "validate-manifest"         "bash tests/validate-manifest.test.sh"
 # simplicity: this explicit registry preserves a stable, inspectable suite order.
@@ -216,12 +240,10 @@ run_suite "graph-conformance"         "bash tests/graph-conformance.test.sh"
 run_suite "graph-docs-coverage"       "bash tests/graph-docs-coverage.test.sh"
 run_suite "lib/driver-warnings"       "bash tests/lib/driver-warnings.test.sh"
 run_suite "lib/graph-schema"          "bash tests/lib/graph-schema.test.sh"
-run_suite "lib/graph-validate"        "bash tests/lib/graph-validate.test.sh"
 run_suite "lib/graph-probes"      "bash tests/lib/graph-probes.test.sh"
 run_suite "lib/graph-phases"      "bash tests/lib/graph-phases.test.sh"
 run_suite "lib/design-budget"     "bash tests/lib/design-budget.test.sh"
 run_suite "graph-phase-subsets"   "bash tests/graph-phase-subsets.test.sh"
-run_suite "lib/oneshot-exit-gate" "bash tests/lib/oneshot-exit-gate.test.sh"
 run_suite "lib/context-load"      "bash tests/lib/context-load.test.sh"
 run_suite "lib/footprint"         "bash tests/lib/footprint.test.sh"
 run_suite "lib/feature-read"      "bash tests/lib/feature-read.test.sh"
@@ -231,7 +253,6 @@ run_suite "lib/output-digest"         "bash tests/lib/output-digest.test.sh"
 run_suite "lib/graph-checkpoint"      "bash tests/lib/graph-checkpoint.test.sh"
 run_suite "lib/graph-recovery"        "bash tests/lib/graph-recovery.test.sh"
 run_suite "lib/graph-trace"           "bash tests/lib/graph-trace.test.sh"
-run_suite "lib/graph-run"             "bash tests/lib/graph-run.test.sh" integration
 run_suite "lib/graph-gate-dispatch"    "bash tests/lib/graph-gate-dispatch.test.sh"
 run_suite "lib/effort-probe"          "bash tests/lib/effort-probe.test.sh"
 run_suite "lib/conflict-monitor"      "bash tests/lib/conflict-monitor.test.sh"
@@ -243,8 +264,6 @@ run_suite "lib/supervisor-store-contract/local"  "bash tests/lib/supervisor-stor
 run_suite "lib/supervisor-store-contract/mirror" "bash tests/lib/supervisor-store-contract.test.sh lib/supervisor/store-mirror.sh"
 run_suite "opencode-plugin"           "bash tests/opencode-plugin.test.sh"
 run_suite "opencode-harness-coverage" "bash tests/opencode-harness-coverage.test.sh"
-run_suite "lib/opencode-install"      "bash tests/lib/opencode-install.test.sh" integration
-run_suite "lib/codex-install"         "bash tests/lib/codex-install.test.sh" integration
 run_suite "lib/codex-shell-env"       "bash tests/lib/codex-shell-env.test.sh"
 run_suite "lib/skill-paths"           "bash tests/lib/skill-paths.test.sh"
 run_suite "validate-agents-frontmatter" "bash tests/validate-agents.test.sh"
@@ -310,7 +329,6 @@ run_suite "lib/harness-call-shapes"   "bash tests/lib/harness-call-shapes.test.s
 run_suite "lib/test-tamper-scan"      "bash tests/lib/test-tamper-scan.test.sh"
 run_suite "lib/placeholder-scan"      "bash tests/lib/placeholder-scan.test.sh"
 run_suite "lib/feature-scan-each"     "bash tests/lib/feature-scan-each.test.sh"
-run_suite "lib/state-ref"              "bash tests/lib/state-ref.test.sh"
 run_suite "lib/converged-floor"       "bash tests/lib/converged-floor.test.sh"
 run_suite "lib/backlog"               "bash tests/lib/backlog.test.sh"
 run_suite "lib/autonomous-chain"      "bash tests/lib/autonomous-chain.test.sh"
@@ -320,12 +338,8 @@ run_suite "lib/debug-init"            "bash tests/lib/debug-init.test.sh"
 run_suite "lib/greenfield-bootstrap"  "bash tests/lib/greenfield-bootstrap.test.sh"
 run_suite "lib/cycle-preflight"       "bash tests/lib/cycle-preflight.test.sh" integration
 run_suite "lib/cycle-driver-core"        "bash tests/lib/cycle-driver-core.test.sh" integration
-run_suite "lib/cycle-driver-redo"        "bash tests/lib/cycle-driver-redo.test.sh" integration
-run_suite "lib/cycle-driver-short-route" "bash tests/lib/cycle-driver-short-route.test.sh" integration
-run_suite "lib/cycle-driver-phases"      "bash tests/lib/cycle-driver-phases.test.sh" integration
 run_suite "lib/cycle-driver-guard"       "bash tests/lib/cycle-driver-guard.test.sh" integration
 run_suite "lib/cycle-start-resume"    "bash tests/lib/cycle-start-resume.test.sh" integration
-run_suite "lib/phase-exit"            "bash tests/lib/phase-exit.test.sh" integration
 run_suite "lib/phase-entry"           "bash tests/lib/phase-entry.test.sh" integration
 run_suite "lib/plan-adherence"        "bash tests/lib/plan-adherence.test.sh"
 run_suite "lib/detect-test-cmd"       "bash tests/lib/detect-test-cmd.test.sh"
@@ -349,10 +363,6 @@ run_suite "lib/prejudge-lint"         "bash tests/lib/prejudge-lint.test.sh"
 run_suite "lib/task-batch"            "bash tests/lib/task-batch.test.sh"
 run_suite "lib/plan-conflicts"        "bash tests/lib/plan-conflicts.test.sh"
 run_suite "lib/execute-stop"          "bash tests/lib/execute-stop.test.sh"
-run_suite "lib/task-route"            "bash tests/lib/task-route.test.sh"
-run_suite "lib/execute-prepare"  "bash tests/lib/execute-prepare.test.sh"
-run_suite "lib/execute-step"  "bash tests/lib/execute-step.test.sh"
-run_suite "lib/phase-bundles"  "bash tests/lib/phase-bundles.test.sh"
 run_suite "lib/verify-prepare"  "bash tests/lib/verify-prepare.test.sh"
 run_suite "hooks/team/done-criteria"  "bash hooks/team/done-criteria.test.sh"
 run_suite "hooks/team/invocation-stamp"  "bash hooks/team/invocation-stamp.test.sh"
@@ -383,12 +393,9 @@ run_suite "lib/doc-deps"              "bash tests/lib/doc-deps.test.sh"
 run_suite "lib/verification-grounding-lint" "bash tests/lib/verification-grounding-lint.test.sh"
 run_suite "lib/review-triage-lint"    "bash tests/lib/review-triage-lint.test.sh"
 run_suite "lib/events"                "bash tests/lib/events.test.sh"
-run_suite "lib/cycle-result"          "bash tests/lib/cycle-result.test.sh"
 run_suite "lib/checkpoint-pr"         "bash tests/lib/checkpoint-pr.test.sh"
-run_suite "lib/pr-delivery"           "bash tests/lib/pr-delivery.test.sh" integration
 run_suite "lib/delivery-reconcile"    "bash tests/lib/delivery-reconcile.test.sh"
 run_suite "lib/bash-helper-scope"     "bash tests/lib/bash-helper-scope.test.sh"
-run_suite "lib/deliver"               "bash tests/lib/deliver.test.sh" integration
 run_suite "lib/status"                "bash tests/lib/status.test.sh"
 run_suite "lib/pr-comments"           "bash tests/lib/pr-comments.test.sh"
 run_suite "lib/pr-feedback"           "bash tests/lib/pr-feedback.test.sh"
@@ -450,8 +457,6 @@ run_suite "lib/workflow-availability" "bash tests/lib/workflow-availability.test
 run_suite "lib/dag-width"             "bash tests/lib/dag-width.test.sh"
 run_suite "lib/task-progress"         "bash tests/lib/task-progress.test.sh"
 run_suite "lib/plan-to-loop"          "bash tests/lib/plan-to-loop.test.sh"
-run_suite "skills/loop-runner"        "bash skills/loop-runner/tests/run_tests.sh" integration
-
 # Workflow scripts need a node runtime to syntax-check. Run the workflows smoke
 # only when node is resolvable; otherwise skip (do not fail the suite) since the
 # rest of run-all is pure bash and must stay runnable on node-less environments.

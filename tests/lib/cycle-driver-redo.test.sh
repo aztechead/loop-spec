@@ -295,9 +295,11 @@ check "budget exhaustion does not block a passing gate" "0" "$ec"
 check "budget exhaustion allows a passing gate to advance" "1" "$(jq -r '.currentPhase' "$FD_BUDGET_PASS/feature.json" | grep -Ec '^(discuss|plan|execute|verify|iterate|deliver)$')"
 check "budget exhaustion pass does not publish escalation" "0" "$(grep -c '^DONE status=escalated' <<<"$out")"
 export LOOP_SPEC_DESIGN_BUDGET_MINS=bogus
-ec=0; (cd "$REPO_BUDGET_PASS" && drv next --feature-dir "$FD_BUDGET_PASS" --returned-from spec >/dev/null 2>&1) || ec=$?
+budget_err="$WORK/budget-error"
+ec=0; (cd "$REPO_BUDGET_PASS" && drv next --feature-dir "$FD_BUDGET_PASS" --returned-from spec >/dev/null 2>"$budget_err") || ec=$?
 unset LOOP_SPEC_DESIGN_BUDGET_MINS
 check "invalid design budget override is rejected" "2" "$ec"
+check "invalid design budget override preserves diagnostic" "1" "$(grep -F -c 'design-budget: LOOP_SPEC_DESIGN_BUDGET_MINS must be an integer from 1 to 3600' "$budget_err")"
 
 echo
 echo "cycle-driver-redo: $PASS passed, $FAIL failed"

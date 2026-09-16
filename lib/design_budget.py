@@ -44,6 +44,7 @@ def main(feature_dir, phase):
         budget, reason = min(60, 10 + files * 2 + criteria), "route-size-estimate:%d-files-%d-criteria" % (files, criteria)
     elapsed = 0
     seen = set()
+    latest_boundary = None
     closed_at = {}
     try:
         with open(feature_dir + "/events.jsonl", encoding="utf-8") as fh:
@@ -52,7 +53,21 @@ def main(feature_dir, phase):
                     event = json.loads(line)
                 except ValueError:
                     continue
-                if not isinstance(event, dict) or event.get("event") != "phase_end" or event.get("phase") not in ("spec", "discuss", "plan"):
+                if not isinstance(event, dict):
+                    continue
+                event_phase = event.get("phase")
+                event_name = event.get("event")
+                # An execution boundary starts a fresh design allowance.
+                # Keep this based on the canonical top-level event fields: data is
+                # payload, while phase/event are the ledger schema.
+                if event_name in ("phase_start", "phase_end") and event_phase in (
+                        "execute", "oneshot", "verify", "iterate"):
+                    latest_boundary = event.get("ts") or event.get("timestamp") or latest_boundary
+                    elapsed = 0
+                    seen.clear()
+                    closed_at.clear()
+                    continue
+                if event_name != "phase_end" or event_phase not in ("spec", "discuss", "plan"):
                     continue
                 data = event.get("data") or {}
                 if not isinstance(data, dict):
@@ -71,13 +86,17 @@ def main(feature_dir, phase):
                     seen.add(attempt_key)
                     ended = epoch(event.get("ts"))
                     if ended is not None:
-                        closed_at[event.get("phase")] = max(closed_at.get(event.get("phase"), 0), ended)
+                        closed_at[event_phase] = max(closed_at.get(event_phase, 0), ended)
     except OSError:
         # Telemetry is optional; an unreadable ledger must retain the safe size budget.
         pass
     started = epoch(feature.get("currentPhaseStartedAt"))
+    boundary_epoch = epoch(latest_boundary)
     if (started is not None and feature.get("currentPhase") == phase
-            and closed_at.get(phase, 0) <= started):
+            and closed_at.get(phase, 0) <= started
+            # Ledger timestamps have one-second precision; equality means this is
+            # the new segment opened at the boundary and must remain chargeable.
+            and (boundary_epoch is None or started >= boundary_epoch)):
         elapsed += max(0, int(time.time() - started))
     elapsed_minutes = elapsed // 60
     print("budget=%d elapsed=%d remaining=%d exhausted=%s budgetReason=%s" %

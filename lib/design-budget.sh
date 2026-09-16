@@ -10,7 +10,7 @@
 # after-return boundary. It never skips a gate or claims that a phase was preempted.
 #
 # Usage: design-budget.sh --feature-dir DIR --phase PHASE
-# Output: budget=<minutes> budgetReason=<text>
+# Output: budget=<minutes> elapsed=<minutes> remaining=<minutes> exhausted=<bool> budgetReason=<text>
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

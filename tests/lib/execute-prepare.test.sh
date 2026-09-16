@@ -65,7 +65,7 @@ check "run: quoted pattern fragments are not probed as programs" "0" "$(grep -c 
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" verificationBaselineOptIn true >/dev/null
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" verificationBaselineAttempted false >/dev/null
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" greenfield false >/dev/null
-out="$(LOOP_SPEC_STARTUP_BASELINE=1 bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
+out="$(LOOP_SPEC_STARTUP_BASELINE=1 LOOP_SPEC_WORKTREES=1 bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
 check "baseline: capture begins at EXECUTE" "object" "$(jq -r '.verificationBaseline | type' "$FD/feature.json")"
 check "baseline: capture records one attempt" "true" "$(jq -r '.verificationBaselineAttempted' "$FD/feature.json")"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands.test '"false"' >/dev/null

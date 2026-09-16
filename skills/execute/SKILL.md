@@ -31,10 +31,14 @@ Never overwrite `baseSha` or `baseBranch`. Fast-forward merges always target `fe
 ## 2. Task set
 
 Use `.execute.tasks[]` as the dispatch list. The preparation call already performs these steps.
-When `LOOP_SPEC_STARTUP_BASELINE=1`, it also captures the exact-base repository baseline
-before reading or dispatching any implementation task. The capture is attempted once;
-`verificationBaselineAttempted` prevents re-entry from recapturing against modified code,
-and a failed capture remains a reported null baseline.
+When `LOOP_SPEC_STARTUP_BASELINE=1` (or the durable
+`verificationBaselineOptIn` state field is true), it also captures the exact-base
+repository baseline before reading or dispatching any implementation task. A completed
+capture or handled capture failure sets `verificationBaselineAttempted`; an interrupted
+capture leaves it false so re-entry can retry against the same exact base. Workspace
+repositories are persisted incrementally as each capture completes. With
+`LOOP_SPEC_WORKTREES=0`, baseline capture is skipped with a notice because exact-base
+capture requires a temporary worktree.
 
 The preparation call performs these task steps:
 

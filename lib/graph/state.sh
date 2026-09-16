@@ -70,37 +70,8 @@ case "$cmd" in
     # and leaves the top-level keys null by design (feature-state-schema.md).
     # A flat feat[key] is None check treats that as a missing read, so the
     # shipped execute node (reads: [..., "branch"]) always failed the gate.
-    unsatisfied="$(python3 - "$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" --all --drop-strays)" "$reads" <<'PY'
-import json, sys
-
-# The only keys the schema relocates. Every other key stays top-level in both
-# modes, so a null one is a missing read here exactly as it is in single mode.
-RELOCATED = ("branch", "baseSha", "baseBranch")
-
-feat = json.loads(sys.argv[1])
-reads = json.loads(sys.argv[2])
-ws = feat.get("workspace")
-repos = ws.get("repos") if isinstance(ws, dict) else None
-if not isinstance(repos, list):
-    repos = None
-
-def repo_has(repo, key):
-    if not isinstance(repo, dict):
-        return False
-    val = repo.get(key)
-    return isinstance(val, str) and val.strip() != ""
-
-def satisfied(key):
-    if key in feat and feat[key] is not None:
-        return True
-    if repos is None or key not in RELOCATED:
-        return False
-    # An empty repos[] is a workspace with no authoritative identity at all.
-    return len(repos) > 0 and all(repo_has(r, key) for r in repos)
-
-print("\n".join(key for key in reads if not satisfied(key)))
-PY
-)"
+    unsatisfied="$(python3 "$SCRIPT_DIR/state_reads.py" \
+      "$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" --all --drop-strays)" "$reads")"
     if [[ -n "$unsatisfied" ]]; then
       echo "state.sh: unsatisfied reads for node $node_id:" >&2
       printf '%s\n' "$unsatisfied" >&2

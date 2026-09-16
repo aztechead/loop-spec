@@ -1402,7 +1402,7 @@ def cmd_next(argv):
                 budget_exhausted = False
                 if returned in ("spec", "discuss", "plan"):
                     budget_probe = lib_run("design-budget", "--feature-dir", feature_dir,
-                                           "--phase", returned, quiet=True)
+                                           "--phase", returned)
                     if budget_probe.returncode != 0:
                         raise Die("design budget probe failed: %s" %
                                   (budget_probe.stderr or "configuration error").strip(), 2)
@@ -1861,7 +1861,7 @@ def returned_checks(feature_dir, phase):
         mins = (int(time.time()) - iso_epoch(started)) // 60
         if phase in ("spec", "discuss", "plan"):
             budget_line = lib_run("design-budget", "--feature-dir", feature_dir,
-                                  "--phase", phase, quiet=True)
+                                  "--phase", phase)
             if budget_line.returncode != 0:
                 raise Die("design budget probe failed: %s" % (budget_line.stderr or "configuration error").strip(), 2)
             budget_match = re.search(r"(?:^|\s)budget=([1-9][0-9]*)", budget_line.stdout or "")

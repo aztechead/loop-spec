@@ -103,7 +103,11 @@
       "writes": [
         "artifacts",
         "currentPhase",
-        "warnings"
+        "warnings",
+        "workspace",
+        "verificationBaseline",
+        "verificationBaselineAttempted",
+        "verificationBaselineOptIn"
       ],
       "effort": "system2",
       "body": "skills/oneshot/SKILL.md",
@@ -145,7 +149,11 @@
         ],
         "writes": [
           "artifacts.spec",
-          "artifacts.verification"
+          "artifacts.verification",
+          "workspace",
+          "verificationBaseline",
+          "verificationBaselineAttempted",
+          "verificationBaselineOptIn"
         ],
         "artifactsIfPresent": {
           "verification": "{docs}/VERIFICATION.md"

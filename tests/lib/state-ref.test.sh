@@ -12,6 +12,7 @@ check() {
 }
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/state-ref-test.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
+mkdir -p "$WORK/bin"
 REPO="$WORK/repo"; mkdir -p "$REPO"
 git -C "$REPO" init -q -b main
 git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
@@ -34,17 +35,66 @@ printf '{"slug":"demo","currentPhase":"plan"}\n' > "$FD/feature.json"
 mkdir -p "$FD/instruction-snapshots/attempt/skills" "$FD/review-attempts/1"
 printf 'captured instructions\n' > "$FD/instruction-snapshots/attempt/skills/SKILL.md"
 printf 'review evidence\n' > "$FD/review-attempts/1/VERIFICATION.md"
+git -C "$REPO" config filter.upper.clean 'tr a-z A-Z'
+printf '*.md filter=upper text eol=crlf\n' > "$REPO/.git/info/attributes"
+weird=$'line\nname.md'
+printf 'line\nname\n' > "$FD/instruction-snapshots/$weird"
+printf 'executable\n' > "$FD/review-attempts/1/tool.sh"
+chmod +x "$FD/review-attempts/1/tool.sh"
+ln -s tool.sh "$FD/review-attempts/1/link.sh"
+printf 'indexed-original\n' > "$REPO/sentinel.txt"
+git -C "$REPO" add sentinel.txt
+printf 'working-copy-change\n' > "$REPO/sentinel.txt"
+REAL_GIT="$(command -v git)"
+printf '0\n' > "$WORK/hash-count"
+cat > "$WORK/bin/git" <<EOF
+#!/usr/bin/env bash
+for arg in "\$@"; do
+  if [[ "\$arg" == hash-object ]]; then n=\$(cat "$WORK/hash-count"); printf '%s\n' \$((n + 1)) > "$WORK/hash-count"; break; fi
+done
+if [[ -f "$WORK/fail-batch" && "\$*" == *"hash-object -w"* && \$# -gt 6 ]]; then exit 1; fi
+exec "$REAL_GIT" "\$@"
+EOF
+chmod +x "$WORK/bin/git"
+PATH="$WORK/bin:$PATH"; export PATH
 sha2="$(bash "$LIB" commit "$FD" "state @ plan")"
+check "commit: fast path hashes in one call" "2" "$(cat "$WORK/hash-count")"
+stored="$(git -C "$REPO" cat-file blob "$sha2:instruction-snapshots/line
+name.md")"
+check "commit: clean attributes affect stored blob" "LINE
+NAME" "$stored"
+check "commit: staged index blob is untouched" "indexed-original" "$(git -C "$REPO" show :sentinel.txt)"
+check "commit: unstaged working copy is untouched" "working-copy-change" "$(cat "$REPO/sentinel.txt")"
+head_before="$(git -C "$REPO" rev-parse HEAD)"
+touch "$WORK/fail-batch"
+sha_fallback="$(bash "$LIB" commit "$FD" "state @ plan fallback")"
+check "commit: batch failure falls back to same snapshot" "$sha2" "$sha_fallback"
+check "commit: HEAD remains untouched" "$head_before" "$(git -C "$REPO" rev-parse HEAD)"
 check "commit: a change chains onto the parent" "$sha1" "$(git -C "$REPO" rev-parse "$sha2^")"
+ref_index="$(mktemp "$WORK/reference-index.XXXXXX")"; rm -f "$ref_index"
+while IFS= read -r -d '' path; do
+  blob="$(git -C "$REPO" hash-object -w "$path")"
+  GIT_INDEX_FILE="$ref_index" git -C "$REPO" update-index --add --cacheinfo "100644,$blob,${path#"$FD/"}"
+done < <(
+  for path in "$FD"/*; do [[ -f "$path" && ! -L "$path" ]] && printf '%s\0' "$path"; done
+  for name in instruction-snapshots review-attempts; do
+    [[ -d "$FD/$name" ]] && find "$FD/$name" -type f -print0
+  done
+)
+reference_tree="$(GIT_INDEX_FILE="$ref_index" git -C "$REPO" write-tree)"
+rm -f "$ref_index"
+check "commit: native batch preserves exact tree" "$(git -C "$REPO" rev-parse "$sha2^{tree}")" "$reference_tree"
+check "commit: executable mode normalizes" "100644" "$(git -C "$REPO" ls-tree -r "$sha2" -- 'review-attempts/1/tool.sh' | awk '{print $1}')"
+check "commit: symlink is excluded" "0" "$(git -C "$REPO" ls-tree -r --name-only "$sha2" | grep -Fc 'review-attempts/1/link.sh' || true)"
 check "show: prints the latest feature.json" '{"slug":"demo","currentPhase":"plan"}' "$(bash "$LIB" show "$REPO" demo)"
 
 # A worktree shares the ref; a recreated worktree restores the directory from it.
 git -C "$REPO" worktree add -q "$WORK/wt" -b feat/demo
 check "restore: returns the sha" "$sha2" "$(bash "$LIB" restore "$WORK/wt" demo)"
 check "restore: writes feature.json into the worktree" "plan" "$(jq -r '.currentPhase' "$WORK/wt/.loop-spec/features/demo/feature.json")"
-check "restore: writes PROGRESS.md" "# Progress" "$(cat "$WORK/wt/.loop-spec/features/demo/PROGRESS.md")"
-check "restore: keeps nested instruction snapshots" "captured instructions" "$(cat "$WORK/wt/.loop-spec/features/demo/instruction-snapshots/attempt/skills/SKILL.md")"
-check "restore: keeps review recovery evidence" "review evidence" "$(cat "$WORK/wt/.loop-spec/features/demo/review-attempts/1/VERIFICATION.md")"
+check "restore: writes PROGRESS.md" "# PROGRESS" "$(cat "$WORK/wt/.loop-spec/features/demo/PROGRESS.md")"
+check "restore: keeps nested instruction snapshots" "CAPTURED INSTRUCTIONS" "$(cat "$WORK/wt/.loop-spec/features/demo/instruction-snapshots/attempt/skills/SKILL.md")"
+check "restore: keeps review recovery evidence" "REVIEW EVIDENCE" "$(cat "$WORK/wt/.loop-spec/features/demo/review-attempts/1/VERIFICATION.md")"
 printf '{"slug":"demo","currentPhase":"execute"}\n' > "$WORK/wt/.loop-spec/features/demo/feature.json"
 sha3="$(bash "$LIB" commit "$WORK/wt/.loop-spec/features/demo" "state @ execute")"
 check "commit from a worktree: same ref advances" "$sha3" "$(git -C "$REPO" rev-parse refs/loop-spec/state/demo)"

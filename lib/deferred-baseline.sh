@@ -9,7 +9,18 @@ fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 [[ "$(fget '.verificationBaselineAttempted // false')" != true ]] || exit 0
 [[ "$(fget '.verificationBaseline // null')" == null ]] || exit 0
 [[ "$(fget '.greenfield // false')" != true ]] || exit 0
-bash "$SCRIPT_DIR/feature-write.sh" set "$feature_dir" verificationBaselineAttempted true >/dev/null
+
+# A baseline needs an isolated exact-base checkout.  In-place mode is an explicit
+# request to avoid creating any worktrees, so leave the attempt retryable if a
+# later invocation enables worktrees deliberately.
+if [[ "${LOOP_SPEC_WORKTREES:-1}" == 0 ]]; then
+  echo "loop-spec: deferred baseline skipped because LOOP_SPEC_WORKTREES=0 forbids exact-base worktrees; enable worktrees to capture it" >&2
+  exit 0
+fi
+if [[ "${LOOP_SPEC_WORKTREES:-1}" != 1 ]]; then
+  echo "loop-spec: LOOP_SPEC_WORKTREES must be 0 or 1" >&2
+  exit 2
+fi
 workspace_mode="$(fget 'if (.workspace == null or (.workspace.mode // "") == "single") then "single" else "workspace" end')"
 if [[ "$workspace_mode" == "single" ]]; then root="$(git -C "$feature_dir" rev-parse --show-toplevel)"; else root="$(fget '.workspace.root')"; fi
 capture() {
@@ -32,12 +43,19 @@ capture() {
   key="$(jq -r '.key // ""' <<<"$prep")"; logs="$(git -C "$target" rev-parse --git-path "loop-spec/validation/$(fget '.slug')/base/$name")"; [[ "$logs" == /* ]] || logs="$target/$logs"; mkdir -p "$logs"
   out="$(bash "$SCRIPT_DIR/verification-baseline.sh" capture --root "$tmp" --base-sha "$base" --prepare-key "$key" --log-dir "$logs" --test "$test" --lint "$lint" --typecheck "$typecheck")" || rc=$?
   (( rc == 0 )) && jq -c . <<<"$out" || { echo "loop-spec: baseline not captured for $name; verificationBaseline stays null" >&2; printf '%s\n' null; }
+  # Remove the temporary checkout before returning a completed result; the EXIT trap
+  # still covers early exits from preparation or checkout failure.
+  cleanup
+  trap - EXIT
   exit 0
 )
 }
 if [[ "$workspace_mode" == "single" ]]; then
   baseline="$(capture "$root" "$(fget '.baseSha')" "$(fget '.commands.prepare // ""')" "$(fget '.commands.test // ""')" "$(fget '.commands.lint // ""')" "$(fget '.commands.typecheck // ""')" single)"
+  # Publish the result before latching the marker.  If the process is interrupted
+  # during capture, neither write runs and the next invocation retries.
   [[ "$baseline" == null ]] || bash "$SCRIPT_DIR/feature-write.sh" set "$feature_dir" verificationBaseline "$baseline" >/dev/null
+  bash "$SCRIPT_DIR/feature-write.sh" set "$feature_dir" verificationBaselineAttempted true >/dev/null
 else
   updated_repos="$(fget '.workspace.repos')"
   while IFS= read -r repo; do
@@ -45,6 +63,9 @@ else
     [[ "$(jq -r '.verificationBaseline // null' <<<"$repo")" == "null" ]] || continue
     baseline="$(capture "$target" "$(jq -r '.baseSha' <<<"$repo")" "$(jq -r '.commands.prepare // ""' <<<"$repo")" "$(jq -r '.commands.test // ""' <<<"$repo")" "$(jq -r '.commands.lint // ""' <<<"$repo")" "$(jq -r '.commands.typecheck // ""' <<<"$repo")" "$name")"
     updated_repos="$(jq -c --argjson b "$baseline" --arg n "$name" 'map(if .name == $n then .verificationBaseline = $b else . end)' <<<"$updated_repos")"
+    # Persist every completed repository before starting the next one.  This keeps
+    # successful captures durable when a later repository is interrupted.
+    bash "$SCRIPT_DIR/feature-write.sh" set "$feature_dir" workspace.repos "$updated_repos" >/dev/null
   done < <(fget '.workspace.repos | .[]' | jq -c .)
-  bash "$SCRIPT_DIR/feature-write.sh" set "$feature_dir" workspace.repos "$updated_repos" >/dev/null
+  bash "$SCRIPT_DIR/feature-write.sh" set "$feature_dir" verificationBaselineAttempted true >/dev/null
 fi

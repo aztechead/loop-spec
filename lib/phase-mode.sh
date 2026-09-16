@@ -40,7 +40,10 @@ esac
   || { echo "phase-mode: --feature-dir must hold a feature.json" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
-fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1" 2>/dev/null || echo ""; }
+# Read one consistent typed snapshot; failures retain the existing fail-safe empty
+# reads, which select the fuller mode.
+feature_snapshot="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all --drop-strays 2>/dev/null)" || feature_snapshot=""
+fget() { [[ -n "$feature_snapshot" ]] && jq -r "$1" <<<"$feature_snapshot" 2>/dev/null || echo ""; }
 
 autonomous=false
 [[ "$(fget '.autonomous // false')" == "true" || "${LOOP_SPEC_AUTONOMOUS:-}" == "1" ]] && autonomous=true
@@ -123,7 +126,6 @@ case "$phase" in
       fp_tasks="$(bash "$SCRIPT_DIR/tuning.sh" get fastPathMaxTasks 2 2>/dev/null || echo 2)"
       fp_files="$(bash "$SCRIPT_DIR/tuning.sh" get fastPathMaxFiles 3 2>/dev/null || echo 3)"
       n="$(jq 'length' "$tasks")"; m="$(jq '[.[].files[]?] | unique | length' "$tasks")"
-      budget_line="$(bash "$SCRIPT_DIR/design-budget.sh" --feature-dir "$feature_dir" --phase plan)"
       if (( n <= fp_tasks && m <= fp_files )); then
         echo "critique=skip reentry=$reentry $budget_line reason=structural fast-path: $n tasks, $m files, no security signal"
       else
