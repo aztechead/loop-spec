@@ -50,7 +50,7 @@ file, never counts a round, and never calls `gate.sh` directly. Six steps, in or
 DRV="${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh"
 bash "$DRV" critique open     --feature-dir "$feature_dir" --phase {phase} --gate {gate} --artifact {artifact_path}   # {..., model}
 bash "$DRV" critique findings --feature-dir "$feature_dir" --reply <path|->      # round 1: {verdict, lines[]}; snapshots the artifact
-bash "$DRV" critique fail     --feature-dir "$feature_dir" --fix-list <path|->   # {answer: rerun|close, reason, fixList|residue}
+bash "$DRV" critique fail     --feature-dir "$feature_dir" --fix-list <path|->   # {answer: rerun|close|apply, reason, fixList|residue}
 bash "$DRV" critique revised  --feature-dir "$feature_dir"                        # {diffPath, changed, lines, fixList}
 bash "$DRV" critique delta    --feature-dir "$feature_dir" --reply <path|-> [--flags <path>]   # {round, verified, survivors[]}
 bash "$DRV" critique pass     --feature-dir "$feature_dir"                        # the fix-list-empty close
@@ -109,9 +109,12 @@ Build `fix_list` (may be empty). PLAN prepends its mechanical FLAG lines verbati
 
 ## fix_list non-empty
 
-One item per line, verbatim, to `critique fail --fix-list -`. It appends the fail entry
-BEFORE anything else and asks `gate.sh next` whether another delta round is inside the
-ceiling:
+One item per line, verbatim, to `critique fail --fix-list -`. When every item is
+`[minor]` it closes the gate at once with `--convergence minors-applied` and answers
+`{answer: "apply", fixList}`: apply each item as a lead edit (no author re-dispatch, no
+`revised`, no delta round) and proceed to `{next_step}`. Otherwise it appends the fail
+entry BEFORE anything else and asks `gate.sh next` whether another delta round is inside
+the ceiling:
 
 - `{answer: "rerun", fixList}`: the artifact is snapshotted for the diff. Re-dispatch
   `{author}` via `SendMessage` (not a fresh Agent call) with `fixList` as written,

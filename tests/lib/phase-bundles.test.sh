@@ -44,6 +44,10 @@ cat > "$DOCS/VERIFICATION.md" <<'MD'
 |---|-----------|--------|----------|
 | 1 | it works | PASS | `bash -n a.sh` -> ok |
 MD
+# A stale task from an earlier remediate round that EXECUTE never drained (the queue
+# only drains through ack-remediation): a pass must clear it, not leave it queued
+# forever with nothing left to work it.
+bash "$REPO_ROOT/lib/feature-write.sh" append "$FD" pendingRemediationTasks '{"id":"task-stale-1","subject":"stale"}' >/dev/null
 ec=0; out="$(bash "$DRV" verify gate --feature-dir "$FD" --verifier ALL_PASS --suite PASS --reviewer PASS_WITH_MINOR --minors '["a.sh:1 - naming"]' 2>/dev/null)" || ec=$?
 check "gate pass: route is pass" "pass" "$(jq -r '.route' <<<"$out")"
 check "gate pass: exit 0" "0" "$ec"
@@ -51,6 +55,7 @@ check "gate pass: the exit lint ran clean" "true" "$(jq -r '.exit.ok' <<<"$out")
 check "gate pass: minors go to the backlog" "1" "$(jq -r '.minorsQueued' <<<"$out")"
 check "gate pass: the backlog holds the minor" "1" "$(grep -c 'naming' "$REPO/.loop-spec/BACKLOG.md" 2>/dev/null || echo 0)"
 check "gate pass: the acceptance gate recorded a pass" "pass" "$(fj '[.gateHistory[] | select(.gate == "acceptance")][-1].result')"
+check "gate pass: a stale pending task is drained, not left queued" "[]" "$(jq -c '.pendingRemediationTasks' "$FD/feature.json")"
 
 # A minors list with quotes and backslashes breaks inline JSON; @path reads one finding
 # per line from a file and needs no JSON at all.

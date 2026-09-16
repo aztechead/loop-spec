@@ -118,7 +118,29 @@ def main(args):
                     current = target.get(keys[-1])
                     if current is not None and not isinstance(current, list):
                         raise ValueError("append target at {} is not an array".format(dot_path))
-                    value = (current or []) + [value]
+                    current = current or []
+                    # A task re-queued with the same id must win over the copy already
+                    # queued, not pile up beside it: verify-gate, verify-prepare, and
+                    # iterate-judged all append here, and the 6.6.5 live run queued three
+                    # byte-identical task-verify-suite-1 entries because appends never
+                    # deduped. The new task takes the first copy's slot and every later
+                    # copy is dropped, so a queue that already holds those three compacts
+                    # to one on the next append (lib/deliver.sh skips a duplicate instead;
+                    # here the re-queued task carries fresh notes, so it replaces). Every
+                    # other append (warnings, telemetry.events, ...) is unchanged.
+                    if dot_path == "pendingRemediationTasks" and isinstance(value, dict) \
+                            and isinstance(value.get("id"), str):
+                        task_id, replaced, merged = value["id"], False, []
+                        for item in current:
+                            if isinstance(item, dict) and item.get("id") == task_id:
+                                if not replaced:
+                                    merged.append(value)
+                                replaced = True
+                            else:
+                                merged.append(item)
+                        value = merged if replaced else current + [value]
+                    else:
+                        value = current + [value]
                 target[keys[-1]] = value
 
         if previous is not None:

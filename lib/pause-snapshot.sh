@@ -202,7 +202,7 @@ printf '%s\n' "These items must be resolved before auto-resuming. Severity: bloc
 printf '%s\n' ""
 printf '%s\n' "- [blocking: verify HANDOFF.json is current before dispatching any task]"
 printf '%s\n' "- [blocking: confirm feature branch is up to date with base before writing new commits]"
-printf '%s\n' "- [blocking: if uncommittedFiles is non-empty, stage or stash before resuming]"
+printf '%s\n' "- [blocking: if uncommittedFiles is non-empty, commit them on the feature branch before resuming; git stash is one stack shared by every worktree of this repository, so a stash made here can be popped or buried by a parallel implementer's worktree]"
 printf '%s\n' ""
 printf '%s\n' "## ANTI-PATTERNS"
 printf '%s\n' ""

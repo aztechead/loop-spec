@@ -2,8 +2,9 @@
 # Shared cycle Step 5: per-repo prepare/baseline (prepare-repo) and single-repo
 # skeleton+flags+decisions (finalize). Workspace mode used to inline the same
 # prepare-environment.sh / verification-baseline.sh sequence without writing a
-# terminal result; this script is the one fail-terminal path both layouts call,
-# so the procedure never enters the model's context.
+# terminal result; this script is the one fail-terminal path both layouts call
+# (preparation failure), so the procedure never enters the model's context. A failed
+# opt-in baseline capture is a stderr notice with a null baseline, not a failure.
 #
 # Usage:
 #   bash lib/feature-bootstrap.sh prepare-repo \
@@ -30,8 +31,8 @@
 #        cycle-result begin marker, and migrates staged pre-SPEC decisions.
 #        Prints the updated test command on stdout.
 #
-# Exit codes: 0 success; 1 preparation or baseline failure (a terminal cycle
-# result has already been written); 2 bad invocation.
+# Exit codes: 0 success (a failed baseline capture still exits 0); 1 preparation
+# failure (a terminal cycle result has already been written); 2 bad invocation.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -86,6 +87,9 @@ _prepare_repo() {
   # failure it observes as blocking. Turn it on only where the base commit is already red
   # and the known-failure oracle is what stops VERIFY from chasing pre-existing failures.
   # The capture owns a foreground watchdog and must leave HEAD and the worktree unchanged.
+  # A capture that fails is reported and skipped, never a terminal result: a 6.6.5 live run
+  # wrote status failed under the auto-slug during startup diagnostics, and the caller
+  # polling last-result.json could not tell it from the run's end.
   baseline_json=null
   if [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" && "${greenfield:-0}" != "1" ]]; then
     local baseline_git_path baseline_rc=0
@@ -96,22 +100,15 @@ _prepare_repo() {
       --root "$prep_root" --base-sha "$base_sha" --prepare-key "$prepare_key" \
       --log-dir "$baseline_git_path" --test "$cmd_test" --lint "$cmd_lint" \
       --typecheck "$cmd_typecheck")" || baseline_rc=$?
-    [[ "$baseline_rc" -eq 0 ]] || {
+    if [[ "$baseline_rc" -eq 0 ]]; then
+      baseline_json="$(jq -c . <<<"$baseline_json")"
+    else
       local baseline_reason
       baseline_reason="$(jq -r '.reason // "exact-base validation baseline could not be captured"' \
         <<<"${baseline_json:-{}}" 2>/dev/null || printf 'exact-base validation baseline failed')"
-      bash "$SCRIPT_DIR/cycle-result.sh" write-terminal \
-        --result-root "$result_root" --cycle-type full --status failed \
-        --outcome infrastructure-failed --title "$title" --slug "$slug" \
-        --branch "$feature_branch" --base-branch "$base_branch" --phase-reached startup \
-        --reason "${prefix}${baseline_reason}" \
-        --summary "${prefix}Validation baseline failed: $baseline_reason" \
-        --converged false --verification-status failed --verification-command "$cmd_test" \
-        --autonomous "$active_autonomous"
-      echo "loop-spec: exact-base validation baseline could not be captured (exit $baseline_rc): ${prefix}${baseline_reason}." >&2
-      exit 1
-    }
-    baseline_json="$(jq -c . <<<"$baseline_json")"
+      echo "loop-spec: startup validation baseline not captured (exit $baseline_rc): ${prefix}${baseline_reason}. verificationBaseline stays null, so VERIFY treats every failure it observes as blocking, the same as with LOOP_SPEC_STARTUP_BASELINE off; fix the environment before EXECUTE if the base is known-red." >&2
+      baseline_json=null
+    fi
   fi
 }
 

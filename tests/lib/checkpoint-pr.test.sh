@@ -244,6 +244,8 @@ check "4: events.jsonl checkpoint_pr data.url" \
   "$(jq -r '.data.url // empty' "$FEAT_DIR/events.jsonl" 2>/dev/null | tail -1)"
 check "4: output contains draft PR url" \
   "1" "$([[ "$out" == *"https://github.com/test/repo/pull/1"* ]] && echo 1 || echo 0)"
+check "4: pr create used the branch head (LOOP_SPEC_ARTIFACTS_IN_PR unset)" \
+  "1" "$([[ -f "$GH_LOG4" ]] && grep -q -- "--head feat/my-feature" "$GH_LOG4" && echo 1 || echo 0)"
 
 # ── Case 5: Idempotency — existing open PR reused ────────────────────────────
 reset_fixture
@@ -327,6 +329,102 @@ check "11: create re-listed" "2" "$(grep -c '^pr list ' "$WORK/checkpoint-gh-cal
 check "11: remote PR accepted" "https://github.com/test/repo/pull/7" \
   "$(jq -r '.checkpointPrUrl // empty' "$FEAT_DIR/feature.json")"
 check "11: create auth refresh once" "1" "$(grep -c '^github-pr|auth-retry|' "$REFRESH_LOG" || true)"
+
+# ── Case 12: LOOP_SPEC_ARTIFACTS_IN_PR=0 scrubs the checkpoint PR head too ───
+reset_fixture
+BASE_SHA="$(git -C "$WORK/repo" rev-parse "$DEFAULT_BRANCH")"
+SCRUB_FEAT_DIR="$REPO/.loop-spec/features/scrubbed"
+mkdir -p "$SCRUB_FEAT_DIR"
+SCRUB_FIXTURE_FJ="$(jq -n --arg baseSha "$BASE_SHA" '{
+  schemaVersion: 7,
+  slug: "scrubbed",
+  feature_title: "Scrubbed Feature",
+  currentPhase: "execute",
+  branch: "feat/scrubbed",
+  baseBranch: "main",
+  baseSha: $baseSha,
+  prUrl: null,
+  checkpointPrUrl: null,
+  autonomous: false,
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T01:00:00Z",
+  warnings: []
+}')"
+printf '%s\n' "$SCRUB_FIXTURE_FJ" > "$SCRUB_FEAT_DIR/feature.json"
+
+git -C "$REPO" checkout -q -b feat/scrubbed "$DEFAULT_BRANCH"
+mkdir -p "$REPO/src" "$REPO/docs/loop-spec/features/scrubbed"
+echo "print('x')" > "$REPO/src/x.py"
+echo "# spec" > "$REPO/docs/loop-spec/features/scrubbed/SPEC.md"
+echo "# evidence" > "$REPO/docs/loop-spec/features/scrubbed/EVIDENCE.md"
+git -C "$REPO" add src/x.py docs/loop-spec/features/scrubbed
+git -C "$REPO" commit -q -m "scrubbed feature work"
+git -C "$REPO" checkout -q "$DEFAULT_BRANCH"
+
+GH_LOG12="$WORK/gh-case12.log"
+ec=0
+out=$( (cd "$REPO"; PATH="$SHIMS:$PATH" LOOP_SPEC_CHECKPOINT_PR=1 LOOP_SPEC_ARTIFACTS_IN_PR=0 \
+  SHIM_GH_LOG="$GH_LOG12" bash "$LIB" create "$SCRUB_FEAT_DIR") 2>&1 ) || ec=$?
+check "12: exit 0" "0" "$ec"
+rc=0
+git -C "$WORK/bare" rev-parse --verify -q refs/heads/feat/scrubbed-checkpoint >/dev/null 2>&1 || rc=$?
+check "12: checkpoint ref exists in bare" "0" "$rc"
+TREE_CKPT="$(git -C "$WORK/bare" ls-tree -r --name-only feat/scrubbed-checkpoint 2>/dev/null)"
+check "12: checkpoint tree has src/x.py" \
+  "1" "$(echo "$TREE_CKPT" | grep -qx 'src/x.py' && echo 1 || echo 0)"
+check "12: checkpoint tree lacks SPEC.md" \
+  "0" "$(echo "$TREE_CKPT" | grep -q 'docs/loop-spec/features/scrubbed/SPEC.md' && echo 1 || echo 0)"
+TREE_BRANCH="$(git -C "$WORK/bare" ls-tree -r --name-only feat/scrubbed 2>/dev/null)"
+check "12: feature branch still carries SPEC.md (pushed intact)" \
+  "1" "$(echo "$TREE_BRANCH" | grep -q 'docs/loop-spec/features/scrubbed/SPEC.md' && echo 1 || echo 0)"
+check "12: checkpoint commit parent is the feature branch tip" \
+  "1" "$([[ "$(git -C "$REPO" rev-parse feat/scrubbed-checkpoint^)" == "$(git -C "$REPO" rev-parse feat/scrubbed)" ]] && echo 1 || echo 0)"
+check "12: pr create used the checkpoint head" \
+  "1" "$(grep -q -- "--head feat/scrubbed-checkpoint" "$GH_LOG12" && echo 1 || echo 0)"
+check "12: pr body explains the scrub" \
+  "1" "$(grep -q 'kept out of this PR' "$GH_LOG12" && echo 1 || echo 0)"
+
+# Rebuild: a second checkpoint on new branch content force-pushes a fresh ref.
+git -C "$REPO" checkout -q feat/scrubbed
+echo "print('y')" > "$REPO/src/x.py"
+git -C "$REPO" add src/x.py
+git -C "$REPO" commit -q -m "scrubbed feature work v2"
+git -C "$REPO" checkout -q "$DEFAULT_BRANCH"
+
+ec=0
+out=$( (cd "$REPO"; PATH="$SHIMS:$PATH" LOOP_SPEC_CHECKPOINT_PR=1 LOOP_SPEC_ARTIFACTS_IN_PR=0 \
+  SHIM_GH_LOG="$GH_LOG12" bash "$LIB" create "$SCRUB_FEAT_DIR") 2>&1 ) || ec=$?
+check "12: rebuild exit 0" "0" "$ec"
+check "12: rebuilt checkpoint carries the new content" \
+  "print('y')" "$(git -C "$WORK/bare" show feat/scrubbed-checkpoint:src/x.py 2>/dev/null)"
+check "12: rebuilt checkpoint still lacks SPEC.md" \
+  "0" "$(git -C "$WORK/bare" ls-tree -r --name-only feat/scrubbed-checkpoint 2>/dev/null | grep -c 'docs/loop-spec/features/scrubbed/SPEC.md')"
+
+# ── Case 13: the scrub restores the docs dir to its base image, not to empty ────
+reset_fixture
+mkdir -p "$REPO/docs/loop-spec/features/based"
+echo "# base readme" > "$REPO/docs/loop-spec/features/based/README.md"
+git -C "$REPO" add docs/loop-spec/features/based
+git -C "$REPO" commit -q -m "base carries a run document"
+BASE13="$(git -C "$REPO" rev-parse "$DEFAULT_BRANCH")"
+BASED_FEAT_DIR="$REPO/.loop-spec/features/based"
+mkdir -p "$BASED_FEAT_DIR"
+jq --arg baseSha "$BASE13" '.slug = "based" | .branch = "feat/based" | .baseSha = $baseSha' \
+  <<<"$SCRUB_FIXTURE_FJ" > "$BASED_FEAT_DIR/feature.json"
+git -C "$REPO" checkout -q -b feat/based "$DEFAULT_BRANCH"
+echo "# edited on the branch" > "$REPO/docs/loop-spec/features/based/README.md"
+echo "# spec" > "$REPO/docs/loop-spec/features/based/SPEC.md"
+git -C "$REPO" add docs/loop-spec/features/based
+git -C "$REPO" commit -q -m "based feature work"
+git -C "$REPO" checkout -q "$DEFAULT_BRANCH"
+ec=0
+out=$( (cd "$REPO"; PATH="$SHIMS:$PATH" LOOP_SPEC_CHECKPOINT_PR=1 LOOP_SPEC_ARTIFACTS_IN_PR=0 \
+  SHIM_GH_LOG="$WORK/gh-case13.log" bash "$LIB" create "$BASED_FEAT_DIR") 2>&1 ) || ec=$?
+check "13: exit 0" "0" "$ec"
+check "13: checkpoint keeps the base image of the docs dir" \
+  "# base readme" "$(git -C "$WORK/bare" show feat/based-checkpoint:docs/loop-spec/features/based/README.md 2>/dev/null)"
+check "13: checkpoint drops the branch-added SPEC.md" \
+  "0" "$(git -C "$WORK/bare" ls-tree -r --name-only feat/based-checkpoint 2>/dev/null | grep -c 'features/based/SPEC.md')"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

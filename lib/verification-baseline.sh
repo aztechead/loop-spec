@@ -76,6 +76,14 @@ def normalize(line):
     line = re.sub(r"\b0x[0-9a-f]+\b", "<HEX>", line, flags=re.I)
     line = re.sub(r"(?<=:)[0-9]+(?::[0-9]+)?\b", "<LINE>", line)
     line = re.sub(r"\b[0-9]+(?:\.[0-9]+)?(?:ms|s)\b", "<TIME>", line)
+    # A PID or an ephemeral port left as a bare decimal hashes differently every run
+    # (a live 6.6.5 baseline that was already failing turned into a second reported
+    # regression on the same code, twice). Only labeled process and port numbers and
+    # integers of five or more digits are scrubbed: "3 failed", "expected 2, got 4",
+    # and "Error 404" stay distinct, so a new failure that differs in a count or a
+    # status still adds a fingerprint. Runs last so <LINE> and <TIME> keep their labels.
+    line = re.sub(r"\b(pid|process|port)([:=# ]+)[0-9]+\b", r"\1\2<N>", line, flags=re.I)
+    line = re.sub(r"\b[0-9]{5,}\b", "<N>", line)
     return " ".join(line.split())
 
 candidates = [normalize(line) for line in lines if marker.search(line)]

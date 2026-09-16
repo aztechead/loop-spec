@@ -61,8 +61,9 @@ checks=(
   $'lib/graph/driver.py\tdatetime.timezone.utc'
   $'lib/graph/driver.py\tThe gate runs on every return'
   $'lib/graph/driver.py\tLOOP_SPEC_SAME_SESSION must be 0 or 1'
-  # The snapshot NOTE rides stderr (the escalate NOTE and the first-stdout-line rule are
-  # behavior cases in tests/lib/cycle-driver.test.sh).
+  # The snapshot NOTE rides stderr (the escalate NOTE is a behavior case in
+  # tests/lib/cycle-driver-short-route.test.sh; the first-stdout-line rule in
+  # tests/lib/cycle-driver-phases.test.sh).
   $'lib/graph/driver.py\tprint(note, file=sys.stderr)'
 )
 

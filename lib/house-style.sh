@@ -172,6 +172,7 @@ class Tally(object):
         self.tabs = 0
         self.spaces = 0
         self.indent_widths = {}
+        self.indent_sequence = []
         self.defs = []
         self.documented = 0
         self.single = 0
@@ -205,6 +206,12 @@ def scan(path, tally):
     in_block = False
     previous_was_comment = False
     heredoc = None
+    in_string = False
+    # A step is measured between CONSECUTIVE lines; two files sampled together
+    # share one tally, and the file boundary is not a step any reader takes. A
+    # marker breaks the sequence there without a real per-line cost per file.
+    if tally.indent_sequence:
+        tally.indent_sequence.append(None)
     for raw in lines[:MAX_LINES]:
         line = raw.rstrip("\n")
         stripped = line.strip()
@@ -224,6 +231,21 @@ def scan(path, tally):
             opener = HEREDOC_OPEN.search(line)
             if opener:
                 heredoc = opener.group(1)
+                continue
+
+        # A triple-quoted string's body is prose (a prompt template, most often),
+        # not code -- a 2-space-indented paragraph inside it was outvoting a
+        # module's real 4-space step. Same toggle-and-skip shape as the heredoc
+        # above: an odd count of the marker flips the state, and a docstring that
+        # opens and closes on one line has an even count and never flips.
+        if ext == ".py":
+            triple_count = stripped.count('"""') + stripped.count("'''")
+            if in_string:
+                if triple_count % 2 == 1:
+                    in_string = False
+                continue
+            if triple_count % 2 == 1:
+                in_string = True
                 continue
 
         if not stripped:
@@ -257,6 +279,13 @@ def scan(path, tally):
             tally.spaces += 1
             width = len(line) - len(line.lstrip(" "))
             tally.indent_widths[width] = tally.indent_widths.get(width, 0) + 1
+            tally.indent_sequence.append(width)
+        else:
+            # An unindented code line is width 0: the step from it into the next
+            # indented line is exactly the step a reader sees, so it belongs in
+            # the same delta sequence (a tab-started line adds no width, since a
+            # tab-and-space mix in one delta is not a step).
+            tally.indent_sequence.append(0)
 
         match = def_re.match(line)
         if match:
@@ -358,10 +387,33 @@ def read_axes(tally):
         axes["indent"] = ("tabs", "{} tab-indented vs {} space-indented lines".format(
             tally.tabs, tally.spaces))
     elif tally.spaces >= 3:
-        steps = [w for w in tally.indent_widths if w > 0]
-        width = min(steps) if steps else 0
-        axes["indent"] = ("spaces:{}".format(width),
-                          "smallest indent step across {} indented lines".format(tally.spaces))
+        # The smallest width present is not the step -- one shallow line (a stray
+        # alignment, a prose paragraph) beats thousands of consistent ones. The
+        # step readers actually see is how far indentation MOVES between
+        # consecutive code lines, so its mode is measured on deltas, not widths.
+        deltas = {}
+        previous_width = None
+        for current_width in tally.indent_sequence:
+            if current_width is None:
+                previous_width = None
+                continue
+            if previous_width is not None and current_width != previous_width:
+                delta = abs(current_width - previous_width)
+                deltas[delta] = deltas.get(delta, 0) + 1
+            previous_width = current_width
+        if deltas:
+            # A tie goes to the smaller step, not to whichever delta a directory
+            # listing happened to visit first -- the answer must not depend on
+            # file order.
+            most = max(deltas.values())
+            width = min(d for d, count in deltas.items() if count == most)
+            axes["indent"] = ("spaces:{}".format(width),
+                              "most common indent step across {} indented lines".format(tally.spaces))
+        else:
+            steps = [w for w in tally.indent_widths if w > 0]
+            width = min(steps) if steps else 0
+            axes["indent"] = ("spaces:{}".format(width),
+                              "smallest indent step across {} indented lines".format(tally.spaces))
     else:
         axes["indent"] = ("unknown", "too few indented lines sampled")
 

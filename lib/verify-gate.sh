@@ -115,6 +115,10 @@ if [[ "$route" == "remediate" ]]; then
 else
   lib graph/gate open --feature-dir "$feature_dir" --phase verify --gate acceptance >/dev/null 2>&1 || true
   lib graph/gate pass --feature-dir "$feature_dir" --rounds 1 --convergence verdict --challenger-model none >/dev/null 2>&1 || true
+  # The queue drains only through ack-remediation (EXECUTE's confirmed receipt); a pass
+  # with nothing left to remediate must not leave an EXECUTE-orphaned task sitting there
+  # forever, so a clean verdict is the floor that empties it.
+  lib feature-write set "$feature_dir" pendingRemediationTasks '[]' >/dev/null
 fi
 
 jq -cn --argjson ok "$exit_ok" --argjson flags "$flags" --arg route "$route" \

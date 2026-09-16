@@ -4,6 +4,118 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.6.7] - 2026-09-15
+
+### Fixed
+
+- `lib/graph/driver.py` `cmd_init`/`cmd_decline` no longer Die with "feature <slug> is
+  already active in this checkout (phase deliver)" for a feature that has already
+  delivered. `currentPhase` only ever advanced on phase entry (`lib/graph/engine.py`),
+  and `deliver` is the graph's last node, so `cmd_finish` recording a completed cycle in
+  `result.json` left `feature.json.currentPhase` at `deliver` forever — its own message
+  said so ("currentPhase stays at deliver"). Every `init` after one delivered cycle in
+  an in-place checkout (codex/opencode/adk/headless Claude) hit the guard, and a repo
+  that had committed such a record blocked every fresh clone too; the autonomous chain
+  (`skills/cycle/SKILL.md` step 4) hit the same wall starting its next feature.
+  `cmd_finish` and `deliver_stalled`'s already-satisfied answer now write
+  `currentPhase: "completed"` and snapshot the state ref (`lib/state-ref.sh`) once the
+  cycle result is published, so the field reaches the terminal value
+  `skills/shared/feature-state-schema.md:48` already declared legal on the paths that
+  never enter the graph's `completed` node. The guard itself (`live_feature`, shared by
+  `cmd_init` in both layouts and `cmd_decline`) no longer trusts a committed or copied
+  `currentPhase` alone: a feature only blocks a new cycle when its phase is live AND no
+  terminal record closes it (a delivered sidecar or a completed `result.json`) AND this
+  checkout is running it: the feature's branch is checked out (HEAD of the checkout or
+  of a linked worktree; each repo's own branch in workspace mode) or an armed run names
+  it. A local branch or state ref that merely exists is what a hand-merged feature
+  leaves behind and is not evidence: a 6.6.5 live run was blocked by four such records
+  for other slugs, asked the user whether to clear them, and committed 2188 deleted
+  lines of their files into the new feature's PR. The refusal now says never to
+  delete, edit, or commit another feature's records and never to ask the user about
+  them. A record merged before 6.6.7 is harmless under the new guard without any
+  migration.
+- `lib/critique-step.sh fail` closes the gate at once with `--convergence
+  minors-applied` and answers `{answer: "apply"}` when every fix-list item is
+  `[minor]`, so the lead applies them as direct edits with no author re-dispatch and
+  no delta re-verify round (`skills/shared/critique-gate-protocol.md`). A 6.6.5 live
+  PLAN critique spent a planner re-dispatch, a `tasks.json` re-extract, and a
+  challenger delta round on minors alone, and the cycle was stopped at 91 minutes
+  without reaching EXECUTE. Any `[major]`, `FLAG`, or untagged item keeps the
+  existing rerun/close path.
+- `lib/feature-bootstrap.sh` no longer publishes a `status: failed` terminal result
+  when the opt-in `LOOP_SPEC_STARTUP_BASELINE=1` capture fails. It prints the reason,
+  leaves `verificationBaseline` null (VERIFY then treats every failure it sees as
+  blocking, the same as with the opt-in off), and the bootstrap continues. A 6.6.5
+  live run wrote the terminal record under the prompt-derived auto-slug during
+  startup diagnostics, so a caller polling `last-result.json` could read a healthy
+  run as ended, and the orphaned record fed the guard above. Environment
+  preparation failure is still terminal.
+- `hooks/pre-cycle-permission-check.sh` names what runs when the Workflow tool is
+  off (agent teams, or bounded one-shot subagent waves), says the phases, gates, and
+  artifacts are the same, and names the condition under which the tool is on. The old
+  text claimed a TeamCreate fallback and a `/permissions` fix, and offered
+  `CLAUDE_CODE_DISABLE_WORKFLOWS` to silence a hook that never read it; under the
+  Agent SDK a live run saw four bare "unavailable" lines.
+- `lib/checkpoint-pr.sh` honors `LOOP_SPEC_ARTIFACTS_IN_PR=0`. Only
+  `lib/finalize-delivery-candidate.sh` read it, so a rescue draft PR opened on pause
+  or stop still carried `docs/loop-spec/features/<slug>/` (a 6.6.5 live run set the
+  flag and its checkpoint PR shipped SPEC.md and EVIDENCE.md). The draft is now opened
+  from a sibling ref `<branch>-checkpoint` whose tip commit restores that directory to
+  the base image, rebuilt from the branch tip and force-pushed on every checkpoint;
+  the feature branch keeps the documents for resume and is pushed unchanged.
+- `tests/lib/cycle-driver.test.sh` is split into five parts (`-core`, `-redo`,
+  `-short-route`, `-phases`, `-guard`) over a shared `cycle-driver.common.sh` rig, so
+  `tests/run-all.sh` runs them in parallel. The serial file alone took 265 s. The
+  runner still lands past its 157 s ceiling (216 s here): the suites sum to 1551 s of
+  CPU, a 193 s floor at 8 wide, because `lib/graph/driver.py` shells out to a bundled
+  script for every lookup (about 60 processes per driver call). Memoizing those
+  lookups is the follow-up that moves the floor.
+- `lib/graph/driver.py` `driverRedo` is now cleared when the exit gate it tracks
+  passes. It was written on a REDO (`returncode == 1`) but never cleared on the
+  matching pass, so the next REDO on fresh damage inherited the stale
+  `{phase, hash, count}` and escalated after one real attempt instead of
+  `LOOP_SPEC_REDO_MAX`; a 6.6.5 live run escalated at attempt 1 on a stale count of
+  3. A passing return for the same phase now zeroes the counter.
+- `lib/feature_write.py` `append` on `pendingRemediationTasks` now replaces the first
+  existing entry that carries the same `id` and drops every later copy, so a queue that
+  already holds duplicates compacts on the next append, and `lib/verify-gate.sh`'s pass
+  branch now clears the queue to `[]`. Three
+  callers (`lib/verify-gate.sh`, `lib/verify-prepare.sh`, `lib/iterate-judged.sh`)
+  append through the same bare `current + [value]`, and the queue only ever
+  drained through `ack-remediation`; a 6.6.5 live run queued three
+  byte-identical `task-verify-suite-1` entries. Every other append is unchanged.
+- `lib/verification-baseline.sh` `normalize()` now scrubs labeled process and port
+  numbers and integers of five or more digits to `<N>` after its existing
+  substitutions; counts, assertion values, and statuses stay distinct. A PID or an
+  ephemeral port in a failing test line hashed differently every run, so
+  `compare` reported an added fingerprint — a `regression: true` — over
+  identical code; a 6.6.5 live run hit this twice on a baseline that was already
+  failing.
+- `lib/house-style.sh`'s indent probe no longer misreads a repo with prose in a
+  string literal. The axis took `min(steps)`, the smallest ABSOLUTE indent
+  width, as the step, so one shallow line beat thousands; it also read a Python
+  triple-quoted string's opening line as a comment but its body as code, so a
+  2-space-indented prompt string set a 4-space module's step. The scanner now
+  tracks Python triple-quoted string state (odd marker count toggles it, same
+  shape as the existing shell heredoc skip) and skips the body from every
+  tally, and the step is the mode of the nonzero absolute deltas between
+  consecutive indented code lines' widths, falling back to `min` only when no
+  delta exists.
+
+### Changed
+
+- `lib/pause-snapshot.sh`'s resume guide now warns that `git stash` is one stack
+  shared by every worktree of the repository, so a stash made while resolving
+  `uncommittedFiles` can be popped or buried by a parallel implementer's
+  worktree; the guidance now points at committing on the feature branch first.
+- `skills/shared/writing-good-tests.md` and `agents/implementer.md` now say
+  that red before green is necessary but not sufficient for a test that names a
+  guard: it goes red because the feature is absent and green when the feature
+  lands, without ever proving the test reaches the branch it names. The
+  implementer now deletes or inverts a named guard, confirms the test fails,
+  and restores the guard, reporting the mutation and the failing output as
+  **Guard evidence** (`none` when no test names a guard).
+
 ## [6.6.6] - 2026-09-15
 
 ### Fixed

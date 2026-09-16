@@ -112,6 +112,55 @@ check "s: a rich target is not widened" 0 "sample=1 files: .*mod\.py" \
 # --- a directory target samples the directory ---
 check "t: directory target is sampled" 0 "sample=1 files" probe "$WORK/heavy"
 
+# --- prose inside a triple-quoted string must not set the indent step ---
+#
+# A prompt string's body is prose, not code; indenting it 2-space for readability
+# is common and has nothing to do with the module's own step. Two 4-space .py
+# files, one holding such a string with a body longer than the file's own
+# 4-space lines: the body must not out-vote the real code, on either side of
+# `probe`/`compare`.
+mkdir -p "$WORK/indentprose"
+cat > "$WORK/indentprose/plain.py" <<'EOF'
+def add(a, b):
+    return a + b
+
+
+def subtract(a, b):
+    return a - b
+
+
+def multiply(a, b):
+    return a * b
+
+
+def divide(a, b):
+    return a / b
+
+
+def power(a, b):
+    return a ** b
+EOF
+cat > "$WORK/indentprose/prompt.py" <<'EOF'
+def build_prompt(name):
+    """
+  You are a helpful assistant.
+  Answer the user's question about {name} directly.
+  Keep the response under five sentences.
+  Do not repeat the question back to the user.
+  Cite a source when making a factual claim.
+  Prefer plain language over jargon.
+    """
+    return name
+
+
+def another(a, b):
+    return a + b
+EOF
+check "indentprose-1: a 2-space docstring body does not set the step" 0 "indent=spaces:4" \
+  probe "$WORK/indentprose/prompt.py"
+check "indentprose-2: compare finds no deviation once the body is excluded" 0 \
+  "house-style: matches its neighbors" compare "$WORK/indentprose/plain.py"
+
 # --- compare: the probe must name a deviation, not just describe a pool ---
 #
 # `probe` folds the target into its own sample, so a file breaking every

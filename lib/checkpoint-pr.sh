@@ -146,7 +146,7 @@ PY
 
     list_open_pr_once() {
       local rc=0
-      run_once "$command_out" "$command_err" gh pr list --head "$branch" --state open \
+      run_once "$command_out" "$command_err" gh pr list --head "$pr_head" --state open \
         --json url --jq '.[0].url' || rc=$?
       [[ "$rc" -eq 0 ]] || return "$rc"
       existing_url="$(tr -d '\r\n' < "$command_out")"
@@ -160,6 +160,40 @@ PY
         _skip "branch '$branch' does not exist locally"
       fi
       use_explicit_ref=1
+    fi
+
+    # LOOP_SPEC_ARTIFACTS_IN_PR=0 keeps run documents out of every PR the run opens, not
+    # only the delivery candidate (lib/finalize-delivery-candidate.sh): a 6.6.5 live run
+    # set it and its rescue draft still carried SPEC.md and EVIDENCE.md. The feature
+    # branch stays as it is and is still pushed (resume reads the documents from it);
+    # the PR is opened from a sibling ref whose tip commit restores
+    # docs/loop-spec/features/<slug>/ to the base image, rebuilt from the branch tip and
+    # force-pushed on every checkpoint.
+    pr_head="$branch"
+    force_flag=""
+    if [[ "${LOOP_SPEC_ARTIFACTS_IN_PR:-1}" == "0" ]]; then
+      docs_dir="docs/loop-spec/features/$(basename "$feature_dir")"
+      base_sha="$(bash "$script_dir/feature-read.sh" "$feature_dir" -r --filter '.baseSha // ""' 2>/dev/null || true)"
+      scrub_index="$command_tmp/scrub-index"
+      GIT_INDEX_FILE="$scrub_index" git read-tree "$branch" 2>/dev/null \
+        || _skip "cannot read the tree of '$branch' for the scrubbed checkpoint"
+      # -f: the index is a throwaway, and without it git rm refuses whenever the working
+      # tree's copy of the directory differs from the branch tree (any uncommitted edit).
+      GIT_INDEX_FILE="$scrub_index" git rm -r -q -f --cached --ignore-unmatch -- "$docs_dir" >/dev/null 2>&1 \
+        || _skip "cannot drop $docs_dir from the scrubbed checkpoint"
+      if [[ -n "$base_sha" ]] && git rev-parse -q --verify "$base_sha:$docs_dir" >/dev/null 2>&1; then
+        GIT_INDEX_FILE="$scrub_index" git read-tree --prefix="$docs_dir/" "$base_sha:$docs_dir" 2>/dev/null \
+          || _skip "cannot restore the base image of $docs_dir"
+      fi
+      scrub_tree="$(GIT_INDEX_FILE="$scrub_index" git write-tree 2>/dev/null)" \
+        || _skip "cannot write the scrubbed checkpoint tree"
+      scrub_commit="$(git commit-tree "$scrub_tree" -p "$branch" \
+        -m "checkpoint: run documents kept out of the PR (LOOP_SPEC_ARTIFACTS_IN_PR=0)" 2>/dev/null)" \
+        || _skip "cannot commit the scrubbed checkpoint tree"
+      pr_head="${branch}-checkpoint"
+      git update-ref "refs/heads/$pr_head" "$scrub_commit" 2>/dev/null \
+        || _skip "cannot update refs/heads/$pr_head"
+      force_flag="--force"
     fi
 
     # ── Step 4: Push ────────────────────────────────────────────────────────────
@@ -184,13 +218,21 @@ PY
         || echo "checkpoint-pr: state ref $state_ref not pushed (state stays local)" >&2
     fi
 
+    # $force_flag is deliberately unquoted: empty expands to nothing, "--force" expands
+    # to one word. Quoting it would pass a literal empty-string argument to git push.
+    if [[ "$pr_head" != "$branch" ]]; then
+      push_rc=0
+      run_authenticated push git push -u $force_flag origin "${pr_head}:${pr_head}" || push_rc=$?
+      [[ "$push_rc" -eq 0 ]] || auth_skip "push failed for checkpoint head '${pr_head}'"
+    fi
+
     # A remote whose URL names no host (a path, file://) holds the pushed branch but
     # has no repository gh could open a PR on: stop as pushed, not as a gh failure.
     [[ -n "$remote_host" ]] || _skip "remote URL names no host: branch '${branch}' pushed, no PR target"
 
     # ── Step 5: Idempotency — check for existing open PR ───────────────────────
     list_rc=0
-    run_authenticated github-pr gh pr list --head "$branch" --state open \
+    run_authenticated github-pr gh pr list --head "$pr_head" --state open \
       --json url --jq '.[0].url' || list_rc=$?
     [[ "$list_rc" -eq 0 ]] || auth_skip "gh pr list failed"
     existing_url="$(tr -d '\r\n' < "$command_out")"
@@ -239,12 +281,17 @@ ${blocked_rows}"
 
       pr_body="${pr_body}
 
-Resuming \`/loop-spec:cycle\` on this branch continues the run. Re-review this PR after cycle completion."
+Resuming \`/loop-spec:cycle\` on \`${branch}\` continues the run. Re-review this PR after cycle completion."
+      if [[ "$pr_head" != "$branch" ]]; then
+        pr_body="${pr_body}
+
+Run documents under \`docs/loop-spec/features/\` are kept out of this PR by \`LOOP_SPEC_ARTIFACTS_IN_PR=0\`. They stay committed on \`${branch}\`; this PR's head \`${pr_head}\` is rebuilt from that branch on every checkpoint."
+      fi
 
       create_rc=0
       run_without_auth_retry github-pr gh pr create --draft \
         --base "${base_branch:-main}" \
-        --head "$branch" \
+        --head "$pr_head" \
         --title "$pr_title" \
         --body "$pr_body" || create_rc=$?
 
@@ -264,7 +311,7 @@ Resuming \`/loop-spec:cycle\` on this branch continues the run. Re-review this P
         else
           create_rc=0
           run_once "$command_out" "$command_err" gh pr create --draft \
-            --base "${base_branch:-main}" --head "$branch" --title "$pr_title" --body "$pr_body" \
+            --base "${base_branch:-main}" --head "$pr_head" --title "$pr_title" --body "$pr_body" \
             || create_rc=$?
           if [[ "$create_rc" -eq 0 ]]; then
             pr_url="$(tr -d '\r\n' < "$command_out")"
