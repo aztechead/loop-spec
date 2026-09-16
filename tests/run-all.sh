@@ -248,6 +248,7 @@ run_suite "lib/codex-shell-env"       "bash tests/lib/codex-shell-env.test.sh"
 run_suite "lib/skill-paths"           "bash tests/lib/skill-paths.test.sh"
 run_suite "validate-agents-frontmatter" "bash tests/validate-agents.test.sh"
 run_suite "restrict-agent-paths"      "bash hooks/restrict-agent-paths.test.sh"
+run_suite "pre-cycle-permission-check" "bash hooks/pre-cycle-permission-check.test.sh"
 run_suite "hooks/team/no-worktrees-guard" "bash hooks/team/no-worktrees-guard.test.sh"
 run_suite "hooks/team/phase-handoff-guard" "bash hooks/team/phase-handoff-guard.test.sh"
 run_suite "hooks/team/nested-session-guard" "bash hooks/team/nested-session-guard.test.sh"
@@ -317,7 +318,11 @@ run_suite "lib/decisions"             "bash tests/lib/decisions.test.sh"
 run_suite "lib/debug-init"            "bash tests/lib/debug-init.test.sh"
 run_suite "lib/greenfield-bootstrap"  "bash tests/lib/greenfield-bootstrap.test.sh"
 run_suite "lib/cycle-preflight"       "bash tests/lib/cycle-preflight.test.sh" integration
-run_suite "lib/cycle-driver"          "bash tests/lib/cycle-driver.test.sh" integration
+run_suite "lib/cycle-driver-core"        "bash tests/lib/cycle-driver-core.test.sh" integration
+run_suite "lib/cycle-driver-redo"        "bash tests/lib/cycle-driver-redo.test.sh" integration
+run_suite "lib/cycle-driver-short-route" "bash tests/lib/cycle-driver-short-route.test.sh" integration
+run_suite "lib/cycle-driver-phases"      "bash tests/lib/cycle-driver-phases.test.sh" integration
+run_suite "lib/cycle-driver-guard"       "bash tests/lib/cycle-driver-guard.test.sh" integration
 run_suite "lib/cycle-start-resume"    "bash tests/lib/cycle-start-resume.test.sh" integration
 run_suite "lib/phase-exit"            "bash tests/lib/phase-exit.test.sh" integration
 run_suite "lib/phase-entry"           "bash tests/lib/phase-entry.test.sh" integration
