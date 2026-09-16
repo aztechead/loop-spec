@@ -30,7 +30,13 @@ Never overwrite `baseSha` or `baseBranch`. Fast-forward merges always target `fe
 
 ## 2. Task set
 
-Use `.execute.tasks[]` as the dispatch list. The preparation call already performs these steps:
+Use `.execute.tasks[]` as the dispatch list. The preparation call already performs these steps.
+When `LOOP_SPEC_STARTUP_BASELINE=1`, it also captures the exact-base repository baseline
+before reading or dispatching any implementation task. The capture is attempted once;
+`verificationBaselineAttempted` prevents re-entry from recapturing against modified code,
+and a failed capture remains a reported null baseline.
+
+The preparation call performs these task steps:
 
 1. Reads `artifacts.tasks` from `feature_dir/tasks.json`.
 2. Registers `pendingRemediationTasks[]` from VERIFY, ITERATE, or DELIVER.

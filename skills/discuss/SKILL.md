@@ -14,7 +14,15 @@ Follow `skills/shared/dispatch.md` for dispatch. Read only the entry packet as i
 pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin discuss --feature-dir "$feature_dir")"
 # .entry.fields .entry.read[] .entry.flags[] (a missing ingress; relay and return)
 # .mode.grill=run|self-answer|skip .mode.oracle=supervisor|self .mode.critique=run|skip .mode.reentry=true|false .mode.reason
+# .mode.budget=N .mode.elapsed=N .mode.remaining=N
+# .mode.exhausted=true|false .mode.budgetReason=<route evidence>
 ```
+
+Use the remaining allowance as a soft deadline: bound exploration to the route scope,
+reuse SPEC and prior decisions, and refresh `design-budget.sh` before an optional scan or
+redispatch. Handoffs and resumes share the allowance; it never preempts a phase. Return
+with the required design artifact for the normal gates. Unresolved required findings
+after exhaustion must be reported for escalation, never passed or silently skipped.
 
 `grill`, `critique`, and `reentry` below are `.mode.*`; `phase-entry.sh` and
 `phase-mode.sh` are the probes it folds, read once.

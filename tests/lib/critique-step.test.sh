@@ -128,9 +128,6 @@ printf 'FINDINGS:\n1. [major] tagged [minor] but is a schema hole\n2. [minor] wo
 out="$(printf '[major] tagged [minor] but is a schema hole\n[minor] wording\n' | bash "$STEP" fail --feature-dir "$FD" --fix-list -)"
 check "a major that mentions [minor] still answers rerun" "rerun" "$(jq -r '.answer' <<<"$out")"
 
-echo ""
-echo "Results: $PASS passed, $FAIL failed"
-[[ "$FAIL" -eq 0 ]]
 bash "$STEP" pass --feature-dir "$FD" >/dev/null
 
 # --- a [major] among minors still reruns ---
@@ -139,3 +136,6 @@ printf 'FINDINGS:\n1. [minor] wording\n2. [major] gap\n' | bash "$STEP" findings
 out="$(printf '[minor] wording\n[major] gap\n' | bash "$STEP" fail --feature-dir "$FD" --fix-list -)"
 check "a major among minors still answers rerun" "rerun" "$(jq -r '.answer' <<<"$out")"
 
+echo ""
+echo "Results: $PASS passed, $FAIL failed"
+[[ "$FAIL" -eq 0 ]]

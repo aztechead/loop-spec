@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
-# Shared cycle Step 5: per-repo prepare/baseline (prepare-repo) and single-repo
-# skeleton+flags+decisions (finalize). Workspace mode used to inline the same
-# prepare-environment.sh / verification-baseline.sh sequence without writing a
-# terminal result; this script is the one fail-terminal path both layouts call
-# (preparation failure), so the procedure never enters the model's context. A failed
-# opt-in baseline capture is a stderr notice with a null baseline, not a failure.
+# Shared cycle Step 5: per-repo preparation (prepare-repo) and single-repo
+# skeleton+flags+decisions (finalize). Baselines are deferred to EXECUTE/ONESHOT after
+# the feature state exists; this script only resolves preparation and initializes state.
 #
 # Usage:
 #   bash lib/feature-bootstrap.sh prepare-repo \
@@ -15,7 +12,7 @@
 #       --prepare CMD --test CMD --lint CMD --typecheck CMD \
 #       [--repo-label NAME]
 #     -> prepares one repository, upgrades a generic python test command, and
-#        captures the opt-in baseline. Prints one JSON object on stdout:
+#        defers the opt-in baseline. Prints one JSON object on stdout:
 #        {command, key, test, baseline}. Chatter on stderr.
 #
 #   bash lib/feature-bootstrap.sh finalize \
@@ -31,7 +28,7 @@
 #        cycle-result begin marker, and migrates staged pre-SPEC decisions.
 #        Prints the updated test command on stdout.
 #
-# Exit codes: 0 success (a failed baseline capture still exits 0); 1 preparation
+# Exit codes: 0 success; 1 preparation
 # failure (a terminal cycle result has already been written); 2 bad invocation.
 set -euo pipefail
 
@@ -82,34 +79,11 @@ _prepare_repo() {
     cmd_test="$(bash "$SCRIPT_DIR/detect-test-cmd.sh" "$prep_root")"
   fi
 
-  # Opt-in startup baseline (LOOP_SPEC_STARTUP_BASELINE=1). Default off: no capture runs,
-  # `verificationBaseline` stays null, and VERIFY's end-of-cycle comparison treats every
-  # failure it observes as blocking. Turn it on only where the base commit is already red
-  # and the known-failure oracle is what stops VERIFY from chasing pre-existing failures.
-  # The capture owns a foreground watchdog and must leave HEAD and the worktree unchanged.
-  # A capture that fails is reported and skipped, never a terminal result: a 6.6.5 live run
-  # wrote status failed under the auto-slug during startup diagnostics, and the caller
-  # polling last-result.json could not tell it from the run's end.
+  # The opt-in baseline is captured at the start of EXECUTE, after design has proved the
+  # task needs implementation. Keeping preparation here only resolves commands; no suite
+  # runs before SPEC/PLAN. EXECUTE records a failed attempt with a null baseline, never a
+  # terminal result, and never retries it on re-entry.
   baseline_json=null
-  if [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" && "${greenfield:-0}" != "1" ]]; then
-    local baseline_git_path baseline_rc=0
-    baseline_git_path="$(git -C "$prep_root" rev-parse --git-path "loop-spec/validation/${slug}/base")"
-    [[ "$baseline_git_path" == /* ]] || baseline_git_path="$prep_root/$baseline_git_path"
-    mkdir -p "$baseline_git_path"
-    baseline_json="$(bash "$SCRIPT_DIR/verification-baseline.sh" capture \
-      --root "$prep_root" --base-sha "$base_sha" --prepare-key "$prepare_key" \
-      --log-dir "$baseline_git_path" --test "$cmd_test" --lint "$cmd_lint" \
-      --typecheck "$cmd_typecheck")" || baseline_rc=$?
-    if [[ "$baseline_rc" -eq 0 ]]; then
-      baseline_json="$(jq -c . <<<"$baseline_json")"
-    else
-      local baseline_reason
-      baseline_reason="$(jq -r '.reason // "exact-base validation baseline could not be captured"' \
-        <<<"${baseline_json:-{}}" 2>/dev/null || printf 'exact-base validation baseline failed')"
-      echo "loop-spec: startup validation baseline not captured (exit $baseline_rc): ${prefix}${baseline_reason}. verificationBaseline stays null, so VERIFY treats every failure it observes as blocking, the same as with LOOP_SPEC_STARTUP_BASELINE off; fix the environment before EXECUTE if the base is known-red." >&2
-      baseline_json=null
-    fi
-  fi
 }
 
 cmd="${1:-}"
@@ -223,9 +197,11 @@ effective_profile="$cycle_profile"
 if [[ "$effective_profile" == "compact" && "$gate_plan_json" == "null" ]]; then
   effective_profile="standard"
 fi
-feature_json="$(jq --argjson baseline "$baseline_json" --arg profile "$effective_profile" \
+baseline_opt_in=false
+[[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" ]] && baseline_opt_in=true
+feature_json="$(jq --argjson baseline "$baseline_json" --argjson baselineOptIn "$baseline_opt_in" --arg profile "$effective_profile" \
   --argjson classification "$classification_json" --argjson gatePlan "$gate_plan_json" '
-    .verificationBaseline = $baseline | .executionProfile = $profile |
+    .verificationBaseline = $baseline | .verificationBaselineOptIn = $baselineOptIn | .executionProfile = $profile |
     if $classification == null then . else .autonomousClassification = $classification end |
     if $gatePlan == null then . else .gatePlan = $gatePlan end
   ' <<<"$feature_json")"

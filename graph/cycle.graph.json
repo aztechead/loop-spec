@@ -446,7 +446,11 @@
         "currentPhase",
         "mergeQueue",
         "pendingRemediationTasks",
-        "currentTeammates"
+        "currentTeammates",
+        "workspace",
+        "verificationBaseline",
+        "verificationBaselineAttempted",
+        "verificationBaselineOptIn"
       ],
       "effort": "system2",
       "body": "skills/execute/SKILL.md",

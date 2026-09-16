@@ -53,6 +53,16 @@ check "mode spec: human attached interviews" "path=interview" "${out%% *}"
 out="$(LOOP_SPEC_AUTONOMOUS=1 bash "$MODE" spec --feature-dir "$FD")"
 check "mode spec: autonomous self-answers" "path=self-answer" "${out%% *}"
 check "mode spec: self-answer names the oracle" "oracle=self" "$(cut -d' ' -f2 <<<"$out")"
+printf '%s\n' '{"route":"full","estimatedFiles":7,"reviewableEstimatedFiles":7,"criteriaCount":5}' \
+  > "$WORK/classification.json"
+jq --argjson classification "$(<"$WORK/classification.json")" \
+  '.autonomousClassification = $classification' "$FD/feature.json" > "$FD/feature.json.tmp" \
+  && mv "$FD/feature.json.tmp" "$FD/feature.json"
+out="$(bash "$MODE" spec --feature-dir "$FD")"
+check "mode spec: route estimate publishes the design budget" "budget=29" \
+  "$(grep -o 'budget=[0-9]*' <<<"$out")"
+check "mode spec: budget accounts for files and criteria" "route-size-estimate:7-files-5-criteria" \
+  "$(grep -o 'route-size-estimate:[^ ]*' <<<"$out")"
 out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$MODE" spec --feature-dir "$FD")"
 check "mode spec: a supervisor rides on the line" "oracle=supervisor" "$(cut -d' ' -f2 <<<"$out")"
 out="$(bash "$MODE" spec --feature-dir "$FD")"

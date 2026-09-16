@@ -219,6 +219,7 @@ run_suite "lib/graph-schema"          "bash tests/lib/graph-schema.test.sh"
 run_suite "lib/graph-validate"        "bash tests/lib/graph-validate.test.sh"
 run_suite "lib/graph-probes"      "bash tests/lib/graph-probes.test.sh"
 run_suite "lib/graph-phases"      "bash tests/lib/graph-phases.test.sh"
+run_suite "lib/design-budget"     "bash tests/lib/design-budget.test.sh"
 run_suite "graph-phase-subsets"   "bash tests/graph-phase-subsets.test.sh"
 run_suite "lib/oneshot-exit-gate" "bash tests/lib/oneshot-exit-gate.test.sh"
 run_suite "lib/context-load"      "bash tests/lib/context-load.test.sh"
@@ -368,6 +369,7 @@ run_suite "lib/run-with-watchdog"     "bash tests/lib/run-with-watchdog.test.sh"
 run_suite "lib/prepare-environment"   "bash tests/lib/prepare-environment.test.sh" integration
 run_suite "lib/project-commands"      "bash tests/lib/project-commands.test.sh"
 run_suite "lib/verification-baseline" "bash tests/lib/verification-baseline.test.sh" integration
+run_suite "lib/deferred-baseline" "bash tests/lib/deferred-baseline.test.sh" integration
 run_suite "lib/feature-validation"    "bash tests/lib/feature-validation.test.sh"
 run_suite "lib/model-overrides"       "bash tests/model-overrides.test.sh"
 run_suite "lib/resolve-bin"           "bash tests/lib/resolve-bin.test.sh"

@@ -1032,7 +1032,7 @@ def cmd_init(argv):
 
 def init_workspace(ws_root, slug, title, style, profile, class_text, autonomous, greenfield, spec_file, repos):
     """Workspace mode: every repo is checked before any branch is created, then each
-    repo gets an in-place feat/{slug} branch and its own prepare/baseline pass."""
+    repo gets an in-place feat/{slug} branch and its own preparation pass."""
     dirty = []
     for r in repos:
         rpath = os.path.join(ws_root, r["path"])
@@ -1110,6 +1110,7 @@ def init_workspace(ws_root, slug, title, style, profile, class_text, autonomous,
     fj["executionProfile"] = effective
     fj["autonomous"] = autonomous == "1"
     fj["greenfield"] = greenfield == "1"
+    fj["verificationBaselineOptIn"] = os.environ.get("LOOP_SPEC_STARTUP_BASELINE") == "1"
     lib("feature-write", feature_dir, json.dumps(fj))
     lib("decisions", "migrate", os.path.join(ws_root, ".loop-spec", "decisions-staging"), feature_dir)
     lib("cycle-result", "begin", "--result-root", ws_root, "--cycle-type", "full", "--title", title,
@@ -1398,6 +1399,21 @@ def cmd_next(argv):
             exit_out = exit_proc.stdout
             flags = [line for line in exit_out.splitlines() if line.startswith("FLAG")]
             if exit_proc.returncode == 1:
+                budget_exhausted = False
+                if returned in ("spec", "discuss", "plan"):
+                    budget_probe = lib_run("design-budget", "--feature-dir", feature_dir,
+                                           "--phase", returned, quiet=True)
+                    if budget_probe.returncode != 0:
+                        raise Die("design budget probe failed: %s" %
+                                  (budget_probe.stderr or "configuration error").strip(), 2)
+                    budget_out = budget_probe.stdout or ""
+                    budget_exhausted = bool(re.search(r"(?:^|\s)exhausted=true(?:\s|$)", budget_out))
+                if budget_exhausted:
+                    reason = "%s exit gate unsatisfied after cumulative design budget exhaustion: %s" % (
+                        returned, " ".join(flags[:3]))
+                    cmd_escalate(["--feature-dir", feature_dir, "--reason", reason], silent=True)
+                    print('DONE status=escalated reason="%s"' % reason)
+                    return 0
                 # The same flags three times is a gate the phase cannot satisfy, not a phase that
                 # needs one more try: the 6.2.0 haiku runs looped six times on one flag and then
                 # published an invented reason. Escalate with the flags as the reason instead.
@@ -1843,6 +1859,22 @@ def returned_checks(feature_dir, phase):
     started = fget(feature_dir, "currentPhaseStartedAt", "")
     if started:
         mins = (int(time.time()) - iso_epoch(started)) // 60
+        if phase in ("spec", "discuss", "plan"):
+            budget_line = lib_run("design-budget", "--feature-dir", feature_dir,
+                                  "--phase", phase, quiet=True)
+            if budget_line.returncode != 0:
+                raise Die("design budget probe failed: %s" % (budget_line.stderr or "configuration error").strip(), 2)
+            budget_match = re.search(r"(?:^|\s)budget=([1-9][0-9]*)", budget_line.stdout or "")
+            elapsed_match = re.search(r"(?:^|\s)elapsed=([0-9]+)", budget_line.stdout or "")
+            design_minutes = int(elapsed_match.group(1)) if elapsed_match else mins
+            if budget_match and design_minutes >= int(budget_match.group(1)):
+                budget = budget_match.group(1)
+                warning = ("design-budget-exhausted: phase %s exceeded cumulative route-size budget "
+                           "of %sm after %sm; required gates still decide whether it may advance" %
+                           (phase, budget, design_minutes))
+                if warning not in (feat.get("warnings") or []):
+                    fappend(feature_dir, "warnings", warning)
+                    print("loop-spec: %s" % warning, file=sys.stderr)
         if mins > int(ceiling):
             # The watchdog never kills work; it makes a wedged loop visible.
             print("loop-spec: phase %s took %dm, ceiling %sm" % (phase, mins, ceiling), file=sys.stderr)
@@ -2957,6 +2989,13 @@ def cmd_phase_begin(argv):
         print("cycle-driver: this session handed off after %s; %s starts in a fresh invocation (%s)"
               % (handed.get("from"), phase, handoff_answer(feature_dir, handed)), file=sys.stderr)
         return 4
+    if phase == "oneshot":
+        deferred = subprocess.run(["bash", str(LIB_DIR / "deferred-baseline.sh"), "run", feature_dir],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        if deferred.stderr:
+            print(deferred.stderr, file=sys.stderr, end="")
+        if deferred.returncode != 0:
+            raise Die("deferred baseline failed before oneshot dispatch", 2)
     node = next((n for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == phase), {})
     instructions = instruction_record(feature_dir, phase)
     skeletons = write_skeletons(feature_dir, state(feature_dir), node)

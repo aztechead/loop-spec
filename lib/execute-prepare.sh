@@ -60,6 +60,13 @@ else
   [[ -n "$root" && -d "$root" ]] || { echo "execute-prepare: feature.workspace.root '$root' is not a directory" >&2; exit 2; }
 fi
 
+# -- deferred opt-in baseline -----------------------------------------------------------
+# Capture only when EXECUTE is first entered.  The design phases therefore never pay for
+# a repository-wide suite, while VERIFY still has the exact-base oracle when requested.
+# A detached temporary worktree is deliberate: SPEC/PLAN commits may already move the
+# feature branch beyond baseSha, and this must not reset or dirty the user's checkout.
+bash "$SCRIPT_DIR/deferred-baseline.sh" run "$feature_dir"
+
 # -- commit pending phase artifacts ------------------------------------------------------
 # Single-repo only: in workspace mode the artifacts live at the workspace root, outside
 # every repo, so no repo's integrate-task can see them as dirt and there is nothing to

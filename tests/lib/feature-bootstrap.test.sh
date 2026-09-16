@@ -110,10 +110,10 @@ got="absent"
 [[ -e "$WORK/e/.loop-spec/features/demo/feature.json" ]] && got="written"
 check "E: prepare-repo does not write feature.json" "absent" "$got"
 
-# Case F: opt-in baseline capture is a JSON object, not null.
+# Case F: opt-in baseline is deferred until EXECUTE, so preparation remains cheap.
 make_repo "$WORK/f"
 out=$(LOOP_SPEC_STARTUP_BASELINE=1 prepare_repo "$WORK/f" 2>/dev/null)
-check "F: baseline captured" "object" "$(jq -r '.baseline | type' <<<"$out")"
+check "F: baseline deferred" "null" "$(jq -r '.baseline' <<<"$out")"
 
 # Case G: prepare failure writes a terminal result (workspace-mode contract).
 make_repo "$WORK/g"
@@ -169,7 +169,7 @@ out=$(LOOP_SPEC_STARTUP_BASELINE=1 prepare_repo "$WORK/k" 2>"$WORK/k.err") || rc
 check "K: dirty-tree baseline capture does not fail the bootstrap" "0" "$rc"
 check "K: baseline failure leaves baseline null" "null" "$(jq -r '.baseline' <<<"$out")"
 check "K: baseline failure writes no last-result.json" "0" "$([[ -f "$WORK/k/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
-check "K: baseline failure is named on stderr" "1" "$(grep -c 'startup validation baseline not captured' "$WORK/k.err")"
+check "K: deferred baseline emits no startup capture notice" "0" "$(grep -c 'startup validation baseline not captured' "$WORK/k.err" || true)"
 
 # Case L: greenfield skips baseline even when the opt-in is on.
 make_repo "$WORK/l"

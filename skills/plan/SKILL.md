@@ -15,7 +15,16 @@ Your inputs are the entry packet and nothing else:
 pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin plan --feature-dir "$feature_dir")"
 # .entry.fields .entry.read[] .entry.flags[] (a missing ingress; relay and return)
 # .mode.critique=run|skip .mode.reentry=true|false .mode.reason (structural fast-path | maintenance | compact | security signal | ...)
+# .mode.budget=N .mode.elapsed=N .mode.remaining=N
+# .mode.exhausted=true|false .mode.budgetReason=<route evidence>
 ```
+
+Treat the allowance as a soft deadline for planning. Keep searches and pattern mining
+within the route's estimated files and criteria, reuse PATTERNS/SPEC already present,
+and refresh `design-budget.sh` before an optional scan or planner redispatch. The allowance
+is cumulative across PLAN handoffs and resumes and does not preempt the phase. Once the
+required PLAN artifact is ready, return for normal gates; unresolved required findings
+after exhaustion must escalate rather than be passed or skipped.
 
 `.mode.reentry` (ITERATE sent the cycle back for a `plan`-type gap): read `iterate.feedback`,
 revise or add only the tasks that close it, keep `## User decisions (already made)`.
@@ -42,6 +51,9 @@ existing decision path before accepting conflicting tasks.
 Spawn `planner-1` with role `loop-spec:planner` and model `feature.models.planner`.
 In team modes, also start `challenger-1` with SPEC.md.
 Include these fields and instructions in the planner brief:
+
+- Include the current `design-budget.sh` output (`budget`, `elapsed`, `remaining`,
+  `exhausted`, and `budgetReason`) as a soft deadline; it does not preempt the phase.
 
 - `slug`, `spec_path`, `patterns_path`, and `evidence_path`.
 - `template_path`: the absolute `${LOOP_SPEC_SKILL_DIR}/../shared/artifact-templates/PLAN.md.template`.

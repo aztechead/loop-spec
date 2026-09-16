@@ -79,21 +79,23 @@ security_signal() {
 case "$phase" in
   spec)
     gf="$(fget '.greenfield // false')"
+    budget_line="$(bash "$SCRIPT_DIR/design-budget.sh" --feature-dir "$feature_dir" --phase spec)"
     if [[ -f "$feature_dir/spec-draft.md" ]]; then
-      echo "path=ingest reason=spec-draft.md present greenfield=$gf"
+      echo "path=ingest $budget_line reason=spec-draft.md present greenfield=$gf"
     elif [[ "$autonomous" == true ]]; then
-      echo "path=self-answer oracle=$(oracle) reason=autonomous greenfield=$gf"
+      echo "path=self-answer oracle=$(oracle) $budget_line reason=autonomous greenfield=$gf"
     elif [[ "$non_interactive" == true ]]; then
-      echo "path=synthesize reason=LOOP_SPEC_NON_INTERACTIVE=1 greenfield=$gf"
+      echo "path=synthesize $budget_line reason=LOOP_SPEC_NON_INTERACTIVE=1 greenfield=$gf"
     elif [[ "$profile" == "maintenance" ]]; then
-      echo "path=synthesize reason=maintenance profile greenfield=$gf"
+      echo "path=synthesize $budget_line reason=maintenance profile greenfield=$gf"
     elif [[ "$profile" == "compact" && "$(compact_gate specInterview)" == "skip" ]]; then
-      echo "path=synthesize reason=compact gatePlan skips specInterview greenfield=$gf"
+      echo "path=synthesize $budget_line reason=compact gatePlan skips specInterview greenfield=$gf"
     else
-      echo "path=interview reason=human attached greenfield=$gf"
+      echo "path=interview $budget_line reason=human attached greenfield=$gf"
     fi
     ;;
   discuss)
+    budget_line="$(bash "$SCRIPT_DIR/design-budget.sh" --feature-dir "$feature_dir" --phase discuss)"
     if [[ "$autonomous" == true ]]; then grill=self-answer; why=autonomous
     elif [[ "$non_interactive" == true ]]; then grill=skip; why=LOOP_SPEC_NON_INTERACTIVE=1
     elif [[ "$style" == "review-only" ]]; then grill=skip; why="review-only style"
@@ -105,28 +107,30 @@ case "$phase" in
       *) critique=run; creason="${line#*reason=}" ;;
     esac
     oracle_field=""; [[ "$grill" == "self-answer" ]] && oracle_field=" oracle=$(oracle)"
-    echo "grill=$grill$oracle_field critique=$critique reentry=$reentry reason=$why; critique: $creason"
+    echo "grill=$grill$oracle_field critique=$critique reentry=$reentry $budget_line reason=$why; critique: $creason"
     ;;
   plan)
     signal="$(security_signal "$docs/SPEC.md" "$docs/PLAN.md")"
     tasks="$feature_dir/tasks.json"
+    budget_line="$(bash "$SCRIPT_DIR/design-budget.sh" --feature-dir "$feature_dir" --phase plan)"
     if [[ -n "$signal" ]]; then
-      echo "critique=run reentry=$reentry reason=security signal: $signal"
+      echo "critique=run reentry=$reentry $budget_line reason=security signal: $signal"
     elif [[ "$profile" == "compact" && "$(compact_gate planCritique)" == "skip" ]]; then
-      echo "critique=skip reentry=$reentry reason=compact gatePlan skips planCritique"
+      echo "critique=skip reentry=$reentry $budget_line reason=compact gatePlan skips planCritique"
     elif [[ "$profile" == "maintenance" ]]; then
-      echo "critique=skip reentry=$reentry reason=maintenance profile, no security signal"
+      echo "critique=skip reentry=$reentry $budget_line reason=maintenance profile, no security signal"
     elif [[ -f "$tasks" ]]; then
       fp_tasks="$(bash "$SCRIPT_DIR/tuning.sh" get fastPathMaxTasks 2 2>/dev/null || echo 2)"
       fp_files="$(bash "$SCRIPT_DIR/tuning.sh" get fastPathMaxFiles 3 2>/dev/null || echo 3)"
       n="$(jq 'length' "$tasks")"; m="$(jq '[.[].files[]?] | unique | length' "$tasks")"
+      budget_line="$(bash "$SCRIPT_DIR/design-budget.sh" --feature-dir "$feature_dir" --phase plan)"
       if (( n <= fp_tasks && m <= fp_files )); then
-        echo "critique=skip reentry=$reentry reason=structural fast-path: $n tasks, $m files, no security signal"
+        echo "critique=skip reentry=$reentry $budget_line reason=structural fast-path: $n tasks, $m files, no security signal"
       else
-        echo "critique=run reentry=$reentry reason=$n tasks, $m files exceed the fast-path bounds ($fp_tasks/$fp_files)"
+        echo "critique=run reentry=$reentry $budget_line reason=$n tasks, $m files exceed the fast-path bounds ($fp_tasks/$fp_files)"
       fi
     else
-      echo "critique=run reentry=$reentry reason=tasks.json missing; cannot measure scope"
+      echo "critique=run reentry=$reentry $budget_line reason=tasks.json missing; cannot measure scope"
     fi
     ;;
   verify)
