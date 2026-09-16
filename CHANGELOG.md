@@ -17,14 +17,17 @@ All notable changes documented here. Format follows Keep a Changelog.
   an in-place checkout (codex/opencode/adk/headless Claude) hit the guard, and a repo
   that had committed such a record blocked every fresh clone too; the autonomous chain
   (`skills/cycle/SKILL.md` step 4) hit the same wall starting its next feature.
-  `cmd_finish` now writes `currentPhase: "completed"` and snapshots the state ref
-  (`lib/state-ref.sh`) once the cycle result is published, so the field reaches the
-  terminal value `skills/shared/feature-state-schema.md:48` already declared legal. The
-  guard itself (`live_feature`, shared by `cmd_init` and `cmd_decline`) no longer trusts
-  a committed or copied `currentPhase` alone: a feature only blocks a new cycle when its
-  phase is live AND its delivery sidecar is not terminal AND this checkout still holds
-  the feature's branch, its state ref, or an armed run naming it. A record merged before
-  6.6.7 is harmless under the new guard without any migration.
+  `cmd_finish` and `deliver_stalled`'s already-satisfied answer now write
+  `currentPhase: "completed"` and snapshot the state ref (`lib/state-ref.sh`) once the
+  cycle result is published, so the field reaches the terminal value
+  `skills/shared/feature-state-schema.md:48` already declared legal on the paths that
+  never enter the graph's `completed` node. The guard itself (`live_feature`, shared by
+  `cmd_init` in both layouts and `cmd_decline`) no longer trusts a committed or copied
+  `currentPhase` alone: a feature only blocks a new cycle when its phase is live AND no
+  terminal record closes it (a delivered sidecar or a completed `result.json`) AND this
+  checkout still holds the feature's branch (each repo's own branch in workspace mode),
+  its state ref, or an armed run naming it. A record merged before 6.6.7 is harmless
+  under the new guard without any migration.
 
 ## [6.6.6] - 2026-09-15
 

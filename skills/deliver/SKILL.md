@@ -57,6 +57,7 @@ Follow that route. Never infer a different failure type from prose.
   `pushed-no-pr` means the host has no `gh`: the verified SHA reached the remote, but no PR exists to check.
   Do not commit or push afterwards. Keep the verified head SHA unchanged.
   `feature.json.currentPhase` stays `deliver` so a clone can check external state again.
+  `cycle-driver.sh finish` advances it to `completed` once the cycle result is published.
 - **`execute`**: required checks failed, so the PR remains a draft.
   The controller adds a `task-delivery-ci-remediation` task per failed target to `pendingRemediationTasks[]`.
   Task notes list the failed checks. Return to the cycle.

@@ -306,6 +306,12 @@ check "begin: the resume command is rendered for a pick" "1" "$(jq -r '.next.res
 # --- finish renders the completion report; decline writes the mismatch result (N4) ----
 REPO10="$(new_repo finish-report)"
 out="$(cd "$REPO10" && AUTONOMOUS=1 drv begin -- "autonomous add a flag" 2>/dev/null)"; FD10="$(jq -r '.featureDir' <<<"$out")"
+# Past begin the work is reported through the cycle, never declined (port4-haiku-3
+# declined with the fix committed). Pinned before finish, so the refusal is this begun
+# feature and not the one a later init starts in the same checkout.
+ec=0; out="$(cd "$REPO10" && drv decline --dir "$REPO10" --reason "a harness error, work is done" 2>&1 >/dev/null)" || ec=$?
+check "decline: refused once a feature has begun in the checkout" "1" "$ec"
+check "decline: the refusal names the feature and the way out" "1" "$(grep -c 'has begun (phase .*); a run past begin finishes through the cycle or escalates' <<<"$out")"
 printf '{"status":"pushed-no-pr","nextPhase":"completed","targets":[{"name":"finish-report","targetSha":"0123456789abcdef0123","prUrl":null,"errorCode":null}],"feedback":null}\n' > "$FD10/delivery.json"
 out="$(cd "$REPO10" && drv finish --feature-dir "$FD10" --completed 1 2>/dev/null)"
 check "finish: the report opens with the outcome" "1" "$(jq -r '.report' <<<"$out" | head -1 | grep -c 'pushed to the remote')"
@@ -328,11 +334,6 @@ ec=0; (cd "$REPO11" && drv decline --dir "$REPO11" --reason "too late" >/dev/nul
 check "decline: a changed tree is work to finish, not a mismatch (the writer refuses)" "1" "$ec"
 ec=0; (cd "$REPO11" && drv decline --dir "$REPO11" >/dev/null 2>&1) || ec=$?
 check "decline: no reason is a bad invocation" "2" "$ec"
-# Past begin the work is reported through the cycle, never declined (port4-haiku-3
-# declined with the fix committed).
-ec=0; out="$(cd "$REPO10" && drv decline --dir "$REPO10" --reason "a harness error, work is done" 2>&1 >/dev/null)" || ec=$?
-check "decline: refused once a feature has begun in the checkout" "1" "$ec"
-check "decline: the refusal names the feature and the way out" "1" "$(grep -c 'has begun (phase .*); a run past begin finishes through the cycle or escalates' <<<"$out")"
 
 # --- a cycle never runs in the plugin's own repository (port audit 3, N6) ---------------
 # The checkout carries this plugin's manifest and is not the project the harness opened.
@@ -865,6 +866,38 @@ printf '{"status":"ready-for-review","nextPhase":"completed"}\n' > "$R15/.loop-s
 git -C "$R15" branch feat/done
 ec=0; drv init --dir "$R15" --slug other --title other --style auto --profile standard >/dev/null 2>&1 || ec=$?
 check "init: a terminal delivery sidecar counts as finished even with the branch still here" "0" "$ec"
+
+# --- already-satisfied: a completed result.json closes the feature too ----------------
+# deliver_stalled's no-change completion never reaches finish (its sidecar says
+# no-changes), so the result record is the terminal evidence for one written before 6.6.7.
+R16="$(new_repo already-satisfied)"
+mkdir -p "$R16/.loop-spec/features/same"
+printf '{"schemaVersion":7,"slug":"same","currentPhase":"deliver","branch":"feat/same"}\n' > "$R16/.loop-spec/features/same/feature.json"
+printf '{"status":"no-changes","nextPhase":"deliver"}\n' > "$R16/.loop-spec/features/same/delivery.json"
+printf '{"schema":1,"status":"completed","outcome":"no-change-needed"}\n' > "$R16/.loop-spec/features/same/result.json"
+git -C "$R16" branch feat/same
+ec=0; drv init --dir "$R16" --slug other --title other --style auto --profile standard >/dev/null 2>&1 || ec=$?
+check "init: a completed result.json counts as finished even with the branch still here" "0" "$ec"
+
+# --- workspace liveness: the evidence is each repo's own branch -------------------------
+# A workspace feature keeps the top-level branch null, cuts no state ref, and loses
+# active-run.json at the first published result; its repos' feat/<slug> heads are the
+# checkout's evidence. Both decline and a second init must refuse over one.
+WS="$WORK/ws"; mkdir -p "$WS/a"
+git -C "$WS/a" init -q -b main
+git -C "$WS/a" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+git -C "$WS/a" branch feat/held
+mkdir -p "$WS/.loop-spec/features/held"
+printf '{"schemaVersion":7,"slug":"held","currentPhase":"execute","branch":null,"workspace":{"root":"%s","mode":"workspace","repos":[{"name":"a","path":"a","branch":"feat/held"}]}}\n' "$WS" > "$WS/.loop-spec/features/held/feature.json"
+ec=0; err="$(drv decline --dir "$WS" --reason "a question" 2>&1 >/dev/null)" || ec=$?
+check "decline: a workspace feature with a live repo branch has begun" "1" "$ec"
+check "decline: the workspace refusal names the feature" "1" "$(grep -c 'feature held has begun (phase execute)' <<<"$err")"
+ec=0; err="$(drv init --dir "$WS" --slug other --title other --style auto --profile standard 2>&1 >/dev/null)" || ec=$?
+check "init: a workspace feature with a live repo branch refuses a second feature" "1" "$ec"
+check "init: the workspace refusal names the repo branch" "1" "$(grep -c 'already active in this workspace (phase execute; branch feat/held is in workspace repo a)' <<<"$err")"
+git -C "$WS/a" branch -D feat/held -q
+ec=0; drv decline --dir "$WS" --reason "a question" >/dev/null 2>&1 || ec=$?
+check "decline: the same workspace record with no repo branch is not live" "0" "$ec"
 
 echo
 echo "cycle-driver: $PASS passed, $FAIL failed"
