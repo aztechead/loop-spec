@@ -796,8 +796,9 @@ def live_feature(repo_root, feature_dir):
     record. In flight means the phase is still open (lib/graph/phases.sh validate), no
     terminal record closes it (a delivered sidecar, or a completed result.json), AND this
     checkout holds evidence a cycle is actually running here: the feature's branch (each
-    repo's own branch in workspace mode, where the top-level field is null and no state
-    ref is ever cut), its state ref (lib/state-ref.sh), or an armed run naming it.
+    repo's own branch under THIS root in workspace mode, where the top-level field is
+    null, no state ref is ever cut, and the recorded workspace.root may be where the
+    workspace used to live), its state ref (lib/state-ref.sh), or an armed run naming it.
     Returns (slug, phase, reason) for the Die message, or None when none of that holds."""
     feat = state(feature_dir)
     phase = feat.get("currentPhase") or ""
@@ -812,7 +813,7 @@ def live_feature(repo_root, feature_dir):
     ws = workspace_of(feat)
     if ws is not None:
         for repo in ws.get("repos") or []:
-            rpath = os.path.join(ws.get("root") or repo_root, repo.get("path") or "")
+            rpath = os.path.join(repo_root, repo.get("path") or "")
             rbranch = repo.get("branch") or ("feat/" + slug)
             if git_ok("-C", rpath, "show-ref", "--verify", "--quiet", "refs/heads/" + rbranch):
                 return (slug, phase, "branch %s is in workspace repo %s" % (rbranch, repo.get("name") or rpath))

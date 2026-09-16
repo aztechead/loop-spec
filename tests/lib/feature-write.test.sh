@@ -107,6 +107,14 @@ check "I2: a different id still appends, two entries in order" '["task-verify-su
 bash "$LIB" append "$WORK/feat" warnings '"w3"' >/dev/null
 check "I2: a plain string append to warnings still grows" '["w1","w2","w3"]' \
   "$(jq -c '.warnings' "$WORK/feat/feature.json")"
+# The live-run leftover itself: a queue that already holds three copies (written before
+# the dedup existed) compacts to one on the next append, in the first copy's slot.
+bash "$LIB" set "$WORK/feat" pendingRemediationTasks '[{"id":"task-verify-suite-1","subject":"a"},{"id":"task-verify-suite-1","subject":"a"},{"id":"task-verify-suite-1","subject":"a"},{"id":"task-iterate-1","subject":"c"}]' >/dev/null
+bash "$LIB" append "$WORK/feat" pendingRemediationTasks '{"id":"task-verify-suite-1","subject":"d"}' >/dev/null
+check "I2: three pre-existing copies compact to one on re-queue" '["task-verify-suite-1","task-iterate-1"]' \
+  "$(jq -c '[.pendingRemediationTasks[].id]' "$WORK/feat/feature.json")"
+check "I2: the compacted entry carries the re-queued subject" 'd' \
+  "$(jq -r '.pendingRemediationTasks[0].subject' "$WORK/feat/feature.json")"
 
 # Case J: append onto a non-array is refused, file untouched
 exit_code=0

@@ -103,6 +103,17 @@ out="$(bash "$SCRIPT" compare --baseline "$BASELINE" --root "$REPO" --base-sha "
   --test "$port_cmd" --lint '' --typecheck '')" || ec=$?
 check "a failure line that only differs by PID/port digits is not a regression" "0:accepted" "$ec:$(jq -r '.outcome' <<<"$out")"
 check "the PID/port command itself carries no regression flag" "false" "$(jq -r '.commands.test.regression' <<<"$out")"
+# The scrub is narrow: a failure that differs only in a count, an assertion value, or a
+# status is a different failure and still adds a fingerprint.
+printf 'FAILED test_y - AssertionError: expected 2, got 3 (Error 404)\n' > "$PORT_OUTPUT"
+count_base="$(capture --test "$port_cmd" --lint '' --typecheck '')"
+printf '%s\n' "$count_base" > "$BASELINE"
+printf 'FAILED test_y - AssertionError: expected 2, got 4 (Error 500)\n' > "$PORT_OUTPUT"
+ec=0
+out="$(bash "$SCRIPT" compare --baseline "$BASELINE" --root "$REPO" --base-sha "$BASE" \
+  --prepare-key prep-1 --log-dir "$LOGS/current-count" \
+  --test "$port_cmd" --lint '' --typecheck '')" || ec=$?
+check "a failure line that differs in a count or a status is still a regression" "20:regression" "$ec:$(jq -r '.outcome' <<<"$out")"
 
 RECOVER_FLAG="$WORK/recover-flag"
 export RECOVER_FLAG

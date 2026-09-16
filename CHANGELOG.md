@@ -34,15 +34,17 @@ All notable changes documented here. Format follows Keep a Changelog.
   `{phase, hash, count}` and escalated after one real attempt instead of
   `LOOP_SPEC_REDO_MAX`; a 6.6.5 live run escalated at attempt 1 on a stale count of
   3. A passing return for the same phase now zeroes the counter.
-- `lib/feature_write.py` `append` on `pendingRemediationTasks` now replaces an
-  existing entry that carries the same `id` instead of piling a duplicate beside
-  it, and `lib/verify-gate.sh`'s pass branch now clears the queue to `[]`. Three
+- `lib/feature_write.py` `append` on `pendingRemediationTasks` now replaces the first
+  existing entry that carries the same `id` and drops every later copy, so a queue that
+  already holds duplicates compacts on the next append, and `lib/verify-gate.sh`'s pass
+  branch now clears the queue to `[]`. Three
   callers (`lib/verify-gate.sh`, `lib/verify-prepare.sh`, `lib/iterate-judged.sh`)
   append through the same bare `current + [value]`, and the queue only ever
   drained through `ack-remediation`; a 6.6.5 live run queued three
   byte-identical `task-verify-suite-1` entries. Every other append is unchanged.
-- `lib/verification-baseline.sh` `normalize()` now scrubs every remaining bare
-  decimal integer to `<N>` after its existing substitutions. A PID or an
+- `lib/verification-baseline.sh` `normalize()` now scrubs labeled process and port
+  numbers and integers of five or more digits to `<N>` after its existing
+  substitutions; counts, assertion values, and statuses stay distinct. A PID or an
   ephemeral port in a failing test line hashed differently every run, so
   `compare` reported an added fingerprint — a `regression: true` — over
   identical code; a 6.6.5 live run hit this twice on a baseline that was already

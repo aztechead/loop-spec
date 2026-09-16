@@ -906,13 +906,15 @@ check "init: a completed result.json counts as finished even with the branch sti
 # --- workspace liveness: the evidence is each repo's own branch -------------------------
 # A workspace feature keeps the top-level branch null, cuts no state ref, and loses
 # active-run.json at the first published result; its repos' feat/<slug> heads are the
-# checkout's evidence. Both decline and a second init must refuse over one.
+# checkout's evidence. Both decline and a second init must refuse over one. The record's
+# workspace.root points elsewhere on purpose: the branch is looked for under the root
+# being scanned, so a moved workspace still answers for the checkout it is in.
 WS="$WORK/ws"; mkdir -p "$WS/a"
 git -C "$WS/a" init -q -b main
 git -C "$WS/a" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 git -C "$WS/a" branch feat/held
 mkdir -p "$WS/.loop-spec/features/held"
-printf '{"schemaVersion":7,"slug":"held","currentPhase":"execute","branch":null,"workspace":{"root":"%s","mode":"workspace","repos":[{"name":"a","path":"a","branch":"feat/held"}]}}\n' "$WS" > "$WS/.loop-spec/features/held/feature.json"
+printf '{"schemaVersion":7,"slug":"held","currentPhase":"execute","branch":null,"workspace":{"root":"%s","mode":"workspace","repos":[{"name":"a","path":"a","branch":"feat/held"}]}}\n' "$WORK/moved-away" > "$WS/.loop-spec/features/held/feature.json"
 ec=0; err="$(drv decline --dir "$WS" --reason "a question" 2>&1 >/dev/null)" || ec=$?
 check "decline: a workspace feature with a live repo branch has begun" "1" "$ec"
 check "decline: the workspace refusal names the feature" "1" "$(grep -c 'feature held has begun (phase execute)' <<<"$err")"
