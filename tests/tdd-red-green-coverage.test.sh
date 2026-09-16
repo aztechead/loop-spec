@@ -12,6 +12,8 @@ checks=(
   "skills/shared/writing-good-tests.md	Code-producing tasks MUST write the failing test first"
   "skills/shared/writing-good-tests.md	Omitting a TDD label does not exempt"
   "skills/shared/writing-good-tests.md	Skill/config/docs tasks are excluded"
+  "skills/shared/writing-good-tests.md	red before green is necessary, not sufficient"
+  "agents/implementer.md	Guard evidence**: per guard test, the mutation applied and the failing output"
   "skills/shared/execute-rungs.md	TDD (failing test first for every code-producing task"
   "skills/shared/team-prompts/implementer.md	Omitting a TDD label does not exempt"
   "skills/shared/execute-subagent.md	Omitting a TDD label does not exempt"

@@ -76,6 +76,11 @@ def normalize(line):
     line = re.sub(r"\b0x[0-9a-f]+\b", "<HEX>", line, flags=re.I)
     line = re.sub(r"(?<=:)[0-9]+(?::[0-9]+)?\b", "<LINE>", line)
     line = re.sub(r"\b[0-9]+(?:\.[0-9]+)?(?:ms|s)\b", "<TIME>", line)
+    # A PID or an ephemeral port left as a bare decimal hashes differently every run
+    # (a live 6.6.5 baseline that was already failing turned into a second reported
+    # regression on the same code, twice). Runs last so <LINE> and <TIME> keep labeling
+    # what they label before every remaining digit run is scrubbed.
+    line = re.sub(r"\b[0-9]+\b", "<N>", line)
     return " ".join(line.split())
 
 candidates = [normalize(line) for line in lines if marker.search(line)]

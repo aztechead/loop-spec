@@ -136,12 +136,36 @@ DOCS1="$REPO/docs/loop-spec/features/$(jq -r '.slug' "$FD/feature.json")"
 cp "$DOCS1/SPEC.md" "$DOCS1/SPEC.md.keep"; sed -i.bak '/^## Goals$/,/^## Boundaries/{/^Produce/d;}' "$DOCS1/SPEC.md"; rm -f "$DOCS1/SPEC.md.bak"
 ec=0; out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from spec 2>/dev/null)" || ec=$?
 check "next: a repeat spec return with an empty Goals section is the gate's REDO, not a traceback" "REDO phase=spec rc=0" "$(head -1 <<<"$out" | cut -d' ' -f1,2) rc=$ec"
+check "next: the empty-Goals REDO is attempt 1" "1" "$(head -1 <<<"$out" | grep -c 'attempt=1')"
 mv "$DOCS1/SPEC.md.keep" "$DOCS1/SPEC.md"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" driverRedo 'null' >/dev/null
 check "next: journal records the real successor" "1" "$(grep -c 'spec → human.after-spec' "$FD/PROGRESS.md")"
 check "next: state snapshot on the ref at the boundary" "state @ human.after-spec" "$(git -C "$REPO" log -1 --format=%s refs/loop-spec/state/add-a-json-flag)"
 check "next: the feature branch carries no state commit" "0" "$(git -C "$REPO" log --oneline | grep -c 'state @')"
 check "next: the project .gitignore is never written" "0" "$([[ -f "$REPO/.gitignore" ]] && grep -c 'loop-spec' "$REPO/.gitignore" || echo 0)"
+
+# --- driverRedo clears on a gate pass (6.6.5 live run: a passed gate left the counter
+# behind, so the next REDO on fresh damage inherited a stale count and escalated a full
+# attempt early). Proving the clear needs a repeat return that actually PASSES, and on
+# $FD that pass hands the phase straight past the human gate to discuss (it does not
+# re-pause), which would move the boundary the checks just above this depend on. An
+# isolated feature keeps that pass off $FD and still exercises the same driver path.
+REPO_REDO="$(new_repo redo-probe)"
+out="$(cd "$REPO_REDO" && AUTONOMOUS=1 drv begin -- "autonomous driverredo probe" 2>/dev/null)"
+FD_REDO="$(jq -r '.featureDir' <<<"$out")"
+(cd "$REPO_REDO" && drv next --feature-dir "$FD_REDO" >/dev/null 2>&1)
+write_spec "$REPO_REDO" "$FD_REDO"
+(cd "$REPO_REDO" && drv next --feature-dir "$FD_REDO" --returned-from spec --note "wrote SPEC" >/dev/null 2>&1)
+DOCS_REDO="$REPO_REDO/docs/loop-spec/features/$(jq -r '.slug' "$FD_REDO/feature.json")"
+cp "$DOCS_REDO/SPEC.md" "$DOCS_REDO/SPEC.md.keep"; sed -i.bak '/^## Goals$/,/^## Boundaries/{/^Produce/d;}' "$DOCS_REDO/SPEC.md"; rm -f "$DOCS_REDO/SPEC.md.bak"
+out="$(cd "$REPO_REDO" && drv next --feature-dir "$FD_REDO" --returned-from spec 2>/dev/null)"
+check "driverRedo: a broken-Goals REDO is attempt 1" "1" "$(head -1 <<<"$out" | grep -c 'attempt=1')"
+mv "$DOCS_REDO/SPEC.md.keep" "$DOCS_REDO/SPEC.md"
+out="$(cd "$REPO_REDO" && drv next --feature-dir "$FD_REDO" --returned-from spec 2>/dev/null)"
+check "driverRedo: a passing repeat return zeroes the stale counter" "null" "$(jq -r '.driverRedo' "$FD_REDO/feature.json")"
+cp "$DOCS_REDO/SPEC.md" "$DOCS_REDO/SPEC.md.keep"; sed -i.bak '/^## Goals$/,/^## Boundaries/{/^Produce/d;}' "$DOCS_REDO/SPEC.md"; rm -f "$DOCS_REDO/SPEC.md.bak"
+out="$(cd "$REPO_REDO" && drv next --feature-dir "$FD_REDO" --returned-from spec 2>/dev/null)"
+check "driverRedo: a fresh REDO after a pass starts at attempt 1, not a stale count" "1" "$(head -1 <<<"$out" | grep -c 'attempt=1')"
+mv "$DOCS_REDO/SPEC.md.keep" "$DOCS_REDO/SPEC.md"
 
 out="$(cd "$REPO" && drv next --feature-dir "$FD" 2>/dev/null)"
 check "next: re-invoke after pause continues to discuss" 'NEXT phase=discuss label="Challenge and refine the specification" effort=system2' "$(head -1 <<<"$out")"

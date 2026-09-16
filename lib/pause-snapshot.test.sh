@@ -92,6 +92,15 @@ else
   fail ".continue-here.md missing required sections; content: $(cat "$FEATURE_DIR/.continue-here.md")"
 fi
 
+# Test 8a: the uncommittedFiles guidance names the shared-stash hazard, not just
+# "stash" -- git stash is one stack shared by every worktree of the repository, and
+# a stash made here can be popped or buried by a parallel implementer's worktree.
+if grep -q "git stash is one stack shared by every worktree" "$FEATURE_DIR/.continue-here.md"; then
+  ok "uncommittedFiles guidance names the shared stash stack"
+else
+  fail "uncommittedFiles guidance does not name the shared stash stack; content: $(cat "$FEATURE_DIR/.continue-here.md")"
+fi
+
 # Test 8b: REQUIRED READING must name THIS feature's plan, not a literal.
 # It hardcoded docs/loop-spec/features/resilience-ops/PLAN.md -- the slug this script
 # was originally written for -- so every other paused feature sent the resuming

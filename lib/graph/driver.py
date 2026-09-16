@@ -1440,6 +1440,13 @@ def cmd_next(argv):
                 print("ABORT reason=phase-exit-failed exit=%d" % exit_proc.returncode)
                 print(exit_out, file=sys.stderr)
                 return 1
+            if exit_proc.returncode == 0:
+                # A passed gate zeroes its own counter; the 6.6.5 live run escalated at
+                # attempt 1 on a stale count of 3 because a REDO's driverRedo survived
+                # the next passing return untouched.
+                redo = feat.get("driverRedo") if isinstance(feat.get("driverRedo"), dict) else {}
+                if redo.get("phase") == returned:
+                    fset(feature_dir, "driverRedo", None)
 
     if returned == "spec":
         # What the human read at their SPEC gate: the DISCUSS gate names whether the

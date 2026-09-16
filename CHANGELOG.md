@@ -28,6 +28,49 @@ All notable changes documented here. Format follows Keep a Changelog.
   checkout still holds the feature's branch (each repo's own branch in workspace mode),
   its state ref, or an armed run naming it. A record merged before 6.6.7 is harmless
   under the new guard without any migration.
+- `lib/graph/driver.py` `driverRedo` is now cleared when the exit gate it tracks
+  passes. It was written on a REDO (`returncode == 1`) but never cleared on the
+  matching pass, so the next REDO on fresh damage inherited the stale
+  `{phase, hash, count}` and escalated after one real attempt instead of
+  `LOOP_SPEC_REDO_MAX`; a 6.6.5 live run escalated at attempt 1 on a stale count of
+  3. A passing return for the same phase now zeroes the counter.
+- `lib/feature_write.py` `append` on `pendingRemediationTasks` now replaces an
+  existing entry that carries the same `id` instead of piling a duplicate beside
+  it, and `lib/verify-gate.sh`'s pass branch now clears the queue to `[]`. Three
+  callers (`lib/verify-gate.sh`, `lib/verify-prepare.sh`, `lib/iterate-judged.sh`)
+  append through the same bare `current + [value]`, and the queue only ever
+  drained through `ack-remediation`; a 6.6.5 live run queued three
+  byte-identical `task-verify-suite-1` entries. Every other append is unchanged.
+- `lib/verification-baseline.sh` `normalize()` now scrubs every remaining bare
+  decimal integer to `<N>` after its existing substitutions. A PID or an
+  ephemeral port in a failing test line hashed differently every run, so
+  `compare` reported an added fingerprint — a `regression: true` — over
+  identical code; a 6.6.5 live run hit this twice on a baseline that was already
+  failing.
+- `lib/house-style.sh`'s indent probe no longer misreads a repo with prose in a
+  string literal. The axis took `min(steps)`, the smallest ABSOLUTE indent
+  width, as the step, so one shallow line beat thousands; it also read a Python
+  triple-quoted string's opening line as a comment but its body as code, so a
+  2-space-indented prompt string set a 4-space module's step. The scanner now
+  tracks Python triple-quoted string state (odd marker count toggles it, same
+  shape as the existing shell heredoc skip) and skips the body from every
+  tally, and the step is the mode of the nonzero absolute deltas between
+  consecutive indented code lines' widths, falling back to `min` only when no
+  delta exists.
+
+### Changed
+
+- `lib/pause-snapshot.sh`'s resume guide now warns that `git stash` is one stack
+  shared by every worktree of the repository, so a stash made while resolving
+  `uncommittedFiles` can be popped or buried by a parallel implementer's
+  worktree; the guidance now points at committing on the feature branch first.
+- `skills/shared/writing-good-tests.md` and `agents/implementer.md` now say
+  that red before green is necessary but not sufficient for a test that names a
+  guard: it goes red because the feature is absent and green when the feature
+  lands, without ever proving the test reaches the branch it names. The
+  implementer now deletes or inverts a named guard, confirms the test fails,
+  and restores the guard, reporting the mutation and the failing output as
+  **Guard evidence** (`none` when no test names a guard).
 
 ## [6.6.6] - 2026-09-15
 

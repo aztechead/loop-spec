@@ -89,6 +89,25 @@ bash "$LIB" append "$WORK/feat" telemetry.events '"e1"' >/dev/null
 check "I: append to missing path creates array" '["e1"]' \
   "$(jq -c '.telemetry.events' "$WORK/feat/feature.json")"
 
+# Case I2: pendingRemediationTasks append dedups by id in place (the 6.6.5 live run
+# queued three byte-identical task-verify-suite-1 entries); every other array append
+# is untouched (Case I above still grows plainly).
+bash "$LIB" append "$WORK/feat" pendingRemediationTasks '{"id":"task-verify-suite-1","subject":"a"}' >/dev/null
+bash "$LIB" append "$WORK/feat" pendingRemediationTasks '{"id":"task-verify-suite-1","subject":"a"}' >/dev/null
+check "I2: appending the same id twice leaves one entry" '1' \
+  "$(jq '.pendingRemediationTasks | length' "$WORK/feat/feature.json")"
+bash "$LIB" append "$WORK/feat" pendingRemediationTasks '{"id":"task-verify-suite-1","subject":"b"}' >/dev/null
+check "I2: a re-queued id still leaves one entry" '1' \
+  "$(jq '.pendingRemediationTasks | length' "$WORK/feat/feature.json")"
+check "I2: the re-queued task's fresh subject wins" 'b' \
+  "$(jq -r '.pendingRemediationTasks[0].subject' "$WORK/feat/feature.json")"
+bash "$LIB" append "$WORK/feat" pendingRemediationTasks '{"id":"task-iterate-1","subject":"c"}' >/dev/null
+check "I2: a different id still appends, two entries in order" '["task-verify-suite-1","task-iterate-1"]' \
+  "$(jq -c '[.pendingRemediationTasks[].id]' "$WORK/feat/feature.json")"
+bash "$LIB" append "$WORK/feat" warnings '"w3"' >/dev/null
+check "I2: a plain string append to warnings still grows" '["w1","w2","w3"]' \
+  "$(jq -c '.warnings' "$WORK/feat/feature.json")"
+
 # Case J: append onto a non-array is refused, file untouched
 exit_code=0
 bash "$LIB" append "$WORK/feat" currentPhase '"x"' >/dev/null 2>&1 || exit_code=$?

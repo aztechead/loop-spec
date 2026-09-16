@@ -41,3 +41,11 @@ Code-producing tasks MUST write the failing test first (red), then the
 minimal implementation (green). Skill/config/docs tasks are excluded.
 Omitting a TDD label does not exempt a code-producing task.
 Mock only when the real dependency is slow or external.
+
+For the implementer: red before green is necessary, not sufficient. A test named
+for a guard goes red because the feature is absent and green when it lands
+without ever reaching the branch it names — that proves the feature exists, not
+that the test would catch its removal. For a test that names a guard, a branch,
+or a condition, delete or invert that guard, run the test, confirm it fails, then
+restore the guard. That failing output is the evidence a guard test is real; a
+guard test with none is vacuous.

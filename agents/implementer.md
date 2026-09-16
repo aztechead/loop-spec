@@ -47,8 +47,13 @@ The `worktree_path` is created explicitly by the caller (EXECUTE lead / self-cla
 3. For every code-producing task: write the failing test FIRST, run it, confirm red. Skill/config/docs tasks are excluded. Omitting a TDD label does not exempt this step.
 4. Implement minimal code to pass (green).
 5. Run verify command. Confirm pass.
-6. `git add <files>` (specific files from task spec, not -A).
-7. Commit using a heredoc (bash does NOT expand `\n` inside `git commit -m "..."`):
+6. Red before green is necessary, not sufficient, for a test named for a guard: it goes red
+   because the feature is absent and green when the feature lands, without ever
+   reaching the branch it names. For each test that names a guard, a branch, or a
+   condition, delete or invert that guard, run the test, confirm it fails, then
+   restore the guard. The failing output is the evidence.
+7. `git add <files>` (specific files from task spec, not -A).
+8. Commit using a heredoc (bash does NOT expand `\n` inside `git commit -m "..."`):
    ```bash
    git commit -m "$(cat <<'EOF'
    feat: NO_JIRA {task_id} {subject}
@@ -57,8 +62,8 @@ The `worktree_path` is created explicitly by the caller (EXECUTE lead / self-cla
    EOF
    )"
    ```
-8. Self-review (completeness, quality, discipline, testing).
-9. Report back.
+9. Self-review (completeness, quality, discipline, testing).
+10. Report back.
 
 ## Engineering principles
 
@@ -102,4 +107,5 @@ Report `BLOCKED` or `NEEDS_CONTEXT` with specifics.
 - **Verify output**: paste actual output
 - **Acceptance criteria status**: per criterion PASS/FAIL
 - **Versions**: one `version: <name>@<v> source: <command>` line per language, runtime, or package version this task chose, or `unverified` (`skills/shared/engineering-directives.md`); `none` when the task pinned nothing
+- **Guard evidence**: per guard test, the mutation applied and the failing output; `none` when no test names a guard
 - **Self-review findings**: any

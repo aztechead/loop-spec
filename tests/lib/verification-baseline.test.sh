@@ -87,6 +87,23 @@ out="$(bash "$SCRIPT" compare --baseline "$BASELINE" --root "$REPO" --base-sha "
   --test '' --lint "$failure_cmd" --typecheck '')" || ec=$?
 check "added failure fingerprint is a regression" "20:regression" "$ec:$(jq -r '.outcome' <<<"$out")"
 
+# A PID or an ephemeral port left as a bare decimal is different every run; scrubbing
+# them keeps an already-failing baseline from reporting a fresh "added fingerprint"
+# regression on identical code (a live 6.6.5 run hit this twice).
+PORT_OUTPUT="$WORK/port-output"
+export PORT_OUTPUT
+printf 'FAILED test_x - ConnectionRefusedError: [Errno 111] pid 48213 port 51877\n' > "$PORT_OUTPUT"
+port_cmd='cat "$PORT_OUTPUT"; exit 1'
+port_base="$(capture --test "$port_cmd" --lint '' --typecheck '')"
+printf '%s\n' "$port_base" > "$BASELINE"
+printf 'FAILED test_x - ConnectionRefusedError: [Errno 111] pid 91027 port 60441\n' > "$PORT_OUTPUT"
+ec=0
+out="$(bash "$SCRIPT" compare --baseline "$BASELINE" --root "$REPO" --base-sha "$BASE" \
+  --prepare-key prep-1 --log-dir "$LOGS/current-pid-port" \
+  --test "$port_cmd" --lint '' --typecheck '')" || ec=$?
+check "a failure line that only differs by PID/port digits is not a regression" "0:accepted" "$ec:$(jq -r '.outcome' <<<"$out")"
+check "the PID/port command itself carries no regression flag" "false" "$(jq -r '.commands.test.regression' <<<"$out")"
+
 RECOVER_FLAG="$WORK/recover-flag"
 export RECOVER_FLAG
 recover_cmd='if [[ -f "$RECOVER_FLAG" ]]; then exit 0; fi; echo ERROR old; exit 1'
