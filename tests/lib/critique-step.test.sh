@@ -122,12 +122,20 @@ check "apply records a pass entry" "pass" "$(feat '.gateHistory[-1].result')"
 check "apply converges as minors-applied" "minors-applied" "$(feat '.gateHistory[-1].convergence')"
 check "apply keeps the items in the notes" "1" "$(feat '.gateHistory[-1].notes' | grep -c 'rename T1')"
 
+# --- a [major] that quotes "[minor]" is still a major: the tag is anchored at line start ---
+out="$(bash "$STEP" open --feature-dir "$FD" --phase plan --gate plan-critique --artifact "$ART")"
+printf 'FINDINGS:\n1. [major] tagged [minor] but is a schema hole\n2. [minor] wording\n' | bash "$STEP" findings --feature-dir "$FD" --reply - >/dev/null
+out="$(printf '[major] tagged [minor] but is a schema hole\n[minor] wording\n' | bash "$STEP" fail --feature-dir "$FD" --fix-list -)"
+check "a major that mentions [minor] still answers rerun" "rerun" "$(jq -r '.answer' <<<"$out")"
+
+echo ""
+echo "Results: $PASS passed, $FAIL failed"
+[[ "$FAIL" -eq 0 ]]
+bash "$STEP" pass --feature-dir "$FD" >/dev/null
+
 # --- a [major] among minors still reruns ---
 out="$(bash "$STEP" open --feature-dir "$FD" --phase plan --gate plan-critique --artifact "$ART")"
 printf 'FINDINGS:\n1. [minor] wording\n2. [major] gap\n' | bash "$STEP" findings --feature-dir "$FD" --reply - >/dev/null
 out="$(printf '[minor] wording\n[major] gap\n' | bash "$STEP" fail --feature-dir "$FD" --fix-list -)"
 check "a major among minors still answers rerun" "rerun" "$(jq -r '.answer' <<<"$out")"
 
-echo ""
-echo "Results: $PASS passed, $FAIL failed"
-[[ "$FAIL" -eq 0 ]]

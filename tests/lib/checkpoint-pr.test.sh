@@ -400,6 +400,32 @@ check "12: rebuilt checkpoint carries the new content" \
 check "12: rebuilt checkpoint still lacks SPEC.md" \
   "0" "$(git -C "$WORK/bare" ls-tree -r --name-only feat/scrubbed-checkpoint 2>/dev/null | grep -c 'docs/loop-spec/features/scrubbed/SPEC.md')"
 
+# ── Case 13: the scrub restores the docs dir to its base image, not to empty ────
+reset_fixture
+mkdir -p "$REPO/docs/loop-spec/features/based"
+echo "# base readme" > "$REPO/docs/loop-spec/features/based/README.md"
+git -C "$REPO" add docs/loop-spec/features/based
+git -C "$REPO" commit -q -m "base carries a run document"
+BASE13="$(git -C "$REPO" rev-parse "$DEFAULT_BRANCH")"
+BASED_FEAT_DIR="$REPO/.loop-spec/features/based"
+mkdir -p "$BASED_FEAT_DIR"
+jq --arg baseSha "$BASE13" '.slug = "based" | .branch = "feat/based" | .baseSha = $baseSha' \
+  <<<"$SCRUB_FIXTURE_FJ" > "$BASED_FEAT_DIR/feature.json"
+git -C "$REPO" checkout -q -b feat/based "$DEFAULT_BRANCH"
+echo "# edited on the branch" > "$REPO/docs/loop-spec/features/based/README.md"
+echo "# spec" > "$REPO/docs/loop-spec/features/based/SPEC.md"
+git -C "$REPO" add docs/loop-spec/features/based
+git -C "$REPO" commit -q -m "based feature work"
+git -C "$REPO" checkout -q "$DEFAULT_BRANCH"
+ec=0
+out=$( (cd "$REPO"; PATH="$SHIMS:$PATH" LOOP_SPEC_CHECKPOINT_PR=1 LOOP_SPEC_ARTIFACTS_IN_PR=0 \
+  SHIM_GH_LOG="$WORK/gh-case13.log" bash "$LIB" create "$BASED_FEAT_DIR") 2>&1 ) || ec=$?
+check "13: exit 0" "0" "$ec"
+check "13: checkpoint keeps the base image of the docs dir" \
+  "# base readme" "$(git -C "$WORK/bare" show feat/based-checkpoint:docs/loop-spec/features/based/README.md 2>/dev/null)"
+check "13: checkpoint drops the branch-added SPEC.md" \
+  "0" "$(git -C "$WORK/bare" ls-tree -r --name-only feat/based-checkpoint 2>/dev/null | grep -c 'features/based/SPEC.md')"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

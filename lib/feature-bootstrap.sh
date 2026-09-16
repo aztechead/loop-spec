@@ -2,8 +2,9 @@
 # Shared cycle Step 5: per-repo prepare/baseline (prepare-repo) and single-repo
 # skeleton+flags+decisions (finalize). Workspace mode used to inline the same
 # prepare-environment.sh / verification-baseline.sh sequence without writing a
-# terminal result; this script is the one fail-terminal path both layouts call,
-# so the procedure never enters the model's context.
+# terminal result; this script is the one fail-terminal path both layouts call
+# (preparation failure), so the procedure never enters the model's context. A failed
+# opt-in baseline capture is a stderr notice with a null baseline, not a failure.
 #
 # Usage:
 #   bash lib/feature-bootstrap.sh prepare-repo \
@@ -30,8 +31,8 @@
 #        cycle-result begin marker, and migrates staged pre-SPEC decisions.
 #        Prints the updated test command on stdout.
 #
-# Exit codes: 0 success; 1 preparation or baseline failure (a terminal cycle
-# result has already been written); 2 bad invocation.
+# Exit codes: 0 success (a failed baseline capture still exits 0); 1 preparation
+# failure (a terminal cycle result has already been written); 2 bad invocation.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

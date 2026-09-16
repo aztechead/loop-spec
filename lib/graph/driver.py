@@ -928,7 +928,8 @@ def cmd_init(argv):
         base_branch = lib("git-ops", "-C", repo_root, "detect-base-branch")
     lib("runtime-ignore", "ensure", repo_root)
     # One feature per checkout: state used to be branch dirt that tripped the clean guard
-    # below; now that it lives on a ref (lib/state-ref.sh) the guard has to say so itself.
+    # below; now that it lives on a ref (lib/state-ref.sh) nothing trips, so the guard
+    # asks live_features whether a cycle is running here (branch checked out, armed run).
     for slug_live, phase, reason in ([] if adopted else live_features(repo_root)):
         raise Die("feature %s is already active in this checkout (phase %s; %s); resume it, or finish it "
                   "before starting another. Never delete, edit, or commit another feature's records to clear "

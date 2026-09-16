@@ -23,10 +23,12 @@
 #       the reply's non-empty lines after the FINDINGS:/NO-FINDINGS: header.
 #   critique-step.sh fail     --feature-dir DIR --fix-list <path|->
 #       One fix-list item per line, verbatim (the deadlock rule matches on identity).
-#       Appends the fail entry, asks the probe. rerun: prints {answer: "rerun", reason,
-#       fixList} with fixList numbered for the author. close: writes
-#       gate-logs/<gate>-residue.md, appends the cap-reached pass entry, and prints
-#       {answer: "close", reason, residue}.
+#       Every item tagged [minor] at its start: appends the minors-applied pass entry,
+#       closes the gate, and prints {answer: "apply", reason, fixList} for the lead to
+#       edit in directly. Otherwise appends the fail entry and asks the probe. rerun:
+#       prints {answer: "rerun", reason, fixList} with fixList numbered for the author.
+#       close: writes gate-logs/<gate>-residue.md, appends the cap-reached pass entry,
+#       and prints {answer: "close", reason, residue}.
 #   critique-step.sh revised  --feature-dir DIR
 #       After the author's revision: diffs the snapshot against the artifact into
 #       gate-logs/<gate>-delta.diff. Prints {diffPath, changed, lines, fixList}; the diff
@@ -128,7 +130,7 @@ case "$cmd" in
     # the lead apply accepted minors as direct edits at close. A 6.6.5 live PLAN critique
     # spent an author re-dispatch, a tasks.json re-extract, and a challenger delta round
     # on a fix-list of minors alone, and the cycle never reached EXECUTE.
-    if jq -e 'all(test("\\[minor\\]"; "i"))' <<<"$items" >/dev/null; then
+    if jq -e 'all(test("^[[:space:]]*\\[minor\\]"; "i"))' <<<"$items" >/dev/null; then
       gate pass --feature-dir "$feature_dir" --rounds "$round" --convergence minors-applied \
         --challenger-model "$model" --notes "$(jq -r 'join("; ")' <<<"$items")" >/dev/null || exit 1
       jq -n --argjson items "$items" \

@@ -177,7 +177,9 @@ PY
       scrub_index="$command_tmp/scrub-index"
       GIT_INDEX_FILE="$scrub_index" git read-tree "$branch" 2>/dev/null \
         || _skip "cannot read the tree of '$branch' for the scrubbed checkpoint"
-      GIT_INDEX_FILE="$scrub_index" git rm -r -q --cached --ignore-unmatch -- "$docs_dir" >/dev/null 2>&1 \
+      # -f: the index is a throwaway, and without it git rm refuses whenever the working
+      # tree's copy of the directory differs from the branch tree (any uncommitted edit).
+      GIT_INDEX_FILE="$scrub_index" git rm -r -q -f --cached --ignore-unmatch -- "$docs_dir" >/dev/null 2>&1 \
         || _skip "cannot drop $docs_dir from the scrubbed checkpoint"
       if [[ -n "$base_sha" ]] && git rev-parse -q --verify "$base_sha:$docs_dir" >/dev/null 2>&1; then
         GIT_INDEX_FILE="$scrub_index" git read-tree --prefix="$docs_dir/" "$base_sha:$docs_dir" 2>/dev/null \
