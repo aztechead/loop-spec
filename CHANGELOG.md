@@ -4,6 +4,28 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.6.7] - 2026-09-15
+
+### Fixed
+
+- `lib/graph/driver.py` `cmd_init`/`cmd_decline` no longer Die with "feature <slug> is
+  already active in this checkout (phase deliver)" for a feature that has already
+  delivered. `currentPhase` only ever advanced on phase entry (`lib/graph/engine.py`),
+  and `deliver` is the graph's last node, so `cmd_finish` recording a completed cycle in
+  `result.json` left `feature.json.currentPhase` at `deliver` forever — its own message
+  said so ("currentPhase stays at deliver"). Every `init` after one delivered cycle in
+  an in-place checkout (codex/opencode/adk/headless Claude) hit the guard, and a repo
+  that had committed such a record blocked every fresh clone too; the autonomous chain
+  (`skills/cycle/SKILL.md` step 4) hit the same wall starting its next feature.
+  `cmd_finish` now writes `currentPhase: "completed"` and snapshots the state ref
+  (`lib/state-ref.sh`) once the cycle result is published, so the field reaches the
+  terminal value `skills/shared/feature-state-schema.md:48` already declared legal. The
+  guard itself (`live_feature`, shared by `cmd_init` and `cmd_decline`) no longer trusts
+  a committed or copied `currentPhase` alone: a feature only blocks a new cycle when its
+  phase is live AND its delivery sidecar is not terminal AND this checkout still holds
+  the feature's branch, its state ref, or an armed run naming it. A record merged before
+  6.6.7 is harmless under the new guard without any migration.
+
 ## [6.6.6] - 2026-09-15
 
 ### Fixed

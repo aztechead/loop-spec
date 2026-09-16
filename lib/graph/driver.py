@@ -781,6 +781,41 @@ def detect_commands(root):
 INIT_OPTS = ("--dir", "--slug", "--title", "--style", "--profile", "--classification", "--autonomous",
              "--greenfield", "--spec-file", "--commands", "--repos", "--backlog-entry", "--protected")
 
+# The sidecar statuses under which cmd_finish closes a cycle; a feature carrying one is
+# finished work waiting only for its report, not a cycle still writing to this checkout.
+DELIVERED_STATUSES = ("ready-for-review", "delivered-draft", "pushed-no-pr")
+
+
+def live_feature(repo_root, feature_dir):
+    """Why this checkout must not start another cycle over this feature, or None. A
+    feature.json's currentPhase says what phase a feature was in when someone wrote it,
+    not whether a cycle is in flight in THIS working copy: it used to be the only signal
+    the init/decline guard read, so a merged or copied record (currentPhase never moved
+    past "deliver" before 6.6.7) blocked every init afterward, in the delivering
+    checkout and in every fresh clone that inherited the record. In flight means the
+    phase is still open (lib/graph/phases.sh validate) and the delivery sidecar is not
+    terminal, AND this checkout holds evidence a cycle is actually running here: the
+    feature's branch, its state ref (lib/state-ref.sh), or an armed run naming it.
+    Returns (slug, phase, reason) for the Die message, or None when none of that holds."""
+    feat = state(feature_dir)
+    phase = feat.get("currentPhase") or ""
+    if lib_run("graph/phases", "validate", phase, quiet=True).returncode != 0:
+        return None
+    delivery_status = (read_json(os.path.join(feature_dir, "delivery.json"), {}) or {}).get("status")
+    if delivery_status in DELIVERED_STATUSES:
+        return None
+    slug = feat.get("slug") or os.path.basename(feature_dir)
+    branch = feat.get("branch") or ("feat/" + slug)
+    if git_ok("-C", repo_root, "show-ref", "--verify", "--quiet", "refs/heads/" + branch):
+        return (slug, phase, "branch %s is in this checkout" % branch)
+    ref = lib("state-ref", "ref", slug)
+    if git_ok("-C", repo_root, "show-ref", "--verify", "--quiet", ref):
+        return (slug, phase, "state ref %s is in this checkout" % ref)
+    active_run = read_json(os.path.join(repo_root, ".loop-spec", "active-run.json"), {}) or {}
+    if active_run.get("slug") == slug:
+        return (slug, phase, "the armed run names it")
+    return None
+
 
 def plugin_home_refusal(directory, plugin_home, project_dir):
     """Why a cycle must not initialize `directory`, or None. Two probes, both facts on
@@ -863,11 +898,11 @@ def cmd_init(argv):
     for active_fj in sorted(glob(os.path.join(repo_root, ".loop-spec", "features", "*", "feature.json"))):
         if adopted:
             continue
-        active = state(os.path.dirname(active_fj))
-        phase = active.get("currentPhase") or ""
-        if lib_run("graph/phases", "validate", phase, quiet=True).returncode == 0:
-            raise Die("feature %s is already active in this checkout (phase %s); resume it, or finish it "
-                      "before starting another." % (active.get("slug"), phase))
+        live = live_feature(repo_root, os.path.dirname(active_fj))
+        if live is not None:
+            slug_live, phase, reason = live
+            raise Die("feature %s is already active in this checkout (phase %s; %s); resume it, or finish it "
+                      "before starting another." % (slug_live, phase, reason))
     current_branch = git("-C", repo_root, "rev-parse", "--abbrev-ref", "HEAD")
     if not (adopted and current_branch == feature_branch):
         if lib("git-ops", "-C", repo_root, "ensure-clean-or-stash") != "clean":
@@ -1792,6 +1827,27 @@ def returned_checks(feature_dir, phase):
     return None
 
 
+def snapshot_state(feature_dir, label, ws_mode):
+    """Snapshot the feature directory onto refs/loop-spec/state/<slug> (lib/state-ref.sh),
+    never onto the feature branch: ten of seventeen commits on a delivered branch used
+    to be state commits, and the driver had edited the project's .gitignore to make them
+    (the port plan, defects 3 and 4). The ref is shared by every worktree of the
+    repository, so the snapshot lands wherever the feature lives; workspace mode has no
+    single feature_dir repo of its own to hold one. Called at every phase boundary
+    (record_transition) and once more at cmd_finish's completed transition (6.6.7) — the
+    two places a phase becomes durable. Failure is one stderr line and a warning, never
+    a raise: work already delivered must not be undone by a bookkeeping commit."""
+    root = run(["git", "-C", feature_dir, "rev-parse", "--show-toplevel"], quiet=True).stdout
+    if ws_mode == "workspace" or not root:
+        return
+    snapshot = subprocess.run(["bash", str(LIB_DIR / "state-ref.sh"), "commit", feature_dir, "state @ " + label],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, universal_newlines=True)
+    if snapshot.returncode != 0:
+        err = snapshot.stderr.strip()
+        print("cycle-driver: state snapshot failed in %s: %s" % (root, err), file=sys.stderr)
+        fappend(feature_dir, "warnings", "state snapshot failed at %s: %s" % (label, err))
+
+
 def record_transition(feature_dir, phase, nxt, note, ws_mode):
     """Journal, commit the resume contract, checkpoint, then hand the next phase to a
     fresh session. Returns the answer line that ends this invocation, or None."""
@@ -1810,18 +1866,10 @@ def record_transition(feature_dir, phase, nxt, note, ws_mode):
         fh.write("\n## %s — %s → %s\n- did: %s\n" % (now(), phase, nxt, note or "phase %s returned" % phase))
 
     # State lives on refs/loop-spec/state/<slug> (lib/state-ref.sh), never on the feature
-    # branch: ten of seventeen commits on a delivered branch were state commits, and the
-    # driver had edited the project's .gitignore to make them (the port plan,
-    # defects 3 and 4). The ref is shared by every worktree of the repository, so the
-    # snapshot lands wherever the feature lives.
+    # branch (snapshot_state says why); the autonomous checkpoint below shares its gate.
     root = run(["git", "-C", feature_dir, "rev-parse", "--show-toplevel"], quiet=True).stdout
     if ws_mode != "workspace" and root:
-        snapshot = subprocess.run(["bash", str(LIB_DIR / "state-ref.sh"), "commit", feature_dir, "state @ " + nxt],
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, universal_newlines=True)
-        if snapshot.returncode != 0:
-            err = snapshot.stderr.strip()
-            print("cycle-driver: state snapshot failed in %s: %s" % (root, err), file=sys.stderr)
-            fappend(feature_dir, "warnings", "state snapshot failed at %s -> %s: %s" % (phase, nxt, err))
+        snapshot_state(feature_dir, nxt, ws_mode)
         each = os.environ.get("LOOP_SPEC_CHECKPOINT_EACH_PHASE") or ("1" if feat.get("autonomous") is True else "0")
         if each not in ("0", "1"):
             raise Die("LOOP_SPEC_CHECKPOINT_EACH_PHASE must be 0 or 1", 2)
@@ -1903,7 +1951,7 @@ def cmd_finish(argv):
     feature_dir = os.path.realpath(feature_dir)
     delivery = read_json(os.path.join(feature_dir, "delivery.json"), {}) or {}
     status = delivery.get("status") or ""
-    if status not in ("ready-for-review", "delivered-draft", "pushed-no-pr"):
+    if status not in DELIVERED_STATUSES:
         print("loop-spec: delivery-incomplete (sidecar status '%s'); feature.json.currentPhase stays at deliver."
               % (status or "none"), file=sys.stderr)
         raise Die("", 1)
@@ -1921,6 +1969,16 @@ def cmd_finish(argv):
     if lib_run("cycle-result", *write_args).returncode != 0:
         print("cycle-result.sh write failed; retrying once", file=sys.stderr)
         lib("cycle-result", *write_args)
+    # The result is published; now make the terminal transition durable in feature.json
+    # itself (6.6.7). currentPhase used to stop advancing at "deliver" forever, so a
+    # delivered feature.json read by live_feature() after this session ended could never
+    # be told apart from one mid-cycle, in this checkout or a clone that inherited the
+    # record. Result-first: a write failure above leaves the feature recoverable through
+    # cycle-preflight's recoverCompletion path; this step never runs on that path.
+    fset(feature_dir, "currentPhase", "completed")
+    fset(feature_dir, "updatedAt", now())
+    ws_mode = "workspace" if workspace_of(feat) is not None else "single"
+    snapshot_state(feature_dir, "completed", ws_mode)
     entry = feat.get("backlogEntry") or ""
     if entry:
         lib_run("backlog", "done", entry, quiet=True)
@@ -2011,10 +2069,11 @@ def cmd_decline(argv):
     # repository (a branch, a worktree, a spec) and reports what it did (the
     # port4-haiku-3 bug fix declined with the fix committed, as protocol-mismatch).
     for fj in glob(os.path.join(root, ".loop-spec", "features", "*", "feature.json")):
-        active = state(os.path.dirname(fj))
-        if lib_run("graph/phases", "validate", active.get("currentPhase") or "", quiet=True).returncode == 0:
+        live = live_feature(root, os.path.dirname(fj))
+        if live is not None:
+            slug_live, phase, _reason = live
             raise Die("decline: feature %s has begun (phase %s); a run past begin finishes through the cycle or "
-                      "escalates (`escalate --reason`), never declines" % (active.get("slug"), active.get("currentPhase")), 1)
+                      "escalates (`escalate --reason`), never declines" % (slug_live, phase), 1)
     autonomous = o.get("autonomous") or ("1" if os.environ.get("LOOP_SPEC_AUTONOMOUS") == "1" else "0")
     if autonomous not in ("0", "1"):
         raise Die("decline: --autonomous is 0 or 1", 2)
