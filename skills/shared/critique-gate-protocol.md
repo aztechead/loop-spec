@@ -109,9 +109,12 @@ Build `fix_list` (may be empty). PLAN prepends its mechanical FLAG lines verbati
 
 ## fix_list non-empty
 
-One item per line, verbatim, to `critique fail --fix-list -`. It appends the fail entry
-BEFORE anything else and asks `gate.sh next` whether another delta round is inside the
-ceiling:
+One item per line, verbatim, to `critique fail --fix-list -`. When every item is
+`[minor]` it closes the gate at once with `--convergence minors-applied` and answers
+`{answer: "apply", fixList}`: apply each item as a lead edit (no author re-dispatch, no
+`revised`, no delta round) and proceed to `{next_step}`. Otherwise it appends the fail
+entry BEFORE anything else and asks `gate.sh next` whether another delta round is inside
+the ceiling:
 
 - `{answer: "rerun", fixList}`: the artifact is snapshotted for the diff. Re-dispatch
   `{author}` via `SendMessage` (not a fresh Agent call) with `fixList` as written,

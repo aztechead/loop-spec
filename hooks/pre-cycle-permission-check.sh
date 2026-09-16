@@ -1,26 +1,24 @@
 #!/usr/bin/env bash
-# Read .loop-spec/runtime.json; if workflowsAvailable=false, print
-# /permissions hint. Non-fatal.
+# Read .loop-spec/runtime.json; when workflowsAvailable=false, name the fallback the
+# cycle runs instead and the condition under which the Workflow tool would be on.
+# Non-fatal, printed once per cycle start (lib/graph/driver.py cmd_start).
+#
+# Why: the old text named a TeamCreate fallback and a /permissions fix. Under the Agent
+# SDK the tool is simply not exposed and teams were off, so a live run read four bare
+# "unavailable" lines with no idea what was lost or whether the fallback was equivalent.
 set -euo pipefail
 
 RUNTIME=".loop-spec/runtime.json"
-if [[ ! -f "$RUNTIME" ]]; then
-  exit 0
-fi
+[[ -f "$RUNTIME" ]] || exit 0
 
-avail=$(python3 -c "import json,sys; d=json.load(open('$RUNTIME')); print(d.get('workflowsAvailable', False))")
-if [[ "$avail" == "True" ]]; then
-  exit 0
-fi
+avail="$(jq -r '.workflowsAvailable // false' "$RUNTIME")"
+[[ "$avail" != "true" ]] || exit 0
 
-cat <<'EOF'
-[loop-spec] Workflow tool unavailable in this session.
-   Fan-out phases (acceptance gate, code-review HARD-GATE) will
-   fall back to TeamCreate dispatch. To enable workflow acceleration:
+teams="$(jq -r '.teamsMode // "none"' "$RUNTIME")"
+fallback="agent teams"
+[[ "$teams" != "none" ]] || fallback="bounded one-shot subagent waves"
 
-     /permissions
-     # add Workflow to allow list, then restart this cycle
-
-   Or set CLAUDE_CODE_DISABLE_WORKFLOWS=1 to silence this notice.
+cat <<EOF
+[loop-spec] Workflow tool off for this session; fan-out runs as $fallback instead. Same phases, gates, and artifacts; only the parallel width differs. The tool is on only in a Claude Code CLI session >= 2.1.154 with \`claude\` on PATH; the Agent SDK, opencode, ADK, and codex never expose it. LOOP_SPEC_WORKFLOWS_AVAILABLE=1 forces it on.
 EOF
 exit 0

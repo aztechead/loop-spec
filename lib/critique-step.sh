@@ -124,6 +124,18 @@ case "$cmd" in
     load_state; [[ -n "$fix_list" ]] || usage; src="$(slurp "$fix_list")"
     items="$(sed '/^[[:space:]]*$/d' "$src" | jq -R . | jq -cs .)"
     [[ "$(jq 'length' <<<"$items")" != "0" ]] || die "the fix-list is empty; call 'pass' instead"
+    # Every item [minor] means polish the lead applies itself: the protocol already had
+    # the lead apply accepted minors as direct edits at close. A 6.6.5 live PLAN critique
+    # spent an author re-dispatch, a tasks.json re-extract, and a challenger delta round
+    # on a fix-list of minors alone, and the cycle never reached EXECUTE.
+    if jq -e 'all(test("\\[minor\\]"; "i"))' <<<"$items" >/dev/null; then
+      gate pass --feature-dir "$feature_dir" --rounds "$round" --convergence minors-applied \
+        --challenger-model "$model" --notes "$(jq -r 'join("; ")' <<<"$items")" >/dev/null || exit 1
+      jq -n --argjson items "$items" \
+        '{answer:"apply", reason:"every fix-list item is [minor]: apply them as lead edits, no re-verify",
+          fixList: ([$items | to_entries[] | "\(.key + 1). \(.value)"] | join("\n"))}'
+      exit 0
+    fi
     conv=single-critic; (( round > 1 )) && conv=delta-verified
     gate fail --feature-dir "$feature_dir" --rounds "$round" --convergence "$conv" \
       --challenger-model "$model" --findings "$items" >/dev/null || exit 1

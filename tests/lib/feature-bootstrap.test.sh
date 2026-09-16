@@ -160,16 +160,16 @@ check "J: finalize does not write feature.json on prepare failure" "absent" "$go
 check "J: finalize outcome is infrastructure-failed" "infrastructure-failed" \
   "$(jq -r '.outcome' "$WORK/j/.loop-spec/last-result.json" 2>/dev/null || echo MISSING)"
 
-# Case K: opt-in baseline capture failure is also a terminal result.
+# Case K: opt-in baseline capture failure is a notice, not a terminal result (6.6.5 run:
+# a startup `status: failed` under the auto-slug ended the caller's run).
 make_repo "$WORK/k"
 echo dirt > "$WORK/k/untracked"
 rc=0
-LOOP_SPEC_STARTUP_BASELINE=1 prepare_repo "$WORK/k" >/dev/null 2>&1 || rc=$?
-check "K: dirty-tree baseline capture exit 1" "1" "$rc"
-check "K: baseline failure writes last-result.json" "failed" \
-  "$(jq -r '.status' "$WORK/k/.loop-spec/last-result.json" 2>/dev/null || echo MISSING)"
-check "K: baseline failure outcome is infrastructure-failed" "infrastructure-failed" \
-  "$(jq -r '.outcome' "$WORK/k/.loop-spec/last-result.json" 2>/dev/null || echo MISSING)"
+out=$(LOOP_SPEC_STARTUP_BASELINE=1 prepare_repo "$WORK/k" 2>"$WORK/k.err") || rc=$?
+check "K: dirty-tree baseline capture does not fail the bootstrap" "0" "$rc"
+check "K: baseline failure leaves baseline null" "null" "$(jq -r '.baseline' <<<"$out")"
+check "K: baseline failure writes no last-result.json" "0" "$([[ -f "$WORK/k/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
+check "K: baseline failure is named on stderr" "1" "$(grep -c 'startup validation baseline not captured' "$WORK/k.err")"
 
 # Case L: greenfield skips baseline even when the opt-in is on.
 make_repo "$WORK/l"

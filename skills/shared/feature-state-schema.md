@@ -199,7 +199,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
       "advocateModel": "string or null",
       "challengerModel": "string or null",
       "rounds": "integer (rounds the debate ran)",
-      "convergence": "single-critic | delta-verified | cap-reached",
+      "convergence": "single-critic | delta-verified | cap-reached | minors-applied",
       "findingsAddressed": ["string", "..."],
       "notes": "string or null"
     }

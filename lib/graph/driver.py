@@ -786,6 +786,14 @@ INIT_OPTS = ("--dir", "--slug", "--title", "--style", "--profile", "--classifica
 DELIVERED_STATUSES = ("ready-for-review", "delivered-draft", "pushed-no-pr")
 
 
+def branch_checked_out(repo_root, branch):
+    """True when refs/heads/<branch> is HEAD of this checkout or of a linked worktree
+    (`git worktree list --porcelain` prints one `branch refs/heads/<name>` line per
+    worktree; a detached one prints `detached`)."""
+    out = run(["git", "-C", repo_root, "worktree", "list", "--porcelain"], quiet=True).stdout or ""
+    return ("branch refs/heads/" + branch) in out.splitlines()
+
+
 def live_feature(repo_root, feature_dir):
     """Why this checkout must not start another cycle over this feature, or None. A
     feature.json's currentPhase says what phase a feature was in when someone wrote it,
@@ -795,10 +803,13 @@ def live_feature(repo_root, feature_dir):
     afterward, in the delivering checkout and in every fresh clone that inherited the
     record. In flight means the phase is still open (lib/graph/phases.sh validate), no
     terminal record closes it (a delivered sidecar, or a completed result.json), AND this
-    checkout holds evidence a cycle is actually running here: the feature's branch (each
-    repo's own branch under THIS root in workspace mode, where the top-level field is
-    null, no state ref is ever cut, and the recorded workspace.root may be where the
-    workspace used to live), its state ref (lib/state-ref.sh), or an armed run naming it.
+    checkout holds evidence a cycle is actually running here: the feature's
+    branch is checked out (HEAD of this checkout or of a linked worktree; each repo's own
+    branch under THIS root in workspace mode, where the top-level field is null and the
+    recorded workspace.root may be where the workspace used to live), or an armed run
+    names it. A local branch or a state ref that merely exists is what a hand-merged
+    feature leaves behind: a 6.6.5 live run was blocked by four such records for other
+    slugs and deleted 2188 lines of their files into the new feature's PR.
     Returns (slug, phase, reason) for the Die message, or None when none of that holds."""
     feat = state(feature_dir)
     phase = feat.get("currentPhase") or ""
@@ -815,14 +826,11 @@ def live_feature(repo_root, feature_dir):
         for repo in ws.get("repos") or []:
             rpath = os.path.join(repo_root, repo.get("path") or "")
             rbranch = repo.get("branch") or ("feat/" + slug)
-            if git_ok("-C", rpath, "show-ref", "--verify", "--quiet", "refs/heads/" + rbranch):
-                return (slug, phase, "branch %s is in workspace repo %s" % (rbranch, repo.get("name") or rpath))
+            if branch_checked_out(rpath, rbranch):
+                return (slug, phase, "branch %s is checked out in workspace repo %s" % (rbranch, repo.get("name") or rpath))
     branch = feat.get("branch") or ("feat/" + slug)
-    if git_ok("-C", repo_root, "show-ref", "--verify", "--quiet", "refs/heads/" + branch):
-        return (slug, phase, "branch %s is in this checkout" % branch)
-    ref = lib("state-ref", "ref", slug)
-    if git_ok("-C", repo_root, "show-ref", "--verify", "--quiet", ref):
-        return (slug, phase, "state ref %s is in this checkout" % ref)
+    if branch_checked_out(repo_root, branch):
+        return (slug, phase, "branch %s is checked out here" % branch)
     active_run = read_json(os.path.join(repo_root, ".loop-spec", "active-run.json"), {}) or {}
     if active_run.get("slug") == slug:
         return (slug, phase, "the armed run names it")
@@ -899,7 +907,9 @@ def cmd_init(argv):
     if ws_mode == "workspace":
         for slug_live, phase, reason in live_features(ws_root):
             raise Die("feature %s is already active in this workspace (phase %s; %s); resume it, or finish it "
-                      "before starting another." % (slug_live, phase, reason))
+                      "before starting another. Never delete, edit, or commit another feature's records to clear "
+                      "this, and never ask the user to adjudicate them: it is an operator conflict in the "
+                      "checkout, not a task for this cycle; report it as the reason and stop." % (slug_live, phase, reason))
         init_workspace(ws_root, slug, title, style, profile, class_text, autonomous, greenfield, spec_file, repos)
         persist_backlog_entry(os.path.join(ws_root, ".loop-spec", "features", slug), backlog_entry)
         return 0
@@ -921,7 +931,9 @@ def cmd_init(argv):
     # below; now that it lives on a ref (lib/state-ref.sh) the guard has to say so itself.
     for slug_live, phase, reason in ([] if adopted else live_features(repo_root)):
         raise Die("feature %s is already active in this checkout (phase %s; %s); resume it, or finish it "
-                  "before starting another." % (slug_live, phase, reason))
+                  "before starting another. Never delete, edit, or commit another feature's records to clear "
+                  "this, and never ask the user to adjudicate them: it is an operator conflict in the "
+                  "checkout, not a task for this cycle; report it as the reason and stop." % (slug_live, phase, reason))
     current_branch = git("-C", repo_root, "rev-parse", "--abbrev-ref", "HEAD")
     if not (adopted and current_branch == feature_branch):
         if lib("git-ops", "-C", repo_root, "ensure-clean-or-stash") != "clean":

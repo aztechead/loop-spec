@@ -25,9 +25,51 @@ All notable changes documented here. Format follows Keep a Changelog.
   `cmd_init` in both layouts and `cmd_decline`) no longer trusts a committed or copied
   `currentPhase` alone: a feature only blocks a new cycle when its phase is live AND no
   terminal record closes it (a delivered sidecar or a completed `result.json`) AND this
-  checkout still holds the feature's branch (each repo's own branch in workspace mode),
-  its state ref, or an armed run naming it. A record merged before 6.6.7 is harmless
-  under the new guard without any migration.
+  checkout is running it: the feature's branch is checked out (HEAD of the checkout or
+  of a linked worktree; each repo's own branch in workspace mode) or an armed run names
+  it. A local branch or state ref that merely exists is what a hand-merged feature
+  leaves behind and is not evidence: a 6.6.5 live run was blocked by four such records
+  for other slugs, asked the user whether to clear them, and committed 2188 deleted
+  lines of their files into the new feature's PR. The refusal now says never to
+  delete, edit, or commit another feature's records and never to ask the user about
+  them. A record merged before 6.6.7 is harmless under the new guard without any
+  migration.
+- `lib/critique-step.sh fail` closes the gate at once with `--convergence
+  minors-applied` and answers `{answer: "apply"}` when every fix-list item is
+  `[minor]`, so the lead applies them as direct edits with no author re-dispatch and
+  no delta re-verify round (`skills/shared/critique-gate-protocol.md`). A 6.6.5 live
+  PLAN critique spent a planner re-dispatch, a `tasks.json` re-extract, and a
+  challenger delta round on minors alone, and the cycle was stopped at 91 minutes
+  without reaching EXECUTE. Any `[major]`, `FLAG`, or untagged item keeps the
+  existing rerun/close path.
+- `lib/feature-bootstrap.sh` no longer publishes a `status: failed` terminal result
+  when the opt-in `LOOP_SPEC_STARTUP_BASELINE=1` capture fails. It prints the reason,
+  leaves `verificationBaseline` null (VERIFY then treats every failure it sees as
+  blocking, the same as with the opt-in off), and the bootstrap continues. A 6.6.5
+  live run wrote the terminal record under the prompt-derived auto-slug during
+  startup diagnostics, so a caller polling `last-result.json` could read a healthy
+  run as ended, and the orphaned record fed the guard above. Environment
+  preparation failure is still terminal.
+- `hooks/pre-cycle-permission-check.sh` names what runs when the Workflow tool is
+  off (agent teams, or bounded one-shot subagent waves), says the phases, gates, and
+  artifacts are the same, and names the condition under which the tool is on. The old
+  text claimed a TeamCreate fallback and a `/permissions` fix, and offered
+  `CLAUDE_CODE_DISABLE_WORKFLOWS` to silence a hook that never read it; under the
+  Agent SDK a live run saw four bare "unavailable" lines.
+- `lib/checkpoint-pr.sh` honors `LOOP_SPEC_ARTIFACTS_IN_PR=0`. Only
+  `lib/finalize-delivery-candidate.sh` read it, so a rescue draft PR opened on pause
+  or stop still carried `docs/loop-spec/features/<slug>/` (a 6.6.5 live run set the
+  flag and its checkpoint PR shipped SPEC.md and EVIDENCE.md). The draft is now opened
+  from a sibling ref `<branch>-checkpoint` whose tip commit restores that directory to
+  the base image, rebuilt from the branch tip and force-pushed on every checkpoint;
+  the feature branch keeps the documents for resume and is pushed unchanged.
+- `tests/lib/cycle-driver.test.sh` is split into five parts (`-core`, `-redo`,
+  `-short-route`, `-phases`, `-guard`) over a shared `cycle-driver.common.sh` rig, so
+  `tests/run-all.sh` runs them in parallel. The serial file alone took 265 s. The
+  runner still lands past its 157 s ceiling (216 s here): the suites sum to 1551 s of
+  CPU, a 193 s floor at 8 wide, because `lib/graph/driver.py` shells out to a bundled
+  script for every lookup (about 60 processes per driver call). Memoizing those
+  lookups is the follow-up that moves the floor.
 - `lib/graph/driver.py` `driverRedo` is now cleared when the exit gate it tracks
   passes. It was written on a REDO (`returncode == 1`) but never cleared on the
   matching pass, so the next REDO on fresh damage inherited the stale
