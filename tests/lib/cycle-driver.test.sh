@@ -102,8 +102,13 @@ check "init: schema-7 feature.json" "7" "$(jq -r '.schemaVersion' "$FD/feature.j
 check "init: spec draft copied" "1" "$([[ -f "$FD/spec-draft.md" ]] && echo 1 || echo 0)"
 check "init: no backlog entry recorded by default" "null" "$(jq -r '.backlogEntryId' "$FD/feature.json")"
 
-ec=0; drv init --dir "$REPO" --slug again --title again --style auto --profile standard >/dev/null 2>&1 || ec=$?
+ec=0; err="$(drv init --dir "$REPO" --slug again --title again --style auto --profile standard 2>&1 >/dev/null)" || ec=$?
 check "init: refuses a second feature on a dirty/branched checkout" "1" "$ec"
+# The refusal names WHICH guard fired (6.6.7: currentPhase alone used to be the guard
+# and could not tell a live cycle from a merged record), so it names the checkout
+# evidence, not just the recorded phase.
+check "init: the refusal names the live-checkout reason" "1" "$(grep -c 'already active in this checkout' <<<"$err")"
+check "init: the refusal names the branch" "1" "$(grep -c 'feat/add-a-json-flag' <<<"$err")"
 
 out="$(cd "$REPO" && drv next --feature-dir "$FD" 2>/dev/null)"
 check "next: first step names spec" 'NEXT phase=spec label="Write the specification" effort=system2' "$(head -1 <<<"$out")"
@@ -306,6 +311,13 @@ out="$(cd "$REPO10" && drv finish --feature-dir "$FD10" --completed 1 2>/dev/nul
 check "finish: the report opens with the outcome" "1" "$(jq -r '.report' <<<"$out" | head -1 | grep -c 'pushed to the remote')"
 check "finish: one line per target with its SHA" "1" "$(jq -r '.report' <<<"$out" | grep -c '^- finish-report, sha 0123456789ab$')"
 check "finish: the report ends with the backlog count" "1" "$(jq -r '.report' <<<"$out" | tail -1 | grep -c '^backlog entries remaining: [0-9]')"
+# 6.6.7: finish makes the terminal transition durable, in feature.json and on the state
+# ref, so a same-checkout chain after delivery does not read "deliver" forever.
+check "finish: currentPhase advances to completed" "completed" "$(jq -r '.currentPhase' "$FD10/feature.json")"
+SLUG10="$(jq -r '.slug' "$FD10/feature.json")"
+check "finish: the state ref carries the same completed snapshot" "completed" "$(git -C "$REPO10" show "refs/loop-spec/state/$SLUG10:feature.json" | jq -r '.currentPhase')"
+ec=0; drv init --dir "$REPO10" --slug next-one --title "next one" --style auto --profile standard --autonomous 1 >/dev/null 2>&1 || ec=$?
+check "finish: a delivered feature never blocks the next init in the same checkout" "0" "$ec"
 check "finish: the report is one string the lead prints as is" "string" "$(jq -r '.report | type' <<<"$out")"
 REPO11="$(new_repo decline)"; printf 'x\n' > "$REPO11/a.txt"; git -C "$REPO11" add -A && git -C "$REPO11" -c commit.gpgsign=false commit -q -m a
 out="$(cd "$REPO11" && drv decline --dir "$REPO11" --reason "a question about the architecture" --summary "answer it in chat" 2>/dev/null)"
@@ -811,6 +823,48 @@ d.spec_escalate(sys.argv[2], "held")
 PY_
 check "spec escalate: a quoted route: \"full\" gets no second route line" "1" "$(sed -n '1,/^---$/!d; /^route:/p' "$WORK/quoted.md" | grep -c '^route:')"
 check "spec escalate: the reason is still recorded under Implementation notes" "1" "$(grep -c '^- escalated (route: full): held$' "$WORK/quoted.md")"
+
+# --- a merged record is not a live cycle (6.6.7) --------------------------------------
+# currentPhase alone used to be the guard: a feature.json a prior delivered cycle
+# committed, or one a fresh clone inherited, carries a phase the graph still calls live
+# with none of THIS checkout's own evidence — no branch, no state ref, no armed run.
+R12="$(new_repo merged-record)"
+mkdir -p "$R12/.loop-spec/features/old"
+printf '{"schemaVersion":7,"slug":"old","currentPhase":"deliver","branch":"feat/old"}\n' > "$R12/.loop-spec/features/old/feature.json"
+git -C "$R12" add -f "$R12/.loop-spec/features/old/feature.json"
+git -C "$R12" -c commit.gpgsign=false -c user.email=t@t -c user.name=t commit -q -m "merged record"
+ec=0; drv init --dir "$R12" --slug fresh --title fresh --style auto --profile standard >/dev/null 2>&1 || ec=$?
+check "init: a merged record with no branch, ref, or armed run is not a live cycle" "0" "$ec"
+
+R13="$(new_repo merged-record-decline)"
+mkdir -p "$R13/.loop-spec/features/old"
+printf '{"schemaVersion":7,"slug":"old","currentPhase":"deliver","branch":"feat/old"}\n' > "$R13/.loop-spec/features/old/feature.json"
+git -C "$R13" add -f "$R13/.loop-spec/features/old/feature.json"
+git -C "$R13" -c commit.gpgsign=false -c user.email=t@t -c user.name=t commit -q -m "merged record"
+ec=0; drv decline --dir "$R13" --reason "a question" >/dev/null 2>&1 || ec=$?
+check "decline: a merged record is not a live cycle either" "0" "$ec"
+check "decline: the mismatch is still published" "protocol-mismatch" "$(jq -r '.outcome' "$R13/.loop-spec/last-result.json")"
+
+# --- state-ref-only liveness: no branch, the ref alone is this checkout's evidence -----
+R14="$(new_repo state-ref-only)"
+mkdir -p "$R14/.loop-spec/features/held"
+printf '{"schemaVersion":7,"slug":"held","currentPhase":"execute","branch":"feat/held"}\n' > "$R14/.loop-spec/features/held/feature.json"
+bash "$REPO_ROOT/lib/state-ref.sh" commit "$R14/.loop-spec/features/held" "state @ execute" >/dev/null
+ec=0; err="$(drv init --dir "$R14" --slug other --title other --style auto --profile standard 2>&1 >/dev/null)" || ec=$?
+check "init: a state ref with no branch is still this checkout's own cycle" "1" "$ec"
+check "init: the refusal names the state ref" "1" "$(grep -c 'already active in this checkout (phase execute; state ref refs/loop-spec/state/held' <<<"$err")"
+
+# --- a pre-6.6.7 delivered record in the same checkout is harmless --------------------
+# The branch is still here (a genuine liveness signal on its own), but a terminal
+# delivery sidecar answers first: finished work waiting on its report, not a cycle in
+# flight, so a record written before this fix does not need normalizing to unblock.
+R15="$(new_repo delivered-record)"
+mkdir -p "$R15/.loop-spec/features/done"
+printf '{"schemaVersion":7,"slug":"done","currentPhase":"deliver","branch":"feat/done"}\n' > "$R15/.loop-spec/features/done/feature.json"
+printf '{"status":"ready-for-review","nextPhase":"completed"}\n' > "$R15/.loop-spec/features/done/delivery.json"
+git -C "$R15" branch feat/done
+ec=0; drv init --dir "$R15" --slug other --title other --style auto --profile standard >/dev/null 2>&1 || ec=$?
+check "init: a terminal delivery sidecar counts as finished even with the branch still here" "0" "$ec"
 
 echo
 echo "cycle-driver: $PASS passed, $FAIL failed"

@@ -60,7 +60,7 @@ present "single-repo delivery has candidate preflight" lib/deliver.sh "Candidate
 present "hard retries bind to the recorded SHA" lib/deliver.sh "candidate_sha_drift"
 present "hard delivery failure skips tracked commit" lib/graph/driver.py 'if phase == "deliver" and nxt != "execute":'
 present "hard delivery retry skips finalization commits" lib/finalize-delivery-candidate.sh 'Exact-SHA retries and completion recovery are observation-only'
-present "cycle snapshots state onto its ref, never the branch" lib/graph/driver.py '"state-ref.sh"), "commit", feature_dir, "state @ " + nxt'
+present "cycle snapshots state onto its ref, never the branch" lib/graph/driver.py '"state-ref.sh"), "commit", feature_dir, "state @ " + label'
 present "cycle never writes the project .gitignore" lib/graph/driver.py 'State lives on refs/loop-spec/state/<slug> (lib/state-ref.sh)'
 present "delivery dirt checks skip the state paths" lib/finalize-delivery-candidate.sh 'git-ops.sh" -C "$repo_root" dirt'
 present "fleet consumer rejects startup failures" skills/shared/execute-loop-fleet.md 'rc" -ne 0 && "$rc" -ne 1'
