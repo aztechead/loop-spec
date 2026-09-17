@@ -84,6 +84,9 @@ result="$(jq -Rrn --arg raw "$raw" '
     else
       "\t" + $v.reasons[0].claim + " (complexity \($v.complexity), confidence \($v.confidence))"
     end
+  # The output contract is one line and the driver parses it as one; a claim the
+  # judge wrapped across lines must not turn a valid verdict into unusable-verdict.
+  | split("\t") | .[0] + "\t" + (.[1] | gsub("[[:space:]]+"; " "))
 ')"
 
 # Not `read`: with IFS set to a whitespace character, read strips a leading

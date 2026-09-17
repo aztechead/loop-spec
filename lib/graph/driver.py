@@ -2704,6 +2704,11 @@ def spec_judge(feature_dir, feat, verdict_flag):
             % (task_path, footprint_ledger, verdict_path))
     model = (feat.get("models") or {}).get("routeJudge") or "inherit"
     tail = ""
+    # A verdict left by an earlier attempt would otherwise pass as this dispatch's own
+    # when the launch is refused twice or the judge never writes one (in-harness too:
+    # the lead hands back this very path).
+    if not verdict_flag and os.path.isfile(verdict_path):
+        os.remove(verdict_path)
     if verdict_flag:
         if not os.path.isfile(verdict_flag):
             raise Die("spec judge --verdict: no such file: %s" % verdict_flag, 2)
@@ -2719,10 +2724,6 @@ def spec_judge(feature_dir, feat, verdict_flag):
     else:
         root = feature_root(feature_dir, feat)
         os.makedirs(os.path.join(dispatch, "sessions"), exist_ok=True)
-        # A verdict left by an earlier attempt would otherwise pass as this session's
-        # own when the launch is refused twice or the judge never writes one.
-        if os.path.isfile(verdict_path):
-            os.remove(verdict_path)
         line, _ = launch_headless_session(root, prompt, model, dispatch, "route-judge")
         _, tail = append_session_log(dispatch, "spec.route-judge.log", line)
         source = "session"

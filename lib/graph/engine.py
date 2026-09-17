@@ -451,7 +451,8 @@ def emit_phase_boundaries(current, admitting, reentry=False):
     deliver.sh's `.next == "deliver"` gate record depended on a direct edge. The
     terminal node closes the open phase the same way. A re-entry of an attempt the
     ledger already holds open (a bare `next` after an escalation re-stepped into
-    PLAN and doubled its start) emits nothing: the attempt is the same one.
+    PLAN and doubled its start) emits nothing: the attempt is the same one. Any
+    other edge that lands on the open phase is a new attempt and closes the old one.
 
     Markers share stderr with the `[PHASE]` console line. --step's JSON
     descriptor and the full-traversal TSV both occupy stdout, and the cycle
@@ -470,9 +471,13 @@ def emit_phase_boundaries(current, admitting, reentry=False):
     entering = current in PHASE_NODE_IDS
     if not entering and current != completed_node_id():
         return
-    # A loop edge back into the same phase is a new attempt; a chain through gates
-    # that lands on the open phase again is not (the engine re-processes the node).
-    if open_phase == current and not (admitting or "").startswith("loop:"):
+    # The pointer already names the phase being entered in two cases: the first
+    # entry (feature-init sets currentPhase before SPEC runs) or a resume, both
+    # admitted by a non-edge label, where nothing is open to close; and a walked
+    # edge back into it (a loop, a route self-edge, iterate.gate -> iterate), which
+    # is a new attempt that closes the last one. The same attempt re-processed is
+    # the `reentry` case above.
+    if open_phase == current and not EDGE_KIND_RE.match(admitting or ""):
         open_phase = None
     try:
         if open_phase:
