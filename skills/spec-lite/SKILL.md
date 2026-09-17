@@ -42,14 +42,14 @@ j="$(bash "$DRV" spec judge --feature-dir "$feature_dir")"
 sk="$(bash "$DRV" spec skeleton --feature-dir "$feature_dir")"
 ```
 
-`j.action` `in-harness`: before the skeleton, dispatch `subagent_type:
-"loop-spec:route-judge"` ONCE (model `models.routeJudge`; `task_path: .task`,
-`footprint_path: .footprint`, `repo_root`, no `verdict_path`), save its final message
-to a file, run `spec judge ... --verdict <file>`; `.stored` false means the skeleton
-routes on the deterministic rules. `sk.route` is `full` (`.reason` says why): read the
-snapshot path in `.fullSpec` and continue from its step 1; your cites stand. `oneshot`:
-the driver wrote the skeleton at `.spec`; the rest of SPEC is the list below. The route
-lengthens only: a reviewer BLOCK (one on scope included) or a held exit lengthens it.
+1. `j.action` is `in-harness`: dispatch `subagent_type: "loop-spec:route-judge"` ONCE
+   (model `models.routeJudge`; `task_path: .task`, `footprint_path: .footprint`,
+   `repo_root`, no `verdict_path`), save its final message to a file, and run
+   `spec judge ... --verdict <file>` before the skeleton. `.stored` false: say so in one
+   line; the skeleton then routes on the deterministic rules.
+2. `sk.route` is `full`: read the snapshot at `.fullSpec` and continue from its step 1
+   (`.reason` says why; your cites stand). `oneshot`: the skeleton at `.spec` is the spec.
+3. The route lengthens only: a reviewer BLOCK (one on scope included) or a held exit.
 
 ## 3. Fill the skeleton
 

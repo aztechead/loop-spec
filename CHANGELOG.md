@@ -6,6 +6,18 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [6.8.0] - 2026-09-17
 
+### Fixed
+
+- Phase markers name phases: `phase_end.next` is the phase entered, never the gate or
+  human node between two phases, and both markers land when the next phase node is
+  entered (a consumer reading `next` for the phase saw `human.after-spec` and
+  `discuss.critique.gate` on the 6.7.0 live run). Re-processing an attempt the ledger
+  holds open emits no second `phase_start`, and a `next` call on an escalated feature is
+  refused (exit 3) instead of re-stepping the engine in the same session; `resume`, the
+  fresh invocation's entry, consumes the escalated record. The one-phase-per-session
+  handoff already emitted both markers from the returning session; that is now
+  documented in `docs/loop-spec/agent-output-contract.md`.
+
 ### Added
 
 - The route judge: one opus call at SPEC entry decides oneshot vs full from the task

@@ -30,7 +30,17 @@ out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from
 check "next: the third identical REDO escalates" "DONE status=escalated" "${out:0:21}"
 check "next: the escalation names the gate" "1" "$(head -1 <<<"$out" | grep -c 'spec exit gate unsatisfied')"
 check "next: an escalated result is published" "escalated" "$(jq -r '.status' "$FD6/result.json")"
-rm -f "$FD6/result.json"; bash "$REPO_ROOT/lib/feature-write.sh" set "$FD6" driverRedo null >/dev/null
+# An escalation ends the session: the 6.7.0 sonnet run answered DONE, patched the spec,
+# called a bare `next`, and re-stepped into PLAN in the same session (a second
+# phase_start, no handoff). Only `resume`, the fresh invocation's entry, clears it.
+ec=0; (cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" >/dev/null 2>"$WORK/esc.err") || ec=$?
+check "next: a bare next after an escalation is refused" "3" "$ec"
+check "next: the refusal names the escalation and the fresh invocation" "1" "$(grep -c 'escalated (spec exit gate unsatisfied.*fresh' "$WORK/esc.err")"
+ec=0; (cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec >/dev/null 2>&1) || ec=$?
+check "next: a returned-from next after an escalation is refused too" "3" "$ec"
+out="$(cd "$REPO6" && drv resume --dir "$REPO6" --feature-root "$REPO6" --slug "$(jq -r '.slug' "$FD6/feature.json")" 2>/dev/null)"
+check "resume: the fresh invocation consumes the escalated record" "0" "$([[ -f "$FD6/result.json" ]] && echo 1 || echo 0)"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD6" driverRedo null >/dev/null
 DOCS6="$REPO6/docs/loop-spec/features/$(jq -r '.slug' "$FD6/feature.json")"; mkdir -p "$DOCS6"
 cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCS6/SPEC.md"
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec 2>/dev/null)"
@@ -42,6 +52,15 @@ check "next: the fresh session enters the handed phase" "NEXT phase=discuss" "${
 # record consumed (the full-route runs entered DISCUSS and PLAN twice; port audit 5, R5).
 check "next: the fresh session's entry adds no second phase_start" "1" "$(jq -c 'select(.event == "phase_start" and .phase == "discuss")' "$FD6/events.jsonl" | wc -l | tr -d ' ')"
 check "next: the handoff record is consumed by the entry" "null" "$(jq -r '.handoffSession' "$FD6/feature.json")"
+# The markers name phases, never the gate nodes between them: SPEC's end says discuss,
+# not human.after-spec (the 6.7.0 live run's consumer read a gate as the phase).
+check "next: the SPEC end marker names the phase entered as next" "discuss" "$(jq -r 'select(.event == "phase_end" and .phase == "spec") | .data.next' "$FD6/events.jsonl" | tail -1)"
+check "next: the end marker lands before the start it hands to" "phase_end phase_start" "$(jq -r 'select(.event == "phase_end" or .event == "phase_start") | .event' "$FD6/events.jsonl" | tail -2 | paste -sd ' ' -)"
+# A bare next that re-processes the open attempt (the ledger holds discuss started) is
+# the same attempt: no second start marker, the same answer.
+out="$(cd "$REPO6" && AUTONOMOUS=1 SESSION=phase-discuss-fresh drv next --feature-dir "$FD6" 2>/dev/null)"
+check "next: re-entering the open attempt answers the same phase" "NEXT phase=discuss" "${out:0:18}"
+check "next: re-entering the open attempt emits no second phase_start" "1" "$(jq -c 'select(.event == "phase_start" and .phase == "discuss")' "$FD6/events.jsonl" | wc -l | tr -d ' ')"
 check "next: the exit committed the artifact" "1" "$(git -C "$REPO6" log --oneline | grep -c 'spec: ')"
 
 # --- claude worktree path -------------------------------------------------------------

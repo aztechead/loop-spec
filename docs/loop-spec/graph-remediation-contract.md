@@ -117,8 +117,12 @@ The engine MUST call the components the spec promised:
 - `lib/graph/trace.sh` with the REAL probe token and reason for the edge taken, never the
   literal `probe="none"`.
 - `lib/events.sh` `phase_start` / `phase_end` at every working-phase node transition
-  (`spec` `discuss` `plan` `execute` `verify` `iterate` `deliver`). The engine owns
-  the successor; it is the one caller that cannot skip the marker. `--step` keeps its
+  (`spec` `discuss` `plan` `execute` `verify` `iterate` `deliver`). Both land when the
+  next phase node is entered: `phase_end` for the phase still open, whose `next` is the
+  phase entered and never a gate or human node between them, then `phase_start`. The
+  terminal node closes the last phase the same way. Re-processing an attempt the ledger
+  holds open emits nothing. The engine owns the successor; it is the one caller that
+  cannot skip the marker. `--step` keeps its
   JSON descriptor on stdout; the greppable `LOOP_SPEC_PHASE_*` line shares stderr with
   the `[PHASE]` console line so a `step_json=$(run.sh --step)` capture cannot trap it.
   Covered by `tests/lib/graph-run.test.sh` section 21.

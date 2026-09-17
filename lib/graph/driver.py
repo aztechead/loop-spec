@@ -1246,6 +1246,12 @@ def cmd_resume(argv):
     if os.path.isfile(progress):
         with open(progress, "r", encoding="utf-8", errors="replace") as fh:
             tail = "".join(fh.readlines()[-12:]).rstrip("\n")
+    # The fresh invocation an escalation asked for: the record that stops `next` in the
+    # escalating session is consumed here, once, by the deliberate re-entry.
+    stale = os.path.join(feature_dir, "result.json")
+    if (read_json(stale, {}) or {}).get("status") == "escalated":
+        os.remove(stale)
+        lib("cycle-result", "clear", "--result-root", feature_root)
     print(json.dumps({
         "featureDir": feature_dir, "slug": slug, "currentPhase": feat.get("currentPhase"),
         "enterWorktree": enter or None, "tasksDone": done_ids, "tasksRemaining": remaining_ids,
@@ -1318,6 +1324,13 @@ def cmd_next(argv):
     if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
         usage()
     feature_dir = os.path.realpath(feature_dir)
+    # An escalation ends the session: the 6.7.0 sonnet run answered DONE, patched the
+    # spec, called a bare `next`, and the engine re-stepped into PLAN in the same
+    # session. A fresh invocation resumes through `resume`, which clears this record.
+    escalated = read_json(os.path.join(feature_dir, "result.json"), {}) or {}
+    if escalated.get("status") == "escalated":
+        raise Die("the feature is escalated (%s); this session is over, resume through a fresh "
+                  "/loop-spec:cycle invocation" % (escalated.get("reason") or "no reason recorded"), 3)
     feat = state(feature_dir)
     slug = feat.get("slug")
     ws_mode = "workspace" if workspace_of(feat) is not None else "single"

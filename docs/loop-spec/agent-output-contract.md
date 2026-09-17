@@ -156,6 +156,10 @@ delivery block.
 `phase_end` add fields and also print one greppable line. A full cycle's boundaries are
 emitted by `lib/graph/run.sh` at node transitions — not by cycle-skill prose the agent
 can skip — so a run that `--step`s the graph and then works inline still surfaces them.
+Under one phase per session, the session that returns a phase emits that phase's
+`phase_end` and the successor's `phase_start` in its own `next` call. The fresh session
+enters from the handoff record and emits nothing. `phase_end.next` is the phase entered,
+never a gate node on the way.
 `--step` keeps its JSON descriptor on stdout; the greppable lines share stderr with the
 `[PHASE]` console line so a `step_json=$(run.sh --step)` capture cannot trap them.
 micro and debug still emit from their skills.
