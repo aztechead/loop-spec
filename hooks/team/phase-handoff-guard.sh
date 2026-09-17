@@ -28,10 +28,8 @@ if [[ "$TOOL_NAME" == "Skill" ]]; then
   LOOP_SPEC_PHASE_ALT="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/phases.sh" regex 2>/dev/null || true)"
 fi
 export LOOP_SPEC_PHASE_ALT
-SESSION_ID="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
-if [[ -z "$SESSION_ID" ]]; then
-  SESSION_ID=$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("session_id") or "")' 2>/dev/null || echo "")
-fi
+IDENTITY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/session_identity.py"
+SESSION_ID=$(LOOP_SPEC_IDENTITY_INPUT="$INPUT" python3 "$IDENTITY_HELPER" 2>/dev/null || echo "")
 # simplicity: retain four-space Python indentation inside this shell boundary; extract
 # a standalone reader only if the parser becomes shared by another hook.
 PARSED=$(printf '%s' "$INPUT" | python3 -c '
@@ -48,15 +46,6 @@ def phase_name(value):
     value = str(value or "").strip()
     match = phase_re.search(value)
     return match.group(1) if match else ""
-
-def has_handoff_marker(value):
-    if isinstance(value, str):
-        return bool(re.search(r"(?m)^\s*LOOP_SPEC_HANDOFF\s+\{[^}\n]+\}\s*$", value))
-    if isinstance(value, list):
-        return any(has_handoff_marker(item) for item in value)
-    if isinstance(value, dict):
-        return value.get("type") == "text" and has_handoff_marker(value.get("text"))
-    return False
 
 try:
     payload = json.load(sys.stdin)
@@ -99,10 +88,6 @@ else:
         if isinstance(entry, dict) and entry.get("role") == "user"
     ]
 
-# Only assistant output establishes that this invocation emitted the protocol
-# marker. A quoted marker in user text or a tool result is not a handoff.
-handoff = any(has_handoff_marker(content) for content in contents)
-
 # A denied attempt never ran the phase. Counting it made the retry rule below a
 # loophole: a lead denied once for the next phase invoked it again, the denial was
 # now the "prior" phase, and the second call passed as a same-phase retry.
@@ -129,16 +114,11 @@ for content in contents:
         if phase:
             prior.append(phase)
 
-print(json.dumps({"valid": True, "target": target, "prior": prior, "handoff": handoff}))
+print(json.dumps({"valid": True, "target": target, "prior": prior}))
 ' 2>/dev/null || echo "")
 
 [[ -n "$PARSED" ]] || exit 0
-HANDOFF=$(printf '%s' "$PARSED" | python3 -c \
-  'import json,sys; print("1" if json.load(sys.stdin).get("handoff") else "0")' 2>/dev/null || echo "0")
-if [[ "$HANDOFF" == "1" ]]; then
-  echo "DENY: LOOP_SPEC_HANDOFF was already emitted in this invocation; stop and let the caller start the next phase." >&2
-  exit 2
-fi
+# Durable feature state, rather than model formatting, is the handoff authority.
 TARGET=$(printf '%s' "$PARSED" | python3 -c \
   'import json,sys; print(json.load(sys.stdin).get("target",""))' 2>/dev/null || echo "")
 

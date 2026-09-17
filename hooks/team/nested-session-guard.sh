@@ -8,13 +8,11 @@
 # WP4 finding). The prose rule is in skills/cycle/SKILL.md; this is its enforcement.
 #
 # Denies (exit 2, reason on stderr) a Bash command that launches a headless harness CLI
-# (`claude -p`, `claude --print`, `codex exec`, `opencode run`, `adk run`), whether the
-# launch is in the command text or in a script file the command runs (a script named in
-# command position, or as the first argument to an interpreter word). Prose about a
-# launcher inside a file the command only reads (grep/wc/sed/head/cat/...) is not a
-# launch, and neither is a launcher named in a `#` comment inside a scanned script (6.6.1
-# live-run finding: a Python module whose docstring said "the top-level ``claude -p``"
-# was denying every `grep`/`wc`/`sed`/`head` call that named it, for the rest of the run).
+# (`claude -p`, `claude --print`, `codex exec`, `opencode run`, `adk run`), at shell
+# command positions or in literal executable calls inside interpreter payloads. Prose
+# about a launcher inside a file the command only reads (grep/wc/sed/head/cat/...) is
+# not a launch, and neither is a launcher named in a `#` comment inside a scanned script.
+# The cycle launcher also has a runtime identity backstop in extensions/sessions/cycle_run.py.
 # The bundled launchers are the exceptions, because spawning sessions is their job:
 # extensions/sessions/session_run.py (the EXECUTE session rung) and the loop-runner
 # scripts (the loop-fleet rung).
@@ -40,12 +38,15 @@ INPUT=$(cat)
 # a standalone scanner only if another hook needs the command-position parser.
 VERDICT=$(printf '%s' "$INPUT" | NESTED_GUARD_CWD="$PWD" NESTED_GUARD_PROJECT_DIR="$PROJECT_DIR" python3 -c '
 import json
+import ast
 import os
 import re
 import shlex
 import sys
 
-LAUNCH = re.compile(r"(?:^|[\s;&|(`])(claude\s+(?:-p|--print)\b|codex\s+exec\b|opencode\s+run\b|adk\s+run\b)")
+# This is deliberately evaluated on shell command positions, rather than the raw
+# command text: a prompt, quoted argument, or source file may discuss a launcher.
+LAUNCH = re.compile(r"(?:claude\s+(?:-p|--print)\b|codex\s+exec\b|opencode\s+run\b|adk\s+run\b)")
 # The cycle runner is a harness launch even when it is hidden behind nohup/python3
 # and therefore does not contain a native CLI name. Read-only commands never reach
 # this check because only shell command positions and interpreter script arguments
@@ -139,6 +140,117 @@ def cycle_runner_word(command):
             return tokens[idx]
     return ""
 
+def payload_launch(code):
+    """Inspect literal executable callsites in an interpreter payload."""
+    try:
+        tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        return ""
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        func = node.func
+        name = func.id if isinstance(func, ast.Name) else ""
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            name = func.value.id + "." + func.attr
+        try:
+            literal = ast.literal_eval(node.args[0])
+        except (ValueError, TypeError, SyntaxError):
+            literal = None
+        if name == "runpy.run_path" and isinstance(literal, str) and CYCLE_RUNNER.search(literal):
+            return "cycle_run.py"
+        if name not in ("os.system", "subprocess.run", "subprocess.call", "subprocess.Popen", "eval"):
+            continue
+        if isinstance(literal, str):
+            text = literal
+        elif name.startswith("subprocess.") and isinstance(literal, (list, tuple)) \
+                and all(isinstance(item, str) for item in literal):
+            text = " ".join(shlex.quote(item) for item in literal)
+        else:
+            continue
+        if name == "eval":
+            words = shlex.split(text)
+            text = " ".join(words)
+        nested = launcher_word(text) or cycle_runner_word(text)
+        if nested:
+            return nested
+    return ""
+
+def launcher_word(command):
+    """Return a real nested launch at a command boundary, including shell/python
+    wrappers whose executable payload is supplied with -c or runpy.run_path."""
+    positions, tokens = command_position_words(command)
+    for idx in positions:
+        word = tokens[idx]
+        base = os.path.basename(word)
+        end = next((n for n in range(idx + 1, len(tokens)) if tokens[n] in OPERATORS), len(tokens))
+        args = tokens[idx + 1:end]
+        if base == "claude" and any(a in ("-p", "--print") for a in args):
+            return "claude -p"
+        if base == "codex" and "exec" in args:
+            return "codex exec"
+        if base == "opencode" and "run" in args:
+            return "opencode run"
+        if base == "adk" and "run" in args:
+            return "adk run"
+        if base in INTERPRETERS:
+            # python3 cycle_run.py and python3 -m cycle_run are executable payloads.
+            script = ""
+            for a in args:
+                if a in NO_SCRIPT_FLAGS:
+                    if a in ("-c", "-e", "-m"):
+                        break
+                    continue
+                if base in ("bash", "sh", "zsh", "dash", "ksh") and a.startswith("-") and not a.startswith("--") and "c" in a[1:]:
+                    break
+                if a.startswith("-"):
+                    continue
+                script = a
+                break
+            if CYCLE_RUNNER.search(script) or script in ("cycle_run", "extensions.sessions.cycle_run"):
+                return script or "cycle_run"
+            if "-m" in args:
+                module = args[args.index("-m") + 1] if args.index("-m") + 1 < len(args) else ""
+                if module in ("cycle_run", "extensions.sessions.cycle_run"):
+                    return module
+            if script:
+                continue
+            # `bash -c` / `python3 -c` carries a second command language. Scan only
+            # the code argument; ordinary prompt data remains opaque.
+            code_index = None
+            for n, arg in enumerate(args):
+                if arg == "-c" or (base in ("bash", "sh", "zsh", "dash", "ksh") and
+                                    arg.startswith("-") and not arg.startswith("--") and "c" in arg[1:]):
+                    code_index = n + 1
+                    break
+            if code_index is not None:
+                code = args[code_index] if code_index < len(args) else ""
+                try:
+                    shell_tokens = shlex.split(command)
+                    shell_pos = shell_tokens.index(word)
+                    for candidate in shell_tokens[shell_pos + 1:]:
+                        if candidate in ("-c", "-e"):
+                            code_pos = shell_tokens.index(candidate, shell_pos + 1) + 1
+                            if code_pos < len(shell_tokens):
+                                code = shell_tokens[code_pos]
+                            break
+                except (ValueError, IndexError):
+                    pass
+                nested = launcher_word(code) or cycle_runner_word(code)
+                if nested:
+                    return nested
+                eval_code = re.match(r"\s*eval\s+(.+)$", code, flags=re.S)
+                if eval_code:
+                    literal = re.match(r"\s*([\"\x27])(.*?)\1\s*$", eval_code.group(1), flags=re.S)
+                    eval_text = literal.group(2) if literal else eval_code.group(1)
+                    nested = launcher_word(eval_text) or cycle_runner_word(eval_text)
+                    if nested:
+                        return nested
+                nested = payload_launch(code)
+                if nested:
+                    return nested
+    return ""
+
 
 try:
     payload = json.load(sys.stdin)
@@ -149,8 +261,8 @@ if str(payload.get("tool_name") or "") != "Bash":
     print("allow")
     raise SystemExit(0)
 command = str((payload.get("tool_input") or {}).get("command") or "")
-found = LAUNCH.search(command)
-found_label = found.group(1) if found else ""
+found_label = launcher_word(command)
+found = bool(found_label)
 where = "the command"
 if not found:
     # A launch hidden in a script the command runs: scan only the files that sit in a
@@ -182,7 +294,14 @@ if not found:
                 continue
             # A launcher named only in a `#` comment inside the script is not a launch it runs.
             script_text = strip_comments(text)
-            found = LAUNCH.search(script_text)
+            found_label = launcher_word(script_text)
+            found = bool(found_label)
+            interpreter_script = any(tokens[j] in INTERPRETERS and idx == j + 1 for j in range(idx))
+            if not found and interpreter_script:
+                # A module passed to an interpreter is executable input even when
+                # its launcher is only mentioned in a docstring.
+                found = bool(LAUNCH.search(script_text))
+                found_label = "nested harness" if found else ""
             if not found:
                 cycle = cycle_runner_word(script_text)
                 if cycle:
@@ -190,7 +309,7 @@ if not found:
                     found_label = cycle
             if found:
                 if not found_label:
-                    found_label = found.group(1)
+                    found_label = "nested harness"
                 where = word
                 break
         if found:

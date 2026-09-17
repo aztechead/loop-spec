@@ -210,6 +210,7 @@ run_suite "lib/cycle-driver-redo"     "bash tests/lib/cycle-driver-redo.test.sh"
 run_suite "lib/deliver"               "bash tests/lib/deliver.test.sh" integration
 run_suite "lib/pr-delivery"           "bash tests/lib/pr-delivery.test.sh" integration
 run_suite "lib/cycle-driver-phases"   "bash tests/lib/cycle-driver-phases.test.sh" integration
+run_suite "lib/session-identity"       "bash tests/lib/session-identity.test.sh" integration
 run_suite "lib/cycle-driver-short-route" "bash tests/lib/cycle-driver-short-route.test.sh" integration
 run_suite "lib/phase-exit"            "bash tests/lib/phase-exit.test.sh" integration
 run_suite "lib/cycle-result"          "bash tests/lib/cycle-result.test.sh"

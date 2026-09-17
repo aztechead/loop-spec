@@ -56,10 +56,10 @@ loops_optin="${LOOP_SPEC_EXECUTE_LOOPS:-auto}"
 case "$loops_optin" in 0|1|auto) ;; *) loops_optin="auto" ;; esac
 subagent_cap="$(bash "$SCRIPT_DIR/resource-bounds.sh" get subagents)" || exit $?
 implementer_cap="$(bash "$SCRIPT_DIR/resource-bounds.sh" get implementers)" || exit $?
-if (( subagent_cap == 1 )); then
-  teams_mode="none"
-  workflows_available="false"
-fi
+# Teams and Workflow cannot enforce the finite cap. Keep their persistent
+# fan-out disabled for every cap; one-shot dispatch owns the bounded waves.
+teams_mode="none"
+workflows_available="false"
 [[ "$implementer_cap" == 1 && "$loops_optin" == auto ]] && loops_optin="0"
 worktrees_enabled="${LOOP_SPEC_WORKTREES:-1}"
 case "$worktrees_enabled" in

@@ -1,6 +1,6 @@
 ---
 name: pattern-mapper
-description: "Map feature concepts to concise, cited code analogs. Cycle-internal: dispatched by loop-spec skills with a structured brief."
+description: "Map feature concepts to concise, cited code analogs. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation."
 tools: [Read, Write, Edit, Grep, Glob, Bash]
 model: inherit
 color: cyan
@@ -11,7 +11,8 @@ color: cyan
 Write only the supplied absolute `patterns_path`, using the supplied absolute
 template. If no template was given, use `## Concepts`, one `### <concept>` per
 analog, and `## Concepts with no clear analog`; never search the disk for a missing
-plugin-relative template. Read SPEC.md, manifests, entry points, and candidate files
+plugin-relative template. This role is cycle-internal and must not self-dispatch or
+perform ad-hoc auto-delegation. Read SPEC.md, manifests, entry points, and candidate files
 before choosing an analog. Search by domain vocabulary, follow imports and callers,
 and prefer the most tested house convention. In workspace mode scan each repository
 separately.

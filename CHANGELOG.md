@@ -4,6 +4,17 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.7.0] - 2026-09-16
+
+### Changed
+
+- Planning artifacts now use compact authored task blocks and indexed pattern citations;
+  the JSON task list is extracted once and a DAG table is not required.
+- SPEC and DISCUSS run read-only phase gates before approval and critique, while bounded
+  review paths avoid duplicate scans, transcript expansion, and prose-pruning dispatches.
+- Resource bounds default to serial heavy work and expose explicit finite caps for
+  larger deployments; teams and Workflow stay disabled under those finite caps.
+
 ### Fixed
 
 - Planning now favors observable vertical slices with required behavior and tests,
@@ -18,17 +29,6 @@ All notable changes documented here. Format follows Keep a Changelog.
   `.loop-spec` files remain conflicts. Checkpoint rescue pushes branch and state refs even
   when `gh` is unavailable, then skips only the PR operation. Phase handoffs stop auto
   immediately so reconciliation and nested launches cannot continue the old session.
-
-## [6.7.0] - 2026-09-16
-
-### Changed
-
-- Planning artifacts now use compact authored task blocks and indexed pattern citations;
-  the JSON task list is extracted once and a DAG table is not required.
-- SPEC and DISCUSS run read-only phase gates before approval and critique, while bounded
-  review paths avoid duplicate scans, transcript expansion, and prose-pruning dispatches.
-- Resource bounds prefer serial heavy work on 4GB/1vCPU systems and expose explicit
-  concurrency caps for larger hosts.
 
 ## [6.6.8] - 2026-09-16
 

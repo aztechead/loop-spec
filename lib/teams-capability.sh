@@ -1,39 +1,24 @@
 #!/usr/bin/env bash
 # Print the agent-team capability MODE for the running harness.
 #
-# Output is exactly one word on stdout:
-#   none      Agent teams are off. CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS != 1.
-#             -> phases use the no-teams fallback (skills/shared/dispatch.md).
-#   explicit  Legacy agent teams (CC < 2.1.178): the TeamCreate / TeamDelete tools
-#             exist. Each phase creates and tears down its own named team.
-#   implicit  Modern agent teams (CC >= 2.1.178): TeamCreate / TeamDelete were
-#             REMOVED. Every session has one implicit team; teammates are spawned
-#             directly via Agent({name}) and addressed with SendMessage. See
-#             skills/shared/dispatch.md.
-#
-# The 2.1.178 boundary is the Claude Code release that removed TeamCreate /
-# TeamDelete ("every session now has one implicit team -- spawn teammates
-# directly with the Agent tool's name parameter"). loop-spec's explicit-team
-# call sites throw on that harness, so the cycle must route to the implicit
-# model instead of attempting the removed tools.
+# Output is exactly `none`: persistent teams cannot enforce the finite resource
+# cap, so phases use bounded one-shot dispatch (`skills/shared/dispatch.md`).
 #
 # Usage:
-#   teams-capability.sh [version]
-#     [version]  Optional explicit version string (e.g. "2.1.181") for testing.
-#                When omitted, the version is read from `claude --version`.
+#   teams-capability.sh [ignored-version]
+#     The optional argument remains accepted by offline callers; resource policy
+#     selects the bounded path before version capability can affect dispatch.
 #
-# Policy and overrides (checked in order, first wins):
-#   LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=N            forces no-teams bounded waves.
-#   LOOP_SPEC_TEAMS_MODE=none|explicit|implicit   forces the mode verbatim.
+# Policy: all finite caps use one-shot waves, whose width the lead can enforce.
+# Persistent teams have no equivalent global bound, so a mode override may only
+# select `none`; it cannot turn a bounded dispatch back into an unbounded one.
 #
 # Exits 0 with the answer on stdout, or propagates an invalid explicit harness
 # as a usage error.
 set -euo pipefail
 
-MIN_IMPLICIT="2.1.178"
-
 # A deployment-wide one-shot cap cannot be enforced inside a persistent team.
-# Force the bounded no-teams path whenever the operator supplies it.
+# The resolver always returns a finite cap, including its conservative default.
 subagent_cap="$(bash "$(dirname "${BASH_SOURCE[0]}")/resource-bounds.sh" get subagents)" || exit $?
 
 # Harness gate: named, addressable teammates are a Claude Code surface today.
@@ -58,45 +43,7 @@ if [[ "$harness" != "claude" ]]; then
   exit 0
 fi
 
-# The default serial bound disables persistent teams. Keep this after harness
-# validation so an invalid explicit harness is still reported as a usage error.
-if (( subagent_cap == 1 )); then
-  echo "none"
-  exit 0
-fi
-
-# Hard override for constrained / test environments.
-if [[ -n "${LOOP_SPEC_TEAMS_MODE:-}" ]]; then
-  case "${LOOP_SPEC_TEAMS_MODE}" in
-    none|explicit|implicit) echo "${LOOP_SPEC_TEAMS_MODE}"; exit 0 ;;
-    *) echo "none"; exit 0 ;;
-  esac
-fi
-
-# Necessary gate: the experimental flag must be opted in. Without it there is no
-# team surface in any harness generation, so the mode is `none` regardless of version.
-if [[ "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}" != "1" ]]; then
-  echo "none"
-  exit 0
-fi
-
-ver="${1:-}"
-if [[ -z "$ver" ]]; then
-  ver="$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-fi
-[[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || ver=""
-
-# Unknown version: fail safe to no teams. Team dispatch requires named agents,
-# shared task metadata, messaging, and claim serialization; guessing either
-# generation can strand EXECUTE. The one-shot subagent path works at any width.
-if [[ -z "$ver" ]]; then
-  echo "none"
-  exit 0
-fi
-
-# implicit iff ver >= MIN_IMPLICIT (sort -V ascending puts MIN first when ver >= MIN)
-if [[ "$(printf '%s\n%s\n' "$ver" "$MIN_IMPLICIT" | sort -V | head -1)" == "$MIN_IMPLICIT" ]]; then
-  echo "implicit"
-else
-  echo "explicit"
-fi
+# The cap is deliberately finite even when it is greater than one. Teams do not
+# consume this cap, so allowing them here would make the advertised limit false.
+echo "none"
+exit 0

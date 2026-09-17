@@ -280,6 +280,16 @@ check "exit plan: a sidecar whose ids differ from PLAN.md flags" "1" "$(grep -c 
 bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCS/PLAN.md" > "$FD/tasks.json"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: the derived sidecar carries no [tasks] flag" "0" "$(grep -c '^FLAG \[tasks\]' <<<"$out")"
+printf 'extract failed\n' > "$FD/tasks.extract.err"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: extraction marker blocks a stale sidecar" "1" "$ec"
+check "exit plan: extraction marker names PLAN repair" "1" "$(grep -c 'repair PLAN.md and rerun plan-tasks.sh extract' <<<"$out")"
+: > "$FD/tasks.extract.err"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: empty extraction marker also blocks a stale sidecar" "1" "$ec"
+rm "$FD/tasks.extract.err"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: cleared extraction marker allows the derived sidecar" "0" "$ec"
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":["task-001"],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: a self-blocking task is a cycle" "1" "$(grep -c 'dependency cycle' <<<"$out")"

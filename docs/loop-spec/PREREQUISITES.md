@@ -7,75 +7,35 @@ Every harness requires `bash >= 3.2`, `git`, `jq >= 1.5`, and `python3 >= 3.7`.
 installer paths use it, so a missing or old binary fails once with installation guidance
 instead of producing mid-run command errors.
 
-## CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS
+## Claude Code
 
-The cycle skill's agent-teams mode requires the experimental agent teams feature to be enabled in Claude Code.
+Claude Code v2.1.32 or later is required for the adapter. The cycle always uses
+bounded one-shot Agent/session dispatch, regardless of optional team tools. Check
+the installed version with `claude --version`.
 
-### Required environment variable
+### Bounded dispatch policy
 
-```bash
-export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
-```
-
-Set this before launching `claude` or add it to the `env` section of your `.claude/settings.json`:
-
-```json
-{
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  }
-}
-```
-
-### Minimum Claude Code version
-
-> **Agent teams are an accelerator, not a hard requirement.** When the flag is
-> unset (or its tools are unavailable), the cycle still runs end-to-end on the
-> no-teams fallback (one-shot `Agent` dispatch; EXECUTE uses the loop-fleet or
-> subagent rung). There is no external assistant startup requirement; the base
-> runtime dependencies above are also mandatory.
-
-### Two harness generations (the cycle auto-detects)
-
-The agent-teams tool surface changed in Claude Code **2.1.178**. The cycle
-resolves which generation is live with `lib/teams-capability.sh` and records the
-result in `.loop-spec/runtime.json.teamsMode`:
+The cycle records `teamsMode` in `.loop-spec/runtime.json`, but persistent teams
+and Workflow fan-out are disabled by the resource policy. A finite
+`LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` value is enforced by one-shot waves, including
+values above one. This keeps the cap meaningful across SPEC, DISCUSS, PLAN, and
+EXECUTE. `LOOP_SPEC_WORKTREES=0` clamps both resource caps to one in
+`lib/resource-bounds.sh`.
 
 | `teamsMode` | When | How teammates are created |
 |---|---|---|
-| `none` | flag unset / not `1` | No team — one-shot `Agent` calls (`skills/shared/dispatch.md`) |
-| `explicit` | flag=1 **and** CC `< 2.1.178` | Per-phase `TeamCreate` / `TeamDelete` roster |
-| `implicit` | flag=1 **and** CC `>= 2.1.178` | One implicit team; teammates spawned via `Agent({name})`, **no `TeamCreate`/`TeamDelete`** (`skills/shared/dispatch.md`) |
+| `none` | bounded resource policy | One-shot `Agent` calls in serial or finite waves (`skills/shared/dispatch.md`) |
 
-Force the mode with `LOOP_SPEC_TEAMS_MODE=none|explicit|implicit` (testing / constrained environments).
-Setting `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` forces `teamsMode=none` and runs
-one-shot role agents in bounded waves so the operator's concurrency cap is
-enforceable.
-
-### Minimum Claude Code version
-
-v2.1.32 or later. On **CC >= 2.1.178** the `TeamCreate` / `TeamDelete` tools no
-longer exist — setting the flag is all that is needed; the cycle uses the
-implicit-team model automatically. Check your current version:
-
-```bash
-claude --version
-```
+`LOOP_SPEC_TEAMS_MODE=none` is the only supported mode override. Positive team
+mode values do not bypass the bounded policy.
 
 ### Required harness capabilities
 
-The cycle's team path assumes the harness supports:
-
-- **Named teammates** — `Agent({name})` (implicit model, CC >= 2.1.178) **or** `TeamCreate` / `TeamDelete` (explicit model, CC < 2.1.178)
-- **TaskCreate / TaskUpdate / TaskGet / TaskList** - including `metadata` round-trip and `owner` release
-- **SendMessage** - lead-to-teammate and teammate-to-teammate messaging
-- **Concurrent `TaskUpdate` serialization** - only one of N concurrent self-claims for the same task id succeeds
-
-These are exercised by the live matrix in `tests/README.md`. Startup deterministically gates
-on the harness, opt-in flag, and known Claude Code generation; an unknown version fails
-safe to `teamsMode == "none"`. The packaged implementer and reviewer grants include the
-task-list and messaging tools above. Any unavailable or disabled team path degrades to
-one-shot subagent waves at every DAG width.
+One-shot dispatch uses the normal Agent/session child capability and the bounded
+dispatch contract. Team tools, named teammates, task-list self-claims, and
+teammate messaging are optional integrations; they are not prerequisites for the
+bounded path. The live matrix in `tests/README.md` probes those optional tools when
+available, while startup keeps the finite child cap enforceable without them.
 
 ## Optional hardening — constraining which models roles may use
 

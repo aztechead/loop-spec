@@ -10,6 +10,7 @@
 #
 # One task per `### task-NNN: <subject>` block under `## Tasks`. Fields:
 #   id, subject             the heading
+#   goal, expected, steps   the task's intent, verify result, and implementation steps
 #   files[]                 bullets under **Files:** (backticks stripped)
 #   readFirst[]             bullets under **read_first:** (present only when listed)
 #   verifyCommand           the first backtick span after **Verify:**
@@ -46,7 +47,7 @@ lines = open(plan, encoding="utf-8", errors="replace").read().splitlines()
 # established numeric task ID contract used by downstream dispatchers.
 HEADING = re.compile(r"^### (task-\d+):\s*(.+?)\s*$")
 MARKER = re.compile(r"^\*\*([^*]+?)(?::\*\*|\*\*:)\s*(.*)$")
-LISTS = ("Files", "read_first", "Acceptance criteria", "Interfaces")
+LISTS = ("Files", "read_first", "Acceptance criteria", "Interfaces", "Steps")
 BULLET = re.compile(r"^[-*+]\s+(?:\[[ xX]\]\s+)?(.*\S)\s*$")
 CODE = re.compile(r"`([^`]+)`")
 ROW = re.compile(r"^\|\s*(task-\d+)\s*\|([^|]*)\|([^|]*)\|")
@@ -70,20 +71,32 @@ tasks = []
 task = None
 section = None
 interface_key = None
+fenced = False
 for raw in lines:
     line = raw.strip()
-    continuation = bool(raw[:1].isspace()) and bool(line)
+    if fenced or line.startswith("```"):
+        if task is not None:
+            if section == "Steps" and task["steps"]:
+                task["steps"][-1] += "\n" + raw
+            elif section == "Acceptance criteria" and task["acceptanceCriteria"]:
+                task["acceptanceCriteria"][-1] += "\n" + raw
+            elif section == "Interfaces" and interface_key:
+                task["interfaces"][interface_key] += "\n" + raw
+        if line.startswith("```"):
+            fenced = not fenced
+        continue
     head = HEADING.match(line)
     if head:
         task = {"id": head.group(1), "subject": head.group(2), "files": [], "blockedBy": None,
                 "blockedByEmpty": False,
-                "verifyCommand": "", "acceptanceCriteria": [], "readFirst": [], "interfaces": {}}
+                "verifyCommand": "", "acceptanceCriteria": [], "readFirst": [], "interfaces": {},
+                "goal": "", "expected": "", "steps": []}
         tasks.append(task)
         section = None
         continue
     if task is None:
         continue
-    if line.startswith("## ") or line.startswith("---"):
+    if line.startswith("# ") or line.startswith("## ") or line.startswith("---"):
         task = None
         continue
     marker = MARKER.match(line)
@@ -91,9 +104,18 @@ for raw in lines:
         name, rest = marker.group(1).strip(), marker.group(2).strip()
         section = None
         interface_key = None
-        if name == "Verify":
+        if name == "Goal":
+            task["goal"] = rest
+            section = "Goal"
+        elif name == "Verify":
             code = CODE.search(rest)
             task["verifyCommand"] = code.group(1).strip() if code else rest
+            suffix = rest[code.end():] if code else ""
+            if "->" in suffix:
+                task["expected"] = suffix.split("->", 1)[1].strip()
+        elif name == "Expected":
+            task["expected"] = rest
+            section = "Expected"
         elif name == "BlockedBy":
             task["blockedByEmpty"] = not rest.strip()
             task["blockedBy"] = ids_from(rest)
@@ -105,14 +127,32 @@ for raw in lines:
             task["modelTier"] = strip_code(rest)
         elif name == "Spec path":
             task["specPath"] = strip_code(rest)
-        elif name in LISTS:
+        elif name in LISTS or name.startswith("Steps"):
+            if name.startswith("Steps"):
+                name = "Steps"
             section = name
         continue
+    # A field's wrapped prose is allowed to start at column zero. Structural
+    # markers and comments end the field first, so text from the next section
+    # cannot leak into the preceding value.
+    if line.startswith("<!--") or line.startswith(">>>"):
+        section = None
+        interface_key = None
+        continue
     bullet = BULLET.match(line)
-    if continuation and not bullet and section == "Acceptance criteria" and task["acceptanceCriteria"]:
+    if not bullet and section == "Goal" and line:
+        task["goal"] += " " + line
+        continue
+    if not bullet and section == "Expected" and line:
+        task["expected"] += " " + line
+        continue
+    if not bullet and section == "Acceptance criteria" and task["acceptanceCriteria"] and line:
         task["acceptanceCriteria"][-1] += " " + line
         continue
-    if continuation and not bullet and section == "Interfaces" and interface_key:
+    if not bullet and section == "Steps" and task["steps"] and line:
+        task["steps"][-1] += " " + line
+        continue
+    if not bullet and section == "Interfaces" and interface_key and line:
         task["interfaces"][interface_key] += " " + line
         continue
     if not bullet or section is None:
@@ -124,6 +164,8 @@ for raw in lines:
         task["readFirst"].append(strip_code(item))
     elif section == "Acceptance criteria":
         task["acceptanceCriteria"].append(item)
+    elif section == "Steps":
+        task["steps"].append(item)
     elif section == "Interfaces":
         key, _, value = item.partition(":")
         if key.strip() in ("consumes", "produces") and value.strip() and value.strip() != "none":
@@ -150,6 +192,12 @@ for t in tasks:
         del t["readFirst"]
     if not t["interfaces"]:
         del t["interfaces"]
+    if not t["goal"]:
+        del t["goal"]
+    if not t["expected"]:
+        del t["expected"]
+    if not t["steps"]:
+        del t["steps"]
     del t["blockedByEmpty"]
 
 print(json.dumps(tasks, indent=2))

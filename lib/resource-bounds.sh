@@ -32,6 +32,15 @@ read_bound() {
   fi
 }
 
+worktrees="${LOOP_SPEC_WORKTREES:-1}"
+case "$worktrees" in
+  0|1) ;;
+  *)
+    echo "resource-bounds: LOOP_SPEC_WORKTREES must be 0 or 1" >&2
+    exit 2
+    ;;
+esac
+
 subagents="$(read_bound LOOP_SPEC_MAX_PARALLEL_SUBAGENTS 1)"
 if [[ -n "${LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS-}" ]]; then
   requested_implementers="$(read_bound LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS 1)"
@@ -42,6 +51,11 @@ if [[ -n "${LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS-}" ]]; then
   fi
 else
   implementers="$subagents"
+fi
+
+if [[ "$worktrees" == "0" ]]; then
+  subagents=1
+  implementers=1
 fi
 
 case "${1-}" in

@@ -122,6 +122,7 @@ case "$cmd" in
       "",
       "**Subject:** \(.subject // .brief // "")",
       "",
+      (if .goal then "## Goal\n\(.goal)\n" else empty end),
       "## Files",
       ((.files // []) | if length == 0 then "- none" else map("- \(.)") | .[] end),
       "",
@@ -139,12 +140,16 @@ case "$cmd" in
       "",
       "## Verify",
       (.verifyCommand // "true"),
+      (if .expected then "Expected: \(.expected)" else empty end),
       "",
       "## Acceptance criteria",
       ((.acceptanceCriteria // []) | if length == 0 then "- none" else to_entries[] | "\(.key + 1). \(.value)" end),
       "",
       "## Brief",
       (.brief // .subject // ""),
+      (if (.steps // []) | length > 0 then
+         "\n## Steps\n" + ((.steps // []) | to_entries | map("- " + .value) | join("\n")) + "\n"
+       else empty end),
       "",
       "## Global constraints (PLAN.md, verbatim; every one binds)",
       $constraints,
@@ -191,6 +196,8 @@ case "$cmd" in
       OUT="${TMPDIR:-/tmp}/review-${short_b}..${short_h}.diff"
     fi
     mkdir -p "$(dirname "$OUT")"
+    no_code_change=0
+    git -C "$REPO" diff --quiet "${BASE}..${HEAD}" -- || no_code_change=1
     {
       echo "# Review package: ${base_full}..${head_full}"
       echo
@@ -199,6 +206,11 @@ case "$cmd" in
       echo
       echo "## Files changed"
       git -C "$REPO" diff --stat "${BASE}..${HEAD}"
+      if [[ "$no_code_change" -eq 0 ]]; then
+        echo
+        echo "## No code changes"
+        echo "This package contains a distinct commit with no code diff. Review the commit and verify the current tree against the task brief before accepting it."
+      fi
       echo
       echo "## Diff"
       git -C "$REPO" diff -U10 "${BASE}..${HEAD}"

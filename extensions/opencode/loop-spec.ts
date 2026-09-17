@@ -202,6 +202,7 @@ export const LoopSpecPlugin = async (input) => {
       env.CLAUDE_SKILL_DIR = state.skillDir;
     }
     if (sessionID) {
+      env.LOOP_SPEC_SESSION_ID = sessionID;
       env.CLAUDE_CODE_SESSION_ID = sessionID;
       env.CLAUDE_SESSION_ID = sessionID;
     }

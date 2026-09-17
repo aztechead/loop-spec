@@ -33,6 +33,7 @@ cat > "$tmp/PLAN.md" <<'MD'
 ### task-001: add the endpoint
 
 **Goal:** one sentence.
+Goal continuation at column zero.
 
 **Files:**
 - `api/export.py`
@@ -53,6 +54,7 @@ cat > "$tmp/PLAN.md" <<'MD'
 **Steps (TDD where applicable):**
 
 - [ ] Step 1: Write failing test (tests/test_export.py)
+  and keep the red test focused
 
 **BlockedBy:** []
 
@@ -93,12 +95,17 @@ out="$(bash "$LIB" extract "$tmp/PLAN.md")"
 check "three blocks yield three tasks" "3" "$(jq 'length' <<<"$out")"
 check "id and subject from the heading" "task-001 add the endpoint" \
   "$(jq -r '.[0] | "\(.id) \(.subject)"' <<<"$out")"
+check "goal keeps a column-zero continuation" "one sentence. Goal continuation at column zero." \
+  "$(jq -r '.[0].goal' <<<"$out")"
 check "files stripped of backticks" "api/export.py" "$(jq -r '.[0].files[0]' <<<"$out")"
 check "read_first becomes readFirst" "api/routes.py:10-40" "$(jq -r '.[0].readFirst[0]' <<<"$out")"
 check "verify command is the first backtick span" "pytest tests/test_export.py" \
   "$(jq -r '.[0].verifyCommand' <<<"$out")"
 check "checked and unchecked criteria both count" "2" \
   "$(jq '.[0].acceptanceCriteria | length' <<<"$out")"
+check "expected result is extracted" "1 passed" "$(jq -r '.[0].expected' <<<"$out")"
+check "steps and their continuations are extracted" "Step 1: Write failing test (tests/test_export.py) and keep the red test focused" \
+  "$(jq -r '.[0].steps[0]' <<<"$out")"
 check "steps are not criteria" "0" \
   "$(jq '[.[0].acceptanceCriteria[] | select(startswith("Step"))] | length' <<<"$out")"
 check "interfaces keep produces and drop none" '{"produces":"`GET /export` returning 202"}' \
@@ -121,22 +128,47 @@ cat > "$tmp/PLAN-continuations.md" <<'MD'
 - one.py
 **Interfaces:**
 - produces: `event` with a long
-  human readable description
+human readable description
 - consumes: none
-  this line must not become a produces continuation
+this line must not become a produces continuation
 **BlockedBy:** []
 **Verify:** `true`
 **Acceptance criteria:**
 - [ ] first line of a criterion
-  and its continuation are retained
+and its continuation are retained
+```
+### task-998: fake criterion heading
+```
+- [ ] second criterion after the code block
+**Steps:**
+- [ ] first step
+second line of the step
+```
+run one
+run two # keep this comment
+### task-999: fake heading inside a code example
+```
+- [ ] next real step
+## Notes
+This must not bleed into the task.
 MD
 continuation_out="$(bash "$LIB" extract "$tmp/PLAN-continuations.md")"
-check "acceptance continuation is retained" "first line of a criterion and its continuation are retained" \
-  "$(jq -r '.[0].acceptanceCriteria[0]' <<<"$continuation_out")"
+check "acceptance continuation is retained" "true" \
+  "$(jq -r '.[0].acceptanceCriteria[0] | startswith("first line of a criterion and its continuation are retained")' <<<"$continuation_out")"
 check "interface continuation is retained" "\`event\` with a long human readable description" \
   "$(jq -r '.[0].interfaces.produces' <<<"$continuation_out")"
 check "none interface continuation does not bleed" "null" \
   "$(jq -r '.[0].interfaces.consumes // null' <<<"$continuation_out")"
+check "steps continuation is retained" "true" \
+  "$(jq -r '.[0].steps[0] | startswith("first step second line of the step")' <<<"$continuation_out")"
+check "step code block preserves commands and ignores fake heading" "true" \
+  "$(jq -r '.[0].steps[0] | contains("### task-999: fake heading inside a code example")' <<<"$continuation_out")"
+check "step code block preserves command newlines" "true" \
+  "$(jq -r '.[0].steps[0] | contains("run one\nrun two # keep this comment")' <<<"$continuation_out")"
+check "next real step is parsed after code block" "2" "$(jq -r '.[0].steps | length' <<<"$continuation_out")"
+check "criteria continue after a code block" "2" "$(jq -r '.[0].acceptanceCriteria | length' <<<"$continuation_out")"
+check "criterion code block preserves its content" "true" \
+  "$(jq -r '.[0].acceptanceCriteria[0] | contains("### task-998: fake criterion heading")' <<<"$continuation_out")"
 
 # The repo's real PLAN fixture round-trips through the lint too.
 out="$(bash "$LIB" extract "$REPO_ROOT/tests/fixtures/real-PLAN.md")"

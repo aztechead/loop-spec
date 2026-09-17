@@ -48,8 +48,19 @@ stances, and global constraints. Do not compute waves or duplicate task prose.
 Then run:
 
 ```bash
-tmp_tasks="$feature_dir/tasks.json.tmp"; if bash "${LOOP_SPEC_SKILL_DIR}/../../lib/plan-tasks.sh" extract docs/loop-spec/features/{slug}/PLAN.md > "$tmp_tasks"; then mv "$tmp_tasks" "$feature_dir/tasks.json"; else exit 1; fi
-bash "${LOOP_SPEC_SKILL_DIR}/../../lib/plan-conflicts.sh" edges "$feature_dir/tasks.json"
+tmp_tasks="$feature_dir/tasks.json.tmp"; extract_err="$feature_dir/tasks.extract.err"
+extract_failed=0
+if bash "${LOOP_SPEC_SKILL_DIR}/../../lib/plan-tasks.sh" extract docs/loop-spec/features/{slug}/PLAN.md > "$tmp_tasks" 2>"$extract_err"; then
+  mv "$tmp_tasks" "$feature_dir/tasks.json"
+  rm -f "$extract_err"
+else
+  extract_failed=1
+  printf 'FLAG [tasks] plan extraction failed; preserve this stderr for the revision:\n%s\n' "$(cat "$extract_err")" >&2
+  rm -f "$tmp_tasks"
+fi
+if (( ! extract_failed )); then
+  bash "${LOOP_SPEC_SKILL_DIR}/../../lib/plan-conflicts.sh" edges "$feature_dir/tasks.json"
+fi
 bash "${LOOP_SPEC_SKILL_DIR}/../../lib/plan-render.sh" decisions --spec docs/loop-spec/features/{slug}/SPEC.md --plan docs/loop-spec/features/{slug}/PLAN.md
 bash "${LOOP_SPEC_SKILL_DIR}/../../lib/phase-exit.sh" plan --feature-dir "$feature_dir" --check
 ```

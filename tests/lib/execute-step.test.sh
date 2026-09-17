@@ -142,7 +142,7 @@ SBIN="$WORK/sbin"; SPROF="$WORK/sprofiles"; mkdir -p "$SBIN" "$SPROF"
 cat > "$SBIN/codex" <<'SH'
 #!/usr/bin/env bash
 { printf '%s\n' "$@"; echo "cwd=$(pwd -P)"; } > "${FAKE_ARGS_OUT:-/dev/null}"
-if [[ "$*" == *'commit the completed task files'* ]]; then
+if [[ "$*" == *'commit the completed task files'* && "${FAKE_NO_COMMIT:-0}" != 1 ]]; then
   printf 'print(2)\n' > a.py
   git add a.py
   git commit -qm 'task-001 implementation'
@@ -159,6 +159,9 @@ check "run: prepare selected the session rung" "session" "$(jq -r '.rung.rung' "
 disp="$(sess bash "$STEP" dispatch --feature-dir "$FDS" --task task-001)"
 WT1="$(jq -r '.worktreePath' <<<"$disp")"
 check "run: the session rung isolates the task in a lead-created worktree" "1" "$([[ -d "$WT1" ]] && echo 1 || echo 0)"
+ec=0; out="$(sess env FAKE_NO_COMMIT=1 bash "$STEP" run --feature-dir "$FDS" --task task-001 --role implementer 2>&1)" || ec=$?
+check "run implementer: unchanged worktree HEAD is commit-missing" "commit-missing:1" "$(jq -r '.reason' <<<"$out"):$ec"
+check "run implementer: commit-missing preserves provider metadata" "completed" "$(jq -r '.providerStatus // .status' <<<"$out")"
 ec=0; out="$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role implementer 2>&1)" || ec=$?
 check "run implementer: the session completed" "completed" "$(jq -r '.status' <<<"$out")"
 check "run implementer: exit 0" "0" "$ec"

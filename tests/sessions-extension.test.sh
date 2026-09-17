@@ -37,7 +37,7 @@ cat > "$WORK/bin/fakecli" <<'SH'
 printf '%s\n' "$@"
 echo "probe=${FAKE_PROBE:-unset}"
 echo "cwd=$(pwd -P)"
-echo "loop=${LOOP_SPEC_LEAK:-unset} plugin=${CLAUDE_PLUGIN_ROOT:-unset} session=${CLAUDE_CODE_SESSION_ID:-unset}${CLAUDE_CODE_MESSAGING_SOCKET:-}${CLAUDE_CODE_REMOTE_SESSION_ID:-} stamp=${CLAUDE_CODE_ENTRYPOINT:-unset}"
+echo "loop=${LOOP_SPEC_LEAK:-unset} plugin=${CLAUDE_PLUGIN_ROOT:-unset} canonical=${LOOP_SPEC_SESSION_ID:-unset} session=${CLAUDE_CODE_SESSION_ID:-unset}${CLAUDE_CODE_MESSAGING_SOCKET:-}${CLAUDE_CODE_REMOTE_SESSION_ID:-} legacy=${CLAUDE_SESSION_ID:-unset} stamp=${CLAUDE_CODE_ENTRYPOINT:-unset}"
 [[ -n "${FAKE_SAY:-}" ]] && echo "$FAKE_SAY"
 if [[ -n "${FAKE_CHILD_MARKER:-}" ]]; then
   (sleep 2; printf survived > "$FAKE_CHILD_MARKER") &
@@ -56,6 +56,7 @@ model_flag = "--model"
 prompt_template = "run: {prompt}"
 seed_files = [".claude/settings.json"]
 env_fault_patterns = ["API Error: (5[2]9 Overloaded)"]
+lead_args = []
 [env]
 FAKE_PROBE = "from-profile"
 TOML
@@ -68,7 +69,7 @@ run() { # run [VAR=value ...] [runner args...] -> stdout in $out, exit in $rc
   while [[ $# -gt 0 && "$1" == *=* && "$1" != --* ]]; do assigns+=("$1"); shift; done
   rc=0
   out="$(env PATH="$WORK/bin:$PATH" LOOP_SPEC_SESSION_PROFILES="$WORK/profiles" LOOP_SPEC_LEAK=1 \
-    CLAUDE_PLUGIN_ROOT=/nowhere CLAUDE_CODE_SESSION_ID=parent CLAUDE_CODE_MESSAGING_SOCKET=/s CLAUDE_CODE_REMOTE_SESSION_ID=r CLAUDE_CODE_ENTRYPOINT=remote_mobile \
+    CLAUDE_PLUGIN_ROOT=/nowhere LOOP_SPEC_SESSION_ID=parentcanonical CLAUDE_CODE_SESSION_ID=parent CLAUDE_SESSION_ID=legacy CLAUDE_CODE_MESSAGING_SOCKET=/s CLAUDE_CODE_REMOTE_SESSION_ID=r CLAUDE_CODE_ENTRYPOINT=remote_mobile \
     ${assigns[@]+"${assigns[@]}"} \
     python3 "$RUNNER" --log-dir "$WORK/logs" "$@" 2>"$WORK/stderr")" || rc=$?
 }
@@ -92,9 +93,16 @@ check "argv is binary, launch, guarded, model, then the prompt last" \
 log="$(jq -r '.stdout' <<<"$out")"
 check "the profile env reaches the child" "1" "$(grep -c '^probe=from-profile$' "$log")"
 check "the child runs in --cwd" "1" "$(grep -c "^cwd=$(cd "$WORK/cwd" && pwd -P)$" "$log")"
-check "LOOP_SPEC_*, the plugin bindings, the session identity, and the launch stamp do not leak into the child" "1" "$(grep -c '^loop=unset plugin=unset session=unset stamp=unset$' "$log")"
+check "LOOP_SPEC_*, the plugin bindings, canonical and legacy session identity, and launch stamp do not leak into the child" "1" "$(grep -c '^loop=unset plugin=unset canonical=unset session=unset legacy=unset stamp=unset$' "$log")"
 check "a seed file the worktree lacks is copied in" '{"seeded": true}' "$(cat "$WORK/cwd/.claude/settings.json")"
 check "the log lands under --log-dir" "$WORK/logs" "$(dirname "$log")"
+
+lead_ids="$(CLAUDE_CODE_SESSION_ID=parent CLAUDE_SESSION_ID=legacy LOOP_SPEC_SESSION_ID=old \
+  python3 -c 'from extensions.sessions.session_run import child_env; a=child_env({}, True); b=child_env({}, True); print(a.get("LOOP_SPEC_SESSION_ID", "")); print(b.get("LOOP_SPEC_SESSION_ID", "")); print(a.get("CLAUDE_SESSION_ID", "unset"))')"
+lead_one="$(sed -n '1p' <<<"$lead_ids")"; lead_two="$(sed -n '2p' <<<"$lead_ids")"; lead_legacy="$(sed -n '3p' <<<"$lead_ids")"
+check "headless lead gets a canonical identity" "true" "$([[ -n "$lead_one" && "$lead_one" != unset ]] && echo true || echo false)"
+check "fresh headless leads get distinct identities" "true" "$([[ -n "$lead_two" && "$lead_one" != "$lead_two" ]] && echo true || echo false)"
+check "headless lead environment scrubs legacy session alias" "unset" "$lead_legacy"
 
 printf '{"seeded": false}\n' > "$WORK/cwd/.claude/settings.json"
 run "${common[@]}" --seed-from "$WORK/seed"

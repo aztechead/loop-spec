@@ -212,6 +212,10 @@ Usage:
 
 Every subcommand is idempotent on its inputs; reading state twice is free, writing
 it twice is the same write. harness-neutral: branches only via lib/harness.sh.
+
+Session identity: callers that cross a phase boundary must export a stable
+``LOOP_SPEC_SESSION_ID`` for the lifetime of that invocation. Native harness
+adapters inject this automatically; standalone callers must set it explicitly.
 """
 
 from __future__ import print_function
@@ -237,6 +241,7 @@ sys.path.insert(0, str(GRAPH_DIR))
 sys.path.insert(0, str(LIB_DIR))
 import engine  # noqa: E402
 import feature_read  # noqa: E402
+from session_identity import resolve_session_id  # noqa: E402
 
 GRAPH = os.environ.get("LOOP_SPEC_GRAPH") or str(REPO_ROOT / "graph" / "cycle.graph.json")
 EMPTY_COMMANDS = {"prepare": "", "test": "", "lint": "", "typecheck": ""}
@@ -342,17 +347,20 @@ def read_json(path, default=None):
 
 
 def session_id():
-    """The harness's id for this model session, or "" where the harness stamps none."""
-    return os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CLAUDE_SESSION_ID") or ""
+    """Resolve the one identity shared by the launcher, hooks, and driver.
+
+    LOOP_SPEC_SESSION_ID is deliberately first: adapters inject it from their
+    native payload into the shell that actually runs the driver. The Claude
+    names remain compatibility fallbacks for attended sessions.
+    """
+    return resolve_session_id()
 
 
 def handed_off_here(feat):
     """The handoff this same session produced, or None. A session that answered HANDOFF is
-    done: the next phase starts in a fresh invocation, and the driver holds that line
-    itself because the Skill-tool guard only sees Skill calls. A lead denied there read
-    the next phase's SKILL.md by hand and ran it in the session that had handed off.
-    Where the harness stamps no session id nothing can be compared, and the guard alone
-    stands."""
+    done: the next phase starts in a fresh invocation. The driver and tool guards
+    both require the same canonical identity, so an anonymous caller cannot consume
+    the record."""
     rec = feat.get("handoffSession")
     sid = session_id()
     if isinstance(rec, dict) and sid and rec.get("id") == sid:
@@ -1307,6 +1315,17 @@ def cmd_next(argv):
     repo_root = lib("cycle-result", "resolve-root", os.path.join(feature_dir, "..", "..", ".."))
     os.chdir(repo_root)
 
+    # Do not consume an existing handoff marker on an anonymous invocation.
+    # It belongs to a fresh, identifiable session; leave it durable so the
+    # caller can retry after fixing harness propagation.
+    pending_handoff = feat.get("handoffSession")
+    if isinstance(pending_handoff, dict) and not session_id():
+        raise Die("cannot consume handoff without LOOP_SPEC_SESSION_ID; the harness must inject the native session id", 2)
+    # Every normal next call is an invocation boundary. Refuse before reading
+    # or consuming a handoff and before engine.step_once can mutate the graph.
+    if os.environ.get("LOOP_SPEC_SAME_SESSION") != "1" and not session_id():
+        raise Die("cannot advance without LOOP_SPEC_SESSION_ID (the harness must inject the native session id)", 2)
+
     handed = handed_off_here(feat)
     if handed is not None and returned != (handed.get("from") or ""):
         print(handoff_answer(feature_dir, handed))
@@ -1936,6 +1955,18 @@ def record_transition(feature_dir, phase, nxt, note, ws_mode):
     if phase == "deliver" and nxt != "execute":
         return None
 
+    same_session = os.environ.get("LOOP_SPEC_SAME_SESSION", "")
+    if same_session not in ("", "0", "1"):
+        raise Die("LOOP_SPEC_SAME_SESSION must be 0 or 1", 2)
+    graph_same = lib_run("graph/phases", "same-session", phase, nxt, quiet=True).returncode == 0
+
+    # An empty handoff id is an unowned lock. Refuse before writing progress,
+    # result, or feature state; a later invocation must never consume it.
+    if (nxt != "completed" and not nxt.startswith("human.") and nxt != phase
+            and same_session != "1" and not graph_same
+            and not session_id()):
+        raise Die("cannot advance to %s without LOOP_SPEC_SESSION_ID (the harness must inject the native session id)" % nxt, 2)
+
     fset(feature_dir, "updatedAt", now())
     progress = os.path.join(feature_dir, "PROGRESS.md")
     header = "" if os.path.isfile(progress) else "# Progress — %s\n" % slug
@@ -1957,9 +1988,6 @@ def record_transition(feature_dir, phase, nxt, note, ws_mode):
 
     if nxt == "completed" or nxt.startswith("human.") or nxt == phase:
         return None
-    same_session = os.environ.get("LOOP_SPEC_SAME_SESSION", "")
-    if same_session not in ("", "0", "1"):
-        raise Die("LOOP_SPEC_SAME_SESSION must be 0 or 1", 2)
     if same_session == "1":
         # The operator opted into one session end to end: the graph's sameSession
         # edges below are the default exception, this env makes every edge one
@@ -1970,7 +1998,7 @@ def record_transition(feature_dir, phase, nxt, note, ws_mode):
     # to end). It paid a session's fixed cost per phase for a two-line fix, and each session
     # loaded its whole context (port audit 1, F2; live run 2 paid the DELIVER
     # handoff). hooks/team/phase-handoff-guard.sh reads the same edge.
-    if lib_run("graph/phases", "same-session", phase, nxt, quiet=True).returncode == 0:
+    if graph_same:
         return None
     # One phase per session: the next phase starts in a fresh context whose whole ingress
     # is lib/phase-entry.sh. A rewind is a next phase the graph lists before this one.
@@ -2991,7 +3019,12 @@ def cmd_phase_begin(argv):
     if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
         usage()
     feature_dir = os.path.realpath(feature_dir)
-    handed = handed_off_here(state(feature_dir))
+    phase_state = state(feature_dir)
+    if (isinstance(phase_state.get("handoffSession"), dict)
+            and os.environ.get("LOOP_SPEC_SAME_SESSION") != "1"
+            and not session_id()):
+        raise Die("cannot begin phase without LOOP_SPEC_SESSION_ID; the harness must inject the native session id", 2)
+    handed = handed_off_here(phase_state)
     if handed is not None and phase != (handed.get("from") or ""):
         print("cycle-driver: this session handed off after %s; %s starts in a fresh invocation (%s)"
               % (handed.get("from"), phase, handoff_answer(feature_dir, handed)), file=sys.stderr)

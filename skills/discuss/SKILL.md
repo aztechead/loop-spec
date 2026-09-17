@@ -65,10 +65,11 @@ PATTERNS scan, reusing the SPEC footprint and evidence.
 
 ## Critique and return
 
-Before critique, run `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/phase-exit.sh" discuss
+When ONESHOT promotes to full, expand the intent draft using the full SPEC template and
+preserve Intent before running `phase-exit.sh discuss --check` or the spec critique.
+Obtain the run-mode approval after that expansion and before PLAN freezes Goal/Boundary.
+Then run `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/phase-exit.sh" discuss
 --feature-dir "$feature_dir" --check`; fix every reported FLAG before critique.
-When ONESHOT promotes to full, expand the intent draft using the full SPEC template,
-preserve Intent, and obtain the run-mode approval before PLAN freezes Goal/Boundary.
 Use `skills/shared/critique-gate-protocol.md` and `graph/critique.graph.json` for
 `phase=discuss`,
 `gate=spec-critique`, and `artifact=SPEC.md`. `run` dispatches the challenger;

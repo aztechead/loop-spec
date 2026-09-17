@@ -27,10 +27,13 @@ cat > "$FDIR/tasks.json" <<'EOF'
     "id": "task-001",
     "subject": "rename foo",
     "brief": "Rename foo to bar in one file.",
+    "goal": "A caller can use bar.",
     "files": ["src/foo.sh"],
     "blockedBy": [],
     "verifyCommand": "bash -n src/foo.sh",
+    "expected": "syntax check passes",
     "acceptanceCriteria": ["foo is gone"],
+    "steps": ["Add the rename", "Run the check"],
     "interfaces": {"consumes": "none", "produces": "bar"},
     "batchGroup": "rename-foo"
   }
@@ -49,8 +52,38 @@ grep -q "rename foo" "$brief" && r=ok || r=missing
 check "brief carries subject" "ok" "$r"
 grep -q "src/foo.sh" "$brief" && r=ok || r=missing
 check "brief carries files" "ok" "$r"
+grep -q "A caller can use bar." "$brief" && r=ok || r=missing
+check "brief carries goal" "ok" "$r"
+grep -q "Expected: syntax check passes" "$brief" && r=ok || r=missing
+check "brief carries expected result" "ok" "$r"
+grep -q -- "- Run the check" "$brief" && r=ok || r=missing
+check "brief carries steps" "ok" "$r"
 grep -q "Produces: bar" "$brief" && r=ok || r=missing
 check "brief carries interfaces" "ok" "$r"
+
+# The brief must carry fields produced by PLAN extraction, not only fields hand-built
+# by a caller. This catches loss between the durable Markdown artifact and dispatch.
+cat > "$FDIR/PLAN.md" <<'EOF'
+## Tasks
+### task-001: extracted task
+**Goal:** caller gains the extracted capability
+**Files:**
+- src/extracted.sh
+**Verify:** `true` -> passes
+**Acceptance criteria:**
+- [ ] extracted criterion
+**Steps:**
+- [ ] extracted step
+**BlockedBy:** []
+EOF
+bash "$ROOT/lib/plan-tasks.sh" extract "$FDIR/PLAN.md" > "$FDIR/tasks.json"
+brief_extracted=$(bash "$SCRIPT" brief --feature-dir "$FDIR" --task-id task-001)
+grep -q "caller gains the extracted capability" "$brief_extracted" && r=ok || r=missing
+check "brief carries extracted goal" "ok" "$r"
+grep -q -- "- extracted step" "$brief_extracted" && r=ok || r=missing
+check "brief carries extracted steps" "ok" "$r"
+grep -q "Expected: passes" "$brief_extracted" && r=ok || r=missing
+check "brief carries extracted expected result" "ok" "$r"
 
 # artifact-lint accepts an array for consumes/produces; the brief is prose an
 # implementer reads, so an array joins instead of printing raw JSON.
@@ -107,6 +140,13 @@ grep -q "a.txt" "$pkg" && r=ok || r=missing
 check "package lists changed files" "ok" "$r"
 grep -q "^## Diff$" "$pkg" && r=ok || r=missing
 check "package includes the diff" "ok" "$r"
+
+git -C "$REPO" commit --allow-empty -qm "feat: NO_JIRA verified no change"
+EMPTY_HEAD=$(git -C "$REPO" rev-parse HEAD)
+pkg_empty=$(bash "$SCRIPT" package --repo "$REPO" --base "$HEAD_SHA" --head "$EMPTY_HEAD" --out "$FDIR/dispatch/no-code-change.md")
+check "package permits a distinct empty commit" "$FDIR/dispatch/no-code-change.md" "$pkg_empty"
+check "package labels a distinct empty commit for review" "1" "$(grep -c '^## No code changes$' "$pkg_empty")"
+check "package requires verification for a no-code-change commit" "1" "$(grep -c 'verify the current tree against the task brief' "$pkg_empty")"
 
 ec=0; bash "$SCRIPT" package --repo "$REPO" --base "$BASE" --head "$BASE" --out "$FDIR/dispatch/empty.md" >/dev/null 2>&1 || ec=$?
 check "package rejects head equal to recorded base" "2" "$ec"

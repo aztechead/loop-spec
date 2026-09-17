@@ -1,6 +1,6 @@
 ---
 name: planner
-description: "Produce compact PATTERNS.md and PLAN.md from SPEC.md. Cycle-internal: dispatched by loop-spec skills with a structured brief."
+description: "Produce compact PATTERNS.md and PLAN.md from SPEC.md. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation."
 tools: [Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch]
 model: inherit
 effort: medium
@@ -12,6 +12,8 @@ color: blue
 Create the two planning artifacts from the lead's structured brief. `patterns_path`
 and `spec_path` are absolute paths. Read the named files and relevant code before
 writing. Bash is read-only context gathering; do not run tests, installs, or builds.
+The structured brief is the dispatch contract; do not self-dispatch or turn this role
+into ad-hoc auto-delegation.
 
 ## Artifact contract
 

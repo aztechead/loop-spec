@@ -134,7 +134,7 @@ check "LOOP_SPEC_SAME_SESSION=1 allows a non-sameSession edge too" 0 "$SECOND" \
 # invocation, including Bash and Agent. Tool input that merely documents the
 # marker does not establish a handoff.
 MARKER='{"tool_name":"Bash","tool_input":{"command":"echo after"},"session_id":"session-a","transcript":[{"role":"assistant","content":[{"type":"text","text":"LOOP_SPEC_HANDOFF {\"next\":\"discuss\"}"}]}]}'
-check "actual handoff marker denies a later Bash tool" 2 "$MARKER" \
+check "premature handoff marker allows a later Bash tool" 0 "$MARKER" \
   CLAUDE_PROJECT_DIR="$ROOT"
 TOOL_INPUT_MARKER='{"tool_name":"Agent","tool_input":{"prompt":"LOOP_SPEC_HANDOFF {\"next\":\"discuss\"}"},"session_id":"session-a","transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Agent","input":{"prompt":"LOOP_SPEC_HANDOFF {\"next\":\"discuss\"}"}}]}]}'
 check "marker in tool input does not deny Agent" 0 "$TOOL_INPUT_MARKER" \
@@ -145,6 +145,12 @@ check "durable handoff denies same-session Agent" 2 \
   CLAUDE_PROJECT_DIR="$ROOT"
 check "durable handoff allows a fresh session" 0 \
   '{"tool_name":"Bash","tool_input":{"command":"echo fresh"},"session_id":"session-b","transcript":[]}' \
+  CLAUDE_PROJECT_DIR="$ROOT"
+
+# Provider prose and a pretty-printed marker still correlate to the durable
+# same-session handoff, while the marker alone remains harmless.
+MULTILINE_MARKER='{"tool_name":"Bash","tool_input":{"command":"echo after"},"session_id":"session-a","transcript":[{"role":"assistant","content":[{"type":"text","text":"handoff follows:\nLOOP_SPEC_HANDOFF {\n  \"next\": \"discuss\"\n}"}]}]}'
+check "prefixed multiline marker denies durable same-session handoff" 2 "$MULTILINE_MARKER" \
   CLAUDE_PROJECT_DIR="$ROOT"
 
 # Native adapters must preserve the same boundary for Bash and Agent. These calls

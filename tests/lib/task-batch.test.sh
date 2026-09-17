@@ -22,10 +22,10 @@ mkdir -p "$WORK"
 
 cat > "$WORK/collapse.json" <<'EOF'
 [
-  {"id":"task-001","brief":"rename in a","files":["a.sh"],"blockedBy":[],
-   "verifyCommand":"bash -n a.sh","acceptanceCriteria":["ok"],"batchGroup":"rename"},
-  {"id":"task-002","brief":"rename in b","files":["b.sh"],"blockedBy":[],
-   "verifyCommand":"bash -n a.sh","acceptanceCriteria":["ok"],"batchGroup":"rename"},
+  {"id":"task-001","brief":"rename in a","goal":"goal a","expected":"expected a","steps":["step a"],"files":["a.sh"],"blockedBy":[],
+   "verifyCommand":"bash -n a.sh","acceptanceCriteria":["ok a"],"batchGroup":"rename"},
+  {"id":"task-002","brief":"rename in b","goal":"goal b","expected":"expected b","steps":["step b"],"files":["b.sh"],"blockedBy":[],
+   "verifyCommand":"bash -n a.sh","acceptanceCriteria":["ok b"],"batchGroup":"rename"},
   {"id":"task-003","brief":"other","files":["c.sh"],"blockedBy":[],
    "verifyCommand":"true","acceptanceCriteria":["ok"]}
 ]
@@ -35,6 +35,10 @@ check "collapse count" "2" "$(jq 'length' <<<"$out")"
 check "keeps first id" "task-001" "$(jq -r '.[0].id' <<<"$out")"
 check "unions files" "a.sh,b.sh" "$(jq -r '.[0].files | join(",")' <<<"$out")"
 check "memberIds order" "task-001,task-002" "$(jq -r '.[0].memberIds | join(",")' <<<"$out")"
+check "group: criteria survive collapse" "ok a,ok b" "$(jq -r '.[0].acceptanceCriteria | join(",")' <<<"$out")"
+check "group: goal survives collapse" "goal a Then goal b" "$(jq -r '.[0].goal' <<<"$out")"
+check "group: expected survives collapse" "expected a; expected b" "$(jq -r '.[0].expected' <<<"$out")"
+check "group: steps survive collapse" "step a,step b" "$(jq -r '.[0].steps | join(",")' <<<"$out")"
 check "ungrouped passes through" "task-003" "$(jq -r '.[1].id' <<<"$out")"
 
 cat > "$WORK/no-hint.json" <<'EOF'
@@ -116,8 +120,8 @@ echo ""
 # doc/config-only chain is tiered mechanical.
 cat > "$WORK/chain.json" <<'EOF'
 [
-  {"id":"task-001","subject":"root","files":["root.hcl"],"blockedBy":[],"verifyCommand":"grep -qF 'expose = true' root.hcl","acceptanceCriteria":["a"]},
-  {"id":"task-002","subject":"unit","files":["site/terragrunt.hcl"],"blockedBy":["task-001"],"verifyCommand":"grep -q include site/terragrunt.hcl && test -f site/terragrunt.hcl","acceptanceCriteria":["b"]},
+  {"id":"task-001","subject":"root","goal":"root goal","expected":"root expected","steps":["root step"],"files":["root.hcl"],"blockedBy":[],"verifyCommand":"grep -qF 'expose = true' root.hcl","acceptanceCriteria":["a"]},
+  {"id":"task-002","subject":"unit","goal":"unit goal","expected":"unit expected","steps":["unit step"],"files":["site/terragrunt.hcl"],"blockedBy":["task-001"],"verifyCommand":"grep -q include site/terragrunt.hcl && test -f site/terragrunt.hcl","acceptanceCriteria":["b"]},
   {"id":"task-003","subject":"plan","files":["site/main.tf"],"blockedBy":["task-002"],"verifyCommand":"terragrunt plan --no-color | grep -qF 'No changes.'","acceptanceCriteria":["c"]},
   {"id":"task-004","subject":"readme","files":["README.md"],"blockedBy":["task-003"],"verifyCommand":"grep -q Bootstrap README.md","acceptanceCriteria":["d"]},
   {"id":"task-005","subject":"script","files":["bin/x.sh"],"blockedBy":["task-004"],"verifyCommand":"bash -n bin/x.sh","acceptanceCriteria":["e"],"metadata":{"modelTier":"standard"}},
@@ -129,6 +133,9 @@ check "chain: two grep tasks merge into the head" "task-001,task-002" "$(jq -r '
 check "chain: merged files are the union" "root.hcl,site/terragrunt.hcl" "$(jq -r '.[0].files | join(",")' <<<"$out")"
 check "chain: verifies join with &&" "1" "$(jq -r '.[0].verifyCommand' <<<"$out" | grep -c '^(grep -qF .*) && (grep -q include')"
 check "chain: criteria concatenate" "a,b" "$(jq -r '.[0].acceptanceCriteria | join(",")' <<<"$out")"
+check "chain: goal survives merge" "root goal Then unit goal" "$(jq -r '.[0].goal' <<<"$out")"
+check "chain: steps survive merge" "root step,unit step" "$(jq -r '.[0].steps | join(",")' <<<"$out")"
+check "chain: expected survives merge" "root expected; unit expected" "$(jq -r '.[0].expected' <<<"$out")"
 check "chain: a plan verify keeps its seat and waits on the head" "task-001" "$(jq -r '.[] | select(.id == "task-003") | .blockedBy[0]' <<<"$out")"
 check "chain: a pinned tier stops the merge" "task-004,task-005,task-006" "$(jq -r '.[2:] | map(.id) | join(",")' <<<"$out")"
 check "tier: config-only local-verify head is mechanical" "mechanical" "$(jq -r '.[0].metadata.modelTier' <<<"$out")"

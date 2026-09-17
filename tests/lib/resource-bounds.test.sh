@@ -19,4 +19,8 @@ LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=0 bash "$LIB" resolve >/dev/null 2>&1
 rc=$?
 set -e
 check "zero override rejected" '2' "$rc"
+check "no-worktrees clamps subagent cap" '1' \
+  "$(LOOP_SPEC_WORKTREES=0 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=4 bash "$LIB" get subagents)"
+check "no-worktrees clamps implementer cap" '1' \
+  "$(LOOP_SPEC_WORKTREES=0 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=4 LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS=3 bash "$LIB" get implementers)"
 echo "Results: resource bounds passed"

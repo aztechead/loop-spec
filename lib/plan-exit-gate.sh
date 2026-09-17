@@ -19,6 +19,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 tasks="$feature_dir/tasks.json"
 extract="bash lib/plan-tasks.sh extract $docs/PLAN.md > $tasks"
+if [[ -f "$feature_dir/tasks.extract.err" ]]; then
+  flag "[tasks] PLAN extraction failed; repair PLAN.md and rerun plan-tasks.sh extract before using the sidecar"
+fi
 [[ -f "$tasks" ]] || flag "[tasks] $tasks missing: derive it from PLAN.md first ($extract)"
 run_gate artifact-lint lib artifact-lint plan "$docs/PLAN.md"
 run_gate artifact-lint lib artifact-lint patterns "$docs/PATTERNS.md"
