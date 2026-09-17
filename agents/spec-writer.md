@@ -15,6 +15,8 @@ color: blue
 
 # spec-writer
 
+Use the OKF 0.2 Specification header in `skills/shared/okf-artifacts.md`.
+
 Read `skills/shared/approach-selection.md`. Preserve suggested methods as candidates
 unless the user or DISCUSS made them binding; carry the chosen approach's evidence
 and tradeoffs into the existing decisions block without weakening requirements.

@@ -1,6 +1,11 @@
+---
+type: Implementation Plan
+sources:
+  - resource: SPEC.md
+  - resource: PATTERNS.md
+---
 # {feature_title} - Implementation Plan
 
-**Spec:** `docs/loop-spec/features/{slug}/SPEC.md`
 **Created:** {created_at}
 
 ## Architecture overview

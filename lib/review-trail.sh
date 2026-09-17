@@ -65,7 +65,7 @@ anchors="$(git diff --unified=0 --find-renames "$base" "$head" 2>/dev/null |
 
 TRAIL_FILE="$trail" BASE_REF="$base" HEAD_REF="$head" \
 NUMSTAT="$numstat" ANCHORS="$anchors" \
-python3 - "$command" <<'PY'
+PYTHONPATH="$(dirname "${BASH_SOURCE[0]}")${PYTHONPATH:+:$PYTHONPATH}" python3 - "$command" <<'PY'
 from __future__ import print_function
 
 import os
@@ -175,12 +175,16 @@ MAX_FRAMING_WORDS = 15
 # clock times and ratios in framing prose ("12:30", "3:1") from reading as stops.
 STOP = re.compile(r"`?([A-Za-z0-9_./\-]*[A-Za-z][A-Za-z0-9_./\-]*):(\d+)`?")
 
-try:
-    with open(os.environ["TRAIL_FILE"], "r", encoding="utf-8", errors="replace") as handle:
-        trail_lines = handle.readlines()
-except OSError as exc:
-    print("review-trail: cannot read trail: {}".format(exc), file=sys.stderr)
-    sys.exit(2)
+if command == "surface":
+    trail_lines = []
+else:
+    try:
+        from okf import read_document
+        _, trail_body = read_document(os.environ["TRAIL_FILE"])
+        trail_lines = trail_body.splitlines(True)
+    except (OSError, ValueError) as exc:
+        print("review-trail: cannot read trail: {}".format(exc), file=sys.stderr)
+        sys.exit(2)
 
 by_path = {entry["path"]: entry for entry in files}
 findings = []

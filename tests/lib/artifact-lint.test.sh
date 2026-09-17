@@ -42,6 +42,7 @@ check "missing file flags, does not crash" 1 spec "$WORK/does-not-exist.md"
 # --- spec ---
 cat > "$WORK/spec-good.md" <<'EOF'
 ---
+type: Specification
 unresolved_questions: []
 ---
 # My Feature
@@ -185,6 +186,9 @@ check_output "placeholder line is named" "unfilled template placeholder" spec "$
 
 # --- plan ---
 cat > "$WORK/plan-good.md" <<'EOF'
+---
+type: Implementation Plan
+---
 # My Feature - Implementation Plan
 
 **Spec:** `docs/loop-spec/features/my-feature/SPEC.md`
@@ -234,6 +238,9 @@ check "well-formed plan passes" 0 plan "$WORK/plan-good.md"
 # optional, while explicit BlockedBy prevents dependency loss during extraction.
 # Keep a two-task compact fixture readable and deterministic.
 cat > "$WORK/plan-compact.md" <<'EOF'
+---
+type: Implementation Plan
+---
 # Compact - Implementation Plan
 
 ## Tasks
@@ -334,13 +341,16 @@ EOF
 check "Acceptance criteria marker with no items flags" 1 plan "$WORK/plan-emptyac.md"
 
 # --- patterns ---
-printf '# PATTERNS.md - feat\n\n## Concept: writer\n\ndetail\n' > "$WORK/patterns-good.md"
+printf '%s\n' '---' 'type: Pattern Index' '---' '# PATTERNS.md - feat' '' '## Concept: writer' '' 'detail' > "$WORK/patterns-good.md"
 check "patterns with a Concept section passes" 0 patterns "$WORK/patterns-good.md"
 printf '# PATTERNS.md - feat\n\nno sections at all\n' > "$WORK/patterns-bare.md"
 check "patterns without sections flags" 1 patterns "$WORK/patterns-bare.md"
 
 # --- verification ---
 cat > "$WORK/verif-good.md" <<'EOF'
+---
+type: Verification Report
+---
 # My Feature - Verification
 
 ## Repository grounding

@@ -166,18 +166,23 @@ def markdown_scan(display, data, allow_frontmatter):
     in_fence = False
     last_fence_line = 0
     for i, line in enumerate(lines):
+        if i < body_start:
+            mask.append(False)
+            continue
         stripped = line.lstrip()
         if stripped.startswith('```'):
             in_fence = not in_fence
             last_fence_line = i + 1
             mask.append(False)
             continue
+        # YAML frontmatter is metadata, never markdown body.  Masking it keeps
+        # headings or placeholder-looking values there from satisfying body gates.
         mask.append(not in_fence)
     if in_fence:
         flag(display, last_fence_line, 'unbalanced code fence — a ``` block is never closed')
         # Headings after the unclosed fence are real content to a renderer that
         # auto-closes; treat everything as visible so section checks still run.
-        mask = [True] * len(lines)
+        mask = [i >= body_start for i in range(len(lines))]
 
     for i, line in enumerate(lines):
         if mask[i] and line.strip() in UNFILLED:
@@ -221,7 +226,33 @@ def require_frozen_intent(display, lines, mask, intent_no):
     flag(display, intent_no, "'## Intent' block is not closed with `<!-- /intent -->` before the next section")
 
 
+def lint_okf_type(display, data, expected):
+    from okf import split_document
+    try:
+        metadata, _ = split_document(data.decode('utf-8'))
+        if metadata.get('type') != expected:
+            flag(display, 1, "OKF type must be %r (found %r)" % (expected, metadata.get('type')))
+        if expected == 'Specification':
+            route = metadata.get('route')
+            if route is not None and route not in ('oneshot', 'full'):
+                flag(display, 1, "OKF route must be 'oneshot' or 'full' when present")
+            footprint = metadata.get('footprint')
+            if footprint is not None and (not isinstance(footprint, list)
+                                           or any(not isinstance(item, str) or not item.strip()
+                                                  for item in footprint)):
+                flag(display, 1, 'OKF footprint must be a list of non-empty strings')
+            criteria = metadata.get('criteria')
+            if criteria is not None and (not isinstance(criteria, dict)
+                                         or any(not re.fullmatch(r'GE-\d{3}', str(key))
+                                                or not isinstance(value, str) or not value.strip()
+                                                for key, value in criteria.items())):
+                flag(display, 1, 'OKF criteria must map GE-NNN keys to non-empty strings')
+    except (ValueError, UnicodeDecodeError) as exc:
+        flag(display, 0, "invalid OKF frontmatter: %s" % exc)
+
+
 def lint_spec(display, data):
+    lint_okf_type(display, data, 'Specification')
     from spec_questions import read_questions
     try:
         questions = read_questions(data.decode("utf-8"))
@@ -280,7 +311,8 @@ TASK_HEADING = re.compile(r'^### (task-[A-Za-z0-9][A-Za-z0-9-]*)\b')
 
 
 def lint_plan(display, data):
-    lines, mask = markdown_scan(display, data, allow_frontmatter=False)
+    lint_okf_type(display, data, 'Implementation Plan')
+    lines, mask = markdown_scan(display, data, allow_frontmatter=True)
     if lines is None:
         return
     require_heading(display, lines, mask, '## Tasks')
@@ -359,7 +391,8 @@ def lint_plan(display, data):
 
 
 def lint_patterns(display, data):
-    lines, mask = markdown_scan(display, data, allow_frontmatter=False)
+    lint_okf_type(display, data, 'Pattern Index')
+    lines, mask = markdown_scan(display, data, allow_frontmatter=True)
     if lines is None:
         return
     if not any(line.strip().startswith('## ') for _, line in visible(lines, mask)):
@@ -368,7 +401,8 @@ def lint_patterns(display, data):
 
 
 def lint_verification(display, data):
-    lines, mask = markdown_scan(display, data, allow_frontmatter=False)
+    lint_okf_type(display, data, 'Verification Report')
+    lines, mask = markdown_scan(display, data, allow_frontmatter=True)
     if lines is None:
         return
     require_heading(display, lines, mask, '## Repository grounding')

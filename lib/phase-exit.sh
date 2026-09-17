@@ -244,6 +244,22 @@ if [[ -f "$docs/SPEC.md" && ( "$(fget '.specApproval // null')" != null || "$(ng
 fi
 [[ "$(nget '.oracle // false')" != "true" ]] || oracle_gate
 
+# Every committed knowledge document is an OKF member.  Keep this check after the
+# phase gates so --check remains read-only, while a successful exit publishes the
+# idempotent bundle index alongside the phase artifacts.
+if (( flags == 0 )); then
+  okf_path="$SCRIPT_DIR/okf.sh"
+  if [[ -f "$okf_path" ]]; then
+    types='{"SPEC.md":"Specification","PATTERNS.md":"Pattern Index","PLAN.md":"Implementation Plan","EVIDENCE.md":"Evidence","VERIFICATION.md":"Verification Report","ITERATION.md":"Iteration Report","REVIEW-ORDER.md":"Review Order","REVISION.md":"Revision Report"}'
+    typed_out="$(bash "$okf_path" bundle-check "$docs" --types "$types" 2>&1)" || {
+      printf '%s\n' "$typed_out" | sed 's/^/FLAG [okf-type] /'
+      flags=$((flags + 1))
+    }
+  else
+    flag "[okf] helper missing: $okf_path"
+  fi
+fi
+
 if (( flags == 0 && check == 0 )); then
   while IFS=$'\t' read -r key path; do
     [[ -n "$key" ]] || continue
@@ -262,8 +278,15 @@ if (( flags == 0 && check == 0 )); then
 fi
 if (( flags == 0 && check == 0 )); then
   if [[ "$(nget '.commit // ""')" != "" ]]; then
+    if [[ -f "$SCRIPT_DIR/okf.sh" ]]; then
+      bash "$SCRIPT_DIR/okf.sh" index "$docs" >/dev/null || {
+        flag "[okf] could not write bundle index for $docs"
+      }
+    fi
+    (( flags == 0 )) || { echo "phase-exit: OKF index failed; leaving phase open" >&2; exit 1; }
     paths=()
     while IFS= read -r p; do paths+=("$(resolve "$p")"); done < <(nget '.commit.paths[]')
+    [[ -f "$docs/index.md" ]] && paths+=("$docs/index.md")
     commit_paths "$(resolve "$(nget '.commit.message')")" ${paths[@]+"${paths[@]}"}
   fi
   checkpoint="$(nget '.checkpoint // ""')"

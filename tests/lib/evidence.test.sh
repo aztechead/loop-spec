@@ -98,5 +98,28 @@ check "refused entries leave no ledger" "$([[ ! -f "$WORK/priv.md" ]] && echo 1 
 ec=0; bash "$LIB" add "$WORK/priv.md" "gcloud ADC are present, so plan authenticates" "gcloud auth list" "one ACTIVE account" >/dev/null 2>&1 || ec=$?
 check "add accepts auth-works phrasing" "$([[ $ec -eq 0 ]] && echo 1 || echo 0)"
 
+# Metadata is not ledger content: fake rows in YAML do not affect ids or list.
+metadata_only="$WORK/metadata-only.md"
+cat > "$metadata_only" <<'EOF'
+---
+type: Evidence
+fake: "- EVID-001 | metadata only"
+---
+# Evidence ledger
+EOF
+check "metadata-only next-id ignores fake EVID row" "$([[ "$(bash "$LIB" next-id "$metadata_only")" == EVID-001 ]] && echo 1 || echo 0)"
+check "metadata-only list is empty" "$([[ -z "$(bash "$LIB" list "$metadata_only")" ]] && echo 1 || echo 0)"
+bash "$LIB" add "$metadata_only" "real claim" "true" "observed" >/dev/null
+check "metadata-only append preserves metadata and creates first body EVID-001" "$([[ "$(bash "$LIB" next-id "$metadata_only")" == EVID-002 && "$(grep -c '^fake:' "$metadata_only")" == 1 ]] && echo 1 || echo 0)"
+
+wrong_type="$WORK/wrong-type.md"
+printf '%s\n' '---' 'type: Specification' '---' '# Wrong ledger' > "$wrong_type"
+ec=0; bash "$LIB" list "$wrong_type" >/dev/null 2>&1 || ec=$?
+check "wrong-type list rejects non-Evidence ledger" "$([[ $ec -eq 1 ]] && echo 1 || echo 0)"
+ec=0; bash "$LIB" next-id "$wrong_type" >/dev/null 2>&1 || ec=$?
+check "wrong-type next-id rejects non-Evidence ledger" "$([[ $ec -eq 1 ]] && echo 1 || echo 0)"
+ec=0; bash "$LIB" add "$wrong_type" claim true observed >/dev/null 2>&1 || ec=$?
+check "wrong-type add rejects non-Evidence ledger" "$([[ $ec -eq 1 ]] && echo 1 || echo 0)"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

@@ -30,12 +30,15 @@ DOCS="$REPO/docs/loop-spec/features/my-feature"; mkdir -p "$DOCS"
 fj() { jq -r "$1" "$FD/feature.json"; }
 cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCS/SPEC.md"
 bash "$DRV" spec approve --feature-dir "$FD" --source human >/dev/null
-printf '# PLAN\n' > "$DOCS/PLAN.md"
+printf '%s\n' '---' 'type: Implementation Plan' '---' '# PLAN' > "$DOCS/PLAN.md"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands '{"prepare":"","test":"true","lint":"","typecheck":""}' >/dev/null
 printf 'echo ok\n' > a.sh; git add -A; git commit -q -m "feat: a.sh"
 
 # --- verify gate: both verdicts pass ----------------------------------------------------
 cat > "$DOCS/VERIFICATION.md" <<'MD'
+---
+type: Verification Report
+---
 # My Feature - Verification
 ## Repository grounding
 - criterion: GE-001 | implementation: a.sh:1 - proves it | integration: none - covered by unit scope
@@ -91,6 +94,9 @@ check "gate redo: the flags come back" "true" "$(jq '.exit.flags | length > 0' <
 check "gate redo: nothing is recorded" "$before" "$(fj '.gateHistory | length')"
 check "gate redo: no remediation task" "0" "$(fj '.pendingRemediationTasks | length')"
 cat > "$DOCS/VERIFICATION.md" <<'MD'
+---
+type: Verification Report
+---
 # My Feature - Verification
 ## Repository grounding
 - criterion: GE-001 | implementation: a.sh:1 - proves it | integration: none - covered by unit scope

@@ -6,6 +6,8 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 
 # DISCUSS
 
+Preserve the OKF 0.2 header and type contract from `skills/shared/okf-artifacts.md` when updating SPEC.md.
+
 Use `feature_dir=.loop-spec/features/{slug}`. Relay any entry FLAG and return. Follow
 `skills/shared/dispatch.md` for every agent dispatch.
 

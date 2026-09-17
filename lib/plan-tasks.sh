@@ -34,13 +34,19 @@ set -euo pipefail
 plan="$2"
 [[ -r "$plan" ]] || { echo "plan-tasks: cannot read $plan" >&2; exit 1; }
 
-python3 - "$plan" <<'PY'
+PYTHONPATH="$(dirname "${BASH_SOURCE[0]}")${PYTHONPATH:+:$PYTHONPATH}" python3 - "$plan" <<'PY'
 import json
 import re
 import sys
+from okf import read_document
 
 plan = sys.argv[1]
-lines = open(plan, encoding="utf-8", errors="replace").read().splitlines()
+try:
+    _metadata, body = read_document(plan)
+except (OSError, ValueError) as exc:
+    print("plan-tasks: invalid OKF PLAN.md: %s" % exc, file=sys.stderr)
+    sys.exit(1)
+lines = body.splitlines()
 
 # Compact plans use the same canonical task blocks as legacy plans. Keep the
 # established numeric task ID contract used by downstream dispatchers.

@@ -8,6 +8,8 @@ color: cyan
 
 # pattern-mapper
 
+Use the OKF 0.2 Pattern Index header in `skills/shared/okf-artifacts.md`.
+
 Write only the supplied absolute `patterns_path`, using the supplied absolute
 template. If no template was given, use `## Concepts`, one `### <concept>` per
 analog, and `## Concepts with no clear analog`; never search the disk for a missing

@@ -15,6 +15,8 @@ color: yellow
 
 # verifier
 
+Use the OKF 0.2 Verification Report header in `skills/shared/okf-artifacts.md`.
+
 You verify a complete feature meets its SPEC's acceptance criteria after EXECUTE phase.
 
 ## Input

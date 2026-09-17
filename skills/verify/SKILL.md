@@ -6,6 +6,8 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent TeamCreate TeamDelete 
 
 # VERIFY
 
+Use the OKF 0.2 header and type contract in `skills/shared/okf-artifacts.md` for VERIFICATION.md.
+
 Check the integrated branch against SPEC's `### Good Enough` criteria using post-change `file:line` evidence.
 Obtain a code-review verdict. Follow `skills/shared/dispatch.md` for dispatch.
 Resolve failed gates through remediation in every mode. Never bypass them with your own approval.

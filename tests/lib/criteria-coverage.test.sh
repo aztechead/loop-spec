@@ -22,6 +22,7 @@ check() {
 WORK="${TMPDIR:-/tmp}/criteria-coverage-test.$$"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK"
+okf() { local p="$1" t="$2"; { printf '%s\n' '---' "type: $t" '---'; cat "$p"; } > "$p.okf"; mv "$p.okf" "$p"; }
 
 # === Case A: all-covered ===
 SPEC_A="$WORK/spec-a.md"
@@ -46,6 +47,7 @@ cat > "$PLAN_A" <<'EOF'
 - CSV export completes for a 10k-row table -> task-001
 - progress bar renders during export -> task-002
 EOF
+okf "$SPEC_A" Specification; okf "$PLAN_A" 'Implementation Plan'
 
 exit_code=0
 bash "$SCRIPT" "$SPEC_A" "$PLAN_A" >/dev/null 2>&1 || exit_code=$?
@@ -67,6 +69,7 @@ cat > "$PLAN_B" <<'EOF'
 
 - CSV export completes for a 10k-row table -> task-001
 EOF
+okf "$SPEC_B" Specification; okf "$PLAN_B" 'Implementation Plan'
 
 exit_code=0
 output=$(bash "$SCRIPT" "$SPEC_B" "$PLAN_B" 2>&1) || exit_code=$?
@@ -91,6 +94,7 @@ EOF
 cat > "$PLAN_C" <<'EOF'
 - the one shippable criterion -> task-001
 EOF
+okf "$SPEC_C" Specification; okf "$PLAN_C" 'Implementation Plan'
 
 exit_code=0
 bash "$SCRIPT" "$SPEC_C" "$PLAN_C" >/dev/null 2>&1 || exit_code=$?
@@ -105,6 +109,7 @@ EOF
 cat > "$PLAN_D" <<'EOF'
 ## Plan
 EOF
+okf "$SPEC_D" Specification; okf "$PLAN_D" 'Implementation Plan'
 
 exit_code=0
 output=$(bash "$SCRIPT" "$SPEC_D" "$PLAN_D" 2>&1) || exit_code=$?
@@ -126,6 +131,7 @@ cat > "$PLAN_R" <<'EOF'
 - a long criterion that a planner will reflow
   across two lines when writing the coverage table -> task-001
 EOF
+okf "$SPEC_R" Specification; okf "$PLAN_R" 'Implementation Plan'
 
 exit_code=0
 bash "$SCRIPT" "$SPEC_R" "$PLAN_R" >/dev/null 2>&1 || exit_code=$?
@@ -147,6 +153,7 @@ EOF
 cat > "$PLAN_F" <<'EOF'
 - checkboxed criterion is still extracted -> task-001
 EOF
+okf "$SPEC_F" Specification; okf "$PLAN_F" 'Implementation Plan'
 
 exit_code=0
 bash "$SCRIPT" "$SPEC_F" "$PLAN_F" >/dev/null 2>&1 || exit_code=$?

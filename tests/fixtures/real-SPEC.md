@@ -1,4 +1,5 @@
 ---
+type: Specification
 unresolved_questions: []
 ---
 # Grounded claims — probe-before-assert for the design phases

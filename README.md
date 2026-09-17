@@ -26,7 +26,7 @@ Current version: 6.7.0
 
 ## Install
 
-Base prerequisites for every harness: `bash >= 3.2`, `git`, `jq >= 1.5`, `python3 >= 3.7`. Google ADK additionally requires Python >=3.10. Prompt-to-PR delivery also needs an authenticated GitHub CLI (`gh auth status`) and an `origin` remote. Details: [docs/loop-spec/PREREQUISITES.md](docs/loop-spec/PREREQUISITES.md).
+Base prerequisites for every harness: `bash >= 3.2`, `git`, `jq >= 1.5`, `python3 >= 3.7`, and PyYAML (for OKF/frontmatter parsing). Google ADK additionally requires Python >=3.10. Prompt-to-PR delivery also needs an authenticated GitHub CLI (`gh auth status`) and an `origin` remote. Details: [docs/loop-spec/PREREQUISITES.md](docs/loop-spec/PREREQUISITES.md).
 
 ### Claude Code
 

@@ -26,7 +26,12 @@ import re
 import sys
 
 path = sys.argv[1]
-lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+from okf import read_document
+try:
+    _, body = read_document(path)
+except (OSError, ValueError) as exc:
+    print('FLAG %s:0: invalid OKF artifact: %s' % (path, exc)); raise SystemExit(1)
+lines = body.splitlines()
 SEVERITY = re.compile(r"^#### (Critical|Important|Minor|Performance)\b")
 # A location is a path (a separator, or a known source extension) and a line; a bare
 # `word:12` (a heading id, a time) is not one (port audit 1, F10).

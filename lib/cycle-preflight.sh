@@ -66,6 +66,7 @@ bash "$SCRIPT_DIR/cycle-result.sh" begin --result-root "$dir" --cycle-type full 
   --autonomous "$([[ "${LOOP_SPEC_AUTONOMOUS:-}" == "1" ]] && echo true || echo false)" || true
 bash "$SCRIPT_DIR/cycle-result.sh" clear --result-root "$dir"
 bash "$SCRIPT_DIR/runtime-preflight.sh" check-jq
+bash "$SCRIPT_DIR/runtime-preflight.sh" check-pyyaml
 
 warnings=()
 

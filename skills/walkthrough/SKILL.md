@@ -6,6 +6,16 @@ argument-hint: '[<slug> | <base-ref>] [--write | --walk]'
 
 # Walkthrough Skill
 
+Use the OKF 0.2 header and type contract in `skills/shared/okf-artifacts.md` for REVIEW-ORDER.md.
+
+Begin `REVIEW-ORDER.md` with:
+
+```yaml
+---
+type: Review Order
+---
+```
+
 Invoked as `/loop-spec:walkthrough [slug|base-ref] [--write|--walk]`.
 
 Write a review guide that explains the change's entry points, design concerns, and supporting files.

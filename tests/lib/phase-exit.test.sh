@@ -97,6 +97,7 @@ jq '.slug = "wt-feature" | .feature_title = "wt feature" | .branch = "feat/wt-fe
 printf '# stale: not a spec at all\n' > "$REPO/docs/loop-spec/features/wt-feature/SPEC.md"
 cat > "$WDOCS/SPEC.md" <<'MD'
 ---
+type: Specification
 unresolved_questions: []
 ---
 # wt feature
@@ -229,6 +230,9 @@ check "exit discuss: checkpoint tagged" "1" "$(git tag | grep -c 'post-discuss')
 
 # --- plan ---------------------------------------------------------------------------
 cat > "$DOCS/PLAN.md" <<'MD'
+---
+type: Implementation Plan
+---
 # My Feature - Implementation Plan
 
 **Spec:** `docs/loop-spec/features/my-feature/SPEC.md`
@@ -265,7 +269,7 @@ One task.
 
 - none
 MD
-printf '# PATTERNS.md - my feature\n\n## Concept: writer\n\ndetail\n' > "$DOCS/PATTERNS.md"
+printf '%s\n' '---' 'type: Pattern Index' '---' '# PATTERNS.md - my feature' '' '## Concept: writer' '' 'detail' > "$DOCS/PATTERNS.md"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: missing tasks.json flags" "1" "$ec"
 check "exit plan: names the sidecar" "1" "$(grep -c 'tasks.json missing' <<<"$out")"
@@ -347,6 +351,9 @@ check "exit execute: task-progress error is an actionable flag" "1" "$(grep -c '
 # --- verify -------------------------------------------------------------------------
 printf 'echo ok\n' > a.sh; git add a.sh; git commit -q -m "feat: a.sh"
 cat > "$DOCS/VERIFICATION.md" <<'MD'
+---
+type: Verification Report
+---
 # My Feature - Verification
 
 ## Repository grounding
@@ -379,7 +386,7 @@ cp "$WORK/verification.shape" "$DOCS/VERIFICATION.md"
 bash "$EXIT" verify --feature-dir "$FD" >/dev/null 2>&1 || true
 
 # --- iterate ------------------------------------------------------------------------
-printf '# Iteration\n' > "$DOCS/ITERATION.md"
+printf '%s\n' '---' 'type: Iteration Report' '---' '# Iteration' > "$DOCS/ITERATION.md"
 ec=0; bash "$EXIT" iterate --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
 check "exit iterate: rewind pass leaves the phase open" "verify" "$(fj '.completedPhases[-1]')"
 ec=0; bash "$EXIT" iterate --feature-dir "$FD" --terminal >/dev/null 2>&1 || ec=$?

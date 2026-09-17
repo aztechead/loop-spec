@@ -28,7 +28,14 @@ fi
 
 # Read spec content -- fail-open if unreadable (covers missing files and bad FDs)
 spec_content=""
-if ! spec_content=$(cat "$spec_path" 2>/dev/null); then
+if ! spec_content=$(python3 - "$spec_path" "$(dirname "$0")" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[2])
+from okf import read_document
+_, body = read_document(sys.argv[1])
+print(body, end="")
+PY
+); then
   echo "skipped: spec file not readable: $spec_path" >&2
   exit 0
 fi
@@ -47,7 +54,14 @@ fi
 
 # Whitespace-normalized plan content: a criterion reflowed across lines in PLAN.md
 # must still count as covered (the match is semantic identity, not line layout).
-plan_norm="$(tr -s '[:space:]' ' ' < "$plan_path" 2>/dev/null || true)"
+plan_norm="$(python3 - "$plan_path" "$(dirname "$0")" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[2])
+from okf import read_document
+_, body = read_document(sys.argv[1])
+print(" ".join(body.split()))
+PY
+)"
 
 # Parse individual criteria (lines starting with "- ")
 uncovered=()

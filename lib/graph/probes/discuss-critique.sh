@@ -111,18 +111,15 @@ esac
 
 gate_status="$(python3 - "$spec_path" "$SCRIPT_DIR/../.." <<'PY'
 from __future__ import print_function
-import re, sys
+import sys
 path = sys.argv[1]
-try:
-    text = open(path, encoding="utf-8").read()
-except Exception:
-    print("unreadable")
-    sys.exit(0)
 sys.path.insert(0, sys.argv[2])
+from okf import read_document, render_document
 from spec_questions import read_questions
 try:
-    questions = read_questions(text)
-except ValueError:
+    metadata, body = read_document(path)
+    questions = read_questions(render_document(metadata, body))
+except (OSError, ValueError):
     print("invalid-questions")
     sys.exit(0)
 if questions is not None:

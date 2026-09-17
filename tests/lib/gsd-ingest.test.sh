@@ -33,6 +33,10 @@ check "L: patterns INGESTED from .planning/phases/<slug>" "INGESTED .planning/ph
 target=$(cat docs/loop-spec/features/my-feature/PATTERNS.md)
 echo "$target" | grep -q "pattern-content" && e=ok || e=bad
 check "M: patterns target contains source content" "ok" "$e"
+echo "$target" | grep -q '^type: Pattern Index$' && e=ok || e=bad
+check "M2: patterns target has OKF type" "ok" "$e"
+PYTHONPATH="$(dirname "$LIB")" python3 -c 'from okf import read_document; import sys; m,b=read_document(sys.argv[1]); assert m["type"] == "Pattern Index" and "pattern-content" in b' docs/loop-spec/features/my-feature/PATTERNS.md
+check "M3: ingested target parses as OKF" "0" "$?"
 
 # === patterns: flat-style path fallback ===
 rm -rf .planning docs

@@ -1,4 +1,5 @@
 ---
+type: Specification
 unresolved_questions: []
 footprint:
   - src/slugify.py

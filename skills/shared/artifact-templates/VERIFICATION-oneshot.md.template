@@ -1,3 +1,8 @@
+---
+type: Verification Report
+sources:
+  - resource: SPEC.md
+---
 # {feature_title} - Verification
 
 ## Repository grounding

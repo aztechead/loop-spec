@@ -18,44 +18,36 @@ spec="${1:-}"
 MAX_LINES=60
 FOOTPRINT_MAX=3
 
-python3 - "$spec" "$MAX_LINES" "$FOOTPRINT_MAX" <<'PY'
+PYTHONPATH="$(dirname "${BASH_SOURCE[0]}")${PYTHONPATH:+:$PYTHONPATH}" python3 - "$spec" "$MAX_LINES" "$FOOTPRINT_MAX" <<'PY'
 import os, re, subprocess, sys
+from okf import read_document
 path, max_lines, footprint_max = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
-whole = open(path, encoding="utf-8", errors="replace").read()
+try:
+    metadata, body = read_document(path)
+except (OSError, ValueError) as exc:
+    print("FLAG [oneshot-shape] invalid OKF SPEC.md: %s" % exc)
+    raise SystemExit(1)
+whole = open(path, encoding="utf-8", newline="").read()
 lines = whole.split("\n")
 if lines and lines[-1] == "":
     lines = lines[:-1]
-if not lines or lines[0].strip() != "---" or "---" not in lines[1:]:
-    sys.exit(0)
-end = lines.index("---", 1)
-front = lines[1:end]
-footprint = None
-in_list = False
-for raw in front:
-    text = raw.strip()
-    if re.match(r"^footprint:\s*$", raw):
-        footprint, in_list = [], True
-        continue
-    m = re.match(r"^footprint:\s*(\[.*\])\s*$", raw)
-    if m:
-        footprint = [p for p in re.findall(r"[^\[\],\s'\"]+", m.group(1))]
-        in_list = False
-        continue
-    if in_list and text.startswith("- "):
-        footprint.append(text[2:].strip())
-    elif in_list and raw and not raw.startswith(" "):
-        in_list = False
+front = []
+footprint = metadata.get("footprint")
+if footprint is not None and (not isinstance(footprint, list) or any(not isinstance(item, str) or not item.strip() for item in footprint)):
+    print("FLAG [oneshot-shape] SPEC.md footprint must be a list of non-empty strings")
+    raise SystemExit(1)
 if footprint is None or not (1 <= len(footprint) <= footprint_max):
     sys.exit(0)
 # A run the operator or the gate already put on the full route writes the full shape:
 # LOOP_SPEC_ROUTE=full drew two REDOs for a missing Intent block (live run 3, 6.6.4).
 # The value may be quoted (YAML): the route probe strips the quotes, so the lint does too.
-if os.environ.get("LOOP_SPEC_ROUTE") == "full" or any(re.match(r"^route:\s*[\"']?full[\"']?\s*$", raw) for raw in front):
+if os.environ.get("LOOP_SPEC_ROUTE") == "full" or metadata.get("route") == "full":
     sys.exit(0)
 flags = []
 if len(lines) > max_lines:
     flags.append("FLAG [oneshot-shape] SPEC.md is %d lines; a spec with a oneshot footprint keeps to %d (skills/shared/artifact-templates/SPEC-oneshot.md.template): cut narrative, keep the frozen Intent block, Implementation notes, the Good Enough criteria with their check commands, and Grounding" % (len(lines), max_lines))
-body = lines[end + 1:]
+body = body.split("\n")
+body_line_offset = whole[:len(whole) - len("\n".join(body))].count("\n")
 if not any(l.strip() == "## Intent" for l in body):
     flags.append("FLAG [oneshot-shape] SPEC.md has no '## Intent' block: the ask goes inside `<!-- intent: frozen ... -->` and `<!-- /intent -->` (skills/shared/artifact-templates/SPEC-oneshot.md.template); no later phase edits it")
 if not any(l.strip() == "## Implementation notes" for l in body):
@@ -71,7 +63,7 @@ for idx, l in enumerate(body):
     elif l.startswith("## "):
         inside = False
     elif inside and re.match(r"^- \[[ xX]\] ", l) and not re.search(r"`[^`]+`", l):
-        flags.append("FLAG [oneshot-shape] Good Enough line %d carries no backticked command: a criterion is `cycle-driver.sh spec fill --command <shell> --expect <text>`, never a sentence (%s)" % (end + 2 + idx, l.strip()[:80]))
+        flags.append("FLAG [oneshot-shape] Good Enough line %d carries no backticked command: a criterion is `cycle-driver.sh spec fill --command <shell> --expect <text>`, never a sentence (%s)" % (body_line_offset + idx + 1, l.strip()[:80]))
 # A footprint file's existing test module is a decision the spec makes out loud: in the
 # footprint when it changes, in Implementation notes as unchanged when it does not. A
 # haiku run named only wc_tool.py, shipped the flag without a test, and the reviewer

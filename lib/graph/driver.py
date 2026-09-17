@@ -237,9 +237,25 @@ sys.path.insert(0, str(GRAPH_DIR))
 sys.path.insert(0, str(LIB_DIR))
 import engine  # noqa: E402
 import feature_read  # noqa: E402
+try:
+    import okf  # noqa: E402
+except ModuleNotFoundError as exc:
+    if exc.name == "yaml":
+        raise SystemExit("loop-spec: PyYAML is required for OKF documents; install with `python3 -m pip install -r %s`" % (REPO_ROOT / "requirements-okf.txt"))
+    raise
 
 GRAPH = os.environ.get("LOOP_SPEC_GRAPH") or str(REPO_ROOT / "graph" / "cycle.graph.json")
 EMPTY_COMMANDS = {"prepare": "", "test": "", "lint": "", "typecheck": ""}
+
+
+def read_doc(path):
+    """Read an OKF knowledge document without handing metadata to body parsers."""
+    metadata, body = okf.read_document(path)
+    return metadata, body
+
+
+def write_doc(path, metadata, body):
+    Path(path).write_text(okf.render_document(metadata, body), encoding="utf-8")
 
 
 class Die(Exception):
@@ -1265,7 +1281,8 @@ def record_spec_approval(feature_dir, feat, source, phase):
     from spec_questions import read_questions
     from spec_intent import intent_digest, verify_intent
     target = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
-    text = Path(target).read_text(encoding="utf-8")
+    metadata, body = read_doc(target)
+    text = okf.render_document(metadata, body)
     if feat.get("specApproval"):
         verify_intent(text, feat["specApproval"])
         return feat["specApproval"]
@@ -1490,7 +1507,8 @@ def cmd_next(argv):
         # sections PLAN will freeze still say that, so approval is of text they saw.
         from spec_intent import intent_digest
         try:
-            text = Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8")
+            _metadata, _body = read_doc(Path(docs_dir(feature_dir, feat), "SPEC.md"))
+            text = okf.render_document(_metadata, _body)
         except OSError as exc:
             print("ABORT reason=spec-unreadable")
             print("cycle-driver: %s" % exc, file=sys.stderr)
@@ -1614,7 +1632,8 @@ def instruction_record(feature_dir, phase):
                       "`cycle-driver.sh next` records it when the cycle enters PLAN, so enter through it")
     if feat.get("specApproval"):
         try:
-            verify_intent(Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8"), feat["specApproval"])
+            _metadata, _body = read_doc(Path(docs_dir(feature_dir, feat), "SPEC.md"))
+            verify_intent(okf.render_document(_metadata, _body), feat["specApproval"])
         except (OSError, ValueError) as exc:
             entry_refused(feature_dir, phase, str(exc))
     active = fget(feature_dir, "driverNext", {}) or {}
@@ -1667,7 +1686,8 @@ def review_recovery(feature_dir, phase):
         return "rewind" if prior.get("route") == "bad-spec" else "intent-gap"
     if not report.is_file() or lib_run("review-triage-lint", str(report), quiet=True).returncode:
         return None
-    groups = findings(report.read_text(encoding="utf-8"))
+    _report_metadata, report_body = read_doc(report)
+    groups = findings(report_body)
     if not groups:
         return None
     root = feature_root(feature_dir, feat)
@@ -1704,7 +1724,8 @@ def review_recovery(feature_dir, phase):
         return "limit"
     route = "intent-gap" if any(g["route"] == "intent-gap" for g in recovery) else "bad-spec"
     spec = docs / "SPEC.md"
-    revised = spec.read_text(encoding="utf-8")
+    spec_metadata, revised = read_doc(spec)
+    original_body = revised
     if route == "bad-spec":
         for group in recovery:
             section = group["section"]
@@ -1716,12 +1737,12 @@ def review_recovery(feature_dir, phase):
             revised = revised[:match.end()] + "\n" + group["replacement"].strip() + "\n\n" + revised[stop:]
         if phase == "oneshot" and not feat.get("specApproval"):
             pattern = r"(?ms)^<!-- intent: frozen[^\n]*\n.*?^<!-- /intent -->$"
-            original = re.search(pattern, spec.read_text(encoding="utf-8"))
+            original = re.search(pattern, original_body)
             amended = re.search(pattern, revised)
             if not original or not amended or original.group() != amended.group():
                 raise Die("review bad-spec: preserve the frozen ONESHOT Intent block")
         else:
-            verify_intent(revised, feat.get("specApproval"))
+            verify_intent(okf.render_document(spec_metadata, revised), feat.get("specApproval"))
         revised += "\n## Spec change log\n" + "".join("- Review correction: " + g["cause"] + "\n" for g in recovery)
     plans = []
     for repo, base in repositories:
@@ -1741,7 +1762,7 @@ def review_recovery(feature_dir, phase):
             git("-C", repo, "restore", "--source", base, "--staged", "--worktree", "--", *paths)
             git("-C", repo, "commit", "-m", "fix: revert implementation for " + route, "--", *paths)
     if route == "bad-spec":
-        spec.write_text(revised, encoding="utf-8")
+        write_doc(spec, spec_metadata, revised)
     record = {"route": route, "used": used + 1, "pending": True,
               "reportSha256": report_hash, "findings": recovery}
     fset(feature_dir, "reviewRouting", record)
@@ -1837,7 +1858,8 @@ def intent_since_spec(feature_dir):
     # digest is what its human saw.
     seen = (feat.get("specIntentSeen") or feat.get("specApproval") or {}).get("sha256")
     try:
-        current = intent_digest(Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8"))
+        _metadata, _body = read_doc(Path(docs_dir(feature_dir, feat), "SPEC.md"))
+        current = intent_digest(okf.render_document(_metadata, _body))
     except (OSError, ValueError):
         return "unknown"
     if not seen:
@@ -1852,7 +1874,8 @@ def returned_checks(feature_dir, phase):
     if feat.get("specApproval"):
         from spec_intent import verify_intent
         try:
-            verify_intent(Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8"), feat["specApproval"])
+            _metadata, _body = read_doc(Path(docs_dir(feature_dir, feat), "SPEC.md"))
+            verify_intent(okf.render_document(_metadata, _body), feat["specApproval"])
         except (OSError, ValueError) as exc:
             cmd_escalate(["--feature-dir", feature_dir, "--reason", str(exc)], silent=True)
             return "DONE status=escalated reason=frozen-intent-changed"
@@ -2289,7 +2312,8 @@ def route_is_full(text):
     """SPEC.md frontmatter says route: full. The value may be YAML-quoted; the route
     probe and the shape lint strip the quotes, so this reads the same spelling (an
     unquoted match alone let spec_escalate write a second route: full line)."""
-    return re.search(r"^route:\s*[\"']?full[\"']?\s*$", text, flags=re.M) is not None
+    metadata, _ = okf.split_document(text)
+    return str(metadata.get("route", "")).strip("\"'") == "full"
 
 
 def compact_artifact(text):
@@ -2325,8 +2349,9 @@ def good_enough_criteria(spec_path):
     """The Good Enough checkbox lines of a spec, in order: GE-001 is the first."""
     if not os.path.isfile(spec_path):
         return []
+    _metadata, body = read_doc(spec_path)
     out, inside = [], False
-    for line in open(spec_path, encoding="utf-8", errors="replace"):
+    for line in body.splitlines():
         if line.startswith("### "):
             inside = line.strip() == "### Good Enough"
         elif line.startswith("## "):
@@ -2341,11 +2366,12 @@ def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=No
     owns left as a {placeholder}. The shape is the gates' business, so it is written
     here once instead of retyped by the lead per run (six REDO rounds on the dda2cca
     bug fix were format rounds; port audit 1, F4)."""
-    text = open(template, encoding="utf-8").read()
+    source = open(template, encoding="utf-8").read()
+    metadata, text = okf.split_document(source)
     text = text.replace("{feature_title}", feat.get("feature_title") or feat.get("slug") or "")
     text = text.replace("{slug}", feat.get("slug") or "")
     if footprint is not None:
-        text = text.replace("  - {path/to/file-the-change-touches}\n", "".join("  - %s\n" % p for p in footprint))
+        metadata["footprint"] = list(footprint)
         bullets = "".join("- %s: {what changes here, with the symbol or line it touches; or `unchanged`, and why}\n" % p for p in footprint)
         bullets += "".join("- %s: read-only; the change does not touch it.\n" % p for p in (read_only or []))
         text = text.replace(
@@ -2372,7 +2398,8 @@ def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=No
             text = text.replace(
                 "### Criterion 1\n\n```\n{full output of verify command}\n```\n\n(repeat per criterion)\n",
                 "".join("### Criterion %d\n\n```\n{full output of verify command}\n```\n\n" % (i + 1) for i in range(len(criteria))))
-    return compact_artifact(text) if template.endswith("-oneshot.md.template") else text
+    body = compact_artifact(text) if template.endswith("-oneshot.md.template") else text
+    return okf.render_document(metadata, body)
 
 
 def write_skeletons(feature_dir, feat, node):
@@ -2399,17 +2426,16 @@ def write_skeletons(feature_dir, feat, node):
 
 def spec_footprint(text):
     """The frontmatter footprint list of a spec, in order."""
-    m = re.search(r"^footprint:[ \t]*(\[.*?\])?[ \t]*$((?:\n  - .*)*)", text, flags=re.M)
-    if not m:
-        return []
-    if m.group(1):
-        return [p for p in re.findall(r"[^\[\],\s'\"]+", m.group(1))]
-    return [line[4:].strip() for line in m.group(2).splitlines() if line.startswith("  - ")]
+    metadata, _ = okf.split_document(text)
+    value = metadata.get("footprint", [])
+    if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError("SPEC footprint must be a list of non-empty strings")
+    return list(value)
 
 
 def footprint_drop(feature_dir, feat, target, path, reason):
-    text = open(target, encoding="utf-8").read()
-    footprint = spec_footprint(text)
+    metadata, text = read_doc(target)
+    footprint = spec_footprint(okf.render_document(metadata, text))
     if path not in footprint:
         raise Die("spec footprint drop: %s is not in the footprint of %s (%s)" % (path, target, ", ".join(footprint) or "empty"))
     remaining = [p for p in footprint if p != path]
@@ -2426,14 +2452,10 @@ def footprint_drop(feature_dir, feat, target, path, reason):
                       "gets its test, or the run escalates (route: full)" % (
                           path, kept, "changed in the diff" if kept in changed else "stays in the footprint"))
     lib("decisions", "add", feature_dir, "oneshot", "drop %s from the footprint" % path, "dropped", reason, "ruling")
-    text = re.sub(r"^  - %s\n" % re.escape(path), "", text, count=1, flags=re.M)
-    text = re.sub(r"^(footprint:[ \t]*\[)([^\]]*)(\])",
-                  lambda m: m.group(1) + ", ".join(p for p in re.split(r"\s*,\s*", m.group(2)) if p and p != path) + m.group(3),
-                  text, count=1, flags=re.M)
+    metadata["footprint"] = remaining
     note = "- %s: dropped from the footprint by cycle-driver.sh spec footprint drop: %s\n" % (path, reason)
     text = text.replace("## Implementation notes\n", "## Implementation notes\n" + note, 1)
-    with open(target, "w", encoding="utf-8") as fh:
-        fh.write(text)
+    write_doc(target, metadata, text)
     print(json.dumps({"spec": target, "dropped": path, "reason": reason, "footprint": remaining}))
     return 0
 
@@ -2450,7 +2472,7 @@ def section_span(text, heading):
 
 
 def spec_fill(target, o):
-    text = open(target, encoding="utf-8").read()
+    metadata, text = read_doc(target)
     filled = []
     if o.get("intent"):
         span = section_span(text, "Intent")
@@ -2503,12 +2525,7 @@ def spec_fill(target, o):
         # The command the driver will run lives in the frontmatter too, keyed by row:
         # `verification run` reads this map, never the sentence.
         commands = [re.search(r"`([^`]+)`", l).group(1) if re.search(r"`([^`]+)`", l) else "" for l in kept]
-        block = "criteria:\n" + "".join("  GE-%03d: %s\n" % (i + 1, json.dumps(c)) for i, c in enumerate(commands))
-        fm = re.match(r"^---\n(.*?)^---\n", text, flags=re.M | re.S)
-        if not fm:
-            raise Die("spec fill: %s has no frontmatter to hold the criteria map" % target)
-        front = re.sub(r"^criteria:\n(?:  GE-\d{3}: .*\n)*", "", fm.group(1), flags=re.M)
-        text = "---\n" + front + block + "---\n" + text[fm.end():]
+        metadata["criteria"] = {"GE-%03d" % (i + 1): c for i, c in enumerate(commands)}
     if o.get("grounding"):
         span = section_span(text, "Grounding")
         if span is None:
@@ -2531,8 +2548,7 @@ def spec_fill(target, o):
     if not filled:
         raise Die("spec fill: nothing to fill (--intent, --file/--note, --command/--expect, or --grounding)", 2)
     text = compact_artifact(text)
-    with open(target, "w", encoding="utf-8") as fh:
-        fh.write(text)
+    write_doc(target, metadata, compact_artifact(text))
     flags = []
     for name, args in (("artifact-lint", ["spec", target]), ("oneshot-spec-lint", [target])):
         out = lib_run(name, *args, quiet=True).stdout
@@ -2542,12 +2558,10 @@ def spec_fill(target, o):
 
 
 def spec_escalate(target, reason):
-    text = open(target, encoding="utf-8").read()
-    if not route_is_full(text):
-        text = re.sub(r"^---\n(.*?)^---\n", lambda m: "---\n" + m.group(1) + "route: full\n---\n", text, count=1, flags=re.M | re.S)
+    metadata, text = read_doc(target)
+    metadata["route"] = "full"
     text = text.replace("## Implementation notes\n", "## Implementation notes\n- escalated (route: full): %s\n" % reason, 1)
-    with open(target, "w", encoding="utf-8") as fh:
-        fh.write(text)
+    write_doc(target, metadata, text)
     print(json.dumps({"spec": target, "route": "full", "reason": reason}))
     return 0
 
@@ -2690,15 +2704,18 @@ def criteria_commands(spec_path):
     the driver wrote with `spec fill --command`, the only ones `verification run` runs."""
     if not os.path.isfile(spec_path):
         return {}
-    fm = re.match(r"^---\n(.*?)^---\n", open(spec_path, encoding="utf-8", errors="replace").read(), flags=re.M | re.S)
-    if not fm:
+    try:
+        metadata, _ = read_doc(spec_path)
+    except (OSError, ValueError):
         return {}
     out = {}
-    for m in re.finditer(r"^  (GE-\d{3}): (.*)$", fm.group(1), flags=re.M):
-        try:
-            out[m.group(1)] = json.loads(m.group(2))
-        except ValueError:
-            out[m.group(1)] = m.group(2).strip()
+    criteria = metadata.get("criteria")
+    if criteria is not None and not isinstance(criteria, dict):
+        raise ValueError("SPEC criteria must be a mapping")
+    for key, value in (criteria or {}).items():
+        if not re.match(r"^GE-\d{3}$", str(key)) or not isinstance(value, str) or not value.strip():
+            raise ValueError("SPEC criteria keys must be GE-NNN and values non-empty strings")
+        out[str(key)] = value
     return out
 
 
@@ -2724,7 +2741,7 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
     commands.test into the Final test suite block. The lead supplies no status
     (port audit 4, items 2 and 4). Returns the rows written."""
     root = feature_root(feature_dir, feat)
-    text = open(target, encoding="utf-8").read()
+    metadata, text = read_doc(target)
     criteria = good_enough_criteria(spec)
     commands = criteria_commands(spec)
     written = []
@@ -2770,8 +2787,7 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
             if anchor < 0:
                 raise Die("verification run: %s has no ## Code review section to place ### Criterion %d before" % (target, i + 1))
             text = text[:anchor] + "\n### Criterion %d\n\n```\n%s\n```\n" % (i + 1, block) + text[anchor:]
-        with open(target, "w", encoding="utf-8") as fh:
-            fh.write(text)
+        write_doc(target, metadata, text)
         written.append({"row": row, "status": status, "exit": code})
     if with_tests:
         test_cmd = ((feat.get("commands") or {}).get("test") or "").strip()
@@ -2790,8 +2806,7 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
             block = "(no commands.test is configured for this feature)"
             written.append({"row": "tests", "status": "N/A", "exit": None})
         text = text[:span[0]] + "\n```\n" + block + "\n```\n" + text[span[1]:]
-    with open(target, "w", encoding="utf-8") as fh:
-        fh.write(compact_artifact(text))
+    write_doc(target, metadata, compact_artifact(text))
     return written
 
 
@@ -2804,7 +2819,7 @@ def verification_review(target, report, model):
     pending`, or `none` when the report holds no finding. The d17da82 bug-fix run
     carried an invented finding because the lead thought the lint wanted one
     (port audit 4, item 3). Returns the findings written."""
-    text = open(target, encoding="utf-8").read()
+    metadata, text = read_doc(target)
     span = section_span(text, "Findings")
     if span is None:
         raise Die("verification review: %s has no ### Findings section" % target)
@@ -2821,8 +2836,7 @@ def verification_review(target, report, model):
     text = text[:span[0]] + "\n" + body + "\n\n" + text[span[1]:]
     text = re.sub(r"^\*\*Reviewer:\*\* code-reviewer \(.*\)(?::.*)?$",
                   "**Reviewer:** code-reviewer (%s)%s" % (model, (": " + verdict) if verdict else ""), text, count=1, flags=re.M)
-    with open(target, "w", encoding="utf-8") as fh:
-        fh.write(compact_artifact(text))
+    write_doc(target, metadata, compact_artifact(text))
     return [{"finding": f[0], "claim": f[1]} for f in findings], verdict
 
 
@@ -2870,13 +2884,12 @@ def cmd_verification(argv):
                 routing = " | routing: " + json.dumps(validate(json.loads(o.get("routing") or "null")), sort_keys=True)
             except ValueError as exc:
                 raise Die("verification verdict: " + str(exc), 2)
-        text = open(target, encoding="utf-8").read()
+        metadata, text = read_doc(target)
         line = re.compile(r"^(- %s — .*?) \| verdict: pending$" % re.escape(finding), re.M)
         if not line.search(text):
             raise Die("verification verdict: no pending finding at %s in %s (verification review writes them from the report)" % (finding, target))
         text = line.sub(lambda m: "%s | verdict: %s — %s%s" % (m.group(1), verdict, reason, routing), text, count=1)
-        with open(target, "w", encoding="utf-8") as fh:
-            fh.write(text)
+        write_doc(target, metadata, text)
         print(json.dumps({"verification": target, "finding": finding, "verdict": verdict,
                           "flags": verification_lint_flags(root, target, spec)}))
         return 0
@@ -2889,7 +2902,7 @@ def cmd_verification(argv):
     o = parse_pairs(argv[1:], ("--feature-dir", "--row", "--implementation", "--proof", "--integration",
                                "--integration-proof"))
     feature_dir, feat, docs, target, spec, root = verification_paths(o, "fill")
-    text = open(target, encoding="utf-8").read()
+    metadata, text = read_doc(target)
     filled = []
     row = o.get("row")
     if row:
@@ -2911,8 +2924,7 @@ def cmd_verification(argv):
             filled.append("grounding:" + row)
     if not filled:
         raise Die("verification fill: nothing to fill", 2)
-    with open(target, "w", encoding="utf-8") as fh:
-        fh.write(text)
+    write_doc(target, metadata, text)
     print(json.dumps({"verification": target, "filled": filled, "flags": verification_lint_flags(root, target, spec)}))
     return 0
 
@@ -3011,7 +3023,7 @@ def cmd_phase_begin(argv):
     if entry.returncode > 1:
         print(entry.stdout, file=sys.stderr)
         return 2
-    fields, reads, flags = {}, [], []
+    fields, reads, flags, index = {}, [], [], None
     for line in entry.stdout.splitlines():
         if line.startswith("fields="):
             try:
@@ -3020,6 +3032,8 @@ def cmd_phase_begin(argv):
                 fields = {"raw": line[7:]}
         elif line.startswith("read="):
             reads.append(line[5:])
+        elif line.startswith("index="):
+            index = line[6:]
         elif line.startswith("FLAG"):
             flags.append(line)
     mode = {}
@@ -3034,6 +3048,8 @@ def cmd_phase_begin(argv):
         extra_rc = prepared.returncode
         extra = json.loads(prepared.stdout) if prepared.stdout else {}
     packet = {"phase": phase, "instructions": instructions, "entry": {"fields": fields, "read": reads, "flags": flags}, "mode": mode}
+    if index:
+        packet["entry"]["index"] = index
     if skeletons:
         packet["skeletons"] = skeletons
     if phase in ("execute", "verify"):

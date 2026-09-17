@@ -88,7 +88,7 @@ AUTONOMOUS=1 drv start --dir "$REPO8" -- add a json flag >/dev/null 2>&1
 init="$(drv init --dir "$REPO8" --slug add-a-json-flag --title "add a json flag" --style auto --profile standard --autonomous 1 2>/dev/null)"
 FD8="$(jq -r '.featureDir' <<<"$init")"
 mkdir -p "$REPO8/docs/loop-spec/features/add-a-json-flag" "$REPO8/.claude/agent-memory/loop-spec-pattern-mapper"
-printf '# draft\n' > "$REPO8/docs/loop-spec/features/add-a-json-flag/PLAN.md"
+printf '%s\n' '---' 'type: Implementation Plan' '---' '# draft' > "$REPO8/docs/loop-spec/features/add-a-json-flag/PLAN.md"
 printf 'memory\n' > "$REPO8/.claude/agent-memory/loop-spec-pattern-mapper/MEMORY.md"
 printf '{"x":1}\n' > "$FD8/scratch.json"
 out="$(cd "$REPO8" && AUTONOMOUS=1 drv begin -- a different sentence than before 2>/dev/null)"
@@ -132,7 +132,7 @@ check "moving plugin: no escalation" "0" "$(jq -c 'select(.event == "escalated")
 # --- a quoted route: "full" is the same escalation as an unquoted one -----------------
 # The probe and the shape lint strip YAML quotes; the driver's unquoted match let the
 # gate's escalation write a second route: full line under a quoted one.
-printf -- '---\nroute: "full"\nfootprint:\n  - a.py\n---\n## Intent\n\n## Implementation notes\n' > "$WORK/quoted.md"
+printf -- '---\nroute: "full"\ntype: Specification\nfootprint:\n  - a.py\n---\n## Intent\n\n## Implementation notes\n' > "$WORK/quoted.md"
 python3 - "$REPO_ROOT/lib/graph/driver.py" "$WORK/quoted.md" >/dev/null <<'PY_'
 import sys, importlib.util
 spec = importlib.util.spec_from_file_location("driver", sys.argv[1]); d = importlib.util.module_from_spec(spec); spec.loader.exec_module(d)

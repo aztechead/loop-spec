@@ -2,7 +2,8 @@
 
 ## Base runtime
 
-Every harness requires `bash >= 3.2`, `git`, `jq >= 1.5`, and `python3 >= 3.7`.
+Every harness requires `bash >= 3.2`, `git`, `jq >= 1.5`, `python3 >= 3.7`, and
+PyYAML (`PyYAML>=6.0`, listed in `requirements-okf.txt`) for OKF frontmatter.
 `lib/runtime-preflight.sh` checks jq before cycle, auto, debug, micro, and OpenCode
 installer paths use it, so a missing or old binary fails once with installation guidance
 instead of producing mid-run command errors.

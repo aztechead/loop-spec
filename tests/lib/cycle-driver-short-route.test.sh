@@ -38,8 +38,20 @@ check "spec skeleton: the footprint is the record minus the protected file" '["s
 check "spec skeleton: the protected file is read-only" '["README.md"]' "$(jq -c '.readOnly' <<<"$out")"
 check "spec skeleton: prints the path in the feature's checkout, not the cwd" "$DOCS7/SPEC.md" "$(jq -r '.spec' <<<"$out")"
 check "spec skeleton: the title is filled" "# fix slugify dots" "$(sed -n '/^# /p' "$DOCS7/SPEC.md" | head -1)"
-check "spec skeleton: the footprint is filled" "1" "$(grep -c '^  - slugify.py$' "$DOCS7/SPEC.md")"
-check "spec skeleton: the read-only file is not in the footprint" "0" "$(grep -c '^  - README.md$' "$DOCS7/SPEC.md")"
+check "spec skeleton: the footprint is filled" "1" "$(python3 - "$DOCS7/SPEC.md" "$REPO_ROOT/lib" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[2])
+from okf import read_metadata
+print(int(read_metadata(sys.argv[1]).get('footprint') == ['slugify.py']))
+PY
+)"
+check "spec skeleton: the read-only file is not in the footprint" "0" "$(python3 - "$DOCS7/SPEC.md" "$REPO_ROOT/lib" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[2])
+from okf import read_metadata
+print(int('README.md' in read_metadata(sys.argv[1]).get('footprint', [])))
+PY
+)"
 check "spec skeleton: one Implementation notes bullet per footprint file" "1" "$(grep -c '^- slugify.py: {' "$DOCS7/SPEC.md")"
 check "spec skeleton: a read-only bullet per read-only cite" "1" "$(grep -c '^- README.md: read-only; the change does not touch it.$' "$DOCS7/SPEC.md")"
 check "spec skeleton: no score to fill, only the two keys the probe reads" "0" "$(grep -c 'goal_clarity\|{0.00-1.00}' "$DOCS7/SPEC.md")"
@@ -64,7 +76,13 @@ out="$(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --command 'python3 -c "
 check "spec fill: the first criterion replaces the placeholders" "0" "$(grep -c '{check command}' "$DOCS7/SPEC.md")"
 check "spec fill: the driver writes the line" "1" "$(grep -c '^- \[ \] `python3 -c "from slugify import slugify; assert slugify(.*` exits 0: dots are gone$' "$DOCS7/SPEC.md")"
 check "spec fill: the answer names the row" "criterion:GE-001" "$(jq -r '.filled[0]' <<<"$out")"
-check "spec fill: the command lands in the frontmatter criteria map" "1" "$(sed -n '1,/^---$/!d; /^  GE-001: "python3 -c /p' "$DOCS7/SPEC.md" | grep -c .)"
+check "spec fill: the command lands in the frontmatter criteria map" "1" "$(python3 - "$DOCS7/SPEC.md" "$REPO_ROOT/lib" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[2])
+from okf import read_metadata
+print(int(read_metadata(sys.argv[1]).get("criteria", {}).get("GE-001", "").startswith("python3 -c")))
+PY
+)"
 (cd "$REPO7" && drv spec fill --feature-dir "$FD7" --command 'python3 -c "from slugify import slugify; assert slugify(\x27a.b\x27) == \x27ab\x27"' --expect "dots are gone" >/dev/null 2>&1)
 check "spec fill: a repeated criterion is not appended twice" "1" "$(grep -c '^- \[ \] `python3 -c' "$DOCS7/SPEC.md")"
 # --row replaces (port audit 5, R2): the same row, a new command, still one criterion.
@@ -104,16 +122,17 @@ cp "$WORK/spec7.bak" "$DOCS7/SPEC.md"
 printf '# edited by the lead\n' >> "$DOCS7/SPEC.md"
 out="$(cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" 2>/dev/null)"
 check "spec skeleton: an existing SPEC.md is kept" "1" "$(grep -c '^# edited by the lead$' "$DOCS7/SPEC.md")"
-printf -- '---\nfootprint: [slugify.py]\n---\n# from a draft\n' > "$WORK/draft.md"
+printf -- '---\ntype: Specification\nfootprint: [slugify.py]\n---\n# from a draft\n' > "$WORK/draft.md"
 # On the full route (no skeleton) the draft is the lead's whole spec.
 rm -f "$DOCS7/SPEC.md"
 out="$(cd "$WORK" && drv spec write --feature-dir "$FD7" --file "$WORK/draft.md" 2>/dev/null)"
 check "spec write: the draft lands at the one target" "$DOCS7/SPEC.md" "$out"
-check "spec write: the content is the draft's" "# from a draft" "$(sed -n 4p "$DOCS7/SPEC.md")"
+check "spec write: the content is the draft's" "# from a draft" "$(grep '^# from a draft$' "$DOCS7/SPEC.md")"
 ec=0; (cd "$REPO7" && drv spec write --feature-dir "$FD7" --to "$WORK/elsewhere.md" >/dev/null 2>&1) || ec=$?
 check "spec write: any other target is a bad invocation" "2" "$ec"
 cat > "$DOCS7/SPEC.md" <<'MD'
 ---
+type: Specification
 unresolved_questions: []
 footprint:
   - slugify.py
@@ -160,7 +179,7 @@ check "phase-begin oneshot: the same session opens the phase (no exit 4)" "0" "$
 # The node's ingress lists VERIFICATION.md as a skeleton: written once, from the
 # template, one grounding row and one acceptance row per Good Enough criterion.
 check "phase-begin oneshot: the VERIFICATION.md skeleton is written" "$DOCS7/VERIFICATION.md" "$(jq -r '.skeletons[0]' <<<"$out")"
-check "phase-begin oneshot: the skeleton's title is the feature's" "# fix slugify dots - Verification" "$(head -1 "$DOCS7/VERIFICATION.md")"
+check "phase-begin oneshot: the skeleton's title is the feature's" "# fix slugify dots - Verification" "$(grep '^# fix slugify dots - Verification$' "$DOCS7/VERIFICATION.md")"
 check "phase-begin oneshot: no Plan line without a PLAN.md" "0" "$(grep -c '^\*\*Plan:\*\*' "$DOCS7/VERIFICATION.md")"
 check "phase-begin oneshot: one grounding row per criterion" "1" "$(grep -c '^- criterion: GE-001 |' "$DOCS7/VERIFICATION.md")"
 check "phase-begin oneshot: the acceptance row carries the criterion text and no status" "1" "$(grep -c "^| GE-001 | .*slugify('a.b') == 'ab'.* |  | " "$DOCS7/VERIFICATION.md")"
@@ -231,16 +250,47 @@ check "verification run: the test suite block is the command's output with its e
 # (port audit 4, item 3): findings become pending bullets the lead answers; none is none.
 mkdir -p "$FD7/dispatch"
 printf 'Verdict: PASS_WITH_MINOR\n\n- slugify.py:2 — replace runs before lower(), order is fine but undocumented\n- tests/test_slugify.py:1 — the suite has no dotted case.\n' > "$FD7/dispatch/oneshot.review.md"
+# Metadata contains multiline text that resembles body headings/rows. Driver review,
+# verdict, and fill operations must only edit the real verification body.
+python3 - "$DOCS7/VERIFICATION.md" "$REPO_ROOT/lib" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[2])
+from okf import read_document, render_document
+import json
+p = sys.argv[1]
+metadata, body = read_document(p)
+metadata['spoof'] = '\n### Findings\n- slugify.py:2 — metadata only | verdict: pending\n- criterion: GE-001 | implementation: fake.py:1 - fake | integration: none - fake\n'
+open(p + '.metadata.json', 'w').write(json.dumps(metadata, sort_keys=True))
+open(p, 'w').write(render_document(metadata, body))
+PY
 out="$(cd "$REPO7" && drv verification review --feature-dir "$FD7" --reviewer-model haiku 2>/dev/null)"
 check "verification review: the reviewer's verdict lands on the Reviewer line" "1" "$(grep -c '^\*\*Reviewer:\*\* code-reviewer (haiku): PASS_WITH_MINOR$' "$DOCS7/VERIFICATION.md")"
-check "verification review: one pending bullet per finding" "2" "$(grep -c '| verdict: pending$' "$DOCS7/VERIFICATION.md")"
+check "verification review: one pending bullet per finding" "2" "$(python3 - "$DOCS7/VERIFICATION.md" "$REPO_ROOT/lib" <<'PY'
+import sys; sys.path.insert(0, sys.argv[2]); from okf import read_document
+_, body = read_document(sys.argv[1]); print(sum(line.endswith('| verdict: pending') for line in body.splitlines()))
+PY
+)"
 check "verification review: a pending finding is a flag until answered" "1" "$(jq -r '.flags[]' <<<"$out" | grep -c 'verdict' | awk '{print ($1 > 0)}')"
 ec=0; (cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding slugify.py:2 --verdict maybe --reason x >/dev/null 2>&1) || ec=$?
 check "verification verdict: true or false only" "2" "$ec"
 out="$(cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding slugify.py:2 --verdict false --reason "lower() never adds a dot, so the order cannot change the result" 2>/dev/null)"
 out="$(cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding tests/test_slugify.py:1 --verdict true --reason "added the dotted case in the fix commit" --routing '{"route":"patch","cause":"missing dotted case","surface":"none","fixCommit":"1a2b3c4"}' 2>/dev/null)"
-check "verification verdict: the answers replace pending" "0" "$(grep -c '| verdict: pending$' "$DOCS7/VERIFICATION.md")"
+check "verification verdict: the answers replace pending" "0" "$(python3 - "$DOCS7/VERIFICATION.md" "$REPO_ROOT/lib" <<'PY'
+import sys; sys.path.insert(0, sys.argv[2]); from okf import read_document
+_, body = read_document(sys.argv[1]); print(sum(line.endswith('| verdict: pending') for line in body.splitlines()))
+PY
+)"
 check "verification verdict: a false carries its disproof" "1" "$(grep -c '^- slugify.py:2 — .* | verdict: false — lower() never adds a dot' "$DOCS7/VERIFICATION.md")"
+check "verification mutations preserve spoof metadata" "1" "$(python3 - "$DOCS7/VERIFICATION.md" "$REPO_ROOT/lib" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[2])
+from okf import read_document
+import json
+m, b = read_document(sys.argv[1])
+before = json.load(open(sys.argv[1] + '.metadata.json'))
+print(int(m == before and 'metadata only' not in b and 'slugify.py:2' in b))
+PY
+)"
 ec=0; (cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding nope.py:9 --verdict true --reason x --routing '{"route":"defer","cause":"unknown","reason":"separate cleanup"}' >/dev/null 2>&1) || ec=$?
 check "verification verdict: an unknown finding is refused" "1" "$ec"
 printf 'Verdict: PASS\nNo findings.\n' > "$FD7/dispatch/oneshot.review.md"

@@ -25,11 +25,16 @@ if [[ "$plan_path" != "/dev/stdin" && ! -f "$plan_path" ]]; then
   exit 0
 fi
 
-# Extract task IDs from headings matching ^### task-[0-9]+: -- a PLAN.md with none is
-# the ordinary empty-ids case below, not a failure grep must not abort the script over.
-ids=$(grep -E '^### task-[0-9]+:' "$plan_path" \
-  | sed 's/^### //' \
-  | cut -d: -f1) || true
+ids=$(PYTHONPATH="$(dirname "${BASH_SOURCE[0]}")${PYTHONPATH:+:$PYTHONPATH}" python3 - "$plan_path" <<'PY'
+import re, sys
+from okf import read_document
+try:
+    _, body = read_document(sys.argv[1])
+except (OSError, ValueError):
+    raise SystemExit(0)
+print("\n".join(re.findall(r'^### (task-[0-9]+):', body, re.M)))
+PY
+)
 
 # Build JSON array using jq -n with --args
 if [[ -z "$ids" ]]; then

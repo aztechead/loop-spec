@@ -24,6 +24,10 @@ mkdir -p "$WORK/docs/loop-spec/features/demo"
 DOCS="$WORK/docs/loop-spec/features/demo"
 
 cat > "$DOCS/SPEC.md" <<'EOF'
+---
+type: Specification
+unresolved_questions: []
+---
 # Spec: Demo feature
 
 ## Summary
@@ -42,6 +46,9 @@ These notes are long and should NOT be inlined into the PR body.
 EOF
 
 cat > "$DOCS/VERIFICATION.md" <<'EOF'
+---
+type: Verification Report
+---
 # Verification
 
 All checks pass: 42 tests, lint clean.
@@ -52,6 +59,9 @@ tests: 42 passed
 EOF
 
 cat > "$DOCS/ITERATION.md" <<'EOF'
+---
+type: Iteration Report
+---
 # Iteration
 
 Converged after 1 round.
@@ -92,7 +102,7 @@ check "1: deep sections not inlined" "0" "$(grep -c 'Deep design notes' "$OUT")"
 check "1: balanced code fences" "0" "$(( $(grep -c '^```' "$OUT") % 2 ))"
 
 # ── Case 2: huge artifacts stay bounded ──────────────────────────────────────
-{ echo '# Verification'; echo; for i in $(seq 1 3000); do echo "evidence line $i with some padding text"; done; } > "$DOCS/VERIFICATION.md"
+{ printf '%s\n' '---' 'type: Verification Report' '---' '# Verification'; echo; for i in $(seq 1 3000); do echo "evidence line $i with some padding text"; done; } > "$DOCS/VERIFICATION.md"
 bash "$LIB" render "$WORK/feature.json" "$WORK" "$OUT"
 size="$(wc -c < "$OUT" | tr -d ' ')"
 check "2: body stays under 10000 bytes" "1" "$([[ "$size" -le 10000 ]] && echo 1 || echo 0)"
@@ -100,13 +110,14 @@ check "2: truncation is announced" "1" "$(grep -c 'truncated' "$OUT" | awk '{pri
 check "2: still valid (goal survives)" "1" "$(grep -c '^\*\*Goal:\*\*' "$OUT")"
 
 # ── Case 3: unbalanced fence in an artifact gets closed ──────────────────────
-printf '# Verification\n\nresult ok\n\n```text\nunclosed fence\n' > "$DOCS/VERIFICATION.md"
+printf '%s\n' '---' 'type: Verification Report' '---' '# Verification' '' 'result ok' '' '```text' 'unclosed fence' > "$DOCS/VERIFICATION.md"
 bash "$LIB" render "$WORK/feature.json" "$WORK" "$OUT"
 check "3: fences balanced after render" "0" "$(( $(grep -c '^```' "$OUT") % 2 ))"
 
 # ── Case 3b: the reviewer's guide is inlined, bounded, and H1-free ───────────
-printf '# Verification\n\nresult ok\n' > "$DOCS/VERIFICATION.md"
+printf '%s\n' '---' 'type: Verification Report' '---' '# Verification' '' 'result ok' > "$DOCS/VERIFICATION.md"
 {
+  printf '%s\n' '---' 'type: Review Order' '---'
   echo '# Suggested review order'
   echo
   echo '**The seam**'
@@ -128,7 +139,7 @@ check "3b: guide precedes the verification evidence" "1" \
   "$(awk '/^## Suggested review order/{g=NR} /^## Verification/{v=NR} END{print (g && v && g<v)?1:0}' "$OUT")"
 
 # A trail longer than the cap is truncated, never dumped whole.
-{ echo '# Suggested review order'; echo; for i in $(seq 1 80); do echo "- framing $i"; echo "  \`lib/f$i.sh:$i\`"; done; } > "$DOCS/REVIEW-ORDER.md"
+{ printf '%s\n' '---' 'type: Review Order' '---' '# Suggested review order'; echo; for i in $(seq 1 80); do echo "- framing $i"; echo "  \`lib/f$i.sh:$i\`"; done; } > "$DOCS/REVIEW-ORDER.md"
 bash "$LIB" render "$WORK/feature-trail.json" "$WORK" "$OUT"
 check "3b: long trail is capped" "1" \
   "$(awk '/^## Suggested review order/{c=1;next} /^## /{c=0} c&&/^- framing/{n++} END{print (n<=30)?1:0}' "$OUT")"
@@ -142,6 +153,7 @@ check "4: goal still present" "1" "$(grep -c '^\*\*Goal:\*\* Bare' "$OUT")"
 # ── Case 5: ambiguity_scores frontmatter → percentage table, no decimal leak ─
 cat > "$DOCS/SPEC.md" <<'EOF'
 ---
+type: Specification
 unresolved_questions: []
 ---
 
@@ -153,7 +165,7 @@ The demo feature adds a demo capability.
 
 - demo command exits 0
 EOF
-printf '# Verification\n\nAll pass.\n' > "$DOCS/VERIFICATION.md"
+printf '%s\n' '---' 'type: Verification Report' '---' '# Verification' '' 'All pass.' > "$DOCS/VERIFICATION.md"
 bash "$LIB" render "$WORK/feature.json" "$WORK" "$OUT"
 check "5: renders with frontmatter" "0" "$?"
 check "5: no raw decimal scores leak" "0" "$(grep -c '0\.18\|goal_clarity' "$OUT")"

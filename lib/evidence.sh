@@ -16,7 +16,23 @@
 # Exit codes: 0 success, 1 bad invocation or unwritable path.
 set -euo pipefail
 
-HEADING="# Evidence ledger"
+HEADING="---
+type: Evidence
+---
+# Evidence ledger"
+
+_ledger_body() {
+  local ledger="$1"
+  python3 - "$ledger" "$(dirname "${BASH_SOURCE[0]}")" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[2])
+from okf import read_document
+metadata, body = read_document(sys.argv[1])
+if metadata.get("type") != "Evidence":
+    raise ValueError("EVIDENCE.md must declare type: Evidence")
+print(body, end="")
+PY
+}
 
 # Sanitize: replace literal | with /, replace newlines/tabs with single space.
 _sanitize() {
@@ -39,22 +55,6 @@ _truncate() {
 # Count existing EVID entries in ledger (0 if missing or empty).
 # grep -c exits 1 (no matches) but still prints "0"; capture into local var
 # so the || branch doesn't emit a second "0".
-_count_evid() {
-  local ledger="$1"
-  [[ -f "$ledger" ]] || { printf '0'; return 0; }
-  local n
-  n="$(grep -c '^- EVID-' "$ledger" 2>/dev/null)" || n="0"
-  printf '%s' "$n"
-}
-
-# Return the ID that the next add would assign.
-_next_id_for() {
-  local ledger="$1"
-  local count
-  count="$(_count_evid "$ledger")"
-  printf 'EVID-%03d' "$((count + 1))"
-}
-
 case "${1:-}" in
   add)
     ledger="${2:-}"; claim="${3:-}"; cmd_arg="${4:-}"; output="${5:-}"
@@ -62,7 +62,6 @@ case "${1:-}" in
       echo "usage: evidence.sh add <ledger_path> <claim> <command> <output>" >&2
       exit 1
     fi
-
     sc="$(_sanitize "$claim")"
     scmd="$(_sanitize "$cmd_arg")"
     sout="$(_sanitize "${output:-}")"
@@ -79,8 +78,9 @@ case "${1:-}" in
       fi
     done
 
-    # Idempotency: scan existing entries for matching sanitized claim + command.
+    ledger_body=""
     if [[ -f "$ledger" ]]; then
+      ledger_body="$(_ledger_body "$ledger")" || { echo "evidence.sh: cannot parse ledger" >&2; exit 1; }
       while IFS= read -r line; do
         case "$line" in
           "- EVID-"*)
@@ -95,7 +95,7 @@ case "${1:-}" in
             fi
             ;;
         esac
-      done < "$ledger"
+      done <<< "$ledger_body"
     fi
 
     # Create ledger directory and file with heading if not present.
@@ -109,7 +109,8 @@ case "${1:-}" in
         || { echo "evidence.sh: cannot write to: $ledger" >&2; exit 1; }
     fi
 
-    new_id="$(_next_id_for "$ledger")"
+    count="$(grep -c '^- EVID-' <<< "$ledger_body" 2>/dev/null)" || count=0
+    new_id="EVID-$(printf '%03d' "$((count + 1))")"
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     # Use %s\n to avoid printf interpreting a leading dash in the line as an option.
     printf '%s\n' "- $new_id | $ts | claim: $sc | cmd: $scmd | out: $sout" >> "$ledger" \
@@ -121,15 +122,18 @@ case "${1:-}" in
     ledger="${2:-}"
     [[ -n "$ledger" ]] || { echo "usage: evidence.sh list <ledger_path>" >&2; exit 1; }
     [[ -f "$ledger" ]] || exit 0
-    grep '^- EVID-' "$ledger" 2>/dev/null || true
+    body="$(_ledger_body "$ledger")" || { echo "evidence.sh: cannot parse ledger" >&2; exit 1; }
+    grep '^- EVID-' <<< "$body" 2>/dev/null || true
     exit 0
     ;;
 
   next-id)
     ledger="${2:-}"
     [[ -n "$ledger" ]] || { echo "usage: evidence.sh next-id <ledger_path>" >&2; exit 1; }
-    _next_id_for "$ledger"
-    printf '\n'
+    body=""
+    [[ ! -f "$ledger" ]] || { body="$(_ledger_body "$ledger")" || { echo "evidence.sh: cannot parse ledger" >&2; exit 1; }; }
+    count="$(grep -c '^- EVID-' <<< "$body" 2>/dev/null)" || count=0
+    printf 'EVID-%03d\n' "$((count + 1))"
     ;;
 
   *)

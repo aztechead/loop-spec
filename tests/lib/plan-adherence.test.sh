@@ -3,6 +3,8 @@
 set -euo pipefail
 
 LIB="$(cd "$(dirname "$0")/../.." && pwd)/lib/plan-adherence.sh"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/plan-adherence.XXXXXX")"
+trap 'rm -rf "$WORK"' EXIT
 PASS=0
 FAIL=0
 
@@ -20,7 +22,8 @@ check() {
 }
 
 # === A: single task ===
-out=$(bash "$LIB" /dev/stdin <<< '### task-001: do a thing')
+printf '%s\n' '---' 'type: Implementation Plan' '---' '### task-001: do a thing' > "$WORK/a.md"
+out=$(bash "$LIB" "$WORK/a.md")
 count=$(echo "$out" | jq '.plan_task_ids | length')
 gap=$(echo "$out" | jq '.gap_message')
 check "A: single task - plan_task_ids length is 1" "1" "$count"
@@ -32,6 +35,9 @@ check "A: single task - ID is task-001" "task-001" "$id"
 
 # === B: multiple tasks ===
 input="$(cat <<'INPUT'
+---
+type: Implementation Plan
+---
 ## Architecture overview
 
 Some prose here.
@@ -46,7 +52,8 @@ More prose.
 Final task.
 INPUT
 )"
-out=$(bash "$LIB" /dev/stdin <<< "$input")
+printf '%s\n' "$input" > "$WORK/b.md"
+out=$(bash "$LIB" "$WORK/b.md")
 count=$(echo "$out" | jq '.plan_task_ids | length')
 gap=$(echo "$out" | jq '.gap_message')
 check "B: multiple tasks - plan_task_ids length is 3" "3" "$count"
@@ -58,9 +65,8 @@ check "B: multiple tasks - first ID is task-001" "task-001" "$id0"
 check "B: multiple tasks - last ID is task-003" "task-003" "$id2"
 
 # === C: no tasks ===
-out=$(bash "$LIB" /dev/stdin <<< '# Some plan with no task headings
-
-Just prose here, no task-NNN headings.')
+printf '%s\n' '---' 'type: Implementation Plan' '---' '# Some plan with no task headings' ' ' 'Just prose here, no task-NNN headings.' > "$WORK/c.md"
+out=$(bash "$LIB" "$WORK/c.md")
 count=$(echo "$out" | jq '.plan_task_ids | length')
 gap=$(echo "$out" | jq '.gap_message')
 check "C: no tasks - plan_task_ids is empty array" "0" "$count"

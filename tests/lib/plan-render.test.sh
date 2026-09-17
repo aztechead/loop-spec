@@ -41,6 +41,9 @@ check "steps are rendered as checkboxes" "3" "$(grep -c '^- \[ \] Step ' <<<"$ou
 
 # In-place form replaces the two sections and preserves everything else.
 cat > "$WORK/PLAN.md" <<'MD'
+---
+type: Implementation Plan
+---
 # Feature - Implementation Plan
 
 ## Architecture overview
@@ -68,17 +71,39 @@ Run it.
 
 - none
 MD
+# Metadata can contain task-shaped prose; rendering must preserve it as metadata
+# while replacing only the body task sections.
+python3 - "$WORK/PLAN.md" <<'PY'
+from pathlib import Path
+p = Path(__import__('sys').argv[1]); text = p.read_text()
+text = text.replace('type: Implementation Plan\n', 'type: Implementation Plan\ntitle: "Quoted title"\ndescription: "\n## Tasks\n### task-999: fake\n"\ncustom:\n  owner: planner\n')
+p.write_text(text)
+PY
+before_meta="$(PYTHONPATH="$(dirname "$LIB")" python3 - "$WORK/PLAN.md" <<'PY'
+import sys; from okf import read_document
+print(repr(read_document(sys.argv[1])[0]))
+PY
+)"
 bash "$LIB" render --tasks "$WORK/tasks.json" --plan "$WORK/PLAN.md" >/dev/null
-check "in place: stale block is gone" "0" "$(grep -c 'task-999' "$WORK/PLAN.md")"
+check "in place: stale body block is gone" "0" "$(grep -c '^### task-999' "$WORK/PLAN.md")"
 check "in place: new blocks present" "2" "$(grep -c '^### task-00' "$WORK/PLAN.md")"
 check "in place: prose before is kept" "1" "$(grep -c '^Two sentences.$' "$WORK/PLAN.md")"
 check "in place: sections after are kept" "1" "$(grep -c '^## Grounding$' "$WORK/PLAN.md")"
 check "in place: Test strategy still follows Tasks" "1" "$(awk '/^## Tasks/{t=1} /^## Test strategy/{if(t) print "ok"}' "$WORK/PLAN.md" | grep -c ok)"
 before="$(cat "$WORK/PLAN.md")"; bash "$LIB" render --tasks "$WORK/tasks.json" --plan "$WORK/PLAN.md" >/dev/null
 check "in place: idempotent" "1" "$([[ "$before" == "$(cat "$WORK/PLAN.md")" ]] && echo 1 || echo 0)"
+after_meta="$(PYTHONPATH="$(dirname "$LIB")" python3 - "$WORK/PLAN.md" <<'PY'
+import sys; from okf import read_document
+print(repr(read_document(sys.argv[1])[0]))
+PY
+)"
+check "in place: unknown metadata survives render" "$before_meta" "$after_meta"
 
 # A plan without the sections gets them inserted before Test strategy.
 cat > "$WORK/PLAN2.md" <<'MD'
+---
+type: Implementation Plan
+---
 # Feature - Implementation Plan
 
 ## Architecture overview
@@ -98,6 +123,9 @@ check "rendered blocks pass the lint's task-block checks" "0" "$(grep -c -E "tas
 
 # decisions: SPEC statements the plan lacks are copied verbatim; the coverage gate then passes.
 cat > "$WORK/SPEC.md" <<'MD'
+---
+type: Specification
+---
 # Spec
 
 <decisions>
@@ -105,13 +133,13 @@ cat > "$WORK/SPEC.md" <<'MD'
 - the existing unit directory `site` never moves or is renamed.
 </decisions>
 MD
-printf '# Plan\n\n## Architecture overview\n\nProse.\n\n## User decisions (already made)\n\n- **bumps**: no OpenTofu, Terragrunt, or provider version bumps. Source: SPEC.\n\n## Global constraints\n\n- none\n' > "$WORK/PLAN3.md"
+printf '%s\n' '---' 'type: Implementation Plan' '---' '# Plan' '' '## Architecture overview' '' 'Prose.' '' '## User decisions (already made)' '' '- **bumps**: no OpenTofu, Terragrunt, or provider version bumps. Source: SPEC.' '' '## Global constraints' '' '- none' > "$WORK/PLAN3.md"
 out="$(bash "$LIB" decisions --spec "$WORK/SPEC.md" --plan "$WORK/PLAN3.md")"
 check "decisions: only the missing statement is copied" "plan-render: copied 1 decision(s) into $WORK/PLAN3.md" "$out"
 check "decisions: the copy lands under the existing section" "1" "$(awk '/^## User decisions/{s=1} /^## Global/{s=0} s && /never moves or is renamed/{print "ok"}' "$WORK/PLAN3.md" | grep -c ok)"
 check "decisions: the coverage gate passes afterwards" "0" "$(bash "$REPO_ROOT/lib/decision-coverage.sh" "$WORK/SPEC.md" "$WORK/PLAN3.md" >/dev/null 2>&1; echo $?)"
 check "decisions: idempotent" "plan-render: decisions already covered (2)" "$(bash "$LIB" decisions --spec "$WORK/SPEC.md" --plan "$WORK/PLAN3.md")"
-printf '# Plan\n\n## Architecture overview\n\nProse.\n\n## Global constraints\n\n- none\n' > "$WORK/PLAN4.md"
+printf '%s\n' '---' 'type: Implementation Plan' '---' '# Plan' '' '## Architecture overview' '' 'Prose.' '' '## Global constraints' '' '- none' > "$WORK/PLAN4.md"
 bash "$LIB" decisions --spec "$WORK/SPEC.md" --plan "$WORK/PLAN4.md" >/dev/null
 check "decisions: the section is created before Global constraints" "1" "$(awk '/^## User decisions/{u=NR} /^## Global constraints/{g=NR} END{print (u && g && u<g) ? 1 : 0}' "$WORK/PLAN4.md")"
 

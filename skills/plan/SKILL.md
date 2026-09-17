@@ -6,6 +6,8 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 
 # PLAN
 
+Use the OKF 0.2 header and type contract in `skills/shared/okf-artifacts.md` for PLAN.md and PATTERNS.md.
+
 Use `feature_dir=.loop-spec/features/{slug}`. Relay any entry FLAG and return. Follow
 `skills/shared/dispatch.md` for every agent dispatch.
 

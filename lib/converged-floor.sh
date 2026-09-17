@@ -48,8 +48,15 @@ verification_path="${2:-}"
 }
 
 # A missing contract is missing evidence, never an empty success condition.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 spec_content=""
-if ! spec_content=$(cat "$spec_path" 2>/dev/null); then
+if ! spec_content=$(PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}" python3 - "$spec_path" <<'PY'
+import sys
+from okf import read_document
+try: print(read_document(sys.argv[1])[1], end='')
+except (OSError, ValueError) as exc: raise SystemExit(1)
+PY
+); then
   echo "FLOOR spec is not readable: $spec_path"
   echo "converged-floor: 1 violation(s)"
   exit 1
@@ -66,7 +73,13 @@ if [[ "$criteria_count" -eq 0 ]]; then
 fi
 
 violations=0
-if ! verification_content=$(cat "$verification_path" 2>/dev/null); then
+if ! verification_content=$(PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}" python3 - "$verification_path" <<'PY'
+import sys
+from okf import read_document
+try: print(read_document(sys.argv[1])[1], end='')
+except (OSError, ValueError): raise SystemExit(1)
+PY
+); then
   echo "FLOOR VERIFICATION.md is not readable ($verification_path) — a converged verdict needs the verification record"
   echo "converged-floor: 1 violation(s)"
   exit 1

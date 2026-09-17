@@ -11,6 +11,9 @@ printf 'test\n' > "$WORK/tests/app.test.py"
 printf 'code\n' > "$WORK/workspace/repo-a/src/a.py"
 printf 'test\n' > "$WORK/workspace/repo-b/tests/a.test.py"
 cat > "$WORK/SPEC.md" <<'EOF'
+---
+type: Specification
+---
 ## Success criteria
 ### Good Enough
 - [ ] first criterion
@@ -20,6 +23,7 @@ EOF
 
 PASS=0
 FAIL=0
+typed() { local p="$1"; { printf '%s\n' '---' 'type: Verification Report' '---'; cat "$p"; } > "$p.okf"; mv "$p.okf" "$p"; }
 check() {
   local name="$1" expected="$2" artifact="$3"; shift 3
   local rc=0 output=""
@@ -32,6 +36,9 @@ check() {
 }
 
 cat > "$WORK/valid.md" <<'EOF'
+---
+type: Verification Report
+---
 # Verification
 
 ## Repository grounding
@@ -39,6 +46,9 @@ cat > "$WORK/valid.md" <<'EOF'
 EOF
 
 cat > "$WORK/no-integration.md" <<'EOF'
+---
+type: Verification Report
+---
 ## Repository grounding
 - criterion: SC-1 | implementation: src/app.py:2 - implements the behavior | integration: none - standalone documentation contract has no runtime caller
 EOF
@@ -79,6 +89,7 @@ cat > "$WORK/wrapped.md" <<'EOF'
 - criterion: SC-1 | implementation: src/app.py:2 - implements the behavior
   | integration: tests/app.test.py:1 - exercises the behavior
 EOF
+typed "$WORK/workspace.md"; typed "$WORK/wrapped.md"
 
 cat > "$WORK/wrapped-bad.md" <<'EOF'
 ## Repository grounding
@@ -114,6 +125,9 @@ fi
 # A malformed row's flag carries the row grammar, so the verifier that wrote "- none"
 # knows what to write instead.
 cat > "$WORK/bare-none.md" <<'EOF'
+---
+type: Verification Report
+---
 # Verification
 
 ## Repository grounding

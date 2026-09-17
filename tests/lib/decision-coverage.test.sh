@@ -22,6 +22,7 @@ check() {
 WORK="${TMPDIR:-/tmp}/decision-coverage-test.$$"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK"
+okf() { local p="$1" t="$2"; { printf '%s\n' '---' "type: $t" '---'; cat "$p"; } > "$p.okf"; mv "$p.okf" "$p"; }
 
 # === Case A: all-covered ===
 # All decisions in SPEC appear in PLAN -> exit 0
@@ -41,6 +42,7 @@ cat > "$PLAN_A" <<'EOF'
 We use bash for scripting all helpers.
 We use awk for parsing the block boundaries.
 EOF
+okf "$SPEC_A" Specification; okf "$PLAN_A" 'Implementation Plan'
 
 exit_code=0
 bash "$SCRIPT" "$SPEC_A" "$PLAN_A" >/dev/null 2>&1 || exit_code=$?
@@ -62,6 +64,7 @@ cat > "$PLAN_B" <<'EOF'
 
 No python here. We use shell only.
 EOF
+okf "$SPEC_B" Specification; okf "$PLAN_B" 'Implementation Plan'
 
 exit_code=0
 output=$(bash "$SCRIPT" "$SPEC_B" "$PLAN_B" 2>&1) || exit_code=$?
@@ -83,6 +86,7 @@ cat > "$PLAN_C" <<'EOF'
 
 Some plan content here.
 EOF
+okf "$SPEC_C" Specification; okf "$PLAN_C" 'Implementation Plan'
 
 exit_code=0
 output=$(bash "$SCRIPT" "$SPEC_C" "$PLAN_C" 2>&1) || exit_code=$?
@@ -104,6 +108,7 @@ cat > "$PLAN_R" <<'EOF'
 - a long decision text that a planner will reflow
   across two lines in the decisions record
 EOF
+okf "$SPEC_R" Specification; okf "$PLAN_R" 'Implementation Plan'
 
 exit_code=0
 bash "$SCRIPT" "$SPEC_R" "$PLAN_R" >/dev/null 2>&1 || exit_code=$?
@@ -134,6 +139,7 @@ cat > "$PLAN_E" <<'EOF'
 - **Stack is Python 3.7+ standard library only.** Implemented in task-001.
 - **Stack (Python 3.7+, no deps):** the request names it.
 EOF
+okf "$SPEC_E" Specification; okf "$PLAN_E" 'Implementation Plan'
 exit_code=0
 out_e="$(bash "$SCRIPT" "$SPEC_E" "$PLAN_E" 2>/dev/null)" || exit_code=$?
 check "E: a statement without its rationale is covered; a paraphrase is not" "1" "$exit_code"

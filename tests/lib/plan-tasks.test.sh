@@ -89,6 +89,9 @@ cat > "$tmp/PLAN.md" <<'MD'
 pytest.
 MD
 
+{ printf '%s\n' '---' 'type: Implementation Plan' '---'; cat "$tmp/PLAN.md"; } > "$tmp/PLAN.okf.md"
+mv "$tmp/PLAN.okf.md" "$tmp/PLAN.md"
+
 out="$(bash "$LIB" extract "$tmp/PLAN.md")"
 check "three blocks yield three tasks" "3" "$(jq 'length' <<<"$out")"
 check "id and subject from the heading" "task-001 add the endpoint" \
@@ -113,6 +116,38 @@ check "absent optional lines are absent keys" "null null" \
   "$(jq -r '.[2] | "\(.repo) \(.readFirst)"' <<<"$out")"
 rc=0; bash "$LINT" tasks - <<<"$out" >/dev/null 2>&1 || rc=$?
 check "extracted tasks pass the tasks lint" "0" "$rc"
+
+cat > "$tmp/PLAN-metadata-fake.md" <<'MD'
+---
+type: Implementation Plan
+title: "Quoted plan title"
+description: "
+## Tasks
+### task-999: fake
+**Files:** fake.py
+"
+custom:
+  owner: planner
+---
+# Real plan
+
+## Tasks
+
+### task-001: real task
+
+**Files:**
+- real.py
+
+**BlockedBy:** []
+
+**Verify:** `true`
+
+**Acceptance criteria:**
+- [ ] real task works
+MD
+fake_out="$(bash "$LIB" extract "$tmp/PLAN-metadata-fake.md")"
+check "metadata fake task headings are ignored" "1" "$(jq length <<<"$fake_out")"
+check "metadata fake task cannot spoof the extracted id" "task-001" "$(jq -r '.[0].id' <<<"$fake_out")"
 
 # The repo's real PLAN fixture round-trips through the lint too.
 out="$(bash "$LIB" extract "$REPO_ROOT/tests/fixtures/real-PLAN.md")"
@@ -154,6 +189,8 @@ cat > "$tmp/PLAN-compact.md" <<'MD'
 **Acceptance criteria:**
 - [ ] CSV test passes
 MD
+{ printf '%s\n' '---' 'type: Implementation Plan' '---'; cat "$tmp/PLAN-compact.md"; } > "$tmp/PLAN-compact.okf.md"
+mv "$tmp/PLAN-compact.okf.md" "$tmp/PLAN-compact.md"
 compact_out="$(bash "$LIB" extract "$tmp/PLAN-compact.md")"
 check "compact plan extracts task blocks without a DAG table" "2" "$(jq 'length' <<<"$compact_out")"
 check "compact plan keeps explicit dependency" '["task-001"]' "$(jq -c '.[1].blockedBy' <<<"$compact_out")"
@@ -176,7 +213,7 @@ check "empty compact dependency names its repair" "1" "$(grep -c 'empty \*\*Bloc
 printf '# Plan\n\n## Tasks\n\nnothing yet\n' > "$tmp/empty.md"
 rc=0; out="$(bash "$LIB" extract "$tmp/empty.md" 2>&1)" || rc=$?
 check "no blocks exits 1, never an empty array" "1" "$rc"
-check "no blocks names the file" "1" "$(grep -c 'no .### task-NNN:. blocks' <<<"$out")"
+check "untyped plan is rejected as invalid OKF" "1" "$(grep -c 'invalid OKF PLAN.md' <<<"$out")"
 rc=0; bash "$LIB" extract "$tmp/missing.md" >/dev/null 2>&1 || rc=$?
 check "unreadable file exits 1" "1" "$rc"
 rc=0; bash "$LIB" parse "$tmp/PLAN.md" >/dev/null 2>&1 || rc=$?

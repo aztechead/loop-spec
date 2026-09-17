@@ -4,6 +4,12 @@ Operator-facing diagrams, artifact layout, and design notes extracted from the
 README so the entry-point stays short. Behavior contracts still live in skills
 and `lib/`; this page is the map, not the authority.
 
+Feature Markdown artifacts use the breaking OKF 0.2 contract: each document has a
+typed YAML header, and the generated feature index carries `okf_version: "0.2"`.
+The OKF loader requires PyYAML; runtime JSON state remains separate from these
+human-readable documents. Existing substantive body, freeze, approval, grounding,
+and acceptance gates continue to apply.
+
 ## Cycle orchestration
 
 From 3.0 the cycle skill does not sequence the phases itself: `graph/cycle.graph.json` declares the topology and `lib/graph/run.sh` executes it, so phase successors, ITERATE's rewind targets, DELIVER's CI-remediation path and the human pause points are data rather than prose. Each phase skill still owns its own dispatches WITHIN a node — the engine owns sequencing, not content. Full model: [gdd.md](gdd.md). When agent teams are available, inherit-selector teammates persist for the whole phase and communicate over `SendMessage`, so rework rides on accumulated context instead of fresh spawns. A Claude role alias on the implicit-team harness (CC >= 2.1.178) cannot bind on a named spawn — in-process teammates inherit the lead model — so `lib/implicit-team-model.sh` selects a nameless one-shot Agent instead (`skills/shared/dispatch.md`). `lib/teams-capability.sh` resolves the team mechanism per Claude Code version: explicit `TeamCreate`/`TeamDelete` on older builds, direct named `Agent({name})` spawns on 2.1.178 and later, and a documented fallback per phase (`skills/shared/dispatch.md`) when teams are off, with the same artifacts, gates, and result contracts on every path.

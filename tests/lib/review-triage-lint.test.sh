@@ -58,6 +58,8 @@ see above
 ok
 \`\`\`
 MD
+  { printf '%s\n' '---' 'type: Verification Report' '---'; cat "$WORK/VERIFICATION.md"; } > "$WORK/VERIFICATION.okf"
+  mv "$WORK/VERIFICATION.okf" "$WORK/VERIFICATION.md"
   printf '%s' "$WORK/VERIFICATION.md"
 }
 
