@@ -116,13 +116,25 @@ interactive styles and lead-authored output in autonomous mode (recorded in
 
 ## Concurrency
 
-`LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=N` (optional, positive integer) caps simultaneous
-one-shot Agents deployment-wide: issue Agent calls in waves of at most N, await each
+Resource bounds default to one implementer and one child agent. On startup and resume, `N` comes
+from `.loop-spec/runtime.json.resources.maxParallelSubagents` when present, otherwise from
+`lib/resource-bounds.sh resolve`; a current environment value wins, and the default is `1`.
+`LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=N`
+and `LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS=N` (positive integers) are explicit operator
+opt-ins for wider waves; the resource resolver validates both once and propagates the
+effective values through runtime, session, graph, and workflow dispatch. An effective value of `1`
+is serial and disables automatic teams, Workflow, and loop-fleet selection; an explicitly forced loop
+still runs with its serial cap. The
+global bound is enforced for one-shot loop-spec dispatch; explicitly enabled Workflow scripts may
+have their own internal fan-out parameters. For
+one-shot Agents, issue calls in waves of at most N and await each
 wave, leave nothing running across a later dispatch point, and skip optional background
-prefetches. `N=1` is serial. The capability scripts disable teams, Workflow fan-out, and
-loop fleets under the cap; EXECUTE also clamps `maxParallelImplementers` to N. One-shot
+prefetches. EXECUTE also clamps `maxParallelImplementers` to the effective cap. One-shot
 Agents share the lead's cwd, so parallel implementers need lead-created task worktrees
 (`subagentIsolation=lead-worktree`); a failed `git worktree add` serializes the wave.
+Build and test commands owned by loop-spec run only after the implementer wave has
+completed at the serial default. This bound covers loop-spec dispatch; arbitrary threads
+inside an external CLI or build tool remain outside its control.
 
 ## Workflow fan-out (opt-in rung)
 

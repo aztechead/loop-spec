@@ -76,7 +76,39 @@ case "$cmd" in
       [[ -n "$docs_dir" && -d "$docs_dir" ]] || docs_dir="${root:-$FEATURE_DIR/../../..}/docs/loop-spec/features/$(basename "$FEATURE_DIR")"
     fi
     constraints="- none"
-    [[ -n "$docs_dir" && -f "$docs_dir/PLAN.md" ]] && constraints="$(awk '/^## Global constraints/{on=1; next} on && /^## /{exit} on && !/^<!--/ && !/^ *-->$/ && NF' "$docs_dir/PLAN.md")"
+    if [[ -n "$docs_dir" && -f "$docs_dir/PLAN.md" ]]; then
+      constraints="$(awk '/^## Global constraints/{on=1; next} on && /^## /{exit} on{print}' "$docs_dir/PLAN.md" \
+        | awk '
+          function visible(s, p, q, pre, rest) {
+            while (1) {
+              if (comment) {
+                q = index(s, "-->")
+                if (!q) return
+                s = substr(s, q + 3)
+                comment = 0
+              }
+              p = index(s, "<!--")
+              if (!p) {
+                sub(/[[:space:]]+$/, "", s)
+                if (s ~ /[^[:space:]]/) print s
+                return
+              }
+              pre = substr(s, 1, p - 1)
+              rest = substr(s, p + 4)
+              q = index(rest, "-->")
+              if (q) {
+                s = pre substr(rest, q + 3)
+                continue
+              }
+              sub(/[[:space:]]+$/, "", pre)
+              if (pre ~ /[^[:space:]]/) print pre
+              comment = 1
+              return
+            }
+          }
+          { visible($0) }
+          ' )"
+    fi
     [[ -n "$constraints" ]] || constraints="- none"
     cited=""
     ids="$(grep -o 'EVID-[0-9][0-9]*' <<<"$task_json" | sort -u || true)"
@@ -90,6 +122,7 @@ case "$cmd" in
       "",
       "**Subject:** \(.subject // .brief // "")",
       "",
+      (if .goal then "## Goal\n\(.goal)\n" else empty end),
       "## Files",
       ((.files // []) | if length == 0 then "- none" else map("- \(.)") | .[] end),
       "",
@@ -107,12 +140,16 @@ case "$cmd" in
       "",
       "## Verify",
       (.verifyCommand // "true"),
+      (if .expected then "Expected: \(.expected)" else empty end),
       "",
       "## Acceptance criteria",
       ((.acceptanceCriteria // []) | if length == 0 then "- none" else to_entries[] | "\(.key + 1). \(.value)" end),
       "",
       "## Brief",
       (.brief // .subject // ""),
+      (if (.steps // []) | length > 0 then
+         "\n## Steps\n" + ((.steps // []) | to_entries | map("- " + .value) | join("\n")) + "\n"
+       else empty end),
       "",
       "## Global constraints (PLAN.md, verbatim; every one binds)",
       $constraints,
@@ -149,12 +186,18 @@ case "$cmd" in
       || { echo "dispatch-files.sh: bad HEAD: $HEAD" >&2; exit 2; }
     base_full="$(git -C "$REPO" rev-parse "$BASE")"
     head_full="$(git -C "$REPO" rev-parse "$HEAD")"
+    if [[ "$base_full" == "$head_full" ]]; then
+      echo "dispatch-files.sh: BASE and HEAD resolve to the same commit; refusing an empty review package" >&2
+      exit 2
+    fi
     if [[ -z "$OUT" ]]; then
       short_b="$(git -C "$REPO" rev-parse --short "$BASE")"
       short_h="$(git -C "$REPO" rev-parse --short "$HEAD")"
       OUT="${TMPDIR:-/tmp}/review-${short_b}..${short_h}.diff"
     fi
     mkdir -p "$(dirname "$OUT")"
+    has_code_change=1
+    git -C "$REPO" diff --quiet "${BASE}..${HEAD}" -- && has_code_change=0
     {
       echo "# Review package: ${base_full}..${head_full}"
       echo
@@ -163,6 +206,11 @@ case "$cmd" in
       echo
       echo "## Files changed"
       git -C "$REPO" diff --stat "${BASE}..${HEAD}"
+      if [[ "$has_code_change" -eq 0 ]]; then
+        echo
+        echo "## No code changes"
+        echo "This package contains a distinct commit with no code diff. Review the commit and verify the current tree against the task brief before accepting it."
+      fi
       echo
       echo "## Diff"
       git -C "$REPO" diff -U10 "${BASE}..${HEAD}"

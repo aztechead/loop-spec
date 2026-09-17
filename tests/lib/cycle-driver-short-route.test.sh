@@ -237,9 +237,19 @@ check "verification review: one pending bullet per finding" "2" "$(grep -c '| ve
 check "verification review: a pending finding is a flag until answered" "1" "$(jq -r '.flags[]' <<<"$out" | grep -c 'verdict' | awk '{print ($1 > 0)}')"
 ec=0; (cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding slugify.py:2 --verdict maybe --reason x >/dev/null 2>&1) || ec=$?
 check "verification verdict: true or false only" "2" "$ec"
+seq 12 | sed 's/^/x = /' > "$REPO7/big.py"; git -C "$REPO7" add big.py; git -C "$REPO7" -c commit.gpgsign=false commit -qm "fix: twelve lines"; BIG7="$(git -C "$REPO7" rev-parse HEAD)"
 out="$(cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding slugify.py:2 --verdict false --reason "lower() never adds a dot, so the order cannot change the result" 2>/dev/null)"
-out="$(cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding tests/test_slugify.py:1 --verdict true --reason "added the dotted case in the fix commit" --routing '{"route":"patch","cause":"missing dotted case","surface":"none","fixCommit":"1a2b3c4"}' 2>/dev/null)"
+out="$(cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding tests/test_slugify.py:1 --verdict true --reason "added the dotted case in the fix commit" --routing "{\"route\":\"patch\",\"cause\":\"missing dotted case\",\"surface\":\"none\",\"fixCommit\":\"$BIG7\"}" 2>/dev/null)"
 check "verification verdict: the answers replace pending" "0" "$(grep -c '| verdict: pending$' "$DOCS7/VERIFICATION.md")"
+# A patch routing past the 10-line bound is the lead's classification to redo, not the
+# run's end (the 6.7.0 sonnet oneshot run escalated a correct 21-line review fix here).
+out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
+check "next from oneshot: an oversized patch routing answers REDO, not escalation" "REDO phase=oneshot flags=1" "$(head -1 <<<"$out")"
+check "next from oneshot: the FLAG names the bound to reclassify against" "1" "$(grep -c '^FLAG \[review-route\] review patch: fix exceeds the surface-free patch bound' <<<"$out")"
+check "next from oneshot: the routing REDO is counted like any other" "1" "$(jq -r '.driverRedo.count' "$FD7/feature.json")"
+check "next from oneshot: the routing REDO is an event" "1" "$(jq -c 'select(.event == "redo" and .data.classes["review-route"] == 1)' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
+check "next from oneshot: the feature is not escalated" "0" "$(jq -r '.status' "$FD7/feature.json" | grep -c escalated)"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" driverRedo 'null' >/dev/null
 check "verification verdict: a false carries its disproof" "1" "$(grep -c '^- slugify.py:2 — .* | verdict: false — lower() never adds a dot' "$DOCS7/VERIFICATION.md")"
 ec=0; (cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding nope.py:9 --verdict true --reason x --routing '{"route":"defer","cause":"unknown","reason":"separate cleanup"}' >/dev/null 2>&1) || ec=$?
 check "verification verdict: an unknown finding is refused" "1" "$ec"

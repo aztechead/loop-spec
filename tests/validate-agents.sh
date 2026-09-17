@@ -22,6 +22,14 @@ for f in agents/*.md; do
 
   # description: must be non-empty
   echo "$fm" | grep -q '^description: .\+' || { echo "FAIL: $f missing description"; exit 1; }
+  # These are cycle-owned dispatch roles; their descriptions must keep them out
+  # of generic auto-delegation so routing cannot mistake them for free agents.
+  case "$basename" in
+    planner|pattern-mapper)
+      grep -qi 'not for ad-hoc auto-delegation' <<<"$fm" \
+        || { echo "FAIL: $f must say it is not for ad-hoc auto-delegation"; exit 1; }
+      ;;
+  esac
 
   # tools: must be a YAML list
   echo "$fm" | grep -q '^tools:' || { echo "FAIL: $f missing tools"; exit 1; }

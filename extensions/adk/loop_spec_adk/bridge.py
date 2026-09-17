@@ -153,7 +153,15 @@ class LoopSpecBridge:
     def environment_for(self, state: Any) -> dict[str, str]:
         """Build one invocation's environment from static and session state."""
         env_vars = dict(self.env_vars)
-        skill_dir = state.get(SKILL_DIR_STATE_KEY) if state is not None else None
+        getter = getattr(state, "get", None)
+        if callable(getter):
+            session_id = (getter("loop_spec:session_id") or getter("session_id")
+                          or getter("sessionId"))
+            if isinstance(session_id, str) and session_id:
+                env_vars["LOOP_SPEC_SESSION_ID"] = session_id
+                env_vars["CLAUDE_CODE_SESSION_ID"] = session_id
+                env_vars["CLAUDE_SESSION_ID"] = session_id
+        skill_dir = getter(SKILL_DIR_STATE_KEY) if callable(getter) else None
         if isinstance(skill_dir, str) and skill_dir:
             env_vars["LOOP_SPEC_SKILL_DIR"] = skill_dir
             env_vars["CLAUDE_SKILL_DIR"] = skill_dir

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Route evidence produces distinct recovery actions against a real local repository.
 set -euo pipefail
+export LOOP_SPEC_SESSION_ID=review-routing-test
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 python3 - "$root" <<'PY'
 import importlib.util

@@ -37,30 +37,30 @@ check "A: flag unset -> none" "none" "$got"
 got=$(run "2.0.0" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0)
 check "A2: flag=0 -> none" "none" "$got"
 
-# Case B: flag=1 + modern CC (>= 2.1.178) -> implicit
-got=$(run "2.1.178" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)
-check "B: flag=1 + 2.1.178 (boundary) -> implicit" "implicit" "$got"
+# Case B: modern CC versions remain on bounded one-shot dispatch
+got=$(run "2.1.178" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2)
+check "B: flag=1 + 2.1.178 (boundary) -> bounded fallback" "none" "$got"
 
-got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)
-check "B2: flag=1 + 2.1.181 -> implicit" "implicit" "$got"
+got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2)
+check "B2: flag=1 + 2.1.181 -> bounded fallback" "none" "$got"
 
-got=$(run "2.2.0" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)
-check "B3: flag=1 + 2.2.0 -> implicit" "implicit" "$got"
+got=$(run "2.2.0" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2)
+check "B3: flag=1 + 2.2.0 -> bounded fallback" "none" "$got"
 
-# Case C: flag=1 + legacy CC (< 2.1.178) -> explicit
-got=$(run "2.1.177" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)
-check "C: flag=1 + 2.1.177 -> explicit" "explicit" "$got"
+# Case C: legacy CC versions remain on bounded one-shot dispatch
+got=$(run "2.1.177" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2)
+check "C: flag=1 + 2.1.177 -> bounded fallback" "none" "$got"
 
-got=$(run "2.1.40" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)
-check "C2: flag=1 + 2.1.40 -> explicit" "explicit" "$got"
+got=$(run "2.1.40" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2)
+check "C2: flag=1 + 2.1.40 -> bounded fallback" "none" "$got"
 
 # Case D: flag=1 + unknown version -> none (safe universal fallback)
 got=$(run "unknown" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)
 check "D: flag=1 + unknown version -> none" "none" "$got"
 
-# Case E: LOOP_SPEC_TEAMS_MODE override wins over flag + version
-got=$(env -u CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS -u LOOP_SPEC_HARNESS LOOP_SPEC_TEAMS_MODE=explicit bash "$LIB" "2.1.181")
-check "E: override -> explicit" "explicit" "$got"
+# Case E: positive mode overrides cannot bypass the bounded policy
+got=$(env -u CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS -u LOOP_SPEC_HARNESS LOOP_SPEC_TEAMS_MODE=explicit LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 bash "$LIB" "2.1.181")
+check "E: positive override stays bounded" "none" "$got"
 
 got=$(env -u LOOP_SPEC_HARNESS CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_TEAMS_MODE=none bash "$LIB" "2.1.181")
 check "E2: override none beats flag=1" "none" "$got"
@@ -77,8 +77,8 @@ check "F: adk harness + flag=1 -> none" "none" "$got"
 # The retired pi env hint must no longer gate anything: a Claude Code user with a
 # stale PI_CODING_AGENT_DIR in their environment would otherwise lose teams for a
 # harness that no longer exists.
-got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 PI_CODING_AGENT_DIR=/x)
-check "F2: retired pi env hint no longer suppresses teams" "implicit" "$got"
+got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 PI_CODING_AGENT_DIR=/x LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2)
+check "F2: retired pi env hint no longer suppresses bounded fallback" "none" "$got"
 
 set +e
 run "2.1.181" LOOP_SPEC_HARNESS=pi >/dev/null 2>&1
@@ -86,19 +86,15 @@ pi_rc=$?
 set -e
 check "F2b: explicit retired harness propagates usage error" "2" "$pi_rc"
 
-# An override may turn a capability OFF anywhere, but it must not conjure one the
-# harness does not have. ADK has no named teammates at all, so `implicit` there is a state
-# that cannot exist: it used to answer "implicit" and route EXECUTE onto a team rung
-# whose every spawn throws. Absence of a surface is a fact; only a negative override
-# is honored past the harness gate.
+# Positive mode overrides cannot bypass the bounded policy on a harness without
+# team tools. The probe still fails safe for ADK and OpenCode.
 got=$(run "2.1.181" LOOP_SPEC_HARNESS=adk LOOP_SPEC_TEAMS_MODE=implicit)
 check "F3: positive mode override cannot beat the adk gate" "none" "$got"
 got=$(run "2.1.181" LOOP_SPEC_HARNESS=opencode LOOP_SPEC_TEAMS_MODE=explicit)
 check "F4: positive mode override cannot beat the opencode gate" "none" "$got"
-# The escape hatch is still there for anyone who needs one: assert the harness, then
-# the mode. That names the claim being made instead of smuggling it through the mode.
-got=$(run "2.1.181" LOOP_SPEC_HARNESS=claude LOOP_SPEC_TEAMS_MODE=implicit)
-check "F5: harness assertion + mode override still forces the mode" "implicit" "$got"
+# Even an asserted Claude harness and positive mode override stay bounded.
+got=$(run "2.1.181" LOOP_SPEC_HARNESS=claude LOOP_SPEC_TEAMS_MODE=implicit LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2)
+check "F5: harness assertion + mode override stays bounded" "none" "$got"
 
 # Case G: opencode harness -> none (resumable tasks have no named teammates,
 # peer messaging, or shared task list -- same Claude-Code-surface gate as ADK)
@@ -110,9 +106,8 @@ check "G: opencode harness + flag=1 -> none" "none" "$got"
 got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
   LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=1)
 check "H: global subagent cap disables teams" "none" "$got"
-got=$(run "2.1.181" LOOP_SPEC_TEAMS_MODE=implicit \
-  LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2)
-check "H2: cap beats explicit team mode" "none" "$got"
+got=$(run "2.1.181" LOOP_SPEC_TEAMS_MODE=implicit LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2)
+check "H2: explicit wider cap keeps team mode disabled" "none" "$got"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

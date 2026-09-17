@@ -33,6 +33,7 @@ import signal
 import subprocess
 import sys
 import time
+import uuid
 
 try:
     import tomllib
@@ -46,7 +47,7 @@ ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 LIST_KEYS = ("launch_args", "guarded_args", "bypass_args", "seed_files", "env_fault_patterns", "lead_args", "lead_guarded_args")
 SESSION_IDENTITY = ("CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION",
                     "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_REMOTE_SESSION_ID",
-                    "CLAUDE_CODE_SYNC_SESSION_REFS")
+                    "CLAUDE_CODE_SYNC_SESSION_REFS", "CLAUDE_SESSION_ID")
 
 
 def die(message, code=2):
@@ -117,6 +118,11 @@ def child_env(profile_env, lead=False):
            and k not in ("CLAUDE_PROJECT_DIR", "LOOP_SPEC_SKILL_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT")
            and k not in SESSION_IDENTITY and k != "CLAUDE_CODE_ENTRYPOINT"}
     env.update(profile_env)
+    if lead:
+        # The headless lead owns a fresh canonical identity. Child sessions are
+        # intentionally scrubbed above, so their hooks cannot consume the lead's
+        # handoff lock.
+        env["LOOP_SPEC_SESSION_ID"] = str(uuid.uuid4())
     return env
 
 

@@ -28,7 +28,7 @@ could have raised. `LOOP_SPEC_CRITIQUE_ROUNDS` outranks the graph
 | `{artifact}` | `SPEC.md` | `PLAN.md` |
 | `{artifact_path}` | `docs/loop-spec/features/{slug}/SPEC.md` | `docs/loop-spec/features/{slug}/PLAN.md` |
 | `{author}` | `spec-writer-1` when SPEC.md was missing; otherwise the LEAD edits directly | `planner-1` |
-| `{next_step}` | the phase's exit (step 4) | the pruning pass (step 3 of the phase) |
+| `{next_step}` | the phase's exit (step 4) | the phase's exit after the bounded review |
 | Skip policy | `lib/graph/probes/discuss-critique.sh` answers `gate=skip` (maintenance ∪ spec already gated; never on a security signal or ITERATE re-entry) | structural fast-path ∪ maintenance profile (no security signal) |
 | Phase deltas | no-op-revision hash shortcut; lead-authored fixes when there is no spec-writer | the fix-list is the union of `lib/phase-exit.sh plan` FLAG lines and the adjudicated findings; after the one revision, re-extract `tasks.json` (`lib/plan-tasks.sh extract`), re-run the gate command, and count surviving FLAGs with the delta survivors |
 

@@ -30,8 +30,8 @@ checks=(
   "lib/graph/driver.py	\"extension-points\", \"facts\"	the cycle must load standing facts"
 
   # B7 -- fresh-eyes prose pruning
-  "skills/spec/SKILL.md	review-prompts/prose-pruning\.md	SPEC must run the fresh-eyes pass on its own artifact"
-  "skills/plan/SKILL.md	review-prompts/prose-pruning\.md	PLAN must run the fresh-eyes pass on its own artifact"
+  "skills/spec/SKILL.md	Do not dispatch a prose-pruning reviewer	SPEC keeps the first draft concise"
+  "skills/plan/SKILL.md	Do not dispatch a prose-pruning reviewer	PLAN keeps the authored artifact concise"
   "skills/shared/review-prompts/prose-pruning.md	never rewrite	the pass lists; the maker applies"
   "skills/spec/SKILL.md	never AskUserQuestion as a wait	SPEC scout fan-out and pruning must not stall on a fake question"
   "skills/plan/SKILL.md	never AskUserQuestion as a wait	PLAN teammate joins and pruning must not stall on a fake question"

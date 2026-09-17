@@ -33,7 +33,7 @@ HOOK_TIMEOUT_S = 15.0
 
 
 async def run_hook(script_rel: str, payload: Optional[dict], bridge: LoopSpecBridge,
-                   enforce: bool = False) -> Optional[str]:
+                   enforce: bool = False, state: Any = None) -> Optional[str]:
     """Run a bundled hook and return its additionalContext, or None."""
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -42,7 +42,7 @@ async def run_hook(script_rel: str, payload: Optional[dict], bridge: LoopSpecBri
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(bridge.project_dir),
-            env={**os.environ, **bridge.env_vars},
+            env={**os.environ, **bridge.environment_for(state)},
         )
     except OSError:
         return "loop-spec could not start the tool guard" if enforce else None
@@ -89,8 +89,13 @@ class LoopSpecPlugin(BasePlugin):
                                        user_message: types.Content) -> Optional[types.Content]:
         session = getattr(invocation_context, "session", None)
         state = getattr(session, "state", None)
+        setter = getattr(state, "__setitem__", None)
+        session_id = getattr(session, "id", None) or getattr(invocation_context, "session_id", None)
+        if callable(setter) and isinstance(session_id, str) and session_id:
+            state["loop_spec:session_id"] = session_id
         pending: list[str] = []
-        if state is None or not state.get("loop_spec:session_started"):
+        state_get = getattr(state, "get", None)
+        if state is None or not (callable(state_get) and state_get("loop_spec:session_started")):
             if state is not None:
                 state["loop_spec:session_started"] = True
             # Hook order is part of Claude Code's hooks.json contract. Run them
@@ -120,7 +125,7 @@ class LoopSpecPlugin(BasePlugin):
         denial = await run_hook("hooks/pre-tool-guard.py", {
             "tool_name": getattr(tool, "name", ""), "tool_input": tool_args,
             "cwd": str(self._bridge.project_dir),
-        }, self._bridge, enforce=True)
+        }, self._bridge, enforce=True, state=getattr(tool_context, "state", None))
         return {"status": "error", "error": denial} if denial else None
 
     async def after_tool_callback(self, *, tool: Any, tool_args: dict[str, Any],

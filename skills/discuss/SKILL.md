@@ -6,145 +6,86 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 
 # DISCUSS
 
-SPEC defines the requirements. DISCUSS resolves the design and approach, then requests a challenger review when required.
-Use `.loop-spec/features/{slug}` as `feature_dir` and `docs/loop-spec/features/{slug}/SPEC.md` as the spec.
-Follow `skills/shared/dispatch.md` for dispatch. Read only the entry packet as input:
+Use `feature_dir=.loop-spec/features/{slug}`. Relay any entry FLAG and return. Follow
+`skills/shared/dispatch.md` for every agent dispatch.
+
+SPEC defines requirements. DISCUSS locks the design and approach, records decisions,
+and runs the challenger-only gate when selected. Read only the entry packet first:
 
 ```bash
 pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin discuss --feature-dir "$feature_dir")"
-# .entry.fields .entry.read[] .entry.flags[] (a missing ingress; relay and return)
-# .mode.grill=run|self-answer|skip .mode.oracle=supervisor|self .mode.critique=run|skip .mode.reentry=true|false .mode.reason
-# .mode.budget=N .mode.elapsed=N .mode.remaining=N
-# .mode.exhausted=true|false .mode.budgetReason=<route evidence>
+# .entry.fields .entry.read[] .entry.flags[]
+# .mode.grill .mode.oracle .mode.critique .mode.reentry .mode.budget .mode.remaining
 ```
 
-Use the remaining allowance as a soft deadline: bound exploration to the route scope,
-reuse SPEC and prior decisions, and refresh `design-budget.sh` before an optional scan or
-redispatch. Handoffs and resumes share the allowance; it never preempts a phase. Return
-with the required design artifact for the normal gates. Unresolved required findings
-after exhaustion must be reported for escalation, never passed or silently skipped.
+The packet is the only ingress; reuse SPEC, decisions, evidence, and route scope.
+Refresh `design-budget.sh` before an optional scan or redispatch. Budget is a soft
+deadline: never silently pass an unresolved required finding after exhaustion.
 
-`grill`, `critique`, and `reentry` below are `.mode.*`; `phase-entry.sh` and
-`phase-mode.sh` are the probes it folds, read once.
+## Resolve the design
 
-## 1. Consume what SPEC left open
+Read SPEC's `unresolved_questions`. Ask any new intent gaps in one consolidated
+checkpoint and record each answer with `decisions.sh add`; autonomous runs use the
+recommended-answer contract in `skills/shared/autonomous-mode.md`. Each answer becomes
+a requirement and a `### Good Enough` criterion. On reentry, read `iterate.feedback`,
+refine only that gap, and do not restart the interview. Reopen Goal/Boundary only when
+the driver says the human approved the rewind.
 
-Read SPEC.md's `unresolved_questions` list. Any new intent gaps are one consolidated
-checkpoint, resolved through recorded decisions before implementation. Autonomous and
-non-interactive runs use the recommended-answer contract in
-`skills/shared/autonomous-mode.md`; an unresolved authorization boundary escalates.
-Each resolution becomes a concrete requirement and a testable `### Good Enough`
-criterion before it leaves the list.
+Read `skills/shared/approach-selection.md` and compare the requested method with one
+evidence-backed alternative. This is the in-phase design evaluation. A passed SPEC
+gate does not skip it. Human questioning is governed by `mode.grill`; `auto` is not
+autonomous mode.
+Evaluate the corner case and relevant design shape when the spec adds a component,
+store, service boundary, or cache; apply `skills/shared/engineering-stances.md`.
+`self-answer` follows the same obligations; `oracle=supervisor` uses **The supervised path**
+to ask and record approval, while `oracle=self` records answers with
+`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/decisions.sh" add`; `skip` records only
+the unresolved-question assumptions. Evaluate the design in every mode, but ask only
+unresolved user-visible choices when `mode.grill` permits questions. Never AskUserQuestion as a wait.
 
-When ONESHOT promoted this build (`route: full` with only an Intent section), expand
-the draft into the full SPEC template while preserving that intent. Resolve concrete
-questions and get the run's approval of the written Goal and Boundary per SPEC's
-"Approval and exit" in `skills/spec/SKILL.md` before returning; the driver records the
-freeze when the cycle enters PLAN. Promotion never grants human approval.
+Reuse SPEC's cited files and lines. Inspect only missing or changed evidence needed for
+the unresolved design; follow entry points/callers only when that evidence is absent.
+Probe external systems read-only before asserting facts; `<ledger>` is the evidence
+file, `<claim>` the observed fact, `<command>` the probe actually run, and
+`<probe output>` its observed result:
 
-`reentry=true` (ITERATE sent the cycle back for a `spec`-type gap): read
-`iterate.feedback`, refine SPEC.md toward the ORIGINAL goal (`feature_title`) for that
-gap only, and do not restart the interview. When a human approved the rewind
-(`step`/`interactive`), the driver has reopened Goal and Boundary: amend them for that
-gap, record why, and PLAN freezes them again. `auto`/`review-only` do this without
-questions and without a reopen: Goal and Boundary stay frozen there, so the refinement
-lands in the other sections.
+```bash
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/evidence.sh" add <ledger> "<claim>" "<command>" "<probe output>"
+```
 
-## 2. Grill (by `grill`)
+The decisions ledger is canonical; use it on resume. If `docs/loop-spec/features/{slug}/SPEC.md` exists,
+edit its design decisions in place; Goal and Boundary remain unfrozen until PLAN.
+Spawn `spec-writer-1` only when SPEC.md is missing, with absolute paths. Never spawn
+`advocate-1`.
 
-Read `skills/shared/approach-selection.md` before locking the design. Compare the
-requested method with an evidence-backed alternative and record the choice in the
-existing decisions block. This applies even when `grill=skip`; it adds no interview.
+## PATTERNS
 
-This is the in-phase grill. A human is attached unless the run is autonomous or
-non-interactive; `execStyle: auto` is not autonomous mode, and `execStyle == "auto"` is none of those.
-A passed SPEC gate does not skip the design loop.
-Search the feature area and read its entry points in full.
-Follow callers and imports to identify integration points and affected code. Use those findings to form the design options.
-Delegate scans to subagents that return `file:line` evidence.
-Dispatch, then stop. Never AskUserQuestion as a wait.
+Do not prefetch or dispatch a second scan in DISCUSS. PLAN's planner owns the compact
+PATTERNS scan, reusing the SPEC footprint and evidence.
 
-Probe external systems with read-only commands before making factual claims about them.
-Record results with `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/evidence.sh" add <ledger> "<claim>" "<command>" "<probe output>"`.
-Cite `EVID-NNN`, or record an ASSUMPTION when a probe is unavailable (`skills/shared/grounding-protocol.md`).
+## Critique and return
 
-- **`run`**: a one-question-at-a-time loop, structured multiple-choice with tradeoffs.
-  **`auto`:** MUST grill. Cap at 5 rounds, then proceed. **`step` / `interactive`:** MUST grill.
-  No cap; keep going until design and approach are locked. Ask the corner question once
-  per design shape: "what is the most likely next change here, and does this shape
-  absorb it as a local diff?" and offer the seam that fixes a broad ripple
-  (`skills/shared/design-for-change.md`). At least the corner question plus two
-  design-shape questions even when nothing is unresolved. When the spec adds a
-  component, a store, a service boundary, or a cache (always under greenfield), the
-  design-shape questions are the system-design stance's deliverables
-  (`skills/shared/engineering-stances.md`): who owns each piece of state, how each data
-  flow runs end to end, what the API looks like, what is cached and invalidated how.
-- **`self-answer`** (autonomous): the same obligations. The mode line carries
-  `oracle=supervisor` or `oracle=self` (`lib/supervisor/oracle.sh`); `oracle=supervisor`
-  asks them through `AskUserQuestion` per `skills/shared/autonomous-mode.md`
-  "The supervised path" and records answers as `supervised` (`phase-exit.sh` flags a
-  named supervisor that was never asked); otherwise answered by you from the code,
-  each recorded with `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" discuss "<q>" "<a>" "<why>"`.
-- **`skip`** (`review-only` or non-interactive): only the unresolved-question
-  assumptions above.
+When ONESHOT promotes to full, expand the intent draft using the full SPEC template and
+preserve Intent before running `phase-exit.sh discuss --check` or the spec critique.
+Obtain the run-mode approval after that expansion and before PLAN freezes Goal/Boundary.
+Then run `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/phase-exit.sh" discuss
+--feature-dir "$feature_dir" --check`; fix every reported FLAG before critique.
+Use `skills/shared/critique-gate-protocol.md` and `graph/critique.graph.json` for
+`phase=discuss`,
+`gate=spec-critique`, and `artifact=SPEC.md`. `run` dispatches the challenger;
+`lib/graph/probes/discuss-critique.sh` decides whether the gate may skip. Never spawn `advocate-1`;
+the critique steps emit the `gate_round` events through the shared protocol.
+`skip` logs `discuss critique skipped (<reason>)` only when the probe permits it. An
+`UNGROUNDED:` finding gets a probe and EVID citation. A reviewer BLOCK or held exit
+returns flags; substantive findings remain on the fix-list. When `critique revised`
+reports `changed: false`, send a `DELTA-FINDINGS:` header followed by one
+`unaddressed: <item>` line per unresolved fix.
+`critique fail` answering `close`
+ends the gate with SPEC as it stands and preserves residue. Never AskUserQuestion as a
+wait. In explicit teams mode, TeamDelete before return. Return to the cycle; never run the exit yourself. The cycle runs artifact,
+grounding, and oracle lints, including `grounding-lint.sh`, via
+`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/grounding-lint.sh"`, commits SPEC, and freezes
+Goal/Boundary when PLAN begins.
 
-Save the transcript to `feature_dir/discuss-transcript.md`. If `docs/loop-spec/features/{slug}/SPEC.md` exists,
-edit its design decisions in place. Goal and Boundary are not yet frozen: an answer
-here that changes what the feature must do is written into them, with the reason in
-the decisions ledger, and the DISCUSS gate shows the human that they changed. The
-freeze lands when the cycle enters PLAN.
-Record resolved questions and their reasons in the decisions ledger.
-Spawn `spec-writer-1` (`loop-spec:spec-writer`) only when SPEC.md is missing.
-Give it absolute `spec_path` and transcript paths. Agents share your current directory, but the exit gate reads the feature's checkout.
-Use `$(git -C "$feature_dir" rev-parse --show-toplevel)/docs/loop-spec/features/{slug}/SPEC.md` for the spec.
-Never spawn `advocate-1`.
-
-**PATTERNS.md prefetch (background, best effort).** Unless greenfield, workspace mode,
-PATTERNS.md already present, or
-`LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` set, fire ONE background `Agent`
-(`subagent_type: "loop-spec:pattern-mapper"`, `description: "Prefetch PATTERNS.md: {slug}"`,
-absolute paths for SPEC.md, the output, and the template
-`${LOOP_SPEC_SKILL_DIR}/../shared/artifact-templates/PATTERNS.md.template` — resolve the path before dispatch because the subagent has no `${LOOP_SPEC_SKILL_DIR}`;
-"STOP without writing if PATTERNS.md already exists; do not commit; reply DONE:
-patterns"), run
-`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-write.sh" set "$feature_dir" artifacts.patternsPrefetch '"in-flight"'`
-(feature.json is never edited by hand; the forgery guard denies it), and do not wait
-(do not sleep, do not poll; PLAN joins it). GSD ingest first:
-`lib/gsd-ingest.sh patterns {slug} <target>` printing `INGESTED` sets
-`artifacts.patterns` and `artifacts.patternsSource = "gsd-ingest"` and skips the prefetch.
-
-## 3. Critique (by `critique`)
-
-`skip` (`lib/graph/probes/discuss-critique.sh` answered skip: spec already gated by a
-human or a supervisor, or maintenance profile; never on a security signal, a re-entry,
-or a gate the autonomous run scored itself): log
-`discuss critique skipped (<reason>)`. `run`: the challenger-only protocol
-(`loop-spec:challenger`, topology `graph/critique.graph.json`) in
-`skills/shared/critique-gate-protocol.md` with `phase=discuss`, `gate=spec-critique`,
-`artifact=SPEC.md`, author = you (or `spec-writer-1` when spawned). Phase deltas: a
-finding that depends on user intent is a question in `grill=run` and otherwise the more
-reversible reading, recorded via `decisions.sh add`; an `UNGROUNDED:` finding gets its
-probe run by you, appended to the evidence ledger, and cited in the fix; when
-`critique revised` answers `changed: false`, skip only the challenger call and hand
-`critique delta` a `DELTA-FINDINGS:` reply you write yourself, one `unaddressed: <item>`
-line per fix-list item, so an author that answers without editing is counted, not
-bounced; `critique fail` answering `close` ends the critique with SPEC.md as it stands
-(residue in `gate-logs/spec-critique-residue.md` only). Emit one `dispatch` event per
-agent launched; the critique steps emit the `gate_round` events.
-
-## 4. Exit
-
-In explicit teams mode `TeamDelete` first. Return to the cycle; never run the exit
-yourself. The cycle's `next --returned-from discuss` runs `lib/phase-exit.sh discuss`
-(`artifact-lint`, `grounding-lint.sh`, the oracle gate), commits SPEC.md, and closes the
-phase, or answers `REDO` with the `FLAG` lines: format flags follow
-`skills/shared/artifact-templates/SPEC.md.template`; `grounding-lint.sh"` flags cite a
-ledger entry or become an ASSUMPTION. You are invoked again to fix SPEC.md in place and
-return; lint-only failures never re-open the critique. In `step`/`interactive` say
-`DISCUSS complete. SPEC at docs/loop-spec/features/{slug}/SPEC.md.`
-
-## Resume
-
-`currentGate.round > 0`: resume the critique per the protocol with `gate-logs/`
-inlined. Otherwise read the transcript (never re-ask answered questions) and continue
-from the first incomplete step. Recreate teammates fresh; none survive a session.
+On `step`/`interactive`, report `DISCUSS complete. SPEC at docs/loop-spec/features/{slug}/SPEC.md.`
+Resume from gate logs or the digest; never re-ask answered questions.

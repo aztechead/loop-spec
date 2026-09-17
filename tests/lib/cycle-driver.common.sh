@@ -31,8 +31,12 @@ new_repo() {
 
 # Pinned probes: no harness binary, no teams, no workflows, no network.
 drv() {
+  local call_session=""
+  if [[ "${NO_ID:-}" != "1" ]]; then
+    call_session="${SESSION:-test-fresh-${RANDOM}-$$}"
+  fi
   env -u CLAUDE_CODE_ENTRYPOINT -u LOOP_SPEC_AUTONOMOUS -u LOOP_SPEC_NON_INTERACTIVE \
-    -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID ${SESSION:+CLAUDE_CODE_SESSION_ID="$SESSION"} \
+    -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID -u LOOP_SPEC_SESSION_ID ${call_session:+LOOP_SPEC_SESSION_ID="$call_session" CLAUDE_CODE_SESSION_ID="$call_session"} \
     ${AUTONOMOUS:+LOOP_SPEC_AUTONOMOUS="$AUTONOMOUS"} \
     ${NON_INTERACTIVE:+LOOP_SPEC_NON_INTERACTIVE="$NON_INTERACTIVE"} \
     LOOP_SPEC_HARNESS="${HARNESS:-codex}" LOOP_SPEC_TEAMS_MODE=none \

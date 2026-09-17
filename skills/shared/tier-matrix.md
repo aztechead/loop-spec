@@ -46,7 +46,7 @@ two consecutive delta rounds closes it too (`critique-gate-protocol.md`).
 
 | Param | Value |
 |---|---|
-| execute.maxParallelImplementers | 3 |
+| execute.maxParallelImplementers | 1 |
 | execute.maxRetriesPerTask | 6 |
 | iterate.maxIterations | 10 |
 | critique delta rounds | the `critique.adjudicate` -> `critique.challenge` loop ceiling in `graph/critique.graph.json` (`LOOP_SPEC_CRITIQUE_ROUNDS` overrides; `0` = unbounded) |

@@ -36,7 +36,7 @@ cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCS6/SPEC.md"
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec 2>/dev/null)"
 check "next: a clean exit hands the successor to a fresh session" "HANDOFF next=discuss model=" "${out:0:27}"
 check "next: the handoff wrote the paused result" "phase-handoff" "$(jq -r '.reason' "$FD6/result.json")"
-out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" 2>/dev/null)"
+out="$(cd "$REPO6" && AUTONOMOUS=1 SESSION=phase-discuss-fresh drv next --feature-dir "$FD6" 2>/dev/null)"
 check "next: the fresh session enters the handed phase" "NEXT phase=discuss" "${out:0:18}"
 # From the record, never a second graph step: one phase_start for DISCUSS, the handoff
 # record consumed (the full-route runs entered DISCUSS and PLAN twice; port audit 5, R5).

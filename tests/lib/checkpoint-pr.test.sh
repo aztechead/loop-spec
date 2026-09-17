@@ -134,6 +134,9 @@ ln -sf "$(command -v jq)"  "$NOGH_BIN/jq"
 ln -sf "$(python3 -c 'import sys; print(sys.executable)')" "$NOGH_BIN/python3"
 ln -sf "$(command -v bash)" "$NOGH_BIN/bash"
 ln -sf "$(command -v dirname)" "$NOGH_BIN/dirname"
+for tool in cat tr grep sed awk mktemp rm tail; do
+  ln -sf "$(command -v "$tool")" "$NOGH_BIN/$tool"
+done
 NOGH_PATH="$NOGH_BIN"
 
 # Feature dir + fixture
@@ -178,27 +181,34 @@ check "1: no push (branch absent from bare)" \
   "0" "$(git -C "$WORK/bare" rev-parse --verify refs/heads/feat/my-feature >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # ── Case 2: Non-autonomous + env unset → default-on (gating passes) ──────────
-# (gh not in NOGH_PATH so it exits on that precondition, proving gating passed)
+# (gh not in NOGH_PATH; branch/state push must still complete before the skip)
 reset_fixture
 ec=0
 out=$( (cd "$REPO"; env -u LOOP_SPEC_CHECKPOINT_PR PATH="$NOGH_PATH" bash "$LIB" create "$FEAT_DIR") 2>&1 ) || ec=$?
 check "2: non-auto exit 0" "0" "$ec"
 check "2: gating passed (no interactive-skip)" \
   "0" "$([[ "$out" == *"skipped (interactive run"* ]] && echo 1 || echo 0)"
-check "2: stopped at gh precondition" \
+check "2: stopped after push at gh precondition" \
   "1" "$([[ "$out" == *"'gh' not on PATH"* ]] && echo 1 || echo 0)"
 
 # ── Case 3: autonomous:true + env unset → gating passes ──────────────────────
-# (gh not in NOGH_PATH so it exits on that precondition, not on the gating check)
+# (gh not in NOGH_PATH; branch/state push must still complete)
 reset_fixture
 printf '%s\n' "$(jq '.autonomous = true' "$FEAT_DIR/feature.json")" > "$FEAT_DIR/feature.json"
+git -C "$REPO" update-ref refs/loop-spec/state/my-feature "$(git -C "$REPO" rev-parse feat/my-feature)"
 ec=0
 out=$( (cd "$REPO"; env -u LOOP_SPEC_CHECKPOINT_PR PATH="$NOGH_PATH" bash "$LIB" create "$FEAT_DIR") 2>&1 ) || ec=$?
 check "3: exit 0" "0" "$ec"
 check "3: gating passed (not interactive-skip)" \
   "0" "$([[ "$out" == *"skipped (interactive run"* ]] && echo 1 || echo 0)"
-check "3: stopped at gh precondition" \
+check "3: stopped after push at gh precondition" \
   "1" "$([[ "$out" == *"'gh' not on PATH"* ]] && echo 1 || echo 0)"
+check "3: branch SHA matches without gh" \
+  "$(git -C "$REPO" rev-parse feat/my-feature)" "$(git -C "$WORK/bare" rev-parse refs/heads/feat/my-feature)"
+check "3: state ref pushed without gh" \
+  "1" "$(git -C "$WORK/bare" rev-parse --verify refs/loop-spec/state/my-feature >/dev/null 2>&1 && echo 1 || echo 0)"
+check "3: state SHA matches without gh" \
+  "$(git -C "$REPO" rev-parse refs/loop-spec/state/my-feature)" "$(git -C "$WORK/bare" rev-parse refs/loop-spec/state/my-feature)"
 reset_fixture
 
 # ── Case 3b: origin names no host → pushed, PR step skipped, gh never asked ──
@@ -298,7 +308,7 @@ ec=0
 out="$(SHIM_GIT_AUTH_ONCE=1 SHIM_GIT_COUNT="$WORK/checkpoint-git-count" \
   SHIM_GH_PR_EXISTS=1 run_checkpoint_with_refresh 2>&1)" || ec=$?
 check "9: push auth retry exits 0" "0" "$ec"
-check "9: push attempted twice" "2" "$(<"$WORK/checkpoint-git-count")"
+check "9: branch/state pushes include auth retry" "3" "$(<"$WORK/checkpoint-git-count")"
 check "9: push auth refresh once" "1" "$(grep -c '^push|auth-retry|' "$REFRESH_LOG" || true)"
 check "9: existing PR still persisted" "https://github.com/test/repo/pull/99" \
   "$(jq -r '.checkpointPrUrl // empty' "$FEAT_DIR/feature.json")"

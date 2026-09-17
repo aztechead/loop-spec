@@ -56,7 +56,7 @@ out="$(env PATH="$WORK/nobin:$WORK/three:/usr/bin:/bin" LOOP_SPEC_HARNESS=claude
 check "a forced session layer without the CLI fails loudly" "1" "$rc"
 check "the forced session error is structured" "session-layer-unavailable" "$(jq -r '.error' <<<"$out")"
 
-out="$(select_rung LOOP_SPEC_EXECUTION_PROFILE=interactive)"
+out="$(select_rung LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 LOOP_SPEC_EXECUTION_PROFILE=interactive)"
 check "persistent runtime may auto-select loop" "loop" "$(jq -r '.rung' <<<"$out")"
 
 out="$(select_rung)"
@@ -75,8 +75,14 @@ check "invalid worktree setting fails closed" "2" "$rc"
 
 out="$(select_rung LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=1 \
   LOOP_SPEC_EXECUTION_PROFILE=interactive LOOP_SPEC_EXECUTE_LOOPS=1)"
-check "global subagent cap disables fleet fan-out" "subagent:1:none" \
+check "forced loop honors serial cap" "loop:1:none" \
   "$(jq -r '.rung + ":" + (.maxParallelSubagents | tostring) + ":" + .teamsMode' <<<"$out")"
+check "default implementer cap is serial" "1" "$(jq -r '.maxParallelImplementers' <<<"$(select_rung)")"
+out="$(select_rung LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=4 LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS=2)"
+check "explicit caps propagate independently" "4:2" \
+  "$(jq -r '(.maxParallelSubagents | tostring) + ":" + (.maxParallelImplementers | tostring)' <<<"$out")"
+rc=0; select_rung LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=0 >/dev/null 2>&1 || rc=$?
+check "invalid resource cap exits 2" "2" "$rc"
 
 out="$(select_rung LOOP_SPEC_NON_INTERACTIVE=1 LOOP_SPEC_LOOP_RUNTIME=1 LOOP_SPEC_EXECUTE_LOOPS=1)"
 check "runtime override permits explicit loop" "loop" "$(jq -r '.rung' <<<"$out")"
@@ -100,29 +106,32 @@ check "forced loop without runtime fails loudly" "1" "$rc"
 check "forced loop error is structured" "loop-runtime-unavailable" "$(jq -r '.error' <<<"$out")"
 
 out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
+  LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 \
   LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 8 --teams-mode implicit \
   --workflows-available true --workflow-optin true)"
-check "workflow still wins when opted in" "workflow" "$(jq -r '.rung' <<<"$out")"
+check "workflow opt-in stays on bounded subagent path" "subagent" "$(jq -r '.rung' <<<"$out")"
 
 # Interactive sessions keep the team rung; headless never gets it (claude -p disables the
 # harness task list the rung runs on; a live run spawned three teammates that each failed
 # on TaskList, PR 93).
 interactive() {
+  local -a env_args=()
+  while [[ "${1:-}" == LOOP_SPEC_*\=* ]]; do env_args+=("$1"); shift; done
   env -u LOOP_SPEC_EXECUTE_LOOPS -u LOOP_SPEC_NON_INTERACTIVE -u CLAUDE_CODE_ENTRYPOINT -u LOOP_SPEC_EXECUTION_PROFILE \
-    PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 bash "$SCRIPT" select "$@"
+    PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 "${env_args[@]}" bash "$SCRIPT" select "$@"
 }
-out="$(interactive --width 3 --teams-mode implicit --workflows-available false --workflow-optin false)"
-check "implicit inherit still selects team" "team" "$(jq -r '.rung' <<<"$out")"
+out="$(interactive LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 --width 3 --teams-mode implicit --workflows-available false --workflow-optin false)"
+check "implicit mode stays on bounded subagent path" "subagent" "$(jq -r '.rung' <<<"$out")"
 
-out="$(interactive --width 3 --teams-mode implicit --workflows-available false --workflow-optin false --implementer-model sonnet)"
+out="$(interactive LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 --width 3 --teams-mode implicit --workflows-available false --workflow-optin false --implementer-model sonnet)"
 check "implicit sonnet skips team for a nameless subagent" "subagent" "$(jq -r '.rung' <<<"$out")"
-check "implicit sonnet reason names session inheritance" "1" \
-  "$(grep -Fq 'inherit the session model' <<<"$(jq -r '.reason' <<<"$out")" && echo 1 || echo 0)"
-check "implicit sonnet still reports teamsMode implicit" "implicit" \
+check "implicit sonnet uses bounded dispatch reason" "1" \
+  "$(grep -Fq 'teams unavailable' <<<"$(jq -r '.reason' <<<"$out")" && echo 1 || echo 0)"
+check "implicit sonnet reports teamsMode none" "none" \
   "$(jq -r '.teamsMode' <<<"$out")"
 
-out="$(interactive --width 3 --teams-mode explicit --workflows-available false --workflow-optin false --implementer-model sonnet)"
-check "explicit sonnet still selects team" "team" "$(jq -r '.rung' <<<"$out")"
+out="$(interactive LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 --width 3 --teams-mode explicit --workflows-available false --workflow-optin false --implementer-model sonnet)"
+check "explicit sonnet stays on bounded subagent path" "subagent" "$(jq -r '.rung' <<<"$out")"
 
 out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
   LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 4 --teams-mode implicit \
@@ -135,9 +144,10 @@ out="$(env -u LOOP_SPEC_EXECUTE_LOOPS -u LOOP_SPEC_NON_INTERACTIVE PATH="$WORK/b
 check "headless by entrypoint stamp: subagent rung" "subagent" "$(jq -r '.rung' <<<"$out")"
 
 out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
+  LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 \
   LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 08 --teams-mode implicit \
   --workflows-available true --workflow-optin true)"
-check "leading-zero width is decimal" "workflow" "$(jq -r '.rung' <<<"$out")"
+check "leading-zero width stays bounded" "subagent" "$(jq -r '.rung' <<<"$out")"
 
 # Configuration rejections exit 2 with stdout EMPTY and the message on stderr. The
 # EXECUTE relay must therefore read stderr: `jq` on empty stdin prints nothing, so a

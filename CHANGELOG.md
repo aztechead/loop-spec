@@ -4,6 +4,37 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.7.0] - 2026-09-16
+
+### Changed
+
+- Planning artifacts now use compact authored task blocks and indexed pattern citations;
+  the JSON task list is extracted once and a DAG table is not required.
+- SPEC and DISCUSS run read-only phase gates before approval and critique, while bounded
+  review paths avoid duplicate scans, transcript expansion, and prose-pruning dispatches.
+- Resource bounds default to serial heavy work and expose explicit finite caps for
+  larger deployments; teams and Workflow stay disabled under those finite caps.
+
+### Fixed
+
+- Planning now favors observable vertical slices with required behavior and tests,
+  while preserving greenfield scaffolding and explicit intent checkpoints.
+- Isolated EXECUTE session workers now receive an explicit commit and report contract;
+  single repository in place workers remain committed by the driver, while workspace
+  workers commit in their repository.
+- Empty reviewer ranges (`BASE == HEAD`) are rejected before reviewer dispatch, multiline
+  PLAN acceptance and interface text survives extraction, and HTML comment continuations
+  stay out of implementer briefs.
+- Runtime launcher files are excluded from clean tree routing checks while user authored
+  `.loop-spec` files remain conflicts. Checkpoint rescue pushes branch and state refs even
+  when `gh` is unavailable, then skips only the PR operation. Phase handoffs stop auto
+  immediately so reconciliation and nested launches cannot continue the old session.
+- Micro delivers through `lib/pr-delivery.sh` and records a verified commit pushed to a
+  hostless remote as `pushed-no-pr` (completed, not converged) instead of a failed
+  `delivery-blocked` run. A review routing the lead wrote past its bound (a `patch` over
+  10 lines, a `bad-spec` amendment to a frozen section) is one bounded REDO to reclassify,
+  not an escalation of a correct fix.
+
 ## [6.6.8] - 2026-09-16
 
 ### Fixed

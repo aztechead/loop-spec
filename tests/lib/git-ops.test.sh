@@ -59,6 +59,18 @@ check "E: detect-base-branch fallback 'main' when no origin" "main" "$got"
 got=$(bash "$LIB" ensure-clean-or-stash)
 check "F: ensure-clean-or-stash reports clean" "clean" "$got"
 
+# Launcher state is created before routing. It is runtime noise, while a user's
+# own .loop-spec file remains a real conflict signal.
+mkdir -p .loop-spec/launcher-123/sessions
+printf '{}\n' > .loop-spec/launcher-123/sessions/child.json
+printf '{}\n' > .loop-spec/runtime.json
+got=$(bash "$LIB" ensure-clean-or-stash)
+check "F1: launcher/runtime files do not create a conflict" "clean" "$got"
+printf 'user setting\n' > .loop-spec/user-notes.md
+got=$(bash "$LIB" ensure-clean-or-stash)
+check "F2: user .loop-spec files remain a conflict" "dirty" "$got"
+rm -rf .loop-spec
+
 # ensure-clean-or-stash on dirty tree
 echo y > a
 got=$(bash "$LIB" ensure-clean-or-stash)

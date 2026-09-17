@@ -79,6 +79,22 @@ async def main():
     out["skill_dir_is_cycle"] = bridge.environment_for(state)["LOOP_SPEC_SKILL_DIR"].endswith("/skills/cycle")
     out["legacy_skill_alias"] = bridge.environment_for(state)["CLAUDE_SKILL_DIR"] == bridge.environment_for(state)["LOOP_SPEC_SKILL_DIR"]
 
+    class SessionState:
+        def __init__(self, sid):
+            self.values = {"loop_spec:session_id": sid}
+        def get(self, key, default=None):
+            return self.values.get(key, default)
+        def __setitem__(self, key, value):
+            self.values[key] = value
+
+    state_a, state_b = SessionState("adk-a"), SessionState("adk-b")
+    env_a, env_b = bridge.environment_for(state_a), bridge.environment_for(state_b)
+    out["duck_state_ids"] = [env_a.get("LOOP_SPEC_SESSION_ID"), env_b.get("LOOP_SPEC_SESSION_ID")]
+    a, b = await asyncio.gather(
+        bridge.execute('printf %s "$LOOP_SPEC_SESSION_ID"', state_a),
+        bridge.execute('printf %s "$LOOP_SPEC_SESSION_ID"', state_b))
+    out["per_session_ids"] = [(a.get("stdout") or "").strip(), (b.get("stdout") or "").strip()]
+
     # An unknown skill name must not clobber the directory of the running skill.
     bridge.set_skill_dir("no-such-skill", state)
     out["unknown_skill_keeps_dir"] = bridge.environment_for(state)["LOOP_SPEC_SKILL_DIR"].endswith("/skills/cycle")
@@ -210,6 +226,8 @@ check "legacy skill alias remains available" "$(get legacy_skill_alias)" "True"
 check "unknown skill keeps prior dir" "$(get unknown_skill_keeps_dir)" "True"
 check "skill dir advances"            "$(get skill_dir_moves)" "True"
 check "concurrent session dirs isolate" "$(get session_skill_dirs)" "['cycle', 'deliver']"
+check "duck-typed state carries distinct ids" "$(get duck_state_ids)" "['adk-a', 'adk-b']"
+check "execute carries per-session ids" "$(get per_session_ids)" "['adk-a', 'adk-b']"
 check "shell pipes survive"           "$(get pipe)" "TRUE"
 check "command substitution survives" "$(get subshell)" "loop-spec"
 check "teams gated to none"           "$(get teams)" "none"

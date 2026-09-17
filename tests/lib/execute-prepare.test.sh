@@ -59,6 +59,17 @@ check "run: dispatch files are written" "2" "$(ls "$FD/dispatch" | grep -cE 'con
 check "run: the toolchain is probed once for the briefs" "1" "$(grep -c '^jq: jq-' "$FD/dispatch/environment.txt")"
 check "run: quoted pattern fragments are not probed as programs" "0" "$(grep -c 'apply\|\\b' "$FD/dispatch/environment.txt")"
 
+# A resumed process with no inherited cap uses the durable startup resource policy.
+runtime_file="$REPO/.loop-spec/runtime.json"
+runtime_saved="$(cat "$runtime_file")"
+jq '.resources={maxParallelSubagents:4,maxParallelImplementers:2}' "$runtime_file" > "$runtime_file.tmp"
+mv "$runtime_file.tmp" "$runtime_file"
+unset LOOP_SPEC_MAX_PARALLEL_SUBAGENTS LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS
+out="$(LOOP_SPEC_WORKTREES=1 bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
+check "resume: persisted subagent cap is restored" "4" "$(jq -r '.rung.maxParallelSubagents' <<<"$out")"
+check "resume: persisted implementer cap is restored" "2" "$(jq -r '.rung.maxParallelImplementers' <<<"$out")"
+printf '%s\n' "$runtime_saved" > "$runtime_file"
+
 # --- deferred opt-in baseline -----------------------------------------------------
 # The exact base is captured from a temporary detached worktree after design artifacts
 # exist, and the durable attempt marker prevents a re-entry from capturing again.
@@ -295,6 +306,9 @@ check "workspace: every repo is on the feature branch" "true" "$(jq -r '.branch.
 check "workspace: featureRoot is the workspace root" "$WS" "$(jq -r '.featureRoot' <<<"$out")"
 check "workspace: the packet carries the repos for execute-step" "fe:fe" "$(jq -r '.workspace.repos[] | "\(.name):\(.path)"' <<<"$out")"
 check "workspace: the rung is the one-shot subagent" "subagent" "$(jq -r '.rung.rung' <<<"$out")"
+out="$(LOOP_SPEC_WORKTREES=0 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=4 LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS=3 bash "$SCRIPT" run --feature-dir "$FDW" 2>/dev/null)"
+check "workspace: no-worktrees forces serial subagent cap" "1:1" \
+  "$(jq -r '(.rung.maxParallelSubagents | tostring) + ":" + (.rung.maxParallelImplementers | tostring)' <<<"$out")"
 check "single: the packet has no workspace" "null" "$(jq -r '.workspace' "$FD/dispatch/prepare.json")"
 
 echo "Results: $PASS passed, $FAIL failed"

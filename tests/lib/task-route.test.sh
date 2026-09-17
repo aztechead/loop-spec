@@ -17,6 +17,8 @@ git -C "$CLEAN_REPO" init -q
 git -C "$CLEAN_REPO" -c user.name=Test -c user.email=test@example.com commit --allow-empty -qm init
 mkdir -p "$CLEAN_REPO/.loop-spec/decisions-staging"
 touch "$CLEAN_REPO/.loop-spec/runtime.json" "$CLEAN_REPO/.loop-spec/decisions-staging/decision.jsonl"
+mkdir -p "$CLEAN_REPO/.loop-spec/launcher-123/sessions"
+touch "$CLEAN_REPO/.loop-spec/launcher-123/sessions/child.json" "$CLEAN_REPO/.loop-spec/invocation-stamp.json"
 git -C "$DIRTY_REPO" init -q
 git -C "$DIRTY_REPO" -c user.name=Test -c user.email=test@example.com commit --allow-empty -qm init
 touch "$DIRTY_REPO/uncommitted.txt"

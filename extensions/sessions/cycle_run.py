@@ -35,6 +35,8 @@ def main(argv):
     parser.add_argument("--max-invocations", type=int, default=16)
     parser.add_argument("--timeout", type=float, default=3600)
     args = parser.parse_args(argv)
+    if os.environ.get("LOOP_SPEC_SESSION_ID") and os.environ.get("LOOP_SPEC_NESTED_SESSION_GUARD", "1") != "0":
+        parser.error("refusing nested cycle launcher inside an active model session; return HANDOFF to the caller")
     if args.max_invocations < 1 or args.timeout <= 0:
         parser.error("--max-invocations and --timeout must be positive")
     root = Path(args.cwd).resolve()

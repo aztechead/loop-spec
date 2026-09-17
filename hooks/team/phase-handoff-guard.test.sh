@@ -11,7 +11,7 @@ check() {
   shift 3
   local actual=0
   # A real cycle in the calling checkout must not outrank the fixture.
-  env "$@" bash -c 'cd "$CLAUDE_PROJECT_DIR" && exec bash "$1"' _ "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual=$?
+  env -u LOOP_SPEC_SESSION_ID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID "$@" bash -c 'cd "$CLAUDE_PROJECT_DIR" && exec bash "$1"' _ "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual=$?
   if [[ "$actual" -eq "$expected" ]]; then
     echo "PASS: $name"
     ((PASS++)) || true
@@ -129,6 +129,59 @@ check "JSONL transcript: same-phase retry allowed" 0 "$JSONL_SAME" \
 rm -f "$ROOT/.loop-spec/last-result.json"
 check "LOOP_SPEC_SAME_SESSION=1 allows a non-sameSession edge too" 0 "$SECOND" \
   CLAUDE_PROJECT_DIR="$ROOT" LOOP_SPEC_SAME_SESSION=1
+
+# A real marker is assistant text and closes every later tool path in this
+# invocation, including Bash and Agent. Tool input that merely documents the
+# marker does not establish a handoff.
+MARKER='{"tool_name":"Bash","tool_input":{"command":"echo after"},"session_id":"session-a","transcript":[{"role":"assistant","content":[{"type":"text","text":"LOOP_SPEC_HANDOFF {\"next\":\"discuss\"}"}]}]}'
+check "premature handoff marker allows a later Bash tool" 0 "$MARKER" \
+  CLAUDE_PROJECT_DIR="$ROOT"
+TOOL_INPUT_MARKER='{"tool_name":"Agent","tool_input":{"prompt":"LOOP_SPEC_HANDOFF {\"next\":\"discuss\"}"},"session_id":"session-a","transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Agent","input":{"prompt":"LOOP_SPEC_HANDOFF {\"next\":\"discuss\"}"}}]}]}'
+check "marker in tool input does not deny Agent" 0 "$TOOL_INPUT_MARKER" \
+  CLAUDE_PROJECT_DIR="$ROOT"
+printf '%s\n' '{"schemaVersion":7,"currentPhase":"discuss","handoffSession":{"id":"session-a","from":"spec","next":"discuss","at":"2026-07-30T12:00:00Z"}}' > "$FDIR/feature.json"
+check "durable handoff denies same-session Agent" 2 \
+  '{"tool_name":"Agent","tool_input":{"description":"continue"},"session_id":"session-a","transcript":[]}' \
+  CLAUDE_PROJECT_DIR="$ROOT"
+check "durable handoff allows a fresh session" 0 \
+  '{"tool_name":"Bash","tool_input":{"command":"echo fresh"},"session_id":"session-b","transcript":[]}' \
+  CLAUDE_PROJECT_DIR="$ROOT"
+
+# Provider prose and a pretty-printed marker still correlate to the durable
+# same-session handoff, while the marker alone remains harmless.
+MULTILINE_MARKER='{"tool_name":"Bash","tool_input":{"command":"echo after"},"session_id":"session-a","transcript":[{"role":"assistant","content":[{"type":"text","text":"handoff follows:\nLOOP_SPEC_HANDOFF {\n  \"next\": \"discuss\"\n}"}]}]}'
+check "prefixed multiline marker denies durable same-session handoff" 2 "$MULTILINE_MARKER" \
+  CLAUDE_PROJECT_DIR="$ROOT"
+
+# Native adapters must preserve the same boundary for Bash and Agent. These calls
+# exercise hooks/pre-tool-guard.py rather than the shared hook directly.
+ADAPTER="$(cd "$(dirname "$HOOK")/.." && pwd)/pre-tool-guard.py"
+adapter_check() {
+  local name="$1" expected="$2" payload="$3" actual=0
+  (cd "$ROOT" && env -u LOOP_SPEC_SESSION_ID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID python3 "$ADAPTER") >/dev/null 2>&1 <<<"$payload" || actual=$?
+  if [[ "$actual" -eq "$expected" ]]; then
+    echo "PASS: $name"
+    ((PASS++)) || true
+  else
+    echo "FAIL: $name (expected exit $expected, got $actual)"
+    ((FAIL++)) || true
+  fi
+}
+adapter_check "native Bash adapter denies same-session handoff" 2 \
+  '{"tool_name":"Bash","tool_input":{"command":"echo after"},"cwd":"'"$ROOT"'","session_id":"session-a"}'
+adapter_check "native Agent adapter denies same-session handoff" 2 \
+  '{"tool_name":"Agent","tool_input":{"description":"continue"},"cwd":"'"$ROOT"'","session_id":"session-a"}'
+adapter_check "native Bash adapter allows fresh session" 0 \
+  '{"tool_name":"Bash","tool_input":{"command":"echo fresh"},"cwd":"'"$ROOT"'","session_id":"session-b"}'
+
+# Marker-like text from a user message or a tool result is not emitted protocol
+# output and must not close the invocation.
+check "user marker text does not deny a later Bash tool" 0 \
+  '{"tool_name":"Bash","tool_input":{"command":"echo after"},"transcript":[{"role":"user","content":"LOOP_SPEC_HANDOFF {\"next\":\"discuss\"}"}]}' \
+  CLAUDE_PROJECT_DIR="$ROOT"
+check "tool result marker text does not deny a later Bash tool" 0 \
+  '{"tool_name":"Bash","tool_input":{"command":"echo after"},"transcript":[{"role":"user","content":[{"type":"tool_result","content":"LOOP_SPEC_HANDOFF {\"next\":\"discuss\"}"}]}]}' \
+  CLAUDE_PROJECT_DIR="$ROOT"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

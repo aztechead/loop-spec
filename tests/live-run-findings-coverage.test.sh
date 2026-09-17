@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # Pins the contract lines the 2026-09-07 live headless cycle on tf-meldn showed were
 # missing (the 2026-09-07 tf-meldn runs): subagents get absolute template
-# paths, task sections are rendered from tasks.json, state changes name their command,
+# paths, authored task blocks extract once, state changes name their command,
 # the headless join is stated as fact, and the tool-boundary backstops are wired.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.sh"
 
 checks=(
-  $'skills/discuss/SKILL.md\tartifact-templates/PATTERNS.md.template'
-  $'skills/discuss/SKILL.md\tlib/feature-write.sh" set "$feature_dir" artifacts.patternsPrefetch'
+  $'skills/discuss/SKILL.md\tDo not prefetch or dispatch a second scan'
   $'skills/plan/SKILL.md\tartifact-templates/PATTERNS.md.template'
   $'skills/plan/SKILL.md\tartifact-templates/PLAN.md.template'
   $'agents/planner.md\ttemplate_path'
@@ -30,6 +29,17 @@ checks=(
   $'lib/dispatch-files.sh\tDo not read SPEC.md, PLAN.md, PATTERNS.md, or EVIDENCE.md'
   $'lib/execute-step.sh\t(.memberIds // [.id])[]'
   $'lib/execute-step.sh\tverifyCommand:$vc'
+  $'lib/execute-step.sh\tproviderStatus:(.status // null)'
+  $'lib/execute-step.sh\treason:"commit-missing"'
+  $'lib/dispatch-files.sh\t## No code changes'
+  $'lib/dispatch-files.sh\tverify the current tree against the task brief'
+  $'hooks/hooks.json\thooks/team/nested-session-guard.sh'
+  $'hooks/pre-tool-guard.py\t"nested-session-guard"'
+  $'hooks/team/nested-session-guard.sh\tpayload_launch'
+  $'extensions/sessions/cycle_run.py\trefusing nested cycle launcher'
+  $'tests/lib/cycle-launch.test.sh\tnested cycle launcher is rejected before child launch'
+  $'tests/lib/checkpoint-pr.test.sh\tgh not in NOGH_PATH'
+  $'tests/lib/cycle-driver-short-route.test.sh\tverification verdict'
   $'skills/shared/execute-subagent.md\tDo NOT run the task\'s verify command'
   $'skills/shared/execute-subagent.md\tDo not open SPEC.md, PLAN.md'
   $'agents/planner.md\tlib/task-batch.sh'
@@ -46,7 +56,7 @@ checks=(
   $'skills/cycle/SKILL.md\tDo not call `init` again'
   $'skills/shared/critique-gate-protocol.md\tthe lead does not inline it'
   $'skills/plan/SKILL.md\tplan-conflicts.sh" edges'
-  $'skills/shared/review-prompts/prose-pruning.md\tprose-lines'
+  $'skills/spec/SKILL.md\tDo not dispatch a prose-pruning reviewer'
   $'skills/shared/team-prompts/critic.md\tRead only the cited `EVID-NNN` rows'
   $'lib/graph/driver.py\theadless invocation; working in place'
   $'lib/checkpoint-pr.sh\tBlocked verification'

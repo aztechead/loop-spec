@@ -76,7 +76,8 @@ Print `[EXECUTE] DAG width W=<width> -> rung: <rung.rung> (<rung.reason>)`.
 Workspace mode always uses `subagent` and rejects `LOOP_SPEC_EXECUTE_LOOPS=1`.
 Use these operating parameters:
 
-- `maxParallelImplementers`: 3, reduced by `LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS` or `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS`. `LOOP_SPEC_WORKTREES=0` sets it to 1.
+- `maxParallelImplementers`: `.execute.rung.maxParallelImplementers` from the validated resource policy (serial by default; explicit operator caps may widen it). `LOOP_SPEC_WORKTREES=0` sets it to 1.
+- Pass this exact value to the selected subagent wave, loop-fleet `--parallel`, session dispatch, or Workflow `maxParallelImplementers`; do not recreate a default in the skill.
 - `maxRetriesPerTask`: `.execute.maxRetries`, from `lib/tuning.sh get executeMaxRetriesPerTask 6`.
 - Task worktree root: `.execute.worktreeBase`, resolved once by `lib/worktree-base.sh resolve`.
 

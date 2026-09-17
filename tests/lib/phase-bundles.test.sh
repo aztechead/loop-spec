@@ -21,6 +21,7 @@ git -C "$REPO" init -q -b main
 git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 export LOOP_SPEC_HARNESS=codex LOOP_SPEC_TEAMS_MODE=none LOOP_SPEC_WORKFLOWS_AVAILABLE=0 LOOP_SPEC_CHECKPOINT_PR=0 LOOP_SPEC_WORKTREES=0
+export LOOP_SPEC_SESSION_ID=phase-bundles-test
 unset LOOP_SPEC_AUTONOMOUS LOOP_SPEC_NON_INTERACTIVE
 cd "$REPO"
 bash "$DRV" start --dir "$REPO" -- my feature >/dev/null 2>&1

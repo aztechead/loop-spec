@@ -173,6 +173,11 @@ def merge_chain(tasks):
             head.setdefault("memberIds", [head.get("id")]).append(tail.get("id"))
             head["verifyCommand"] = "(%s) && (%s)" % (head["verifyCommand"], tail.get("verifyCommand"))
             head["acceptanceCriteria"] = list(head.get("acceptanceCriteria") or []) + list(tail.get("acceptanceCriteria") or [])
+            if tail.get("goal"):
+                head["goal"] = (head.get("goal") or "") + " Then " + tail["goal"]
+            if tail.get("expected") and tail["expected"] != head.get("expected"):
+                head["expected"] = "; ".join(x for x in (head.get("expected"), tail["expected"]) if x)
+            head["steps"] = list(head.get("steps") or []) + list(tail.get("steps") or [])
             head["brief"] = (head.get("brief") or head.get("subject") or "") + \
                 "\n\nThen %s (%s): %s" % (tail.get("id"), tail.get("subject") or "", tail.get("brief") or tail.get("subject") or "")
             merged_into[tail.get("id")] = head.get("id")
@@ -246,6 +251,13 @@ for key, members in groups.items():
     first = dict(members[0])
     first["files"] = seen
     first["memberIds"] = ids
+    for member in members[1:]:
+        first["acceptanceCriteria"] = list(first.get("acceptanceCriteria") or []) + list(member.get("acceptanceCriteria") or [])
+        if member.get("goal"):
+            first["goal"] = (first.get("goal") or "") + " Then " + member["goal"]
+        if member.get("expected") and member["expected"] != first.get("expected"):
+            first["expected"] = "; ".join(x for x in (first.get("expected"), member["expected"]) if x)
+        first["steps"] = list(first.get("steps") or []) + list(member.get("steps") or [])
     first["brief"] = (first.get("brief") or first.get("subject") or "") + \
         "\n\nBatch %s: apply the same change to every listed file." % key
     collapsible[key] = first

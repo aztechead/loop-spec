@@ -81,10 +81,6 @@ case "$cmd" in
       _skip "no 'origin' remote"
     fi
 
-    if ! command -v gh >/dev/null 2>&1; then
-      _skip "'gh' not on PATH"
-    fi
-
     repo_dir="$(pwd -P)"
     # The configured URL (`remote get-url` would expand url.<base>.insteadOf, which is
     # transport; the host probe reads the destination as the operator named it).
@@ -226,6 +222,12 @@ PY
       [[ "$push_rc" -eq 0 ]] || auth_skip "push failed for checkpoint head '${pr_head}'"
     fi
 
+    # Git branch/state rescue remains useful on machines without the GitHub CLI.
+    # Require gh only once the branch has been pushed and PR operations begin.
+    if ! command -v gh >/dev/null 2>&1; then
+      _skip "branch '${branch}' pushed; 'gh' not on PATH, so no PR was opened"
+    fi
+
     # A remote whose URL names no host (a path, file://) holds the pushed branch but
     # has no repository gh could open a PR on: stop as pushed, not as a gh failure.
     [[ -n "$remote_host" ]] || _skip "remote URL names no host: branch '${branch}' pushed, no PR target"
@@ -257,7 +259,7 @@ Reason: ${reason}"
         if [[ -n "$progress_tail" ]]; then
           pr_body="${pr_body}
 
-## Progress tail
+## Recent progress
 
 ${progress_tail}"
         fi

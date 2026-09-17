@@ -212,6 +212,10 @@ Usage:
 
 Every subcommand is idempotent on its inputs; reading state twice is free, writing
 it twice is the same write. harness-neutral: branches only via lib/harness.sh.
+
+Session identity: callers that cross a phase boundary must export a stable
+``LOOP_SPEC_SESSION_ID`` for the lifetime of that invocation. Native harness
+adapters inject this automatically; standalone callers must set it explicitly.
 """
 
 from __future__ import print_function
@@ -237,6 +241,7 @@ sys.path.insert(0, str(GRAPH_DIR))
 sys.path.insert(0, str(LIB_DIR))
 import engine  # noqa: E402
 import feature_read  # noqa: E402
+from session_identity import resolve_session_id  # noqa: E402
 
 GRAPH = os.environ.get("LOOP_SPEC_GRAPH") or str(REPO_ROOT / "graph" / "cycle.graph.json")
 EMPTY_COMMANDS = {"prepare": "", "test": "", "lint": "", "typecheck": ""}
@@ -342,17 +347,20 @@ def read_json(path, default=None):
 
 
 def session_id():
-    """The harness's id for this model session, or "" where the harness stamps none."""
-    return os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CLAUDE_SESSION_ID") or ""
+    """Resolve the one identity shared by the launcher, hooks, and driver.
+
+    LOOP_SPEC_SESSION_ID is deliberately first: adapters inject it from their
+    native payload into the shell that actually runs the driver. The Claude
+    names remain compatibility fallbacks for attended sessions.
+    """
+    return resolve_session_id()
 
 
 def handed_off_here(feat):
     """The handoff this same session produced, or None. A session that answered HANDOFF is
-    done: the next phase starts in a fresh invocation, and the driver holds that line
-    itself because the Skill-tool guard only sees Skill calls. A lead denied there read
-    the next phase's SKILL.md by hand and ran it in the session that had handed off.
-    Where the harness stamps no session id nothing can be compared, and the guard alone
-    stands."""
+    done: the next phase starts in a fresh invocation. The driver and tool guards
+    both require the same canonical identity, so an anonymous caller cannot consume
+    the record."""
     rec = feat.get("handoffSession")
     sid = session_id()
     if isinstance(rec, dict) and sid and rec.get("id") == sid:
@@ -472,9 +480,14 @@ def cmd_start(argv):
     else:
         print("cycle-driver: profile.json is invalid; running without it", file=sys.stderr)
 
-    max_parallel = os.environ.get("LOOP_SPEC_MAX_PARALLEL_SUBAGENTS") or ""
-    if max_parallel and not re.match(r"^[1-9][0-9]*$", max_parallel):
-        raise Die("LOOP_SPEC_MAX_PARALLEL_SUBAGENTS must be a positive integer.", 2)
+    resource_env = lib_run("resource-bounds", "env")
+    if resource_env.returncode != 0:
+        raise Die("resource bounds are invalid; startup cannot dispatch safely.", 2)
+    for line in resource_env.stdout.splitlines():
+        m = re.match(r"^export ([A-Za-z_][A-Za-z0-9_]*)=(.*)$", line)
+        if m:
+            os.environ[m.group(1)] = "".join(shlex.split(m.group(2)))
+
     # Every LOOP_SPEC_PHASE_MODEL_* / LOOP_SPEC_MODEL_* value is validated here; a bad
     # selector would fail at phase activation anyway, and later is worse.
     if lib_run("feature-init", "validate").returncode != 0:
@@ -715,6 +728,7 @@ def cmd_start(argv):
         "workflowsAvailable": pf["workflows"]["available"],
         "workflowExecuteOptIn": os.environ.get("LOOP_SPEC_EXECUTE_WORKFLOW") == "1",
         "workspaceMode": ws_mode, "workspaceRoot": ws_root, "workspaceRepos": repos,
+        "resources": json.loads(lib("resource-bounds", "resolve")),
     })
     with open(".loop-spec/runtime.json.tmp", "w", encoding="utf-8") as fh:
         json.dump(runtime, fh)
@@ -1301,6 +1315,17 @@ def cmd_next(argv):
     repo_root = lib("cycle-result", "resolve-root", os.path.join(feature_dir, "..", "..", ".."))
     os.chdir(repo_root)
 
+    # Do not consume an existing handoff marker on an anonymous invocation.
+    # It belongs to a fresh, identifiable session; leave it durable so the
+    # caller can retry after fixing harness propagation.
+    pending_handoff = feat.get("handoffSession")
+    if isinstance(pending_handoff, dict) and not session_id():
+        raise Die("cannot consume handoff without LOOP_SPEC_SESSION_ID; the harness must inject the native session id", 2)
+    # Every normal next call is an invocation boundary. Refuse before reading
+    # or consuming a handoff and before engine.step_once can mutate the graph.
+    if os.environ.get("LOOP_SPEC_SAME_SESSION") != "1" and not session_id():
+        raise Die("cannot advance without LOOP_SPEC_SESSION_ID (the harness must inject the native session id)", 2)
+
     handed = handed_off_here(feat)
     if handed is not None and returned != (handed.get("from") or ""):
         print(handoff_answer(feature_dir, handed))
@@ -1353,6 +1378,16 @@ def cmd_next(argv):
             recovery = review_recovery(feature_dir, returned)
         except (Die, OSError, ValueError) as exc:
             reason = exc.message if isinstance(exc, Die) else str(exc)
+            # A routing the lead wrote (a patch past its bound, an amendment to a frozen
+            # section) is the lead's to reclassify, bounded like any other REDO: the 6.7.0
+            # sonnet oneshot run escalated a correct 21-line review fix on this line.
+            if isinstance(exc, Die) and reason.startswith(("review patch:", "review bad-spec:")):
+                flags = ["FLAG [review-route] " + reason]
+                if count_redo(feature_dir, feat, returned, flags) < redo_max():
+                    lib("events", "emit", feature_dir, "redo", "--phase", returned,
+                        "--data", json.dumps({"flags": 1, "classes": {"review-route": 1}, "messages": flags}))
+                    print("REDO phase=%s flags=1\n%s" % (returned, flags[0]))
+                    return 0
             cmd_escalate(["--feature-dir", feature_dir, "--reason", "review recovery failed: " + reason], silent=True)
             print("DONE status=escalated reason=review-recovery-failed")
             return 0
@@ -1418,13 +1453,8 @@ def cmd_next(argv):
                 # The same flags three times is a gate the phase cannot satisfy, not a phase that
                 # needs one more try: the 6.2.0 haiku runs looped six times on one flag and then
                 # published an invented reason. Escalate with the flags as the reason instead.
-                redo_hash = hashlib.sha1("\n".join(flags).encode("utf-8")).hexdigest()[:12]
-                redo = feat.get("driverRedo") if isinstance(feat.get("driverRedo"), dict) else {}
-                redo_count = 1
-                if redo.get("phase") == returned and redo.get("hash") == redo_hash:
-                    redo_count = int(redo.get("count") or 1) + 1
-                fset(feature_dir, "driverRedo", {"phase": returned, "hash": redo_hash, "count": redo_count})
-                if redo_count >= int(os.environ.get("LOOP_SPEC_REDO_MAX") or 3):
+                redo_count = count_redo(feature_dir, feat, returned, flags)
+                if redo_count >= redo_max():
                     reason = "%s exit gate unsatisfied after %d attempts: %s" % (
                         returned, redo_count, "".join(f + " " for f in flags[:3]))
                     spath = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
@@ -1646,6 +1676,23 @@ def print_next(nxt, label, effort, feature_dir):
     if node_skill:
         print("EXT skill=%s" % node_skill)
     print("EXT instructions=%s sha256=%s" % (record["prompt"], record["promptSha256"]))
+
+
+def redo_max():
+    return int(os.environ.get("LOOP_SPEC_REDO_MAX") or 3)
+
+
+def count_redo(feature_dir, feat, phase, flags):
+    """Record one more REDO of `phase` on these exact flags and return the count so far;
+    different flags start over at 1. The same flags LOOP_SPEC_REDO_MAX times is a gate the
+    phase cannot satisfy (the 6.2.0 haiku runs looped six times on one flag)."""
+    redo_hash = hashlib.sha1("\n".join(flags).encode("utf-8")).hexdigest()[:12]
+    redo = feat.get("driverRedo") if isinstance(feat.get("driverRedo"), dict) else {}
+    count = 1
+    if redo.get("phase") == phase and redo.get("hash") == redo_hash:
+        count = int(redo.get("count") or 1) + 1
+    fset(feature_dir, "driverRedo", {"phase": phase, "hash": redo_hash, "count": count})
+    return count
 
 
 def review_recovery(feature_dir, phase):
@@ -1930,6 +1977,18 @@ def record_transition(feature_dir, phase, nxt, note, ws_mode):
     if phase == "deliver" and nxt != "execute":
         return None
 
+    same_session = os.environ.get("LOOP_SPEC_SAME_SESSION", "")
+    if same_session not in ("", "0", "1"):
+        raise Die("LOOP_SPEC_SAME_SESSION must be 0 or 1", 2)
+    graph_same = lib_run("graph/phases", "same-session", phase, nxt, quiet=True).returncode == 0
+
+    # An empty handoff id is an unowned lock. Refuse before writing progress,
+    # result, or feature state; a later invocation must never consume it.
+    if (nxt != "completed" and not nxt.startswith("human.") and nxt != phase
+            and same_session != "1" and not graph_same
+            and not session_id()):
+        raise Die("cannot advance to %s without LOOP_SPEC_SESSION_ID (the harness must inject the native session id)" % nxt, 2)
+
     fset(feature_dir, "updatedAt", now())
     progress = os.path.join(feature_dir, "PROGRESS.md")
     header = "" if os.path.isfile(progress) else "# Progress — %s\n" % slug
@@ -1951,9 +2010,6 @@ def record_transition(feature_dir, phase, nxt, note, ws_mode):
 
     if nxt == "completed" or nxt.startswith("human.") or nxt == phase:
         return None
-    same_session = os.environ.get("LOOP_SPEC_SAME_SESSION", "")
-    if same_session not in ("", "0", "1"):
-        raise Die("LOOP_SPEC_SAME_SESSION must be 0 or 1", 2)
     if same_session == "1":
         # The operator opted into one session end to end: the graph's sameSession
         # edges below are the default exception, this env makes every edge one
@@ -1964,7 +2020,7 @@ def record_transition(feature_dir, phase, nxt, note, ws_mode):
     # to end). It paid a session's fixed cost per phase for a two-line fix, and each session
     # loaded its whole context (port audit 1, F2; live run 2 paid the DELIVER
     # handoff). hooks/team/phase-handoff-guard.sh reads the same edge.
-    if lib_run("graph/phases", "same-session", phase, nxt, quiet=True).returncode == 0:
+    if graph_same:
         return None
     # One phase per session: the next phase starts in a fresh context whose whole ingress
     # is lib/phase-entry.sh. A rewind is a next phase the graph lists before this one.
@@ -2985,7 +3041,12 @@ def cmd_phase_begin(argv):
     if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
         usage()
     feature_dir = os.path.realpath(feature_dir)
-    handed = handed_off_here(state(feature_dir))
+    phase_state = state(feature_dir)
+    if (isinstance(phase_state.get("handoffSession"), dict)
+            and os.environ.get("LOOP_SPEC_SAME_SESSION") != "1"
+            and not session_id()):
+        raise Die("cannot begin phase without LOOP_SPEC_SESSION_ID; the harness must inject the native session id", 2)
+    handed = handed_off_here(phase_state)
     if handed is not None and phase != (handed.get("from") or ""):
         print("cycle-driver: this session handed off after %s; %s starts in a fresh invocation (%s)"
               % (handed.get("from"), phase, handoff_answer(feature_dir, handed)), file=sys.stderr)

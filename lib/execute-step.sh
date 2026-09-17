@@ -182,7 +182,11 @@ case "$cmd" in
       brief="$(lib dispatch-files brief --feature-dir "$feature_dir" --task-id "$task_id")" || { echo "execute-step: brief failed" >&2; exit 2; }
       cwd="$(sget '.worktree')"; [[ -n "$cwd" && "$cwd" != "null" ]] || cwd="$root"
       model="$(sget '.model')"; [[ -n "$model" && "$model" != "null" ]] || model="$(fget '.models.implementer // "inherit"')"
-      printf 'Implement the task in %s. The spec is %s. Write your report to %s.\n' "$brief" "$spec" "$report" > "$prompt"
+      if [[ "$in_place" == true && -z "$repo_name" ]]; then
+        printf 'Implement the task in %s. The spec is %s. Do not commit: the driver commits exactly the listed task files after your completion. Write your report to %s, and finish only after the implementation and report are complete.\n' "$brief" "$spec" "$report" > "$prompt"
+      else
+        printf 'Implement the task in %s. The spec is %s. In this task repository/worktree, run the requested verification, commit the completed task files, then write your report to %s. The completion contract is a committed HEAD plus the report; do not stop with only uncommitted edits.\n' "$brief" "$spec" "$report" > "$prompt"
+      fi
     else
       pkg="$(sget '.package')"
       [[ -n "$pkg" && "$pkg" != "null" ]] || { echo "execute-step: no review package for $task_id; run package first" >&2; exit 2; }
@@ -199,6 +203,19 @@ case "$cmd" in
     # A provider or transport fault is not an attempt: once more, then it is the answer.
     if [[ "$rc" -eq 4 || "$rc" -eq 5 ]]; then rc=0; line="$(launch)" || rc=$?; fi
     [[ "$rc" -le 1 || "$rc" -ge 4 ]] || { echo "execute-step: the session runner refused the launch (exit $rc): $line" >&2; exit 2; }
+    # Worktree and workspace implementers own the commit. A successful provider
+    # response with an unchanged HEAD is incomplete, even when its report says done.
+    if [[ "$role" == "implementer" && ( "$in_place" != "true" || -n "$repo_name" ) && "$rc" -eq 0 ]]; then
+      before_sha="$(sget '.taskBaseSha')"
+      after_sha="$(git -C "$cwd" rev-parse HEAD 2>/dev/null || true)"
+      if [[ -z "$before_sha" || "$before_sha" == "null" || -z "$after_sha" || "$before_sha" == "$after_sha" ]]; then
+        jq -c --arg role "$role" --arg prompt "$prompt" --argjson providerExit "$rc" \
+          '. + {providerStatus:(.status // null),status:"failed",reason:"commit-missing",detail:"implementer session completed without advancing HEAD from taskBaseSha",role:$role,prompt:$prompt,providerExit:$providerExit}' \
+          <<<"${line:-{\}}" 2>/dev/null || jq -cn --arg role "$role" --arg prompt "$prompt" --argjson providerExit "$rc" \
+          '{providerStatus:null,status:"failed",reason:"commit-missing",detail:"implementer session completed without advancing HEAD from taskBaseSha",role:$role,prompt:$prompt,providerExit:$providerExit}'
+        exit 1
+      fi
+    fi
     jq -c --arg role "$role" --arg prompt "$prompt" '. + {role:$role, prompt:$prompt}' <<<"${line:-{\}}"
     exit "$(( rc == 0 ? 0 : 1 ))"
     ;;

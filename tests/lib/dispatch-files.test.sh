@@ -27,10 +27,13 @@ cat > "$FDIR/tasks.json" <<'EOF'
     "id": "task-001",
     "subject": "rename foo",
     "brief": "Rename foo to bar in one file.",
+    "goal": "A caller can use bar.",
     "files": ["src/foo.sh"],
     "blockedBy": [],
     "verifyCommand": "bash -n src/foo.sh",
+    "expected": "syntax check passes",
     "acceptanceCriteria": ["foo is gone"],
+    "steps": ["Add the rename", "Run the check"],
     "interfaces": {"consumes": "none", "produces": "bar"},
     "batchGroup": "rename-foo"
   }
@@ -49,8 +52,38 @@ grep -q "rename foo" "$brief" && r=ok || r=missing
 check "brief carries subject" "ok" "$r"
 grep -q "src/foo.sh" "$brief" && r=ok || r=missing
 check "brief carries files" "ok" "$r"
+grep -q "A caller can use bar." "$brief" && r=ok || r=missing
+check "brief carries goal" "ok" "$r"
+grep -q "Expected: syntax check passes" "$brief" && r=ok || r=missing
+check "brief carries expected result" "ok" "$r"
+grep -q -- "- Run the check" "$brief" && r=ok || r=missing
+check "brief carries steps" "ok" "$r"
 grep -q "Produces: bar" "$brief" && r=ok || r=missing
 check "brief carries interfaces" "ok" "$r"
+
+# The brief must carry fields produced by PLAN extraction, not only fields hand-built
+# by a caller. This catches loss between the durable Markdown artifact and dispatch.
+cat > "$FDIR/PLAN.md" <<'EOF'
+## Tasks
+### task-001: extracted task
+**Goal:** caller gains the extracted capability
+**Files:**
+- src/extracted.sh
+**Verify:** `true` -> passes
+**Acceptance criteria:**
+- [ ] extracted criterion
+**Steps:**
+- [ ] extracted step
+**BlockedBy:** []
+EOF
+bash "$ROOT/lib/plan-tasks.sh" extract "$FDIR/PLAN.md" > "$FDIR/tasks.json"
+brief_extracted=$(bash "$SCRIPT" brief --feature-dir "$FDIR" --task-id task-001)
+grep -q "caller gains the extracted capability" "$brief_extracted" && r=ok || r=missing
+check "brief carries extracted goal" "ok" "$r"
+grep -q -- "- extracted step" "$brief_extracted" && r=ok || r=missing
+check "brief carries extracted steps" "ok" "$r"
+grep -q "Expected: passes" "$brief_extracted" && r=ok || r=missing
+check "brief carries extracted expected result" "ok" "$r"
 
 # artifact-lint accepts an array for consumes/produces; the brief is prose an
 # implementer reads, so an array joins instead of printing raw JSON.
@@ -108,6 +141,16 @@ check "package lists changed files" "ok" "$r"
 grep -q "^## Diff$" "$pkg" && r=ok || r=missing
 check "package includes the diff" "ok" "$r"
 
+git -C "$REPO" commit --allow-empty -qm "feat: NO_JIRA verified no change"
+EMPTY_HEAD=$(git -C "$REPO" rev-parse HEAD)
+pkg_empty=$(bash "$SCRIPT" package --repo "$REPO" --base "$HEAD_SHA" --head "$EMPTY_HEAD" --out "$FDIR/dispatch/no-code-change.md")
+check "package permits a distinct empty commit" "$FDIR/dispatch/no-code-change.md" "$pkg_empty"
+check "package labels a distinct empty commit for review" "1" "$(grep -c '^## No code changes$' "$pkg_empty")"
+check "package requires verification for a no-code-change commit" "1" "$(grep -c 'verify the current tree against the task brief' "$pkg_empty")"
+
+ec=0; bash "$SCRIPT" package --repo "$REPO" --base "$BASE" --head "$BASE" --out "$FDIR/dispatch/empty.md" >/dev/null 2>&1 || ec=$?
+check "package rejects head equal to recorded base" "2" "$ec"
+
 echo ""
 
 # The brief carries the slices an implementer used to read four artifacts for, and a
@@ -115,13 +158,16 @@ echo ""
 SL="$WORK/sliced"; mkdir -p "$SL"; git -C "$SL" init -q
 mkdir -p "$SL/.loop-spec/features/demo/dispatch" "$SL/docs/loop-spec/features/demo"
 printf '{"slug":"demo","artifacts":{"plan":"docs/loop-spec/features/demo/PLAN.md"}}' > "$SL/.loop-spec/features/demo/feature.json"
-printf '# Plan\n\n## Global constraints\n\n<!-- c -->\n- Never run apply.\n\n## File map\n\n- x\n' > "$SL/docs/loop-spec/features/demo/PLAN.md"
+printf '# Plan\n\n## Global constraints\n\n<!-- c\nthis hidden continuation must not leak\n-->\n- Never run apply. <!-- inline reason -->\nVisible constraint continuation.\nVisible before <!-- hidden --> visible after.\n\n## File map\n\n- x\n' > "$SL/docs/loop-spec/features/demo/PLAN.md"
 printf '# Evidence\n\n- EVID-001 | t | claim: tofu 1.12 | cmd: tofu version | out: 1.12.6\n- EVID-010 | t | claim: ten | cmd: x | out: y\n' > "$SL/docs/loop-spec/features/demo/EVIDENCE.md"
 printf '[{"id":"task-001","subject":"s","brief":"per EVID-001 keep it","files":["a"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["x"]}]' > "$SL/.loop-spec/features/demo/tasks.json"
 printf '[{"id":"task-001","subject":"s","brief":"per EVID-001 keep it; merged","files":["a","b"],"memberIds":["task-001","task-002"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["x"]}]' > "$SL/.loop-spec/features/demo/dispatch/tasks-collapsed.json"
 printf 'tofu: OpenTofu v1.12.6\n' > "$SL/.loop-spec/features/demo/dispatch/environment.txt"
 sliced="$(bash "$SCRIPT" brief --feature-dir "$SL/.loop-spec/features/demo" --task-id task-001)"
 check "brief inlines Global constraints verbatim" "1" "$(grep -c '^- Never run apply.$' "$sliced")"
+check "brief drops multiline HTML comment continuation" "0" "$(grep -c 'hidden continuation must not leak' "$sliced" || true)"
+check "brief keeps visible constraint continuation" "1" "$(grep -c '^Visible constraint continuation.$' "$sliced")"
+check "brief preserves visible text around inline HTML comment" "1" "$(grep -c '^Visible before  visible after.$' "$sliced")"
 check "brief drops the template comment" "0" "$(grep -c '<!--' "$sliced")"
 check "brief carries only the cited EVID rows" "1,0" "$(grep -c '^- EVID-001 ' "$sliced"),$(grep -c 'EVID-010' "$sliced")"
 check "brief carries the lead's environment facts" "1" "$(grep -c '^tofu: OpenTofu v1.12.6$' "$sliced")"

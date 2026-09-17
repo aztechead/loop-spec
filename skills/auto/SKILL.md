@@ -182,8 +182,18 @@ which delivers work no caller can see.
 The routed skill publishes `.loop-spec/last-result.json`. Confirm it did, because a run
 that ends without one reads as a failure to every headless caller:
 
+If the delegated cycle answered `HANDOFF` or wrote a paused `phase-handoff`, stop this
+invocation immediately. Do not run reconciliation, launch another cycle, or invoke the
+next phase from this session; the supervisor resumes `/loop-spec:cycle` in a fresh phase
+invocation. The check below is only for a route that returned without a handoff.
+
 ```bash
 repo_root="$(git rev-parse --show-toplevel)"
+if jq -e '.status == "paused" and .reason == "phase-handoff"' \
+    "$repo_root/.loop-spec/last-result.json" >/dev/null 2>&1; then
+  printf '%s\n' 'The delegated cycle returned a phase handoff. Stop this invocation here; the supervisor or a fresh /loop-spec:cycle invocation owns the next phase.'
+  exit 0
+fi
 bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-reconcile.sh" --result-root "$repo_root" \
   --reason "routed skill ended without emitting a terminal result"
 ```

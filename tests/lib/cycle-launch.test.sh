@@ -17,6 +17,17 @@ import tempfile
 plugin = Path(sys.argv[1])
 with tempfile.TemporaryDirectory() as temp:
     base = Path(temp)
+    nested = base / "nested"
+    (nested / ".loop-spec").mkdir(parents=True)
+    nested_prompt = nested / "task.txt"
+    nested_prompt.write_text("task")
+    blocked = subprocess.run(
+        [sys.executable, str(plugin / "extensions/sessions/cycle_run.py"), "--profile", "codex",
+         "--cwd", str(nested), "--prompt-file", str(nested_prompt)],
+        env=dict(os.environ, LOOP_SPEC_SESSION_ID="parent-session"),
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    assert blocked.returncode == 2 and "nested cycle launcher" in blocked.stderr
+    print("PASS: nested cycle launcher is rejected before child launch")
     profiles = base / "profiles"
     profiles.mkdir()
     fake = base / "fake.py"

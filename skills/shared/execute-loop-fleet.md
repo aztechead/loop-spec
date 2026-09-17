@@ -87,6 +87,8 @@ every worker).
 ### 3. Run the fleet
 
 ```bash
+# maxParallelImplementers is `.execute.rung.maxParallelImplementers`, resolved by
+# resource-bounds.sh at startup. The DAG width only reduces that effective cap.
 parallel=$(( W < maxParallelImplementers ? W : maxParallelImplementers ))
 worker_model="{feature.models.implementer}"
 supervisor_args=(

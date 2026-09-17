@@ -27,9 +27,9 @@ flowchart LR
     user([User]) -->|"Skill(loop-spec:cycle)"| cycle[cycle skill<br/>orchestrator]
     cycle -->|"health-check + style"| init[feature.json<br/>schema v7]
     init --> spec[SPEC phase<br/>main-thread interview]
-    spec -->|SPEC.md + unresolved_questions| discuss[DISCUSS team<br/>grill + challenger]
+    spec -->|SPEC.md + unresolved_questions| discuss[DISCUSS design evaluation<br/>+ challenger]
     discuss -->|SPEC.md| plan[PLAN team<br/>planner + challenger]
-    plan -->|PLAN.md + task DAG| execute[EXECUTE team<br/>lead + N implementers + R reviewers]
+    plan -->|PLAN.md task blocks + tasks.json| execute[EXECUTE team<br/>lead + bounded implementers + reviewers]
     execute -->|merged commits on feat/&lcub;slug&rcub;| verify[VERIFY team<br/>verifier + code-reviewer]
     verify -->|VERIFICATION.md| iterate[ITERATE<br/>goal judge]
     iterate -->|terminal verdict| deliver[DELIVER<br/>exact SHA + required checks]
@@ -164,7 +164,6 @@ docs/loop-spec/                          # committed
 │   ├── feature.json (+ .bak)             # schema v7, atomic writes
 │   ├── PROGRESS.md                       # phase-transition journal
 │   ├── spec-interview-transcript.md
-│   ├── discuss-transcript.md
 │   ├── loop-plan.json                    # loop-fleet compiled plan
 │   ├── result.json / events.jsonl        # machine-readable run contract
 │   └── gate-logs/                        # critique-gate round transcripts
@@ -233,7 +232,7 @@ Three open-source projects shaped this one:
 
 Positions the codebase takes:
 
-- Deterministic predicates for autonomous decisions. Anything that decides whether the loop may act without a human is a unit-tested script (`autonomous-chain.sh`, `trust.sh`, `test-tamper-scan.sh`, `grounding-lint.sh`, `artifact-lint.sh`), never prose in a skill. Phase artifacts (SPEC.md, PLAN.md, PATTERNS.md, VERIFICATION.md, the tasks[] handoff JSON) are structurally linted at the PRODUCING phase's exit, so the next phase never spends cycles repairing a misformatted handoff — and PLAN persists its gate-validated tasks[] as machine-readable `tasks.json` that EXECUTE consumes directly instead of re-parsing markdown prose. Telemetry and accelerator hooks fail open; authority checks fail closed.
+- Deterministic predicates for autonomous decisions. Anything that decides whether the loop may act without a human is a unit-tested script (`autonomous-chain.sh`, `trust.sh`, `test-tamper-scan.sh`, `grounding-lint.sh`, `artifact-lint.sh`), never prose in a skill. Phase artifacts (SPEC.md, PLAN.md, PATTERNS.md, VERIFICATION.md, and extracted `tasks.json`) are structurally linted at the producing phase's exit, so the next phase does not repair a misformatted handoff. Telemetry and accelerator hooks fail open; authority checks fail closed.
 - Bounded everything. 3 retries per gate, 40 global, 10 iterations, cooldowns on sentinel picks, wall-clock watchdogs on phases. The cycle ships or escalates; it does not loop forever.
 - Maker/checker separation. The iterate judge is never the agent that did the work, verify workers cannot edit the spec they are verified against, and trust is computed from git/CI facts rather than self-reports.
 - As little code as possible ("the ponytail ladder", `skills/shared/laziness-ladder.md`): before writing, stop at the first rung that holds — YAGNI, DRY, stdlib, native, installed dep, one line, the minimum that works. Rung 1 is countable only after writing, so `lib/indirection-scan.sh` checks the changed files for small private single-caller helpers. Rung 2 uniquely requires the rest of the tree because it asks whether something already exists somewhere the run has never looked; a run that never opens the file holding the helper concludes honestly that it does not exist. "Search the tree first" was in the directive from the beginning and second copies shipped anyway, so the rung is measured rather than exhorted: `lib/duplication-scan.sh scan <files>` names each duplicated block and the file it already lives in, and `diff <base> [head]` reports only clones a change introduced, so a reviewer sees this author's duplication rather than the repository's standing debt. It matches at two tiers, and the second is the reason it works on produced code: `duplicate=` is the same lines verbatim, `similar=` is the same lines with every identifier and literal replaced. An agent writing `orders.ts` beside `users.ts` emits the same twelve lines with one noun swapped throughout, which a verbatim matcher reports clean — a DRY probe blind to that passes exactly the diffs it exists to catch. The shape tier is fenced to stay usable: a wider window, rejection of windows whose own lines are mostly identical (a table of uniform rows otherwise matches a shifted copy of itself at every offset), and suppression of shape findings overlapping a verbatim one. It reads code only and skips generated files and marked generated regions. Findings carry file:line and therefore block at VERIFY (`dry:`) on the same rule as the other probes. What the probe cannot decide stays judgment: duplication is one *reason to change* expressed twice, so blocks that merely resemble each other are reported and left apart. Enforced by `tests/ponytail-coverage.test.sh`.

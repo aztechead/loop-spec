@@ -168,6 +168,14 @@ case "$cmd" in
     # place, it made the next cycle in the same checkout refuse to start.
     if ! status_output="$("${G[@]}" status --porcelain --untracked-files=all -- . \
       ':(top,exclude).loop-spec/runtime.json' \
+      ':(top,exclude).loop-spec/active-run.json' \
+      ':(top,exclude).loop-spec/last-result.json' \
+      ':(top,exclude).loop-spec/launcher-result.json' \
+      ':(top,exclude).loop-spec/launcher.lock' \
+      ':(top,exclude).loop-spec/launcher-*/**' \
+      ':(top,exclude).loop-spec/invocation-stamp.json' \
+      ':(top,exclude).loop-spec/sessions/**' \
+      ':(top,exclude).loop-spec/results/**' \
       ':(top,exclude).loop-spec/decisions-staging/**' \
       ':(top,exclude).claude/agent-memory/**')"; then
       printf 'dirty\n'

@@ -194,19 +194,19 @@ check "VERIFY allowed-tools omit AskUserQuestion" "$v"
 grep -E '^allowed-tools:' skills/deliver/SKILL.md | grep -q AskUserQuestion && v=0 || v=1
 check "DELIVER allowed-tools omit AskUserQuestion" "$v"
 
-# 8c) Live /cycle: bash sleep-polls (120s PATTERNS join, 600s map bootstrap)
-#     froze the session between DISCUSS and PLAN. Check once, then fallback.
+# 8c) Live /cycle: speculative PATTERNS prefetch and sleep-polls consumed the design
+#     budget. The compact contract has one planner-owned scan and no placeholder wait.
 grep -qF 'Never `sleep` to join a background Agent' \
   skills/shared/dispatch.md && v=1 || v=0
 check "contract doc forbids sleep-poll joins" "$v"
 bad=$(grep -rnE 'sleep \$interval' skills --include='*.md' || true)
 check "no sleep-poll join of background Agents" \
   "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
-grep -qF 'check once' skills/plan/SKILL.md \
-  && grep -qiF 'never sleep' skills/plan/SKILL.md \
-  && grep -qiF 'Do not sleep' skills/discuss/SKILL.md \
+grep -qF 'Do not prefetch' skills/plan/SKILL.md \
+  && grep -qF 'Do not prefetch' skills/discuss/SKILL.md \
+  && ! grep -qF 'check once' skills/plan/SKILL.md \
   && v=1 || v=0
-check "PLAN prefetch and DISCUSS bootstrap join without sleep" "$v"
+check "PLAN and DISCUSS avoid speculative prefetch and placeholder waits" "$v"
 
 # 9) For every SendMessage({ occurrence, the 4-line window must NOT contain body:
 #    (dispatch.md excluded — it documents the invalid param).

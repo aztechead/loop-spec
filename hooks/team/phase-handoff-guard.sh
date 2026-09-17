@@ -22,8 +22,16 @@ command -v python3 &>/dev/null || exit 0
 INPUT=$(cat)
 # The phase ids come from the graph (lib/graph/phases.sh); an unreadable graph leaves
 # the alternation empty and the guard matches nothing, which is the fail-open side.
-LOOP_SPEC_PHASE_ALT="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/phases.sh" regex 2>/dev/null || true)"
+TOOL_NAME=$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_name") or "")' 2>/dev/null || echo "")
+LOOP_SPEC_PHASE_ALT=""
+if [[ "$TOOL_NAME" == "Skill" ]]; then
+  LOOP_SPEC_PHASE_ALT="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/phases.sh" regex 2>/dev/null || true)"
+fi
 export LOOP_SPEC_PHASE_ALT
+IDENTITY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/session_identity.py"
+SESSION_ID=$(LOOP_SPEC_IDENTITY_INPUT="$INPUT" python3 "$IDENTITY_HELPER" 2>/dev/null || echo "")
+# simplicity: retain four-space Python indentation inside this shell boundary; extract
+# a standalone reader only if the parser becomes shared by another hook.
 PARSED=$(printf '%s' "$INPUT" | python3 -c '
 import json
 import os
@@ -45,13 +53,13 @@ except Exception:
     print(json.dumps({"valid": False}))
     raise SystemExit(0)
 
-if str(payload.get("tool_name") or "") != "Skill":
-    print(json.dumps({"valid": True, "target": "", "prior": []}))
-    raise SystemExit(0)
-
-target = phase_name((payload.get("tool_input") or {}).get("skill"))
+target = phase_name((payload.get("tool_input") or {}).get("skill")) \
+    if str(payload.get("tool_name") or "") == "Skill" else ""
 prior = []
-transcript_path = str(payload.get("transcript_path") or "")
+# Only a phase Skill call needs the prior-phase list; every other tool call
+# skips the transcript parse, which grows with the session.
+transcript_path = str(payload.get("transcript_path") or "") if target else ""
+contents, results = [], []
 if transcript_path and os.path.isfile(transcript_path):
     try:
         with open(transcript_path) as stream:
@@ -71,7 +79,7 @@ if transcript_path and os.path.isfile(transcript_path):
         ]
     except Exception:
         contents, results = [], []
-else:
+elif target:
     contents = [
         entry.get("content") or []
         for entry in (payload.get("transcript") or [])
@@ -113,9 +121,9 @@ print(json.dumps({"valid": True, "target": target, "prior": prior}))
 ' 2>/dev/null || echo "")
 
 [[ -n "$PARSED" ]] || exit 0
+# Durable feature state, rather than model formatting, is the handoff authority.
 TARGET=$(printf '%s' "$PARSED" | python3 -c \
   'import json,sys; print(json.load(sys.stdin).get("target",""))' 2>/dev/null || echo "")
-[[ -n "$TARGET" ]] || exit 0
 
 FEATURE_DIR=$(LOOP_SPEC_PROJECT_DIR="$PROJECT_DIR" LOOP_SPEC_PWD="$PWD" python3 -c '
 import json
@@ -155,6 +163,25 @@ else:
     print(json.dumps({"path": str(path), "phase": phase}))
 ' 2>/dev/null || echo "")
 [[ -n "$FEATURE_DIR" ]] || exit 0
+
+if [[ -n "$SESSION_ID" ]]; then
+  SAME_HANDOFF=$(LOOP_SPEC_SESSION="$SESSION_ID" python3 -c '
+import json, os, sys
+try:
+    descriptor = json.load(sys.stdin)
+    state = json.load(open(os.path.join(descriptor["path"], "feature.json")))
+    record = state.get("handoffSession")
+except (OSError, KeyError, TypeError, ValueError):
+    record = None
+print("1" if isinstance(record, dict) and record.get("id") == os.environ.get("LOOP_SPEC_SESSION") else "0")
+' <<<"$FEATURE_DIR" 2>/dev/null || echo "0")
+  if [[ "$SAME_HANDOFF" == "1" ]]; then
+    echo "DENY: this session already answered a phase handoff; stop and let the caller start the next phase." >&2
+    exit 2
+  fi
+fi
+
+[[ -n "$TARGET" ]] || exit 0
 
 PRIOR=$(printf '%s' "$PARSED" | python3 -c \
   'import json,sys; p=json.load(sys.stdin).get("prior") or []; print(p[-1] if p else "")' \

@@ -82,6 +82,10 @@ if profile_findings="$(bash "$SCRIPT_DIR/profile.sh" validate 2>&1 >/dev/null)";
 else
   warnings+=("profile: ${profile_findings//$'\n'/; } — running on the environment alone")
 fi
+# Apply the validated profile-aware bounds for every capability probe below.
+resources_json="$(bash "$SCRIPT_DIR/resource-bounds.sh" resolve)" || exit $?
+resources_env="$(bash "$SCRIPT_DIR/resource-bounds.sh" env)" || exit $?
+eval "$resources_env"
 store_line="$(bash "$SCRIPT_DIR/supervisor/store.sh" describe 2>&1)" \
   || warnings+=("store: $store_line")
 store_name="${store_line#store=}"; store_name="${store_name%% *}"
@@ -290,6 +294,7 @@ jq -cn \
   --argjson warnings "$warnings_json" \
   --argjson profile "$profile_json" \
   --arg store "$store_name" \
+  --argjson resources "$resources_json" \
   '{workspace: $workspace,
     harness: {name: $harness},
     profile: {preset: $profile.preset, source: $profile.source},
@@ -297,6 +302,7 @@ jq -cn \
     execution: {entrypoint: $entrypoint, headless: $headless},
     teams: {mode: $teams_mode, available: $teams_available},
     workflows: {available: $wf},
+    resources: $resources,
     backlog: {count: $backlog},
     resume: {candidates: $candidates, skipped: $skipped},
     warnings: $warnings}'

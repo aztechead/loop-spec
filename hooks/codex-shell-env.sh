@@ -14,6 +14,7 @@ set -euo pipefail
 trap 'exit 0' ERR
 
 PLUGIN_ROOT="${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}}"
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 input=""
 if [ ! -t 0 ]; then
@@ -26,10 +27,12 @@ trap 'rm -f "$stdin_file"; exit 0' EXIT ERR
 printf '%s' "$input" > "$stdin_file"
 
 # Heredoc would steal stdin from the JSON payload; read it from the temp file.
-python3 - "$PLUGIN_ROOT" "$stdin_file" <<'PY'
+python3 - "$PLUGIN_ROOT" "$SCRIPT_ROOT" "$stdin_file" <<'PY'
 import json, os, shlex, sys
+sys.path.insert(0, os.path.join(sys.argv[2], "lib"))
+from session_identity import resolve_session_id
 
-plugin_root, path = sys.argv[1], sys.argv[2]
+plugin_root, script_root, path = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
     with open(path, encoding="utf-8") as fh:
         payload = json.load(fh)
@@ -44,6 +47,10 @@ command = tool_input.get("command")
 if not isinstance(command, str) or not command.strip():
     raise SystemExit(0)
 
+cwd = payload.get("cwd") or os.getcwd()
+skill_dir = (os.environ.get("LOOP_SPEC_SKILL_DIR") or os.environ.get("CLAUDE_SKILL_DIR")
+             or os.path.join(plugin_root, "skills", "cycle"))
+session_id = resolve_session_id(payload=payload)
 required = (
     "LOOP_SPEC_HARNESS=codex",
     "CLAUDE_PLUGIN_ROOT=",
@@ -51,14 +58,13 @@ required = (
     "LOOP_SPEC_SKILL_DIR=",
     "CLAUDE_SKILL_DIR=",
 )
-if all(item in command for item in required):
+canonical = "LOOP_SPEC_SESSION_ID=" + shlex.quote(str(session_id)) if session_id else ""
+if all(item in command for item in required) and (not canonical or canonical in command):
     raise SystemExit(0)
 
-cwd = payload.get("cwd") or os.getcwd()
-skill_dir = (os.environ.get("LOOP_SPEC_SKILL_DIR") or os.environ.get("CLAUDE_SKILL_DIR")
-             or os.path.join(plugin_root, "skills", "cycle"))
 prefix = " ".join((
     "export LOOP_SPEC_HARNESS=codex",
+    ("LOOP_SPEC_SESSION_ID=" + shlex.quote(str(session_id))) if session_id else "",
     "CLAUDE_PLUGIN_ROOT=" + shlex.quote(plugin_root),
     "CLAUDE_PROJECT_DIR=" + shlex.quote(cwd),
     "LOOP_SPEC_SKILL_DIR=" + shlex.quote(skill_dir),

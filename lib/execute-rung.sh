@@ -54,16 +54,13 @@ loops_available="false"
 [[ "$cli_available" == "true" && "$loop_runtime" == "true" ]] && loops_available="true"
 loops_optin="${LOOP_SPEC_EXECUTE_LOOPS:-auto}"
 case "$loops_optin" in 0|1|auto) ;; *) loops_optin="auto" ;; esac
-subagent_cap="${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}"
-if [[ -n "$subagent_cap" ]]; then
-  [[ "$subagent_cap" =~ ^[1-9][0-9]*$ ]] || {
-    echo "execute-rung: LOOP_SPEC_MAX_PARALLEL_SUBAGENTS must be a positive integer" >&2
-    exit 2
-  }
-  teams_mode="none"
-  workflows_available="false"
-  loops_optin="0"
-fi
+subagent_cap="$(bash "$SCRIPT_DIR/resource-bounds.sh" get subagents)" || exit $?
+implementer_cap="$(bash "$SCRIPT_DIR/resource-bounds.sh" get implementers)" || exit $?
+# Teams and Workflow cannot enforce the finite cap. Keep their persistent
+# fan-out disabled for every cap; one-shot dispatch owns the bounded waves.
+teams_mode="none"
+workflows_available="false"
+[[ "$implementer_cap" == 1 && "$loops_optin" == auto ]] && loops_optin="0"
 worktrees_enabled="${LOOP_SPEC_WORKTREES:-1}"
 case "$worktrees_enabled" in
   0|1) ;;
@@ -72,6 +69,13 @@ case "$worktrees_enabled" in
     exit 2
     ;;
 esac
+if [[ "$worktrees_enabled" == "0" ]]; then
+  subagent_cap=1
+  implementer_cap=1
+  teams_mode="none"
+  workflows_available="false"
+  [[ "$loops_optin" == auto ]] && loops_optin="0"
+fi
 worktrees_json=true
 [[ "$worktrees_enabled" == "1" ]] || worktrees_json=false
 
@@ -179,6 +183,7 @@ fi
 
 jq -cn --arg rung "$rung" --argjson width "$width" --arg reason "$reason" \
   --arg teamsMode "$teams_mode" --argjson subagents "$subagents" \
+  --arg implementerCap "$implementer_cap" \
   --arg cli "$agent_cli" --argjson cliAvailable "$cli_available" \
   --argjson loopRuntime "$loop_runtime" --arg loopRuntimeReason "$loop_runtime_reason" \
   --arg loopOptIn "$loops_optin" --argjson worktreesEnabled "$worktrees_json" \
@@ -186,7 +191,8 @@ jq -cn --arg rung "$rung" --argjson width "$width" --arg reason "$reason" \
   --arg sessionLayer "$session_layer" --arg sessionLayerReason "$session_layer_reason" \
   '{rung:$rung,width:$width,reason:$reason,teamsMode:$teamsMode,
     subagentsAvailable:$subagents,
-    maxParallelSubagents:(if $subagentCap == "" then null else ($subagentCap | tonumber) end),
+    maxParallelSubagents:($subagentCap | tonumber),
+    maxParallelImplementers:($implementerCap | tonumber),
     worktreesEnabled:$worktreesEnabled,
     subagentIsolation:$subagentIsolation,
     loop:{cli:$cli,cliAvailable:$cliAvailable,runtimeAvailable:$loopRuntime,

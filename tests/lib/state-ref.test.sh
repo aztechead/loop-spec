@@ -115,12 +115,13 @@ DREPO="$WORK/driven"; mkdir -p "$DREPO"
 git -C "$DREPO" init -q -b main
 printf 'def slugify(s):\n    return s.lower()\n' > "$DREPO/slugify.py"
 git -C "$DREPO" add -A && git -C "$DREPO" commit -q -m init
-drv() { env -u CLAUDE_CODE_ENTRYPOINT LOOP_SPEC_HARNESS=codex LOOP_SPEC_TEAMS_MODE=none LOOP_SPEC_WORKFLOWS_AVAILABLE=0 LOOP_SPEC_CHECKPOINT_PR=0 LOOP_SPEC_AUTONOMOUS=1 bash "$REPO_ROOT/lib/cycle-driver.sh" "$@"; }
+drv() { env -u CLAUDE_CODE_ENTRYPOINT LOOP_SPEC_SESSION_ID=state-ref-test LOOP_SPEC_HARNESS=codex LOOP_SPEC_TEAMS_MODE=none LOOP_SPEC_WORKFLOWS_AVAILABLE=0 LOOP_SPEC_CHECKPOINT_PR=0 LOOP_SPEC_AUTONOMOUS=1 bash "$REPO_ROOT/lib/cycle-driver.sh" "$@"; }
 out="$(cd "$DREPO" && drv begin -- "autonomous fix slugify dots" 2>/dev/null)"; DFD="$(jq -r '.featureDir' <<<"$out")"; DSLUG="$(jq -r '.slug' <<<"$out")"
 (cd "$DREPO" && drv next --feature-dir "$DFD" >/dev/null 2>&1)
 bash "$REPO_ROOT/lib/footprint.sh" cite "$DFD" slugify.py:2 "the lower pass" >/dev/null
 (cd "$DREPO" && drv spec skeleton --feature-dir "$DFD" >/dev/null 2>&1)
-(cd "$DREPO" && drv spec fill --feature-dir "$DFD" --intent "Dots survive slugify." >/dev/null 2>&1; drv spec fill --feature-dir "$DFD" --file slugify.py --note "strip dots" >/dev/null 2>&1; drv spec fill --feature-dir "$DFD" --command true --expect "it runs" >/dev/null 2>&1; drv spec fill --feature-dir "$DFD" --grounding "slugify.py:2 is the transform" >/dev/null 2>&1)
+(cd "$DREPO" && bash "$REPO_ROOT/lib/evidence.sh" add "$DREPO/docs/loop-spec/features/$DSLUG/EVIDENCE.md" "slugify transform" "sed -n '2p' slugify.py" "return s.lower()" >/dev/null)
+(cd "$DREPO" && drv spec fill --feature-dir "$DFD" --intent "Dots survive slugify." >/dev/null 2>&1; drv spec fill --feature-dir "$DFD" --file slugify.py --note "strip dots" >/dev/null 2>&1; drv spec fill --feature-dir "$DFD" --command true --expect "it runs" >/dev/null 2>&1; drv spec fill --feature-dir "$DFD" --grounding "EVID-001: slugify.py:2 is the transform" >/dev/null 2>&1)
 (cd "$DREPO" && drv next --feature-dir "$DFD" --returned-from spec --note "spec" >/dev/null 2>&1)
 check "driven branch: the spec exit committed the artifact" "1" "$(git -C "$DREPO" log --oneline "feat/$DSLUG" | grep -c "spec: $DSLUG")"
 check "driven branch: no state commit on the branch" "0" "$(git -C "$DREPO" log --oneline "feat/$DSLUG" | grep -c 'state @')"

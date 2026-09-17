@@ -230,12 +230,55 @@ Two tasks. Note: prose may mention `.loop-spec/features/{slug}/` paths legitimat
 EOF
 check "well-formed plan passes" 0 plan "$WORK/plan-good.md"
 
+# Task blocks are canonical in compact plans; the legacy DAG table remains
+# optional, while explicit BlockedBy prevents dependency loss during extraction.
+# Keep a two-task compact fixture readable and deterministic.
+cat > "$WORK/plan-compact.md" <<'EOF'
+# Compact - Implementation Plan
+
+## Tasks
+
+### task-001: do a thing
+
+**Files:**
+- `a.sh`
+
+**BlockedBy:** []
+
+**Verify:** `bash -n a.sh`
+
+**Acceptance criteria:**
+- [ ] `bash -n a.sh` exits 0
+
+### task-002: do more
+
+**Files:**
+- `b.sh`
+
+**BlockedBy:** [task-001]
+
+**Verify:** `bash -n b.sh`
+
+**Acceptance criteria:**
+- [ ] `bash -n b.sh` exits 0
+EOF
+check "compact plan without DAG table passes" 0 plan "$WORK/plan-compact.md"
+sed '/^\*\*BlockedBy:/d' "$WORK/plan-compact.md" > "$WORK/plan-compact-missing-edge.md"
+check "compact plan without BlockedBy flags" 1 plan "$WORK/plan-compact-missing-edge.md"
+sed 's/\*\*BlockedBy:\*\* \[\]/**BlockedBy:**/' "$WORK/plan-compact.md" > "$WORK/plan-compact-empty-edge.md"
+check "compact plan with empty BlockedBy flags" 1 plan "$WORK/plan-compact-empty-edge.md"
+sed 's/\*\*BlockedBy:\*\* \[\]/**BlockedBy**:/' "$WORK/plan-compact.md" > "$WORK/plan-compact-empty-edge-alt.md"
+check "compact plan with alternate empty BlockedBy flags" 1 plan "$WORK/plan-compact-empty-edge-alt.md"
+
 # The System design block ships as placeholders; one left in place is template text
 # where the stance's deliverable should be.
 sed 's/^## Task DAG/## System design\n\n- Architecture: {components and their owners}\n\n## Task DAG/' \
     "$WORK/plan-good.md" > "$WORK/plan-system-design-unfilled.md"
 check "unfilled System design placeholder flags" 1 plan "$WORK/plan-system-design-unfilled.md"
 check_output "System design placeholder line is named" "unfilled template placeholder" plan "$WORK/plan-system-design-unfilled.md"
+awk '{ if ($0 == "## Task DAG") { print "## System design"; print ""; print "- Architecture / component structure: {owners and boundaries}"; print "" } print }' \
+    "$WORK/plan-good.md" > "$WORK/plan-system-design-compact-unfilled.md"
+check "compact System design placeholder flags" 1 plan "$WORK/plan-system-design-compact-unfilled.md"
 
 # colon-outside-the-bold marker variant ('**Files**:') must not force a repair round
 sed -e 's/\*\*Files:\*\*/**Files**:/' -e 's/\*\*Verify:\*\* /**Verify**: /' \
