@@ -2,9 +2,12 @@
 # route-judgment.sh - Validate a route-judge verdict and authorize the oneshot/full route.
 #
 # The judge (agents/route-judge.md) supplies one semantic judgment after read-only
-# grounding; this script owns authorization. A malformed, low-confidence, open-question,
-# or surfaced-risk verdict fails to route=full so the cycle keeps moving on the safest
-# path. It never infers route semantics beyond what the verdict already claims.
+# grounding; this script owns authorization. A malformed, low-confidence, or
+# open-question verdict, or one that names a security or destructive surface, fails to
+# route=full so the cycle keeps moving on the safest path. An interface or data-format
+# surface is the judge's complexity input, never a veto: a wrong oneshot costs one
+# reviewed pass and the exit gates lengthen it, a wrong full costs the whole cycle.
+# It never infers route semantics beyond what the verdict already claims.
 #
 # Usage:
 #   route-judgment.sh validate <verdict.json | ->
@@ -70,10 +73,6 @@ result="$(jq -Rrn --arg raw "$raw" '
       "low-confidence\tconfidence \($v.confidence) is below the 0.7 route threshold"
     elif ($v.openQuestions | length) > 0 then
       "open-questions\t" + $v.openQuestions[0]
-    elif $v.surfaces.interface then
-      "surface-interface\tthe judge could not rule out an interface surface"
-    elif $v.surfaces.dataFormat then
-      "surface-dataFormat\tthe judge could not rule out a dataFormat surface"
     elif $v.surfaces.security then
       "surface-security\tthe judge could not rule out a security surface"
     elif $v.surfaces.destructive then

@@ -45,8 +45,10 @@ footprint. Never run code; you have no Bash tool.
 
 - Cite or do not claim.
 - A surface you cannot rule out is `true`.
-- `route: oneshot` only when complexity <= 2 AND every surface is false AND no open
-  question.
+- `route: oneshot` when complexity <= 3, `security` and `destructive` are false, and
+  there is no open question. `interface` and `dataFormat` raise complexity; they do not
+  by themselves choose full. A wrong oneshot costs one reviewed pass and the gates
+  lengthen it; a wrong full costs the whole cycle.
 - Never run code.
 - Never write anywhere but `verdict_path`.
 

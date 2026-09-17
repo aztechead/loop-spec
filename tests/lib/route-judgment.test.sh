@@ -57,11 +57,15 @@ assert_contains "open question text in reason" "should renumbering preserve blan
   "$(verdict '.openQuestions = ["should renumbering preserve blank ids?"]')"
 
 # Each surface, and surface precedence order.
-assert_contains "dataFormat surface" "code=surface-dataFormat" \
+assert_contains "dataFormat surface is a complexity input, not a veto" "route=oneshot" \
   "$(verdict '.surfaces.dataFormat = true')"
-assert_contains "security and interface both true picks interface first" \
-  "code=surface-interface" \
-  "$(verdict '.surfaces.security = true | .surfaces.interface = true')"
+assert_contains "interface surface is a complexity input, not a veto" "route=oneshot" \
+  "$(verdict '.surfaces.interface = true')"
+assert_contains "security and destructive both true picks security first" \
+  "code=surface-security" \
+  "$(verdict '.surfaces.security = true | .surfaces.destructive = true')"
+assert_contains "destructive surface" "code=surface-destructive" \
+  "$(verdict '.surfaces.destructive = true')"
 
 # Malformed verdicts fail closed to unusable-verdict.
 assert_contains "empty reasons is unusable" "code=unusable-verdict" "$(verdict '.reasons = []')"
