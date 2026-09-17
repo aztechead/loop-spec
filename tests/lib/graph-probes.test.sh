@@ -485,6 +485,14 @@ check_output "oneshot --candidate: a protected file is not in the footprint" "fo
 for f in a b c; do bash "$ROOT/lib/footprint.sh" cite "$CAND/.loop-spec/features/c" "src/$f.py:1" >/dev/null; done
 check_output "oneshot --candidate: four cited files is the full path" "route=full reason=footprint names 4 files" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
 check "oneshot --candidate with a file argument is a bad invocation" 2 "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate src/x.py
+# A recorded judgment answers before the scout's cites are even read; feature.json still
+# carries four cites from the tests above.
+printf '{"slug":"c","protected":["src/big.py"],"routeJudgment":{"route":"oneshot","reason":"judge: small"}}\n' > "$CAND/.loop-spec/features/c/feature.json"
+check_output "oneshot --candidate: a judged oneshot outranks a four-file footprint" "route=oneshot reason=judge: small" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
+check_output "oneshot --candidate: LOOP_SPEC_ROUTE=full outranks a judged oneshot" "route=full reason=LOOP_SPEC_ROUTE=full" -c "LOOP_SPEC_ROUTE=full bash '$ONESHOT' --feature-dir '$CAND/.loop-spec/features/c' --candidate"
+printf '{"slug":"c","protected":["src/big.py"],"routeJudgment":{"route":"full","reason":"judge: touches auth"}}\n' > "$CAND/.loop-spec/features/c/feature.json"
+check_output "oneshot --candidate: a judged full with one cite still answers full" "route=full reason=judge: touches auth" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
+printf '{"slug":"c","protected":["src/big.py"]}\n' > "$CAND/.loop-spec/features/c/feature.json"
 check_output "oneshot: no feature.json is the full path" "route=full reason=no feature.json" "$ONESHOT" --feature-dir "$WORK/oneshot-none"
 
 OS_REPO="$WORK/oneshot-repo"; mkdir -p "$OS_REPO/.loop-spec/features/os" "$OS_REPO/docs/loop-spec/features/os" "$OS_REPO/src"
@@ -536,6 +544,22 @@ check_output "oneshot: LOOP_SPEC_ROUTE=full is the operator's override" "route=f
 check_output "oneshot: LOOP_SPEC_ROUTE=oneshot never shortens" "route=full reason=LOOP_SPEC_ROUTE=oneshot is not an override" -c "LOOP_SPEC_ROUTE=oneshot bash '$ONESHOT' --feature-dir '$OS_FD'"
 printf 'no frontmatter\n' > "$OS_SPEC"
 check_output "oneshot: a spec without frontmatter is the full path" "route=full reason=SPEC.md frontmatter missing" "$ONESHOT" --feature-dir "$OS_FD"
+
+# A recorded judgment (feature.json.routeJudgment) outranks the deterministic facts,
+# but never the frontmatter's own route: full (lengthen only) or an unresolved question
+# (the spec being incomplete is a different fact from the change being simple).
+printf '{"slug":"os","artifacts":{},"routeJudgment":{"route":"oneshot","reason":"judge: trivial"}}' > "$OS_FD/feature.json"
+oneshot_spec 'footprint:
+  - src/slugify.py' 'route: full'
+check_output "oneshot: SPEC route: full still escalates over a judged oneshot" "route=full reason=SPEC.md frontmatter says route: full" "$ONESHOT" --feature-dir "$OS_FD"
+printf -- '---\nunresolved_questions: ["Which behavior is required?"]\nfootprint:\n  - src/slugify.py\n---\n# os\n' > "$OS_SPEC"
+check_output "oneshot: an unresolved question still gates a judged oneshot" "route=full reason=unresolved intent questions remain" "$ONESHOT" --feature-dir "$OS_FD"
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - a.py\n  - b.py\n  - c.py\n  - d.py\n---\n# os\n\nRotate the credentials on save.\n' > "$OS_SPEC"
+check_output "oneshot: a judged oneshot outranks a 4-file footprint and a security term" "route=oneshot reason=judge: trivial" "$ONESHOT" --feature-dir "$OS_FD"
+printf '{"slug":"os","artifacts":{},"routeJudgment":{"route":"full","reason":"judge: too risky"}}' > "$OS_FD/feature.json"
+check_output "oneshot --after: never reads a judged full" "route=oneshot reason=ONESHOT returned without escalating" "$ONESHOT" --feature-dir "$OS_FD" --after
+printf '{"slug":"os","artifacts":{}}' > "$OS_FD/feature.json"
+
 # Every oneshot route in the shipped graph expects a declared answer.
 missing="$(jq -r --argjson answers "$(bash "$ONESHOT" --answers | jq -R . | jq -s .)" '
   [.edges[] | .condition | select(. != null and (.probe | test("oneshot.sh$"))) | .expects]

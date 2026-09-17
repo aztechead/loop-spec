@@ -98,7 +98,10 @@ An agent node may carry `skill: <name>`: the cycle invokes `Skill(loop-spec:<nam
 it instead of `loop-spec:<id>`, from the `EXT skill=<name>` line `cycle-driver.sh next`
 prints under `NEXT`. The shipped graph sets it on `spec` (`spec-lite`, the scout and
 the oneshot candidate), so the short route never loads the full SPEC body
-(`tests/lib/context-load.test.sh` bounds the three bodies it does load).
+(`tests/lib/context-load.test.sh` bounds the three bodies it does load). The probe
+that decides the candidate (`lib/graph/probes/oneshot.sh`) answers from
+`feature.json.routeJudgment` when SPEC recorded one (`cycle-driver.sh spec judge`);
+without a recorded judgment it falls back to its own deterministic facts.
 
 An edge into an agent node may carry `sameSession: true`: the phase it enters runs in
 the session that closed the previous phase, and `lib/cycle-driver.sh next` answers

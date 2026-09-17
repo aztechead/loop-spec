@@ -65,12 +65,21 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "planner": "effective alias for the active phase",
     "advocate": "effective alias for the active phase",
     "challenger": "effective alias for the active phase",
+    "routeJudge": "effective alias for the active phase",
     "specComplianceReviewer": "effective alias for the active phase",
     "iterateJudge": "effective alias for the active phase",
     "implementer": "effective alias for the active phase",
     "codeReviewer": "effective alias for the active phase",
     "verifier": "effective alias for the active phase",
     "patternMapper": "effective alias for the active phase"
+  },
+  "routeJudgment": {
+    "route": "oneshot | full",
+    "reason": "the validator's reason text",
+    "code": "string or null (validator code on a full answer)",
+    "model": "alias the judge ran as",
+    "source": "session | in-harness",
+    "at": "ISO-8601"
   },
   "phaseModels": {
     "spec": "Claude selector | null",
@@ -211,6 +220,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 
 ### Field notes
 
+- `routeJudgment` is written once by `cycle-driver.sh spec judge`, read by `lib/graph/probes/oneshot.sh`; absent means the probe uses its deterministic rules.
 - The `tasks` and `waves` arrays from v2 are gone. Live task state lives in the harness task list, not in `feature.json`.
 - There is no `retryBudget` block: every attempt is recorded in `gateHistory[]`, and the critique gates' delta rounds are bounded by the loop ceiling `graph/critique.graph.json` declares, read by `lib/graph/gate.sh next` (a `cap-reached` pass entry carries the surviving findings in `notes`). The cycle's other bound is `iterate.maxIterations`. During EXECUTE, the per-task rework cap (`maxRetriesPerTask`, default 6: one initial attempt plus five fix rounds; `lib/fix-loop.sh max` prints that default) routes a repeatedly-failing task to the lead for escalation rather than looping it forever between the same implementer and reviewer. EXECUTE reads the overlay at dispatch (`lib/tuning.sh get executeMaxRetriesPerTask 6`) so a `raise-gate-rounds-execute` tightening actually moves the cap.
 - `currentTeamName`, `currentTeammates`, and `currentGate` are the rapidly-mutating fields. After `TeamDelete`, `currentTeamName` becomes `null` and `currentTeammates` `[]`. `currentGate` is NEVER nulled — it is closed by `lib/graph/gate.sh pass`, which writes a zeroed object, because `graph/cycle.graph.json` declares it in the `reads[]` of both critique nodes and `lib/graph/state.sh assert-reads` fails a node whose declared read is null.

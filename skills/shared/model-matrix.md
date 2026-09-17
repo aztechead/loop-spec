@@ -2,6 +2,7 @@
 
 Roles generally inherit the session model across Claude Code, OpenCode, Codex, and ADK.
 Claude's challenger defaults to `sonnet` unless a phase or role override applies.
+Claude's route judge defaults to `opus`; override with `LOOP_SPEC_MODEL_ROUTE_JUDGE`.
 The table below records the defaults.
 
 This follows the current host contracts:
@@ -25,6 +26,7 @@ harnesses, regardless of which models either account exposes.
 |---|---|
 | spec-writer, planner | inherit |
 | challenger | `sonnet` on Claude Code, inherit on peer harnesses |
+| routeJudge | opus on Claude Code, inherit on peer harnesses |
 | advocate | inherit |
 | iterate-judge, code-reviewer | inherit |
 | spec-compliance-reviewer, verifier | inherit |

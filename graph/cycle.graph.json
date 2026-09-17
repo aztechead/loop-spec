@@ -27,7 +27,8 @@
           "execStyle",
           "greenfield",
           "autonomous",
-          "artifacts.spec"
+          "artifacts.spec",
+          "models.routeJudge"
         ],
         "optional": [
           "{featureDir}/spec-draft.md",

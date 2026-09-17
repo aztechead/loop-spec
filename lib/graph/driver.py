@@ -69,6 +69,15 @@ Usage:
         SPEC.md is kept. On route=full nothing is written and `spec` is null: the lead
         writes the full shape. Exit 0; 2 bad invocation.
 
+    cycle-driver.sh spec judge --feature-dir DIR [--verdict FILE]
+        The one opus call that decides oneshot vs full, made once and cached in
+        feature.json.routeJudgment; lib/graph/probes/oneshot.sh reads it and falls back
+        to its three deterministic facts when no judgment is recorded. --verdict FILE
+        supplies an in-harness dispatch's saved final message instead of launching a
+        session. Prints {route, reason, code, stored, cached} (or {action: "in-harness",
+        ...} when the session layer cannot launch). Exit 0 stored/cached; 1 the verdict
+        did not validate (nothing stored); 2 bad invocation.
+
     cycle-driver.sh oneshot review --feature-dir DIR
         ONESHOT's one review pass, launched by the driver when lib/harness.sh
         session-layer answers "session": the package (the diff since baseSha) is
@@ -2602,6 +2611,123 @@ def spec_escalate(target, reason):
     return 0
 
 
+def launch_headless_session(root, prompt, model, dispatch, refusal_label):
+    """Run session_run.py once, retrying a busy/refused launch (exit 4 or 5) once, and
+    Die on any other refusal. Returns (line, returncode): the runner's own JSON line
+    (never the launched model's output, which lands in the log files that line names)
+    and its exit code, which the caller's own success test is against."""
+    argv_run = ["python3", str(REPO_ROOT / "extensions" / "sessions" / "session_run.py"), "--profile", lib("harness", "cli"),
+                "--cwd", root, "--prompt-file", prompt, "--model", model, "--seed-from", root,
+                "--log-dir", os.path.join(dispatch, "sessions")]
+    proc = subprocess.run(argv_run, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if proc.returncode in (4, 5):
+        proc = subprocess.run(argv_run, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if proc.returncode not in (0, 1, 4, 5):
+        raise Die("the session runner refused the %s launch (exit %d): %s" % (refusal_label, proc.returncode, proc.stderr.strip()), 2)
+    return json.loads(proc.stdout.strip() or "{}"), proc.returncode
+
+
+def append_session_log(dispatch, log_name, line):
+    """Append the session's stdout/stderr to a durable log next to the dispatch
+    artifact (a failed session's diagnostic must survive the feature directory going
+    away) and return (log_path, stderr's last line or ""). """
+    log = os.path.join(dispatch, log_name)
+    tail = ""
+    for key in ("stdout", "stderr"):
+        path = line.get(key) or ""
+        if path and os.path.isfile(path):
+            body = open(path, encoding="utf-8", errors="replace").read()
+            with open(log, "a", encoding="utf-8") as fh:
+                fh.write("=== %s %s (%s)\n%s\n" % (now(), key, line.get("status") or "?", body))
+            if key == "stderr" and body.strip():
+                tail = body.strip().splitlines()[-1]
+    return log, tail
+
+
+def spec_judge(feature_dir, feat, verdict_flag):
+    """One opus call, made once at SPEC entry and cached in feature.json.routeJudgment:
+    the route is the cycle's largest cost lever, and a second call here would double it
+    for nothing the first call did not already answer. lib/route-judgment.sh authorizes
+    the verdict; lib/graph/probes/oneshot.sh reads what this stores."""
+    cached = feat.get("routeJudgment")
+    if isinstance(cached, dict) and cached.get("route"):
+        print(json.dumps(dict(cached, cached=True)))
+        return 0
+    dispatch = os.path.join(feature_dir, "dispatch")
+    os.makedirs(dispatch, exist_ok=True)
+    prompt = os.path.join(dispatch, "spec.route-judge.md")
+    verdict_path = os.path.join(dispatch, "spec.route-judge.json")
+    footprint_ledger = os.path.join(dispatch, "spec.route-judge.footprint.txt")
+    footprint = lib("footprint", "list", feature_dir).splitlines()
+    # The judge needs the scout's own reason for each cite (footprint list has only
+    # bare paths), so the ledger it reads is built from the raw cites, not the list.
+    why = {}
+    for raw in lib("footprint", "show", feature_dir).splitlines():
+        try:
+            cite = json.loads(raw)
+        except ValueError:
+            continue
+        why.setdefault(cite.get("path"), (cite.get("line"), cite.get("why") or ""))
+    with open(footprint_ledger, "w", encoding="utf-8") as fh:
+        for path in footprint:
+            line_no, note = why.get(path, ("", ""))
+            fh.write("%s:%s %s\n" % (path, line_no, note))
+    spec_draft = os.path.join(feature_dir, "spec-draft.md")
+    if os.path.isfile(spec_draft):
+        task_path = spec_draft
+    else:
+        task_path = os.path.join(dispatch, "spec.route-judge.task.md")
+        with open(task_path, "w", encoding="utf-8") as fh:
+            fh.write((feat.get("feature_title") or feat.get("slug") or "") + "\n")
+    with open(prompt, "w", encoding="utf-8") as fh:
+        fh.write(
+            "Read the task in %s, the footprint ledger in %s (path:line why), judge the "
+            "change per the route-judge role, and write exactly one JSON verdict object "
+            "to %s.\n\n"
+            '{"schema": 1, "route": "oneshot", "complexity": 2, "confidence": 0.9, "files": 3,\n'
+            ' "surfaces": {"interface": false, "dataFormat": true, "security": false, "destructive": false},\n'
+            ' "openQuestions": [],\n'
+            ' "reasons": [{"claim": "remove deletes one line of todo.txt the user owns", "cite": "todo.py:14"}]}\n'
+            % (task_path, footprint_ledger, verdict_path))
+    model = (feat.get("models") or {}).get("routeJudge") or "inherit"
+    tail = ""
+    if verdict_flag:
+        if not os.path.isfile(verdict_flag):
+            raise Die("spec judge --verdict: no such file: %s" % verdict_flag, 2)
+        shutil.copy(verdict_flag, verdict_path)
+        source = "in-harness"
+    elif lib("harness", "session-layer") != "session":
+        print(json.dumps({"action": "in-harness", "reason": lib("harness", "session-layer-reason"),
+                          "prompt": prompt, "footprint": footprint_ledger, "task": task_path, "verdict": verdict_path}))
+        return 0
+    else:
+        root = feature_root(feature_dir, feat)
+        os.makedirs(os.path.join(dispatch, "sessions"), exist_ok=True)
+        line, _ = launch_headless_session(root, prompt, model, dispatch, "route-judge")
+        _, tail = append_session_log(dispatch, "spec.route-judge.log", line)
+        source = "session"
+    if not os.path.isfile(verdict_path):
+        route, reason, code = None, "no verdict file at %s" % verdict_path, "unusable-verdict"
+    else:
+        validated = lib_run("route-judgment", "validate", verdict_path)
+        result_line = (validated.stdout or "").strip()
+        m = re.match(r"^route=(\S+) reason=(.*?)(?: code=(\S+))?$", result_line)
+        if not m:
+            route, reason, code = None, "route-judgment validate produced no parsable line", "unusable-verdict"
+        else:
+            route, reason, code = m.group(1), m.group(2), m.group(3)
+    if code == "unusable-verdict" or route is None:
+        lib("events", "emit", feature_dir, "route-judge-failed", "--phase", "spec",
+            "--data", json.dumps({"status": code, "code": code, "lastStderrLine": tail[:200] if tail else None}))
+        print(json.dumps({"route": route, "reason": reason, "code": code, "stored": False}))
+        return 1
+    record = {"route": route, "reason": reason, "code": code, "model": model, "source": source, "at": now()}
+    fset(feature_dir, "routeJudgment", record)
+    lib("events", "emit", feature_dir, "route-judged", "--phase", "spec", "--data", json.dumps(record))
+    print(json.dumps(dict(record, stored=True)))
+    return 0
+
+
 def cmd_spec(argv):
     sub = argv[0] if argv else ""
     if sub == "footprint" and argv[1:2] == ["drop"]:
@@ -2609,11 +2735,11 @@ def cmd_spec(argv):
     if sub == "escalate":
         raise Die("spec escalate is not the lead's call: a gate escalates from evidence (a reviewer BLOCK that stands, "
                   "or the third identical REDO), with the reason on record (port audit 5, R3)", 2)
-    if sub not in ("skeleton", "write", "drop", "fill", "approve"):
+    if sub not in ("skeleton", "write", "drop", "fill", "approve", "judge"):
         usage()
     opts = {"approve": ("--feature-dir", "--source"), "write": ("--feature-dir", "--file"), "drop": ("--feature-dir", "--file", "--reason"),
             "fill": ("--feature-dir", "--intent", "--file", "--note", "--criterion", "--command", "--expect", "--row", "--grounding", "--json"),
-            "escalate": ("--feature-dir", "--reason")}.get(sub, ("--feature-dir",))
+            "escalate": ("--feature-dir", "--reason"), "judge": ("--feature-dir", "--verdict")}.get(sub, ("--feature-dir",))
     o = parse_pairs(argv[1:], opts)
     feature_dir = o.get("feature_dir") or ""
     source = o.get("file")
@@ -2621,6 +2747,8 @@ def cmd_spec(argv):
         usage()
     feature_dir = os.path.realpath(feature_dir)
     feat = state(feature_dir)
+    if sub == "judge":
+        return spec_judge(feature_dir, feat, o.get("verdict"))
     target = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
     if sub in ("drop", "fill", "escalate") and not os.path.isfile(target):
         raise Die("spec %s: no SPEC.md at %s" % (sub, target), 2)
@@ -2993,28 +3121,11 @@ def cmd_oneshot(argv):
         fh.write("Review the package in %s against the spec %s. Write your verdict (PASS, PASS_WITH_MINOR, or BLOCK) "
                  "and every finding as `- <file>:<line> — <claim>` to %s.\n" % (package, spec, report))
     model = (feat.get("models") or {}).get("codeReviewer") or "inherit"
-    argv_run = ["python3", str(REPO_ROOT / "extensions" / "sessions" / "session_run.py"), "--profile", lib("harness", "cli"),
-                "--cwd", root, "--prompt-file", prompt, "--model", model, "--seed-from", root,
-                "--log-dir", os.path.join(dispatch, "sessions")]
-    proc = subprocess.run(argv_run, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    if proc.returncode in (4, 5):
-        proc = subprocess.run(argv_run, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    if proc.returncode not in (0, 1, 4, 5):
-        raise Die("the session runner refused the reviewer launch (exit %d): %s" % (proc.returncode, proc.stderr.strip()), 2)
-    line = json.loads(proc.stdout.strip() or "{}")
+    line, returncode = launch_headless_session(root, prompt, model, dispatch, "reviewer")
     line.update({"report": report, "package": package})
     # A durable log next to the report: the run that gave up on three failed reviewer
     # sessions took their stderr with it when the feature directory went (port audit 5, R6).
-    log = os.path.join(dispatch, "oneshot.reviewer.log")
-    tail = ""
-    for key in ("stdout", "stderr"):
-        path = line.get(key) or ""
-        if path and os.path.isfile(path):
-            body = open(path, encoding="utf-8", errors="replace").read()
-            with open(log, "a", encoding="utf-8") as fh:
-                fh.write("=== %s %s (%s)\n%s\n" % (now(), key, line.get("status") or "?", body))
-            if key == "stderr" and body.strip():
-                tail = body.strip().splitlines()[-1]
+    log, tail = append_session_log(dispatch, "oneshot.reviewer.log", line)
     line["log"] = log
     if tail:
         line["lastStderrLine"] = tail[:200]
@@ -3022,13 +3133,13 @@ def cmd_oneshot(argv):
     # any other way, or completed without writing its report, leaves no event: the gate
     # then names the missing review instead of passing on a reviewer that never spoke
     # (port audit 3, N5).
-    if proc.returncode == 0 and (line.get("status") or "") == "completed" and os.path.isfile(report):
+    if returncode == 0 and (line.get("status") or "") == "completed" and os.path.isfile(report):
         lib("events", "emit", feature_dir, "dispatch", "--phase", "oneshot",
             "--data", json.dumps({"role": "code-reviewer", "model": model, "rung": "session", "launchedBy": "driver"}))
     else:
         line["dispatchEvent"] = "withheld: the reviewer session did not complete with a report"
     print(json.dumps(line))
-    return 0 if proc.returncode == 0 else 1
+    return 0 if returncode == 0 else 1
 
 
 # ------------------------------------------------------------ phase-begin ----

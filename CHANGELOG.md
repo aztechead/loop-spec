@@ -4,6 +4,21 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.8.0] - 2026-09-17
+
+### Added
+
+- The route judge: one opus call at SPEC entry decides oneshot vs full from the task
+  and the scout's cited footprint, cached in `feature.json.routeJudgment` and
+  authorized by `lib/route-judgment.sh`. The three deterministic facts
+  (footprint size, unresolved questions, security signal) remain the fallback when no
+  judgment is recorded. `LOOP_SPEC_MODEL_ROUTE_JUDGE` overrides the judge's model.
+
+### Changed
+
+- `lib/graph/probes/oneshot.sh`'s three deterministic facts are now the fallback,
+  used only when SPEC has not recorded a route judgment.
+
 ## [6.7.0] - 2026-09-16
 
 ### Changed

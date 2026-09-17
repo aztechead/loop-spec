@@ -81,7 +81,8 @@
         "specIntentSeen",
         "specApprovalHistory",
         "instructionSnapshots",
-        "reviewRouting"
+        "reviewRouting",
+        "routeJudgment"
       ]
     },
     "effort": {
