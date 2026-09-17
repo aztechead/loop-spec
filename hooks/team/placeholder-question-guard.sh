@@ -42,6 +42,9 @@ command -v python3 &>/dev/null || exit 0
 
 INPUT=$(cat 2>/dev/null) || true
 [[ -z "$INPUT" ]] && exit 0
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 # The phase ids come from the graph (lib/graph/phases.sh); an unreadable graph leaves
 # the alternation empty and the guard matches nothing, which is the fail-open side.
 LOOP_SPEC_PHASE_ALT="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/phases.sh" regex 2>/dev/null || true)"

@@ -49,6 +49,9 @@ check "first phase in transcript allowed" 0 "$FIRST" \
   CLAUDE_PROJECT_DIR="$ROOT"
 check "second phase denied" 2 "$SECOND" \
   CLAUDE_PROJECT_DIR="$ROOT"
+NOT_SKILL='{"tool_name":"Bash","tool_input":{"command":"ls"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:spec"}}]}]}'
+check "a non-Skill tool call is not a phase entry and passes" 0 "$NOT_SKILL" \
+  CLAUDE_PROJECT_DIR="$ROOT"
 check_value "denial writes paused result" "paused:phase-handoff:discuss" \
   "$(jq -r '[.status,.reason,.phaseReached] | join(":")' "$ROOT/.loop-spec/last-result.json")"
 check "same-phase retry allowed" 0 "$SAME" \

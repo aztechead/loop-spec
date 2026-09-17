@@ -22,11 +22,24 @@ command -v python3 &>/dev/null || exit 0
 INPUT=$(cat)
 # The phase ids come from the graph (lib/graph/phases.sh); an unreadable graph leaves
 # the alternation empty and the guard matches nothing, which is the fail-open side.
-TOOL_NAME=$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_name") or "")' 2>/dev/null || echo "")
-LOOP_SPEC_PHASE_ALT=""
-if [[ "$TOOL_NAME" == "Skill" ]]; then
-  LOOP_SPEC_PHASE_ALT="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/phases.sh" regex 2>/dev/null || true)"
+# Only a Skill call can enter a phase; the one thing any other tool call can trip is
+# the durable-handoff denial below, and that needs an open feature that recorded a
+# handoff. jq answers both before the python launches: on the `.*` matcher they ran
+# on every call of a live cycle (about 0.6 s behind a version-manager shim).
+if [[ "$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)" != "Skill" ]]; then
+  pending=0
+  for f in "$PROJECT_DIR"/.loop-spec/features/*/feature.json "$PWD"/.loop-spec/features/*/feature.json; do
+    [[ -f "$f" ]] || continue
+    if jq -e '(.currentPhase != "completed") and (.handoffSession | type == "object")' "$f" >/dev/null 2>&1; then
+      pending=1; break
+    fi
+  done
+  (( pending )) || exit 0
 fi
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
+LOOP_SPEC_PHASE_ALT="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/phases.sh" regex 2>/dev/null || true)"
 export LOOP_SPEC_PHASE_ALT
 IDENTITY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/session_identity.py"
 SESSION_ID=$(LOOP_SPEC_IDENTITY_INPUT="$INPUT" python3 "$IDENTITY_HELPER" 2>/dev/null || echo "")

@@ -53,6 +53,9 @@ fi
 # Parse session signals from payload via python3 inline. Fail-open on any error.
 SIGNALS=""
 if [[ -n "$INPUT" ]] && command -v python3 &>/dev/null; then
+  # Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+  py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+  [[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
   SIGNALS=$(printf '%s' "$INPUT" | python3 -c "
 import sys, json
 
