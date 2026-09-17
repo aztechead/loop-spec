@@ -32,6 +32,17 @@ fields are `id`, `subject`,
 Do not compute waves. `blockedBy` contains logical dependencies; file-overlap edges
 come from the harness. `batchGroup` and `modelTier: mechanical` are optional.
 
+Shape tasks as vertical slices: each `Goal` names the observable capability a caller
+or user gains, and its necessary layers plus behavioral tests land together. Combine a
+minimal prerequisite with the first useful slice when practical. For greenfield work,
+preserve task-001's scaffold, lockfile, test harness, and walking skeleton, with later
+tasks blocked on it. Prerequisite, refactor, documentation, and test tasks are valid
+when their dependency and completion are observable; do not force artificial endpoint
+tasks. Keep required validation, authorization, data integrity, and failure behavior
+in the slice that needs it. All required SPEC scope must be complete before delivery;
+optional generalization may wait. Never replace required behavior with a placeholder
+or add a blanket hardening phase.
+
 ## Method
 
 1. Read SPEC.md, PATTERNS.md, `skills/shared/approach-selection.md`, and exact

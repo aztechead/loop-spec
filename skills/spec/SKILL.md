@@ -55,8 +55,9 @@ are at most three files, no intent questions, and no security signal.
 ## Intent and draft
 
 An intent gap is a user-visible choice repository evidence cannot settle. Investigate
-first, then collect genuine gaps in one checkpoint with a recommendation, tradeoff,
-and observable consequence. For examples of genuine intent gaps, read
+first, then collect genuine gaps in one consolidated checkpoint, prioritizing
+downstream consequence and missing human context. State the recommended assumption,
+tradeoff, and observable consequence. For examples of genuine intent gaps, read
 `${LOOP_SPEC_SKILL_DIR}/references/interview-prompts.md`. The gate is an empty `unresolved_questions` list; never
 use a score. Reuse prior answers.
 
@@ -76,6 +77,10 @@ choice, and `<reason>` its recorded rationale:
 bash "${LOOP_SPEC_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" spec "<question>" "<answer>" "<reason>"
 bash "${LOOP_SPEC_SKILL_DIR}/../../lib/decisions.sh" render "$feature_dir"
 ```
+
+Tests can verify the behavior selected by a decision, but cannot establish user
+intent. Silence is not approval: unresolved questions stay unresolved unless an
+authorized autonomous recommendation is recorded.
 
 Follow `skills/shared/artifact-templates/SPEC.md.template`; keep valid frontmatter,
 decisions, goals, boundaries, criteria, grounding, and open questions. Do not include

@@ -34,7 +34,7 @@
 
 ### task-001: {subject}
 
-**Goal:** {one sentence}
+**Goal:** {one sentence naming the observable capability a caller or user gains}
 
 **Files:**
 - {path}
@@ -55,7 +55,8 @@
 
 **Steps:**
 
-- [ ] {task-specific steps; code tasks state TDD red/green once}
+- [ ] {task-specific steps; include the slice's necessary layers and tests; code tasks
+  state TDD red/green once}
 
 (repeat task blocks; `lib/plan-tasks.sh extract` creates the JSON sidecar)
 

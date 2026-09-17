@@ -6,6 +6,8 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ### Fixed
 
+- Planning now favors observable vertical slices with required behavior and tests,
+  while preserving greenfield scaffolding and explicit intent checkpoints.
 - Isolated EXECUTE session workers now receive an explicit commit and report contract;
   single repository in place workers remain committed by the driver, while workspace
   workers commit in their repository.
