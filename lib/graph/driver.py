@@ -1378,6 +1378,16 @@ def cmd_next(argv):
             recovery = review_recovery(feature_dir, returned)
         except (Die, OSError, ValueError) as exc:
             reason = exc.message if isinstance(exc, Die) else str(exc)
+            # A routing the lead wrote (a patch past its bound, an amendment to a frozen
+            # section) is the lead's to reclassify, bounded like any other REDO: the 6.7.0
+            # sonnet oneshot run escalated a correct 21-line review fix on this line.
+            if isinstance(exc, Die) and reason.startswith(("review patch:", "review bad-spec:")):
+                flags = ["FLAG [review-route] " + reason]
+                if count_redo(feature_dir, feat, returned, flags) < redo_max():
+                    lib("events", "emit", feature_dir, "redo", "--phase", returned,
+                        "--data", json.dumps({"flags": 1, "classes": {"review-route": 1}, "messages": flags}))
+                    print("REDO phase=%s flags=1\n%s" % (returned, flags[0]))
+                    return 0
             cmd_escalate(["--feature-dir", feature_dir, "--reason", "review recovery failed: " + reason], silent=True)
             print("DONE status=escalated reason=review-recovery-failed")
             return 0
@@ -1443,13 +1453,8 @@ def cmd_next(argv):
                 # The same flags three times is a gate the phase cannot satisfy, not a phase that
                 # needs one more try: the 6.2.0 haiku runs looped six times on one flag and then
                 # published an invented reason. Escalate with the flags as the reason instead.
-                redo_hash = hashlib.sha1("\n".join(flags).encode("utf-8")).hexdigest()[:12]
-                redo = feat.get("driverRedo") if isinstance(feat.get("driverRedo"), dict) else {}
-                redo_count = 1
-                if redo.get("phase") == returned and redo.get("hash") == redo_hash:
-                    redo_count = int(redo.get("count") or 1) + 1
-                fset(feature_dir, "driverRedo", {"phase": returned, "hash": redo_hash, "count": redo_count})
-                if redo_count >= int(os.environ.get("LOOP_SPEC_REDO_MAX") or 3):
+                redo_count = count_redo(feature_dir, feat, returned, flags)
+                if redo_count >= redo_max():
                     reason = "%s exit gate unsatisfied after %d attempts: %s" % (
                         returned, redo_count, "".join(f + " " for f in flags[:3]))
                     spath = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
@@ -1671,6 +1676,23 @@ def print_next(nxt, label, effort, feature_dir):
     if node_skill:
         print("EXT skill=%s" % node_skill)
     print("EXT instructions=%s sha256=%s" % (record["prompt"], record["promptSha256"]))
+
+
+def redo_max():
+    return int(os.environ.get("LOOP_SPEC_REDO_MAX") or 3)
+
+
+def count_redo(feature_dir, feat, phase, flags):
+    """Record one more REDO of `phase` on these exact flags and return the count so far;
+    different flags start over at 1. The same flags LOOP_SPEC_REDO_MAX times is a gate the
+    phase cannot satisfy (the 6.2.0 haiku runs looped six times on one flag)."""
+    redo_hash = hashlib.sha1("\n".join(flags).encode("utf-8")).hexdigest()[:12]
+    redo = feat.get("driverRedo") if isinstance(feat.get("driverRedo"), dict) else {}
+    count = 1
+    if redo.get("phase") == phase and redo.get("hash") == redo_hash:
+        count = int(redo.get("count") or 1) + 1
+    fset(feature_dir, "driverRedo", {"phase": phase, "hash": redo_hash, "count": count})
+    return count
 
 
 def review_recovery(feature_dir, phase):

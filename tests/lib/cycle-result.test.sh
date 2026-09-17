@@ -255,6 +255,23 @@ bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \
 check "O: delivered PR beside a checkpoint is workDelivered" "true" \
   "$(jq '.workDelivered' "$GENERIC_RESULT")"
 
+# A verified commit pushed to a hostless remote is the full cycle's pushed-no-pr ending
+# (lib/pr-delivery.sh) and now micro's: completed, not converged, no PR.
+rm -f "$GENERIC_RESULT"
+bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \
+  --status completed --outcome pushed-no-pr --slug doc-refresh --title "Refresh docs" \
+  --branch micro/doc-refresh --base-branch main \
+  --converged false --verification-status passed --summary "Pushed; the remote names no host." >/dev/null
+check "O: pushed-no-pr is a completed micro result" "completed" "$(jq -r '.status' "$GENERIC_RESULT")"
+check "O: pushed-no-pr keeps its outcome" "pushed-no-pr" "$(jq -r '.outcome' "$GENERIC_RESULT")"
+check "O: pushed-no-pr is not workDelivered" "false" "$(jq '.workDelivered' "$GENERIC_RESULT")"
+rm -f "$GENERIC_RESULT"
+bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \
+  --status completed --outcome pushed-no-pr --title "Refresh docs" --branch micro/doc-refresh \
+  --pr-url https://github.com/test/repo/pull/8 \
+  --converged false --verification-status passed --summary "Contradictory." >/dev/null 2>&1
+check "O: pushed-no-pr with a PR URL is refused" "0" "$([[ -f "$GENERIC_RESULT" ]] && echo 1 || echo 0)"
+
 # Case P: contradictory success claims are rejected and clear removes stale pointers.
 rm -f "$GENERIC_RESULT"
 bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \

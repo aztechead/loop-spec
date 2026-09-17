@@ -468,10 +468,13 @@ PY
     case "$verification_status" in passed|failed|not-run) ;; *)
       echo "cycle-result.sh: invalid --verification-status '$verification_status'" >&2; exit 0;; esac
     success_outcome="verified"
-    allowed_outcomes="verified no-change-needed verification-failed delivery-blocked promoted-to-full"
+    # pushed-no-pr is the full cycle's hostless-remote ending (lib/pr-delivery.sh) carried
+    # to the short routes: the 6.7.0 haiku micro run pushed a verified commit to a
+    # bare-path origin and had only delivery-blocked (failed) to say so.
+    allowed_outcomes="verified no-change-needed verification-failed delivery-blocked promoted-to-full pushed-no-pr"
     if [[ "$cycle_type" == "debug" ]]; then
       success_outcome="fixed"
-      allowed_outcomes="fixed no-change-needed instrumented-and-waiting promoted-to-full verification-failed delivery-blocked"
+      allowed_outcomes="fixed no-change-needed instrumented-and-waiting promoted-to-full verification-failed delivery-blocked pushed-no-pr"
     elif [[ "$cycle_type" == "diagnostic" ]]; then
       success_outcome=""
       allowed_outcomes="no-change-needed diagnostic-failed"
@@ -530,6 +533,10 @@ PY
       [[ "$status" == "completed" && "$converged" == "true" &&
          "$verification_status" == "passed" && -n "$pr_url" ]] || {
         echo "cycle-result.sh: successful outcome requires completed/passed/converged with a PR" >&2; exit 0; }
+    elif [[ "$outcome" == "pushed-no-pr" ]]; then
+      [[ "$status" == "completed" && "$converged" == "false" &&
+         "$verification_status" == "passed" && -z "$pr_url" && -n "$branch" ]] || {
+        echo "cycle-result.sh: pushed-no-pr requires completed/passed, not converged, a branch and no PR" >&2; exit 0; }
     elif [[ "$status" == "completed" || "$converged" == "true" ]]; then
       echo "cycle-result.sh: non-success outcome cannot be completed or converged" >&2
       exit 0

@@ -29,6 +29,11 @@ All notable changes documented here. Format follows Keep a Changelog.
   `.loop-spec` files remain conflicts. Checkpoint rescue pushes branch and state refs even
   when `gh` is unavailable, then skips only the PR operation. Phase handoffs stop auto
   immediately so reconciliation and nested launches cannot continue the old session.
+- Micro delivers through `lib/pr-delivery.sh` and records a verified commit pushed to a
+  hostless remote as `pushed-no-pr` (completed, not converged) instead of a failed
+  `delivery-blocked` run. A review routing the lead wrote past its bound (a `patch` over
+  10 lines, a `bad-spec` amendment to a frozen section) is one bounded REDO to reclassify,
+  not an escalation of a correct fix.
 
 ## [6.6.8] - 2026-09-16
 

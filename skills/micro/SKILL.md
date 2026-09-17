@@ -101,24 +101,34 @@ Use the current checkout without a worktree or DELIVER controller:
   the PR DELIVER-equivalent will update. Dirt on that branch is the work.
 - Otherwise: on the default branch? Move the work to a branch first: `git checkout -b micro/<slug>`
   (uncommitted changes travel). Already on a topic branch: stay on it.
-- Commit (project commit conventions apply), `git push -u origin <branch>`, then reuse
-  the branch's existing PR if one exists (`gh pr view --json number,url`) or open one
-  (`gh pr create`). Keep the body to the micro scale: title, the done-criteria bullets,
-  the verification command + result. GitHub-flavored markdown, no phase-artifact dumps.
-  Write the body to a file and gate it before creating/updating the PR — micro PRs get
-  the same no-deferral guarantee as full-cycle DELIVER (`skills/shared/no-deferral.md`):
+- Commit (project commit conventions apply). Keep the PR body to the micro scale: title,
+  the done-criteria bullets, the verification command + result. GitHub-flavored
+  markdown, no phase-artifact dumps. Write the body to a file and gate it before
+  delivering — micro PRs get the same no-deferral guarantee as full-cycle DELIVER
+  (`skills/shared/no-deferral.md`):
   ```bash
   bash "${LOOP_SPEC_SKILL_DIR}/../../lib/deferral-lint.sh" text "$body_file"
   ```
   A flag means the task is not done: do the flagged work or promote to a full cycle;
-  never reword past the probe. Then `gh pr create --body-file "$body_file"`.
+  never reword past the probe. Then push and reconcile the PR through the same
+  controller DELIVER uses, never a hand-rolled `gh pr create`:
+  ```bash
+  delivery_json="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/pr-delivery.sh" final \
+    -C "$(git rev-parse --show-toplevel)" --branch "$branch" --base "$base_branch" \
+    --sha "$(git rev-parse HEAD)" --title "<task title>" --body-file "$body_file")"
+  ```
+  It reuses the branch's open PR or creates one; `.url` is the PR URL for the ledger
+  and the terminal result. An outcome of `pushed-no-pr` (no `gh`, or a remote whose URL
+  names no host) means the exact commit is on the remote and no PR can exist: that is
+  a `completed` run with outcome `pushed-no-pr` and `--converged false` in step 9, not
+  a failure. Any other `ok: false` result is `delivery-blocked`.
 - Run the terminal feedback check on the PR (`lib/pr-feedback.sh check <number>`) and
   route the result per the shared contract: requested changes at micro scale get fixed
   now. Every feedback-driven edit returns to Step 5: repeat the post-change grounding
   gate and validation gate against the new final diff before creating the new commit,
   pushing, and re-checking feedback. Evidence from before that edit is stale. Larger asks hand off to `/loop-spec:revise` or
   `/loop-spec:intake` — say which.
-- No origin remote, or `gh` missing/unauthenticated? Degrade loudly: state exactly what
+- No origin remote, or `gh` unauthenticated? Degrade loudly: state exactly what
   blocked the PR, leave the branch in place, and record the gap in the ledger `--notes`.
   Never silently skip the PR step.
 
