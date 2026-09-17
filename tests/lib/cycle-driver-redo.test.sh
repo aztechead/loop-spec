@@ -300,6 +300,7 @@ ec=0; (cd "$REPO_BUDGET_PASS" && drv next --feature-dir "$FD_BUDGET_PASS" --retu
 unset LOOP_SPEC_DESIGN_BUDGET_MINS
 check "invalid design budget override is rejected" "2" "$ec"
 check "invalid design budget override preserves diagnostic" "1" "$(grep -F -c 'design-budget: LOOP_SPEC_DESIGN_BUDGET_MINS must be an integer from 1 to 3600' "$budget_err")"
+check "driver Die includes the probe diagnostic" "1" "$(grep -F -c 'design budget probe failed: design-budget: LOOP_SPEC_DESIGN_BUDGET_MINS must be an integer from 1 to 3600' "$budget_err")"
 
 echo
 echo "cycle-driver-redo: $PASS passed, $FAIL failed"

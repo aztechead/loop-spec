@@ -13,14 +13,17 @@ fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 # A baseline needs an isolated exact-base checkout.  In-place mode is an explicit
 # request to avoid creating any worktrees, so leave the attempt retryable if a
 # later invocation enables worktrees deliberately.
-if [[ "${LOOP_SPEC_WORKTREES:-1}" == 0 ]]; then
-  echo "loop-spec: deferred baseline skipped because LOOP_SPEC_WORKTREES=0 forbids exact-base worktrees; enable worktrees to capture it" >&2
-  exit 0
-fi
-if [[ "${LOOP_SPEC_WORKTREES:-1}" != 1 ]]; then
-  echo "loop-spec: LOOP_SPEC_WORKTREES must be 0 or 1" >&2
-  exit 2
-fi
+case "${LOOP_SPEC_WORKTREES:-1}" in
+  1) ;;
+  0)
+    echo "loop-spec: deferred baseline skipped because LOOP_SPEC_WORKTREES=0 forbids exact-base worktrees; enable worktrees to capture it" >&2
+    exit 0
+    ;;
+  *)
+    echo "loop-spec: deferred baseline skipped because LOOP_SPEC_WORKTREES must be 0 or 1 (got '${LOOP_SPEC_WORKTREES}'); treating it as 0 (no worktrees) for this call. Set it to 0 or 1 explicitly." >&2
+    exit 0
+    ;;
+esac
 workspace_mode="$(fget 'if (.workspace == null or (.workspace.mode // "") == "single") then "single" else "workspace" end')"
 if [[ "$workspace_mode" == "single" ]]; then root="$(git -C "$feature_dir" rev-parse --show-toplevel)"; else root="$(fget '.workspace.root')"; fi
 capture() {

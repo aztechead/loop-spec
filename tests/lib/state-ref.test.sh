@@ -56,6 +56,7 @@ if [[ -f "$WORK/fail-batch" && "\$*" == *"hash-object -w"* && \$# -gt 6 ]]; then
 exec "$REAL_GIT" "\$@"
 EOF
 chmod +x "$WORK/bin/git"
+ORIGINAL_PATH="$PATH"
 PATH="$WORK/bin:$PATH"; export PATH
 sha2="$(bash "$LIB" commit "$FD" "state @ plan")"
 check "commit: fast path hashes in one call" "2" "$(cat "$WORK/hash-count")"
@@ -70,6 +71,8 @@ touch "$WORK/fail-batch"
 sha_fallback="$(bash "$LIB" commit "$FD" "state @ plan fallback")"
 check "commit: batch failure falls back to same snapshot" "$sha2" "$sha_fallback"
 check "commit: HEAD remains untouched" "$head_before" "$(git -C "$REPO" rev-parse HEAD)"
+rm -f "$WORK/fail-batch"
+PATH="$ORIGINAL_PATH"; export PATH
 check "commit: a change chains onto the parent" "$sha1" "$(git -C "$REPO" rev-parse "$sha2^")"
 ref_index="$(mktemp "$WORK/reference-index.XXXXXX")"; rm -f "$ref_index"
 while IFS= read -r -d '' path; do

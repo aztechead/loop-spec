@@ -287,11 +287,12 @@ def sh(args, cwd=None, quiet=False, stdin_text=None, check=True, passthrough=Fal
     return (proc.stdout or "").rstrip("\n") if not passthrough else ""
 
 
-def run(args, cwd=None, quiet=False, stdin_text=None):
+def run(args, cwd=None, quiet=False, stdin_text=None, capture_stderr=False):
     """sh without check: the CompletedProcess, for callers that read the code."""
     proc = subprocess.run([str(a) for a in args], cwd=cwd, input=stdin_text,
                           stdout=subprocess.PIPE,
-                          stderr=subprocess.DEVNULL if quiet else None, universal_newlines=True)
+                          stderr=subprocess.PIPE if capture_stderr else (subprocess.DEVNULL if quiet else None),
+                          universal_newlines=True)
     proc.stdout = (proc.stdout or "").rstrip("\n")
     return proc
 
@@ -1402,7 +1403,7 @@ def cmd_next(argv):
                 budget_exhausted = False
                 if returned in ("spec", "discuss", "plan"):
                     budget_probe = lib_run("design-budget", "--feature-dir", feature_dir,
-                                           "--phase", returned)
+                                           "--phase", returned, capture_stderr=True)
                     if budget_probe.returncode != 0:
                         raise Die("design budget probe failed: %s" %
                                   (budget_probe.stderr or "configuration error").strip(), 2)
@@ -1861,7 +1862,7 @@ def returned_checks(feature_dir, phase):
         mins = (int(time.time()) - iso_epoch(started)) // 60
         if phase in ("spec", "discuss", "plan"):
             budget_line = lib_run("design-budget", "--feature-dir", feature_dir,
-                                  "--phase", phase)
+                                  "--phase", phase, capture_stderr=True)
             if budget_line.returncode != 0:
                 raise Die("design budget probe failed: %s" % (budget_line.stderr or "configuration error").strip(), 2)
             budget_match = re.search(r"(?:^|\s)budget=([1-9][0-9]*)", budget_line.stdout or "")

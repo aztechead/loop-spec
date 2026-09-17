@@ -17,8 +17,21 @@ cat > "$REPO/.loop-spec/features/demo/feature.json" <<JSON
  "workspace":null,"artifacts":{"tasks":"$REPO/.loop-spec/features/demo/tasks.json"},"pendingRemediationTasks":[],"fileConflictExcludeGlobs":[]}
 JSON
 printf '[]\n' > "$REPO/.loop-spec/features/demo/tasks.json"
+# Worktree policy skips are fail-closed and retryable for explicit, boolean, and
+# malformed values; unset and 1 retain normal capture behavior below.
+for policy in 0 true invalid; do
+  policy_err="$WORK/policy-$policy.err"
+  rc=0; LOOP_SPEC_WORKTREES="$policy" bash "$ROOT/lib/deferred-baseline.sh" run "$REPO/.loop-spec/features/demo" 2>"$policy_err" || rc=$?
+  [[ "$rc" -eq 0 ]] || { echo "ASSERTION FAILED policy $policy exit" >&2; exit 1; }
+  [[ "$(jq -r '.verificationBaselineAttempted' "$REPO/.loop-spec/features/demo/feature.json")" == false ]] || { echo "ASSERTION FAILED policy $policy retryable" >&2; exit 1; }
+  [[ "$(grep -c 'deferred baseline skipped' "$policy_err")" -eq 1 ]] || { echo "ASSERTION FAILED policy $policy notice" >&2; exit 1; }
+done
+[[ "$(wc -c < "$COUNTER")" -eq 0 ]] || { echo "ASSERTION FAILED policy capture side effect" >&2; exit 1; }
+[[ "$(jq -r '.verificationBaseline' "$REPO/.loop-spec/features/demo/feature.json")" == null ]] || { echo "ASSERTION FAILED policy baseline" >&2; exit 1; }
+export LOOP_SPEC_WORKTREES=1
+
 HEAD_BEFORE="$(git -C "$REPO" rev-parse HEAD)"; DIRTY_BEFORE="$(git -C "$REPO" status --porcelain)"
-bash "$ROOT/lib/deferred-baseline.sh" run "$REPO/.loop-spec/features/demo" >/dev/null 2>&1
+env -u LOOP_SPEC_WORKTREES bash "$ROOT/lib/deferred-baseline.sh" run "$REPO/.loop-spec/features/demo" >/dev/null 2>&1
 [[ "$(wc -c < "$COUNTER")" -eq 1 ]] || { echo "ASSERTION FAILED line 22" >&2; exit 1; }
 [[ "$(jq -r '.verificationBaseline.commands.test.status' "$REPO/.loop-spec/features/demo/feature.json")" == pass ]] || { echo "ASSERTION FAILED line 23" >&2; exit 1; }
 [[ "$(jq -r '.verificationBaseline.baseSha' "$REPO/.loop-spec/features/demo/feature.json")" == "$BASE" ]] || { echo "ASSERTION FAILED line 24" >&2; exit 1; }

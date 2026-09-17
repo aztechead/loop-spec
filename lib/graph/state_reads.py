@@ -23,14 +23,12 @@ def unsatisfied_reads(feature, reads):
     if not isinstance(repos, list):
         repos = None
 
-    def repo_has(repo, key):
-        return isinstance(repo, dict) and isinstance(repo.get(key), str) and repo[key].strip() != ""
-
     def satisfied(key):
         if key in feature and feature[key] is not None:
             return True
         return (repos is not None and key in RELOCATED and len(repos) > 0
-                and all(repo_has(repo, key) for repo in repos))
+                and all(isinstance(repo, dict) and isinstance(repo.get(key), str)
+                        and repo[key].strip() != "" for repo in repos))
 
     return [key for key in reads if not satisfied(key)]
 
