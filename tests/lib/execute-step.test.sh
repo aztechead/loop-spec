@@ -121,6 +121,16 @@ if [[ "$(jq -r '.rung.subagentIsolation' "$FD2/dispatch/prepare.json")" == "lead
   out="$(bash "$STEP" package --feature-dir "$FD2" --task task-001 --head "$(git -C "$WT" rev-parse HEAD)")"
   check "package: a review package is written" "1" "$([[ -f "$(jq -r '.package' <<<"$out")" ]] && echo 1 || echo 0)"
   check "package: names the task worktree for the reviewer" "$WT" "$(jq -r '.worktree' <<<"$out")"
+  before="$(grep -c 'spec-compliance-reviewer' "$FD2/events.jsonl" 2>/dev/null || true)"
+  rg="$(bash "$STEP" review-groups --feature-dir "$FD2" --tasks task-001)"
+  check "review-groups: one task is one group" "1" "$(jq -r '.groups | length' <<<"$rg")"
+  check "review-groups: the group names its package" "$(jq -r '.package' <<<"$out")" "$(jq -r '.groups[0].tasks[0].package' <<<"$rg")"
+  check "review-groups: emits one reviewer dispatch per group" "$((before + 1))" "$(grep -c 'spec-compliance-reviewer' "$FD2/events.jsonl")"
+  check "review-groups: the event lists the tasks" "1" "$(grep -c '"tasks":\["task-001"\]' "$FD2/events.jsonl")"
+  ec=0; LOOP_SPEC_REVIEW_GROUP_BYTES=zero bash "$STEP" review-groups --feature-dir "$FD2" --tasks task-001 >/dev/null 2>&1 || ec=$?
+  check "review-groups: a bad cap is a configuration error" "2" "$ec"
+  rg="$(LOOP_SPEC_REVIEW_GROUP_BYTES=1 bash "$STEP" review-groups --feature-dir "$FD2" --tasks task-001,task-001)"
+  check "review-groups: a cap below one package still yields one task per group" "2" "$(jq -r '.groups | length' <<<"$rg")"
   # dispatch modified the tracked feature.json; integrate must not refuse its own state.
   git -C "$ROOT2" add -f -- "$FD2/feature.json" >/dev/null 2>&1; git -C "$ROOT2" commit -q -m "track state" -- "$FD2/feature.json" >/dev/null 2>&1 || true
   jq '.touched = "by the driver"' "$FD2/feature.json" > "$FD2/feature.json.tmp" && mv "$FD2/feature.json.tmp" "$FD2/feature.json"
@@ -175,6 +185,7 @@ sess bash "$STEP" package --feature-dir "$FDS" --task task-001 --head "$(git -C 
 ec=0; out="$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role reviewer 2>&1)" || ec=$?
 check "run reviewer: the session completed" "completed" "$(jq -r '.status' <<<"$out")"
 check "run reviewer: the prompt names the package and the verdict path" "1" "$(grep -c '^Review the package in .* against the spec .*\. Write your verdict to .*task-001.report.md.$' "$FDS/dispatch/task-001.reviewer.md")"
+check "run reviewer: emits the reviewer dispatch" "1" "$(grep -c 'spec-compliance-reviewer' "$FDS/events.jsonl")"
 check "run: a failing session is exit 1 with status failed" "failed:1" "$(printf '#!/usr/bin/env bash\nexit 3\n' > "$SBIN/codex"; ec=0; o="$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role implementer 2>/dev/null)" || ec=$?; echo "$(jq -r '.status' <<<"$o"):$ec")"
 check "run: on another rung the answer is in-harness" "in-harness" "$(jq '.rung.rung = "subagent"' "$FDS/dispatch/prepare.json" > "$WORK/p.json" && mv "$WORK/p.json" "$FDS/dispatch/prepare.json"; sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role implementer | jq -r '.action')"
 ec=0; out="$(sess bash "$STEP" integrate --feature-dir "$FDS" --task task-001 2>/dev/null)" || ec=$?

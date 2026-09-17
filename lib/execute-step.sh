@@ -15,8 +15,12 @@
 #       SHA, writes the brief and report paths, resolves the implementer model, emits the
 #       dispatch and task_start events. Prints the dispatch packet (JSON).
 #   execute-step.sh package   --feature-dir DIR --task ID --head SHA
-#       Writes the review package from the recorded base to HEAD, emits the reviewer's
-#       dispatch event. Prints {package, model}.
+#       Writes the review package from the recorded base to HEAD (no event; the reviewer's
+#       dispatch event moved to review-groups). Prints {package, model, ...}.
+#   execute-step.sh review-groups --feature-dir DIR --tasks ID[,ID...]
+#       Groups the tasks' review packages in the given order under
+#       LOOP_SPEC_REVIEW_GROUP_BYTES (default 150000), emits one reviewer dispatch
+#       event per group, prints {model, groups:[{tasks:[{task,package,bytes}], bytes}]}.
 #   execute-step.sh verdict   --feature-dir DIR --task ID --verdict pass|rework|block --attempt N
 #       Applies the reviewer's verdict: pass -> {action:"integrate"}; rework ->
 #       lib/fix-loop.sh's action with the model to use; block or a spent breaker ->
@@ -36,6 +40,7 @@
 #       closed one). Prints {task, files, updated: [paths]}.
 #       Exit 0 done; 1 already integrated; 2 bad invocation or path.
 #   execute-step.sh run       --feature-dir DIR --task ID --role implementer|reviewer
+#       `--role reviewer` emits the reviewer's dispatch event before the launch.
 #       The session rung's launch, in the driver and never in the lead
 #       (the port principles, rule 12). On rung=session it
 #       writes the prompt, one line and the paths (the brief and the report for the
@@ -61,14 +66,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
-usage() { sed -n '2,48p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2 || true; exit 2; }
+usage() { sed -n '2,53p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2 || true; exit 2; }
 
 cmd="${1:-}"; shift || true
-feature_dir="" task_id="" attempt=0 head_sha="" verdict="" role="implementer"
+feature_dir="" task_id="" task_ids="" attempt=0 head_sha="" verdict="" role="implementer"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --feature-dir) feature_dir="${2:-}" ;; --task) task_id="${2:-}" ;; --attempt) attempt="${2:-0}" ;;
     --head) head_sha="${2:-}" ;; --verdict) verdict="${2:-}" ;; --role) role="${2:-}" ;;
+    --tasks) task_ids="${2:-}" ;;
     # add-files' trailing paths are not --flags; every other subcommand keeps the strict
     # flags-only grammar, so a stray positional argument there still fails usage.
     *) [[ "$cmd" == "add-files" ]] && break; usage ;;
@@ -76,9 +82,9 @@ while [[ $# -gt 0 ]]; do
   shift 2 || usage
 done
 files=("$@")
-case "$cmd" in dispatch|package|verdict|integrate|run|add-files) ;; *) usage ;; esac
+case "$cmd" in dispatch|package|review-groups|verdict|integrate|run|add-files) ;; *) usage ;; esac
 case "$role" in implementer|reviewer) ;; *) usage ;; esac
-[[ -n "$feature_dir" && -f "$feature_dir/feature.json" && -n "$task_id" ]] || usage
+[[ -n "$feature_dir" && -f "$feature_dir/feature.json" && ( -n "$task_id" || -n "$task_ids" ) ]] || usage
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
 prep="$feature_dir/dispatch/prepare.json"
@@ -91,19 +97,22 @@ sidecar="$(pget '.sidecar')"
 # The dispatch list is the collapsed one (lib/task-batch.sh): a merged chain or batch
 # carries the union of its members' files and verifies, which the sidecar row for the
 # surviving id does not. The sidecar is the fallback for a task that is not listed.
-task_json="$(jq -c --arg id "$task_id" '.tasks | map(select(.id == $id)) | first // empty' "$prep")"
-[[ -n "$task_json" ]] || task_json="$(jq -c --arg id "$task_id" '(if type == "object" and has("tasks") then .tasks else . end) | map(select(.id == $id)) | first // empty' "$sidecar")"
-[[ -n "$task_json" ]] || { echo "execute-step: no task $task_id in $sidecar" >&2; exit 2; }
-# A live workspace run recorded taskBaseSha="" and ran verify outside every repo because
-# the packet's root was the orchestration root: in workspace mode the root is the task's.
-repo_name="" repo_rel=""
-if [[ "$(pget '.workspace // "null"')" != "null" ]]; then
-  repo_name="$(jq -r '.repo // ""' <<<"$task_json")"
-  [[ -n "$repo_name" ]] || { echo "execute-step: workspace task $task_id names no repo (tasks[].repo)" >&2; exit 2; }
-  repo_rel="$(jq -r --arg n "$repo_name" '[.workspace.repos[] | select(.name == $n) | .path] | first // ""' "$prep")"
-  [[ -n "$repo_rel" ]] || { echo "execute-step: task $task_id names repo '$repo_name', which feature.workspace.repos does not list" >&2; exit 2; }
-  root="$(pget '.workspace.root')/$repo_rel"
-  [[ -d "$root/.git" || -f "$root/.git" ]] || { echo "execute-step: repo '$repo_name' at $root is not a git work tree" >&2; exit 2; }
+# review-groups names no single task.id here; it groups a wave's ids inside its own case.
+if [[ -n "$task_id" ]]; then
+  task_json="$(jq -c --arg id "$task_id" '.tasks | map(select(.id == $id)) | first // empty' "$prep")"
+  [[ -n "$task_json" ]] || task_json="$(jq -c --arg id "$task_id" '(if type == "object" and has("tasks") then .tasks else . end) | map(select(.id == $id)) | first // empty' "$sidecar")"
+  [[ -n "$task_json" ]] || { echo "execute-step: no task $task_id in $sidecar" >&2; exit 2; }
+  # A live workspace run recorded taskBaseSha="" and ran verify outside every repo because
+  # the packet's root was the orchestration root: in workspace mode the root is the task's.
+  repo_name="" repo_rel=""
+  if [[ "$(pget '.workspace // "null"')" != "null" ]]; then
+    repo_name="$(jq -r '.repo // ""' <<<"$task_json")"
+    [[ -n "$repo_name" ]] || { echo "execute-step: workspace task $task_id names no repo (tasks[].repo)" >&2; exit 2; }
+    repo_rel="$(jq -r --arg n "$repo_name" '[.workspace.repos[] | select(.name == $n) | .path] | first // ""' "$prep")"
+    [[ -n "$repo_rel" ]] || { echo "execute-step: task $task_id names repo '$repo_name', which feature.workspace.repos does not list" >&2; exit 2; }
+    root="$(pget '.workspace.root')/$repo_rel"
+    [[ -d "$root/.git" || -f "$root/.git" ]] || { echo "execute-step: repo '$repo_name' at $root is not a git work tree" >&2; exit 2; }
+  fi
 fi
 state="$feature_dir/dispatch/$task_id.json"
 sget() { jq -r "$1" "$state" 2>/dev/null || true; }
@@ -160,12 +169,41 @@ case "$cmd" in
     [[ -n "$base_sha" && "$base_sha" != "null" ]] || { echo "execute-step: no recorded base SHA for $task_id; dispatch first" >&2; exit 2; }
     pkg="$(lib dispatch-files package --repo "$repo" --base "$base_sha" --head "$head_sha")" || { echo "execute-step: package failed" >&2; exit 2; }
     model="$(fget '.models.specComplianceReviewer // "inherit"')"
-    emit dispatch "$(jq -cn --arg m "$model" --arg r "$(pget '.rung.rung')" '{role:"spec-compliance-reviewer",model:$m,rung:$r}')"
     sset package "\"$pkg\""; sset reviewerModel "\"$model\""
     jq -cn --arg p "$pkg" --arg m "$model" --arg base "$base_sha" --arg head "$head_sha" --arg brief "$(lib dispatch-files brief --feature-dir "$feature_dir" --task-id "$task_id" 2>/dev/null || true)" \
       --arg report "$(lib dispatch-files report-path --feature-dir "$feature_dir" --task-id "$task_id")" --arg wt "$repo" \
       --arg vc "$(jq -r '.verifyCommand // ""' <<<"$task_json")" \
       '{package:$p, model:$m, base:$base, head:$head, brief:$brief, report:$report, worktree:$wt, verifyCommand:$vc}'
+    ;;
+  review-groups)
+    # One reviewer per wave, not per task: each reviewer launch was a fresh context
+    # over one 27-58 KB diff (6.5.0 cycle here, 12 launches). Packages are grouped in
+    # wave order under a byte cap so one Agent reads a whole wave; a group never
+    # splits below one task. LOOP_SPEC_REVIEW_GROUP_BYTES is the operator override.
+    [[ -n "$task_ids" ]] || usage
+    cap="${LOOP_SPEC_REVIEW_GROUP_BYTES:-150000}"
+    [[ "$cap" =~ ^[1-9][0-9]*$ ]] || { echo "execute-step: LOOP_SPEC_REVIEW_GROUP_BYTES must be a positive integer, got '$cap'" >&2; exit 2; }
+    model="$(fget '.models.specComplianceReviewer // "inherit"')"
+    rung="$(pget '.rung.rung')"
+    groups='[]'; cur='[]'; cur_bytes=0
+    IFS=, read -ra ids <<<"$task_ids"
+    for id in "${ids[@]}"; do
+      state="$feature_dir/dispatch/$id.json"
+      pkg="$(sget '.package')"
+      [[ -n "$pkg" && "$pkg" != "null" && -f "$pkg" ]] || { echo "execute-step: no review package for $id; run package first" >&2; exit 2; }
+      bytes="$(wc -c < "$pkg" | tr -d ' ')"
+      if (( cur_bytes > 0 && cur_bytes + bytes > cap )); then
+        groups="$(jq -c --argjson g "$cur" --argjson b "$cur_bytes" '. + [{tasks:$g, bytes:$b}]' <<<"$groups")"
+        cur='[]'; cur_bytes=0
+      fi
+      cur="$(jq -c --arg t "$id" --arg p "$pkg" --argjson b "$bytes" '. + [{task:$t, package:$p, bytes:$b}]' <<<"$cur")"
+      cur_bytes=$((cur_bytes + bytes))
+    done
+    groups="$(jq -c --argjson g "$cur" --argjson b "$cur_bytes" '. + [{tasks:$g, bytes:$b}]' <<<"$groups")"
+    while IFS= read -r g; do
+      emit dispatch "$(jq -cn --arg m "$model" --arg r "$rung" --argjson g "$g" '{role:"spec-compliance-reviewer",model:$m,rung:$r,tasks:[$g.tasks[].task],bytes:$g.bytes}')"
+    done < <(jq -c '.[]' <<<"$groups")
+    jq -cn --arg m "$model" --argjson g "$groups" '{model:$m, groups:$g}'
     ;;
   run)
     rung="$(pget '.rung.rung')"
@@ -192,6 +230,7 @@ case "$cmd" in
       [[ -n "$pkg" && "$pkg" != "null" ]] || { echo "execute-step: no review package for $task_id; run package first" >&2; exit 2; }
       cwd="$root"
       model="$(sget '.reviewerModel')"; [[ -n "$model" && "$model" != "null" ]] || model="$(fget '.models.specComplianceReviewer // "inherit"')"
+      emit dispatch "$(jq -cn --arg m "$model" --arg r "$(pget '.rung.rung')" '{role:"spec-compliance-reviewer",model:$m,rung:$r}')"
       printf 'Review the package in %s against the spec %s. Write your verdict to %s.\n' "$pkg" "$spec" "$report" > "$prompt"
     fi
     mkdir -p "$feature_dir/dispatch/sessions"
