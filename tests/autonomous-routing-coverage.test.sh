@@ -43,6 +43,12 @@ checks=(
   "docs/loop-spec/configuration.md	compact-profile.md"
   "skills/shared/adk-harness.md	route-terminal-guard.sh"
   "skills/shared/opencode-harness.md	route-terminal-guard.sh"
+  "skills/spec-lite/SKILL.md	spec judge"
+  "skills/spec-lite/SKILL.md	loop-spec:route-judge"
+  "lib/graph/probes/oneshot.sh	routeJudgment"
+  "lib/graph/driver.py	route-judgment"
+  "agents/route-judge.md	model: inherit"
+  "lib/feature-init.sh	route_judge_default=\"opus\""
 )
 
 check_fixed_strings "${checks[@]}"

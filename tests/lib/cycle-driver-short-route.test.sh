@@ -342,6 +342,66 @@ check "next from oneshot: the run continues to DISCUSS in a fresh session" "HAND
 ec=0; (cd "$REPO7" && drv spec write --feature-dir "$FD7" --file "$WORK/draft7.md" >/dev/null 2>&1) || ec=$?
 check "spec write: allowed over an escalated spec (the full shape is the lead's)" "0" "$ec"
 
+# --- spec judge: the one opus call, cached, authorized by lib/route-judgment.sh -------
+# Attended (no session layer): the prompt is written for the lead to dispatch in-harness.
+out="$(cd "$REPO7" && drv spec judge --feature-dir "$FD7" 2>/dev/null)"
+check "spec judge: attended is in-harness" "in-harness" "$(jq -r '.action' <<<"$out")"
+check "spec judge: the prompt file is written" "1" "$([[ -f "$(jq -r '.prompt' <<<"$out")" ]] && echo 1 || echo 0)"
+# The same stub codex profile the oneshot review cases above use, extended to write a
+# verdict when asked: a real judge session writes the verdict file, this stands in for it.
+cat > "$SBIN7/codex" <<'STUB'
+#!/usr/bin/env bash
+if [[ -n "${STUB_REPORT:-}" ]]; then echo "verdict: PASS" > "$STUB_REPORT"; fi
+if [[ -n "${STUB_VERDICT:-}" ]]; then
+  printf '%s' '{"schema":1,"route":"oneshot","complexity":1,"confidence":0.9,"files":1,"surfaces":{"interface":false,"dataFormat":false,"security":false,"destructive":false},"openQuestions":[],"reasons":[{"claim":"stub verdict","cite":"task"}]}' > "$STUB_VERDICT"
+fi
+[[ "${STUB_FAIL:-0}" == "1" ]] && { echo "Error: the stub refused" >&2; exit 1; }
+echo "{\"ok\":true}"
+STUB
+chmod +x "$SBIN7/codex"
+out="$(cd "$REPO7" && PATH="$SBIN7:$PATH" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" STUB_VERDICT="$FD7/dispatch/spec.route-judge.json" drv spec judge --feature-dir "$FD7" 2>/dev/null)"
+check "spec judge: a session verdict is stored" "true" "$(jq -r '.stored' <<<"$out")"
+check "spec judge: feature.json records the judged route" "oneshot" "$(jq -r '.routeJudgment.route' "$FD7/feature.json")"
+check "spec judge: the source is session" "session" "$(jq -r '.routeJudgment.source' "$FD7/feature.json")"
+check "spec judge: one route-judged event" "1" "$(jq -c 'select(.event == "route-judged")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
+out="$(cd "$REPO7" && PATH="$SBIN7:$PATH" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" STUB_VERDICT="$FD7/dispatch/spec.route-judge.json" drv spec judge --feature-dir "$FD7" 2>/dev/null)"
+check "spec judge: a second call is cached, not relaunched" "true" "$(jq -r '.cached' <<<"$out")"
+check "spec judge: still one route-judged event" "1" "$(jq -c 'select(.event == "route-judged")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
+# --verdict supplies an in-harness dispatch's saved final message; a low-confidence
+# verdict still validates (the confidence gate answers full, not unusable).
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" routeJudgment 'null' >/dev/null
+printf '%s' '{"schema":1,"route":"oneshot","complexity":1,"confidence":0.2,"files":1,"surfaces":{"interface":false,"dataFormat":false,"security":false,"destructive":false},"openQuestions":[],"reasons":[{"claim":"low confidence stub","cite":"task"}]}' > "$WORK/verdict-lowconf.json"
+out="$(cd "$REPO7" && drv spec judge --feature-dir "$FD7" --verdict "$WORK/verdict-lowconf.json" 2>/dev/null)"
+check "spec judge --verdict: a low-confidence verdict is still stored, as full" "true" "$(jq -r '.stored' <<<"$out")"
+check "spec judge --verdict: the code is low-confidence" "low-confidence" "$(jq -r '.code' <<<"$out")"
+check "spec judge --verdict: feature.json records the full route" "full" "$(jq -r '.routeJudgment.route' "$FD7/feature.json")"
+# The lead saves the final message to the very path the in-harness answer named.
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" routeJudgment 'null' >/dev/null
+cp "$WORK/verdict-lowconf.json" "$FD7/dispatch/spec.route-judge.json"
+ec=0; out="$(cd "$REPO7" && drv spec judge --feature-dir "$FD7" --verdict "$FD7/dispatch/spec.route-judge.json" 2>/dev/null)" || ec=$?
+check "spec judge --verdict: the verdict path itself is accepted" "0" "$ec"
+check "spec judge --verdict: the verdict path itself is stored" "true" "$(jq -r '.stored' <<<"$out")"
+# not-JSON is unusable-verdict: nothing is stored, and the failure is on record.
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" routeJudgment 'null' >/dev/null
+printf 'not json' > "$WORK/verdict-badjson.txt"
+ec=0; out="$(cd "$REPO7" && drv spec judge --feature-dir "$FD7" --verdict "$WORK/verdict-badjson.txt" 2>/dev/null)" || ec=$?
+check "spec judge --verdict: an unusable verdict is exit 1" "1" "$ec"
+check "spec judge --verdict: nothing is stored" "false" "$(jq -r '.stored' <<<"$out")"
+check "spec judge --verdict: routeJudgment stays absent" "null" "$(jq -r '.routeJudgment' "$FD7/feature.json")"
+check "spec judge --verdict: one route-judge-failed event" "1" "$(jq -c 'select(.event == "route-judge-failed")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
+# The judge outranks the deterministic footprint count too: `spec skeleton` writes the
+# oneshot skeleton on a judged oneshot even with four files cited.
+bash "$REPO_ROOT/lib/footprint.sh" cite "$FD7" e.py:1 "extra file for the judged-oneshot skeleton check" >/dev/null
+bash "$REPO_ROOT/lib/footprint.sh" cite "$FD7" f.py:1 "extra file for the judged-oneshot skeleton check" >/dev/null
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" routeJudgment '{"route":"oneshot","reason":"judge: still small","code":null,"model":"opus","source":"session","at":"2026-09-17T00:00:00Z"}' >/dev/null
+rm -f "$DOCS7/SPEC.md"
+out="$(cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" 2>/dev/null)"
+check "spec skeleton: a judged oneshot with four cited files still answers oneshot" "oneshot" "$(jq -r '.route' <<<"$out")"
+check "spec skeleton: the skeleton is written" "1" "$([[ -f "$DOCS7/SPEC.md" ]] && echo 1 || echo 0)"
+# Reset so the cases below (a different feature, FD6) are unaffected, the same way the
+# file already resets driverRedo and events after each scenario.
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" routeJudgment 'null' >/dev/null
+
 # --- the rewind rule: a next phase the graph lists earlier answers REWIND -------------
 # The port made every earlier phase a rewind (iterate to verify prints REWIND where it
 # did not before); the record of that protocol change is this pin, through the driver's

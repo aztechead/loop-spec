@@ -7,13 +7,20 @@
 # (the port plan, WP1), and it is decided here, from facts
 # SPEC wrote, never by the model picking a phase.
 #
-# Three inputs, all deterministic, and ALL must hold for `route=oneshot`:
+# The route is ONE opus judgment, made once at SPEC entry and recorded by
+# `cycle-driver.sh spec judge` in feature.json.routeJudgment (authorized by
+# lib/route-judgment.sh); this probe answers from that judgment when one is recorded.
+# When none is recorded (a peer harness with no opus alias, an attended lead that
+# never dispatched the judge, or a malformed verdict) the three deterministic facts
+# below are the FALLBACK, unchanged from before the judge existed:
 #   1. SPEC.md's frontmatter `footprint:` names 1 to 3 files the change touches.
 #   2. `unresolved_questions` is empty.
 #   3. `lib/security-signal.sh` finds nothing in SPEC.md or the footprint files that
 #      exist: a change that touches a security surface takes the full path even when
 #      the spec never says so.
-# Escalation is one direction: the spec writer or the ONESHOT phase writes `route: full`
+# Unresolved intent questions gate a judged oneshot too (the spec being incomplete is
+# a different fact from the change being simple), and escalation still outranks a
+# judgment: the spec writer or the ONESHOT phase writes `route: full`
 # into the frontmatter and the answer is `route=full`; nothing demotes a full run to
 # oneshot. `LOOP_SPEC_ROUTE=full` is the operator's override (lengthen only).
 #
@@ -76,6 +83,12 @@ spec="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.ar
 [[ -n "$spec" ]] || spec="docs/loop-spec/features/$slug/SPEC.md"
 [[ "$spec" == /* ]] || spec="$root/$spec"
 
+# The judge already read the scout's cites and, on the plain reading, will read
+# SPEC.md's unresolved questions too; a malformed or absent judgment reads as empty
+# here and both callers fall back to the deterministic facts unchanged.
+judgment="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter \
+  '.routeJudgment // empty | select(.route == "oneshot" or .route == "full") | "\(.route)\t\(.reason)"' 2>/dev/null)" || judgment=""
+
 # The footprint's own reading: count, shape, and the security signal, no spec yet.
 security_signal() {
   local rc=0 out
@@ -104,6 +117,11 @@ footprint_existing() {
   return 0
 }
 if (( candidate )); then
+  if [[ -n "$judgment" ]]; then
+    IFS=$'\t' read -r jroute jreason <<<"$judgment"
+    printf 'route=%s reason=%s\n' "$jroute" "$jreason"
+    exit 0
+  fi
   candidates=()
   while IFS= read -r p; do [[ -n "$p" ]] && candidates+=("$p"); done < <(bash "$SCRIPT_DIR/../../footprint.sh" list "$feature_dir")
   (( ${#candidates[@]} )) || full "the scout cited no file (lib/footprint.sh cite writes the footprint the probe reads)"
@@ -180,10 +198,18 @@ if (( after )); then
   exit 0
 fi
 
-grep -q '^footprint-key=missing' <<<"$facts" && full "SPEC.md frontmatter has no footprint: list"
+[[ -n "$judgment" ]] || { grep -q '^footprint-key=missing' <<<"$facts" && full "SPEC.md frontmatter has no footprint: list"; }
 [[ "$(sed -n 's/^gate=//p' <<<"$facts")" == "true" ]] || full "unresolved intent questions remain"
 unresolved="$(sed -n 's/^unresolved=//p' <<<"$facts")"
 [[ "$unresolved" == "0" ]] || full "unresolved_questions is ${unresolved/missing/absent}, not empty"
+if [[ -n "$judgment" ]]; then
+  # The judge already weighed the footprint and the security surface; it outranks
+  # both deterministic facts below, the same way the frontmatter's own route: full
+  # outranks it above (lengthen only, never shorten).
+  IFS=$'\t' read -r jroute jreason <<<"$judgment"
+  printf 'route=%s reason=%s\n' "$jroute" "$jreason"
+  exit 0
+fi
 footprint=()
 while IFS= read -r p; do [[ -n "$p" ]] && footprint+=("$p"); done < <(sed -n 's/^footprint=//p' <<<"$facts")
 footprint_shape ${footprint[@]+"${footprint[@]}"}

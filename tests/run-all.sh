@@ -224,6 +224,7 @@ run_suite "lib/graph-validate"        "bash tests/lib/graph-validate.test.sh"
 run_suite "lib/oneshot-exit-gate"     "bash tests/lib/oneshot-exit-gate.test.sh"
 run_suite "lib/phase-bundles"         "bash tests/lib/phase-bundles.test.sh"
 run_suite "lib/task-route"            "bash tests/lib/task-route.test.sh"
+run_suite "lib/route-judgment"        "bash tests/lib/route-judgment.test.sh"
 run_suite "lib/state-ref"             "bash tests/lib/state-ref.test.sh"
 
 run_suite "validate-agents"           "bash tests/validate-agents.sh"

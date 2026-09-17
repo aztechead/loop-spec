@@ -435,7 +435,7 @@ def _is_cycle_result_body(body_path):
         return False
 
 
-def emit_phase_boundaries(current, admitting):
+def emit_phase_boundaries(current, admitting, reentry=False):
     """phase_start / phase_end at node transitions (graph-remediation-contract.md sec 7).
 
     The cycle skill used to ask the agent to run `events.sh emit` as prose, so a
@@ -443,35 +443,49 @@ def emit_phase_boundaries(current, admitting):
     phase=unknown. The engine already owns the transition; it is the one caller
     that cannot skip it.
 
+    Both markers land when a PHASE node is entered: phase_end for the phase the
+    currentPhase pointer still holds, naming the phase entered as `next`, then
+    phase_start for the new one. Emitting phase_end when the phase was LEFT named
+    whatever node came next (`human.after-spec`, `discuss.critique.gate`), so a
+    consumer reading `next` for the phase saw a gate (the 6.7.0 live run), and
+    deliver.sh's `.next == "deliver"` gate record depended on a direct edge. The
+    terminal node closes the open phase the same way. A re-entry of an attempt the
+    ledger already holds open (a bare `next` after an escalation re-stepped into
+    PLAN and doubled its start) emits nothing: the attempt is the same one. Any
+    other edge that lands on the open phase is a new attempt and closes the old one.
+
     Markers share stderr with the `[PHASE]` console line. --step's JSON
     descriptor and the full-traversal TSV both occupy stdout, and the cycle
     snippet captures --step stdout (`step_json=$(run.sh --step)`), so putting
     LOOP_SPEC_PHASE_* on stdout would both break jq and trap the only greppable
     record inside a variable the session log never sees.
     """
-    if dry_run:
+    if dry_run or reentry:
         return
     events = os.environ.get("LOOP_SPEC_EVENTS") or os.path.join(
         repo_root, "lib", "events.sh")
-    leaving = None
-    match = EDGE_KIND_RE.match(admitting or "")
-    if match:
-        src = match.group(1)
-        if src in PHASE_NODE_IDS:
-            leaving = src
-    nxt = current
-    if current not in PHASE_NODE_IDS and current != "completed":
-        feat = _feature_json() or {}
-        cur = feat.get("currentPhase")
-        if isinstance(cur, str) and cur and cur != leaving:
-            nxt = cur
+    feat = _feature_json() or {}
+    open_phase = feat.get("currentPhase")
+    if open_phase not in PHASE_NODE_IDS:
+        open_phase = None
+    entering = current in PHASE_NODE_IDS
+    if not entering and current != completed_node_id():
+        return
+    # The pointer already names the phase being entered in two cases: the first
+    # entry (feature-init sets currentPhase before SPEC runs) or a resume, both
+    # admitted by a non-edge label, where nothing is open to close; and a walked
+    # edge back into it (a loop, a route self-edge, iterate.gate -> iterate), which
+    # is a new attempt that closes the last one. The same attempt re-processed is
+    # the `reentry` case above.
+    if open_phase == current and not EDGE_KIND_RE.match(admitting or ""):
+        open_phase = None
     try:
-        if leaving:
+        if open_phase:
             subprocess.call(
                 ["bash", events, "emit", feature_dir, "phase_end",
-                 "--phase", leaving, "--data", json.dumps({"next": nxt})],
+                 "--phase", open_phase, "--data", json.dumps({"next": current})],
                 stdout=sys.stderr)
-        if current in PHASE_NODE_IDS:
+        if entering:
             subprocess.call(
                 ["bash", events, "emit", feature_dir, "phase_start",
                  "--phase", current],
@@ -480,6 +494,10 @@ def emit_phase_boundaries(current, admitting):
         # Markers are observability, never control flow: a run that cannot emit one
         # still has to finish the phase it is in.
         pass
+
+
+def completed_node_id():
+    return "completed" if "completed" in nodes else None
 
 
 def publish_result(status, summary):
@@ -598,6 +616,8 @@ def process_node(current, admitting, defer_agent_routing):
         return {"status": "terminal", "descriptor": descriptor, "next": None}
     attempt = node_attempts.get(current, 0)
     node_attempts[current] = attempt + 1
+    latest = latest_checkpoint()
+    reentry = latest.get("node") == current and latest.get("status", "completed") != "completed"
     checkpoint(current, admitting, node.get("effort"), "started")
 
     if not dry_run:
@@ -617,7 +637,7 @@ def process_node(current, admitting, defer_agent_routing):
     # resolution (contract sec 5) and never for a dry run. The same
     # transition is what emits phase_start/phase_end: close the phase named
     # by the admitting edge, then open the node we are entering.
-    emit_phase_boundaries(current, admitting)
+    emit_phase_boundaries(current, admitting, reentry)
     if not dry_run and current in PHASE_POINTER_IDS:
         feat_path = os.path.join(feature_dir, "feature.json")
         if os.path.isfile(feat_path):

@@ -196,7 +196,7 @@ canonical_models() {
   local phase="${1:-}"
   local phase_default=""
   local role_phase_default=""
-  local v_specWriter v_planner v_advocate v_challenger v_specComplianceReviewer
+  local v_specWriter v_planner v_advocate v_challenger v_routeJudge v_specComplianceReviewer
   local v_iterateJudge v_codeReviewer v_implementer v_verifier v_patternMapper
   if [[ -n "$phase" ]]; then
     validate_phase "$phase" || return 1
@@ -224,6 +224,12 @@ canonical_models() {
   local challenger_default="$INHERIT"
   [[ "$HARNESS" == "claude" ]] && challenger_default="sonnet"
   v_challenger=$(resolve_role_model CHALLENGER "${role_phase_default:-$challenger_default}")                 || return 1
+  # One route-judge call per feature is the cycle's largest cost lever (it replaces
+  # three deterministic checks with a single opus read), so it earns the same
+  # above-inherit default as the challenger; the peer harnesses have no alias.
+  local route_judge_default="$INHERIT"
+  [[ "$HARNESS" == "claude" ]] && route_judge_default="opus"
+  v_routeJudge=$(resolve_role_model ROUTE_JUDGE "${role_phase_default:-$route_judge_default}")               || return 1
   v_specComplianceReviewer=$(resolve_role_model SPEC_COMPLIANCE_REVIEWER "${role_phase_default:-$INHERIT}") || return 1
   v_iterateJudge=$(resolve_role_model ITERATE_JUDGE "${role_phase_default:-$INHERIT}")                       || return 1
   v_codeReviewer=$(resolve_role_model CODE_REVIEWER "${role_phase_default:-$INHERIT}")                       || return 1
@@ -236,6 +242,7 @@ canonical_models() {
     --arg planner                "$v_planner" \
     --arg advocate               "$v_advocate" \
     --arg challenger             "$v_challenger" \
+    --arg routeJudge             "$v_routeJudge" \
     --arg specComplianceReviewer "$v_specComplianceReviewer" \
     --arg iterateJudge           "$v_iterateJudge" \
     --arg codeReviewer           "$v_codeReviewer" \
@@ -247,6 +254,7 @@ canonical_models() {
       planner: $planner,
       advocate: $advocate,
       challenger: $challenger,
+      routeJudge: $routeJudge,
       specComplianceReviewer: $specComplianceReviewer,
       iterateJudge: $iterateJudge,
       codeReviewer: $codeReviewer,
@@ -291,7 +299,7 @@ validate_routing() {
     var="LOOP_SPEC_PHASE_MODEL_${suffix}"
     validate_phase_model_selector "$var" "${!var:-}" || return 1
   done
-  for role in SPEC_WRITER PLANNER ADVOCATE CHALLENGER SPEC_COMPLIANCE_REVIEWER \
+  for role in SPEC_WRITER PLANNER ADVOCATE CHALLENGER ROUTE_JUDGE SPEC_COMPLIANCE_REVIEWER \
               ITERATE_JUDGE CODE_REVIEWER IMPLEMENTER VERIFIER PATTERN_MAPPER; do
     var="LOOP_SPEC_MODEL_${role}"
     [[ -z "${!var:-}" ]] || validate_role_model_selector "$role" "$var" "${!var}" || return 1

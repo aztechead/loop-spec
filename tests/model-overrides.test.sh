@@ -17,10 +17,10 @@ check() {
 
 # --- Test 1: Default map has no model-family prerequisite ---
 models="$(LOOP_SPEC_HARNESS=claude bash "$LIB" models)"
-check "default: every role but the challenger inherits" \
-  "$(echo "$models" | jq -e '[del(.challenger)[]] | all(. == "inherit")' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "default: the challenger's sonnet is the only Agent probe" \
-  "$([[ "$(LOOP_SPEC_HARNESS=claude bash "$LIB" agent-probe-models)" == '["sonnet"]' ]] && echo 1 || echo 0)"
+check "default: every role but the challenger and the route judge inherits" \
+  "$(echo "$models" | jq -e '[del(.challenger, .routeJudge)[]] | all(. == "inherit")' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "default: the challenger's sonnet and the route judge's opus are the only Agent probes" \
+  "$([[ "$(LOOP_SPEC_HARNESS=claude bash "$LIB" agent-probe-models)" == '["opus","sonnet"]' ]] && echo 1 || echo 0)"
 
 # --- Test 2: Env override applies to the targeted role; others are unchanged ---
 overridden="$(LOOP_SPEC_MODEL_PLANNER=sonnet bash "$LIB" models)"
@@ -28,8 +28,8 @@ check "override: LOOP_SPEC_MODEL_PLANNER=sonnet -> planner == sonnet" \
   "$(echo "$overridden" | jq -e '.planner == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "override: other roles still inherit" \
   "$(echo "$overridden" | jq -e '.iterateJudge == "inherit" and .implementer == "inherit"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "override: explicit Agent alias is the only probe target" \
-  "$([[ "$(LOOP_SPEC_MODEL_PLANNER=sonnet bash "$LIB" agent-probe-models)" == '["sonnet"]' ]] && echo 1 || echo 0)"
+check "override: explicit Agent alias joins the challenger and route-judge defaults" \
+  "$([[ "$(LOOP_SPEC_MODEL_PLANNER=sonnet bash "$LIB" agent-probe-models)" == '["opus","sonnet"]' ]] && echo 1 || echo 0)"
 
 # --- Test 3: fable alias is accepted ---
 fable_out="$(LOOP_SPEC_MODEL_ITERATE_JUDGE=fable bash "$LIB" models)"
@@ -98,9 +98,16 @@ check "default: planner still inherits on Claude Code" \
 oc_default="$(LOOP_SPEC_HARNESS=opencode bash "$LIB" models)"
 check "default: challenger inherits on OpenCode (no alias surface)" \
   "$(echo "$oc_default" | jq -e '.challenger == "inherit"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "default: route judge is opus on Claude Code" \
+  "$(echo "$default_out" | jq -e '.routeJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "default: route judge inherits on OpenCode (no alias surface)" \
+  "$(echo "$oc_default" | jq -e '.routeJudge == "inherit"' >/dev/null 2>&1 && echo 1 || echo 0)"
 role_wins="$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_MODEL_CHALLENGER=opus bash "$LIB" models)"
 check "LOOP_SPEC_MODEL_CHALLENGER outranks the sonnet default" \
   "$(echo "$role_wins" | jq -e '.challenger == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
+route_judge_override="$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_MODEL_ROUTE_JUDGE=sonnet bash "$LIB" models)"
+check "LOOP_SPEC_MODEL_ROUTE_JUDGE outranks the opus default" \
+  "$(echo "$route_judge_override" | jq -e '.routeJudge == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
 phase_wins="$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_PHASE_MODEL_PLAN=opus bash "$LIB" models --phase plan)"
 check "a phase route outranks the sonnet default" \
   "$(echo "$phase_wins" | jq -e '.challenger == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -137,7 +144,7 @@ all_models="$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_PHASE_MODEL_EXECUTE=haiku LOOP_
   bash "$LIB" all-models)"
 check "health-check set: includes every phase and role selector" \
   "$(echo "$all_models" | jq -e \
-    'sort == ["fable","haiku","inherit","sonnet"]' >/dev/null 2>&1 && echo 1 || echo 0)"
+    'sort == ["fable","haiku","inherit","opus","sonnet"]' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 phase_full_id="$(LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 \
   bash "$LIB" models --phase discuss)"

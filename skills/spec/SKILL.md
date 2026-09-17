@@ -49,8 +49,9 @@ a local catalog as a version source; use current documentation. Follow
 
 Write `footprint:` with every repository-relative changed or created file and its
 scout citation. Include each file's existing test module, or mark it unchanged in
-Implementation notes. `lib/graph/probes/oneshot.sh` selects ONESHOT only when there
-are at most three files, no intent questions, and no security signal.
+Implementation notes. The route is the recorded judgment (`cycle-driver.sh spec judge`)
+when one exists, and otherwise `lib/graph/probes/oneshot.sh`'s three facts: at most
+three files, no intent questions, no security signal.
 
 ## Intent and draft
 
