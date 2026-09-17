@@ -49,6 +49,9 @@ footprint. Never run code; you have no Bash tool.
   there is no open question. `interface` and `dataFormat` raise complexity; they do not
   by themselves choose full. A wrong oneshot costs one reviewed pass and the gates
   lengthen it; a wrong full costs the whole cycle.
+- `files` above 3 is full whatever the complexity: count every file the change creates
+  or edits, including tests and files the scout could not cite because they do not
+  exist yet.
 - Never run code.
 - Never write anywhere but `verdict_path`.
 

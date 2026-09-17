@@ -25,9 +25,10 @@ All notable changes documented here. Format follows Keep a Changelog.
   authorized by `lib/route-judgment.sh`. The three deterministic facts
   (footprint size, unresolved questions, security signal) remain the fallback when no
   judgment is recorded. Only a security or destructive surface, an open question, or
-  low confidence forces full; interface and data-format changes raise the judge's
-  complexity score instead, because a wrong oneshot costs one reviewed pass and the
-  gates lengthen it. `LOOP_SPEC_MODEL_ROUTE_JUDGE` overrides the judge's model.
+  low confidence forces full, and so does the judge's own file count above 3 (the
+  oneshot reviewer and spec lint hold the footprint at 3); interface and data-format
+  changes raise the judge's complexity score instead, because a wrong oneshot costs one
+  reviewed pass and the gates lengthen it. `LOOP_SPEC_MODEL_ROUTE_JUDGE` overrides the judge's model.
 
 ### Changed
 

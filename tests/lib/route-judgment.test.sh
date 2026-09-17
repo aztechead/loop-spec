@@ -66,6 +66,10 @@ assert_contains "security and destructive both true picks security first" \
   "$(verdict '.surfaces.security = true | .surfaces.destructive = true')"
 assert_contains "destructive surface" "code=surface-destructive" \
   "$(verdict '.surfaces.destructive = true')"
+assert_contains "the judge's own file count above 3 is full" "code=files-over-bound" \
+  "$(verdict '.files = 7')"
+assert_contains "three files is within the bound" "route=oneshot" \
+  "$(verdict '.files = 3')"
 
 # Malformed verdicts fail closed to unusable-verdict.
 assert_contains "empty reasons is unusable" "code=unusable-verdict" "$(verdict '.reasons = []')"

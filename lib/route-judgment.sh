@@ -7,6 +7,9 @@
 # route=full so the cycle keeps moving on the safest path. An interface or data-format
 # surface is the judge's complexity input, never a veto: a wrong oneshot costs one
 # reviewed pass and the exit gates lengthen it, a wrong full costs the whole cycle.
+# The judge's own file count above 3 is full as well: the oneshot reviewer and spec lint
+# hold the footprint at 3, and the 6.8.0 live run paid an implementation pass to learn
+# from the reviewer what the verdict had already counted (a 7-file package split).
 # It never infers route semantics beyond what the verdict already claims.
 #
 # Usage:
@@ -81,6 +84,8 @@ result="$(jq -Rrn --arg raw "$raw" '
       "surface-security\tthe judge could not rule out a security surface"
     elif $v.surfaces.destructive then
       "surface-destructive\tthe judge could not rule out a destructive surface"
+    elif $v.files > 3 then
+      "files-over-bound\tthe judge counts \($v.files) files; oneshot holds at most 3"
     else
       "\t" + $v.reasons[0].claim + " (complexity \($v.complexity), confidence \($v.confidence))"
     end
