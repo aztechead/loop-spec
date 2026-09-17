@@ -69,8 +69,10 @@ for line in lines:
 tasks = []
 task = None
 section = None
+interface_key = None
 for raw in lines:
     line = raw.strip()
+    continuation = bool(raw[:1].isspace()) and bool(line)
     head = HEADING.match(line)
     if head:
         task = {"id": head.group(1), "subject": head.group(2), "files": [], "blockedBy": None,
@@ -88,6 +90,7 @@ for raw in lines:
     if marker:
         name, rest = marker.group(1).strip(), marker.group(2).strip()
         section = None
+        interface_key = None
         if name == "Verify":
             code = CODE.search(rest)
             task["verifyCommand"] = code.group(1).strip() if code else rest
@@ -106,6 +109,12 @@ for raw in lines:
             section = name
         continue
     bullet = BULLET.match(line)
+    if continuation and not bullet and section == "Acceptance criteria" and task["acceptanceCriteria"]:
+        task["acceptanceCriteria"][-1] += " " + line
+        continue
+    if continuation and not bullet and section == "Interfaces" and interface_key:
+        task["interfaces"][interface_key] += " " + line
+        continue
     if not bullet or section is None:
         continue
     item = bullet.group(1)
@@ -118,7 +127,10 @@ for raw in lines:
     elif section == "Interfaces":
         key, _, value = item.partition(":")
         if key.strip() in ("consumes", "produces") and value.strip() and value.strip() != "none":
-            task["interfaces"][key.strip()] = value.strip()
+            interface_key = key.strip()
+            task["interfaces"][interface_key] = value.strip()
+        else:
+            interface_key = None
 
 if not tasks:
     print("plan-tasks: no '### task-NNN:' blocks in %s" % plan, file=sys.stderr)

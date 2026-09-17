@@ -76,7 +76,39 @@ case "$cmd" in
       [[ -n "$docs_dir" && -d "$docs_dir" ]] || docs_dir="${root:-$FEATURE_DIR/../../..}/docs/loop-spec/features/$(basename "$FEATURE_DIR")"
     fi
     constraints="- none"
-    [[ -n "$docs_dir" && -f "$docs_dir/PLAN.md" ]] && constraints="$(awk '/^## Global constraints/{on=1; next} on && /^## /{exit} on && !/^<!--/ && !/^ *-->$/ && NF' "$docs_dir/PLAN.md")"
+    if [[ -n "$docs_dir" && -f "$docs_dir/PLAN.md" ]]; then
+      constraints="$(awk '/^## Global constraints/{on=1; next} on && /^## /{exit} on{print}' "$docs_dir/PLAN.md" \
+        | awk '
+          function visible(s, p, q, pre, rest) {
+            while (1) {
+              if (comment) {
+                q = index(s, "-->")
+                if (!q) return
+                s = substr(s, q + 3)
+                comment = 0
+              }
+              p = index(s, "<!--")
+              if (!p) {
+                sub(/[[:space:]]+$/, "", s)
+                if (s ~ /[^[:space:]]/) print s
+                return
+              }
+              pre = substr(s, 1, p - 1)
+              rest = substr(s, p + 4)
+              q = index(rest, "-->")
+              if (q) {
+                s = pre substr(rest, q + 3)
+                continue
+              }
+              sub(/[[:space:]]+$/, "", pre)
+              if (pre ~ /[^[:space:]]/) print pre
+              comment = 1
+              return
+            }
+          }
+          { visible($0) }
+          ' )"
+    fi
     [[ -n "$constraints" ]] || constraints="- none"
     cited=""
     ids="$(grep -o 'EVID-[0-9][0-9]*' <<<"$task_json" | sort -u || true)"
@@ -149,6 +181,10 @@ case "$cmd" in
       || { echo "dispatch-files.sh: bad HEAD: $HEAD" >&2; exit 2; }
     base_full="$(git -C "$REPO" rev-parse "$BASE")"
     head_full="$(git -C "$REPO" rev-parse "$HEAD")"
+    if [[ "$base_full" == "$head_full" ]]; then
+      echo "dispatch-files.sh: BASE and HEAD resolve to the same commit; refusing an empty review package" >&2
+      exit 2
+    fi
     if [[ -z "$OUT" ]]; then
       short_b="$(git -C "$REPO" rev-parse --short "$BASE")"
       short_h="$(git -C "$REPO" rev-parse --short "$HEAD")"

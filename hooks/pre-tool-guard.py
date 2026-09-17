@@ -20,11 +20,13 @@ def main():
     args = payload.get("tool_input") or {}
     cwd = payload.get("cwd") or os.getcwd()
     env = dict(os.environ, CLAUDE_PROJECT_DIR=cwd, CLAUDE_PLUGIN_ROOT=str(ROOT))
-    calls = []
+    # Handoff is an invocation boundary, so the shared guard runs before every
+    # native tool adapter, including Bash and Agent calls that can bypass Skill.
+    calls = [("hooks/team/phase-handoff-guard.sh", payload)]
     if name in ("Bash", "bash", "Execute"):
         payload.update(tool_name="Bash", tool_input=args)
-        calls = [("hooks/team/" + script + ".sh", payload) for script in
-                 ("no-worktrees-guard", "result-forgery-guard", "nested-session-guard")]
+        calls.extend(("hooks/team/" + script + ".sh", payload) for script in
+                     ("no-worktrees-guard", "result-forgery-guard", "nested-session-guard"))
     elif name in ("Write", "Edit", "write", "edit", "WriteFile", "EditFile", "apply_patch", "patch"):
         if name in ("apply_patch", "patch"):
             patch = (args.get("command") or args.get("patchText") or args.get("patch") or "").replace("\r\n", "\n")
@@ -42,7 +44,7 @@ def main():
             normalized = dict(payload, tool_name="Write", tool_input={"file_path": target})
             calls.append(("hooks/restrict-agent-paths.sh", normalized))
     elif name in ("Agent", "spawn_agent", "task", "dispatch_subagent"):
-        calls = [("hooks/team/no-worktrees-guard.sh", dict(payload, tool_name="Agent"))]
+        calls.append(("hooks/team/no-worktrees-guard.sh", dict(payload, tool_name="Agent")))
     for script, data in calls:
         result = subprocess.run(["bash", str(ROOT / script)], input=json.dumps(data),
                                 cwd=cwd, env=env, stdout=subprocess.PIPE,

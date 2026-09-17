@@ -27,6 +27,8 @@ trap 'rm -rf "$ROOT"' EXIT
 mkdir -p "$ROOT/.loop-spec" "$ROOT/bare"
 printf '#!/usr/bin/env bash\nclaude -p "/loop-spec:cycle autonomous x" --model sonnet\n' > "$ROOT/round.sh"
 printf '#!/usr/bin/env bash\npython3 -m pytest -q\n' > "$ROOT/tests.sh"
+printf '#!/usr/bin/env bash\nnohup python3 extensions/sessions/cycle_run.py --profile claude >/tmp/cycle.log 2>&1 &\n' > "$ROOT/cycle-round.sh"
+printf '#!/usr/bin/env bash\ncat extensions/sessions/cycle_run.py\n' > "$ROOT/inspect-cycle.sh"
 printf '%s\n' "$(head -c 1000 /dev/zero | tr '\0' 'x')" > "$ROOT/data.txt"
 
 bash_cmd() { jq -cn --arg c "$1" '{tool_name:"Bash", tool_input:{command:$c}}'; }
@@ -37,6 +39,12 @@ check "claude --print is denied" 2 "$(bash_cmd 'cd /tmp && claude --print x')" C
 check "codex exec is denied" 2 "$(bash_cmd 'codex exec --json "x"')" CLAUDE_PROJECT_DIR="$ROOT"
 check "opencode run is denied" 2 "$(bash_cmd 'opencode run --format json "x"')" CLAUDE_PROJECT_DIR="$ROOT"
 check "adk run is denied" 2 "$(bash_cmd 'LOOP_SPEC_NON_INTERACTIVE=1 adk run dir "x" --jsonl')" CLAUDE_PROJECT_DIR="$ROOT"
+check "direct cycle_run.py launch is denied" 2 "$(bash_cmd 'python3 extensions/sessions/cycle_run.py --profile claude')" CLAUDE_PROJECT_DIR="$ROOT"
+check "nohup cycle_run.py launch is denied" 2 "$(bash_cmd 'nohup python3 extensions/sessions/cycle_run.py --profile claude >/tmp/cycle.log 2>&1 &')" CLAUDE_PROJECT_DIR="$ROOT"
+check "cycle-launch.sh launch is denied" 2 "$(bash_cmd 'bash lib/cycle-launch.sh --profile claude')" CLAUDE_PROJECT_DIR="$ROOT"
+check "reading cycle_run.py is allowed" 0 "$(bash_cmd 'grep -n cycle_run.py extensions/sessions/cycle_run.py')" CLAUDE_PROJECT_DIR="$ROOT"
+check "a script that launches cycle_run.py is denied" 2 "$(bash_cmd "bash $ROOT/cycle-round.sh")" CLAUDE_PROJECT_DIR="$ROOT"
+check "a script that reads cycle_run.py is allowed" 0 "$(bash_cmd "bash $ROOT/inspect-cycle.sh")" CLAUDE_PROJECT_DIR="$ROOT"
 check "a launch behind a pipe is denied" 2 "$(bash_cmd 'echo x | claude -p')" CLAUDE_PROJECT_DIR="$ROOT"
 check "claude --version is allowed" 0 "$(bash_cmd 'claude --version')" CLAUDE_PROJECT_DIR="$ROOT"
 check "a word containing the CLI name is allowed" 0 "$(bash_cmd 'grep -rn "claude -p" docs/')" CLAUDE_PROJECT_DIR="$ROOT"

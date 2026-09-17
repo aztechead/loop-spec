@@ -112,6 +112,11 @@ if [[ "$(jq -r '.rung.subagentIsolation' "$FD2/dispatch/prepare.json")" == "lead
   WT="$(jq -r '.worktreePath' <<<"$out")"
   check "dispatch worktree: a task worktree exists" "1" "$([[ -d "$WT" ]] && echo 1 || echo 0)"
   check "dispatch worktree: on the task branch" "task/task-001-my-feature" "$(git -C "$WT" branch --show-current)"
+  reviewer_dispatches_before="$(grep -c 'spec-compliance-reviewer' "$FD2/events.jsonl" 2>/dev/null || true)"
+  ec=0; bash "$STEP" package --feature-dir "$FD2" --task task-001 --head "$(git -C "$WT" rev-parse HEAD)" >/dev/null 2>&1 || ec=$?
+  check "package: equal base/head refuses before reviewer dispatch" "2" "$ec"
+  reviewer_dispatches_after="$(grep -c 'spec-compliance-reviewer' "$FD2/events.jsonl" 2>/dev/null || true)"
+  check "package: equal base/head emits no reviewer dispatch" "$reviewer_dispatches_before" "$reviewer_dispatches_after"
   printf 'print(2)\n' > "$WT/a.py"; git -C "$WT" add a.py; git -C "$WT" commit -q -m "feat: NO_JIRA change a"
   out="$(bash "$STEP" package --feature-dir "$FD2" --task task-001 --head "$(git -C "$WT" rev-parse HEAD)")"
   check "package: a review package is written" "1" "$([[ -f "$(jq -r '.package' <<<"$out")" ]] && echo 1 || echo 0)"
@@ -137,6 +142,11 @@ SBIN="$WORK/sbin"; SPROF="$WORK/sprofiles"; mkdir -p "$SBIN" "$SPROF"
 cat > "$SBIN/codex" <<'SH'
 #!/usr/bin/env bash
 { printf '%s\n' "$@"; echo "cwd=$(pwd -P)"; } > "${FAKE_ARGS_OUT:-/dev/null}"
+if [[ "$*" == *'commit the completed task files'* ]]; then
+  printf 'print(2)\n' > a.py
+  git add a.py
+  git commit -qm 'task-001 implementation'
+fi
 echo '{"ok":true}'
 SH
 chmod +x "$SBIN/codex"
@@ -152,19 +162,22 @@ check "run: the session rung isolates the task in a lead-created worktree" "1" "
 ec=0; out="$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role implementer 2>&1)" || ec=$?
 check "run implementer: the session completed" "completed" "$(jq -r '.status' <<<"$out")"
 check "run implementer: exit 0" "0" "$ec"
-check "run implementer: the prompt is one line and the paths" "1" "$(grep -c "^Implement the task in $FDS/dispatch/task-001.brief.md. The spec is .*. Write your report to $FDS/dispatch/task-001.report.md.$" "$FDS/dispatch/task-001.implementer.md")"
+check "run implementer: the prompt carries the completion contract" "1" "$(grep -c "commit the completed task files.*task-001.report.md" "$FDS/dispatch/task-001.implementer.md")"
 check "run implementer: the CLI received the profile's launch line" "exec --json" "$(sed -n '1,2p' "$WORK/args" | paste -sd' ' -)"
 check "run implementer: the log lands under the feature's dispatch dir" "$FDS/dispatch/sessions" "$(dirname "$(jq -r '.stdout' <<<"$out")")"
 check "run implementer: the session ran in the task worktree" "1" "$(grep -c "^cwd=$(cd "$WT1" && pwd -P)$" "$WORK/args" 2>/dev/null || echo 0)"
 check "run: an unknown role is a bad invocation" "2" "$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role judge >/dev/null 2>&1; echo $?)"
 check "run reviewer: refused before package" "2" "$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role reviewer >/dev/null 2>&1; echo $?)"
-printf 'print(2)\n' > "$WT1/a.py"; git -C "$WT1" commit -qam "task-001"
 sess bash "$STEP" package --feature-dir "$FDS" --task task-001 --head "$(git -C "$WT1" rev-parse HEAD)" >/dev/null
 ec=0; out="$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role reviewer 2>&1)" || ec=$?
 check "run reviewer: the session completed" "completed" "$(jq -r '.status' <<<"$out")"
 check "run reviewer: the prompt names the package and the verdict path" "1" "$(grep -c '^Review the package in .* against the spec .*\. Write your verdict to .*task-001.report.md.$' "$FDS/dispatch/task-001.reviewer.md")"
 check "run: a failing session is exit 1 with status failed" "failed:1" "$(printf '#!/usr/bin/env bash\nexit 3\n' > "$SBIN/codex"; ec=0; o="$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role implementer 2>/dev/null)" || ec=$?; echo "$(jq -r '.status' <<<"$o"):$ec")"
 check "run: on another rung the answer is in-harness" "in-harness" "$(jq '.rung.rung = "subagent"' "$FDS/dispatch/prepare.json" > "$WORK/p.json" && mv "$WORK/p.json" "$FDS/dispatch/prepare.json"; sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role implementer | jq -r '.action')"
+ec=0; out="$(sess bash "$STEP" integrate --feature-dir "$FDS" --task task-001 2>/dev/null)" || ec=$?
+check "run sequence: committed session task integrates" "true" "$(jq -r '.published' <<<"$out")"
+check "run sequence: integrate exits 0" "0" "$ec"
+check "run sequence: feature branch carries session implementation" "print(2)" "$(git -C "$ROOTS" show "feat/my-feature:a.py")"
 
 
 # --- workspace mode: the task's repo is the git target, never the workspace root ---------
@@ -198,10 +211,10 @@ out="$(bash "$STEP" dispatch --feature-dir "$FDW" --task task-001)"
 check "workspace dispatch: the packet root is the task's repo" "$WS/fe" "$(jq -r '.featureRoot' <<<"$out")"
 check "workspace dispatch: base SHA is the repo HEAD" "$(git -C "$WS/fe" rev-parse HEAD)" "$(jq -r '.taskBaseSha' <<<"$out")"
 check "workspace dispatch: no worktree" "null" "$(jq -r '.worktreePath' <<<"$out")"
+printf 'print(2)\n' > "$WS/fe/a.py"; git -C "$WS/fe" add a.py; git -C "$WS/fe" commit -q -m "change fe a"
 ec=0; out="$(bash "$STEP" package --feature-dir "$FDW" --task task-001 --head "$(git -C "$WS/fe" rev-parse HEAD)" 2>/dev/null)" || ec=$?
 check "workspace package: answers from the recorded base" "0" "$ec"
 check "workspace package: the reviewer is pointed at the repo" "$WS/fe" "$(jq -r '.worktree' <<<"$out")"
-printf 'print(2)\n' > "$WS/fe/a.py"
 ec=0; out="$(bash "$STEP" integrate --feature-dir "$FDW" --task task-001 2>/dev/null)" || ec=$?
 check "workspace integrate: verify ran in the repo and published" "true" "$(jq -r '.published' <<<"$out")"
 check "workspace integrate: exit 0" "0" "$ec"

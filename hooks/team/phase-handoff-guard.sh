@@ -22,8 +22,18 @@ command -v python3 &>/dev/null || exit 0
 INPUT=$(cat)
 # The phase ids come from the graph (lib/graph/phases.sh); an unreadable graph leaves
 # the alternation empty and the guard matches nothing, which is the fail-open side.
-LOOP_SPEC_PHASE_ALT="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/phases.sh" regex 2>/dev/null || true)"
+TOOL_NAME=$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_name") or "")' 2>/dev/null || echo "")
+LOOP_SPEC_PHASE_ALT=""
+if [[ "$TOOL_NAME" == "Skill" ]]; then
+  LOOP_SPEC_PHASE_ALT="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/phases.sh" regex 2>/dev/null || true)"
+fi
 export LOOP_SPEC_PHASE_ALT
+SESSION_ID="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
+if [[ -z "$SESSION_ID" ]]; then
+  SESSION_ID=$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("session_id") or "")' 2>/dev/null || echo "")
+fi
+# simplicity: retain four-space Python indentation inside this shell boundary; extract
+# a standalone reader only if the parser becomes shared by another hook.
 PARSED=$(printf '%s' "$INPUT" | python3 -c '
 import json
 import os
@@ -39,17 +49,23 @@ def phase_name(value):
     match = phase_re.search(value)
     return match.group(1) if match else ""
 
+def has_handoff_marker(value):
+    if isinstance(value, str):
+        return bool(re.search(r"(?m)^\s*LOOP_SPEC_HANDOFF\s+\{[^}\n]+\}\s*$", value))
+    if isinstance(value, list):
+        return any(has_handoff_marker(item) for item in value)
+    if isinstance(value, dict):
+        return value.get("type") == "text" and has_handoff_marker(value.get("text"))
+    return False
+
 try:
     payload = json.load(sys.stdin)
 except Exception:
     print(json.dumps({"valid": False}))
     raise SystemExit(0)
 
-if str(payload.get("tool_name") or "") != "Skill":
-    print(json.dumps({"valid": True, "target": "", "prior": []}))
-    raise SystemExit(0)
-
-target = phase_name((payload.get("tool_input") or {}).get("skill"))
+target = phase_name((payload.get("tool_input") or {}).get("skill")) \
+    if str(payload.get("tool_name") or "") == "Skill" else ""
 prior = []
 transcript_path = str(payload.get("transcript_path") or "")
 if transcript_path and os.path.isfile(transcript_path):
@@ -83,6 +99,10 @@ else:
         if isinstance(entry, dict) and entry.get("role") == "user"
     ]
 
+# Only assistant output establishes that this invocation emitted the protocol
+# marker. A quoted marker in user text or a tool result is not a handoff.
+handoff = any(has_handoff_marker(content) for content in contents)
+
 # A denied attempt never ran the phase. Counting it made the retry rule below a
 # loophole: a lead denied once for the next phase invoked it again, the denial was
 # now the "prior" phase, and the second call passed as a same-phase retry.
@@ -109,13 +129,18 @@ for content in contents:
         if phase:
             prior.append(phase)
 
-print(json.dumps({"valid": True, "target": target, "prior": prior}))
+print(json.dumps({"valid": True, "target": target, "prior": prior, "handoff": handoff}))
 ' 2>/dev/null || echo "")
 
 [[ -n "$PARSED" ]] || exit 0
+HANDOFF=$(printf '%s' "$PARSED" | python3 -c \
+  'import json,sys; print("1" if json.load(sys.stdin).get("handoff") else "0")' 2>/dev/null || echo "0")
+if [[ "$HANDOFF" == "1" ]]; then
+  echo "DENY: LOOP_SPEC_HANDOFF was already emitted in this invocation; stop and let the caller start the next phase." >&2
+  exit 2
+fi
 TARGET=$(printf '%s' "$PARSED" | python3 -c \
   'import json,sys; print(json.load(sys.stdin).get("target",""))' 2>/dev/null || echo "")
-[[ -n "$TARGET" ]] || exit 0
 
 FEATURE_DIR=$(LOOP_SPEC_PROJECT_DIR="$PROJECT_DIR" LOOP_SPEC_PWD="$PWD" python3 -c '
 import json
@@ -155,6 +180,25 @@ else:
     print(json.dumps({"path": str(path), "phase": phase}))
 ' 2>/dev/null || echo "")
 [[ -n "$FEATURE_DIR" ]] || exit 0
+
+if [[ -n "$SESSION_ID" ]]; then
+  SAME_HANDOFF=$(LOOP_SPEC_SESSION="$SESSION_ID" python3 -c '
+import json, os, sys
+try:
+    descriptor = json.load(sys.stdin)
+    state = json.load(open(os.path.join(descriptor["path"], "feature.json")))
+    record = state.get("handoffSession")
+except (OSError, KeyError, TypeError, ValueError):
+    record = None
+print("1" if isinstance(record, dict) and record.get("id") == os.environ.get("LOOP_SPEC_SESSION") else "0")
+' <<<"$FEATURE_DIR" 2>/dev/null || echo "0")
+  if [[ "$SAME_HANDOFF" == "1" ]]; then
+    echo "DENY: this session already answered a phase handoff; stop and let the caller start the next phase." >&2
+    exit 2
+  fi
+fi
+
+[[ -n "$TARGET" ]] || exit 0
 
 PRIOR=$(printf '%s' "$PARSED" | python3 -c \
   'import json,sys; p=json.load(sys.stdin).get("prior") or []; print(p[-1] if p else "")' \

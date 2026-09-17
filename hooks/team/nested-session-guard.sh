@@ -36,6 +36,8 @@ fi
 command -v python3 >/dev/null 2>&1 || exit 0
 
 INPUT=$(cat)
+# simplicity: retain four-space Python indentation inside this shell boundary; extract
+# a standalone scanner only if another hook needs the command-position parser.
 VERDICT=$(printf '%s' "$INPUT" | NESTED_GUARD_CWD="$PWD" NESTED_GUARD_PROJECT_DIR="$PROJECT_DIR" python3 -c '
 import json
 import os
@@ -44,6 +46,11 @@ import shlex
 import sys
 
 LAUNCH = re.compile(r"(?:^|[\s;&|(`])(claude\s+(?:-p|--print)\b|codex\s+exec\b|opencode\s+run\b|adk\s+run\b)")
+# The cycle runner is a harness launch even when it is hidden behind nohup/python3
+# and therefore does not contain a native CLI name. Read-only commands never reach
+# this check because only shell command positions and interpreter script arguments
+# are scanned below.
+CYCLE_RUNNER = re.compile(r"(?:^|/)(?:extensions/sessions/cycle_run\.py|lib/cycle-launch\.sh)$")
 # The bundled launchers, matched as the path token the command runs, never as a
 # substring anywhere in the line: a comment naming session_run.py next to a `claude -p`
 # was a pass (port audit 1, F8).
@@ -125,6 +132,13 @@ def command_position_words(command):
         i += 1
     return positions, tokens
 
+def cycle_runner_word(command):
+    positions, tokens = command_position_words(command)
+    for idx in positions:
+        if CYCLE_RUNNER.search(tokens[idx]):
+            return tokens[idx]
+    return ""
+
 
 try:
     payload = json.load(sys.stdin)
@@ -135,12 +149,8 @@ if str(payload.get("tool_name") or "") != "Bash":
     print("allow")
     raise SystemExit(0)
 command = str((payload.get("tool_input") or {}).get("command") or "")
-# A launcher path in a comment is not a launcher the command runs.
-if LAUNCHERS.search(COMMENT.sub("", command)):
-    print("allow")
-    raise SystemExit(0)
-
 found = LAUNCH.search(command)
+found_label = found.group(1) if found else ""
 where = "the command"
 if not found:
     # A launch hidden in a script the command runs: scan only the files that sit in a
@@ -151,6 +161,11 @@ if not found:
     cwd = os.environ.get("NESTED_GUARD_CWD") or os.getcwd()
     for idx in positions:
         word = tokens[idx]
+        if CYCLE_RUNNER.search(word):
+            found = True
+            found_label = word
+            where = word
+            break
         if os.path.isabs(word):
             candidates = [word]
         else:
@@ -166,14 +181,22 @@ if not found:
             if LAUNCHERS.search(" " + path):
                 continue
             # A launcher named only in a `#` comment inside the script is not a launch it runs.
-            found = LAUNCH.search(strip_comments(text))
+            script_text = strip_comments(text)
+            found = LAUNCH.search(script_text)
+            if not found:
+                cycle = cycle_runner_word(script_text)
+                if cycle:
+                    found = True
+                    found_label = cycle
             if found:
+                if not found_label:
+                    found_label = found.group(1)
                 where = word
                 break
         if found:
             break
 if found:
-    print("deny\t%s\t%s" % (found.group(1).split()[0] + " " + found.group(1).split()[1], where))
+    print("deny\t%s\t%s" % (found_label, where))
 else:
     print("allow")
 ' 2>/dev/null || echo "allow")

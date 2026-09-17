@@ -114,6 +114,30 @@ check "absent optional lines are absent keys" "null null" \
 rc=0; bash "$LINT" tasks - <<<"$out" >/dev/null 2>&1 || rc=$?
 check "extracted tasks pass the tasks lint" "0" "$rc"
 
+cat > "$tmp/PLAN-continuations.md" <<'MD'
+## Tasks
+### task-001: wrapped fields
+**Files:**
+- one.py
+**Interfaces:**
+- produces: `event` with a long
+  human readable description
+- consumes: none
+  this line must not become a produces continuation
+**BlockedBy:** []
+**Verify:** `true`
+**Acceptance criteria:**
+- [ ] first line of a criterion
+  and its continuation are retained
+MD
+continuation_out="$(bash "$LIB" extract "$tmp/PLAN-continuations.md")"
+check "acceptance continuation is retained" "first line of a criterion and its continuation are retained" \
+  "$(jq -r '.[0].acceptanceCriteria[0]' <<<"$continuation_out")"
+check "interface continuation is retained" "\`event\` with a long human readable description" \
+  "$(jq -r '.[0].interfaces.produces' <<<"$continuation_out")"
+check "none interface continuation does not bleed" "null" \
+  "$(jq -r '.[0].interfaces.consumes // null' <<<"$continuation_out")"
+
 # The repo's real PLAN fixture round-trips through the lint too.
 out="$(bash "$LIB" extract "$REPO_ROOT/tests/fixtures/real-PLAN.md")"
 check "real PLAN fixture yields every block" "10" "$(jq 'length' <<<"$out")"

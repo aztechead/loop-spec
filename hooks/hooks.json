@@ -45,7 +45,7 @@
         ]
       },
       {
-        "matcher": "Skill",
+        "matcher": ".*",
         "hooks": [
           {
             "type": "command",

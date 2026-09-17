@@ -38,6 +38,7 @@ patterns=(
   '/.loop-spec/sessions/'
   '/.loop-spec/launcher-result.json'
   '/.loop-spec/launcher.lock'
+  '/.loop-spec/launcher-*/'
   '/.loop-spec/active-run.json'
   '/.loop-spec/profile.json'
   '/.loop-spec/invocation-stamp.json'
