@@ -16,7 +16,14 @@ pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin spec -
 # .entry.fields (the feature.json keys this phase consumes)  .entry.read[] (each file to read)
 # .entry.flags[] (a missing ingress; relay and return)  .mode.path=ingest|self-answer|synthesize|interview
 # .mode.oracle=supervisor|self  .mode.reason  .mode.greenfield=true|false
+# .mode.budget=N .mode.elapsed=N .mode.remaining=N
+# .mode.exhausted=true|false .mode.budgetReason=<route evidence>
 ```
+
+Treat the budget as a soft deadline for exploration: use the route scope to bound
+searches, reuse existing artifacts, and refresh `design-budget.sh` before an optional scan
+or redispatch. It is cumulative across handoffs and resumes; it does not preempt work.
+When the required artifact is ready, return so the normal gates decide advancement.
 
 `path` below is `.mode.path`; the `phase-entry.sh` and `phase-mode.sh` lines it folds
 are the same probes, read once.

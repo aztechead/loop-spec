@@ -268,6 +268,40 @@ check "init: the plugin developing itself (the project the harness opened) is al
 check "init: a driver copy inside the target checkout is refused" "1" "$(cd "$REPO_ROOT/lib/graph" && python3 -c 'import driver; print(1 if driver.plugin_home_refusal("/w/loop-spec", "/w/loop-spec/evals/.runs/x/plugin", "/w/loop-spec/evals/.runs/x/t/project") else 0)')"
 check "init: an installed plugin outside the project is not refused" "0" "$(cd "$REPO_ROOT/lib/graph" && python3 -c 'import driver; print(1 if driver.plugin_home_refusal("/w/project", "/home/u/.claude/plugins/loop-spec", "/w/project") else 0)')"
 
+# --- exhausted design budget is a terminal driver decision ----------------------------
+REPO_BUDGET="$(new_repo budget)"
+AUTONOMOUS=1 out="$(cd "$REPO_BUDGET" && drv begin -- "autonomous budget guard" 2>/dev/null)"
+FD_BUDGET="$(jq -r '.featureDir' <<<"$out")"
+(cd "$REPO_BUDGET" && drv next --feature-dir "$FD_BUDGET" >/dev/null 2>&1)
+write_spec "$REPO_BUDGET" "$FD_BUDGET"
+jq -r '.slug' "$FD_BUDGET/feature.json" > "$FD_BUDGET/slug"
+jq '.currentPhase = "spec" | .currentPhaseStartedAt = "2020-01-01T00:00:00Z" | .autonomousClassification = {estimatedFiles:0, criteriaCount:1}' \
+  "$FD_BUDGET/feature.json" > "$FD_BUDGET/tmp" && mv "$FD_BUDGET/tmp" "$FD_BUDGET/feature.json"
+printf '%s\n' '{"event":"phase_end","phase":"spec","attemptId":"budget","ts":"2020-01-02T00:00:00Z","elapsedSeconds":3600}' > "$FD_BUDGET/events.jsonl"
+printf '# invalid\n' > "$REPO_BUDGET/docs/loop-spec/features/$(cat "$FD_BUDGET/slug")/SPEC.md"
+ec=0; out="$(cd "$REPO_BUDGET" && drv next --feature-dir "$FD_BUDGET" --returned-from spec 2>/dev/null)" || ec=$?
+check "budget exhaustion escalates a failing gate" "1" "$(grep -c '^DONE status=escalated' <<<"$out")"
+
+REPO_BUDGET_PASS="$(new_repo budget-pass)"
+AUTONOMOUS=1 out="$(cd "$REPO_BUDGET_PASS" && drv begin -- "autonomous budget pass" 2>/dev/null)"
+FD_BUDGET_PASS="$(jq -r '.featureDir' <<<"$out")"
+(cd "$REPO_BUDGET_PASS" && drv next --feature-dir "$FD_BUDGET_PASS" >/dev/null 2>&1)
+write_spec "$REPO_BUDGET_PASS" "$FD_BUDGET_PASS"
+jq '.currentPhase = "spec" | .currentPhaseStartedAt = "2020-01-01T00:00:00Z" | .autonomousClassification = {estimatedFiles:0, criteriaCount:1}' \
+  "$FD_BUDGET_PASS/feature.json" > "$FD_BUDGET_PASS/tmp" && mv "$FD_BUDGET_PASS/tmp" "$FD_BUDGET_PASS/feature.json"
+printf '%s\n' '{"event":"phase_end","phase":"spec","attemptId":"budget","ts":"2020-01-02T00:00:00Z","elapsedSeconds":3600}' > "$FD_BUDGET_PASS/events.jsonl"
+ec=0; out="$(cd "$REPO_BUDGET_PASS" && drv next --feature-dir "$FD_BUDGET_PASS" --returned-from spec 2>/dev/null)" || ec=$?
+check "budget exhaustion does not block a passing gate" "0" "$ec"
+check "budget exhaustion allows a passing gate to advance" "1" "$(jq -r '.currentPhase' "$FD_BUDGET_PASS/feature.json" | grep -Ec '^(discuss|plan|execute|verify|iterate|deliver)$')"
+check "budget exhaustion pass does not publish escalation" "0" "$(grep -c '^DONE status=escalated' <<<"$out")"
+export LOOP_SPEC_DESIGN_BUDGET_MINS=bogus
+budget_err="$WORK/budget-error"
+ec=0; (cd "$REPO_BUDGET_PASS" && drv next --feature-dir "$FD_BUDGET_PASS" --returned-from spec >/dev/null 2>"$budget_err") || ec=$?
+unset LOOP_SPEC_DESIGN_BUDGET_MINS
+check "invalid design budget override is rejected" "2" "$ec"
+check "invalid design budget override preserves diagnostic" "1" "$(grep -F -c 'design-budget: LOOP_SPEC_DESIGN_BUDGET_MINS must be an integer from 1 to 3600' "$budget_err")"
+check "driver Die includes the probe diagnostic" "1" "$(grep -F -c 'design budget probe failed: design-budget: LOOP_SPEC_DESIGN_BUDGET_MINS must be an integer from 1 to 3600' "$budget_err")"
+
 echo
 echo "cycle-driver-redo: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

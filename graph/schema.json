@@ -54,6 +54,8 @@
         "checkpointPrUrl",
         "delivery",
         "verificationBaseline",
+        "verificationBaselineAttempted",
+        "verificationBaselineOptIn",
         "warnings",
         "mergeQueue",
         "pendingRemediationTasks",

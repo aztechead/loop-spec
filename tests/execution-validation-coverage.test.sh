@@ -84,10 +84,14 @@ check_contains "resume reference picks up remaining ids" \
 
 # Startup must not pay for a repository-wide suite on the untouched base. The capture
 # survives only as an opt-in for repositories whose base commit is already red.
-check_contains "startup baseline capture is opt-in" \
-  lib/feature-bootstrap.sh 'if [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" && "${greenfield:-0}" != "1" ]]; then'
+check_contains "baseline capture is deferred to EXECUTE" \
+  lib/deferred-baseline.sh 'Capture an opt-in validation baseline once'
+check_contains "baseline attempt is durable" \
+  lib/deferred-baseline.sh 'verificationBaselineAttempted true'
 check_contains "workspace prepare/baseline uses the shared bootstrap" \
   lib/graph/driver.py '"feature-bootstrap", "prepare-repo"'
+check_contains "oneshot baseline runs before phase entry writes" \
+  lib/graph/driver.py 'deferred-baseline.sh'
 check_contains "the opt-in is documented" \
   docs/loop-spec/configuration.md '`LOOP_SPEC_STARTUP_BASELINE`'
 

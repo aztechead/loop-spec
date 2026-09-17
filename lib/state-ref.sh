@@ -49,22 +49,51 @@ case "$cmd" in
     trap 'rm -f "$index"' EXIT
     rm -f "$index"
     # A fresh index holds only the snapshot; the checkout's own index is never touched.
-    count=0
-    while IFS= read -r -d '' path; do
-      blob="$(git -C "$root" hash-object -w "$path")"
-      GIT_INDEX_FILE="$index" git -C "$root" update-index --add --cacheinfo "100644,$blob,${path#"$feature_dir/"}"
-      count=$((count + 1))
-    done < <(
+    # Feed the exact same selected paths to one native hash-object and index update.
+    # Hashing in one invocation preserves the existing hash-object filter behavior.
+    # Fall back when an older Git lacks the required options.
+    add_paths() {
       for path in "$feature_dir"/*; do
-        if [[ -f "$path" && ! -L "$path" ]]; then printf '%s\0' "$path"; fi
+        if [[ -f "$path" && ! -L "$path" ]]; then printf '%s\0' "${path#"$feature_dir/"}"; fi
       done
       for name in instruction-snapshots review-attempts; do
         if [[ -d "$feature_dir/$name" && ! -L "$feature_dir/$name" ]]; then
-          find "$feature_dir/$name" -type f -print0
+          find "$feature_dir/$name" -type f ! -type l -print0 | while IFS= read -r -d '' path; do
+            printf '%s\0' "${path#"$feature_dir/"}"
+          done
         fi
       done
-    )
-    (( count > 0 )) || { echo "state-ref: nothing to snapshot in $feature_dir" >&2; exit 1; }
+    }
+    paths=()
+    while IFS= read -r -d '' path; do paths+=("$path"); done < <(add_paths)
+    (( ${#paths[@]} > 0 )) || { echo "state-ref: nothing to snapshot in $feature_dir" >&2; exit 1; }
+    hash_help="$(git -C "$root" hash-object -h 2>&1 || true)"
+    index_help="$(git -C "$root" update-index -h 2>&1 || true)"
+    if grep -q -- '--stdin-paths' <<<"$hash_help" \
+        && grep -q -- '--index-info' <<<"$index_help"; then
+      GIT_INDEX_FILE="$index" git -C "$root" read-tree --empty
+      absolute_paths=()
+      for path in "${paths[@]}"; do absolute_paths+=("$feature_dir/$path"); done
+      if hashes="$(git -C "$root" hash-object -w -- "${absolute_paths[@]}")"; then
+        hash_index=0
+        while IFS= read -r hash; do
+          printf '100644 %s\t%s\0' "$hash" "${paths[$hash_index]}"
+          hash_index=$((hash_index + 1))
+        done <<< "$hashes" | GIT_INDEX_FILE="$index" git -C "$root" update-index --add -z --index-info
+      else
+        # An argv limit or an otherwise unrepresentable batch falls back before
+        # write-tree, so a partial native index can never be published.
+        for path in "${paths[@]}"; do
+          blob="$(git -C "$root" hash-object -w "$feature_dir/$path")"
+          GIT_INDEX_FILE="$index" git -C "$root" update-index --add --cacheinfo "100644,$blob,$path"
+        done
+      fi
+    else
+      for path in "${paths[@]}"; do
+        blob="$(git -C "$root" hash-object -w "$feature_dir/$path")"
+        GIT_INDEX_FILE="$index" git -C "$root" update-index --add --cacheinfo "100644,$blob,$path"
+      done
+    fi
     tree="$(GIT_INDEX_FILE="$index" git -C "$root" write-tree)"
     parent="$(git -C "$root" rev-parse -q --verify "$ref^{commit}" 2>/dev/null || true)"
     if [[ -n "$parent" && "$(git -C "$root" rev-parse "$parent^{tree}")" == "$tree" ]]; then

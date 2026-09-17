@@ -59,6 +59,20 @@ check "run: dispatch files are written" "2" "$(ls "$FD/dispatch" | grep -cE 'con
 check "run: the toolchain is probed once for the briefs" "1" "$(grep -c '^jq: jq-' "$FD/dispatch/environment.txt")"
 check "run: quoted pattern fragments are not probed as programs" "0" "$(grep -c 'apply\|\\b' "$FD/dispatch/environment.txt")"
 
+# --- deferred opt-in baseline -----------------------------------------------------
+# The exact base is captured from a temporary detached worktree after design artifacts
+# exist, and the durable attempt marker prevents a re-entry from capturing again.
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" verificationBaselineOptIn true >/dev/null
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" verificationBaselineAttempted false >/dev/null
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" greenfield false >/dev/null
+out="$(LOOP_SPEC_STARTUP_BASELINE=1 LOOP_SPEC_WORKTREES=1 bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
+check "baseline: capture begins at EXECUTE" "object" "$(jq -r '.verificationBaseline | type' "$FD/feature.json")"
+check "baseline: capture records one attempt" "true" "$(jq -r '.verificationBaselineAttempted' "$FD/feature.json")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands.test '"false"' >/dev/null
+bash "$SCRIPT" run --feature-dir "$FD" >/dev/null 2>&1 || true
+check "baseline: re-entry preserves captured result" "object" "$(jq -r '.verificationBaseline | type' "$FD/feature.json")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands.test '"true"' >/dev/null
+
 # --- a planner-declared reverse edge wins over the synthetic one -------------------
 # Built by hand rather than cycle-driver: my-feature is already the checkout's active
 # feature, and cycle-driver refuses a second one in the same checkout.

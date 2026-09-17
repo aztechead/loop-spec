@@ -110,10 +110,10 @@ got="absent"
 [[ -e "$WORK/e/.loop-spec/features/demo/feature.json" ]] && got="written"
 check "E: prepare-repo does not write feature.json" "absent" "$got"
 
-# Case F: opt-in baseline capture is a JSON object, not null.
+# Case F: opt-in baseline is deferred until EXECUTE, so preparation remains cheap.
 make_repo "$WORK/f"
 out=$(LOOP_SPEC_STARTUP_BASELINE=1 prepare_repo "$WORK/f" 2>/dev/null)
-check "F: baseline captured" "object" "$(jq -r '.baseline | type' <<<"$out")"
+check "F: baseline deferred" "null" "$(jq -r '.baseline' <<<"$out")"
 
 # Case G: prepare failure writes a terminal result (workspace-mode contract).
 make_repo "$WORK/g"
@@ -160,16 +160,25 @@ check "J: finalize does not write feature.json on prepare failure" "absent" "$go
 check "J: finalize outcome is infrastructure-failed" "infrastructure-failed" \
   "$(jq -r '.outcome' "$WORK/j/.loop-spec/last-result.json" 2>/dev/null || echo MISSING)"
 
-# Case K: opt-in baseline capture failure is a notice, not a terminal result (6.6.5 run:
-# a startup `status: failed` under the auto-slug ended the caller's run).
+# Case K: opt-in baseline work is deferred until the feature exists. An explicit
+# in-place run keeps it retryable and does not create a checkout.
 make_repo "$WORK/k"
-echo dirt > "$WORK/k/untracked"
+out=$(LOOP_SPEC_STARTUP_BASELINE=1 finalize "$WORK/k" 2>"$WORK/k.err")
+check "K: startup still prints only the test command" "true" "$out"
+check "K: startup leaves baseline null for EXECUTE" "null" \
+  "$(jq -r '.verificationBaseline' "$WORK/k/.loop-spec/features/demo/feature.json")"
+check "K: startup leaves attempt retryable" "false" \
+  "$(jq -r '.verificationBaselineAttempted' "$WORK/k/.loop-spec/features/demo/feature.json")"
 rc=0
-out=$(LOOP_SPEC_STARTUP_BASELINE=1 prepare_repo "$WORK/k" 2>"$WORK/k.err") || rc=$?
-check "K: dirty-tree baseline capture does not fail the bootstrap" "0" "$rc"
-check "K: baseline failure leaves baseline null" "null" "$(jq -r '.baseline' <<<"$out")"
-check "K: baseline failure writes no last-result.json" "0" "$([[ -f "$WORK/k/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
-check "K: baseline failure is named on stderr" "1" "$(grep -c 'startup validation baseline not captured' "$WORK/k.err")"
+LOOP_SPEC_WORKTREES=0 bash "$ROOT/lib/deferred-baseline.sh" run \
+  "$WORK/k/.loop-spec/features/demo" 2>"$WORK/k-deferred.err" || rc=$?
+check "K: in-place deferred skip succeeds" "0" "$rc"
+check "K: in-place deferred skip remains retryable" "false" \
+  "$(jq -r '.verificationBaselineAttempted' "$WORK/k/.loop-spec/features/demo/feature.json")"
+check "K: in-place deferred skip is explicit" "1" \
+  "$(grep -c 'LOOP_SPEC_WORKTREES=0 forbids exact-base worktrees' "$WORK/k-deferred.err" || true)"
+check "K: in-place deferred skip creates no worktree" "1" \
+  "$(git -C "$WORK/k" worktree list --porcelain | grep -c '^worktree ' || true)"
 
 # Case L: greenfield skips baseline even when the opt-in is on.
 make_repo "$WORK/l"

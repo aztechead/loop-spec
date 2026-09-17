@@ -23,6 +23,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from paths import repo_path  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import feature_read  # noqa: E402
+from state_reads import unsatisfied_reads  # noqa: E402
 
 graph_path = feature_dir = repo_root = script_dir = completed_node = ""
 dry_run = resume = step_mode = False
@@ -317,11 +320,19 @@ def assert_reads(node_id):
     graph exercised before any feature is initialized has nothing to assert."""
     if not os.path.isfile(os.path.join(feature_dir, "feature.json")):
         return True, ""
-    proc = subprocess.run([
-        "bash", os.path.join(repo_root, "lib", "graph", "state.sh"), "assert-reads",
-        "--feature-dir", feature_dir, "--node", node_id, "--graph", graph_path,
-    ], cwd=repo_root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
-    return proc.returncode == 0, proc.stderr.decode("utf-8", errors="replace")
+    node = nodes.get(node_id)
+    if not isinstance(node, dict):
+        return False, "state.sh: unknown node: %s\n" % node_id
+    try:
+        feature = feature_read.load_state(feature_dir)
+        keys = feature_read.state_keys()
+        projected = {key: feature.get(key) for key in keys}
+        missing = unsatisfied_reads(projected, node.get("reads", []))
+    except (IOError, OSError, ValueError, TypeError) as exc:
+        return False, "state.sh: assert-reads could not read feature state: %s\n" % exc
+    if missing:
+        return False, "state.sh: unsatisfied reads for node %s:\n%s\n" % (node_id, "\n".join(missing))
+    return True, ""
 
 
 def check_conflict(test_exit):

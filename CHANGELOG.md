@@ -4,6 +4,30 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.6.8] - 2026-09-16
+
+### Fixed
+
+- Design effort now consumes the route's file and acceptance-criteria estimates.
+  SPEC, DISCUSS, and PLAN share an allowance instead of starting a fresh budget at
+  each phase. Phase instructions expose the remaining allowance; an exhausted
+  design that still fails its exit gate escalates instead of starting another
+  retry. Passing gates still advance. This is enforcement at orchestration
+  boundaries, not preemption of a running agent.
+- The opt-in verification baseline moves from startup to the first implementation
+  phase. Capture uses the original base commit in a temporary checkout, so design
+  commits do not contaminate the baseline and a run stopped during planning never
+  pays for the repository-wide validation suite.
+- Baseline state now records the durable opt-in and phase-owned writes for ONESHOT;
+  interrupted exact-base captures remain retryable, workspace captures persist one
+  repository at a time, and `LOOP_SPEC_WORKTREES=0` reports the intentional skip.
+- Design allowances reset after implementation and iteration boundaries, so a
+  rewind receives a fresh allowance. Invalid budget overrides retain their error details.
+- Phase entry reuses one typed state snapshot, graph read validation runs in process,
+  and state snapshots batch Git operations while preserving filters and tree contents.
+- The critique-step test suite checks its failure count after its final test.
+  Previously, failures in its final major-finding cases could still exit zero.
+
 ## [6.6.7] - 2026-09-15
 
 ### Fixed

@@ -52,7 +52,13 @@ node="$(jq -c --arg p "$phase" '.nodes[] | select(.id == $p) | .ingress // empty
   || { echo "phase-entry: the '$phase' node of $GRAPH declares no ingress block; nothing opens it here" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
-fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
+# Read one consistent typed snapshot; phase ingress asks for several fields and
+# launching feature_read.py for each field dominated short-route startup time.
+feature_snapshot="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all --drop-strays)" || {
+  echo "phase-entry: cannot read feature state snapshot" >&2
+  exit 2
+}
+fget() { jq -r "$1" <<<"$feature_snapshot"; }
 
 slug="$(fget '.slug')"
 cp "$fj" "$feature_dir/.phase-entry.json"

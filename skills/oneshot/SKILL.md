@@ -17,6 +17,11 @@ pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin onesho
 # .entry.read[] (SPEC.md)  .entry.flags[] (a missing ingress; relay and return)
 ```
 
+ONESHOT `phase-begin` may run preparation and the opted-in repository-wide baseline before
+returning this packet. Baseline commands use `LOOP_SPEC_BASELINE_TIMEOUT_SECS` (default
+1800) and its idle timeout. Workspace captures persist per repository; `LOOP_SPEC_WORKTREES=0` reports
+the exact-base worktree skip; interruption leaves `verificationBaselineAttempted` false for retry.
+
 Read `skills/shared/engineering-directives.md#Canonical compact directive` and
 `skills/shared/human-code.md#Compact directive (read this file; do not paste it into a prompt)`:
 These sections contain the full directives for a three-file change.

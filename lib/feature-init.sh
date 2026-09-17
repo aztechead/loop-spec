@@ -386,7 +386,9 @@ common_skeleton() {
         targets: []
       },
       warnings: [],
-      verificationBaseline: null
+      verificationBaseline: null,
+      verificationBaselineAttempted: false,
+      verificationBaselineOptIn: false
     } + $tierblocks'
 }
 

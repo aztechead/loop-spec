@@ -200,6 +200,49 @@ check "stub was invoked" "0" "$?"
 cmp -s "$WORK/feature/feature.json" "$WORK/feature/feature.json.before"
 check "no direct feature.json mutation" "0" "$?"
 
+# The in-process engine and CLI share the validator module. Compare the missing
+# key answer on the malformed workspace fixture.
+cli_missing="$(bash "$SCRIPT" assert-reads --feature-dir "$WORK/ws-feature" --node spec \
+  --graph "$WORK/graph/cycle.graph.json" 2>&1 || true)"
+direct_missing="$(PYTHONPATH="$ROOT/lib/graph:$ROOT/lib" python3 - "$WORK/ws-feature" <<'PY'
+import sys
+import feature_read
+from state_reads import unsatisfied_reads
+feature = feature_read.load_state(sys.argv[1])
+projected = {key: feature.get(key) for key in feature_read.state_keys()}
+print("\n".join(unsatisfied_reads(projected, ["slug"])))
+PY
+)"
+printf '%s\n' "$cli_missing" | grep -qx 'slug'
+check "CLI and in-process validator agree on missing read" "slug" "$direct_missing"
+
+# Exercise the real engine entry point, including node lookup and a fresh state
+# read after mutation (the old shell boundary could hide stale assumptions).
+PYTHONPATH="$ROOT/lib/graph:$ROOT/lib" python3 - "$ROOT" "$WORK" <<'PY'
+import json
+import sys
+from pathlib import Path
+import engine
+
+root, work = sys.argv[1:]
+graph = str(Path(work) / "graph" / "cycle.graph.json")
+feature_dir = str(Path(work) / "feature")
+Path(feature_dir, "feature.json").write_text(json.dumps({"slug": None}), encoding="utf-8")
+engine.configure(graph, feature_dir, False, True, True, root, str(Path(root) / "lib" / "graph"))
+
+ok, err = engine.assert_reads("spec")
+if ok or "slug" not in err:
+    raise SystemExit("FAIL: engine missing read: %s" % err)
+Path(feature_dir, "feature.json").write_text(json.dumps({"slug": "fresh"}), encoding="utf-8")
+ok, err = engine.assert_reads("spec")
+if not ok or err:
+    raise SystemExit("FAIL: engine fresh mutation read")
+ok, err = engine.assert_reads("missing-node")
+if ok or "unknown node: missing-node" not in err:
+    raise SystemExit("FAIL: engine unknown node")
+print("PASS: engine assert_reads validates fresh state and unknown nodes")
+PY
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]
