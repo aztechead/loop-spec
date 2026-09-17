@@ -52,6 +52,51 @@ if [[ -f "$tasks" ]]; then
   done < <(jq -r '.[] | [.id, (.verifyCommand // ""), ((.acceptanceCriteria // []) | length)] | @tsv' "$tasks")
   rc=0; lib dag-width < "$tasks" >/dev/null 2>&1 || rc=$?
   (( rc == 3 )) && flag "[feasibility] task DAG has a dependency cycle"
+  # A task that names a file another task names waits for it (execute-prepare.sh adds
+  # the edge), so tasks that share files run as one chain however many there are: the
+  # 6.5.0 cycle here dispatched 12 tasks one at a time, 9 of its 11 edges file overlaps.
+  # This measures the width EXECUTE will see, declared plus overlap edges under the same
+  # excludes, and flags a chain while the plan can still be reshaped. Plans of up to
+  # three tasks are left alone; merging those buys nothing. LOOP_SPEC_PLAN_MIN_WIDTH is
+  # the operator override (default 2; 1 accepts any chain).
+  # ponytail: the overlap union mirrors execute-prepare.sh; extract one script when a third caller appears.
+  min_width="${LOOP_SPEC_PLAN_MIN_WIDTH:-2}"
+  [[ "$min_width" =~ ^[0-9]+$ ]] \
+    || { echo "plan-exit-gate: LOOP_SPEC_PLAN_MIN_WIDTH must be a non-negative integer, got '$min_width'" >&2; exit 2; }
+  if (( rc == 0 && min_width > 1 )); then
+    excludes="$(fget '(.fileConflictExcludeGlobs // []) | join("\n")')" || excludes=""
+    [[ -f ".loop-spec/file-conflict-exclude.txt" ]] && excludes="$excludes
+$(cat ".loop-spec/file-conflict-exclude.txt")"
+    width="$(EXCLUDES="$excludes" python3 - "$tasks" "$SCRIPT_DIR/dag-width.sh" <<'PY'
+import fnmatch, json, os, subprocess, sys
+tasks = json.load(open(sys.argv[1]))
+globs = [g.strip() for g in os.environ.get("EXCLUDES", "").splitlines() if g.strip()]
+def excluded(path): return any(fnmatch.fnmatch(path, g) for g in globs)
+ordered = sorted(tasks, key=lambda t: str(t.get("id")))
+for t in ordered:
+    t["blockedBy"] = list(t.get("blockedBy") or [])
+owners = {}
+for i, a in enumerate(ordered):
+    for b in ordered[i + 1:]:
+        shared = [f for f in (a.get("files") or []) if f in (b.get("files") or []) and not excluded(f)]
+        if shared and a["id"] not in b["blockedBy"] and b["id"] not in a["blockedBy"]:
+            b["blockedBy"].append(a["id"])
+        for f in shared:
+            owners.setdefault(f, set()).update([a["id"], b["id"]])
+run = subprocess.run(["bash", sys.argv[2]], input=json.dumps(ordered), capture_output=True, text=True)
+top = sorted(owners.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:3]
+print(json.dumps({"tasks": len(tasks), "width": int(run.stdout.strip() or 0),
+                  "shared": ["%s (%s)" % (f, ",".join(sorted(ids))) for f, ids in top]}))
+PY
+)" || width=""
+    if [[ -n "$width" ]]; then
+      n="$(jq -r '.tasks' <<<"$width")"; w="$(jq -r '.width' <<<"$width")"
+      shared="$(jq -r '.shared | join("; ")' <<<"$width")"
+      if (( n >= 4 && w < min_width )); then
+        flag "[width] $n tasks run $w at a time: tasks that share a file wait for each other; give each shared file one owning task or merge the tasks that share it${shared:+: $shared}"
+      fi
+    fi
+  fi
   if [[ -n "$ws_root" ]]; then
     names="$(fget '[.workspace.repos[].name] | join(" ")')" || true
     while IFS=$'\t' read -r id repo; do
