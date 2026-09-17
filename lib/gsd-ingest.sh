@@ -34,7 +34,6 @@ case "$cmd" in
       if [[ -f "$cand" ]]; then
         mkdir -p "$(dirname "$target")"
         {
-          printf '%s\n' '---' 'type: Pattern Index' '---'
           printf '# PATTERNS.md - %s\n\n' "$slug"
           printf '> Imported from GSD `%s` on %s.\n\n' "$cand" "$(date -u +%Y-%m-%dT%H:%MZ)"
           cat "$cand"

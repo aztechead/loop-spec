@@ -20,14 +20,8 @@ case "${1:-}" in
       exit 1
     fi
     ;;
-  check-pyyaml)
-    if ! python3 -c 'import yaml' >/dev/null 2>&1; then
-      echo "loop-spec: PyYAML is required for OKF/frontmatter parsing; install pyyaml and retry." >&2
-      exit 1
-    fi
-    ;;
   *)
-    echo "usage: runtime-preflight.sh check-jq | check-pyyaml" >&2
+    echo "usage: runtime-preflight.sh check-jq" >&2
     exit 2
     ;;
 esac

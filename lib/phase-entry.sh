@@ -65,7 +65,6 @@ cp "$fj" "$feature_dir/.phase-entry.json"
 ws_root="$(fget 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end')"
 if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir" rev-parse --show-toplevel)"; fi
 docs="$root/docs/loop-spec/features/$slug"
-[[ -f "$docs/index.md" ]] && echo "index=$docs/index.md"
 spec="$(fget '.artifacts.spec // ""')"; [[ -n "$spec" ]] || spec="$docs/SPEC.md"
 tasks="$(fget '.artifacts.tasks // ""')"; [[ -n "$tasks" ]] || tasks="$feature_dir/tasks.json"
 flags=0

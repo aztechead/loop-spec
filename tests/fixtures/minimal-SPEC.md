@@ -1,5 +1,4 @@
 ---
-type: Specification
 unresolved_questions: []
 ---
 # A feature

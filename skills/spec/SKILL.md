@@ -6,8 +6,6 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 
 # SPEC
 
-Use the OKF 0.2 header and type contract in `skills/shared/okf-artifacts.md` when writing SPEC.md.
-
 Run in the main thread. Write `docs/loop-spec/features/{slug}/SPEC.md` in the existing
 checkout; never create the feature directory here. Set `feature_dir=.loop-spec/features/{slug}`.
 Read only the entry packet first:

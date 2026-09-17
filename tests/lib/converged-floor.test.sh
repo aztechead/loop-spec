@@ -17,9 +17,6 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/converged-floor-test.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 
 cat > "$tmp/SPEC.md" <<'EOF'
----
-type: Specification
----
 # Feature
 
 ## Success criteria
@@ -35,9 +32,6 @@ type: Specification
 EOF
 
 cat > "$tmp/V.md" <<'EOF'
----
-type: Verification Report
----
 # Verification
 
 ## Repository grounding
@@ -112,9 +106,6 @@ check "grounding without an acceptance result cannot converge" "$([[ $? -eq 1 ]]
 # The verifier's real table shape (6.3.0 fastapi runs): a Result column after the verify
 # command, PASS with a parenthetical, an escaped pipe inside a cell, and GE ids as keys.
 cat > "$tmp/V-wide.md" <<'EOF'
----
-type: Verification Report
----
 # Verification
 
 ## Repository grounding

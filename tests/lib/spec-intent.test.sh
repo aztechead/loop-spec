@@ -29,7 +29,6 @@ with tempfile.TemporaryDirectory() as temp:
     spec = docs / "SPEC.md"
     original = """---
 route: full
-type: Specification
 unresolved_questions: []
 ---
 # Demo
@@ -63,10 +62,6 @@ Use existing helpers.
     approval = json.loads((feature / "feature.json").read_text())["specApproval"]
     assert approval["source"] == "autonomous"
     assert approval["sha256"] == intent_digest(original)
-    metadata_variant = original.replace("route: full\n", "route: full\nnotes: |\n  ## Goals\n  ``` fake heading and fence\n", 1)
-    assert intent_digest(metadata_variant) == intent_digest(original)
-    assert intent_digest(original.replace("Return the requested output.", "Return a different requested output.")) != intent_digest(original)
-    assert intent_digest(original.replace("Do not modify other commands.", "Do not modify any other commands.")) != intent_digest(original)
     call("artifact-lint.sh", "spec", str(spec), "--feature-dir", str(feature))
     spec.write_text(original.replace("Use existing helpers.", "Reuse the parser."))
     call("artifact-lint.sh", "spec", str(spec), "--feature-dir", str(feature))

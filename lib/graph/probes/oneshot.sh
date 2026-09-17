@@ -118,27 +118,53 @@ fi
 
 # The frontmatter facts, one per line: route=, gate=, unresolved=<count>, footprint=<path>.
 facts="$(python3 - "$spec" "$SCRIPT_DIR/../.." <<'PY'
-import sys
+import re, sys
+lines = open(sys.argv[1], encoding="utf-8", errors="replace").read().split("\n")
+if not lines or lines[0].strip() != "---":
+    print("frontmatter=missing"); sys.exit(0)
+try:
+    end = lines.index("---", 1)
+except ValueError:
+    print("frontmatter=unterminated"); sys.exit(0)
+body = lines[1:end]
+route = gate = None
+unresolved = footprint = None
+section = None
+for raw in body:
+    line = raw.rstrip()
+    if not line.strip() or line.lstrip().startswith("#"):
+        continue
+    indent = len(line) - len(line.lstrip())
+    text = line.strip()
+    m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$", text)
+    if m and (indent == 0):
+        key, val = m.group(1), m.group(2).strip()
+        if indent == 0:
+            section = key if val == "" else None
+        if key == "route" and indent == 0:
+            route = val.strip("'\"")
+        elif key == "footprint" and indent == 0:
+            footprint = [] if val == "" else [p.strip("'\"") for p in re.findall(r"[^\[\],\s'\"]+", val)]
+            section = "footprint" if val == "" else None
+        continue
+    if text.startswith("- ") and section == "footprint" and footprint is not None:
+        footprint.append(text[2:].strip().strip("'\""))
 sys.path.insert(0, sys.argv[2])
-from okf import read_document, render_document
 from spec_questions import read_questions
 try:
-    metadata, body = read_document(sys.argv[1])
-except (OSError, ValueError) as exc:
-    print("frontmatter=%s" % ("missing" if "metadata" in str(exc).lower() else "invalid")); sys.exit(0)
-route = metadata.get("route", "")
-footprint = metadata.get("footprint")
-try:
-    questions = read_questions(render_document(metadata, body))
+    questions = read_questions("\n".join(lines))
 except ValueError:
     print("frontmatter=invalid-questions"); sys.exit(0)
-gate = "true" if questions is not None and not questions else ("false" if questions is not None else "")
-print("route=%s" % route)
-print("gate=%s" % gate)
-print("unresolved=%s" % ("missing" if questions is None else len(questions)))
-if isinstance(footprint, list):
-    for p in footprint: print("footprint=%s" % p)
-else: print("footprint-key=missing")
+if questions is not None:
+    unresolved = questions
+    gate = "true" if not questions else "false"
+print("route=%s" % (route or ""))
+print("gate=%s" % (gate or ""))
+print("unresolved=%s" % ("missing" if unresolved is None else len(unresolved)))
+for p in (footprint or []):
+    print("footprint=%s" % p)
+if footprint is None:
+    print("footprint-key=missing")
 PY
 )" || full "SPEC.md frontmatter could not be read"
 

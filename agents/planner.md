@@ -9,8 +9,6 @@ color: blue
 
 # planner
 
-Use the OKF 0.2 artifact header and filename type mapping in `skills/shared/okf-artifacts.md`.
-
 Create the two planning artifacts from the lead's structured brief. `patterns_path`
 and `spec_path` are absolute paths. Read the named files and relevant code before
 writing. Bash is read-only context gathering; do not run tests, installs, or builds.

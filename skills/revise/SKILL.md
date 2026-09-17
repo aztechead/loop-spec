@@ -6,16 +6,6 @@ argument-hint: '<pr-number | pr-url> [autonomous]'
 
 # Revise Skill
 
-Use the OKF 0.2 header and type contract in `skills/shared/okf-artifacts.md` for REVISION.md.
-
-Begin `REVISION.md` with:
-
-```yaml
----
-type: Revision Report
----
-```
-
 Invoked as `/loop-spec:revise <pr# | url> [autonomous]`.
 
 Process PR feedback after cycle delivery. No active cycle is required.
@@ -210,12 +200,9 @@ git -C "$revision_root" push origin "$branch"   # never --force
 
 Write `docs/loop-spec/features/{slug}/REVISION.md` (append one section per
 revise run): PR, date, items table with class + outcome (commit SHA / replied /
-backlogged), assumed decisions when autonomous. Refresh and validate the feature
-bundle index, then commit the explicit `REVISION.md` and `index.md` paths on the PR branch with
-`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/okf.sh" index "$revision_root/docs/loop-spec/features/{slug}"`
-then validate with
-`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/okf.sh" bundle-check "$revision_root/docs/loop-spec/features/{slug}"`.
-Commit the explicit `REVISION.md` and generated `index.md` paths together; never include `.loop-spec/*` runtime state in a revise commit, and never use `git add -A`.
+backlogged), assumed decisions when autonomous. Commit **only this explicit path**
+on the PR branch; do not use `git add -A`, and never include `.loop-spec/*` runtime
+state in a revise commit.
 Emit `phase_end` and refresh the result contract:
 
 Replace `<count>` with the number of review items processed. Use the actual fixed, answered, and backlogged counts in the summary.

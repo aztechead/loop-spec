@@ -1,6 +1,3 @@
----
-type: Implementation Plan
----
 # User-gate flow (verification enforcement) - Implementation Plan
 
 **Spec:** `docs/loop-spec/features/user-gate-flow/SPEC.md`

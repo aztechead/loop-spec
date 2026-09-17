@@ -1,2 +1,0 @@
-# OKF frontmatter parsing (the core runtime uses python3 + PyYAML).
-PyYAML>=6.0

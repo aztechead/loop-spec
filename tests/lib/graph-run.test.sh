@@ -73,7 +73,7 @@ if bash "$ROOT/lib/graph/validate.sh" "$ROOT/graph/cycle.graph.json" >/dev/null 
   # A gated SPEC.md with a footprint of one file takes the oneshot route (WP1): SPEC,
   # ONESHOT, DELIVER, and none of the five phases between.
   mkdir -p "$WORK/cyclerepo/docs/loop-spec/features/cyclecheck"
-  printf -- '---\ntype: Specification\nunresolved_questions: []\nfootprint:\n  - a.txt\n---\n# cyclecheck\n' \
+  printf -- '---\nunresolved_questions: []\nfootprint:\n  - a.txt\n---\n# cyclecheck\n' \
     > "$WORK/cyclerepo/docs/loop-spec/features/cyclecheck/SPEC.md"
   set +e
   os_out="$(cd "$WORK/cyclerepo" && bash "$SCRIPT" --dry-run \
@@ -186,11 +186,8 @@ cp "$ROOT/tests/fixtures/minimal-SPEC.md" "$rdocs/SPEC.md"
   bash "$ROOT/lib/cycle-driver.sh" spec approve --feature-dir "$rfd" --source human >/dev/null 2>&1
 )
 printf 'echo ok\n' > "$remrepo/a.sh"
-printf '%s\n' '---' 'type: Implementation Plan' '---' '# PLAN' > "$rdocs/PLAN.md"
+printf '# PLAN\n' > "$rdocs/PLAN.md"
 cat > "$rdocs/VERIFICATION.md" <<'MD'
----
-type: Verification Report
----
 # Remediation verification
 ## Repository grounding
 - criterion: GE-001 | implementation: a.sh:1 - executable implementation | integration: none - unit scope

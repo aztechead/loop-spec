@@ -47,7 +47,6 @@ spec() {
   # spec [<extra top-level frontmatter line>]
   cat > "$DOCS/SPEC.md" <<MD
 ---
-type: Specification
 unresolved_questions: []
 footprint:
   - src/slugify.py
@@ -109,9 +108,9 @@ check "a oneshot spec without the Intent block flags" "1" "$(bash "$REPO_ROOT/li
 # oneshot boundary can ever meet it (port audit 5, R1).
 sed 's/^- \[ \] \\`python3 -c[^`]*\\` exits 0$/- [ ] the tests pass/; s/^- \[ \] `python3 -c[^`]*` exits 0$/- [ ] the tests pass/' "$DOCS/SPEC.md" > "$WORK/bare.md"
 check "a Good Enough line without a backticked command flags" "1" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/bare.md" 2>&1 | grep -c 'carries no backticked command')"
-sed 's/^footprint:$/footprint: [a.py, b.py, c.py, d.py]/; /^  - src\/slugify.py$/d; /^  - "src\/slugify.py"$/d' "$WORK/long.md" > "$WORK/full.md"
+sed 's/^footprint:$/footprint: [a.py, b.py, c.py, d.py]/; /^  - src\/slugify.py$/d' "$WORK/long.md" > "$WORK/full.md"
 check "a full-shape spec (four files) passes the lint untouched" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/full.md" >/dev/null 2>&1; echo $?)"
-check "a spec without a footprint passes the lint" "0" "$(printf -- '---\ntype: Specification\nunresolved_questions: []\n---\n# x\n' > "$WORK/nofp.md"; bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nofp.md" >/dev/null 2>&1; echo $?)"
+check "a spec without a footprint passes the lint" "0" "$(printf -- '---\nunresolved_questions: []\n---\n# x\n' > "$WORK/nofp.md"; bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nofp.md" >/dev/null 2>&1; echo $?)"
 check "the oneshot template is under 60 lines" "1" "$([[ $(wc -l < "$REPO_ROOT/skills/shared/artifact-templates/SPEC-oneshot.md.template") -lt 60 ]] && echo 1 || echo 0)"
 # The driver's skeleton, with the lead's values filled by a blunt substitution, passes
 # both lints: a shape the driver wrote that a gate flags is a driver bug, not a REDO.
@@ -157,16 +156,13 @@ rm -f "$DOCS/VERIFICATION.md"
 printf '# no frontmatter at all\n\n## Intent\n' > "$DOCS/SPEC.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "an unreadable frontmatter flags instead of passing" "1" "$ec"
-check "the flag names the probe's reason" "1" "$(grep -c '^FLAG \[oneshot\] .*not readable as a oneshot or an escalated spec' <<<"$out")"
+check "the flag names the probe's reason" "1" "$(grep -c '^FLAG \[oneshot\] .*not readable as a oneshot or an escalated spec (SPEC.md frontmatter missing)' <<<"$out")"
 
 # --- a finished oneshot: change committed, VERIFICATION.md proves the criterion ------
 spec
 printf 'def slugify(s):\n    return s.lower().replace(".", "")\n' > "$REPO/src/slugify.py"
 git -C "$REPO" add src/slugify.py && git -C "$REPO" commit -q -m "fix: strip dots"
 cat > "$DOCS/VERIFICATION.md" <<'MD'
----
-type: Verification Report
----
 # fix slug - Verification
 
 **Spec:** `docs/loop-spec/features/fix-slug/SPEC.md`
@@ -265,7 +261,7 @@ check "the refusal says the source changed in the diff" "1" "$(grep -c 'test mod
 # The flow form of the list is handled the same way.
 spec; sed -i.bak 's|^footprint:$|footprint: [src/slugify.py, README.md]|; /^  - src\/slugify.py$/d' "$DOCS/SPEC.md"
 bash "$DRV" spec footprint drop --feature-dir "$FD" --file README.md --reason "flow form" >/dev/null 2>&1
-check "a flow-form footprint keeps the source" "1" "$(grep -c 'src/slugify.py' "$DOCS/SPEC.md" | awk '{print ($1 > 0)}')"
+check "a flow-form footprint loses the file too" "1" "$(grep -c '^footprint: \[src/slugify.py\]$' "$DOCS/SPEC.md")"
 spec
 # A diff file the footprint does not name is the reviewer's finding, not the gate's: the
 # gate used to escalate on it and grew a list of what scaffolders write (the PR 100

@@ -46,13 +46,12 @@ done
 if [[ "$mode" == "decisions" ]]; then
   [[ -n "$spec" && -n "$plan" ]] || { echo "usage: plan-render.sh decisions --spec <SPEC.md> --plan <PLAN.md>" >&2; exit 2; }
   [[ -f "$spec" && -f "$plan" ]] || { echo "plan-render: spec or plan file not found" >&2; exit 1; }
-  PYTHONPATH="$(dirname "${BASH_SOURCE[0]}")${PYTHONPATH:+:$PYTHONPATH}" python3 - "$spec" "$plan" <<'PYD'
+  python3 - "$spec" "$plan" <<'PYD'
 import re
 import sys
-from okf import read_document, render_document
 
 spec_path, plan_path = sys.argv[1], sys.argv[2]
-_, spec = read_document(spec_path)
+spec = open(spec_path, encoding="utf-8").read()
 m = re.search(r"<decisions>(.*?)</decisions>", spec, re.S)
 statements = []
 for line in (m.group(1) if m else "").splitlines():
@@ -63,7 +62,7 @@ for line in (m.group(1) if m else "").splitlines():
     statement = re.sub(r"\s*(\*\*)?(Rationale|Alternatives considered):.*$", "", entry, flags=re.I).strip()
     if statement:
         statements.append(statement)
-metadata, plan = read_document(plan_path)
+plan = open(plan_path, encoding="utf-8").read()
 norm = " ".join(plan.split())
 missing = [st for st in statements if " ".join(st.split()) not in norm]
 if not missing:
@@ -83,7 +82,7 @@ else:
     while insert > idx + 1 and not lines[insert - 1].strip():
         insert -= 1
     lines = lines[:insert] + bullets + lines[insert:]
-open(plan_path, "w", encoding="utf-8").write(render_document(metadata, "\n".join(lines)))
+open(plan_path, "w", encoding="utf-8").write("\n".join(lines))
 print("plan-render: copied %d decision(s) into %s" % (len(missing), plan_path))
 PYD
   exit $?
@@ -91,27 +90,16 @@ fi
 if [[ "$mode" == "prose" ]]; then
   [[ -n "$plan" ]] || { echo "usage: plan-render.sh prose-lines --plan <PLAN.md>" >&2; exit 2; }
   [[ -f "$plan" ]] || { echo "plan-render: plan file not found: $plan" >&2; exit 1; }
-  PYTHONPATH="$(dirname "${BASH_SOURCE[0]}")${PYTHONPATH:+:$PYTHONPATH}" python3 - "$plan" <<'PY'
-from okf import read_document
-import sys
-_, text = read_document(sys.argv[1])
-lines = text.splitlines(); inside = False; count = 0
-for line in lines:
-    if line.strip() in ('## Task DAG', '## Tasks'): inside = True; continue
-    if inside and line.startswith('## '): inside = False
-    if not inside and line.strip(): count += 1
-print(count)
-PY
+  awk 'BEGIN{r=0} /^## (Task DAG|Tasks)[[:space:]]*$/{r=1; next} r && /^## /{r=0} !r && NF{n++} END{print n+0}' "$plan"
   exit 0
 fi
 [[ -n "$tasks" ]] || { echo "usage: plan-render.sh render --tasks <tasks.json> [--plan <PLAN.md>]" >&2; exit 2; }
 [[ -f "$tasks" ]] || { echo "plan-render: tasks file not found: $tasks" >&2; exit 1; }
 
-PYTHONPATH="$(dirname "${BASH_SOURCE[0]}")${PYTHONPATH:+:$PYTHONPATH}" python3 - "$tasks" "$plan" <<'PY'
+python3 - "$tasks" "$plan" <<'PY'
 import json
 import re
 import sys
-from okf import read_document, render_document
 
 tasks_path, plan_path = sys.argv[1], sys.argv[2]
 try:
@@ -185,8 +173,9 @@ if not plan_path:
     raise SystemExit(0)
 
 try:
-    metadata, text = read_document(plan_path)
-except (OSError, ValueError) as exc:
+    with open(plan_path, encoding="utf-8") as fh:
+        text = fh.read()
+except OSError as exc:
     print("plan-render: cannot read %s: %s" % (plan_path, exc), file=sys.stderr)
     raise SystemExit(1)
 
@@ -210,6 +199,6 @@ else:
     tail = lines[end:] if end is not None else []
     new_text = "\n".join(lines[:start]).rstrip("\n") + "\n\n" + rendered + ("\n" + "\n".join(tail) if tail else "")
 with open(plan_path, "w", encoding="utf-8") as fh:
-    fh.write(render_document(metadata, new_text))
+    fh.write(new_text)
 print("plan-render: rendered %d task(s) into %s" % (len(data), plan_path))
 PY

@@ -29,37 +29,12 @@ fi
 artifact_dir="$(dirname "$artifact")"
 ledger="${2:-$artifact_dir/EVIDENCE.md}"
 
-_ledger_body() {
-  python3 - "$1" "$(dirname "${BASH_SOURCE[0]}")" <<'PY'
-import sys
-sys.path.insert(0, sys.argv[2])
-from okf import read_document
-metadata, body = read_document(sys.argv[1])
-if metadata.get("type") != "Evidence":
-    raise ValueError("EVIDENCE.md must declare type: Evidence")
-print(body, end="")
-PY
-}
-
-ledger_body=""
-if [[ -f "$ledger" ]]; then
-  ledger_body="$(_ledger_body "$ledger")" || { echo "FLAG $ledger:0: invalid OKF Evidence document"; exit 1; }
-fi
-
 # Read the artifact into an indexed array (0-based; line N in file = lines[N-1]).
 # Using while-loop instead of mapfile for bash 3.x compatibility.
-artifact_body="$(python3 - "$artifact" "$(dirname "${BASH_SOURCE[0]}")" <<'PY'
-import sys
-sys.path.insert(0, sys.argv[2])
-from okf import read_document
-_, body = read_document(sys.argv[1])
-print(body, end="")
-PY
-)" || { echo "FLAG $artifact:0: invalid OKF document"; exit 1; }
 lines=()
 while IFS= read -r line || [[ -n "$line" ]]; do
   lines+=("$line")
-done <<< "$artifact_body"
+done < "$artifact"
 total="${#lines[@]}"
 
 flags=0
@@ -224,15 +199,15 @@ fi
 while IFS= read -r token; do
   [[ -z "$token" ]] && continue
   # Use -- to prevent grep/ugrep from treating the leading "- " as an option flag.
-  if [[ ! -f "$ledger" ]] || ! grep -qF -- "- $token | " <<< "$ledger_body"; then
+  if [[ ! -f "$ledger" ]] || ! grep -qF -- "- $token | " "$ledger"; then
     # Find the first line in the artifact that contains this token for the lineno.
     # The token came from a grep over this same file, so a match is guaranteed; the
     # guard is only against pipefail turning that guarantee into an -e abort.
-    ref_lineno="$(grep -n "$token" <<< "$artifact_body" | head -1 | cut -d: -f1)" || true
+    ref_lineno="$(grep -n "$token" "$artifact" | head -1 | cut -d: -f1)" || true
     echo "FLAG $artifact:${ref_lineno:-0}: EVID token $token referenced in artifact but has no matching entry in ledger ($ledger)"
     flags=$((flags+1))
   fi
-done < <(grep -oE 'EVID-[0-9]{3}' <<< "$artifact_body" 2>/dev/null | sort -u)
+done < <(grep -oE 'EVID-[0-9]{3}' "$artifact" 2>/dev/null | sort -u)
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 if [[ $flags -gt 0 ]]; then

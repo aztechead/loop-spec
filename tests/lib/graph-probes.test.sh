@@ -493,7 +493,7 @@ printf '{"slug":"os","artifacts":{}}' > "$OS_REPO/.loop-spec/features/os/feature
 OS_FD="$OS_REPO/.loop-spec/features/os"; OS_SPEC="$OS_REPO/docs/loop-spec/features/os/SPEC.md"
 oneshot_spec() {
   # oneshot_spec <footprint-yaml-lines> [<extra top-level line>] -- a gated spec
-  printf -- '---\ntype: Specification\nunresolved_questions: []\n%s\n%s\n---\n# os\n\n## Problem\n\nA slug keeps its dots.\n' "$1" "${2:-}" > "$OS_SPEC"
+  printf -- '---\nunresolved_questions: []\n%s\n%s\n---\n# os\n\n## Problem\n\nA slug keeps its dots.\n' "$1" "${2:-}" > "$OS_SPEC"
 }
 check_output "oneshot: no SPEC.md is the full path" "route=full reason=no SPEC.md" "$ONESHOT" --feature-dir "$OS_FD"
 oneshot_spec 'footprint:
@@ -511,11 +511,11 @@ oneshot_spec 'footprint:
 check_output "oneshot: four files is the full path" "route=full reason=footprint names 4 files" "$ONESHOT" --feature-dir "$OS_FD"
 oneshot_spec 'footprint: []'
 check_output "oneshot: an empty footprint is the full path" "route=full reason=footprint names no file" "$ONESHOT" --feature-dir "$OS_FD"
-printf -- '---\ntype: Specification\nunresolved_questions: []\n---\n# os\n' > "$OS_SPEC"
+printf -- '---\nunresolved_questions: []\n---\n# os\n' > "$OS_SPEC"
 check_output "oneshot: no footprint key is the full path" "route=full reason=SPEC.md frontmatter has no footprint" "$ONESHOT" --feature-dir "$OS_FD"
-printf -- '---\ntype: Specification\nunresolved_questions: ["Which behavior is required?"]\nfootprint:\n  - src/slugify.py\n---\n# os\n' > "$OS_SPEC"
+printf -- '---\nunresolved_questions: ["Which behavior is required?"]\nfootprint:\n  - src/slugify.py\n---\n# os\n' > "$OS_SPEC"
 check_output "oneshot: a failed gate is the full path" "route=full reason=unresolved intent questions remain" "$ONESHOT" --feature-dir "$OS_FD"
-printf -- '---\ntype: Specification\nunresolved_questions: ["Which behavior is required?"]\nfootprint:\n  - src/slugify.py\n---\n# os\n' > "$OS_SPEC"
+printf -- '---\nunresolved_questions: ["Which behavior is required?"]\nfootprint:\n  - src/slugify.py\n---\n# os\n' > "$OS_SPEC"
 check_output "oneshot: an unresolved dimension is the full path" "route=full reason=unresolved intent questions remain" "$ONESHOT" --feature-dir "$OS_FD"
 oneshot_spec 'footprint:
   - src/slugify.py' 'route: full'
@@ -528,14 +528,14 @@ printf 'def slugify(s):\n    # strip the auth token first\n    return s\n' > "$O
 check_output "oneshot: a security signal in a footprint file is the full path" "route=full reason=security signal in SPEC.md or the footprint" "$ONESHOT" --feature-dir "$OS_FD"
 check_output "oneshot --after: the footprint's own edits do not reroute" "route=oneshot" "$ONESHOT" --feature-dir "$OS_FD" --after
 printf 'def slugify(s):\n    return s\n' > "$OS_REPO/src/slugify.py"
-printf -- '---\ntype: Specification\nunresolved_questions: []\nfootprint:\n  - src/slugify.py\n---\n# os\n\nRotate the credentials on save.\n' > "$OS_SPEC"
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - src/slugify.py\n---\n# os\n\nRotate the credentials on save.\n' > "$OS_SPEC"
 check_output "oneshot: a security signal in SPEC.md is the full path" "route=full reason=security signal" "$ONESHOT" --feature-dir "$OS_FD"
 oneshot_spec 'footprint:
   - src/slugify.py'
 check_output "oneshot: LOOP_SPEC_ROUTE=full is the operator's override" "route=full reason=LOOP_SPEC_ROUTE=full" -c "LOOP_SPEC_ROUTE=full bash '$ONESHOT' --feature-dir '$OS_FD'"
 check_output "oneshot: LOOP_SPEC_ROUTE=oneshot never shortens" "route=full reason=LOOP_SPEC_ROUTE=oneshot is not an override" -c "LOOP_SPEC_ROUTE=oneshot bash '$ONESHOT' --feature-dir '$OS_FD'"
 printf 'no frontmatter\n' > "$OS_SPEC"
-check_output "oneshot: a spec without frontmatter is the full path" "route=full reason=SPEC.md frontmatter invalid" "$ONESHOT" --feature-dir "$OS_FD"
+check_output "oneshot: a spec without frontmatter is the full path" "route=full reason=SPEC.md frontmatter missing" "$ONESHOT" --feature-dir "$OS_FD"
 # Every oneshot route in the shipped graph expects a declared answer.
 missing="$(jq -r --argjson answers "$(bash "$ONESHOT" --answers | jq -R . | jq -s .)" '
   [.edges[] | .condition | select(. != null and (.probe | test("oneshot.sh$"))) | .expects]
@@ -624,7 +624,6 @@ write_spec() {
   [[ "$gate" != false ]] || unresolved='["Which behavior is required?"]'
   cat > "$path" <<EOF
 ---
-type: Specification
 unresolved_questions: $unresolved
 ---
 

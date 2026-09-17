@@ -1,8 +1,7 @@
 ---
-type: Specification
 unresolved_questions: []
 footprint:
-  - "{path/to/file-the-change-touches}"
+  - {path/to/file-the-change-touches}
 ---
 # {feature_title}
 

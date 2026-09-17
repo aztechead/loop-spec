@@ -82,9 +82,6 @@ check "H: core sorts first" "role=core" "$first_role"
 
 # A clean trail: every core file has a stop, framing is short, peripherals last.
 cat > TRAIL.md <<'EOF'
----
-type: Review Order
----
 ## Suggested review order
 
 **Behavior change**
@@ -106,9 +103,6 @@ contains "J: lint reports what it checked" "stops=3 core_files=1 findings=0" "$o
 # Dropping the only core stop must fail: a guide that omits the change is worse
 # than none, because it reads as complete.
 cat > MISSING.md <<'EOF'
----
-type: Review Order
----
 - covers the new branch
   `tests/app.test.js:2`
 EOF
@@ -118,9 +112,6 @@ contains "L: uncovered finding names the file" "finding=uncovered path=src/app.j
 
 # Ordering is the product: peripherals before the last core stop defeat the trail.
 cat > ORDER.md <<'EOF'
----
-type: Review Order
----
 - covers the new branch
   `tests/app.test.js:2`
 - entry point
@@ -135,9 +126,6 @@ absent "O: peripheral after the last core stop is not flagged" "peripheral-early
 
 # Stops must resolve: a path outside the diff and a line past EOF are both facts.
 cat > BOGUS.md <<'EOF'
----
-type: Review Order
----
 - entry point
   `src/app.js:41`
 - stale reference
@@ -152,9 +140,6 @@ contains "R: anchor past EOF is reported" "finding=bad-anchor path=src/app.js:99
 
 # Framing is capped so a stop stays scannable.
 cat > LONG.md <<'EOF'
----
-type: Review Order
----
 - this framing runs on well past the point where a reviewer scanning the list would still call it a single glanceable phrase
   `src/app.js:41`
 EOF
@@ -163,9 +148,6 @@ check "S: over-long framing fails the lint" "1" "$rc"
 contains "T: framing finding reports the measured length" "finding=long-framing path=src/app.js:41" "$out"
 
 cat > EMPTY.md <<'EOF'
----
-type: Review Order
----
 No stops here at all.
 EOF
 rc=0; out="$(bash "$SCRIPT" lint EMPTY.md "$BASE" HEAD)" || rc=$?
@@ -218,9 +200,6 @@ git commit -qm makefile-change
 out="$(bash "$SCRIPT" surface "$MAKE_BASE" HEAD)"
 contains "AF: extensionless file is part of the surface" "role=core path=Makefile" "$out"
 cat > EXTENSIONLESS.md <<'EOF_TRAIL'
----
-type: Review Order
----
 - build entry point
   `Makefile:3`
 EOF_TRAIL
@@ -231,9 +210,6 @@ contains "AH: extensionless stop is counted" "stops=1 core_files=1 findings=0" "
 # Dropping the extension requirement must not let bare numbers in prose become
 # stops: a clock time or a ratio is framing, never a path.
 cat > PROSE.md <<'EOF_TRAIL'
----
-type: Review Order
----
 - brings the 3:1 fan-out under the 12:30 deadline
   `Makefile:3`
 EOF_TRAIL

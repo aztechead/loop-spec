@@ -76,30 +76,12 @@ case "$cmd" in
       [[ -n "$docs_dir" && -d "$docs_dir" ]] || docs_dir="${root:-$FEATURE_DIR/../../..}/docs/loop-spec/features/$(basename "$FEATURE_DIR")"
     fi
     constraints="- none"
-    if [[ -n "$docs_dir" && -f "$docs_dir/PLAN.md" ]]; then
-      plan_body="$(python3 - "$docs_dir/PLAN.md" "$(dirname "${BASH_SOURCE[0]}")" <<'PY'
-import sys
-sys.path.insert(0, sys.argv[2])
-from okf import read_document
-_, body = read_document(sys.argv[1])
-print(body, end="")
-PY
-)" || { echo "dispatch-files.sh: PLAN.md is not a valid OKF document" >&2; exit 2; }
-      constraints="$(awk '/^## Global constraints/{on=1; next} on && /^## /{exit} on && !/^<!--/ && !/^ *-->$/ && NF' <<< "$plan_body")"
-    fi
+    [[ -n "$docs_dir" && -f "$docs_dir/PLAN.md" ]] && constraints="$(awk '/^## Global constraints/{on=1; next} on && /^## /{exit} on && !/^<!--/ && !/^ *-->$/ && NF' "$docs_dir/PLAN.md")"
     [[ -n "$constraints" ]] || constraints="- none"
     cited=""
     ids="$(grep -o 'EVID-[0-9][0-9]*' <<<"$task_json" | sort -u || true)"
     if [[ -n "$ids" && -n "$docs_dir" && -f "$docs_dir/EVIDENCE.md" ]]; then
-      evidence_body="$(python3 - "$docs_dir/EVIDENCE.md" "$(dirname "${BASH_SOURCE[0]}")" <<'PY'
-import sys
-sys.path.insert(0, sys.argv[2])
-from okf import read_document
-_, body = read_document(sys.argv[1])
-print(body, end="")
-PY
-)" || { echo "dispatch-files.sh: EVIDENCE.md is not a valid OKF document" >&2; exit 2; }
-      cited="$(grep -F -f <(printf '%s\n' $ids | sed 's/$/ |/') <<< "$evidence_body" | grep '^- EVID-' || true)"
+      cited="$(grep -F -f <(printf '%s\n' $ids | sed 's/$/ |/') "$docs_dir/EVIDENCE.md" | grep '^- EVID-' || true)"
     fi
     environment=""
     [[ -f "$FEATURE_DIR/dispatch/environment.txt" ]] && environment="$(cat "$FEATURE_DIR/dispatch/environment.txt")"

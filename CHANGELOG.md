@@ -4,8 +4,6 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
-- Adopt the breaking OKF 0.2 typed Markdown artifact headers and generated feature index. PyYAML is required for artifact loading; runtime JSON remains unchanged.
-
 ## [6.7.0] - 2026-09-16
 
 ### Changed

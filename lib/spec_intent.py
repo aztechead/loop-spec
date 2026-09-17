@@ -7,14 +7,9 @@ not invalidate approval. The approved digest lives in the driver's feature state
 import hashlib
 import json
 import re
-from okf import split_document
 
 
 def intent_digest(text):
-    # Approval freezes the Markdown body, not incidental YAML metadata. Parsing
-    # through the bounded OKF reader also keeps quoted headings and fence-like
-    # metadata from becoming digest input.
-    _metadata, text = split_document(text)
     sections = {}
     current = None
     fenced = False

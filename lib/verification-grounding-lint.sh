@@ -33,7 +33,7 @@ python_args=("$artifact" "${repos[@]}" --)
 if [[ "$criteria_count" -gt 0 ]]; then
   python_args+=("${criteria[@]}")
 fi
-PYTHONPATH="$(dirname "${BASH_SOURCE[0]}")${PYTHONPATH:+:$PYTHONPATH}" LOOP_SPEC_GROUNDING_SPEC="$spec" python3 - "${python_args[@]}" <<'PY'
+LOOP_SPEC_GROUNDING_SPEC="$spec" python3 - "${python_args[@]}" <<'PY'
 import os
 import re
 import sys
@@ -59,21 +59,14 @@ def fail(line, message):
 if not os.path.isfile(artifact):
     fail(0, 'artifact does not exist')
 
-from okf import read_document
-try:
-    _, artifact_body = read_document(artifact)
-except (OSError, ValueError) as exc:
-    fail(0, 'invalid OKF artifact: %s' % exc)
-lines = artifact_body.splitlines()
+with open(artifact, encoding='utf-8') as handle:
+    lines = handle.read().splitlines()
 
 if spec:
     if not os.path.isfile(spec):
         fail(0, 'SPEC artifact does not exist')
-    try:
-        _, spec_body = read_document(spec)
-    except (OSError, ValueError) as exc:
-        fail(0, 'invalid OKF SPEC: %s' % exc)
-    spec_lines = spec_body.splitlines()
+    with open(spec, encoding='utf-8') as handle:
+        spec_lines = handle.read().splitlines()
     in_good_enough = False
     good_enough_count = 0
     for line in spec_lines:

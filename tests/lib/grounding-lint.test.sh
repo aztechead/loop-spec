@@ -18,24 +18,11 @@ trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK"
 
 # ─── Helper: run lint and capture exit code safely ─────────────────────────
-ensure_okf() {
-  local path="$1" first
-  first="$(head -1 "$path" 2>/dev/null || true)"
-  [[ "$first" == "---" ]] && return 0
-  local tmp="${path}.okf"
-  {
-    printf '%s\n' '---' 'type: Specification' '---'
-    cat "$path"
-  } > "$tmp" && mv "$tmp" "$path"
-}
 lint_exit() {
-  ensure_okf "$1"
-  bash "$LIB" "$@" >/dev/null 2>&1
   bash "$LIB" "$@" >/dev/null 2>&1
   printf '%s' "$?"
 }
 lint_stdout() {
-  ensure_okf "$1"
   bash "$LIB" "$@" 2>/dev/null || true
 }
 
@@ -102,16 +89,10 @@ check "a broken command inside backticks still flags" \
 # ─── Fixture 4: resolved EVID ref + well-formed ASSUMPTION ──────────────────
 ledger4="$WORK/EVIDENCE-4.md"
 cat > "$ledger4" <<'EOF'
----
-type: Evidence
----
 # Evidence ledger
 - EVID-001 | 2026-07-02T12:00:00Z | claim: dataset partitioned by day | cmd: bq show proj:ds.t | out: partitionField: date
 EOF
 cat > "$WORK/evid-resolved.md" <<'EOF'
----
-type: Specification
----
 # Test artifact
 
 Uses EVID-001 for the partition claim.
@@ -282,16 +263,10 @@ check "missing artifact exits 1" "$([[ "$ec13" == "1" ]] && echo 1 || echo 0)"
 # convention; the lint must accept the qualifier, not force a repair round.
 ledger15="$WORK/EVIDENCE-15.md"
 cat > "$ledger15" <<'EOF'
----
-type: Evidence
----
 # Evidence ledger
 - EVID-001 | 2026-07-29T12:00:00Z | claim: test | cmd: echo test | out: test
 EOF
 cat > "$WORK/qualifier.md" <<'EOF'
----
-type: Specification
----
 # Test artifact
 
 ## Grounding
@@ -359,31 +334,6 @@ check "column-0 prose after bullet does not merge (exits 0)" \
 # ─── Fixture 14: list also prints 'grounding-lint: ok' on stdout on success ─
 stdout14=$(bash "$LIB" "$WORK/plain-none.md" 2>/dev/null)
 check "exit 0 prints 'grounding-lint: ok'" "$(echo "$stdout14" | grep -q 'grounding-lint: ok' && echo 1 || echo 0)"
-
-# An EVID token in metadata does not resolve a body citation.
-cat > "$WORK/metadata-fake-evid.md" <<'EOF'
----
-type: Specification
-fake: EVID-001
----
-# Test artifact
-
-## Grounding
-
-- EVID-001: body citation with metadata-only ledger
-EOF
-cat > "$WORK/metadata-fake-ledger.md" <<'EOF'
----
-type: Evidence
-fake: "- EVID-001 | metadata only"
----
-# Evidence ledger
-EOF
-check "metadata-only EVID row does not resolve body citation" \
-  "$([[ "$(lint_exit "$WORK/metadata-fake-evid.md" "$WORK/metadata-fake-ledger.md")" == 1 ]] && echo 1 || echo 0)"
-printf '%s\n' '- EVID-001 | ts | claim: real | cmd: true | out: observed' >> "$WORK/metadata-fake-ledger.md"
-check "real body EVID row resolves citation" \
-  "$([[ "$(lint_exit "$WORK/metadata-fake-evid.md" "$WORK/metadata-fake-ledger.md")" == 0 ]] && echo 1 || echo 0)"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

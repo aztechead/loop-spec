@@ -81,7 +81,7 @@ check "phase-entry refuses the phase against the shipped graph" "2" "$(bash "$EN
 out="$(LOOP_SPEC_GRAPH="$WORK/graph2.json" bash "$ENTRY" triage --feature-dir "$FD" 2>&1)"; ec=$?
 check "phase-entry: the copy's required file is flagged with its writer" "1" "$(grep -c "^FLAG \[ingress\] $DOCS/SPEC.md missing: SPEC did not write it" <<<"$out")"
 check "phase-entry: exit 1 on the missing file" "1" "$ec"
-printf '%s\n' '---' 'type: Specification' '---' '# spec' > "$DOCS/SPEC.md"; printf 'notes\n' > "$FD/triage-notes.md"
+printf '# spec\n' > "$DOCS/SPEC.md"; printf 'notes\n' > "$FD/triage-notes.md"
 out="$(LOOP_SPEC_GRAPH="$WORK/graph2.json" bash "$ENTRY" triage --feature-dir "$FD" 2>&1)"; ec=$?
 check "phase-entry: the copy's phase opens clean" "phase-entry: ok (triage)" "$(tail -1 <<<"$out")"
 check "phase-entry: the packet is the node's fields" '{"slug":"my-feature","execStyle":"auto"}' "$(grep '^fields=' <<<"$out" | sed 's/^fields=//')"
@@ -92,7 +92,7 @@ out="$(LOOP_SPEC_GRAPH="$WORK/graph2.json" bash "$EXIT_" triage --feature-dir "$
 check "phase-exit: the copy's required artifact is flagged under its label" "1" "$(grep -c "^FLAG \[triage\] docs/loop-spec/features/my-feature/TRIAGE.md missing" <<<"$out")"
 check "phase-exit: a gate on the absent artifact relays under its label" "1" "$(grep -c '^FLAG \[grounding-lint\] ' <<<"$out" | awk '{print ($1 > 0)}')"
 check "phase-exit: a gate whose when clause does not match never runs" "0" "$(grep -c 'does-not-run' <<<"$out")"
-printf '%s\n' '---' 'type: Triage Report' '---' '# Triage' '' '## Grounding' '' '- none' > "$DOCS/TRIAGE.md"
+printf '# Triage\n\n## Grounding\n\n- none\n' > "$DOCS/TRIAGE.md"
 out="$(LOOP_SPEC_GRAPH="$WORK/graph2.json" bash "$EXIT_" triage --feature-dir "$FD" 2>&1)"; ec=$?
 check "phase-exit: the copy's phase closes clean" "phase-exit: ok (triage)" "$(tail -1 <<<"$out")"
 check "phase-exit: the artifact pointer is the node's" "docs/loop-spec/features/my-feature/TRIAGE.md" "$(jq -r '.artifacts.triage' "$FD/feature.json")"

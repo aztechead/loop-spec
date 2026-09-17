@@ -34,7 +34,6 @@ PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)${PYTHONPATH:+:$PYTHONP
 import json, os, re, subprocess, sys
 
 feature_path, root, output = sys.argv[1:]
-from okf import read_document, read_metadata, render_document
 with open(feature_path) as f:
     feature = json.load(f)
 
@@ -51,8 +50,8 @@ def read_artifact(key):
     if not os.path.isabs(path):
         path = os.path.join(root, path)
     try:
-        _metadata, body = read_document(path)
-        return body
+        with open(path, errors="replace") as f:
+            return f.read()
     except OSError:
         return None
 
@@ -145,10 +144,26 @@ def section(text, names, max_lines):
     return sanitize(chunk, max_lines) if chunk else None
 
 
-def spec_quality_table(metadata):
+def split_frontmatter(text):
+    """Separate a leading YAML frontmatter block from the document body.
+
+    Raw metadata obscures the requirements; the question list is rendered separately.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return None, text
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return "\n".join(lines[1:i]), "\n".join(lines[i + 1:])
+    return None, text
+
+
+def spec_quality_table(frontmatter):
+    if not frontmatter:
+        return None
     from spec_questions import read_questions
     try:
-        questions = read_questions(render_document(metadata, ""))
+        questions = read_questions("---\n" + frontmatter + "\n---\n")
     except ValueError as exc:
         return "Unresolved questions could not be read: " + str(exc)
     if not questions:
@@ -162,12 +177,8 @@ run_details = []
 spec = read_artifact("spec")
 quality = None
 if spec:
-    spec_path = (feature.get("artifacts") or {}).get("spec")
-    try:
-        spec_metadata = read_metadata(spec_path if os.path.isabs(spec_path) else os.path.join(root, spec_path))
-        quality = spec_quality_table(spec_metadata)
-    except (OSError, ValueError):
-        quality = "Spec metadata could not be read."
+    frontmatter, spec = split_frontmatter(spec)
+    quality = spec_quality_table(frontmatter)
     summary = section(spec, ("summary", "overview"), 12)
     if summary:
         parts += ["", "## Summary", "", summary]

@@ -1,10 +1,7 @@
----
-type: Verification Report
-sources:
-  - resource: SPEC.md
-  - resource: PLAN.md
----
 # {feature_title} - Verification
+
+**Spec:** `docs/loop-spec/features/{slug}/SPEC.md`
+**Plan:** `docs/loop-spec/features/{slug}/PLAN.md`
 
 ## Repository grounding
 

@@ -6,17 +6,6 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 
 # ITERATE
 
-Use the OKF 0.2 header and type contract in `skills/shared/okf-artifacts.md` for ITERATION.md.
-
-Begin `ITERATION.md` with:
-
-```yaml
----
-type: Iteration Report
----
-```
-Include `- resource: SPEC.md` and `- resource: VERIFICATION.md` when recording source context.
-
 Check whether the integrated result meets the original goal after VERIFY passes the acceptance checklist.
 Use the immutable `feature_title` in the user's words. If the goal remains unmet, identify what to fix first.
 Run in the main thread without a team. Use one fresh `iterate-judge` per pass, separate from the implementation author.

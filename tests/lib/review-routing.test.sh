@@ -41,9 +41,9 @@ for route, phase in (("bad-spec", "verify"), ("intent-gap", "verify"),
         feature.mkdir(parents=True)
         docs.mkdir(parents=True)
         spec = docs / "SPEC.md"
-        text = "---\nroute: full\ntype: Specification\nunresolved_questions: []\n---\n# Demo\n## Goals\nReturn values.\n## Boundaries (what NOT to do)\nOnly this command.\n## Constraints\nUse helper A.\n"
+        text = "---\nroute: full\nunresolved_questions: []\n---\n# Demo\n## Goals\nReturn values.\n## Boundaries (what NOT to do)\nOnly this command.\n## Constraints\nUse helper A.\n"
         if phase == "oneshot":
-            text = "---\ntype: Specification\nunresolved_questions: []\nfootprint:\n  - app.py\n---\n# Demo\n<!-- intent: frozen -->\n## Intent\nReturn values.\n<!-- /intent -->\n\n## Constraints\nUse helper A.\n"
+            text = "---\nunresolved_questions: []\nfootprint:\n  - app.py\n---\n# Demo\n<!-- intent: frozen -->\n## Intent\nReturn values.\n<!-- /intent -->\n\n## Constraints\nUse helper A.\n"
         spec.write_text(text)
         git("add", "docs")
         git("commit", "-qm", "spec")
@@ -66,7 +66,7 @@ for route, phase in (("bad-spec", "verify"), ("intent-gap", "verify"),
                         "patch":{"surface":"none","fixCommit":fix},
                         "defer":{"reason":"Independent cleanup; current acceptance behavior is satisfied."}}[route])
         report = docs / "VERIFICATION.md"
-        report.write_text("---\ntype: Verification Report\n---\n# Review\n## Code review\n- app.py:1 — wrong helper | verdict: true — observed in the range test | routing: " + json.dumps(details) + "\n")
+        report.write_text("# Review\n## Code review\n- app.py:1 — wrong helper | verdict: true — observed in the range test | routing: " + json.dumps(details) + "\n")
         if route == "bad-spec":
             app.write_text("user tracked changes\n")
             try:
