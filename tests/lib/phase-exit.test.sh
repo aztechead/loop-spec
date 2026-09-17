@@ -76,7 +76,7 @@ rm -f "$FD/spec-draft.md"
 
 ec=0; out="$(bash "$EXIT" spec --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit spec: missing SPEC.md flags" "1" "$ec"
-check "exit spec: the answer line names the count" "phase-exit: 1 flag(s) (spec)" "$(tail -1 <<<"$out")"
+check "exit spec: the answer line names the count" "phase-exit: 2 flag(s) (spec)" "$(tail -1 <<<"$out")"
 # The writer put SPEC.md in another checkout of this repository: name it and the move.
 git worktree add -q "$WORK/other" -b other >/dev/null 2>&1
 mkdir -p "$WORK/other/docs/loop-spec/features/my-feature"; printf '# stray\n' > "$WORK/other/docs/loop-spec/features/my-feature/SPEC.md"
@@ -147,9 +147,45 @@ out="$(bash "$EXIT" spec --feature-dir "$FD" --check 2>&1)"
 check "exit spec --check: reports ok with the [check] suffix" "phase-exit: ok (spec) [check]" "$(tail -1 <<<"$out")"
 check "exit spec --check: leaves completedPhases unchanged" "$completed_before" "$(fj '.completedPhases')"
 check "exit spec --check: creates no commit" "$head_before" "$(git rev-parse HEAD)"
+
+# SPEC grounding is a producer gate: an unresolved evidence reference must stop
+# before DISCUSS, and --check must leave every phase-side effect untouched.
+cp "$DOCS/SPEC.md" "$WORK/SPEC.before-grounding.md"
+sed 's/^- none$/- EVID-099: repository behavior/' "$WORK/SPEC.before-grounding.md" \
+  > "$DOCS/SPEC.md"
+printf '{"phaseEntrySentinel":true}\n' > "$FD/.phase-entry.json"
+feature_before_bad="$(shasum -a 256 "$FD/feature.json" | cut -d' ' -f1)"
+entry_before_bad="$(shasum -a 256 "$FD/.phase-entry.json" | cut -d' ' -f1)"
+head_before_bad="$(git rev-parse HEAD)"
+tags_before_bad="$(git tag)"
+ec=0; out="$(bash "$EXIT" spec --feature-dir "$FD" --check 2>&1)" || ec=$?
+check "exit spec --check: unresolved EVID reference is rejected" "1" "$ec"
+check "exit spec --check: grounding failure is reported before DISCUSS" "1" "$(grep -c 'EVID token EVID-099' <<<"$out")"
+check "exit spec --check: failed grounding check leaves feature state unchanged" "$feature_before_bad" "$(shasum -a 256 "$FD/feature.json" | cut -d' ' -f1)"
+check "exit spec --check: failed grounding check leaves phase-entry state unchanged" "$entry_before_bad" "$(shasum -a 256 "$FD/.phase-entry.json" | cut -d' ' -f1)"
+check "exit spec --check: failed grounding check creates no commit" "$head_before_bad" "$(git rev-parse HEAD)"
+check "exit spec --check: failed grounding check creates no tag" "$tags_before_bad" "$(git tag)"
+
+bash "$REPO_ROOT/lib/evidence.sh" add "$DOCS/EVIDENCE.md" \
+  "repository behavior" "printf repository-behavior" "repository-behavior" >/dev/null
+sed 's/EVID-099/EVID-001/g' "$DOCS/SPEC.md" > "$DOCS/SPEC.valid.md"
+mv "$DOCS/SPEC.valid.md" "$DOCS/SPEC.md"
+feature_before_good="$(shasum -a 256 "$FD/feature.json" | cut -d' ' -f1)"
+entry_before_good="$(shasum -a 256 "$FD/.phase-entry.json" | cut -d' ' -f1)"
+head_before_good="$(git rev-parse HEAD)"
+tags_before_good="$(git tag)"
+ec=0; out="$(bash "$EXIT" spec --feature-dir "$FD" --check 2>&1)" || ec=$?
+check "exit spec --check: valid grounding ledger passes" "0" "$ec"
+check "exit spec --check: valid grounding reports ok" "phase-exit: ok (spec) [check]" "$(tail -1 <<<"$out")"
+check "exit spec --check: passing grounding check leaves feature state unchanged" "$feature_before_good" "$(shasum -a 256 "$FD/feature.json" | cut -d' ' -f1)"
+check "exit spec --check: passing grounding check leaves phase-entry state unchanged" "$entry_before_good" "$(shasum -a 256 "$FD/.phase-entry.json" | cut -d' ' -f1)"
+check "exit spec --check: passing grounding check creates no commit" "$head_before_good" "$(git rev-parse HEAD)"
+check "exit spec --check: passing grounding check creates no tag" "$tags_before_good" "$(git tag)"
+mv "$WORK/SPEC.before-grounding.md" "$DOCS/SPEC.md"
+rm -f "$FD/.phase-entry.json"
 bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || true
 check "exit spec: a re-entered phase closes once" "1" "$(fj '[.completedPhases[] | select(. == "spec")] | length')"
-check "exit spec: SPEC.md committed" "1" "$(git log --oneline | grep -c 'spec: my-feature')"
+check "exit spec: SPEC.md committed" "2" "$(git log --oneline | grep -c 'spec: my-feature')"
 # A single-mode workspace record (what lib/workspace.sh detect reports for an ordinary
 # repository) must not read as workspace mode: the haiku re-run of todo-due carried one
 # and phase-exit committed nothing. Re-run the exit over an edited SPEC.md and expect a
@@ -157,7 +193,7 @@ check "exit spec: SPEC.md committed" "1" "$(git log --oneline | grep -c 'spec: m
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" workspace "{\"root\":\"$REPO\",\"mode\":\"single\",\"repos\":[]}" >/dev/null
 printf '\nA line the second commit carries.\n' >> "$DOCS/SPEC.md"
 bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1
-check "exit spec: a single-mode workspace record still commits" "2" "$(git log --oneline | grep -c 'spec: my-feature')"
+check "exit spec: a single-mode workspace record still commits" "3" "$(git log --oneline | grep -c 'spec: my-feature')"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" workspace null >/dev/null
 
 # --- discuss ------------------------------------------------------------------------

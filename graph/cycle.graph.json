@@ -46,6 +46,13 @@
             ]
           },
           {
+            "label": "grounding-lint",
+            "body": "lib/grounding-lint.sh",
+            "args": [
+              "{docs}/SPEC.md"
+            ]
+          },
+          {
             "label": "oneshot-shape",
             "body": "lib/oneshot-spec-lint.sh",
             "args": [

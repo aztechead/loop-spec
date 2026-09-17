@@ -472,9 +472,14 @@ def cmd_start(argv):
     else:
         print("cycle-driver: profile.json is invalid; running without it", file=sys.stderr)
 
-    max_parallel = os.environ.get("LOOP_SPEC_MAX_PARALLEL_SUBAGENTS") or ""
-    if max_parallel and not re.match(r"^[1-9][0-9]*$", max_parallel):
-        raise Die("LOOP_SPEC_MAX_PARALLEL_SUBAGENTS must be a positive integer.", 2)
+    resource_env = lib_run("resource-bounds", "env")
+    if resource_env.returncode != 0:
+        raise Die("resource bounds are invalid; startup cannot dispatch safely.", 2)
+    for line in resource_env.stdout.splitlines():
+        m = re.match(r"^export ([A-Za-z_][A-Za-z0-9_]*)=(.*)$", line)
+        if m:
+            os.environ[m.group(1)] = "".join(shlex.split(m.group(2)))
+
     # Every LOOP_SPEC_PHASE_MODEL_* / LOOP_SPEC_MODEL_* value is validated here; a bad
     # selector would fail at phase activation anyway, and later is worse.
     if lib_run("feature-init", "validate").returncode != 0:
@@ -715,6 +720,7 @@ def cmd_start(argv):
         "workflowsAvailable": pf["workflows"]["available"],
         "workflowExecuteOptIn": os.environ.get("LOOP_SPEC_EXECUTE_WORKFLOW") == "1",
         "workspaceMode": ws_mode, "workspaceRoot": ws_root, "workspaceRepos": repos,
+        "resources": json.loads(lib("resource-bounds", "resolve")),
     })
     with open(".loop-spec/runtime.json.tmp", "w", encoding="utf-8") as fh:
         json.dump(runtime, fh)

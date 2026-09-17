@@ -122,6 +122,55 @@ check "real PLAN fixture blockedBy from the block line" '["task-004","task-005",
 rc=0; bash "$LINT" tasks - <<<"$out" >/dev/null 2>&1 || rc=$?
 check "real PLAN fixture passes the tasks lint" "0" "$rc"
 
+# Compact plans make task blocks canonical: no duplicate DAG table is needed,
+# but each block must state its dependency edge explicitly so omission cannot
+# silently turn into an independent task.
+cat > "$tmp/PLAN-compact.md" <<'MD'
+# Compact - Implementation Plan
+
+## Tasks
+
+### task-001: add the endpoint
+
+**Files:**
+- `api/export.py`
+
+**BlockedBy:** []
+
+**Verify:** `pytest tests/test_export.py`
+
+**Acceptance criteria:**
+- [ ] endpoint test passes
+
+### task-002: write the CSV
+
+**Files:**
+- `lib/csv.py`
+
+**BlockedBy:** [task-001]
+
+**Verify:** `pytest tests/test_csv.py`
+
+**Acceptance criteria:**
+- [ ] CSV test passes
+MD
+compact_out="$(bash "$LIB" extract "$tmp/PLAN-compact.md")"
+check "compact plan extracts task blocks without a DAG table" "2" "$(jq 'length' <<<"$compact_out")"
+check "compact plan keeps explicit dependency" '["task-001"]' "$(jq -c '.[1].blockedBy' <<<"$compact_out")"
+rc=0; bash "$LINT" plan "$tmp/PLAN-compact.md" >/dev/null 2>&1 || rc=$?
+check "compact plan passes structural lint" "0" "$rc"
+
+sed '/\*\*BlockedBy:\*\*/d' "$tmp/PLAN-compact.md" > "$tmp/PLAN-compact-missing-edge.md"
+rc=0; out="$(bash "$LIB" extract "$tmp/PLAN-compact-missing-edge.md" 2>&1)" || rc=$?
+check "tableless plan without BlockedBy is rejected" "1" "$rc"
+check "missing compact dependency names the task" "1" "$(grep -c 'compact task task-001 is missing' <<<"$out")"
+rc=0; bash "$LINT" plan "$tmp/PLAN-compact-missing-edge.md" >/dev/null 2>&1 || rc=$?
+check "structural lint rejects missing compact dependency" "1" "$rc"
+sed 's/\*\*BlockedBy:\*\* \[\]/**BlockedBy:**/' "$tmp/PLAN-compact.md" > "$tmp/PLAN-compact-empty-edge.md"
+rc=0; out="$(bash "$LIB" extract "$tmp/PLAN-compact-empty-edge.md" 2>&1)" || rc=$?
+check "tableless plan with empty BlockedBy is rejected" "1" "$rc"
+check "empty compact dependency names its repair" "1" "$(grep -c 'empty \*\*BlockedBy:\*\* value' <<<"$out")"
+
 # --- failure paths ---
 
 printf '# Plan\n\n## Tasks\n\nnothing yet\n' > "$tmp/empty.md"

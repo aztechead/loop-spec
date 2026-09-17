@@ -42,6 +42,8 @@ import sys
 plan = sys.argv[1]
 lines = open(plan, encoding="utf-8", errors="replace").read().splitlines()
 
+# Compact plans use the same canonical task blocks as legacy plans. Keep the
+# established numeric task ID contract used by downstream dispatchers.
 HEADING = re.compile(r"^### (task-\d+):\s*(.+?)\s*$")
 MARKER = re.compile(r"^\*\*([^*]+?)(?::\*\*|\*\*:)\s*(.*)$")
 LISTS = ("Files", "read_first", "Acceptance criteria", "Interfaces")
@@ -72,6 +74,7 @@ for raw in lines:
     head = HEADING.match(line)
     if head:
         task = {"id": head.group(1), "subject": head.group(2), "files": [], "blockedBy": None,
+                "blockedByEmpty": False,
                 "verifyCommand": "", "acceptanceCriteria": [], "readFirst": [], "interfaces": {}}
         tasks.append(task)
         section = None
@@ -89,6 +92,7 @@ for raw in lines:
             code = CODE.search(rest)
             task["verifyCommand"] = code.group(1).strip() if code else rest
         elif name == "BlockedBy":
+            task["blockedByEmpty"] = not rest.strip()
             task["blockedBy"] = ids_from(rest)
         elif name == "Repo":
             task["repo"] = strip_code(rest)
@@ -121,12 +125,20 @@ if not tasks:
     sys.exit(1)
 
 for t in tasks:
+    if not table and t["blockedByEmpty"]:
+        print("plan-tasks: compact task %s has an empty **BlockedBy:** value (use [] for no dependencies)" % t["id"], file=sys.stderr)
+        sys.exit(1)
     if t["blockedBy"] is None:
-        t["blockedBy"] = table.get(t["id"], [])
+        if table:
+            t["blockedBy"] = table.get(t["id"], [])
+        else:
+            print("plan-tasks: compact task %s is missing **BlockedBy:** (tableless plans must state dependencies explicitly)" % t["id"], file=sys.stderr)
+            sys.exit(1)
     if not t["readFirst"]:
         del t["readFirst"]
     if not t["interfaces"]:
         del t["interfaces"]
+    del t["blockedByEmpty"]
 
 print(json.dumps(tasks, indent=2))
 PY

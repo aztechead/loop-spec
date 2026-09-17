@@ -19,16 +19,16 @@ check() {
 # detection path runs even when this suite itself executes under another harness)
 unset LOOP_SPEC_WORKFLOWS_AVAILABLE LOOP_SPEC_MAX_PARALLEL_SUBAGENTS \
   LOOP_SPEC_HARNESS PI_CODING_AGENT_DIR
-check "A: exact minimum 2.1.154 -> true"      "true"  "$(bash "$LIB" 2.1.154)"
-check "B: above minimum 2.1.159 -> true"      "true"  "$(bash "$LIB" 2.1.159)"
-check "C: newer minor 2.2.0 -> true"          "true"  "$(bash "$LIB" 2.2.0)"
-check "D: newer major 3.0.0 -> true"          "true"  "$(bash "$LIB" 3.0.0)"
+check "A: exact minimum 2.1.154 -> true"      "true"  "$(LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 bash "$LIB" 2.1.154)"
+check "B: above minimum 2.1.159 -> true"      "true"  "$(LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 bash "$LIB" 2.1.159)"
+check "C: newer minor 2.2.0 -> true"          "true"  "$(LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 bash "$LIB" 2.2.0)"
+check "D: newer major 3.0.0 -> true"          "true"  "$(LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 bash "$LIB" 3.0.0)"
 check "E: just below 2.1.153 -> false"        "false" "$(bash "$LIB" 2.1.153)"
 check "F: older minor 2.0.9 -> false"         "false" "$(bash "$LIB" 2.0.9)"
 check "G: older major 1.9.9 -> false"         "false" "$(bash "$LIB" 1.9.9)"
 
 # Override takes precedence over version
-check "H: override=1 forces true"  "true"  "$(LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 1.0.0)"
+check "H: override=1 forces true"  "true"  "$(LOOP_SPEC_WORKFLOWS_AVAILABLE=1 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 bash "$LIB" 1.0.0)"
 check "I: override=0 forces false" "false" "$(LOOP_SPEC_WORKFLOWS_AVAILABLE=0 bash "$LIB" 9.9.9)"
 
 # adk harness gate: Workflow is a Claude Code tool; never available under ADK
@@ -44,11 +44,11 @@ check "J2: explicit retired harness propagates usage error" "2" "$pi_rc"
 check "K: positive override cannot beat the adk gate" "false" "$(LOOP_SPEC_HARNESS=adk LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 9.9.9)"
 check "K2: positive override cannot beat the opencode gate" "false" "$(LOOP_SPEC_HARNESS=opencode LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 9.9.9)"
 check "K3: negative override still honored on claude" "false" "$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_WORKFLOWS_AVAILABLE=0 bash "$LIB" 9.9.9)"
-check "K4: positive override still honored on claude" "true" "$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 1.0.0)"
+check "K4: positive override still honored on claude" "true" "$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_WORKFLOWS_AVAILABLE=1 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 bash "$LIB" 1.0.0)"
 
 # opencode harness gate: same Claude-Code-surface rule as ADK
 check "L: opencode harness -> false at any version" "false" "$(LOOP_SPEC_HARNESS=opencode bash "$LIB" 9.9.9)"
-check "M: global subagent cap disables workflow fan-out" "false" \
+check "M: explicit wider cap permits workflow fan-out" "true" \
   "$(LOOP_SPEC_WORKFLOWS_AVAILABLE=1 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 bash "$LIB" 9.9.9)"
 
 echo ""

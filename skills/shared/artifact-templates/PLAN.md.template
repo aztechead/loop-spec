@@ -9,18 +9,12 @@
 
 ## System design
 
-<!-- The system-design stance (skills/shared/engineering-stances.md). Greenfield fills
-     every bullet; a feature that adds a component, store, service boundary, or cache
-     fills the bullets it changes and writes `none` with a reason for the rest; any other
-     feature replaces the whole list with the single line `- none`. -->
-- Architecture: {components and their owners}
-- Component structure: {modules and the boundary between them}
-- Data flows: {each flow end to end, who owns each piece of state}
-- API design: {endpoints or commands, request and response shapes}
-- Database schema: {entities, keys, indexes}
-- Interface architecture: {what the user meets and how it talks to the API}
-- Caching strategy: {what is cached, where, and how it is invalidated}
-- Scale bound: {the input that grows and the bound held against it}
+<!-- Record only changed facets. Greenfield covers all facets; otherwise use `- none`
+     when the feature does not change the facet. -->
+- Architecture / component structure: {owners and boundaries}
+- Data flows / API design: {state flow and request/response shapes}
+- Database schema / interface architecture: {changed entities and user surface}
+- Caching strategy / scale bound: {invalidation and bounded growing input}
 
 ## Global constraints
 
@@ -30,17 +24,11 @@
      rules without reading the spec. Keep `- none` if nothing binds globally. -->
 - none
 
+<!-- File map is optional; include it only for greenfield structure. Task blocks own
+     changed-file detail. -->
 ## File map
 
-- Create: `{path}` - {responsibility}
-- Modify: `{path}:{line-range}` - {what changes}
-- Delete: `{path}` - {why}
-
-## Task DAG
-
-| ID | Subject | BlockedBy | Files | Est scope |
-|----|---------|-----------|-------|-----------|
-| task-001 | {subject} | - | {files} | small/medium/large |
+- none
 
 ## Tasks
 
@@ -55,25 +43,21 @@
 - {path or path:line-range or path (section)}
 
 **Interfaces:**
-- consumes: {contract this task depends on — signature/endpoint/schema, and which task produces it; `none` if independent}
-- produces: {contract other tasks consume from this one; `none` if leaf}
+- consumes: {contract or none}
+- produces: {contract or none}
 
 **Verify:** `{exact command}` -> {expected output}
 
 **Acceptance criteria:**
-- [ ] {criterion}
+- [ ] {criterion with a named test or exact observable result}
 
-**BlockedBy:** [{task ids this task logically depends on; [] when none}]
+**BlockedBy:** [{task ids; [] when none}]
 
-**Steps (TDD where applicable):**
+**Steps:**
 
-- [ ] Step 1: Write failing test ({path})
-- [ ] Step 2: Run test, expect FAIL
-- [ ] Step 3: Implement
-- [ ] Step 4: Run test, expect PASS
-- [ ] Step 5: Commit
+- [ ] {task-specific steps; code tasks state TDD red/green once}
 
-(repeat per task)
+(repeat task blocks; `lib/plan-tasks.sh extract` creates the JSON sidecar)
 
 ## Test strategy
 

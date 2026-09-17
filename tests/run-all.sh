@@ -218,6 +218,7 @@ run_suite "lib/codex-install"         "bash tests/lib/codex-install.test.sh" int
 run_suite "lib/opencode-install"      "bash tests/lib/opencode-install.test.sh" integration
 run_suite "lib/execute-prepare"       "bash tests/lib/execute-prepare.test.sh"
 run_suite "skills/loop-runner"        "bash skills/loop-runner/tests/run_tests.sh" integration
+run_suite "workflows/execute-dag"      "bash tests/workflows/execute-dag.test.sh"
 run_suite "lib/graph-validate"        "bash tests/lib/graph-validate.test.sh"
 run_suite "lib/oneshot-exit-gate"     "bash tests/lib/oneshot-exit-gate.test.sh"
 run_suite "lib/phase-bundles"         "bash tests/lib/phase-bundles.test.sh"
@@ -258,6 +259,7 @@ run_suite "lib/effort-probe"          "bash tests/lib/effort-probe.test.sh"
 run_suite "lib/conflict-monitor"      "bash tests/lib/conflict-monitor.test.sh"
 run_suite "lib/graph-port-contract"   "bash tests/lib/graph-port-contract.test.sh" integration
 run_suite "lib/profile"               "bash tests/lib/profile.test.sh"
+run_suite "lib/resource-bounds"       "bash tests/lib/resource-bounds.test.sh"
 run_suite "lib/oracle"                "bash tests/lib/oracle.test.sh"
 run_suite "lib/supervisor-store"      "bash tests/lib/supervisor-store.test.sh"
 run_suite "lib/supervisor-store-contract/local"  "bash tests/lib/supervisor-store-contract.test.sh lib/supervisor/store-local.sh"
@@ -319,6 +321,7 @@ run_suite "hooks/team/oracle-record"        "bash hooks/team/oracle-record.test.
 run_suite "lib/deferral-lint"             "bash tests/lib/deferral-lint.test.sh"
 run_suite "lib/delta-findings-lint"       "bash tests/lib/delta-findings-lint.test.sh"
 run_suite "lib/plan-tasks"                "bash tests/lib/plan-tasks.test.sh"
+run_suite "lib/plan-compact"              "bash tests/lib/plan-compact.test.sh"
 run_suite "lib/critique-step"             "bash tests/lib/critique-step.test.sh"
 run_suite "lib/docs-probe"                "bash tests/lib/docs-probe.test.sh"
 run_suite "lib/validate-task-metadata" "bash tests/lib/validate-task-metadata.test.sh"

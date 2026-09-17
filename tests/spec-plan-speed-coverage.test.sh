@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Pin the SPEC/PLAN wall-clock shorteners: skip already-gated spec critique,
-# skip spec-writer when SPEC.md exists, cheap PLAN lints before the challenger,
-# PATTERNS via pattern-mapper, and no advocate dispatch.
+# Pin the SPEC/PLAN wall-clock contract: one bounded critique round, one canonical
+# pattern scan, no prose-pruning dispatch, and no advocate dispatch.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.sh"
 
 checks=(
@@ -12,13 +11,15 @@ checks=(
   "skills/plan/SKILL.md	Send the planner one combined list"
   'skills/plan/SKILL.md	The critique never re-opens on a `REDO`'
   "skills/plan/SKILL.md	Never spawn \`advocate-1\`"
-  "skills/plan/SKILL.md	one-shot \`loop-spec:pattern-mapper\`"
+  "skills/discuss/SKILL.md	Do not prefetch or dispatch a second scan"
+  "skills/plan/SKILL.md	planner owns the compact PATTERNS scan"
   "agents/challenger.md	Critique is challenger-only"
   "skills/shared/team-prompts/challenger.md	not dispatched"
   "skills/shared/team-prompts/advocate.md	not dispatched"
   "docs/loop-spec/architecture.md	Critique gate protocol (challenger-only)"
-  "skills/plan/SKILL.md	Never \`sleep\` to join a background Agent"
-  "skills/plan/SKILL.md	loop-spec:pattern-mapper"
+  "skills/plan/SKILL.md	Do not dispatch a prose-pruning reviewer"
+  "skills/spec/SKILL.md	phase-exit.sh\" spec"
+  "skills/discuss/SKILL.md	phase-exit.sh\" discuss"
   "skills/shared/critique-gate-protocol.md	without an advocate or debate round"
   "skills/shared/critique-gate-protocol.md	Do NOT drop it — add it to the fix-list"
   "skills/shared/critique-gate-protocol.md	keep it on the fix-list (stricter bias)"

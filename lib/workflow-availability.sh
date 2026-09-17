@@ -21,10 +21,7 @@ MIN="2.1.154"
 
 # Workflow internals own their fan-out, so an operator-set global Agent cap uses
 # the one-shot fallback where loop-spec can enforce bounded waves.
-if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
-  echo "false"
-  exit 0
-fi
+subagent_cap="$(bash "$(dirname "${BASH_SOURCE[0]}")/resource-bounds.sh" get subagents)" || exit $?
 
 # Harness gate: the Workflow tool is a Claude Code surface. Under opencode and
 # ADK it never exists, regardless of any claude binary found on PATH.
@@ -37,6 +34,11 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 harness="$(bash "$SCRIPT_DIR/harness.sh" detect)" || exit $?
 if [[ "$harness" != "claude" ]]; then
+  echo "false"
+  exit 0
+fi
+
+if (( subagent_cap == 1 )); then
   echo "false"
   exit 0
 fi

@@ -100,6 +100,10 @@ def read_artifact(path):
 # inside prose and code, so a substring scan would false-positive.
 UNFILLED = {
     '- Architecture: {components and their owners}',
+    '- Architecture / component structure: {owners and boundaries}',
+    '- Data flows / API design: {state flow and request/response shapes}',
+    '- Database schema / interface architecture: {changed entities and user surface}',
+    '- Caching strategy / scale bound: {invalidation and bounded growing input}',
     '- Component structure: {modules and the boundary between them}',
     '- Data flows: {each flow end to end, who owns each piece of state}',
     '- API design: {endpoints or commands, request and response shapes}',
@@ -279,11 +283,15 @@ def lint_plan(display, data):
     lines, mask = markdown_scan(display, data, allow_frontmatter=False)
     if lines is None:
         return
-    require_heading(display, lines, mask, '## Task DAG')
     require_heading(display, lines, mask, '## Tasks')
 
     vis = visible(lines, mask)
-    if not any(re.match(r'^\|\s*task-', line.strip()) for _, line in vis):
+    # Task blocks are the canonical plan representation.  Older plans carried a
+    # duplicate Task DAG table; keep accepting it for compatibility, but do not
+    # make authors maintain two copies of the same dependency/file data.
+    has_dag = any(line.strip() == '## Task DAG' or line.strip().startswith('## Task DAG ')
+                  for _, line in vis)
+    if has_dag and not any(re.match(r'^\|\s*task-', line.strip()) for _, line in vis):
         flag(display, 0, "'## Task DAG' table has no '| task-...' rows")
 
     # Collect task blocks: from each `### task-<id>` heading to the next ##/### heading.
@@ -324,6 +332,14 @@ def lint_plan(display, data):
         for marker in ('**Files:**', '**Verify:**', '**Acceptance criteria:**'):
             if not has_marker(marker):
                 flag(display, no, "task block %s is missing '%s'" % (tid, marker))
+        if not has_dag and not has_marker('**BlockedBy:**'):
+            flag(display, no, "compact task block %s is missing '**BlockedBy:**' (tableless plans must state dependencies explicitly)" % tid)
+        if not has_dag and has_marker('**BlockedBy:**'):
+            blocked = next((t for t in block_text
+                            if t.startswith('**BlockedBy:**') or t.startswith('**BlockedBy**:')), '')
+            blocked_value = re.sub(r'^\*\*BlockedBy(?::\*\*|\*\*:)\s*', '', blocked)
+            if not blocked_value.strip():
+                flag(display, no, "compact task block %s has an empty '**BlockedBy:**' value (use [] for no dependencies)" % tid)
         if has_marker('**Acceptance criteria:**'):
             in_ac = False
             ac_items = 0

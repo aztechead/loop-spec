@@ -232,6 +232,19 @@ fi
 # -- rung, caps, roots -------------------------------------------------------------------
 runtime="$root/.loop-spec/runtime.json"
 rung='{}'
+# A resumed phase may start in a fresh process with no startup environment.
+# Carry the validated startup bounds from durable runtime state into every rung,
+# including workspace mode; an operator export still takes precedence.
+if [[ -f "$runtime" ]]; then
+  if [[ -z "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
+    persisted_subagents="$(jq -r '.resources.maxParallelSubagents // empty' "$runtime" 2>/dev/null || true)"
+    [[ "$persisted_subagents" =~ ^[1-9][0-9]*$ ]] && export LOOP_SPEC_MAX_PARALLEL_SUBAGENTS="$persisted_subagents"
+  fi
+  if [[ -z "${LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS:-}" ]]; then
+    persisted_implementers="$(jq -r '.resources.maxParallelImplementers // empty' "$runtime" 2>/dev/null || true)"
+    [[ "$persisted_implementers" =~ ^[1-9][0-9]*$ ]] && export LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS="$persisted_implementers"
+  fi
+fi
 if [[ "$workspace" == "null" ]]; then
   rung="$(lib execute-rung select --width "${width:-0}" \
     --teams-mode "$(jq -r '.teamsMode // "none"' "$runtime" 2>/dev/null || echo none)" \
@@ -239,7 +252,14 @@ if [[ "$workspace" == "null" ]]; then
     --workflow-optin "$(jq -r '.workflowExecuteOptIn // false' "$runtime" 2>/dev/null || echo false)" \
     --implementer-model "$(fget '.models.implementer // "inherit"')")" || { echo "execute-prepare: rung selection failed" >&2; exit 2; }
 else
-  rung='{"rung":"subagent","reason":"workspace mode always dispatches one-shot subagents","worktreesEnabled":false,"subagentIsolation":"none"}'
+  ws_subagents="$(bash "$SCRIPT_DIR/resource-bounds.sh" get subagents)" || exit $?
+  ws_implementers="$(bash "$SCRIPT_DIR/resource-bounds.sh" get implementers)" || exit $?
+  if [[ "${LOOP_SPEC_WORKTREES:-1}" == "0" ]]; then
+    ws_subagents=1
+    ws_implementers=1
+  fi
+  rung="$(jq -cn --argjson s "$ws_subagents" --argjson i "$ws_implementers" \
+    '{rung:"subagent",reason:"workspace mode always dispatches one-shot subagents",worktreesEnabled:false,subagentIsolation:"none",maxParallelSubagents:$s,maxParallelImplementers:$i}')"
 fi
 max_retries="$(lib tuning get executeMaxRetriesPerTask 6 2>/dev/null || echo 6)"
 worktree_base=""

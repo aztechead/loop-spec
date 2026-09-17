@@ -34,14 +34,7 @@ MIN_IMPLICIT="2.1.178"
 
 # A deployment-wide one-shot cap cannot be enforced inside a persistent team.
 # Force the bounded no-teams path whenever the operator supplies it.
-if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
-  [[ "$LOOP_SPEC_MAX_PARALLEL_SUBAGENTS" =~ ^[1-9][0-9]*$ ]] || {
-    echo "none"
-    exit 0
-  }
-  echo "none"
-  exit 0
-fi
+subagent_cap="$(bash "$(dirname "${BASH_SOURCE[0]}")/resource-bounds.sh" get subagents)" || exit $?
 
 # Harness gate: named, addressable teammates are a Claude Code surface today.
 # opencode's resumable task sessions and ADK's AgentTool dispatch both return a
@@ -61,6 +54,13 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 harness="$(bash "$SCRIPT_DIR/harness.sh" detect)" || exit $?
 if [[ "$harness" != "claude" ]]; then
+  echo "none"
+  exit 0
+fi
+
+# The default serial bound disables persistent teams. Keep this after harness
+# validation so an invalid explicit harness is still reported as a usage error.
+if (( subagent_cap == 1 )); then
   echo "none"
   exit 0
 fi

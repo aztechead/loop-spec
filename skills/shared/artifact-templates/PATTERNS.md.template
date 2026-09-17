@@ -1,17 +1,11 @@
 # PATTERNS.md - {slug}
 
-> Produced by `pattern-mapper`. Read by `planner` before drafting tasks.
-> One section per **concept** the upcoming feature will need. Concepts are system-design nouns/verbs, not file paths.
+> Produced by `planner`; read by implementers. Keep this index short: cite the
+> source instead of copying code that will drift.
 
 ## Codebase context consulted
 
-- `docs/loop-spec/codebase/TECH.md`
-- `docs/loop-spec/codebase/ARCH.md`
-- `docs/loop-spec/codebase/QUALITY.md`
-- `docs/loop-spec/codebase/CONCERNS.md`
-- `docs/loop-spec/codebase/DOMAIN.md`
-
-(omit any not actually read)
+- `{path}` (omit this section when no context docs were read)
 
 ## Concept: {name}
 
@@ -19,38 +13,16 @@
 
 **Why this analog (one line):** {rationale}
 
-**Imports**
+**Use:** `{symbol or section}`; cite the test analog when one exists: `{test path}:{lines}`.
 
-```{lang}
-{import block}
-```
-
-**Core pattern**
-
-```{lang}
-{5-30 line block, verbatim}
-```
-
-**Error handling**
-
-```{lang}
-{surrounding try/except / retry / guard logic}
-```
-
-**Test analog** (if any)
-
-```{lang}
-{5-15 line test block} -- from {test path}
-```
-
-**Application gotchas**
+**Gotchas**
 
 - {bullet about what NOT to carry over verbatim}
 - {bullet about house-style deviation to honor}
 
 ---
 
-(repeat the `## Concept` block for each concept; 3-10 concepts typical)
+(repeat only for concepts the feature needs)
 
 ## Open questions for the planner
 

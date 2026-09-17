@@ -4,6 +4,17 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.7.0] - 2026-09-16
+
+### Changed
+
+- Planning artifacts now use compact authored task blocks and indexed pattern citations;
+  the JSON task list is extracted once and a DAG table is not required.
+- SPEC and DISCUSS run read-only phase gates before approval and critique, while bounded
+  review paths avoid duplicate scans, transcript expansion, and prose-pruning dispatches.
+- Resource bounds prefer serial heavy work on 4GB/1vCPU systems and expose explicit
+  concurrency caps for larger hosts.
+
 ## [6.6.8] - 2026-09-16
 
 ### Fixed
