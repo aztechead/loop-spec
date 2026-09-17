@@ -71,6 +71,12 @@ assert_contains "destructive surface" "code=surface-destructive" \
 assert_contains "empty reasons is unusable" "code=unusable-verdict" "$(verdict '.reasons = []')"
 assert_contains "complexity out of range is unusable" "code=unusable-verdict" "$(verdict '.complexity = 7')"
 
+# A fenced final message is the same verdict.
+fenced_out="$(printf '```json\n%s\n```\n' "$(base_verdict)" | bash "$SCRIPT" validate -)"
+[[ "$fenced_out" == "route=oneshot reason=judge: "* ]] \
+  && pass "a \`\`\`json fence around the verdict is stripped" \
+  || fail "a \`\`\`json fence around the verdict is stripped (got '$fenced_out')"
+
 # stdin works via '-'.
 stdin_out="$(base_verdict | bash "$SCRIPT" validate -)"
 [[ "$stdin_out" == "route=oneshot reason=judge: "* ]] \

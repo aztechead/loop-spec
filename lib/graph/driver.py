@@ -2694,7 +2694,10 @@ def spec_judge(feature_dir, feat, verdict_flag):
     if verdict_flag:
         if not os.path.isfile(verdict_flag):
             raise Die("spec judge --verdict: no such file: %s" % verdict_flag, 2)
-        shutil.copy(verdict_flag, verdict_path)
+        # The in-harness answer hands the lead this very path as `verdict`, so the saved
+        # message is often already there: shutil.copy onto itself raises SameFileError.
+        if os.path.realpath(verdict_flag) != os.path.realpath(verdict_path):
+            shutil.copy(verdict_flag, verdict_path)
         source = "in-harness"
     elif lib("harness", "session-layer") != "session":
         print(json.dumps({"action": "in-harness", "reason": lib("harness", "session-layer-reason"),
@@ -2703,6 +2706,10 @@ def spec_judge(feature_dir, feat, verdict_flag):
     else:
         root = feature_root(feature_dir, feat)
         os.makedirs(os.path.join(dispatch, "sessions"), exist_ok=True)
+        # A verdict left by an earlier attempt would otherwise pass as this session's
+        # own when the launch is refused twice or the judge never writes one.
+        if os.path.isfile(verdict_path):
+            os.remove(verdict_path)
         line, _ = launch_headless_session(root, prompt, model, dispatch, "route-judge")
         _, tail = append_session_log(dispatch, "spec.route-judge.log", line)
         source = "session"

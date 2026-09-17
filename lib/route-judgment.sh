@@ -41,6 +41,10 @@ else
   exit 2
 fi
 
+# A saved final message often arrives fenced (```json ... ```); the fence is not the
+# verdict, so it is stripped before the schema is read.
+raw="$(sed -e '1{/^[[:space:]]*```/d;}' -e '${/^[[:space:]]*```[[:space:]]*$/d;}' <<<"$raw")"
+
 # One jq program owns every code in the contract's checked order. An input that
 # fails to parse is caught here rather than left to crash the pipeline, because
 # "not JSON at all" is unusable-verdict, not a bad-usage exit. Output is

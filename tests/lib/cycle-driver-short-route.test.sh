@@ -375,6 +375,12 @@ out="$(cd "$REPO7" && drv spec judge --feature-dir "$FD7" --verdict "$WORK/verdi
 check "spec judge --verdict: a low-confidence verdict is still stored, as full" "true" "$(jq -r '.stored' <<<"$out")"
 check "spec judge --verdict: the code is low-confidence" "low-confidence" "$(jq -r '.code' <<<"$out")"
 check "spec judge --verdict: feature.json records the full route" "full" "$(jq -r '.routeJudgment.route' "$FD7/feature.json")"
+# The lead saves the final message to the very path the in-harness answer named.
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" routeJudgment 'null' >/dev/null
+cp "$WORK/verdict-lowconf.json" "$FD7/dispatch/spec.route-judge.json"
+ec=0; out="$(cd "$REPO7" && drv spec judge --feature-dir "$FD7" --verdict "$FD7/dispatch/spec.route-judge.json" 2>/dev/null)" || ec=$?
+check "spec judge --verdict: the verdict path itself is accepted" "0" "$ec"
+check "spec judge --verdict: the verdict path itself is stored" "true" "$(jq -r '.stored' <<<"$out")"
 # not-JSON is unusable-verdict: nothing is stored, and the failure is on record.
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" routeJudgment 'null' >/dev/null
 printf 'not json' > "$WORK/verdict-badjson.txt"
