@@ -4,6 +4,32 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.9.0] - 2026-09-17
+
+### Changed
+
+- The per-tool-call hook tax is gone from every tool call that is not a phase entry:
+  `hooks/team/phase-handoff-guard.sh` (the `.*` PreToolUse matcher) answers with one
+  `jq` read before any python launch, and every hook that launches python3 skips the
+  version-manager shim through `lib/python-path.sh`, as `lib/cycle-driver.sh` already
+  did. On a pyenv machine the guard cost about 0.6 s on every call of a live cycle;
+  a Bash call paid about 1.35 s across its hooks.
+- Code reviewer, spec-compliance reviewer, and pattern mapper default to `sonnet` on
+  Claude Code, as the challenger already did (`lib/feature-init.sh canonical_models`,
+  `skills/shared/model-matrix.md`). A phase route or `LOOP_SPEC_MODEL_<ROLE>` still
+  outranks the default; peer harnesses stay on inherit.
+- PLAN's exit gate measures the width EXECUTE will see (declared plus file-overlap
+  edges under the same excludes) and flags a plan of four or more tasks that runs as a
+  chain, naming the shared files. `LOOP_SPEC_PLAN_MIN_WIDTH` is the operator override
+  (`1` accepts any chain). The planner charter says why: a file two tasks name
+  serializes them, so each shared file gets one owning task.
+- EXECUTE's subagent rung renders the contracts a task's files call for into one file
+  beside the brief (`dispatch-files.sh brief` writes `<id>-contracts.md`), the brief
+  names it under `Read first`, and the implementer stanza sends the agent to that file
+  instead of eight sources through eight Read calls. A task that touches no markdown
+  no longer reads the docs contract. `tests/dispatch-read-set.test.sh` pins the bytes
+  a fresh dispatch reads before it can act, within 5% of today's measurement.
+
 ## [6.8.0] - 2026-09-17
 
 ### Fixed
