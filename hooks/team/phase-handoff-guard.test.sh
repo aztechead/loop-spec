@@ -11,7 +11,7 @@ check() {
   shift 3
   local actual=0
   # A real cycle in the calling checkout must not outrank the fixture.
-  env "$@" bash -c 'cd "$CLAUDE_PROJECT_DIR" && exec bash "$1"' _ "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual=$?
+  env -u LOOP_SPEC_SESSION_ID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID "$@" bash -c 'cd "$CLAUDE_PROJECT_DIR" && exec bash "$1"' _ "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual=$?
   if [[ "$actual" -eq "$expected" ]]; then
     echo "PASS: $name"
     ((PASS++)) || true
@@ -158,7 +158,7 @@ check "prefixed multiline marker denies durable same-session handoff" 2 "$MULTIL
 ADAPTER="$(cd "$(dirname "$HOOK")/.." && pwd)/pre-tool-guard.py"
 adapter_check() {
   local name="$1" expected="$2" payload="$3" actual=0
-  (cd "$ROOT" && python3 "$ADAPTER") >/dev/null 2>&1 <<<"$payload" || actual=$?
+  (cd "$ROOT" && env -u LOOP_SPEC_SESSION_ID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID python3 "$ADAPTER") >/dev/null 2>&1 <<<"$payload" || actual=$?
   if [[ "$actual" -eq "$expected" ]]; then
     echo "PASS: $name"
     ((PASS++)) || true

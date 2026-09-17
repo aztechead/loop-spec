@@ -196,8 +196,8 @@ case "$cmd" in
       OUT="${TMPDIR:-/tmp}/review-${short_b}..${short_h}.diff"
     fi
     mkdir -p "$(dirname "$OUT")"
-    no_code_change=0
-    git -C "$REPO" diff --quiet "${BASE}..${HEAD}" -- || no_code_change=1
+    has_code_change=1
+    git -C "$REPO" diff --quiet "${BASE}..${HEAD}" -- && has_code_change=0
     {
       echo "# Review package: ${base_full}..${head_full}"
       echo
@@ -206,7 +206,7 @@ case "$cmd" in
       echo
       echo "## Files changed"
       git -C "$REPO" diff --stat "${BASE}..${HEAD}"
-      if [[ "$no_code_change" -eq 0 ]]; then
+      if [[ "$has_code_change" -eq 0 ]]; then
         echo
         echo "## No code changes"
         echo "This package contains a distinct commit with no code diff. Review the commit and verify the current tree against the task brief before accepting it."

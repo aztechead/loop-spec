@@ -56,7 +56,10 @@ except Exception:
 target = phase_name((payload.get("tool_input") or {}).get("skill")) \
     if str(payload.get("tool_name") or "") == "Skill" else ""
 prior = []
-transcript_path = str(payload.get("transcript_path") or "")
+# Only a phase Skill call needs the prior-phase list; every other tool call
+# skips the transcript parse, which grows with the session.
+transcript_path = str(payload.get("transcript_path") or "") if target else ""
+contents, results = [], []
 if transcript_path and os.path.isfile(transcript_path):
     try:
         with open(transcript_path) as stream:
@@ -76,7 +79,7 @@ if transcript_path and os.path.isfile(transcript_path):
         ]
     except Exception:
         contents, results = [], []
-else:
+elif target:
     contents = [
         entry.get("content") or []
         for entry in (payload.get("transcript") or [])

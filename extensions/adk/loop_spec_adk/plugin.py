@@ -124,7 +124,7 @@ class LoopSpecPlugin(BasePlugin):
                                    tool_context: Any) -> Optional[dict[str, Any]]:
         denial = await run_hook("hooks/pre-tool-guard.py", {
             "tool_name": getattr(tool, "name", ""), "tool_input": tool_args,
-                                       "cwd": str(self._bridge.project_dir),
+            "cwd": str(self._bridge.project_dir),
         }, self._bridge, enforce=True, state=getattr(tool_context, "state", None))
         return {"status": "error", "error": denial} if denial else None
 

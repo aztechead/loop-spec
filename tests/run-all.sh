@@ -147,7 +147,7 @@ run_suite() {
     # once stretched this runner to ~11 minutes of wall time).
     export GIT_CONFIG_GLOBAL="$RUN_DIR/gitconfig" GIT_CONFIG_SYSTEM=/dev/null
     # A harness injected into the parent process must not change offline fixtures.
-    unset LOOP_SPEC_HARNESS
+    unset LOOP_SPEC_HARNESS LOOP_SPEC_SESSION_ID CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
     if bash -c "$cmd" >"$log" 2>&1; then
       rc=0
     else

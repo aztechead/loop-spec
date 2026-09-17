@@ -169,8 +169,10 @@ def payload_launch(code):
         else:
             continue
         if name == "eval":
-            words = shlex.split(text)
-            text = " ".join(words)
+            try:
+                text = " ".join(shlex.split(text))
+            except ValueError:
+                continue
         nested = launcher_word(text) or cycle_runner_word(text)
         if nested:
             return nested
