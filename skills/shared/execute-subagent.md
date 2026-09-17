@@ -319,7 +319,7 @@ templates cannot drift.
 IMPORTANT: All paths must be ABSOLUTE. Do not use relative paths. Do not use em-dashes.
 
 ENGINEERING CONTRACT (on by default; every directive binds). The index is
-`${LOOP_SPEC_SKILL_DIR}/../../skills/shared/engineering-directives.md`. Read these before writing code, never paste them:
+`${LOOP_SPEC_SKILL_DIR}/../../skills/shared/engineering-directives.md`. The brief's `Read first` section names one file holding the contracts this task's files call for, rendered from these sources at dispatch; read that file once before writing code instead of opening each source, and never paste them:
 `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/implementer-contract.md` (FOUR QUESTIONS (design gate): can I make it more modular?
 more extensible? is this the least amount of code that makes it happen?
 does this hold at production scale, memory and work bounded against deployment-sized

@@ -61,6 +61,46 @@ check "brief carries steps" "ok" "$r"
 grep -q "Produces: bar" "$brief" && r=ok || r=missing
 check "brief carries interfaces" "ok" "$r"
 
+# The brief renders the shared engineering contracts this task's files call for into
+# one file beside it, so the implementer reads one file instead of opening up to eight.
+cat > "$FDIR/tasks.json" <<'EOF'
+[
+  {
+    "id": "task-003",
+    "subject": "add helper",
+    "brief": "Add a helper and its test.",
+    "files": ["lib/x.sh", "tests/lib/x.test.sh"],
+    "blockedBy": [],
+    "verifyCommand": "true",
+    "acceptanceCriteria": ["works"]
+  }
+]
+EOF
+bash "$SCRIPT" brief --feature-dir "$FDIR" --task-id task-003 --out "$WORK/code-brief.md" >/dev/null
+check "brief: names the rendered contracts file under Read first" "1" "$(grep -c '^## Read first' "$WORK/code-brief.md")"
+check "brief: contracts file exists beside the brief" "1" "$([[ -f "$WORK/code-contracts.md" ]] && echo 1 || echo 0)"
+check "contracts: code task renders human-code" "1" "$(grep -c '<!-- source: .*/human-code.md -->' "$WORK/code-contracts.md")"
+check "contracts: test file renders writing-good-tests" "1" "$(grep -c '<!-- source: .*/writing-good-tests.md -->' "$WORK/code-contracts.md")"
+check "contracts: code-only task skips human-docs" "0" "$(grep -c '<!-- source: .*/human-docs.md -->' "$WORK/code-contracts.md")"
+check "contracts: the always set is present" "3" "$(grep -cE '<!-- source: .*/(engineering-directives|implementer-contract|execution-discipline).md -->' "$WORK/code-contracts.md")"
+
+cat > "$FDIR/tasks.json" <<'EOF'
+[
+  {
+    "id": "task-004",
+    "subject": "update readme",
+    "brief": "Update README.",
+    "files": ["README.md"],
+    "blockedBy": [],
+    "verifyCommand": "true",
+    "acceptanceCriteria": ["updated"]
+  }
+]
+EOF
+bash "$SCRIPT" brief --feature-dir "$FDIR" --task-id task-004 --out "$WORK/docs-brief.md" >/dev/null
+check "contracts: docs-only task renders human-docs" "1" "$(grep -c '<!-- source: .*/human-docs.md -->' "$WORK/docs-contracts.md")"
+check "contracts: docs-only task skips human-code" "0" "$(grep -c '<!-- source: .*/human-code.md -->' "$WORK/docs-contracts.md")"
+
 # The brief must carry fields produced by PLAN extraction, not only fields hand-built
 # by a caller. This catches loss between the durable Markdown artifact and dispatch.
 cat > "$FDIR/PLAN.md" <<'EOF'
