@@ -4,7 +4,7 @@ Spec-driven development loops for [Claude Code](https://claude.com/claude-code),
 
 Use this guide to install loop-spec, start a cycle, and find its operating reference.
 
-Current version: 6.8.0
+Current version: 6.9.0
 
 ## Contents
 
@@ -35,7 +35,7 @@ claude plugin marketplace add https://github.com/aztechead/loop-spec.git
 claude plugin install loop-spec@loop-spec-marketplace
 ```
 
-Optional: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` enables agent teams. Without it, critique/verify use one-shot subagents and EXECUTE uses the loop-fleet rung (needs `claude` on PATH). Every role but the challenger inherits the model that launched the session; the challenger runs on `sonnet`, and model-specific routing is optional (`skills/shared/model-matrix.md`). Updating from 6.2.x: read "Before you update" under 6.3.0 in [CHANGELOG.md](CHANGELOG.md) first.
+Optional: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` enables agent teams. Without it, critique/verify use one-shot subagents and EXECUTE uses the loop-fleet rung (needs `claude` on PATH). Every role but the challenger, code-reviewer, spec-compliance-reviewer, and pattern-mapper inherits the model that launched the session; those four run on `sonnet`, and model-specific routing is optional (`skills/shared/model-matrix.md`). Updating from 6.2.x: read "Before you update" under 6.3.0 in [CHANGELOG.md](CHANGELOG.md) first.
 
 Adoption walkthrough: [docs/adopting.md](docs/adopting.md).
 
@@ -145,7 +145,7 @@ Mechanics in brief:
 - **Sequencing is a declared graph** from 3.0 (`graph/cycle.graph.json`, run by `lib/graph/run.sh`): typed `reads[]`/`writes[]` over `feature.json`, per-node checkpoints, probe-conditioned `route` edges, and dual-process effort (`lib/effort-probe.sh`). Phase *content* is unchanged. Upgrading from 2.x needs no action: schema stays v7 and every new variable defaults to 2.x behaviour.
 - **DELIVER** owns the final mile (`lib/pr-delivery.sh`): never force-pushes, merges, or enables auto-merge.
 
-Styles (`style:step`, default `auto`): `auto` · `step` · `interactive` · `review-only`. Every role inherits the session model except the challenger, which runs on `sonnet` under Claude Code. Optional Claude routes use `LOOP_SPEC_PHASE_MODEL_<PHASE>` or `LOOP_SPEC_MODEL_<ROLE>`; OpenCode routes use native generated-agent configuration.
+Styles (`style:step`, default `auto`): `auto` · `step` · `interactive` · `review-only`. Every role inherits the session model except the challenger, code-reviewer, spec-compliance-reviewer, and pattern-mapper, which run on `sonnet` under Claude Code. Optional Claude routes use `LOOP_SPEC_PHASE_MODEL_<PHASE>` or `LOOP_SPEC_MODEL_<ROLE>`; OpenCode routes use native generated-agent configuration.
 
 Greenfield: `/loop-spec:cycle new autonomous a CLI tool that ...` in an empty directory. Backlog drain: `/loop-spec:cycle backlog`. Diagrams, artifact tree, and team lifecycle: [docs/loop-spec/architecture.md](docs/loop-spec/architecture.md).
 
@@ -238,7 +238,7 @@ Multi-repo workspaces: [docs/adopting.md](docs/adopting.md#workspace-multi-repo-
 
 ## Troubleshooting
 
-- Health check fails: allow every alias from `bash lib/feature-init.sh all-models` in `CLAUDE.md` (6.3.0 adds `sonnet`, the challenger's default).
+- Health check fails: allow every alias from `bash lib/feature-init.sh all-models` in `CLAUDE.md` (6.3.0 adds `sonnet`, the challenger's default; also the code-reviewer, spec-compliance-reviewer, and pattern-mapper default).
 - Critique gate closed with residue (`gate-logs/<gate>-residue.md`): the one delta round is spent; the spec/plan is ambiguous — use `style:step`, edit, resume. `LOOP_SPEC_CRITIQUE_ROUNDS` raises the bound.
 - Loop-fleet halt: read `halt_reason` in `.loop/fleet-result.json` (table in `skills/shared/execute-loop-fleet.md`).
 - Teams unavailable: not a failure; set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` to restore persistent teams.

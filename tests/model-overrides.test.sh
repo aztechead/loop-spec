@@ -17,8 +17,8 @@ check() {
 
 # --- Test 1: Default map has no model-family prerequisite ---
 models="$(LOOP_SPEC_HARNESS=claude bash "$LIB" models)"
-check "default: every role but the challenger and the route judge inherits" \
-  "$(echo "$models" | jq -e '[del(.challenger, .routeJudge)[]] | all(. == "inherit")' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "default: every role but the reader roles and the route judge inherits" \
+  "$(echo "$models" | jq -e '[del(.challenger, .codeReviewer, .specComplianceReviewer, .patternMapper, .routeJudge)[]] | all(. == "inherit")' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "default: the challenger's sonnet and the route judge's opus are the only Agent probes" \
   "$([[ "$(LOOP_SPEC_HARNESS=claude bash "$LIB" agent-probe-models)" == '["opus","sonnet"]' ]] && echo 1 || echo 0)"
 
@@ -98,6 +98,10 @@ check "default: planner still inherits on Claude Code" \
 oc_default="$(LOOP_SPEC_HARNESS=opencode bash "$LIB" models)"
 check "default: challenger inherits on OpenCode (no alias surface)" \
   "$(echo "$oc_default" | jq -e '.challenger == "inherit"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "default: code-reviewer, spec-compliance-reviewer, pattern-mapper are sonnet on Claude Code" \
+  "$(echo "$default_out" | jq -e '.codeReviewer == "sonnet" and .specComplianceReviewer == "sonnet" and .patternMapper == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "default: code-reviewer, spec-compliance-reviewer, pattern-mapper inherit on OpenCode (no alias surface)" \
+  "$(echo "$oc_default" | jq -e '.codeReviewer == "inherit" and .specComplianceReviewer == "inherit" and .patternMapper == "inherit"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "default: route judge is opus on Claude Code" \
   "$(echo "$default_out" | jq -e '.routeJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "default: route judge inherits on OpenCode (no alias surface)" \
