@@ -1150,6 +1150,34 @@ bash "$LIB" write-terminal --result-root "$TERM_UNREADY" --cycle-type micro \
 check "AF5: delivered-unready is refused with a failed status" "0" \
   "$([[ -f "$TERM_UNREADY/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
 
+# --- the reason on a delivery ending names the delivery blocker -----------------------
+# The run above published reason="[Errno 2] No such file or directory: .../SPEC.md": the
+# frozen-intent check could not read SPEC.md in the delivery checkout, escalated with
+# that text, and this writer relabelled the run delivery-blocked while keeping it.
+MISSING_SPEC="[Errno 2] No such file or directory: '/clone/docs/loop-spec/features/unready/SPEC.md'"
+
+unready_delivery checks_unsupported "required checks could not be read: GraphQL: Resource not accessible by integration" > "$UNREADY/delivery.json"
+publish_unready "$MISSING_SPEC"
+check "AG: delivered-unready states the readiness blocker" \
+  "checks_unsupported: required checks could not be read: GraphQL: Resource not accessible by integration" \
+  "$(jq -r '.reason' "$UNREADY/result.json")"
+check "AG: the displaced read failure is a warning" "displaced-reason: $MISSING_SPEC" \
+  "$(jq -r '.warnings[] | select(startswith("displaced-reason:"))' "$UNREADY/result.json")"
+
+unready_delivery pr_closed "PR is not open" > "$UNREADY/delivery.json"
+publish_unready "$MISSING_SPEC"
+check "AG2: a blocked delivery names its errorCode, not a missing file" "pr_closed: PR is not open" \
+  "$(jq -r '.reason' "$UNREADY/result.json")"
+check "AG2: and keeps the read failure as a warning" "1" \
+  "$(jq -r '[.warnings[] | select(startswith("displaced-reason:"))] | length' "$UNREADY/result.json")"
+
+jq '.targets[0] |= del(.errorCode)' "$UNREADY/delivery.json" > "$UNREADY/delivery.tmp" && mv "$UNREADY/delivery.tmp" "$UNREADY/delivery.json"
+publish_unready "$MISSING_SPEC"
+check "AG3: with no errorCode to name, the stated reason stands" "$MISSING_SPEC" \
+  "$(jq -r '.reason' "$UNREADY/result.json")"
+check "AG3: and nothing was displaced" "0" \
+  "$(jq -r '[.warnings[] | select(startswith("displaced-reason:"))] | length' "$UNREADY/result.json")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

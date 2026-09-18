@@ -143,6 +143,10 @@ record holds the PR URL, the delivery did happen and only the draft-to-ready fli
 not: that reports `status: "completed"`, `outcome: "delivered-unready"`,
 `workDelivered: true`, and `converged: false`, because readiness was never reached. One
 blocked target with any other code, or a mix of the two kinds, keeps `delivery-blocked`.
+On both endings `reason` is the blocking target's `<errorCode>: <message>`, whatever the
+caller passed: a run that escalated over an unreadable SPEC.md published that read error
+as the reason its correct PR was blocked. A `--reason` a blocker replaces is kept as a
+`displaced-reason:` entry in `warnings[]`.
 A green draft PR (SHA-bound, required checks
 passed or none configured, PR left draft for human sign-off) reports
 `status: "completed"`, `outcome: "delivered-draft"`, `workDelivered: true`,

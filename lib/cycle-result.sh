@@ -49,7 +49,9 @@
 #   "loopSpecVersion": "<version that produced this run, else \"unknown\">",
 #   "slug": "...",
 #   "status": "completed | paused | escalated | terminal",
-#   "reason": "<--reason text or null>",
+#   "reason": "<the delivery blocker's \"<errorCode>: <message>\" when the run ended at
+#              DELIVER with one, else the --reason text or null. A --reason a blocker
+#              replaced is kept as a \"displaced-reason:\" warning>",
 #   "summary": "<required concise terminal synthesis>",
 #   "noChangeReason": "already-satisfied | diagnostic-only | null",
 #   "phaseReached": "<logical phase, including delivery.json completion>",
@@ -902,6 +904,18 @@ PY
           ($blockedTargets | all(. as $t | (readiness_only_error | index($t.errorCode // "")) != null)))
            as $readinessOnlyBlock |
          ($deliveryBlocked and $readinessOnlyBlock and $prUrl != null) as $deliveredUnready |
+        # A delivery ending states the delivery blocker, whatever the caller passed. A
+        # run whose frozen-intent check could not read SPEC.md escalated with
+        # "[Errno 2] No such file or directory: .../SPEC.md" as its reason, this writer
+        # turned that into delivery-blocked, and the published reason named a file
+        # instead of the checks scope that actually stopped the flip. The displaced text
+        # is a warning: it was true about something, just not about the delivery.
+         ([$blockedTargets[] | select((.errorCode // "") != "")
+           | "\(.errorCode): \(.error // "no message")"] | first) as $blockerReason |
+         (if ($deliveryBlocked or $deliveredUnready) and $blockerReason != null
+          then $blockerReason else $reason end) as $endingReason |
+         (if $reason != null and $endingReason != $reason
+          then ["displaced-reason: " + $reason] else [] end) as $displacedWarnings |
           (if $intentionalNoChange then "completed"
            elif $deliveredUnready then "completed"
            elif $deliveryBlocked then "failed"
@@ -948,7 +962,7 @@ PY
          slug: $fj.slug,
           status: $effectiveStatus,
           outcome: (if $intentionalNoChange then "no-change-needed" elif $deliveredUnready then "delivered-unready" elif $deliveryBlocked then "delivery-blocked" elif $converged then "delivered" elif $draftDelivered then "delivered-draft" elif $pushedNoPr then "pushed-no-pr" elif $effectiveStatus == "completed" then "completed-with-gaps" else $effectiveStatus end),
-          reason: $reason,
+          reason: $endingReason,
           summary: $summary_arg,
           noChangeReason: (if $intentionalNoChange then $no_change_reason_arg else null end),
           phaseReached: (if $effectiveStatus == "completed" and ((($delivery.status // "") == "ready-for-review") or (($delivery.status // "") == "delivered-draft") or (($delivery.status // "") == "pushed-no-pr") or $intentionalNoChange)
@@ -970,7 +984,7 @@ PY
           used: ($fj.iterate.used // 0),
           max: ($fj.iterate.maxIterations // null)
         },
-         warnings: $warnings,
+         warnings: ($warnings + $displacedWarnings),
         autonomous: $autonomous,
         feature_title: ($fj.feature_title // $fj.slug),
         createdAt: ($fj.createdAt // null),

@@ -76,6 +76,12 @@ All notable changes documented here. Format follows Keep a Changelog.
   answer "Resource not accessible by integration", and an open, pushed, correct PR was
   published as `failed` / `delivery-blocked`. Any other blocked code, and a mix of the
   two kinds, still reports `delivery-blocked`.
+- `reason` on a delivery ending names the delivery blocker: the blocking target's
+  `<errorCode>: <message>`, whatever the caller passed. One run published
+  `reason: "[Errno 2] No such file or directory: .../SPEC.md"` for a PR whose real
+  blocker was the checks scope, because the frozen-intent check escalated with that read
+  error and `lib/cycle-result.sh` relabelled the run `delivery-blocked` around it. A
+  reason a blocker replaces is kept as a `displaced-reason:` entry in `warnings[]`.
 
 ## [6.8.0] - 2026-09-17
 
