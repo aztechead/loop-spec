@@ -85,6 +85,15 @@ if [[ -z "$spec_path" || ! -f "$spec_path" ]]; then
 fi
 [[ -n "$spec_path" && -f "$spec_path" ]] || run "no SPEC.md to judge"
 
+# Every autonomous oneshot run paid a challenger critique before ONESHOT once the gate
+# moved ahead of the human node in 6.9.0; the ONESHOT review gate already reads the
+# spec independently, so this gate skips there. LOOP_SPEC_ROUTE=full still forces the
+# full route and its critique (oneshot.sh honors the same override).
+route_line="$(bash "$SCRIPT_DIR/oneshot.sh" --feature-dir "$feature_dir" 2>/dev/null || true)"
+case "$route_line" in
+  route=oneshot*) skip "route=oneshot: the ONESHOT review gate is the spec's independent read" ;;
+esac
+
 signal_rc=0
 signal=""
 if [[ -x "$SECURITY_SIGNAL" ]]; then

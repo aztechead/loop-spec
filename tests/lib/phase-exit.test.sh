@@ -53,6 +53,10 @@ check "mode spec: human attached interviews" "path=interview" "${out%% *}"
 out="$(LOOP_SPEC_AUTONOMOUS=1 bash "$MODE" spec --feature-dir "$FD")"
 check "mode spec: autonomous self-answers" "path=self-answer" "${out%% *}"
 check "mode spec: self-answer names the oracle" "oracle=self" "$(cut -d' ' -f2 <<<"$out")"
+touch "$FD/spec-draft.md"
+out="$(LOOP_SPEC_AUTONOMOUS=1 bash "$MODE" spec --feature-dir "$FD")"
+check "mode spec: ingest with self-answer names the oracle" "oracle=self" "$(cut -d' ' -f2 <<<"$out")"
+rm -f "$FD/spec-draft.md"
 printf '%s\n' '{"route":"full","estimatedFiles":7,"reviewableEstimatedFiles":7,"criteriaCount":5}' \
   > "$WORK/classification.json"
 jq --argjson classification "$(<"$WORK/classification.json")" \
@@ -309,6 +313,9 @@ check "exit plan: LOOP_SPEC_PLAN_MIN_WIDTH=1 accepts a chain" "0" "$(grep -c '\[
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-002","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-003","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: three tasks are left alone" "0" "$(grep -c '\[width\]' <<<"$out")"
+printf '[{"id":"task-001","brief":"do a thing","files":["f1.sh"],"blockedBy":["task-003"],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-002","brief":"do a thing","files":["f1.sh","f2.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-003","brief":"do a thing","files":["f2.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: declared blockedBy plus overlap edges forming a cycle is flagged" "1" "$(grep -c 'form a cycle' <<<"$out")"
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"pip install -e . && uv venv --python 3.14 && bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: a verify command that installs is a feasibility flag" "1" "$(grep -c 'installs or creates an environment' <<<"$out")"

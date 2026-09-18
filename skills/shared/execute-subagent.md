@@ -239,7 +239,9 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
      `blocked.push({taskId, reason: "retry-exhausted"})`.
      Re-review is scoped (`skills/shared/review-prompts/re-review.md`) against
      `FIX_BASE..HEAD`, not a full-task re-read. A re-review is one task and returns the
-     single-task shape `{verdict, findings[], unverified[]}`. When the findings require touching a
+     single-task shape `{verdict, findings[], unverified[]}`. Re-package the fix with
+     `task package`, then `task review-groups --tasks {taskId}` (one group, one
+     `dispatch` event) before the scoped re-review Agent. When the findings require touching a
      file outside `task.files`, widen the task's write scope first with
      `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task add-files
      --feature-dir "$fdir" --task "{taskId}" <file...>` before re-dispatching; it

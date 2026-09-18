@@ -13,6 +13,9 @@
 #     path=<ingest|self-answer|synthesize|interview> [oracle=<supervisor|self>]
 #     grill=<run|self-answer|skip> critique=<run|skip> reentry=<bool> reason=<text> greenfield=<bool>
 #   (oracle= appears on the self-answer path only; lib/supervisor/oracle.sh decides it)
+#   (critique= here is provisional: it is answered before SPEC.md is drafted; the SPEC
+#   skill re-runs lib/graph/probes/spec-critique.sh after writing SPEC.md and that
+#   answer decides)
 #   phase-mode.sh plan    --feature-dir DIR
 #     critique=<run|skip> reentry=<bool> reason=<text>
 #   phase-mode.sh verify  --feature-dir DIR
@@ -86,6 +89,7 @@ case "$phase" in
     elif [[ "$non_interactive" == true ]]; then grill=skip
     elif [[ "$style" == "review-only" ]]; then grill=skip
     else grill=run; fi
+    oracle_field=""; [[ "$grill" == "self-answer" ]] && oracle_field=" oracle=$(oracle)"
     line="$(bash "$SCRIPT_DIR/graph/probes/spec-critique.sh" --feature-dir "$feature_dir" 2>/dev/null || echo "gate=run reason=probe failed")"
     case "$line" in
       gate=skip*) critique=skip; creason="${line#*reason=}" ;;
@@ -94,17 +98,17 @@ case "$phase" in
     esac
     fields="grill=$grill critique=$critique reentry=$reentry"
     if [[ -f "$feature_dir/spec-draft.md" ]]; then
-      echo "path=ingest $budget_line $fields reason=spec-draft.md present; critique: $creason greenfield=$gf"
+      echo "path=ingest$oracle_field $budget_line $fields reason=spec-draft.md present; critique: $creason greenfield=$gf"
     elif [[ "$autonomous" == true ]]; then
-      echo "path=self-answer oracle=$(oracle) $budget_line $fields reason=autonomous; critique: $creason greenfield=$gf"
+      echo "path=self-answer$oracle_field $budget_line $fields reason=autonomous; critique: $creason greenfield=$gf"
     elif [[ "$non_interactive" == true ]]; then
-      echo "path=synthesize $budget_line $fields reason=LOOP_SPEC_NON_INTERACTIVE=1; critique: $creason greenfield=$gf"
+      echo "path=synthesize$oracle_field $budget_line $fields reason=LOOP_SPEC_NON_INTERACTIVE=1; critique: $creason greenfield=$gf"
     elif [[ "$profile" == "maintenance" ]]; then
-      echo "path=synthesize $budget_line $fields reason=maintenance profile; critique: $creason greenfield=$gf"
+      echo "path=synthesize$oracle_field $budget_line $fields reason=maintenance profile; critique: $creason greenfield=$gf"
     elif [[ "$profile" == "compact" && "$(compact_gate specInterview)" == "skip" ]]; then
-      echo "path=synthesize $budget_line $fields reason=compact gatePlan skips specInterview; critique: $creason greenfield=$gf"
+      echo "path=synthesize$oracle_field $budget_line $fields reason=compact gatePlan skips specInterview; critique: $creason greenfield=$gf"
     else
-      echo "path=interview $budget_line $fields reason=human attached; critique: $creason greenfield=$gf"
+      echo "path=interview$oracle_field $budget_line $fields reason=human attached; critique: $creason greenfield=$gf"
     fi
     ;;
   plan)

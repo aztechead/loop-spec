@@ -49,6 +49,16 @@ check "first phase in transcript allowed" 0 "$FIRST" \
   CLAUDE_PROJECT_DIR="$ROOT"
 check "second phase denied" 2 "$SECOND" \
   CLAUDE_PROJECT_DIR="$ROOT"
+
+# An empty tool_name answer (no jq on PATH, or a payload jq refuses) must fall through
+# to the python parsing path below rather than reading as "not a Skill call".
+PY_DIR="$(bash "$(cd "$(dirname "$HOOK")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+if [[ -n "$PY_DIR" ]]; then
+  check "a jq-less PATH falls through to the python path, not silently open" 2 "$SECOND" \
+    CLAUDE_PROJECT_DIR="$ROOT" "PATH=$PY_DIR:/usr/bin:/bin"
+else
+  echo "SKIP: no version-manager shim on this machine; lib/python-path.sh printed nothing"
+fi
 NOT_SKILL='{"tool_name":"Bash","tool_input":{"command":"ls"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:spec"}}]}]}'
 check "a non-Skill tool call is not a phase entry and passes" 0 "$NOT_SKILL" \
   CLAUDE_PROJECT_DIR="$ROOT"

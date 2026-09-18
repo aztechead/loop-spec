@@ -129,9 +129,13 @@ case "$cmd" in
       && contracts="$contracts laziness-ladder.md design-for-change.md human-code.md"
     jq -e '[.files[]? | select(test("\\.(md|markdown|rst)$"))] | length > 0' <<<"$task_json" >/dev/null \
       && contracts="$contracts human-docs.md"
-    jq -e '[.files[]? | select(test("(^|/)tests?/|\\.test\\.|_test\\.|(^|/)test_|(^|/)spec/|\\.spec\\."))] | length > 0' <<<"$task_json" >/dev/null \
+    jq -e '[.files[]? | select(test("(^|/)tests?/|\\.test\\.|_test\\.|(^|/)test_|\\.spec\\."))] | length > 0' <<<"$task_json" >/dev/null \
       && contracts="$contracts writing-good-tests.md"
-    contracts_out="${OUT%-brief.md}-contracts.md"
+    contracts_out="$(dirname "$OUT")/${TASK_ID}-contracts.md"
+    for c in $contracts; do
+      [[ -f "$shared_dir/$c" ]] \
+        || { echo "dispatch-files.sh: contract source missing: $shared_dir/$c" >&2; exit 2; }
+    done
     {
       echo "# Contracts for $TASK_ID (rendered from skills/shared at dispatch; the sources bind)"
       for c in $contracts; do

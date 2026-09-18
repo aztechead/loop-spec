@@ -85,14 +85,19 @@ for i, a in enumerate(ordered):
             owners.setdefault(f, set()).update([a["id"], b["id"]])
 run = subprocess.run(["bash", sys.argv[2]], input=json.dumps(ordered), capture_output=True, text=True)
 top = sorted(owners.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:3]
-print(json.dumps({"tasks": len(tasks), "width": int(run.stdout.strip() or 0),
+# Exit code 3 is the dag-width.sh cycle answer: the declared blockedBy plus the
+# overlap edges just added can loop even when the declared graph alone does not.
+width = -1 if run.returncode == 3 else int(run.stdout.strip() or 0)
+print(json.dumps({"tasks": len(tasks), "width": width,
                   "shared": ["%s (%s)" % (f, ",".join(sorted(ids))) for f, ids in top]}))
 PY
 )" || width=""
     if [[ -n "$width" ]]; then
       n="$(jq -r '.tasks' <<<"$width")"; w="$(jq -r '.width' <<<"$width")"
       shared="$(jq -r '.shared | join("; ")' <<<"$width")"
-      if (( n >= 4 && w < min_width )); then
+      if [[ "$w" == "-1" ]]; then
+        flag "[width] $n tasks: declared blockedBy plus file-overlap edges form a cycle EXECUTE will refuse to dispatch; give each shared file one owning task${shared:+: $shared}"
+      elif (( n >= 4 && w < min_width )); then
         flag "[width] $n tasks run $w at a time: tasks that share a file wait for each other; give each shared file one owning task or merge the tasks that share it${shared:+: $shared}"
       fi
     fi

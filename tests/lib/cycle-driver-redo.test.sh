@@ -135,11 +135,12 @@ check "next: the retired record keeps its digest and names the gate" "$FROZEN hu
 check "next: the SPEC gate will compare against the retired digest" "$FROZEN" "$(jq -r '.specIntentSeen.sha256' "$FD/feature.json")"
 check "next: the reopen is on the event ledger" "1" "$(jq -c 'select(.event == "spec-reopened")' "$FD/events.jsonl" | wc -l | tr -d ' ')"
 sed -i.bak 's/^Produce the requested behavior\.$/Produce and log the requested behavior for every caller./' "$DOCS1/SPEC.md"; rm -f "$DOCS1/SPEC.md.bak"
-# SPEC's own re-exit refreshes specIntentSeen from what is on disk right now, in the
-# same call that pauses at human.after-spec: unlike DISCUSS's separate return, there
-# is no second look here, so a same-call edit re-freezes rather than showing changed.
+# The reopen stamped specIntentSeen with the RETIRED digest and `reopened: True` so the
+# human's next SPEC gate compares the amended text against what they actually approved;
+# this repeat return must not blindly restamp it with the just-amended text's own digest
+# (that would always read back "unchanged" and hide the amendment from the human gate).
 out="$(cd "$REPO" && SESSION=s3 drv next --feature-dir "$FD" --returned-from spec 2>/dev/null)"
-check "next: the reopened text pauses at the human gate, re-frozen not escalated" "PAUSED node=human.after-spec intent=unchanged" "$(tail -1 <<<"$out")"
+check "next: the reopened text pauses at the human gate, showing the amendment" "PAUSED node=human.after-spec intent=changed" "$(tail -1 <<<"$out")"
 out="$(cd "$REPO" && SESSION=s3 drv next --feature-dir "$FD" 2>/dev/null)"
 check "next: PLAN freezes the amended text again" "true" "$(jq --arg old "$FROZEN" '.specApproval.sha256 != null and .specApproval.sha256 != $old' "$FD/feature.json")"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"auto"' >/dev/null
@@ -170,6 +171,17 @@ ec=0; drv resume --dir "$REPO" --feature-root "$REPO" --slug missing >/dev/null 
 check "resume: missing selected feature never falls back" "1" "$ec"
 ec=0; drv resume --dir "$REPO" --feature-root "$REPO" --slug ../add-a-json-flag >/dev/null 2>&1 || ec=$?
 check "resume: slug cannot traverse directories" "1" "$ec"
+
+# 6.9.0 folded DISCUSS into SPEC; a feature paused at the retired human.after-discuss
+# approval node must resume at human.after-spec, not the node the graph no longer has.
+REPO_DISCUSS="$(new_repo discuss-fold)"
+out="$(cd "$REPO_DISCUSS" && AUTONOMOUS=1 drv begin -- "fold discuss into spec probe" 2>/dev/null)"
+FD_DISCUSS="$(jq -r '.featureDir' <<<"$out")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD_DISCUSS" currentPhase '"discuss"' >/dev/null
+printf '{"paused":true,"node":"human.after-discuss","edge":"chain:discuss.critique->human.after-discuss"}\n' > "$FD_DISCUSS/graph-pause.json"
+(cd "$REPO_DISCUSS" && drv resume --dir "$REPO_DISCUSS" --feature-root "$REPO_DISCUSS" >/dev/null 2>&1)
+check "resume: DISCUSS-fold rewrites the pending pause to human.after-spec" "human.after-spec" "$(jq -r '.node' "$FD_DISCUSS/graph-pause.json")"
+check "resume: DISCUSS-fold moves currentPhase to spec" "spec" "$(jq -r '.currentPhase' "$FD_DISCUSS/feature.json")"
 
 # --- finish / escalate -----------------------------------------------------------
 ec=0; drv finish --feature-dir "$FD" >/dev/null 2>&1 || ec=$?

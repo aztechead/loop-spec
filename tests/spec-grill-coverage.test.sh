@@ -6,6 +6,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.
 checks=(
   $'skills/spec/SKILL.md\tLock the design in the same pass.'
   $'skills/spec/SKILL.md\t.mode.grill .mode.critique .mode.reentry'
+  $'skills/spec/SKILL.md\tprobes/spec-critique.sh" --feature-dir'
+  $'skills/spec/SKILL.md\tSendMessage'
+  $'skills/spec/SKILL.md\tTeamDelete before return.'
   $'skills/spec/SKILL.md\ta passed intent'
   $'skills/spec/SKILL.md\tone consolidated'
   $'skills/spec/SKILL.md\tNever AskUserQuestion as a wait'

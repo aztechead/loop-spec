@@ -1,7 +1,7 @@
 ---
 name: spec
 description: "Write SPEC.md from repository evidence and recorded decisions, lock the design, run the challenger critique, and resolve intent questions before approval. Internal phase of /loop-spec:cycle. Start there for repository work."
-allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
+allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch
 ---
 
 # SPEC
@@ -109,7 +109,10 @@ the full SPEC template and preserve Intent before the critique.
 ## Critique
 
 Run `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/phase-exit.sh" spec --feature-dir "$feature_dir" --check`
-and fix every reported FLAG first. Then, when `mode.critique` is `run`, use
+and fix every reported FLAG first. Then run
+`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/graph/probes/spec-critique.sh" --feature-dir "$feature_dir"`:
+the entry line's `critique=` was answered before SPEC.md existed, so this answer decides.
+When it says `gate=run`, use
 `skills/shared/critique-gate-protocol.md` and `graph/critique.graph.json` for
 `phase=spec`, `gate=spec-critique`, and `artifact=SPEC.md`. `run` dispatches the
 challenger; `lib/graph/probes/spec-critique.sh` decides whether the gate may skip,
@@ -121,7 +124,7 @@ When `critique revised` reports `changed: false`, send a `DELTA-FINDINGS:` heade
 followed by one `unaddressed: <item>` line per unresolved fix. `critique fail`
 answering `close` ends the gate with SPEC as it stands and preserves residue. Never
 AskUserQuestion as a wait. Resume from gate logs or the digest; never re-ask answered
-questions.
+questions. In explicit teams mode, TeamDelete before return.
 
 ## Approval and return
 

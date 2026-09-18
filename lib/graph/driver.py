@@ -1233,6 +1233,16 @@ def cmd_resume(argv):
         fset(feature_dir, "currentPhase", "spec")
         feat = state(feature_dir)
         print("loop-spec: DISCUSS folded into SPEC: resuming at SPEC", file=sys.stderr)
+        # A pause recorded at the old approval node must resume at the new one, or the
+        # engine re-steps toward a node the graph no longer has.
+        pause_path = os.path.join(feature_dir, "graph-pause.json")
+        pause = read_json(pause_path, {}) or {}
+        if pause.get("node") == "human.after-discuss":
+            pause["node"] = "human.after-spec"
+            with open(pause_path, "w", encoding="utf-8") as fh:
+                json.dump(pause, fh)
+            print("loop-spec: DISCUSS folded into SPEC: the pending approval resumes at human.after-spec",
+                  file=sys.stderr)
 
     done_ids = remaining_ids = ""
     sidecar = (feat.get("artifacts") or {}).get("tasks") or ""
@@ -1302,6 +1312,9 @@ def record_spec_approval(feature_dir, feat, source, phase):
         raise ValueError("resolve intent questions before approving SPEC.md")
     approval = {"sha256": intent_digest(text), "source": source, "approvedAt": now()}
     fset(feature_dir, "specApproval", approval)
+    # The human approved this amended text; clear the `reopened` flag reopen_spec_approval
+    # set so a later SPEC return does not treat the intent as still pending comparison.
+    fset(feature_dir, "specIntentSeen", {"sha256": approval["sha256"], "at": now()})
     lib("events", "emit", feature_dir, "spec-approved", "--phase", phase, "--data", json.dumps(approval))
     return approval
 
@@ -1318,7 +1331,10 @@ def reopen_spec_approval(feature_dir, feat):
     retired = dict(approval, reopenedAt=now(), reopenedBy="human.iterate-spec-approval")
     lib("feature-write", "append", feature_dir, "specApprovalHistory", json.dumps(retired))
     fset(feature_dir, "specApproval", None)
-    fset(feature_dir, "specIntentSeen", {"sha256": approval["sha256"], "at": now()})
+    # The human's next SPEC gate must compare the amended text against what they
+    # approved, so the SPEC return (cmd_next) must not restamp this until a fresh
+    # approval clears the flag (record_spec_approval).
+    fset(feature_dir, "specIntentSeen", {"sha256": approval["sha256"], "at": now(), "reopened": True})
     lib("events", "emit", feature_dir, "spec-reopened", "--phase", "spec", "--data", json.dumps(retired))
 
 
@@ -1549,9 +1565,13 @@ def cmd_next(argv):
             return 1
         if route_is_full(text) or not re.search(r"^## Intent$", text, re.M):
             # The oneshot shape has an Intent block and no Goals; it is not the full-spec freeze.
-            # The exit gate linted the sections, but a repeat return skips that gate.
+            # The exit gate linted the sections, but a repeat return skips that gate. A rewind
+            # that reopened the approval already stamped specIntentSeen with `reopened: True`
+            # so the human's next SPEC gate compares against what they approved; this repeat
+            # return must not overwrite that flag with the just-amended text's own digest.
             try:
-                fset(feature_dir, "specIntentSeen", {"sha256": intent_digest(text), "at": now()})
+                if not (feat.get("specIntentSeen") or {}).get("reopened"):
+                    fset(feature_dir, "specIntentSeen", {"sha256": intent_digest(text), "at": now()})
             except ValueError as exc:
                 print("ABORT reason=spec-intent-unreadable")
                 print("cycle-driver: %s" % exc, file=sys.stderr)

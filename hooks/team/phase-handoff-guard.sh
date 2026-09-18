@@ -26,7 +26,10 @@ INPUT=$(cat)
 # the durable-handoff denial below, and that needs an open feature that recorded a
 # handoff. jq answers both before the python launches: on the `.*` matcher they ran
 # on every call of a live cycle (about 0.6 s behind a version-manager shim).
-if [[ "$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)" != "Skill" ]]; then
+tool="$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null || true)"
+# An empty answer (no jq, or a payload jq refuses) falls through to the python path
+# below rather than reading as "not a Skill call".
+if [[ -n "$tool" && "$tool" != "Skill" ]]; then
   pending=0
   for f in "$PROJECT_DIR"/.loop-spec/features/*/feature.json "$PWD"/.loop-spec/features/*/feature.json; do
     [[ -f "$f" ]] || continue
@@ -39,7 +42,10 @@ fi
 # Every python3 launch below skips the version-manager shim (lib/python-path.sh).
 py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
 [[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
-LOOP_SPEC_PHASE_ALT="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/phases.sh" regex 2>/dev/null || true)"
+LOOP_SPEC_PHASE_ALT=""
+if [[ -z "$tool" || "$tool" == "Skill" ]]; then
+  LOOP_SPEC_PHASE_ALT="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/phases.sh" regex 2>/dev/null || true)"
+fi
 export LOOP_SPEC_PHASE_ALT
 IDENTITY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/session_identity.py"
 SESSION_ID=$(LOOP_SPEC_IDENTITY_INPUT="$INPUT" python3 "$IDENTITY_HELPER" 2>/dev/null || echo "")

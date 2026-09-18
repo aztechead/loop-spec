@@ -42,7 +42,8 @@ All notable changes documented here. Format follows Keep a Changelog.
   selection, engineering stances, decisions) and the re-entry rule; every loop that
   re-entered DISCUSS (VERIFY bad-spec, ITERATE gap=spec, the reopened spec approval,
   ONESHOT promotion) re-enters SPEC or its critique gate. A feature paused at
-  `discuss` resumes at `spec`. The cycle has six phases.
+  `discuss` resumes at `spec`. The cycle has six phases. On the oneshot route the
+  critique gate skips (the ONESHOT review gate is the spec's independent read).
 
 ### Removed
 

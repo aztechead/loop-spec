@@ -701,6 +701,23 @@ check_output "a security signal forces critique even on a gated-looking skip pat
 check_output "a missing feature.json fails closed to run" \
   "gate=run reason=no feature.json" "$SPEC_CRITIQUE" --feature-dir "$WORK/no-such-dir"
 
+# A spec that already took the oneshot route skips the critique subgraph: the ONESHOT
+# review gate reads the spec independently, so a second critic before it is redundant.
+RC="$WORK/spec-critique-oneshot"; mkdir -p "$RC/docs/loop-spec/features/rc" "$RC/src" "$RC/.loop-spec/features/rc"
+git -C "$RC" init -q
+RC_FD="$RC/.loop-spec/features/rc"; RC_SPEC="$RC/docs/loop-spec/features/rc/SPEC.md"
+printf 'def f():\n    return 1\n' > "$RC/src/f.py"
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - src/f.py\nroute: oneshot\n---\n# rc\n' > "$RC_SPEC"
+jq -n --arg spec "$RC_SPEC" '{slug:"rc",executionProfile:"standard",iterate:{feedback:null},artifacts:{spec:$spec}}' > "$RC_FD/feature.json"
+check_output "spec-critique skips when the spec took the oneshot route" \
+  "gate=skip reason=route=oneshot" "$SPEC_CRITIQUE" --feature-dir "$RC_FD"
+out="$(LOOP_SPEC_ROUTE=full bash "$SPEC_CRITIQUE" --feature-dir "$RC_FD")"
+if grep -q 'route=oneshot' <<<"$out"; then
+  echo "FAIL: LOOP_SPEC_ROUTE=full still answered route=oneshot: $out"; FAIL=$((FAIL + 1))
+else
+  echo "PASS: LOOP_SPEC_ROUTE=full never answers route=oneshot"; PASS=$((PASS + 1))
+fi
+
 declared="$(bash "$SPEC_CRITIQUE" --answers)"
 missing=0
 while IFS= read -r expects; do
