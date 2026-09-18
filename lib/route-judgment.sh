@@ -13,14 +13,21 @@
 # It never infers route semantics beyond what the verdict already claims.
 #
 # Usage:
-#   route-judgment.sh validate <verdict.json | ->
+#   route-judgment.sh validate <verdict.json>
+#   route-judgment.sh validate - <<'JSON' ... JSON
+#
+# Pass the file the judge wrote whenever there is one; `-` is for a verdict already on a
+# heredoc or a pipe. `-` waits STDIN_WAIT_SECONDS for the first line and then fails,
+# because an agent harness's Bash tool leaves stdin OPEN: an unbounded read there spends
+# the whole tool timeout (the 6.8.0 live run lost 10 minutes on the first SPEC judge call,
+# and the retry with stdin closed answered at once).
 #
 # Output is exactly one line:
 #   route=oneshot reason=judge: <first reason claim> (complexity N, confidence C)
 #   route=full reason=judge: <text> code=<code>
 #
 # Exit codes: 0 for any judged answer, including unusable-verdict; 2 on bad usage, a
-# missing file, or an unreadable input path.
+# missing file, an unreadable input path, or stdin that never delivered a verdict.
 
 set -euo pipefail
 
@@ -35,8 +42,27 @@ source_path="${2:-}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "$script_dir/runtime-preflight.sh" check-jq
 
+# Whole seconds: bash 3.2 `read -t` takes no fraction, and a verdict already on the pipe
+# needs none. Each read gets its own window, so a slow producer is not cut off.
+STDIN_WAIT_SECONDS=3
+
+read_stdin() {
+  local line raw=""
+  while IFS= read -r -t "$STDIN_WAIT_SECONDS" line; do
+    raw="$raw$line"$'\n'
+  done
+  # read returns 1 at EOF and >128 on timeout; either way a final line with no newline
+  # of its own is in $line, and a clean EOF leaves it empty.
+  [[ -z "$line" ]] || raw="$raw$line"$'\n'
+  printf '%s' "$raw"
+}
+
 if [[ "$source_path" == "-" ]]; then
-  raw="$(cat)"
+  raw="$(read_stdin)"
+  [[ -n "${raw//[[:space:]]/}" ]] || {
+    echo "route-judgment.sh: no verdict arrived on stdin within ${STDIN_WAIT_SECONDS}s. Pass the file the judge wrote (route-judgment.sh validate verdict.json), or send the verdict on a heredoc (validate - <<JSON ... JSON). A harness Bash tool leaves stdin open, so a bare dash waits for a writer that never comes." >&2
+    exit 2
+  }
 elif [[ -f "$source_path" ]]; then
   raw="$(<"$source_path")"
 else

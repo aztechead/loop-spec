@@ -107,6 +107,35 @@ bash "$SCRIPT" >/dev/null 2>&1 || noargs_exit=$?
   && pass "no args exits 2" \
   || fail "no args exits 2 (got $noargs_exit)"
 
+# `-` under a harness that leaves stdin open: bounded, loud, and fast. The fifo holds
+# stdin open with no writer, which is what a Bash tool call looks like from in here; the
+# live run's first judge call spent its whole 10-minute tool timeout on `cat`.
+mkfifo "$WORK/held"
+exec 9<> "$WORK/held"
+held_start="$SECONDS"
+held_exit=0
+held_out="$(bash "$SCRIPT" validate - <&9 2>&1)" || held_exit=$?
+exec 9>&-
+held_elapsed=$((SECONDS - held_start))
+[[ "$held_exit" -ne 0 ]] \
+  && pass "held-open stdin exits non-zero" \
+  || fail "held-open stdin exits non-zero (got $held_exit)"
+[[ "$held_elapsed" -lt 10 ]] \
+  && pass "held-open stdin gives up in seconds" \
+  || fail "held-open stdin gives up in seconds (took ${held_elapsed}s)"
+[[ "$held_out" == *"no verdict arrived on stdin"* && "$held_out" == *"validate verdict.json"* ]] \
+  && pass "the refusal names the fix" \
+  || fail "the refusal names the fix (got '$held_out')"
+
+# A verdict on a heredoc still validates: `-` is not broken, only bounded.
+heredoc_out="$(bash "$SCRIPT" validate - <<JSON
+$(base_verdict)
+JSON
+)"
+[[ "$heredoc_out" == "route=oneshot reason=judge: remove deletes one line of todo.txt the user owns"* ]] \
+  && pass "a heredoc verdict validates" \
+  || fail "a heredoc verdict validates (got '$heredoc_out')"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

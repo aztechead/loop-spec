@@ -2723,6 +2723,17 @@ def spec_judge(feature_dir, feat, verdict_flag):
     the route is the cycle's largest cost lever, and a second call here would double it
     for nothing the first call did not already answer. lib/route-judgment.sh authorizes
     the verdict; lib/graph/probes/oneshot.sh reads what this stores."""
+    fixed_route = os.environ.get("LOOP_SPEC_ROUTE") or ""
+    if fixed_route:
+        # The operator already fixed the route, and the probe answers full for any value
+        # of it without reading routeJudgment. Calling the judge here could only spend an
+        # opus dispatch on a verdict nothing would read -- and, in-harness, park the lead
+        # on a judge call the run does not need.
+        print(json.dumps({"route": None, "code": "operator-override", "stored": False,
+                          "skipped": True,
+                          "reason": "LOOP_SPEC_ROUTE=%s fixes the route; the deterministic "
+                                    "probe answers it" % fixed_route}))
+        return 0
     cached = feat.get("routeJudgment")
     if isinstance(cached, dict) and cached.get("route"):
         print(json.dumps(dict(cached, cached=True)))

@@ -347,6 +347,14 @@ ec=0; (cd "$REPO7" && drv spec write --feature-dir "$FD7" --file "$WORK/draft7.m
 check "spec write: allowed over an escalated spec (the full shape is the lead's)" "0" "$ec"
 
 # --- spec judge: the one opus call, cached, authorized by lib/route-judgment.sh -------
+# An operator who fixed the route gets no judge call: the probe answers full for any
+# LOOP_SPEC_ROUTE value without reading a verdict, so the dispatch is spend nobody reads
+# (in-harness it also parked the lead on a judge call the run did not need).
+out="$(cd "$REPO7" && ROUTE=full drv spec judge --feature-dir "$FD7" 2>/dev/null)"
+check "spec judge: an operator's fixed route skips the judge" "true" "$(jq -r '.skipped' <<<"$out")"
+check "spec judge: the skip stores nothing" "false" "$(jq -r '.stored' <<<"$out")"
+check "spec judge: the skip names the override" "1" "$(jq -r '.reason' <<<"$out" | grep -c 'LOOP_SPEC_ROUTE=full')"
+check "spec judge: the skip dispatches nothing" "0" "$([[ -f "$FD7/dispatch/spec.route-judge.json" ]] && echo 1 || echo 0)"
 # Attended (no session layer): the prompt is written for the lead to dispatch in-harness.
 out="$(cd "$REPO7" && drv spec judge --feature-dir "$FD7" 2>/dev/null)"
 check "spec judge: attended is in-harness" "in-harness" "$(jq -r '.action' <<<"$out")"

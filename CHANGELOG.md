@@ -82,6 +82,13 @@ All notable changes documented here. Format follows Keep a Changelog.
   blocker was the checks scope, because the frozen-intent check escalated with that read
   error and `lib/cycle-result.sh` relabelled the run `delivery-blocked` around it. A
   reason a blocker replaces is kept as a `displaced-reason:` entry in `warnings[]`.
+- `lib/route-judgment.sh validate -` no longer hangs when the harness leaves stdin open.
+  It waits three seconds for the first line and then fails loudly, naming the fix (pass
+  the verdict file, or send it on a heredoc); the live run's first SPEC-entry judge call
+  spent its whole ten-minute tool timeout inside `cat`. The usage header says which form
+  to use, and `LOOP_SPEC_ROUTE` is now an opt-out: with the route fixed,
+  `cycle-driver.sh spec judge` answers `skipped` and dispatches nothing, because
+  `lib/graph/probes/oneshot.sh` answers from the override without reading a verdict.
 
 ## [6.8.0] - 2026-09-17
 
