@@ -77,7 +77,16 @@ out="$(select_rung LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=1 \
   LOOP_SPEC_EXECUTION_PROFILE=interactive LOOP_SPEC_EXECUTE_LOOPS=1)"
 check "forced loop honors serial cap" "loop:1:none" \
   "$(jq -r '.rung + ":" + (.maxParallelSubagents | tostring) + ":" + .teamsMode' <<<"$out")"
-check "default implementer cap is serial" "1" "$(jq -r '.maxParallelImplementers' <<<"$(select_rung)")"
+check "default implementer cap follows the width up to 3" "3:3" \
+  "$(jq -r '(.maxParallelSubagents | tostring) + ":" + (.maxParallelImplementers | tostring)' <<<"$(select_rung)")"
+out="$(env -u LOOP_SPEC_EXECUTE_LOOPS -u LOOP_SPEC_LOOP_RUNTIME -u CLAUDE_CODE_ENTRYPOINT PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
+  bash "$SCRIPT" select --width 8 --teams-mode none --workflows-available false --workflow-optin false)"
+check "default implementer cap stops at 3 on a wide plan" "3" "$(jq -r '.maxParallelImplementers' <<<"$out")"
+out="$(env -u LOOP_SPEC_EXECUTE_LOOPS -u LOOP_SPEC_LOOP_RUNTIME -u CLAUDE_CODE_ENTRYPOINT PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
+  bash "$SCRIPT" select --width 1 --teams-mode none --workflows-available false --workflow-optin false)"
+check "default implementer cap is 1 on a chain" "1" "$(jq -r '.maxParallelImplementers' <<<"$out")"
+check "an explicit subagent cap outranks the width default" "1" \
+  "$(jq -r '.maxParallelImplementers' <<<"$(select_rung LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=1)")"
 out="$(select_rung LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=4 LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS=2)"
 check "explicit caps propagate independently" "4:2" \
   "$(jq -r '(.maxParallelSubagents | tostring) + ":" + (.maxParallelImplementers | tostring)' <<<"$out")"

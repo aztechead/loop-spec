@@ -47,10 +47,9 @@ checks=(
   "lib/graph/driver.py	\"parse-invocation\", \"parse\""
   "skills/intake/SKILL.md	parse-invocation.sh\" parse"
   "lib/debug-init.sh	parse-invocation.sh"
-  # -- decisions store: shared contract + spec/discuss/plan/cycle all call it
+  # -- decisions store: shared contract + spec/plan/cycle all call it
   "skills/shared/autonomous-mode.md	decisions.sh\" add"
   "skills/spec/SKILL.md	decisions.sh\" add"
-  "skills/discuss/SKILL.md	decisions.sh\" add"
   "skills/plan/SKILL.md	decisions.sh\" add"
   "lib/feature-bootstrap.sh	decisions.sh\" migrate"
   # -- debug: init consumed by the skill
@@ -59,16 +58,15 @@ checks=(
   "lib/graph/driver.py	\"greenfield-bootstrap\", \"bootstrap\""
   "lib/execute-step.sh	greenfield-bootstrap backfill-check"
   # -- grounding: evidence ledger + lint gate + challenger marker couplings
-  "skills/discuss/SKILL.md	grounding-lint.sh\""
+  "skills/spec/SKILL.md	grounding-lint.sh\""
   "skills/plan/SKILL.md	grounding-lint.sh\""
   "skills/spec/SKILL.md	evidence.sh\" add"
-  "skills/discuss/SKILL.md	evidence.sh\" add"
   "skills/plan/SKILL.md	evidence.sh\" add"
   "agents/challenger.md	UNGROUNDED:"
   "agents/challenger.md	UNGROUNDED: \"<verbatim quote from the artifact>\" — probe:"
   "skills/shared/team-prompts/critic.md	UNGROUNDED:"
   "skills/shared/team-prompts/challenger.md	UNGROUNDED:"
-  "skills/discuss/SKILL.md	UNGROUNDED:"
+  "skills/spec/SKILL.md	UNGROUNDED:"
   "skills/plan/SKILL.md	UNGROUNDED:"
   "lib/evidence.sh	EVID-"
   "lib/grounding-lint.sh	EVID-"

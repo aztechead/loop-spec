@@ -35,7 +35,6 @@ checks=(
   "skills/shared/review-prompts/prose-pruning.md	never rewrite	the pass lists; the maker applies"
   "skills/spec/SKILL.md	never AskUserQuestion as a wait	SPEC scout fan-out and pruning must not stall on a fake question"
   "skills/plan/SKILL.md	never AskUserQuestion as a wait	PLAN teammate joins and pruning must not stall on a fake question"
-  "skills/discuss/SKILL.md	never AskUserQuestion as a wait	DISCUSS scout fan-out and spec-writer join must not stall on a fake question"
   "skills/shared/critique-gate-protocol.md	never AskUserQuestion as a wait	critique TeammateIdle joins must not stall on a fake question"
 )
 

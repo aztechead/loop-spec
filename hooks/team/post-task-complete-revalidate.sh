@@ -43,6 +43,10 @@ if [[ -z "${INPUT// }" ]]; then
   exit 0
 fi
 
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
+
 # Parse the payload with python3; output key fields as shell-sourceable vars
 PARSED=$(printf '%s' "$INPUT" | python3 -c "
 import json, re, sys

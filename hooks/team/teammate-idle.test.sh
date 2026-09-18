@@ -50,11 +50,11 @@ echo "=== teammate-idle.sh tests ==="
 check "A: missing feature.json exits 0 with advisory" 0 "advisory" \
   "LOOP_SPEC_FEATURE_DIR=$TMPDIR_TEST/.loop-spec/features/nonexistent"
 
-# Case B: feature.json currentPhase=discuss -> exit 0, message mentions "discuss"
+# Case B: feature.json currentPhase=spec -> exit 0, message mentions "spec"
 cat > "$FEATURE_JSON" <<'JSON'
-{"schemaVersion":3,"slug":"my-feature","currentPhase":"discuss","currentTeamName":"loop-spec-discuss-my-feature","currentTeammates":["spec-writer-1"]}
+{"schemaVersion":3,"slug":"my-feature","currentPhase":"spec","currentTeamName":"loop-spec-spec-my-feature","currentTeammates":["spec-writer-1"]}
 JSON
-check "B: currentPhase=discuss mentions discuss" 0 "discuss" \
+check "B: currentPhase=spec mentions spec-critique gate" 0 "spec-critique gate" \
   "LOOP_SPEC_FEATURE_DIR=$FEATURE_DIR"
 
 # Case C: feature.json currentPhase=plan -> exit 0, message mentions "plan"

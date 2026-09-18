@@ -13,8 +13,7 @@
 #
 # Behavior by currentPhase in feature.json (marked tasks only):
 #   execute  -> run lint and typecheck commands from feature.json.commands if configured
-#   discuss  -> validate task metadata has required fields (blockedBy, files, verifyCommand, acceptanceCriteria)
-#   plan     -> validate task metadata has required fields
+#   plan     -> validate task metadata has required fields (blockedBy, files, verifyCommand, acceptanceCriteria)
 #   other    -> allow (exit 0)
 #
 # If feature.json is missing, exit 0 (graceful).
@@ -55,6 +54,10 @@ fi
 if [[ -z "$FEATURE_JSON" || ! -f "$FEATURE_JSON" ]]; then
   exit 0
 fi
+
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 
 # Scope check: pass through any completion that is not a loop-spec-owned task.
 MARKED=$(printf '%s' "$INPUT" | python3 -c "
@@ -159,7 +162,7 @@ case "$CURRENT_PHASE" in
     fi
     ;;
 
-  discuss|plan)
+  plan)
     RESULT=$(validate_metadata)
     if [[ "$RESULT" != "OK" ]]; then
       MISSING_FIELDS="${RESULT#MISSING:}"

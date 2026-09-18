@@ -17,6 +17,7 @@
 #
 # Usage:
 #   dispatch-files.sh brief --feature-dir <dir> --task-id <id> [--out <file>]
+#       also writes <id>-contracts.md beside the brief: the shared contracts the task's files call for, rendered from the sources
 #   dispatch-files.sh package --repo <root> --base <sha> --head <sha> [--out <file>]
 #   dispatch-files.sh report-path --feature-dir <dir> --task-id <id>
 #
@@ -117,7 +118,32 @@ case "$cmd" in
     fi
     environment=""
     [[ -f "$FEATURE_DIR/dispatch/environment.txt" ]] && environment="$(cat "$FEATURE_DIR/dispatch/environment.txt")"
-    jq -r --arg id "$TASK_ID" --arg constraints "$constraints" --arg cited "$cited" --arg environment "$environment" '
+    # The contracts this task's files call for, rendered into one file beside the brief.
+    # The stanza names eight sources and the implementer opened each with its own Read
+    # on every dispatch (6.5.0 cycle here, 56 KB and eight turns per task); a task that
+    # touches no markdown never needed the docs contract. Rendered from the sources at
+    # dispatch time, so the copy cannot rot.
+    shared_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../skills/shared" && pwd)"
+    contracts="engineering-directives.md implementer-contract.md execution-discipline.md"
+    jq -e '[.files[]? | select(test("\\.(md|markdown|rst)$") | not)] | length > 0' <<<"$task_json" >/dev/null \
+      && contracts="$contracts laziness-ladder.md design-for-change.md human-code.md"
+    jq -e '[.files[]? | select(test("\\.(md|markdown|rst)$"))] | length > 0' <<<"$task_json" >/dev/null \
+      && contracts="$contracts human-docs.md"
+    jq -e '[.files[]? | select(test("(^|/)tests?/|\\.test\\.|_test\\.|(^|/)test_|\\.spec\\."))] | length > 0' <<<"$task_json" >/dev/null \
+      && contracts="$contracts writing-good-tests.md"
+    contracts_out="$(dirname "$OUT")/${TASK_ID}-contracts.md"
+    for c in $contracts; do
+      [[ -f "$shared_dir/$c" ]] \
+        || { echo "dispatch-files.sh: contract source missing: $shared_dir/$c" >&2; exit 2; }
+    done
+    {
+      echo "# Contracts for $TASK_ID (rendered from skills/shared at dispatch; the sources bind)"
+      for c in $contracts; do
+        printf '\n\n---\n\n<!-- source: %s -->\n\n' "$shared_dir/$c"
+        cat "$shared_dir/$c"
+      done
+    } > "$contracts_out" || { echo "dispatch-files.sh: cannot write $contracts_out" >&2; exit 2; }
+    jq -r --arg id "$TASK_ID" --arg constraints "$constraints" --arg cited "$cited" --arg environment "$environment" --arg contracts_out "$contracts_out" --arg contracts "$contracts" '
       "# Task brief: \($id)",
       "",
       "**Subject:** \(.subject // .brief // "")",
@@ -156,6 +182,9 @@ case "$cmd" in
       "",
       (if $cited != "" then "## Evidence this task cites (EVIDENCE.md rows; do not re-probe)\n\($cited)\n" else empty end),
       (if $environment != "" then "## Environment (probed by the lead; do not re-check versions or auth)\n\($environment)\n" else empty end),
+      "## Read first",
+      "- \($contracts_out): the engineering contracts these files call for (\($contracts | split(" ") | join(", "))), rendered from skills/shared at dispatch. Read it once instead of opening the sources.",
+      "",
       "## Context rule",
       "Everything that binds this task is in this brief and the files listed. Do not read SPEC.md, PLAN.md, PATTERNS.md, or EVIDENCE.md; ask the lead if a value is missing.",
       "",

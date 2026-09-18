@@ -11,7 +11,7 @@ Convert a message, ticket, email, or notes into a draft for the cycle's spec-fil
 SPEC handles investigation, format validation, interviews, and approval. Do not duplicate those steps here.
 
 **Restructure, never invent.** Every requirement, constraint, and decision must come from the source text.
-Leave gaps unresolved. SPEC and DISCUSS resolve them later.
+Leave gaps unresolved. SPEC resolves them later.
 A thin source may correctly produce a non-empty `unresolved_questions` list.
 
 ## Step 1 - Acquire the source
@@ -70,14 +70,14 @@ Extract into these buckets (leave a bucket EMPTY when the source has nothing for
   the source is conversational, and never tighten semantics.
 - **Decisions already made** — anything the source has settled ("we agreed on
   Postgres", "per the thread, ship behind a flag"). These become the `<decisions>`
-  block so DISCUSS/PLAN treat them as locked, not re-litigatable.
+  block so SPEC/PLAN treat them as locked, not re-litigatable.
 - **Constraints** — deadlines, stack pins, compatibility, perf numbers, "don't touch X".
 - **Acceptance signals** — anything checkable the source states ("done when the
   export matches the old format", a listed DoD).
 - **Boundaries** — explicit in/out-of-scope statements. Also collect the *implicit*
   outs: adjacent work the source mentions and defers ("we'll handle mobile later").
 - **Open questions** — everything the source raises but does not answer. List them;
-  do NOT answer them (that is the SPEC gate/DISCUSS's job — or the autonomous
+  do NOT answer them (that is SPEC's job — or the autonomous
   self-answer contract's, WITH its decision record; never intake's silently).
 
 ## Step 3 - Write the draft
@@ -129,7 +129,7 @@ Skill(loop-spec:cycle) with arguments: "{pass-through tokens} .loop-spec/intake/
 ## What this skill never does
 
 - Never invents requirements, constraints, or acceptance criteria absent from the source.
-- Never answers the source's open questions (SPEC/DISCUSS own resolution; autonomous
+- Never answers the source's open questions (SPEC owns resolution; autonomous
   self-answers happen THERE, with the decision record).
 - Never resolves intent questions or normalizes format — that is the SPEC
   phase's spec-file ingest mode, already built and gated.

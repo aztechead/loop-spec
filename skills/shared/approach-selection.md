@@ -2,7 +2,7 @@
 
 Reader: the lead or agent turning a requested method into a design, implementation,
 or review. Preserve the user's outcome; treat a suggested method as a candidate to
-test against the code. DISCUSS owns the initial comparison, PLAN validates it against
+test against the code. SPEC owns the initial comparison, PLAN validates it against
 actual patterns, and EXECUTE revisits it only when new evidence changes the choice.
 This is a judgment contract, not another phase or gate.
 
@@ -42,7 +42,7 @@ requires the existing decision/escalation path; never silently relabel it option
 | Phase | Action and durable record |
 |---|---|
 | SPEC | Put outcomes in Goals/Good Enough and binding constraints in Boundaries or the existing decisions block. Keep the suggested method labeled as a candidate in the spec body, with its rationale. Ingest preserves pre-authored requirements. |
-| DISCUSS | Before locking the design, compare the candidates using the scout evidence. Record the chosen approach, rejected alternative, evidence, tradeoff, and preserved requirements in the existing SPEC decisions block and transcript. A skipped interview still records the comparison without inventing a user answer. |
+| SPEC | Before locking the design, compare the candidates using the scout evidence. Record the chosen approach, rejected alternative, evidence, tradeoff, and preserved requirements in the existing SPEC decisions block and transcript. A skipped interview still records the comparison without inventing a user answer. |
 | PLAN | Check that choice against PATTERNS.md and actual task files. Keep user decisions verbatim. Record the comparison in PLAN's opening approach summary and turn the chosen method into tasks that cover the original criteria. If new evidence contradicts a settled design, return the evidence to the lead for the existing decision path before emitting conflicting tasks. |
 | EXECUTE | Read the selected approach and its reason before coding. A local implementation detail inside the task's files, contracts, dependencies, and verify command may improve without replanning; report the evidence and preserved criteria in the task completion. A change to task boundaries, dependencies, public contracts, or settled design goes to the lead before implementation. Update PLAN.md and tasks.json together through the existing PLAN path and rerun its gates before redispatch; executors do not rewrite their own assignment. |
 | VERIFY / ITERATE | Check that any departure is justified by evidence, preserves the original outcome and binding constraints, and has the required plan/decision updates. Judge equivalent implementations by their results, while still enforcing binding choices. A green test suite does not justify lost scope or a weaker criterion. |

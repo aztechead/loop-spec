@@ -39,7 +39,9 @@ and one of: `pip install claude-agent-sdk` with a Claude login, or Google ADK wi
    `.loop-spec/last-result.json`: `status: paused` with `reason: phase-handoff` means
    send `/loop-spec:cycle autonomous` again in a fresh context; anything else is
    terminal. The run succeeded when `outcome` is `delivered` (or `no-change-needed`) and
-   `converged` is `true`. `status: completed` alone is not success.
+   `converged` is `true`. `status: completed` alone is not success. `delivered-unready`
+   is the one ending that shipped without converging: the PR in `prUrl` is open and
+   correct and a human flips it out of draft, so retrying the run delivers nothing new.
 6. **Consume events.** Every line of `events.jsonl`, and each terminal result as event
    `result`, reaches the executable named in `LOOP_SPEC_EVENT_SINK` on stdin. On the SDK
    a `PostToolUse` hook on `Bash` sees the same phase markers.
@@ -80,7 +82,7 @@ already reads tells you what to do:
   harnesses record it with `lib/decisions.sh add ... supervised`.
 - `oracle=self` means no one is listening: apply the self-answer rule in
   `skills/shared/autonomous-mode.md` and record `assumed` decisions.
-- `lib/phase-exit.sh` refuses to close SPEC or DISCUSS when a named supervisor was never
+- `lib/phase-exit.sh` refuses to close SPEC when a named supervisor was never
   asked. A rationale is not a question.
 - Never publish `cycle-result.sh write --status completed` before DELIVER; the result
   contract records `phaseReached` and `converged`, and a supervisor reads them.
@@ -189,7 +191,7 @@ warning and `events.sh` exits 0. A broken sink never kills a two-hour run.
 
 ## Port 3: decision oracle
 
-**Today.** Two modes exist. With a human attached, SPEC, DISCUSS, and PLAN interview
+**Today.** Two modes exist. With a human attached, SPEC and PLAN interview
 through the harness's native question tool: `AskUserQuestion` on Claude Code and the
 Agent SDK, `question` on opencode, `get_user_choice` on ADK, `request_user_input` on
 Codex (each harness contract maps the call). In autonomous mode no question is asked;

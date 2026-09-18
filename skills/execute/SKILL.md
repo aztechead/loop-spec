@@ -95,11 +95,13 @@ Every rung returns `{merged, blocked, escalation}`.
 If `escalation` is non-null or `blocked` is non-empty, print the reasons and return to the cycle for escalation.
 Dispatch, then stop. Never AskUserQuestion as a wait.
 
-Use one driver call per task step: `cycle-driver.sh task dispatch|package|verdict|integrate` through `lib/execute-step.sh`.
+Use one driver call per task step: `cycle-driver.sh task dispatch|package|review-groups|verdict|integrate` through `lib/execute-step.sh`.
 `dispatch` creates the task worktree and records its base SHA, brief, report paths, and model.
 It emits `dispatch` and `task_start`.
 `integrate` publishes the task, runs `lib/task-progress.sh mark-done`, and emits `task_end`.
-`dispatch` and `package` emit `dispatch` for the implementer and reviewer respectively. The lead emits no task events.
+`dispatch` emits `dispatch` for the implementer. `package` only writes the review package (no
+event); `review-groups` groups a wave's packages under a byte cap and emits one reviewer
+`dispatch` event per group. The lead emits no task events.
 
 Pass the packet's `.model` to the Agent call unless it is `inherit`.
 Issue each wave's Agent calls in one message.

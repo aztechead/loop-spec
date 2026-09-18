@@ -78,7 +78,7 @@ print(d.get('currentPhase',''), d.get('slug',''))
 ```
 
 Then check expected artifact paths for that phase:
-- discuss phase complete: `docs/loop-spec/features/{slug}/SPEC.md` must exist.
+- spec phase complete: `docs/loop-spec/features/{slug}/SPEC.md` must exist.
 - plan phase complete: `docs/loop-spec/features/{slug}/PLAN.md` must exist.
 - verify phase complete: `docs/loop-spec/features/{slug}/VERIFICATION.md` must exist.
 
@@ -253,7 +253,7 @@ The report must follow this structure:
 ### Artifact Completeness
 | Phase    | Artifact                  | Present |
 |----------|---------------------------|---------|
-| discuss  | SPEC.md                   | yes/no  |
+| spec     | SPEC.md                   | yes/no  |
 | plan     | PLAN.md                   | yes/no  |
 | verify   | VERIFICATION.md           | yes/no  |
 

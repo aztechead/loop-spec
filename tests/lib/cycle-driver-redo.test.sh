@@ -7,7 +7,8 @@
 
 # rig: rebuilds REPO/FD/DOCS1 to the state cycle-driver-core.test.sh leaves them in
 # (paused at human.after-spec after the empty-Goals REDO round-trip); the driverRedo
-# section below drives that same feature on through DISCUSS, PLAN, handoff and rewind.
+# section below drives that same feature on through SPEC's critique gate, PLAN,
+# handoff and rewind.
 ec=0; bash "$SCRIPT" >/dev/null 2>&1 || ec=$?
 ec=0; bash "$SCRIPT" next >/dev/null 2>&1 || ec=$?
 REPO="$(new_repo r1)"
@@ -39,7 +40,7 @@ mv "$DOCS1/SPEC.md.keep" "$DOCS1/SPEC.md"
 # --- driverRedo clears on a gate pass (6.6.5 live run: a passed gate left the counter
 # behind, so the next REDO on fresh damage inherited a stale count and escalated a full
 # attempt early). Proving the clear needs a repeat return that actually PASSES, and on
-# $FD that pass hands the phase straight past the human gate to discuss (it does not
+# $FD that pass hands the phase straight past the human gate to plan (it does not
 # re-pause), which would move the boundary the checks just above this depend on. An
 # isolated feature keeps that pass off $FD and still exercises the same driver path.
 REPO_REDO="$(new_repo redo-probe)"
@@ -47,93 +48,99 @@ out="$(cd "$REPO_REDO" && AUTONOMOUS=1 drv begin -- "autonomous driverredo probe
 FD_REDO="$(jq -r '.featureDir' <<<"$out")"
 (cd "$REPO_REDO" && drv next --feature-dir "$FD_REDO" >/dev/null 2>&1)
 write_spec "$REPO_REDO" "$FD_REDO"
-(cd "$REPO_REDO" && drv next --feature-dir "$FD_REDO" --returned-from spec --note "wrote SPEC" >/dev/null 2>&1)
 DOCS_REDO="$REPO_REDO/docs/loop-spec/features/$(jq -r '.slug' "$FD_REDO/feature.json")"
+# SPEC's first passing return now walks its critique gate and the human gate to PLAN in
+# one call (DISCUSS folded into SPEC), so the broken returns come first and the pass last.
 cp "$DOCS_REDO/SPEC.md" "$DOCS_REDO/SPEC.md.keep"; sed -i.bak '/^## Goals$/,/^## Boundaries/{/^Produce/d;}' "$DOCS_REDO/SPEC.md"; rm -f "$DOCS_REDO/SPEC.md.bak"
 out="$(cd "$REPO_REDO" && drv next --feature-dir "$FD_REDO" --returned-from spec 2>/dev/null)"
 check "driverRedo: a broken-Goals REDO is attempt 1" "1" "$(head -1 <<<"$out" | grep -c 'attempt=1')"
+out="$(cd "$REPO_REDO" && drv next --feature-dir "$FD_REDO" --returned-from spec 2>/dev/null)"
+check "driverRedo: a second broken return is attempt 2" "1" "$(head -1 <<<"$out" | grep -c 'attempt=2')"
 mv "$DOCS_REDO/SPEC.md.keep" "$DOCS_REDO/SPEC.md"
 out="$(cd "$REPO_REDO" && drv next --feature-dir "$FD_REDO" --returned-from spec 2>/dev/null)"
 check "driverRedo: a passing repeat return zeroes the stale counter" "null" "$(jq -r '.driverRedo' "$FD_REDO/feature.json")"
-cp "$DOCS_REDO/SPEC.md" "$DOCS_REDO/SPEC.md.keep"; sed -i.bak '/^## Goals$/,/^## Boundaries/{/^Produce/d;}' "$DOCS_REDO/SPEC.md"; rm -f "$DOCS_REDO/SPEC.md.bak"
-out="$(cd "$REPO_REDO" && drv next --feature-dir "$FD_REDO" --returned-from spec 2>/dev/null)"
-check "driverRedo: a fresh REDO after a pass starts at attempt 1, not a stale count" "1" "$(head -1 <<<"$out" | grep -c 'attempt=1')"
-mv "$DOCS_REDO/SPEC.md.keep" "$DOCS_REDO/SPEC.md"
 
 out="$(cd "$REPO" && drv next --feature-dir "$FD" 2>/dev/null)"
-check "next: re-invoke after pause continues to discuss" 'NEXT phase=discuss label="Challenge and refine the specification" effort=system2' "$(head -1 <<<"$out")"
+check "next: re-invoke after pause continues to plan" 'NEXT phase=plan label="Plan the implementation" effort=system2' "$(head -1 <<<"$out")"
 check "next: the resumed pause record is gone" "0" "$([[ -f "$FD/result.json" ]] && echo 1 || echo 0)"
 check "next: the resumed pause pointer is gone" "0" "$([[ -f "$REPO/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
-
-# DISCUSS may still rewrite Goal and Boundary (the run that froze them at SPEC exit died
-# when the human answered DISCUSS's follow-ups); the human gate says so, PLAN freezes.
-sed -i.bak 's/^Produce the requested behavior\.$/Produce the requested behavior and log it./' "$DOCS1/SPEC.md"; rm -f "$DOCS1/SPEC.md.bak"
-out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from discuss 2>/dev/null)"
-check "next: a Goals edit in DISCUSS pauses at the human gate instead of escalating" "PAUSED node=human.after-discuss intent=changed" "$out"
-check "next: nothing is frozen before PLAN" "null" "$(jq -r '.specApproval' "$FD/feature.json")"
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" currentPhase '"discuss"' >/dev/null
+# Entering PLAN is now the same freeze point DISCUSS used to hand off to (SPEC folded
+# DISCUSS's editing role into itself): the approval is recorded here, digesting the
+# text the run actually saw.
+check "next: entering PLAN recorded the approval from the run, not a lead" "human" "$(jq -r '.specApproval.source' "$FD/feature.json")"
+check "next: the approval digests the SPEC text" "1" "$(python3 -c "
+import sys, json; sys.path.insert(0, '$REPO_ROOT/lib'); from spec_intent import intent_digest
+print(int(intent_digest(open('$DOCS1/SPEC.md').read()) == json.load(open('$FD/feature.json'))['specApproval']['sha256']))")"
+check "next: the spec-approved event names PLAN" "plan" "$(jq -r 'select(.event == "spec-approved") | .phase' "$FD/events.jsonl")"
 
 # declined SPEC gate is terminal for the invocation
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" currentPhase '"spec"' >/dev/null
 jq -n '{status:"paused", reason:"spec-confirmation-declined"}' > "$FD/result.json"
 out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from spec 2>/dev/null)"
 check "next: declined SPEC gate ends the loop" "DONE status=paused reason=spec-confirmation-declined" "$out"
 rm -f "$FD/result.json"
 
-# every phase boundary hands off after bookkeeping (style auto: no human gate)
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"auto"' >/dev/null
-out="$(cd "$REPO" && SESSION=s1 drv next --feature-dir "$FD" --returned-from discuss 2>/dev/null)"
+# every phase boundary hands off after bookkeeping (style auto: no human gate). An
+# isolated feature keeps this off $FD, which is mid-rewind-setup below, and exercises
+# the same driver path SPEC's own hand-off takes now that DISCUSS is folded into it.
+REPO_HANDOFF="$(new_repo handoff-probe)"
+out="$(cd "$REPO_HANDOFF" && AUTONOMOUS=1 drv begin -- "autonomous handoff probe" 2>/dev/null)"
+FD_HANDOFF="$(jq -r '.featureDir' <<<"$out")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD_HANDOFF" execStyle '"auto"' >/dev/null
+(cd "$REPO_HANDOFF" && drv next --feature-dir "$FD_HANDOFF" >/dev/null 2>&1)
+write_spec "$REPO_HANDOFF" "$FD_HANDOFF"
+out="$(cd "$REPO_HANDOFF" && SESSION=s1 drv next --feature-dir "$FD_HANDOFF" --returned-from spec --note "wrote SPEC" 2>/dev/null)"
 check "next: handoff answer names the successor" "HANDOFF next=" "${out:0:13}"
-check "next: handoff writes a paused result" "phase-handoff" "$(jq -r '.reason' "$FD/result.json")"
+check "next: handoff writes a paused result" "phase-handoff" "$(jq -r '.reason' "$FD_HANDOFF/result.json")"
 
 # The session that handed off is done: the driver refuses to carry it into the next
 # phase whatever tool it reaches for; a fresh session (another id) proceeds.
-check "next: the handoff records the session" "s1" "$(jq -r '.handoffSession.id' "$FD/feature.json")"
-out="$(cd "$REPO" && SESSION=s1 drv next --feature-dir "$FD" 2>/dev/null)"
+check "next: the handoff records the session" "s1" "$(jq -r '.handoffSession.id' "$FD_HANDOFF/feature.json")"
+out="$(cd "$REPO_HANDOFF" && SESSION=s1 drv next --feature-dir "$FD_HANDOFF" 2>/dev/null)"
 check "next: the same session gets the handoff answer again" "HANDOFF next=plan" "${out:0:17}"
-check "next: entering PLAN recorded the approval from the run, not a lead" "human" "$(jq -r '.specApproval.source' "$FD/feature.json")"
-check "next: the approval digests the DISCUSS-edited text" "1" "$(python3 -c "
-import sys, json; sys.path.insert(0, '$REPO_ROOT/lib'); from spec_intent import intent_digest
-print(int(intent_digest(open('$DOCS1/SPEC.md').read()) == json.load(open('$FD/feature.json'))['specApproval']['sha256']))")"
-check "next: the spec-approved event names PLAN" "plan" "$(jq -r 'select(.event == "spec-approved") | .phase' "$FD/events.jsonl")"
 # The repeat answers from the record: no second phase_end/phase_start pair lands in the
 # ledger (a sink counting phase ends read two on the f0959f6 run; port audit 3, N7).
-pairs_before="$(grep -c '"event":"phase_\(start\|end\)"' "$FD/events.jsonl")"
-(cd "$REPO" && AUTONOMOUS=1 SESSION=s1 drv next --feature-dir "$FD" >/dev/null 2>&1)
-check "next: a repeated handoff answer emits no phase event pair" "$pairs_before" "$(grep -c '"event":"phase_\(start\|end\)"' "$FD/events.jsonl")"
-ec=0; (cd "$REPO" && SESSION=s1 drv phase-begin plan --feature-dir "$FD" >/dev/null 2>&1) || ec=$?
+pairs_before="$(grep -c '"event":"phase_\(start\|end\)"' "$FD_HANDOFF/events.jsonl")"
+(cd "$REPO_HANDOFF" && AUTONOMOUS=1 SESSION=s1 drv next --feature-dir "$FD_HANDOFF" >/dev/null 2>&1)
+check "next: a repeated handoff answer emits no phase event pair" "$pairs_before" "$(grep -c '"event":"phase_\(start\|end\)"' "$FD_HANDOFF/events.jsonl")"
+ec=0; (cd "$REPO_HANDOFF" && SESSION=s1 drv phase-begin plan --feature-dir "$FD_HANDOFF" >/dev/null 2>&1) || ec=$?
 check "phase-begin: the same session is refused with 4" "4" "$ec"
-ec=0; (cd "$REPO" && SESSION=s2 drv phase-begin plan --feature-dir "$FD" >/dev/null 2>&1) || ec=$?
+ec=0; (cd "$REPO_HANDOFF" && SESSION=s2 drv phase-begin plan --feature-dir "$FD_HANDOFF" >/dev/null 2>&1) || ec=$?
 check "phase-begin: a fresh session is not refused by the handoff" "0" "$([[ "$ec" -eq 4 ]] && echo 4 || echo 0)"
 
 # A same-session re-entry through begin runs preflight, which clears the result pointer;
 # the repeated answer and the refusal both put the pointer back for the caller.
-bash "$REPO_ROOT/lib/cycle-result.sh" clear --result-root "$REPO"
-out="$(cd "$REPO" && SESSION=s1 drv next --feature-dir "$FD" 2>/dev/null)"
-check "next: the repeated handoff answer puts the result pointer back" "phase-handoff" "$(jq -r '.reason' "$REPO/.loop-spec/last-result.json" 2>/dev/null)"
-bash "$REPO_ROOT/lib/cycle-result.sh" clear --result-root "$REPO"
-ec=0; err="$(cd "$REPO" && SESSION=s1 AUTONOMOUS=1 drv begin --dir "$REPO" -- add a json flag 2>&1 >/dev/null)" || ec=$?
+bash "$REPO_ROOT/lib/cycle-result.sh" clear --result-root "$REPO_HANDOFF"
+out="$(cd "$REPO_HANDOFF" && SESSION=s1 drv next --feature-dir "$FD_HANDOFF" 2>/dev/null)"
+check "next: the repeated handoff answer puts the result pointer back" "phase-handoff" "$(jq -r '.reason' "$REPO_HANDOFF/.loop-spec/last-result.json" 2>/dev/null)"
+bash "$REPO_ROOT/lib/cycle-result.sh" clear --result-root "$REPO_HANDOFF"
+ec=0; err="$(cd "$REPO_HANDOFF" && SESSION=s1 AUTONOMOUS=1 drv begin --dir "$REPO_HANDOFF" -- autonomous handoff probe 2>&1 >/dev/null)" || ec=$?
 check "begin: the session that handed off is refused with 4" "4" "$ec"
 check "begin: the refusal carries the handoff answer" "1" "$(grep -c 'HANDOFF next=plan' <<<"$err")"
-check "begin: the refused re-entry emits no phase event pair" "$pairs_before" "$(grep -c '"event":"phase_\(start\|end\)"' "$FD/events.jsonl")"
-check "begin: the refusal puts the result pointer back" "phase-handoff" "$(jq -r '.reason' "$REPO/.loop-spec/last-result.json" 2>/dev/null)"
+check "begin: the refused re-entry emits no phase event pair" "$pairs_before" "$(grep -c '"event":"phase_\(start\|end\)"' "$FD_HANDOFF/events.jsonl")"
+check "begin: the refusal puts the result pointer back" "phase-handoff" "$(jq -r '.reason' "$REPO_HANDOFF/.loop-spec/last-result.json" 2>/dev/null)"
 
 # A human-approved SPEC rewind reopens the freeze: the engine resumes from the pause
-# record at the approval gate, the driver retires the record, DISCUSS may amend, and
-# the DISCUSS gate compares against what was approved.
+# record at the approval gate, the driver retires the record, and SPEC may amend the
+# text (DISCUSS folded into SPEC, so SPEC itself is now the phase the rewind re-enters).
 FROZEN="$(jq -r '.specApproval.sha256' "$FD/feature.json")"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" handoffSession null >/dev/null
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"step"' >/dev/null
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" iterate '{"used":1,"maxIterations":3,"feedback":{"type":"spec","description":"goal too narrow","fix_first":"widen"}}' >/dev/null
 printf '{"node":"human.iterate-spec-approval"}\n' > "$FD/graph-pause.json"
 out="$(cd "$REPO" && SESSION=s3 drv next --feature-dir "$FD" 2>/dev/null)"
-check "next: the approved spec rewind enters DISCUSS" "NEXT phase=discuss" "${out:0:18}"
+check "next: the approved spec rewind enters SPEC" "NEXT phase=spec" "${out:0:15}"
 check "next: the approved rewind retires the approval" "null" "$(jq -r '.specApproval' "$FD/feature.json")"
 check "next: the retired record keeps its digest and names the gate" "$FROZEN human.iterate-spec-approval" "$(jq -r '.specApprovalHistory[-1] | "\(.sha256) \(.reopenedBy)"' "$FD/feature.json")"
-check "next: the DISCUSS gate will compare against the retired digest" "$FROZEN" "$(jq -r '.specIntentSeen.sha256' "$FD/feature.json")"
+check "next: the SPEC gate will compare against the retired digest" "$FROZEN" "$(jq -r '.specIntentSeen.sha256' "$FD/feature.json")"
 check "next: the reopen is on the event ledger" "1" "$(jq -c 'select(.event == "spec-reopened")' "$FD/events.jsonl" | wc -l | tr -d ' ')"
-sed -i.bak 's/^Produce the requested behavior and log it\.$/Produce and log the requested behavior for every caller./' "$DOCS1/SPEC.md"; rm -f "$DOCS1/SPEC.md.bak"
-out="$(cd "$REPO" && SESSION=s3 drv next --feature-dir "$FD" --returned-from discuss 2>/dev/null)"
-check "next: the reopened Goals edit pauses at the DISCUSS gate as changed" "PAUSED node=human.after-discuss intent=changed" "$out"
+sed -i.bak 's/^Produce the requested behavior\.$/Produce and log the requested behavior for every caller./' "$DOCS1/SPEC.md"; rm -f "$DOCS1/SPEC.md.bak"
+# The reopen stamped specIntentSeen with the RETIRED digest and `reopened: True` so the
+# human's next SPEC gate compares the amended text against what they actually approved;
+# this repeat return must not blindly restamp it with the just-amended text's own digest
+# (that would always read back "unchanged" and hide the amendment from the human gate).
+out="$(cd "$REPO" && SESSION=s3 drv next --feature-dir "$FD" --returned-from spec 2>/dev/null)"
+check "next: the reopened text pauses at the human gate, showing the amendment" "PAUSED node=human.after-spec intent=changed" "$(tail -1 <<<"$out")"
 out="$(cd "$REPO" && SESSION=s3 drv next --feature-dir "$FD" 2>/dev/null)"
 check "next: PLAN freezes the amended text again" "true" "$(jq --arg old "$FROZEN" '.specApproval.sha256 != null and .specApproval.sha256 != $old' "$FD/feature.json")"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"auto"' >/dev/null
@@ -164,6 +171,17 @@ ec=0; drv resume --dir "$REPO" --feature-root "$REPO" --slug missing >/dev/null 
 check "resume: missing selected feature never falls back" "1" "$ec"
 ec=0; drv resume --dir "$REPO" --feature-root "$REPO" --slug ../add-a-json-flag >/dev/null 2>&1 || ec=$?
 check "resume: slug cannot traverse directories" "1" "$ec"
+
+# 6.9.0 folded DISCUSS into SPEC; a feature paused at the retired human.after-discuss
+# approval node must resume at human.after-spec, not the node the graph no longer has.
+REPO_DISCUSS="$(new_repo discuss-fold)"
+out="$(cd "$REPO_DISCUSS" && AUTONOMOUS=1 drv begin -- "fold discuss into spec probe" 2>/dev/null)"
+FD_DISCUSS="$(jq -r '.featureDir' <<<"$out")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD_DISCUSS" currentPhase '"discuss"' >/dev/null
+printf '{"paused":true,"node":"human.after-discuss","edge":"chain:discuss.critique->human.after-discuss"}\n' > "$FD_DISCUSS/graph-pause.json"
+(cd "$REPO_DISCUSS" && drv resume --dir "$REPO_DISCUSS" --feature-root "$REPO_DISCUSS" >/dev/null 2>&1)
+check "resume: DISCUSS-fold rewrites the pending pause to human.after-spec" "human.after-spec" "$(jq -r '.node' "$FD_DISCUSS/graph-pause.json")"
+check "resume: DISCUSS-fold moves currentPhase to spec" "spec" "$(jq -r '.currentPhase' "$FD_DISCUSS/feature.json")"
 
 # --- finish / escalate -----------------------------------------------------------
 ec=0; drv finish --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
@@ -292,7 +310,7 @@ jq '.currentPhase = "spec" | .currentPhaseStartedAt = "2020-01-01T00:00:00Z" | .
 printf '%s\n' '{"event":"phase_end","phase":"spec","attemptId":"budget","ts":"2020-01-02T00:00:00Z","elapsedSeconds":3600}' > "$FD_BUDGET_PASS/events.jsonl"
 ec=0; out="$(cd "$REPO_BUDGET_PASS" && drv next --feature-dir "$FD_BUDGET_PASS" --returned-from spec 2>/dev/null)" || ec=$?
 check "budget exhaustion does not block a passing gate" "0" "$ec"
-check "budget exhaustion allows a passing gate to advance" "1" "$(jq -r '.currentPhase' "$FD_BUDGET_PASS/feature.json" | grep -Ec '^(discuss|plan|execute|verify|iterate|deliver)$')"
+check "budget exhaustion allows a passing gate to advance" "1" "$(jq -r '.currentPhase' "$FD_BUDGET_PASS/feature.json" | grep -Ec '^(plan|execute|verify|iterate|deliver)$')"
 check "budget exhaustion pass does not publish escalation" "0" "$(grep -c '^DONE status=escalated' <<<"$out")"
 export LOOP_SPEC_DESIGN_BUDGET_MINS=bogus
 budget_err="$WORK/budget-error"

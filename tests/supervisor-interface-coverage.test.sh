@@ -45,8 +45,6 @@ checks=(
   "lib/decisions.sh	LOOP_SPEC_ORACLE_WRITE"
   "skills/shared/autonomous-mode.md	hooks/team/oracle-record.sh"
   "skills/spec/SKILL.md	The supervised path"
-  "skills/discuss/SKILL.md	oracle=supervisor"
-  "skills/discuss/SKILL.md	The supervised path"
   # -- every harness contract maps the supervised path onto its native question tool
   "skills/shared/claude-harness.md	canUseTool"
   "skills/shared/claude-harness.md	lib/supervisor/oracle.sh mode"

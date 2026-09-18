@@ -49,7 +49,7 @@ breaking checkpoints or edge references. The schema permits labels and
    `tests/lib/graph-run.test.sh` covers this distinction.
 5. **`subgraph`.** Nests another graph file via its `graph` path so a protocol is
    declared once and reused — the critique protocol lives in
-   `graph/critique.graph.json` and is referenced by both `discuss.critique` and
+   `graph/critique.graph.json` and is referenced by both `spec.critique` and
    `plan.critique`, never duplicated. The nested file must itself pass
    `lib/graph/validate.sh`; the single-declaration reuse is asserted by
    `tests/graph-conformance.test.sh`.
@@ -115,10 +115,13 @@ The shipped graph sets it on `human.after-spec` to `oneshot` and on `oneshot` to
 ## Path-length rule
 
 A graph declares ONE topology and more than one path through it. The cycle graph's long
-path walks every phase; its short path is the same graph with `discuss`, the spec
-critique, and the `verify.code-review` agent routed around, selected by
+path walks every phase; its short path is the same graph with the `verify.code-review`
+agent routed around, selected by
 `lib/graph/probes/short-path.sh` (maintenance
 execution profile AND no security signal in the artifacts the run has written so far).
+SPEC's own critique gate reads the same signal independently and skips its critique on
+the same maintenance profile, so a maintenance run pays for neither gate without a
+second declared path.
 This is where run length becomes a declared, auditable property instead of prose inside
 a phase body.
 
@@ -135,7 +138,7 @@ Three rules keep a short path honest, all enforced:
    `tests/lib/graph-run.test.sh` section 20 asserts that pairing on every short-path
    branch in `graph/cycle.graph.json`.
 3. **The evidence is re-read, not remembered.** `short-path.sh` re-runs the security
-   signal over the artifacts that exist NOW, because SPEC and DISCUSS author them after
+   signal over the artifacts that exist NOW, because SPEC authors them after
    the profile was chosen. A change that turns out to touch a security surface lengthens
    its own path mid-run. `tests/lib/graph-probes.test.sh` pins a written security
    artifact forcing `path=full`.

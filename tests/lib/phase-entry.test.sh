@@ -54,16 +54,7 @@ check "spec: no file to read yet" "0" "$(grep -c '^read=' <<<"$out")"
 
 check "spec: entry snapshots feature.json as the egress baseline" "my-feature" "$(jq -r '.slug' "$FD/.phase-entry.json")"
 
-# --- discuss: SPEC.md is required ingress -------------------------------------------
-ec=0; out="$(bash "$ENTRY" discuss --feature-dir "$FD")" || ec=$?
-check "discuss: missing SPEC.md flags" "1" "$ec"
-check "discuss: the flag names the missing artifact" "1" "$(grep -c '^FLAG .*SPEC.md' <<<"$out")"
-check "discuss: answer line counts the flag" "phase-entry: 1 flag(s) (discuss)" "$(tail -1 <<<"$out")"
-
 printf '# My Feature\n' > "$DOCS/SPEC.md"
-ec=0; out="$(bash "$ENTRY" discuss --feature-dir "$FD")" || ec=$?
-check "discuss: SPEC.md present enters clean" "0" "$ec"
-check "discuss: read list names SPEC.md" "1" "$(grep -c '^read=.*SPEC.md$' <<<"$out")"
 
 # --- plan: SPEC.md required, PATTERNS.md optional -----------------------------------
 ec=0; out="$(bash "$ENTRY" plan --feature-dir "$FD")" || ec=$?

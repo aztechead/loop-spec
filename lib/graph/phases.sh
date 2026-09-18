@@ -10,7 +10,7 @@
 #
 # Usage:
 #   phases.sh list      [--graph PATH]        one id per line, graph order
-#   phases.sh regex     [--graph PATH]        `spec|discuss|...` for a regex alternation
+#   phases.sh regex     [--graph PATH]        `spec|plan|...` for a regex alternation
 #   phases.sh validate <id> [--graph PATH]    exit 0 when <id> is a phase, 1 otherwise
 #                                             (the message names the phases)
 #   phases.sh suffix   <id> [--graph PATH]    the LOOP_SPEC_PHASE_MODEL_<SUFFIX> suffix

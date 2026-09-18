@@ -58,7 +58,7 @@ check "tighten: class below threshold quiet" "0" "$(jq '[.triggered[] | select(.
 T apply >/dev/null
 check "apply: tuning.json written" "1" "$([[ -f "$ROOT/tuning.json" ]] && echo 1 || echo 0)"
 check "apply: gate rounds raised" "3" "$(bash "$SCRIPT" get planMaxCritiqueRounds 2 --root "$ROOT")"
-check "apply: untouched param stays default" "2" "$(bash "$SCRIPT" get discussMaxCritiqueRounds 2 --root "$ROOT")"
+check "apply: untouched param stays default" "2" "$(bash "$SCRIPT" get specMaxCritiqueRounds 2 --root "$ROOT")"
 ec=0; bash "$SCRIPT" has-check suite-regression --root "$ROOT" || ec=$?
 check "apply: has-check hit" "0" "$ec"
 ec=0; bash "$SCRIPT" has-check acceptance --root "$ROOT" || ec=$?

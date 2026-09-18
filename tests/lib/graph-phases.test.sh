@@ -14,21 +14,21 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/graph-phases-test.XXXXXX")"
 WORK="$(cd "$WORK" && pwd -P)"
 trap 'rm -rf "$WORK"' EXIT
 
-check "list: the shipped graph's phases in order" "spec oneshot discuss plan execute verify iterate deliver" "$(bash "$LIB" list | paste -sd' ' -)"
-check "regex: an alternation" "spec|oneshot|discuss|plan|execute|verify|iterate|deliver" "$(bash "$LIB" regex)"
+check "list: the shipped graph's phases in order" "spec oneshot plan execute verify iterate deliver" "$(bash "$LIB" list | paste -sd' ' -)"
+check "regex: an alternation" "spec|oneshot|plan|execute|verify|iterate|deliver" "$(bash "$LIB" regex)"
 check "validate: a phase exits 0" "0" "$(bash "$LIB" validate verify >/dev/null 2>&1; echo $?)"
 check "validate: a gate node is not a phase" "1" "$(bash "$LIB" validate verify.acceptance >/dev/null 2>&1; echo $?)"
-check "validate: the message names the phases" "1" "$(bash "$LIB" validate nope 2>&1 | grep -c 'phase must be one of: spec | oneshot | discuss')"
+check "validate: the message names the phases" "1" "$(bash "$LIB" validate nope 2>&1 | grep -c 'phase must be one of: spec | oneshot | plan')"
 check "suffix: uppercased id" "DELIVER" "$(bash "$LIB" suffix deliver)"
 check "bad invocation exits 2" "2" "$(bash "$LIB" bogus >/dev/null 2>&1; echo $?)"
 # The short route is one session: the edge into oneshot carries sameSession, and the
 # walk passes through the human node between the two phases. Every other boundary
 # hands off.
 check "same-session: spec to oneshot stays in the session" "0" "$(bash "$LIB" same-session spec oneshot >/dev/null 2>&1; echo $?)"
-check "same-session: spec to discuss hands off" "1" "$(bash "$LIB" same-session spec discuss >/dev/null 2>&1; echo $?)"
+check "same-session: spec to plan hands off" "1" "$(bash "$LIB" same-session spec plan >/dev/null 2>&1; echo $?)"
 check "same-session: oneshot to deliver stays in the session (the short route is one session end to end)" "0" "$(bash "$LIB" same-session oneshot deliver >/dev/null 2>&1; echo $?)"
-check "same-session: the escalated oneshot to discuss hands off" "1" "$(bash "$LIB" same-session oneshot discuss >/dev/null 2>&1; echo $?)"
-check "same-session: every full-path boundary hands off" "0" "$(for pair in 'discuss plan' 'plan execute' 'execute verify' 'verify iterate' 'iterate deliver'; do bash "$LIB" same-session $pair >/dev/null 2>&1 && echo "$pair"; done | wc -l | tr -d ' ')"
+check "same-session: the escalated oneshot to plan hands off" "1" "$(bash "$LIB" same-session oneshot plan >/dev/null 2>&1; echo $?)"
+check "same-session: every full-path boundary hands off" "0" "$(for pair in 'spec plan' 'plan execute' 'execute verify' 'verify iterate' 'iterate deliver'; do bash "$LIB" same-session $pair >/dev/null 2>&1 && echo "$pair"; done | wc -l | tr -d ' ')"
 check "same-session: one id is a bad invocation" "2" "$(bash "$LIB" same-session spec >/dev/null 2>&1; echo $?)"
 check "unreadable graph exits 2" "2" "$(bash "$LIB" list --graph "$WORK/none.json" >/dev/null 2>&1; echo $?)"
 
@@ -52,7 +52,7 @@ check "feature-init refuses it against the shipped graph" "1" \
 check "the hooks' alternation carries it" "1" \
   "$(LOOP_SPEC_GRAPH="$WORK/graph.json" bash "$LIB" regex | grep -c '|triage')"
 check "the engine keeps no literal phase list (tests/lib/graph-run.test.sh proves the derived one)" "0" \
-  "$(grep -c '"spec", "discuss", "plan"' "$ROOT/lib/graph/engine.py")"
+  "$(grep -c '"spec", "oneshot", "plan"' "$ROOT/lib/graph/engine.py")"
 
 # The phase's door and exit are data on its node: phase-entry.sh and phase-exit.sh run
 # the new phase from the copy with nothing else edited (the port plan, WP2).

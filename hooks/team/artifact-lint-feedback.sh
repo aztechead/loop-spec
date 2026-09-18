@@ -34,6 +34,10 @@ command -v python3 &>/dev/null || exit 0
 INPUT=$(cat 2>/dev/null) || true
 [[ -z "$INPUT" ]] && exit 0
 
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
+
 FILE=$(printf '%s' "$INPUT" | python3 -c '
 import json, sys
 try:

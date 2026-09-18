@@ -160,14 +160,14 @@ _phase_verdict() {
     return
   fi
   case "$phase" in
-    spec) phase_rank=1 ;; discuss) phase_rank=2 ;; plan) phase_rank=3 ;;
-    execute) phase_rank=4 ;; verify) phase_rank=5 ;; iterate) phase_rank=6 ;;
-    deliver) phase_rank=7 ;;
+    spec) phase_rank=1 ;; plan) phase_rank=2 ;;
+    execute) phase_rank=3 ;; verify) phase_rank=4 ;; iterate) phase_rank=5 ;;
+    deliver) phase_rank=6 ;;
   esac
   case "$next" in
-    spec) next_rank=1 ;; discuss) next_rank=2 ;; plan) next_rank=3 ;;
-    execute) next_rank=4 ;; verify) next_rank=5 ;; iterate) next_rank=6 ;;
-    deliver) next_rank=7 ;;
+    spec) next_rank=1 ;; plan) next_rank=2 ;;
+    execute) next_rank=3 ;; verify) next_rank=4 ;; iterate) next_rank=5 ;;
+    deliver) next_rank=6 ;;
   esac
   if [[ "$phase_rank" -gt 0 && "$next_rank" -gt 0 && "$next_rank" -lt "$phase_rank" ]]; then
     printf '%s' "rewind"
@@ -181,7 +181,7 @@ _phase_verdict() {
 # This is the MECHANISM behind skills/shared/report-style.md's phase-boundary
 # contract. It used to be prose asking the model to print these lines, which meant
 # the only window into a long unattended run depended on model compliance and had no
-# test -- in practice only EXECUTE and DISCUSS ever printed them, and non-phase
+# test -- in practice only EXECUTE and SPEC ever printed them, and non-phase
 # events reached no console at all. A boundary record an operator relies on is not a
 # judgment call, so it is emitted here, deterministically, for every event.
 #

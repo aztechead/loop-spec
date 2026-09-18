@@ -1,7 +1,7 @@
 # Model routing
 
 Roles generally inherit the session model across Claude Code, OpenCode, Codex, and ADK.
-Claude's challenger defaults to `sonnet` unless a phase or role override applies.
+Claude's challenger, code-reviewer, spec-compliance-reviewer, and pattern-mapper default to `sonnet` unless a phase or role override applies.
 Claude's route judge defaults to `opus`; override with `LOOP_SPEC_MODEL_ROUTE_JUDGE`.
 The table below records the defaults.
 
@@ -25,13 +25,11 @@ harnesses, regardless of which models either account exposes.
 | Role family | Default |
 |---|---|
 | spec-writer, planner | inherit |
-| challenger | `sonnet` on Claude Code, inherit on peer harnesses |
+| challenger, code-reviewer, spec-compliance-reviewer, pattern-mapper | `sonnet` on Claude Code, inherit on peer harnesses |
 | routeJudge | opus on Claude Code, inherit on peer harnesses |
 | advocate | inherit |
-| iterate-judge, code-reviewer | inherit |
-| spec-compliance-reviewer, verifier | inherit |
+| iterate-judge, verifier | inherit |
 | implementer | inherit |
-| pattern-mapper | inherit |
 
 `lib/feature-init.sh activate` writes this map to
 `feature.models.<role>` before each phase. Claude dispatches add a `model` key
@@ -78,7 +76,7 @@ The consuming surfaces differ and a selector valid for one is not valid for all:
 | agent definition frontmatter (`agents/*.md`) | an alias or `inherit` |
 | `claude --model` / SDK `model` option | an alias or a full model ID; never the literal `inherit` |
 
-Supported phase suffixes are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`,
+Supported phase suffixes are `SPEC`, `PLAN`, `EXECUTE`, `VERIFY`,
 `ITERATE`, and `DELIVER`. Supported role suffixes are `SPEC_WRITER`,
 `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`,
 `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`,

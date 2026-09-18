@@ -192,17 +192,30 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    implementer's report. Never AskUserQuestion as a wait (`skills/shared/dispatch.md`).
    Then review.
    Each call returns `{taskId, branch, committed, sha, notes}`. (Per-task model override applies to the subagent and loop rungs; the team rung pre-spawns implementer teammates and uses the role default for all of them.)
-5. **Review each committed task** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, one call writes the review package from the recorded BASE to the implementer's HEAD and emits the reviewer's `dispatch` event:
+5. **Review the wave** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, one call writes the review package from the recorded BASE to the implementer's HEAD:
 
    ```bash
    pk="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task package \
      --feature-dir "$fdir" --task "{taskId}" --head "{implHead}")"
-   # .package .model .base .head .brief .report .worktree
+   # .package .model .base .head .brief .report .worktree .verifyCommand
    ```
 
-   Then dispatch a spec-compliance reviewer `Agent` using `.model` (the activated
-   `models.specComplianceReviewer` selector; alias → add `model`; `inherit` → omit) and the
-   review prompt below. It returns `{verdict: "pass"|"rework"|"block", findings[], unverified[]}`.
+   Then one call groups the wave's packages under the byte cap and emits one reviewer
+   `dispatch` event per group (a wave of small tasks is one group; a group never splits
+   below one task):
+
+   ```bash
+   rg="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task review-groups \
+     --feature-dir "$fdir" --tasks "{taskId1},{taskId2},...")"
+   # .model .groups[] = {tasks:[{task,package,bytes}], bytes}
+   ```
+
+   For each group dispatch ONE spec-compliance reviewer `Agent` using `.model` (the
+   activated `models.specComplianceReviewer` selector; alias → add `model`; `inherit` →
+   omit) and the review prompt below, listing every task in the group with the paths from
+   its `pk` packet. It returns `{verdicts: [{taskId, verdict: "pass"|"rework"|"block", findings[], unverified[]}]}`,
+   one entry per task; a missing entry is a malformed verdict: re-dispatch that group once,
+   then treat the missing task as `block`. Apply each entry as below.
    - Resolve every `unverified[]` item before marking the task complete: confirm from
      the plan / prior tasks (ledger a note) or promote to `rework`. Unverified items
      must not evaporate.
@@ -225,7 +238,10 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
      `retry-exhausted` is the breaker: park residuals in `warnings[]` and
      `blocked.push({taskId, reason: "retry-exhausted"})`.
      Re-review is scoped (`skills/shared/review-prompts/re-review.md`) against
-     `FIX_BASE..HEAD`, not a full-task re-read. When the findings require touching a
+     `FIX_BASE..HEAD`, not a full-task re-read. A re-review is one task and returns the
+     single-task shape `{verdict, findings[], unverified[]}`. Re-package the fix with
+     `task package`, then `task review-groups --tasks {taskId}` (one group, one
+     `dispatch` event) before the scoped re-review Agent. When the findings require touching a
      file outside `task.files`, widen the task's write scope first with
      `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task add-files
      --feature-dir "$fdir" --task "{taskId}" <file...>` before re-dispatching; it
@@ -291,7 +307,7 @@ result (on Claude Code >= 2.1.251 it rides the idle notification, which this run
 not parse), and the reviewer personas have no SendMessage to fall back on -- a live
 6.6.1 run lost a verdict to a named dispatch and had to redispatch.
 
-**Dispatch telemetry (`skills/shared/dispatch.md`):** `task dispatch` and `task package` emit `dispatch` with the resolved model.
+**Dispatch telemetry (`skills/shared/dispatch.md`):** `task dispatch` and `task review-groups` emit `dispatch` with the resolved model, one event per Agent launch (a review group is one launch).
 The lead emits no duplicate event. Retries use `task dispatch` again and emit a new event.
 
 **Task progress (emitted for you).** EXECUTE is the longest phase; without progress
@@ -319,7 +335,7 @@ templates cannot drift.
 IMPORTANT: All paths must be ABSOLUTE. Do not use relative paths. Do not use em-dashes.
 
 ENGINEERING CONTRACT (on by default; every directive binds). The index is
-`${LOOP_SPEC_SKILL_DIR}/../../skills/shared/engineering-directives.md`. Read these before writing code, never paste them:
+`${LOOP_SPEC_SKILL_DIR}/../../skills/shared/engineering-directives.md`. The brief's `Read first` section names one file holding the contracts this task's files call for, rendered from these sources at dispatch; read that file once before writing code instead of opening each source, and never paste them:
 `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/implementer-contract.md` (FOUR QUESTIONS (design gate): can I make it more modular?
 more extensible? is this the least amount of code that makes it happen?
 does this hold at production scale, memory and work bounded against deployment-sized
@@ -427,13 +443,15 @@ re-review after a fix round uses `skills/shared/review-prompts/re-review.md`
 with FIX_BASE = the HEAD the previous review saw.
 
 ```
-You are a spec-compliance reviewer for task {taskId} (attempt {n}).
+You are a spec-compliance reviewer for one wave of tasks: {taskIds} (attempt {n} each).
 
 NO NESTED SUBAGENTS. Do this review yourself. Never spawn a helper or a second reviewer.
 
-Read the task brief: {brief path}
-Read the implementer's report: {report path}
-The implementation is checked out at {worktree path from the package packet's .worktree}.
+For EACH task below, read its brief, its implementer's report, and its review package once;
+judge each task on its own acceptance criteria. Never let one task's verdict decide another's.
+  TASK {taskId}: brief {brief path}; report {report path}; worktree {worktree path from the
+  package packet's .worktree}; package {package path}; verify command {verifyCommand} (do not run it)
+  (one such block per task in the group)
 Do NOT run the task's verify command ({verifyCommand from the packet}): the implementer ran
 it (its output is in the report) and the integration step reruns it after rebase. Run a
 command there only when the diff makes a specific criterion suspicious, and only one that
@@ -467,7 +485,7 @@ Return one of:
   - verdict "rework" with specific findings if fixable issues exist (incl. over-engineering)
   - verdict "block"  if the implementation is fundamentally wrong or unrecoverable
 
-Return JSON: { verdict: "pass"|"rework"|"block", findings: ["<finding 1>", ...], unverified: [{"requirement":"...","why":"..."}] }
+Return JSON: { verdicts: [ { taskId: "...", verdict: "pass"|"rework"|"block", findings: ["<finding 1>", ...], unverified: [{"requirement":"...","why":"..."}] } ] }, one entry per task, none omitted.
 Your final message IS the verdict (the lead dispatched you nameless and blocking). Never
 call SendMessage to deliver it (a live reviewer lost three calls to InputValidationError
 sending JSON to a "main" that does not exist).

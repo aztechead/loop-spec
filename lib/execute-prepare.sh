@@ -235,7 +235,10 @@ rung='{}'
 # A resumed phase may start in a fresh process with no startup environment.
 # Carry the validated startup bounds from durable runtime state into every rung,
 # including workspace mode; an operator export still takes precedence.
-if [[ -f "$runtime" ]]; then
+# A record without `explicit` predates 6.9.0 and restores as before; one that says
+# false holds the defaults, which execute-rung.sh derives from the width instead.
+# (`//` would read a stored false as missing, so the test is an equality.)
+if [[ -f "$runtime" && "$(jq -r 'if .resources.explicit == false then "false" else "true" end' "$runtime" 2>/dev/null)" != "false" ]]; then
   if [[ -z "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
     persisted_subagents="$(jq -r '.resources.maxParallelSubagents // empty' "$runtime" 2>/dev/null || true)"
     [[ "$persisted_subagents" =~ ^[1-9][0-9]*$ ]] && export LOOP_SPEC_MAX_PARALLEL_SUBAGENTS="$persisted_subagents"

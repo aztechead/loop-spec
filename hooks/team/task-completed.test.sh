@@ -80,12 +80,12 @@ feature_execute_failing_lint() {
 }'
 }
 
-# feature.json fixture: DISCUSS phase (schema validation mode)
-feature_discuss() {
+# feature.json fixture: SPEC phase (not gated; only PLAN validates task metadata)
+feature_spec() {
   printf '{
   "schemaVersion": 3,
   "slug": "test-feature",
-  "currentPhase": "discuss",
+  "currentPhase": "spec",
   "commands": {}
 }'
 }
@@ -110,7 +110,7 @@ feature_execute_no_commands() {
 }'
 }
 
-# Build a TaskCompleted payload with task metadata for discuss/plan validation
+# Build a TaskCompleted payload with task metadata for spec/plan validation
 # (marked loop-spec via subject convention so the metadata gate applies)
 payload_completed_with_metadata() {
   local task_id="${1:-task-001}"
@@ -141,17 +141,17 @@ check "D: execute phase no commands ALLOW" 0 \
   "$(payload_completed)" \
   "$(feature_execute_no_commands)"
 
-# E: DISCUSS phase, valid task metadata -> ALLOW (exit 0)
+# E: SPEC phase, valid task metadata -> ALLOW (exit 0)
 VALID_META='{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"]}'
-check "E: discuss phase valid metadata ALLOW" 0 \
+check "E: spec phase valid metadata ALLOW" 0 \
   "$(payload_completed_with_metadata "task-001" "$VALID_META")" \
-  "$(feature_discuss)"
+  "$(feature_spec)"
 
-# F: DISCUSS phase, missing verifyCommand -> DENY (exit 2)
+# F: SPEC phase, missing verifyCommand -> ALLOW (only PLAN validates metadata; SPEC is not gated)
 MISSING_VERIFY='{"blockedBy":[],"files":["foo.sh"],"acceptanceCriteria":["works"]}'
-check "F: discuss phase missing verifyCommand DENY" 2 \
+check "F: spec phase missing verifyCommand still ALLOW (not gated)" 0 \
   "$(payload_completed_with_metadata "task-001" "$MISSING_VERIFY")" \
-  "$(feature_discuss)"
+  "$(feature_spec)"
 
 # G: PLAN phase, missing acceptanceCriteria -> DENY (exit 2)
 MISSING_AC='{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh"}'
@@ -169,10 +169,10 @@ check "I: unmarked task passes through failing-lint gate ALLOW" 0 \
   "$(payload_completed_unmarked)" \
   "$(feature_execute_failing_lint)"
 
-# J: UNMARKED completion in DISCUSS phase without metadata -> ALLOW (scope: pass-through)
-check "J: unmarked task passes through discuss metadata gate ALLOW" 0 \
+# J: UNMARKED completion in SPEC phase without metadata -> ALLOW (scope: pass-through)
+check "J: unmarked task passes through spec phase ALLOW" 0 \
   "$(payload_completed_unmarked)" \
-  "$(feature_discuss)"
+  "$(feature_spec)"
 
 # J2: kill switch -> ALLOW even for marked task with failing lint
 check_exit=0

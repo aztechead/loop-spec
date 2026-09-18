@@ -4,6 +4,9 @@
 set -euo pipefail
 input="$(cat)"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$ROOT/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 session_id="$(LOOP_SPEC_IDENTITY_INPUT="$input" python3 "$ROOT/lib/session_identity.py" 2>/dev/null || true)"
 [[ -n "$session_id" ]] || exit 0
 LOOP_SPEC_HOOK_INPUT="$input" python3 - "$session_id" <<'PY'

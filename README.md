@@ -4,7 +4,7 @@ Spec-driven development loops for [Claude Code](https://claude.com/claude-code),
 
 Use this guide to install loop-spec, start a cycle, and find its operating reference.
 
-Current version: 6.8.0
+Current version: 6.9.0
 
 ## Contents
 
@@ -35,7 +35,7 @@ claude plugin marketplace add https://github.com/aztechead/loop-spec.git
 claude plugin install loop-spec@loop-spec-marketplace
 ```
 
-Optional: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` enables agent teams. Without it, critique/verify use one-shot subagents and EXECUTE uses the loop-fleet rung (needs `claude` on PATH). Every role but the challenger inherits the model that launched the session; the challenger runs on `sonnet`, and model-specific routing is optional (`skills/shared/model-matrix.md`). Updating from 6.2.x: read "Before you update" under 6.3.0 in [CHANGELOG.md](CHANGELOG.md) first.
+Optional: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` enables agent teams. Without it, critique/verify use one-shot subagents and EXECUTE uses the loop-fleet rung (needs `claude` on PATH). Every role but the challenger, code-reviewer, spec-compliance-reviewer, and pattern-mapper inherits the model that launched the session; those four run on `sonnet`, and model-specific routing is optional (`skills/shared/model-matrix.md`). Updating from 6.2.x: read "Before you update" under 6.3.0 in [CHANGELOG.md](CHANGELOG.md) first.
 
 Adoption walkthrough: [docs/adopting.md](docs/adopting.md).
 
@@ -71,7 +71,7 @@ The installer generates namespaced `$loop-spec-<name>` skill adapters, custom
 agent TOML for `spawn_agent`, a marked `shell_environment_policy.set` block
 so Bash subprocesses receive `LOOP_SPEC_HARNESS=codex` without waiting on plugin
 hook trust, and `[features] default_mode_request_user_input = true` so Default
-mode's `request_user_input` tool can block SPEC/DISCUSS/PLAN interviews the
+mode's `request_user_input` tool can block SPEC/PLAN interviews the
 way Claude Code's `AskUserQuestion` and OpenCode's `question` do. Start a new
 Codex session after installing so custom agents are loaded. Interactive entry:
 `$loop-spec-cycle <description>`. Preferred headless entry:
@@ -108,8 +108,8 @@ Or mount it yourself: `from loop_spec_adk import build_app`. Differences:
 
 1. Startup probes cache to `.loop-spec/runtime.json`.
 2. Claude Code creates a feature worktree at `.claude/worktrees/{slug}` on `feat/{slug}`. OpenCode, Codex, and ADK create the branch in place on a clean checkout — none of them has a session-root switch, so `executionRootMode` records the difference rather than faking it.
-3. SPEC investigates, asks one consolidated list of intent questions, records decisions, then writes `docs/loop-spec/features/{slug}/SPEC.md`.
-4. DISCUSS critiques the spec. PLAN writes `PATTERNS.md` + `PLAN.md` (task DAG with verify commands).
+3. SPEC investigates, asks one consolidated list of intent questions, records decisions, locks the design, and runs the challenger critique, then writes `docs/loop-spec/features/{slug}/SPEC.md`.
+4. PLAN writes `PATTERNS.md` + `PLAN.md` (task DAG with verify commands).
 5. EXECUTE implements tasks in parallel where the DAG allows, one commit per task.
 6. VERIFY runs marker/tamper scans, acceptance criteria, and a blocking code review.
 7. ITERATE judges the result against your original request and rewinds on gaps.
@@ -123,13 +123,12 @@ On Claude Code, installing the plugin binds the `loop-spec` output style (`outpu
 
 ## The cycle
 
-Give the cycle a feature description, or a pre-authored spec file, and it runs seven phases: SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. A change whose SPEC footprint is at most three files, with no open question and no security signal, takes the oneshot route instead: SPEC, ONESHOT (implement, one review, verify), DELIVER. ITERATE judges the integrated result against your original request and rewinds until the goal is met or the iteration limit (10 by default, configurable with `LOOP_SPEC_ITERATE_MAX_ITERATIONS`) is spent. DELIVER then pushes the exact verified SHA, creates or reuses one PR, waits for required checks, and marks it ready for review. Phase state and evidence are durable in `feature.json` and committed artifacts, so interrupted runs resume instead of starting over.
+Give the cycle a feature description, or a pre-authored spec file, and it runs six phases: SPEC, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. A change whose SPEC footprint is at most three files, with no open question and no security signal, takes the oneshot route instead: SPEC, ONESHOT (implement, one review, verify), DELIVER. ITERATE judges the integrated result against your original request and rewinds until the goal is met or the iteration limit (10 by default, configurable with `LOOP_SPEC_ITERATE_MAX_ITERATIONS`) is spent. DELIVER then pushes the exact verified SHA, creates or reuses one PR, waits for required checks, and marks it ready for review. Phase state and evidence are durable in `feature.json` and committed artifacts, so interrupted runs resume instead of starting over.
 
 | Phase | Produces | Gates |
 |---|---|---|
-| SPEC | `SPEC.md` with `unresolved_questions` and decisions | No unresolved intent questions |
+| SPEC | `SPEC.md` with `unresolved_questions` and decisions | No unresolved intent questions; challenger critique (skipped when the spec is already gated) |
 | ONESHOT | one commit, `VERIFICATION.md` | Footprint ≤ 3 files, no open question, no security signal (`lib/graph/probes/oneshot.sh`); one review; scans and the converged floor at exit |
-| DISCUSS | revised SPEC.md | Challenger critique (skipped when the spec is already gated) |
 | PLAN | `PATTERNS.md` + `PLAN.md` | Critique + feasibility + criteria coverage |
 | EXECUTE | per-task commits on `feat/{slug}` | Spec-compliance review; dispatch by DAG width |
 | VERIFY | `VERIFICATION.md`, `REVIEW-ORDER.md` | Marker/tamper scans, acceptance, blocking review |
@@ -145,7 +144,7 @@ Mechanics in brief:
 - **Sequencing is a declared graph** from 3.0 (`graph/cycle.graph.json`, run by `lib/graph/run.sh`): typed `reads[]`/`writes[]` over `feature.json`, per-node checkpoints, probe-conditioned `route` edges, and dual-process effort (`lib/effort-probe.sh`). Phase *content* is unchanged. Upgrading from 2.x needs no action: schema stays v7 and every new variable defaults to 2.x behaviour.
 - **DELIVER** owns the final mile (`lib/pr-delivery.sh`): never force-pushes, merges, or enables auto-merge.
 
-Styles (`style:step`, default `auto`): `auto` · `step` · `interactive` · `review-only`. Every role inherits the session model except the challenger, which runs on `sonnet` under Claude Code. Optional Claude routes use `LOOP_SPEC_PHASE_MODEL_<PHASE>` or `LOOP_SPEC_MODEL_<ROLE>`; OpenCode routes use native generated-agent configuration.
+Styles (`style:step`, default `auto`): `auto` · `step` · `interactive` · `review-only`. Every role inherits the session model except the challenger, code-reviewer, spec-compliance-reviewer, and pattern-mapper, which run on `sonnet` under Claude Code. Optional Claude routes use `LOOP_SPEC_PHASE_MODEL_<PHASE>` or `LOOP_SPEC_MODEL_<ROLE>`; OpenCode routes use native generated-agent configuration.
 
 Greenfield: `/loop-spec:cycle new autonomous a CLI tool that ...` in an empty directory. Backlog drain: `/loop-spec:cycle backlog`. Diagrams, artifact tree, and team lifecycle: [docs/loop-spec/architecture.md](docs/loop-spec/architecture.md).
 
@@ -164,7 +163,7 @@ Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills 
 | Skill | Purpose |
 |---|---|
 | `auto` | Preferred headless/SDK entry. Routes to micro, debug, or full cycle fail-closed. Headless runs dispatch EXECUTE implementers as disposable CLI sessions (`extensions/sessions/`). |
-| `cycle` | Seven-phase prompt-to-ready-PR loop, or the three-phase oneshot route for a small footprint. Also: `new`, `backlog`, spec-file ingest, resume. |
+| `cycle` | Six-phase prompt-to-ready-PR loop, or the three-phase oneshot route for a small footprint. Also: `new`, `backlog`, spec-file ingest, resume. |
 | `spec-lite` | SPEC's entry on every cycle: the scout, the oneshot candidate from its record, and the short route's spec fills; hands to `spec` on the full route. Cycle-internal. |
 | `intake` | Any input → spec draft → cycle. `--no-run` stops after the draft. |
 | `debug` | Bounded debug: triage, red reproduction, fix, verify. Writes `BUG.md`. |
@@ -187,7 +186,7 @@ Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills 
 
 ```bash
 claude -p "/loop-spec:auto update CLAUDE.md with relevant changes"
-# Force the full seven-phase cycle:
+# Force the full six-phase cycle:
 LOOP_SPEC_ROUTE=full claude -p "/loop-spec:cycle autonomous add rate limiting to the public API"
 ```
 
@@ -238,7 +237,7 @@ Multi-repo workspaces: [docs/adopting.md](docs/adopting.md#workspace-multi-repo-
 
 ## Troubleshooting
 
-- Health check fails: allow every alias from `bash lib/feature-init.sh all-models` in `CLAUDE.md` (6.3.0 adds `sonnet`, the challenger's default).
+- Health check fails: allow every alias from `bash lib/feature-init.sh all-models` in `CLAUDE.md` (6.3.0 adds `sonnet`, the challenger's default; also the code-reviewer, spec-compliance-reviewer, and pattern-mapper default).
 - Critique gate closed with residue (`gate-logs/<gate>-residue.md`): the one delta round is spent; the spec/plan is ambiguous — use `style:step`, edit, resume. `LOOP_SPEC_CRITIQUE_ROUNDS` raises the bound.
 - Loop-fleet halt: read `halt_reason` in `.loop/fleet-result.json` (table in `skills/shared/execute-loop-fleet.md`).
 - Teams unavailable: not a failure; set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` to restore persistent teams.
@@ -247,7 +246,7 @@ More: [docs/adopting.md](docs/adopting.md). Architecture: [docs/loop-spec/archit
 
 ## Design principles
 
-- Suggested methods are candidates: SPEC separates intent from constraints, DISCUSS
+- Suggested methods are candidates: SPEC separates intent from constraints and
   compares approaches, and PLAN checks them against existing code patterns. EXECUTE
   may improve local choices when new evidence warrants it; binding decisions and
   acceptance criteria remain intact. See [approach selection](skills/shared/approach-selection.md).

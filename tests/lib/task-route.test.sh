@@ -57,7 +57,6 @@ candidate() {
 compact_gate_plan() {
   jq -nc '{
     specInterview: {run: false, reason: "bounded change has grounded requirements"},
-    discuss: {run: false, reason: "classifier found no unresolved product decision"},
     specCritique: {run: false, reason: "bounded scope makes a separate critique unnecessary"},
     planCritique: {run: true, reason: "review the compact execution plan"},
     repositoryValidation: {run: true, reason: "validate the target repository before change"},
@@ -173,9 +172,6 @@ assert_route "compact gate reasons cannot inject a second probe line" "full" \
   "$(compact_candidate | jq '.gatePlan.acceptance.reason = "line one\nline two"')"
 assert_route "compact gate reasons have a bounded probe-safe length" "full" \
   "$(compact_candidate | jq '.gatePlan.acceptance.reason = ("x" * 241)')"
-assert_route "compact cannot run spec critique after skipping discuss" "full" \
-  "$(compact_candidate | jq '.gatePlan.specCritique.run = true')"
-
 # Routing arms the run: from here on, an exit with no terminal result is detectable.
 armed="$CLEAN_REPO/.loop-spec/active-run.json"
 rm -f "$armed"

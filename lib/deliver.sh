@@ -167,7 +167,7 @@ if [[ -z "$workspace_root" ]]; then
   # Artifact paths are DELIVER's own commits and do not count. A run whose phase_end
   # records carry no headSha at all (before 6.6.4) skips the comparison; a run that
   # records them but never routed a phase to deliver has no gate to compare against
-  # and is refused (a sneaked commit on a feature whose last gate routed to DISCUSS
+  # and is refused (a sneaked commit on a feature whose last gate routed to SPEC
   # shipped as pushed-no-pr in the 6.6.4 live-run attack).
   gated_sha="$(jq -r 'select(.event == "phase_end" and .next == "deliver") | .headSha // empty' \
     "$feature_dir/events.jsonl" 2>/dev/null | tail -1)" || true

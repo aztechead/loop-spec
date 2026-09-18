@@ -104,6 +104,9 @@ elif [[ "$active_rc" -ne 1 ]]; then
 fi
 
 INPUT=$(cat)
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$SCRIPT_DIR/../../lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 TRANSCRIPT_PATH="$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("transcript_path") or "")' 2>/dev/null || true)"
 
 # Completed-cycle stand-down is transcript-scoped rather than checkout-scoped. Resolve

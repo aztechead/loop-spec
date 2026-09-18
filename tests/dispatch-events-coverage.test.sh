@@ -15,7 +15,7 @@ FAIL=0
 checks=(
   "skills/shared/dispatch.md	dispatch telemetry contract"
   "skills/shared/dispatch.md	one event per agent launched"
-  "skills/discuss/SKILL.md	dispatch.md"
+  "skills/spec/SKILL.md	dispatch.md"
   "skills/plan/SKILL.md	dispatch.md"
   "skills/execute/SKILL.md	dispatch.md"
   "skills/verify/SKILL.md	dispatch.md"
@@ -50,7 +50,7 @@ else
   echo "FAIL: lib/critique-step.sh does not emit gate_round (critique-gate telemetry lost)"
   FAIL=$((FAIL+1))
 fi
-for f in skills/discuss/SKILL.md skills/plan/SKILL.md; do
+for f in skills/spec/SKILL.md skills/plan/SKILL.md; do
   if grep -qF "the critique steps emit the \`gate_round\` events" "$f"; then
     echo "PASS: $f routes gate_round through the critique steps"; PASS=$((PASS+1))
   else

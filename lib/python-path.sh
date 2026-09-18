@@ -39,7 +39,12 @@ private_dir() {
     echo "$dir is not a directory this user owns" >&2; return 1
   fi
   chmod 700 "$dir" 2>/dev/null || true
-  ln -sfn "$real" "$dir/python3" 2>/dev/null || { echo "cannot write $dir/python3" >&2; return 1; }
+  # Relink only when the target changed: `ln -sfn` leaves the link missing for a
+  # moment, and once every hook called this too, eight parallel test jobs raced
+  # through that moment (run-all.sh, "python3: No such file or directory").
+  if [[ "$(readlink "$dir/python3" 2>/dev/null)" != "$real" ]]; then
+    ln -sfn "$real" "$dir/python3" 2>/dev/null || { echo "cannot write $dir/python3" >&2; return 1; }
+  fi
   printf '%s\n' "$dir"
 }
 

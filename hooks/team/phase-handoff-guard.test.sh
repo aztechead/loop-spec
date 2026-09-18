@@ -37,11 +37,11 @@ trap 'rm -rf "$ROOT"' EXIT
 FDIR="$ROOT/.loop-spec/features/demo"
 mkdir -p "$FDIR"
 printf '%s\n' \
-  '{"schemaVersion":7,"slug":"demo","feature_title":"Demo","branch":"feat/demo","baseBranch":"main","currentPhase":"discuss","completedPhases":["spec"],"warnings":[],"iterate":{"used":0,"maxIterations":3},"autonomous":true,"updatedAt":"2026-07-30T12:00:00Z"}' \
+  '{"schemaVersion":7,"slug":"demo","feature_title":"Demo","branch":"feat/demo","baseBranch":"main","currentPhase":"plan","completedPhases":["spec"],"warnings":[],"iterate":{"used":0,"maxIterations":3},"autonomous":true,"updatedAt":"2026-07-30T12:00:00Z"}' \
   > "$FDIR/feature.json"
 
 FIRST='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:spec"},"transcript":[]}'
-SECOND='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:discuss"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:spec"}}]}]}'
+SECOND='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:plan"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:spec"}}]}]}'
 SAME='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:spec"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:spec"}}]}]}'
 OTHER='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:retro"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:spec"}}]}]}'
 
@@ -49,7 +49,20 @@ check "first phase in transcript allowed" 0 "$FIRST" \
   CLAUDE_PROJECT_DIR="$ROOT"
 check "second phase denied" 2 "$SECOND" \
   CLAUDE_PROJECT_DIR="$ROOT"
-check_value "denial writes paused result" "paused:phase-handoff:discuss" \
+
+# An empty tool_name answer (no jq on PATH, or a payload jq refuses) must fall through
+# to the python parsing path below rather than reading as "not a Skill call".
+PY_DIR="$(bash "$(cd "$(dirname "$HOOK")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+if [[ -n "$PY_DIR" ]]; then
+  check "a jq-less PATH falls through to the python path, not silently open" 2 "$SECOND" \
+    CLAUDE_PROJECT_DIR="$ROOT" "PATH=$PY_DIR:/usr/bin:/bin"
+else
+  echo "SKIP: no version-manager shim on this machine; lib/python-path.sh printed nothing"
+fi
+NOT_SKILL='{"tool_name":"Bash","tool_input":{"command":"ls"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:spec"}}]}]}'
+check "a non-Skill tool call is not a phase entry and passes" 0 "$NOT_SKILL" \
+  CLAUDE_PROJECT_DIR="$ROOT"
+check_value "denial writes paused result" "paused:phase-handoff:plan" \
   "$(jq -r '[.status,.reason,.phaseReached] | join(":")' "$ROOT/.loop-spec/last-result.json")"
 check "same-phase retry allowed" 0 "$SAME" \
   CLAUDE_PROJECT_DIR="$ROOT"
@@ -80,9 +93,9 @@ jq '.currentPhase = "deliver" | .completedPhases = ["spec","oneshot"]' "$FDIR/fe
 DELIVER_AFTER_ONESHOT='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:deliver"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:oneshot"}}]}]}'
 check "deliver after oneshot is the same session too" 0 "$DELIVER_AFTER_ONESHOT" \
   CLAUDE_PROJECT_DIR="$ONESHOT_ROOT"
-jq '.currentPhase = "discuss" | .completedPhases = ["spec","oneshot"]' "$FDIR/feature.json" > "$ODIR/feature.json"
-DISCUSS_AFTER_ONESHOT='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:discuss"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:oneshot"}}]}]}'
-check "discuss after an escalated oneshot still hands off" 2 "$DISCUSS_AFTER_ONESHOT" \
+jq '.currentPhase = "spec" | .completedPhases = ["spec","oneshot"]' "$FDIR/feature.json" > "$ODIR/feature.json"
+SPEC_AFTER_ONESHOT='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:spec"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:oneshot"}}]}]}'
+check "spec after an escalated oneshot still hands off" 2 "$SPEC_AFTER_ONESHOT" \
   CLAUDE_PROJECT_DIR="$ONESHOT_ROOT"
 
 # Production path: Claude Code passes `transcript_path`, not an inline transcript.
@@ -98,20 +111,20 @@ TRANSCRIPT="$ROOT/transcript.jsonl"
 } > "$TRANSCRIPT"
 
 JSONL_SECOND="$(jq -cn --arg p "$TRANSCRIPT" \
-  '{tool_name:"Skill",tool_input:{skill:"loop-spec:discuss"},transcript_path:$p}')"
+  '{tool_name:"Skill",tool_input:{skill:"loop-spec:plan"},transcript_path:$p}')"
 JSONL_SAME="$(jq -cn --arg p "$TRANSCRIPT" \
   '{tool_name:"Skill",tool_input:{skill:"loop-spec:spec"},transcript_path:$p}')"
 
-# A denied attempt is not a prior phase: spec ran, discuss was denied once, and the
-# second discuss call must still be denied instead of passing as a same-phase retry.
+# A denied attempt is not a prior phase: spec ran, plan was denied once, and the
+# second plan call must still be denied instead of passing as a same-phase retry.
 DENIED="$ROOT/transcript-denied.jsonl"
 {
   cat "$TRANSCRIPT"
-  printf '%s\n' '{"type":"assistant","uuid":"a3","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Skill","input":{"skill":"loop-spec:discuss"}}]}}'
+  printf '%s\n' '{"type":"assistant","uuid":"a3","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Skill","input":{"skill":"loop-spec:plan"}}]}}'
   printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_2","is_error":true,"content":"PreToolUse:Skill hook error: DENY: loop-spec runs one phase per main-agent invocation."}]}}'
 } > "$DENIED"
 JSONL_AFTER_DENIAL="$(jq -cn --arg p "$DENIED" \
-  '{tool_name:"Skill",tool_input:{skill:"loop-spec:discuss"},transcript_path:$p}')"
+  '{tool_name:"Skill",tool_input:{skill:"loop-spec:plan"},transcript_path:$p}')"
 rm -f "$ROOT/.loop-spec/last-result.json"
 check "JSONL transcript: a phase denied once is denied again, not a retry" 2 "$JSONL_AFTER_DENIAL" \
   CLAUDE_PROJECT_DIR="$ROOT"
@@ -119,7 +132,7 @@ check "JSONL transcript: a phase denied once is denied again, not a retry" 2 "$J
 rm -f "$ROOT/.loop-spec/last-result.json"
 check "JSONL transcript: second phase denied" 2 "$JSONL_SECOND" \
   CLAUDE_PROJECT_DIR="$ROOT"
-check_value "JSONL transcript: denial writes paused result" "paused:phase-handoff:discuss" \
+check_value "JSONL transcript: denial writes paused result" "paused:phase-handoff:plan" \
   "$(jq -r '[.status,.reason,.phaseReached] | join(":")' "$ROOT/.loop-spec/last-result.json")"
 check "JSONL transcript: same-phase retry allowed" 0 "$JSONL_SAME" \
   CLAUDE_PROJECT_DIR="$ROOT"

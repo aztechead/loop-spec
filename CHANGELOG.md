@@ -4,6 +4,96 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.9.0] - 2026-09-17
+
+### Changed
+
+- The per-tool-call hook tax is gone from every tool call that is not a phase entry:
+  `hooks/team/phase-handoff-guard.sh` (the `.*` PreToolUse matcher) answers with one
+  `jq` read before any python launch, and every hook that launches python3 skips the
+  version-manager shim through `lib/python-path.sh`, as `lib/cycle-driver.sh` already
+  did. On a pyenv machine the guard cost about 0.6 s on every call of a live cycle;
+  a Bash call paid about 1.35 s across its hooks.
+- Code reviewer, spec-compliance reviewer, and pattern mapper default to `sonnet` on
+  Claude Code, as the challenger already did (`lib/feature-init.sh canonical_models`,
+  `skills/shared/model-matrix.md`). A phase route or `LOOP_SPEC_MODEL_<ROLE>` still
+  outranks the default; peer harnesses stay on inherit.
+- PLAN's exit gate measures the width EXECUTE will see (declared plus file-overlap
+  edges under the same excludes) and flags a plan of four or more tasks that runs as a
+  chain, naming the shared files. `LOOP_SPEC_PLAN_MIN_WIDTH` is the operator override
+  (`1` accepts any chain). The planner charter says why: a file two tasks name
+  serializes them, so each shared file gets one owning task.
+- EXECUTE's subagent rung renders the contracts a task's files call for into one file
+  beside the brief (`dispatch-files.sh brief` writes `<id>-contracts.md`), the brief
+  names it under `Read first`, and the implementer stanza sends the agent to that file
+  instead of eight sources through eight Read calls. A task that touches no markdown
+  no longer reads the docs contract. `tests/dispatch-read-set.test.sh` pins the bytes
+  a fresh dispatch reads before it can act, within 5% of today's measurement.
+- EXECUTE's subagent rung reviews a wave with one spec-compliance reviewer instead of
+  one per task: `cycle-driver.sh task review-groups` groups the wave's packages under
+  `LOOP_SPEC_REVIEW_GROUP_BYTES` (default 150000) and emits one `dispatch` event per
+  group; the reviewer returns `verdicts[]`, one entry per task. Rework and the scoped
+  re-review stay per task. `task package` no longer emits a dispatch event (packaging
+  is not a launch); the session rung's `run --role reviewer` emits it instead, and
+  `review-groups` emits nothing on that rung.
+- With neither `LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS` nor `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS`
+  set, the implementer wave cap is the plan's DAG width up to 3 (`lib/execute-rung.sh`).
+  Every rung defaulted to one at a time, so the width gate and the per-wave review
+  never paid off: the 6.9.0 full-route live run planned width 3 and ran serially.
+  `resource-bounds.sh resolve` records whether an operator set a bound (`explicit`), so
+  the defaults persisted at cycle start no longer restore as an operator setting, and
+  `resource-bounds.sh env` exports nothing when no bound is set, so the driver's startup
+  env step no longer turns the defaults into one before it records them.
+- `lib/python-path.sh` relinks its private python3 only when the target changed; the
+  unconditional relink left the link missing for a moment and eight parallel test jobs
+  raced through it once every hook called the helper.
+- The DISCUSS phase is folded into SPEC. The spec-critique gate now sits between the
+  SPEC phase and the human approval node (`spec -> spec.critique.gate -> spec.critique
+  -> human.after-spec`), so the human reviews the critiqued spec once instead of
+  stopping before and after DISCUSS. SPEC's skill owns the design lock (approach
+  selection, engineering stances, decisions) and the re-entry rule; every loop that
+  re-entered DISCUSS (VERIFY bad-spec, ITERATE gap=spec, the reopened spec approval,
+  ONESHOT promotion) re-enters SPEC or its critique gate. A feature paused at
+  `discuss` resumes at `spec`. The cycle has six phases. On the oneshot route the
+  critique gate skips (the ONESHOT review gate is the spec's independent read).
+
+### Removed
+
+- The `discuss` phase id, `skills/discuss/`, `LOOP_SPEC_PHASE_MODEL_DISCUSS`,
+  `lib/graph/probes/discuss-critique.sh` (now `spec-critique.sh`), and the
+  `human.after-discuss` node.
+
+### Fixed
+
+- The lint and typecheck slots resolve through the task runner a repository declares
+  before any bare binary: a `make`, `just`, `task`, or `tox` target, then a package
+  script through the manager its lockfile names (`lib/graph/driver.py runner_target`).
+  A container run derived `ruff check .`, got exit 127, and reported the whole
+  verification gate as `infra_error` while `make lint` was installed all along; the
+  test slot already resolved this way inside `lib/detect-test-cmd.sh`. The bare tool
+  stays the fallback when no target exists.
+- A pull request that was delivered but could not be flipped out of draft no longer
+  reports the whole run failed. When every blocked delivery target carries only a
+  readiness error code (`checks_unsupported`, `ready_failed`, `pr_already_ready`) and
+  the record holds the PR URL, the terminal result is `status: "completed"` with the new
+  outcome `delivered-unready`. A GitHub App without the checks scope made `gh pr checks`
+  answer "Resource not accessible by integration", and an open, pushed, correct PR was
+  published as `failed` / `delivery-blocked`. Any other blocked code, and a mix of the
+  two kinds, still reports `delivery-blocked`.
+- `reason` on a delivery ending names the delivery blocker: the blocking target's
+  `<errorCode>: <message>`, whatever the caller passed. One run published
+  `reason: "[Errno 2] No such file or directory: .../SPEC.md"` for a PR whose real
+  blocker was the checks scope, because the frozen-intent check escalated with that read
+  error and `lib/cycle-result.sh` relabelled the run `delivery-blocked` around it. A
+  reason a blocker replaces is kept as a `displaced-reason:` entry in `warnings[]`.
+- `lib/route-judgment.sh validate -` no longer hangs when the harness leaves stdin open.
+  It waits three seconds for the first line and then fails loudly, naming the fix (pass
+  the verdict file, or send it on a heredoc); the live run's first SPEC-entry judge call
+  spent its whole ten-minute tool timeout inside `cat`. The usage header says which form
+  to use, and `LOOP_SPEC_ROUTE` is now an opt-out: with the route fixed,
+  `cycle-driver.sh spec judge` answers `skipped` and dispatches nothing, because
+  `lib/graph/probes/oneshot.sh` answers from the override without reading a verdict.
+
 ## [6.8.0] - 2026-09-17
 
 ### Fixed

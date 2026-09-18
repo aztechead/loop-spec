@@ -160,8 +160,8 @@ mkdir -p "$WORK/console"
 con() { bash "$LIB" emit "$WORK/console" "$@" 2>&1 >/dev/null; }
 
 check "P: phase_start line" "[SPEC] start" "$(con phase_start --phase spec)"
-check "P: gate_round line" "[DISCUSS] gate critique round 2 - escalated" \
-  "$(con gate_round --phase discuss --data '{"gate":"critique","round":2,"result":"escalated"}')"
+check "P: gate_round line" "[SPEC] gate critique round 2 - escalated" \
+  "$(con gate_round --phase spec --data '{"gate":"critique","round":2,"result":"escalated"}')"
 check "P: dispatch line" "[PLAN] dispatch planner [opus, team]" \
   "$(con dispatch --phase plan --data '{"role":"planner","model":"opus","rung":"team"}')"
 check "P: verify_failure line" "[VERIFY] FAILURE: code-review" \

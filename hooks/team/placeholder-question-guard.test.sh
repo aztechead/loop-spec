@@ -54,7 +54,7 @@ stderr_of() {
 REAL='{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"header":"Gate outcome","question":"Gate: deploy API. Use Other to type 1-5 concrete observable criteria, or choose an existing source. Each criterion must name the observable and its exact passing value, regex, or threshold.","options":[{"label":"Copy from task'\''s acceptanceCriteria","description":"Use the existing concrete list"},{"label":"Stop - revise task","description":"Keep requiresUserSpecification and return control"}],"multiSelect":false}]}}'
 DUMMY_FLAT='{"tool_name":"AskUserQuestion","tool_input":{"header":"wait","question":"not a real question","options":["n/a","n/a2","Type something"]}}'
 DUMMY_WRAPPED='{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"header":"wait","question":"This is not a real question","options":[{"label":"n/a","description":"keep-alive"},{"label":"Type something","description":"occupy the wait"}],"multiSelect":false}]}}'
-REOPEN='{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"header":"Re-open SPEC","question":"ITERATE judges the goal still unmet because of a SPEC-level gap: missing timeout behavior. Re-open SPEC/DISCUSS, ship as-is, or stop?","options":[{"label":"Re-open SPEC/DISCUSS","description":"Rewind"},{"label":"Ship as-is","description":"Complete now"},{"label":"Stop - hand back","description":"Pause"}],"multiSelect":false}]}}'
+REOPEN='{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"header":"Re-open SPEC","question":"ITERATE judges the goal still unmet because of a SPEC-level gap: missing timeout behavior. Re-open SPEC, ship as-is, or stop?","options":[{"label":"Re-open SPEC","description":"Rewind"},{"label":"Ship as-is","description":"Complete now"},{"label":"Stop - hand back","description":"Pause"}],"multiSelect":false}]}}'
 PLAN_GAP='{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"header":"Plan gap","question":"Plan-adherence found PLAN.md ids with no completed task: T1. Re-queue the missing work, or abort EXECUTE?","options":[{"label":"Re-queue missing tasks","description":"Create TaskCreate entries"},{"label":"Abort EXECUTE","description":"Stop the phase"}],"multiSelect":false}]}}'
 MECHANISM='{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"header":"Mechanism","question":"Use Other to paste the exact shell command that captures proof, or choose an existing mechanism. API and inspection checks must be expressed as executable commands.","options":[{"label":"Use task verifyCommand","description":"Keep the existing concrete command"},{"label":"Subagent with briefing","description":"Specify a subagent proof contract"},{"label":"Stop - revise task","description":"Keep requiresUserSpecification and return control"}],"multiSelect":false}]}}'
 SCOPE='{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"header":"Scope","question":"Run this once, or over multiple targets?","options":[{"label":"Once","description":"One target"},{"label":"Per instance / target","description":"Every target"},{"label":"First on one, then on all","description":"Stage rollout"},{"label":"Custom","description":"Describe it"}],"multiSelect":false}]}}'
@@ -105,8 +105,8 @@ set_nested_skill execute specifying-gates
 check "a6: nested utility skills preserve EXECUTE restrictions" 2 "$OTHER_ITERATE"
 set_nested_skill verify specifying-gates
 check "a7: direct specifying-gates activation clears a stale late phase" 0 "$REAL"
-set_nested_skill iterate discuss
-check "a8: DISCUSS clears a stale ITERATE restriction" 0 "$REAL"
+set_nested_skill iterate spec
+check "a8: SPEC clears a stale ITERATE restriction" 0 "$REAL"
 set_nested_skill verify spec
 check "a9: SPEC clears a stale VERIFY restriction" 0 "$REAL"
 set_skill execute

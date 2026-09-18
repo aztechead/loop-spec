@@ -3,6 +3,9 @@
 set -euo pipefail
 case "${LOOP_SPEC_HARNESS:-claude}" in opencode|adk) exit 0 ;; esac
 plugin_root="${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}}"
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$plugin_root/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 python3 - "$plugin_root" <<'PY'
 import json
 import os

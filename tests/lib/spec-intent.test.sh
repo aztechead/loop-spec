@@ -87,7 +87,7 @@ Use existing helpers.
                                     "--feature-dir", str(promoted), expected=1)
     attended = repo / ".loop-spec/features/attended"
     attended.mkdir()
-    (attended / "feature.json").write_text(json.dumps({"slug": "attended", "currentPhase": "discuss"}))
+    (attended / "feature.json").write_text(json.dumps({"slug": "attended", "currentPhase": "spec"}))
     adocs = repo / "docs/loop-spec/features/attended"
     adocs.mkdir(parents=True)
     (adocs / "SPEC.md").write_text(original)

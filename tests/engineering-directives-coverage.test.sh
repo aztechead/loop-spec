@@ -39,7 +39,6 @@ checks=(
   "hooks/team/human-code-inject.sh	engineering-directives.md"
   "hooks/team/human-code-inject.sh	never from recall"
   "skills/spec/SKILL.md	phase-begin spec"
-  "skills/discuss/SKILL.md	phase-begin discuss"
   "skills/plan/SKILL.md	phase-begin plan"
   "skills/execute/SKILL.md	phase-begin execute"
   "skills/verify/SKILL.md	phase-begin verify"
@@ -68,7 +67,7 @@ for f in skills/cycle/SKILL.md agents/implementer.md; do
 done
 
 # A phase skill that still lists its inputs in prose has two ingress contracts.
-for f in skills/{spec,spec-lite,discuss,plan,execute,verify,iterate}/SKILL.md; do
+for f in skills/{spec,spec-lite,plan,execute,verify,iterate}/SKILL.md; do
   if grep -qE 'Inputs (come )?from' "$f"; then
     FAIL=$((FAIL+1)); echo "FAIL: $f lists inputs in prose beside the entry packet"
   else

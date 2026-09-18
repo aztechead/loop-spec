@@ -12,12 +12,11 @@ The gate plan must explain how the bounded change handles those concerns, using 
 
 ## `gatePlan` schema
 
-Every compact proposal carries `gatePlan` with exactly these ten entries:
+Every compact proposal carries `gatePlan` with exactly these nine entries:
 
 ```json
 {
   "specInterview": {"run": false, "reason": "nonblank explanation"},
-  "discuss": {"run": false, "reason": "nonblank explanation"},
   "specCritique": {"run": false, "reason": "nonblank explanation"},
   "planCritique": {"run": true, "reason": "nonblank explanation"},
   "repositoryValidation": {"run": true, "reason": "nonblank explanation"},
@@ -33,10 +32,8 @@ Each entry is exactly `{run:boolean, reason:nonblank single-line string of at mo
 characters}`. The plan is durable:
 the normalized classification persists it so execution can apply the classifier's
 decisions and record why each adaptable gate ran or did not run. A malformed or
-incomplete plan promotes the route to `full`.
-
-`specCritique` depends on `discuss`: its `run` value may be `true` only when
-`discuss.run` is also `true`. The verification gates remain independently selectable.
+incomplete plan promotes the route to `full`. The verification gates remain
+independently selectable.
 
 Compact does not waive integrity or delivery requirements. Repository validation,
 placeholder and tamper scans, acceptance evidence, review, iteration, and Exact-SHA

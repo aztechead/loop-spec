@@ -32,7 +32,11 @@ fields are `id`, `subject`,
 `goal`, `files`, `read_first`, `interfaces`, `verifyCommand`, `expected`,
 `acceptanceCriteria`, `blockedBy`, and `steps`; workspace tasks also need `repo`.
 Do not compute waves. `blockedBy` contains logical dependencies; file-overlap edges
-come from the harness. `batchGroup` and `modelTier: mechanical` are optional.
+come from the harness, so two tasks that name the same file run one after the other
+whatever `blockedBy` says. Give each file one owning task and fold a shared edit (a
+test registration, a shared module) into that task; a plan of four or more tasks
+that runs as a chain fails the PLAN exit gate (`lib/plan-exit-gate.sh`, `[width]`).
+`batchGroup` and `modelTier: mechanical` are optional.
 
 Shape tasks as vertical slices: each `Goal` names the observable capability a caller
 or user gains, and its necessary layers plus behavioral tests land together. Combine a

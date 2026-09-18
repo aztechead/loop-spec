@@ -61,6 +61,80 @@ check "brief carries steps" "ok" "$r"
 grep -q "Produces: bar" "$brief" && r=ok || r=missing
 check "brief carries interfaces" "ok" "$r"
 
+# The brief renders the shared engineering contracts this task's files call for into
+# one file beside it, so the implementer reads one file instead of opening up to eight.
+cat > "$FDIR/tasks.json" <<'EOF'
+[
+  {
+    "id": "task-003",
+    "subject": "add helper",
+    "brief": "Add a helper and its test.",
+    "files": ["lib/x.sh", "tests/lib/x.test.sh"],
+    "blockedBy": [],
+    "verifyCommand": "true",
+    "acceptanceCriteria": ["works"]
+  }
+]
+EOF
+bash "$SCRIPT" brief --feature-dir "$FDIR" --task-id task-003 --out "$WORK/code-brief.md" >/dev/null
+check "brief: names the rendered contracts file under Read first" "1" "$(grep -c '^## Read first' "$WORK/code-brief.md")"
+check "brief: contracts file exists beside the brief, named by task id" "1" "$([[ -f "$WORK/task-003-contracts.md" ]] && echo 1 || echo 0)"
+check "contracts: code task renders human-code" "1" "$(grep -c '<!-- source: .*/human-code.md -->' "$WORK/task-003-contracts.md")"
+check "contracts: test file renders writing-good-tests" "1" "$(grep -c '<!-- source: .*/writing-good-tests.md -->' "$WORK/task-003-contracts.md")"
+check "contracts: code-only task skips human-docs" "0" "$(grep -c '<!-- source: .*/human-docs.md -->' "$WORK/task-003-contracts.md")"
+check "contracts: the always set is present" "3" "$(grep -cE '<!-- source: .*/(engineering-directives|implementer-contract|execution-discipline).md -->' "$WORK/task-003-contracts.md")"
+
+cat > "$FDIR/tasks.json" <<'EOF'
+[
+  {
+    "id": "task-004",
+    "subject": "update readme",
+    "brief": "Update README.",
+    "files": ["README.md"],
+    "blockedBy": [],
+    "verifyCommand": "true",
+    "acceptanceCriteria": ["updated"]
+  }
+]
+EOF
+bash "$SCRIPT" brief --feature-dir "$FDIR" --task-id task-004 --out "$WORK/docs-brief.md" >/dev/null
+check "contracts: docs-only task renders human-docs" "1" "$(grep -c '<!-- source: .*/human-docs.md -->' "$WORK/task-004-contracts.md")"
+check "contracts: docs-only task skips human-code" "0" "$(grep -c '<!-- source: .*/human-code.md -->' "$WORK/task-004-contracts.md")"
+
+# A task under a spec/ directory (not a *.spec.* file) no longer pulls the tests
+# contract in by directory name alone.
+cat > "$FDIR/tasks.json" <<'EOF'
+[
+  {
+    "id": "task-006",
+    "subject": "update spec skill",
+    "brief": "Edit the spec skill.",
+    "files": ["skills/spec/SKILL.md"],
+    "blockedBy": [],
+    "verifyCommand": "true",
+    "acceptanceCriteria": ["updated"]
+  }
+]
+EOF
+bash "$SCRIPT" brief --feature-dir "$FDIR" --task-id task-006 --out "$WORK/spec-dir-brief.md" >/dev/null
+check "contracts: a spec/ directory path renders no writing-good-tests" "0" "$(grep -c '<!-- source: .*/writing-good-tests.md -->' "$WORK/task-006-contracts.md")"
+
+# A missing contract source must fail the brief loudly rather than write a Read-first
+# pointer at a file that was never rendered.
+PLUGIN="$WORK/plugin"; mkdir -p "$PLUGIN/lib" "$PLUGIN/skills/shared"
+cp "$ROOT/lib/dispatch-files.sh" "$PLUGIN/lib/dispatch-files.sh"
+for f in "$ROOT"/skills/shared/*.md; do
+  base="$(basename "$f")"
+  [[ "$base" == "human-docs.md" ]] && continue
+  cp "$f" "$PLUGIN/skills/shared/$base"
+done
+MISSING="$WORK/missing-contract"; mkdir -p "$MISSING"
+printf '[{"id":"task-005","subject":"update readme","brief":"Update README.","files":["README.md"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["updated"]}]' > "$MISSING/tasks.json"
+ec=0; err="$(bash "$PLUGIN/lib/dispatch-files.sh" brief --feature-dir "$MISSING" --task-id task-005 2>&1 >/dev/null)" || ec=$?
+check "a missing contract source fails the brief loudly" "2" "$ec"
+grep -q "contract source missing" <<<"$err" && r=ok || r=missing
+check "the missing-contract error names the source" "ok" "$r"
+
 # The brief must carry fields produced by PLAN extraction, not only fields hand-built
 # by a caller. This catches loss between the durable Markdown artifact and dispatch.
 cat > "$FDIR/PLAN.md" <<'EOF'

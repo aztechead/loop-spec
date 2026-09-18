@@ -25,7 +25,7 @@ Batch independent tool calls in one response. Keep dependent calls in order, and
 not turn a batch into a wall of status messages. Say what you mean in direct, literal
 language; mannered prose adds work without adding information.
 
-Grill, SPEC interview, and DISCUSS clarifying questions are the work, not chatter.
+Grill and SPEC's interview and clarifying questions are the work, not chatter.
 `style:auto` is not autonomous mode: auto still asks; only the `autonomous` token
 or `LOOP_SPEC_AUTONOMOUS=1` self-answers.
 
@@ -48,7 +48,7 @@ so the whole lifecycle is greppable from a streamed log:
 
 ```text
 [SPEC] start
-[DISCUSS] gate critique round 2 - escalated
+[SPEC] gate critique round 2 - escalated
 [PLAN] dispatch planner [inherit, team]
 [EXECUTE] DAG width W=2 -> rung: subagent (teams unavailable: no TeamCreate)
 [VERIFY] FAILURE: code-review

@@ -35,7 +35,7 @@ the Good Enough criteria with their check commands) and every footprint file; fo
 callers and imports far enough to know the change stays inside the footprint.
 
 You never escalate; a gate does, from evidence, and the run then takes the full path
-from DISCUSS with the reason on record: a reviewer BLOCK that stands after your fix
+from SPEC with the reason on record: a reviewer BLOCK that stands after your fix
 (a change that outgrew the footprint is one), or the exit gate held three times on
 the same flags. When the change needs a file the footprint does not name, make it and
 say so in the commit: the reviewer reads the whole diff and holds the scope; no gate
@@ -139,7 +139,7 @@ and the converged floor over the acceptance table), commits
 SPEC.md and VERIFICATION.md, tags `post-oneshot`, and routes to DELIVER; `REDO` with
 `FLAG` lines means fix the change, or the value a flag names through the driver, and
 return again. An escalated spec passes the exit with nothing to check and
-routes to DISCUSS.
+routes to SPEC.
 
 ## Resume
 

@@ -1,12 +1,12 @@
 # loop-spec
 
-> Spec-driven development loops for Claude Code and the Claude Agent SDK, opencode, OpenAI Codex, and Google ADK, from one source tree. Give it a task; it runs SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER and ships one verified PR. State is durable on disk, so a dead agent resumes instead of restarting.
+> Spec-driven development loops for Claude Code and the Claude Agent SDK, opencode, OpenAI Codex, and Google ADK, from one source tree. Give it a task; it runs SPEC, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER and ships one verified PR. State is durable on disk, so a dead agent resumes instead of restarting.
 
 This file is for an agent or a person who was pointed at this repository and needs to know what to run, what to read, and what not to invent. Every path below exists in the tree; read the file before acting on a claim about it. Runtime: bash 3.2+, git, jq 1.5+, python3 3.7+. No daemon, no database, no stored code map.
 
 ## Start here
 
-- [README.md](README.md): install per harness, the seven phases, the skills table, headless use, configuration pointers.
+- [README.md](README.md): install per harness, the six phases, the skills table, headless use, configuration pointers.
 - [docs/adopting.md](docs/adopting.md): first cycle, pitfalls, multi-repo workspaces, embedding in an SDK app.
 - [CLAUDE.md](CLAUDE.md): the rules a change to this repository must obey (probes over judgments, no new dependencies, tested skill bodies, house-style probes to run).
 

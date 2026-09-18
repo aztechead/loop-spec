@@ -34,6 +34,9 @@ fi
 command -v python3 >/dev/null 2>&1 || exit 0
 
 INPUT=$(cat)
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 # simplicity: retain four-space Python indentation inside this shell boundary; extract
 # a standalone scanner only if another hook needs the command-position parser.
 VERDICT=$(printf '%s' "$INPUT" | NESTED_GUARD_CWD="$PWD" NESTED_GUARD_PROJECT_DIR="$PROJECT_DIR" python3 -c '

@@ -53,7 +53,7 @@ Skills run in main thread. Main thread has AskUserQuestion. Confirmed working: A
 
 **Decision:** PROCEED. No changes needed.
 
-**Caveat:** AskUserQuestion is NOT available inside subagents dispatched via Agent tool. This is fine; the design only uses AskUserQuestion in main-thread orchestrator skills (cycle, discuss).
+**Caveat:** AskUserQuestion is NOT available inside subagents dispatched via Agent tool. This is fine; the design only uses AskUserQuestion in main-thread orchestrator skills (cycle, spec).
 
 ### 4. `claude --print` stdin behavior
 

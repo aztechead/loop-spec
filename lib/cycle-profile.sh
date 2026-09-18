@@ -3,7 +3,7 @@
 # compact gates.
 #
 # Why: a dependency version bump that routes to the full cycle still pays the SPEC
-# interview, the DISCUSS critique, and the PLAN critique. Those gates exist for changes
+# interview, SPEC's critique, and the PLAN critique. Those gates exist for changes
 # that can be wrong in ways a reviewer would not catch; on mechanical low-risk work they
 # are the largest avoidable cost in the run. This is the probe that decides, so the
 # decision is one auditable line rather than a per-phase judgment call.
@@ -14,9 +14,8 @@
 # interface change, a security surface, a migration, a multi-repo blast radius, or scope
 # beyond a handful of files each disqualify it. The graph short path
 # (`lib/graph/probes/short-path.sh`), selected from this profile, additionally routes
-# around discuss, the spec-critique subgraph, and the code-review agent — that last one
-# is coverage, and only behind this classification. PLAN critique is still decided by
-# `plan-critique.sh`, not by this probe.
+# around the code-review agent — that is coverage, and only behind this classification.
+# PLAN critique is still decided by `plan-critique.sh`, not by this probe.
 #
 # Usage:
 #   cycle-profile.sh select [<classification.json> | -]
@@ -33,7 +32,7 @@ set -euo pipefail
 validate_gate_plan() {
   jq -e '
     def gate_names: [
-      "specInterview", "discuss", "specCritique", "planCritique",
+      "specInterview", "specCritique", "planCritique",
       "repositoryValidation", "placeholderScan", "tamperScan", "acceptance",
       "codeReview", "iterate"
     ];
@@ -47,8 +46,7 @@ validate_gate_plan() {
       ($plan[$name].reason | type == "string" and
         (length <= 240) and
         test("^[^\\r\\n]+$") and
-        (gsub("[[:space:]]"; "") | length > 0))) and
-    ((.gatePlan.specCritique.run | not) or .gatePlan.discuss.run)
+        (gsub("[[:space:]]"; "") | length > 0)))
   ' >/dev/null 2>&1 <<<"$1"
 }
 
