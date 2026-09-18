@@ -200,9 +200,14 @@ case "$cmd" in
       cur_bytes=$((cur_bytes + bytes))
     done
     groups="$(jq -c --argjson g "$cur" --argjson b "$cur_bytes" '. + [{tasks:$g, bytes:$b}]' <<<"$groups")"
-    while IFS= read -r g; do
-      emit dispatch "$(jq -cn --arg m "$model" --arg r "$rung" --argjson g "$g" '{role:"spec-compliance-reviewer",model:$m,rung:$r,tasks:[$g.tasks[].task],bytes:$g.bytes}')"
-    done < <(jq -c '.[]' <<<"$groups")
+    # The session rung launches its reviewer through `run --role reviewer`, which emits
+    # at launch; grouping there would count every reviewer twice (the 6.9.0 full-route
+    # live run recorded two events per task).
+    if [[ "$rung" != "session" ]]; then
+      while IFS= read -r g; do
+        emit dispatch "$(jq -cn --arg m "$model" --arg r "$rung" --argjson g "$g" '{role:"spec-compliance-reviewer",model:$m,rung:$r,tasks:[$g.tasks[].task],bytes:$g.bytes}')"
+      done < <(jq -c '.[]' <<<"$groups")
+    fi
     jq -cn --arg m "$model" --argjson g "$groups" '{model:$m, groups:$g}'
     ;;
   run)

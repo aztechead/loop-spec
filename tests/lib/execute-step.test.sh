@@ -125,8 +125,10 @@ if [[ "$(jq -r '.rung.subagentIsolation' "$FD2/dispatch/prepare.json")" == "lead
   rg="$(bash "$STEP" review-groups --feature-dir "$FD2" --tasks task-001)"
   check "review-groups: one task is one group" "1" "$(jq -r '.groups | length' <<<"$rg")"
   check "review-groups: the group names its package" "$(jq -r '.package' <<<"$out")" "$(jq -r '.groups[0].tasks[0].package' <<<"$rg")"
-  check "review-groups: emits one reviewer dispatch per group" "$((before + 1))" "$(grep -c 'spec-compliance-reviewer' "$FD2/events.jsonl")"
-  check "review-groups: the event lists the tasks" "1" "$(grep -c '"tasks":\["task-001"\]' "$FD2/events.jsonl")"
+  # The session rung emits at launch (run --role reviewer), every other rung here.
+  launches=1; [[ "$(jq -r '.rung.rung' "$FD2/dispatch/prepare.json")" == "session" ]] && launches=0
+  check "review-groups: emits one reviewer dispatch per group off the session rung" "$((before + launches))" "$(grep -c 'spec-compliance-reviewer' "$FD2/events.jsonl")"
+  check "review-groups: the event lists the tasks" "$launches" "$(grep -c '"tasks":\["task-001"\]' "$FD2/events.jsonl")"
   ec=0; LOOP_SPEC_REVIEW_GROUP_BYTES=zero bash "$STEP" review-groups --feature-dir "$FD2" --tasks task-001 >/dev/null 2>&1 || ec=$?
   check "review-groups: a bad cap is a configuration error" "2" "$ec"
   rg="$(LOOP_SPEC_REVIEW_GROUP_BYTES=1 bash "$STEP" review-groups --feature-dir "$FD2" --tasks task-001,task-001)"

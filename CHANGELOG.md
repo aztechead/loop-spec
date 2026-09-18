@@ -34,7 +34,15 @@ All notable changes documented here. Format follows Keep a Changelog.
   `LOOP_SPEC_REVIEW_GROUP_BYTES` (default 150000) and emits one `dispatch` event per
   group; the reviewer returns `verdicts[]`, one entry per task. Rework and the scoped
   re-review stay per task. `task package` no longer emits a dispatch event (packaging
-  is not a launch); the session rung's `run --role reviewer` emits it instead.
+  is not a launch); the session rung's `run --role reviewer` emits it instead, and
+  `review-groups` emits nothing on that rung.
+- With neither `LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS` nor `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS`
+  set, the implementer wave cap is the plan's DAG width up to 3 (`lib/execute-rung.sh`).
+  Every rung defaulted to one at a time, so the width gate and the per-wave review
+  never paid off: the 6.9.0 full-route live run planned width 3 and ran serially.
+- `lib/python-path.sh` relinks its private python3 only when the target changed; the
+  unconditional relink left the link missing for a moment and eight parallel test jobs
+  raced through it once every hook called the helper.
 - The DISCUSS phase is folded into SPEC. The spec-critique gate now sits between the
   SPEC phase and the human approval node (`spec -> spec.critique.gate -> spec.critique
   -> human.after-spec`), so the human reviews the critiqued spec once instead of
