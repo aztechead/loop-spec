@@ -40,7 +40,7 @@ are how loop-spec expresses and already realizes each pattern.
 
 | Pattern (source) | Graph shape (loop-spec) | Realized today by |
 |---|---|---|
-| Prompt chaining | `chain` edges | SPEC → DISCUSS → PLAN → EXECUTE → VERIFY → ITERATE → DELIVER |
+| Prompt chaining | `chain` edges | SPEC → PLAN → EXECUTE → VERIFY → ITERATE → DELIVER |
 | Routing | `route` edges | `skills/auto/` + `lib/task-route.sh` (micro / debug / full) |
 | Parallelization | `fanout` + `fanin` | EXECUTE's DAG waves; VERIFY's dimension reviewers |
 | Reflection | bounded `loop` around a `gate` | critique gates, spec-compliance review, ITERATE's judge |

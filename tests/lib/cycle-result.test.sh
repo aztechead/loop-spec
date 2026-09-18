@@ -702,10 +702,10 @@ check "W6d: draft delivery still counts as work shipped" "true" \
 printf '%s\n' "$(jq '.currentPhase = "plan"' <<<"$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
 bash "$LIB" begin --result-root "$WORK" --cycle-type full \
   --title "Phase handoff" --slug my-feature --branch feat/my-feature \
-  --base-branch main --feature-dir "$FEAT_DIR" --phase discuss
+  --base-branch main --feature-dir "$FEAT_DIR" --phase spec
 LOOP_SPEC_RESULT_ROOT="$WORK" bash "$LIB" write "$FEAT_DIR" --status paused \
   --reason phase-handoff \
-  --summary "Phase discuss completed; plan is ready in durable state." >/dev/null
+  --summary "Phase spec completed; plan is ready in durable state." >/dev/null
 check "X: phase handoff is a paused result" "paused:phase-handoff:plan" \
   "$(jq -r '.status + ":" + .reason + ":" + .phaseReached' "$LOOP_DIR/last-result.json")"
 check "X: phase handoff clears active pointer" "0" \
@@ -902,7 +902,6 @@ check "AB4: begin without a classification stores JSON null" "null" \
 # `classification`, preserving the active-run/public result spelling.
 COMPACT_GATE_PLAN="$(jq -nc '{
   specInterview: {run: false, reason: "bounded requirements are grounded"},
-  discuss: {run: false, reason: "no unresolved product decision"},
   specCritique: {run: false, reason: "scope is deliberately bounded"},
   planCritique: {run: true, reason: "review the compact plan"},
   repositoryValidation: {run: true, reason: "validate repository state"},

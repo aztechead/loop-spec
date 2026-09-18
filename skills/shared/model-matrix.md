@@ -76,7 +76,7 @@ The consuming surfaces differ and a selector valid for one is not valid for all:
 | agent definition frontmatter (`agents/*.md`) | an alias or `inherit` |
 | `claude --model` / SDK `model` option | an alias or a full model ID; never the literal `inherit` |
 
-Supported phase suffixes are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`,
+Supported phase suffixes are `SPEC`, `PLAN`, `EXECUTE`, `VERIFY`,
 `ITERATE`, and `DELIVER`. Supported role suffixes are `SPEC_WRITER`,
 `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`,
 `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`,

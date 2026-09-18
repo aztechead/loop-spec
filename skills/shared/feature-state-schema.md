@@ -35,7 +35,6 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "autonomousClassification": "normalized active-run classification object | absent on legacy runs",
   "gatePlan": {
     "specInterview": {"run": "boolean", "reason": "nonblank classifier reason"},
-    "discuss": {"run": "boolean", "reason": "nonblank classifier reason"},
     "specCritique": {"run": "boolean", "reason": "nonblank classifier reason"},
     "planCritique": {"run": "boolean", "reason": "nonblank classifier reason"},
     "repositoryValidation": {"run": "boolean", "reason": "nonblank classifier reason"},
@@ -45,7 +44,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "codeReview": {"run": "boolean", "reason": "nonblank classifier reason"},
     "iterate": {"run": "boolean", "reason": "nonblank classifier reason"}
   },
-  "currentPhase": "a phase id of lib/graph/phases.sh list (spec | oneshot | discuss | plan | execute | verify | iterate | deliver) | completed",
+  "currentPhase": "a phase id of lib/graph/phases.sh list (spec | oneshot | plan | execute | verify | iterate | deliver) | completed",
   "currentPhaseStartedAt": "ISO-8601 timestamp or null; set by cycle-driver.sh next when it answers NEXT for a phase (the watchdog reads it)",
   "verificationBaselineAttempted": "boolean; set after capture persistence or a handled failure; interrupted capture remains retryable",
   "verificationBaselineOptIn": "boolean; durable operator choice to capture a baseline in EXECUTE or ONESHOT",
@@ -84,7 +83,6 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "phaseModels": {
     "spec": "Claude selector | null",
     "oneshot": "Claude selector | null",
-    "discuss": "Claude selector | null",
     "plan": "Claude selector | null",
     "execute": "Claude selector | null",
     "verify": "Claude selector | null",
@@ -228,14 +226,14 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   `lib/cycle-profile.sh` and persisted so a resume keeps the same shape. `standard` is the
   default and today's full ladder. `maintenance` is earned only by a validated low-risk
   classification (or an explicit operator override): SPEC synthesizes its spec instead of
-  interviewing, and the graph short path skips DISCUSS, spec-critique, and the
-  code-review agent when `lib/security-signal.sh` reports no match. PLAN critique skip is
+  interviewing and skips its own critique, and the graph short path skips the
+  code-review agent, when `lib/security-signal.sh` reports no match. PLAN critique skip is
   `plan-critique.sh` / the skill fast-path, not that short path. The question gate, the
   feasibility check, and the deterministic VERIFY gates stay; code review is the one
   quality gate the short path drops, and only behind this classification.
 - `compact` is a separate, classifier-authored ladder. Bootstrap records the normalized
   input in `autonomousClassification` and persists `gatePlan` only when the normalized
-  compact decision passes `lib/cycle-profile.sh`: all ten named gates must have exactly a
+  compact decision passes `lib/cycle-profile.sh`: all nine named gates must have exactly a
   boolean `run` and a nonblank, single-line reason of at most 240 characters; see
   `skills/shared/compact-profile.md`. Graph and phase skills read that committed plan on
   every entry, so a resume never recalculates or silently widens a skip. Missing or
@@ -346,7 +344,7 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
 
 ### Per-phase harness task list notes
 
-**DISCUSS.** No harness task list. The challenger (and spec-writer only when SPEC.md was missing) communicate via `SendMessage`; the lead tracks gate state in `feature.json.currentGate` and appends round-end messages to `.loop-spec/features/{slug}/gate-logs/`.
+**SPEC.** No harness task list for the critique step's teammates. The challenger (and spec-writer only when SPEC.md was missing) communicate via `SendMessage`; the lead tracks gate state in `feature.json.currentGate` and appends round-end messages to `.loop-spec/features/{slug}/gate-logs/`.
 
 **PLAN.** No harness task list for PLAN's internal teammates (pattern-mapper, planner, challenger). PLAN derives the validated `tasks[]` JSON from PLAN.md's task blocks (`lib/plan-tasks.sh extract`) into `tasks.json`; the EXECUTE team's harness task list is created from it later, by `TaskCreate` calls in EXECUTE Step 3 (one task per planned task), populated with `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst`, and `specPath` in task `metadata`. It is not pre-created at PLAN exit and there is no EXECUTE Step 0.
 
@@ -373,10 +371,10 @@ On `cycle` skill startup, candidate `feature.json` files are enumerated, filtere
 
 `specApproval` records `sha256`, `source` (`human`, `supervised`, or `autonomous`),
 and `approvedAt`. The driver creates it when the cycle enters PLAN, on every route in
-(the DISCUSS gate, the short and compact paths, ITERATE's plan gap), with the source
+(SPEC's critique gate, the short and compact paths, ITERATE's plan gap), with the source
 read from `lib/supervisor/oracle.sh`. Until then Goal and Boundary may change: SPEC's
-interview settles intent and DISCUSS's design questions may refine it. `specIntentSeen`
-holds their digest at SPEC exit so the DISCUSS gate can say `intent=changed`. Once
+interview settles intent and its own critique may refine it. `specIntentSeen`
+holds their digest at SPEC exit so the pause at `human.after-spec` can say `intent=changed`. Once
 recorded, the state writer refuses replacement or deletion, PLAN entry requires it,
 and phase exit passes the feature dir to artifact lint, which compares those sections
 with the approved digest even after intervening commits. Implementation and

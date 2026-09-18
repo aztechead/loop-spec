@@ -283,7 +283,7 @@ FINDINGS="$(jq -cn --argjson feats "$FEATS" --argjson min "$MIN" --argjson fleet
       {id: "gap-spec-recurs", kind: "rule-candidate",
        pattern: "SPEC scope was the iterate gap across multiple features",
        evidence: {count: ($specFeats | length), features: $specFeats},
-       rule: {text: "Retro: SPEC scope gaps recur - spend one extra interview round on scope boundaries and edge cases before DISCUSS", check: null}}
+       rule: {text: "Retro: SPEC scope gaps recur - spend one extra interview round on scope boundaries and edge cases", check: null}}
      else empty end),
     (if ($specCapFeats | length) >= $min then
       {id: "gate-cap-spec-critique", kind: "rule-candidate",

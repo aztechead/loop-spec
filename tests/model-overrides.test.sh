@@ -140,8 +140,8 @@ check "phase map: configured SPEC persisted" \
   "$(echo "$phase_models" | jq -e '.spec == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "phase map: configured EXECUTE persisted" \
   "$(echo "$phase_models" | jq -e '.execute == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "phase map: unset DISCUSS is null" \
-  "$(echo "$phase_models" | jq -e '.discuss == null' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "phase map: unset ITERATE is null" \
+  "$(echo "$phase_models" | jq -e '.iterate == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "phase model: direct resolver supports SDK launcher" \
   "$([[ "$(LOOP_SPEC_PHASE_MODEL_VERIFY=opus bash "$LIB" phase-model verify)" == "opus" ]] && echo 1 || echo 0)"
 all_models="$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_PHASE_MODEL_EXECUTE=haiku LOOP_SPEC_MODEL_ITERATE_JUDGE=fable \
@@ -150,19 +150,19 @@ check "health-check set: includes every phase and role selector" \
   "$(echo "$all_models" | jq -e \
     'sort == ["fable","haiku","inherit","opus","sonnet"]' >/dev/null 2>&1 && echo 1 || echo 0)"
 
-phase_full_id="$(LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 \
-  bash "$LIB" models --phase discuss)"
+phase_full_id="$(LOOP_SPEC_PHASE_MODEL_ITERATE=claude-opus-4-8 \
+  bash "$LIB" models --phase iterate)"
 check "Claude phase full ID: role Agents inherit the fresh main model" \
   "$(echo "$phase_full_id" | jq -e '[.[]] | all(. == "inherit")' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "Claude phase full ID: launcher still receives the exact selector" \
-  "$([[ "$(LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 \
-    bash "$LIB" phase-model discuss)" == "claude-opus-4-8" ]] && echo 1 || echo 0)"
+  "$([[ "$(LOOP_SPEC_PHASE_MODEL_ITERATE=claude-opus-4-8 \
+    bash "$LIB" phase-model iterate)" == "claude-opus-4-8" ]] && echo 1 || echo 0)"
 check "Claude phase full ID: startup selector set retains launcher value" \
-  "$(LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 bash "$LIB" all-models \
+  "$(LOOP_SPEC_PHASE_MODEL_ITERATE=claude-opus-4-8 bash "$LIB" all-models \
     | jq -e 'index("claude-opus-4-8") != null and index("inherit") != null' \
     >/dev/null 2>&1 && echo 1 || echo 0)"
 check "Claude phase full ID: never sent to the Agent probe" \
-  "$(LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 bash "$LIB" agent-probe-models \
+  "$(LOOP_SPEC_PHASE_MODEL_ITERATE=claude-opus-4-8 bash "$LIB" agent-probe-models \
     | jq -e 'index("claude-opus-4-8") == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 oc_phase_alias_exit=0
 LOOP_SPEC_HARNESS=opencode LOOP_SPEC_PHASE_MODEL_EXECUTE=sonnet \
@@ -173,15 +173,15 @@ check "OpenCode phase native ID: retained for the fleet consumer" \
   "$(LOOP_SPEC_HARNESS=opencode LOOP_SPEC_PHASE_MODEL_EXECUTE=anthropic/claude-sonnet \
     bash "$LIB" models --phase execute \
     | jq -e '.implementer == "anthropic/claude-sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
-phase_stderr="$(LOOP_SPEC_PHASE_MODEL_DISCUSS=bogus \
-  bash "$LIB" models --phase discuss 2>&1 1>/dev/null || true)"
+phase_stderr="$(LOOP_SPEC_PHASE_MODEL_ITERATE=bogus \
+  bash "$LIB" models --phase iterate 2>&1 1>/dev/null || true)"
 phase_invalid_exit=0
-LOOP_SPEC_PHASE_MODEL_DISCUSS=bogus \
-  bash "$LIB" models --phase discuss >/dev/null 2>/dev/null || phase_invalid_exit=$?
+LOOP_SPEC_PHASE_MODEL_ITERATE=bogus \
+  bash "$LIB" models --phase iterate >/dev/null 2>/dev/null || phase_invalid_exit=$?
 check "invalid phase value: non-zero exit for unstructured selector" \
   "$([[ "$phase_invalid_exit" -ne 0 ]] && echo 1 || echo 0)"
 check "invalid phase value: stderr names the phase var" \
-  "$([[ "$phase_stderr" == *"LOOP_SPEC_PHASE_MODEL_DISCUSS"* ]] && echo 1 || echo 0)"
+  "$([[ "$phase_stderr" == *"LOOP_SPEC_PHASE_MODEL_ITERATE"* ]] && echo 1 || echo 0)"
 
 # --- Test 9: Activation atomically persists the exact map dispatches consume ---
 WORK="$(mktemp -d)"

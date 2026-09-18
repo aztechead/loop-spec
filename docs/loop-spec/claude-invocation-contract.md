@@ -151,7 +151,7 @@ startup warning about absent humans is suppressed by `/loop-spec:auto` (which is
 autonomous by construction).
 
 For phase-specific models, pass
-`LOOP_SPEC_PHASE_MODEL_SPEC`/`DISCUSS`/`PLAN`/`EXECUTE`/`VERIFY`/`ITERATE`/`DELIVER`
+`LOOP_SPEC_PHASE_MODEL_SPEC`/`PLAN`/`EXECUTE`/`VERIFY`/`ITERATE`/`DELIVER`
 through `ClaudeAgentOptions.env`. loop-spec activates each phase value on every
 subagent and gate launch. To move the main SDK query between those models too,
 construct a fresh `ClaudeAgentOptions` for each paused handoff (every phase hands

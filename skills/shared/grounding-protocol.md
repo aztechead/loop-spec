@@ -216,12 +216,12 @@ are still preferred):
 
 - **Parenthetical qualifier** after the keyword — `- ASSUMPTION (SPEC): ...`,
   `- EVID-001 (PLAN): ...` — as writers carry the `ASSUMPTION ({dimension}):`
-  transcript convention from DISCUSS into artifacts.
+  transcript convention into artifacts.
 - **Wrapped bullets** — a long bullet may continue on following lines if each
   continuation line is indented; the lint joins them into one logical bullet
   before validating. Column-0 lines are prose, never continuations.
 
-`lib/grounding-lint.sh` runs in the DISCUSS and PLAN exit gates. Exit 1 (with
+`lib/grounding-lint.sh` runs in the SPEC and PLAN exit gates. Exit 1 (with
 `FLAG <artifact>:<lineno>:` lines) blocks the commit and re-dispatches the writer.
 Exit 0 (`grounding-lint: ok`) clears the gate. The lint strips complete
 `<!-- ... -->` comment blocks before validation and only inspects `- `-prefixed

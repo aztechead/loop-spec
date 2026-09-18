@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # phase-mode.sh - Which path does this phase take? One line, decided from state.
 #
-# Why: SPEC, DISCUSS, PLAN, and VERIFY each opened with a page of prose describing
+# Why: SPEC, PLAN, and VERIFY each opened with a page of prose describing
 # when to interview, self-answer, synthesize, or skip a gate — autonomous, non-
 # interactive, maintenance, compact, spec-file, greenfield, ITERATE re-entry — and
 # the model re-derived the branch every run. Every one of those conditions is
@@ -10,9 +10,8 @@
 #
 # Usage:
 #   phase-mode.sh spec    --feature-dir DIR
-#     path=<ingest|self-answer|synthesize|interview> [oracle=<supervisor|self>] reason=<text> greenfield=<bool>
-#   phase-mode.sh discuss --feature-dir DIR
-#     grill=<run|self-answer|skip> [oracle=<supervisor|self>] critique=<run|skip> reentry=<bool> reason=<text>
+#     path=<ingest|self-answer|synthesize|interview> [oracle=<supervisor|self>]
+#     grill=<run|self-answer|skip> critique=<run|skip> reentry=<bool> reason=<text> greenfield=<bool>
 #   (oracle= appears on the self-answer path only; lib/supervisor/oracle.sh decides it)
 #   phase-mode.sh plan    --feature-dir DIR
 #     critique=<run|skip> reentry=<bool> reason=<text>
@@ -30,11 +29,11 @@ phase="${1:-}"; shift || true
 feature_dir=""
 while [[ $# -gt 0 ]]; do
   case "$1" in --feature-dir) feature_dir="${2:-}"; shift 2 || { echo "phase-mode: $1 needs a value" >&2; exit 2; } ;;
-    *) echo "usage: phase-mode.sh <spec|discuss|plan|verify> --feature-dir DIR" >&2; exit 2 ;;
+    *) echo "usage: phase-mode.sh <spec|plan|verify> --feature-dir DIR" >&2; exit 2 ;;
   esac
 done
-case "$phase" in spec|discuss|plan|verify) ;;
-  *) echo "usage: phase-mode.sh <spec|discuss|plan|verify> --feature-dir DIR" >&2; exit 2 ;;
+case "$phase" in spec|plan|verify) ;;
+  *) echo "usage: phase-mode.sh <spec|plan|verify> --feature-dir DIR" >&2; exit 2 ;;
 esac
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] \
   || { echo "phase-mode: --feature-dir must hold a feature.json" >&2; exit 2; }
@@ -83,34 +82,30 @@ case "$phase" in
   spec)
     gf="$(fget '.greenfield // false')"
     budget_line="$(bash "$SCRIPT_DIR/design-budget.sh" --feature-dir "$feature_dir" --phase spec)"
-    if [[ -f "$feature_dir/spec-draft.md" ]]; then
-      echo "path=ingest $budget_line reason=spec-draft.md present greenfield=$gf"
-    elif [[ "$autonomous" == true ]]; then
-      echo "path=self-answer oracle=$(oracle) $budget_line reason=autonomous greenfield=$gf"
-    elif [[ "$non_interactive" == true ]]; then
-      echo "path=synthesize $budget_line reason=LOOP_SPEC_NON_INTERACTIVE=1 greenfield=$gf"
-    elif [[ "$profile" == "maintenance" ]]; then
-      echo "path=synthesize $budget_line reason=maintenance profile greenfield=$gf"
-    elif [[ "$profile" == "compact" && "$(compact_gate specInterview)" == "skip" ]]; then
-      echo "path=synthesize $budget_line reason=compact gatePlan skips specInterview greenfield=$gf"
-    else
-      echo "path=interview $budget_line reason=human attached greenfield=$gf"
-    fi
-    ;;
-  discuss)
-    budget_line="$(bash "$SCRIPT_DIR/design-budget.sh" --feature-dir "$feature_dir" --phase discuss)"
-    if [[ "$autonomous" == true ]]; then grill=self-answer; why=autonomous
-    elif [[ "$non_interactive" == true ]]; then grill=skip; why=LOOP_SPEC_NON_INTERACTIVE=1
-    elif [[ "$style" == "review-only" ]]; then grill=skip; why="review-only style"
-    else grill=run; why="human attached"; fi
-    line="$(bash "$SCRIPT_DIR/graph/probes/discuss-critique.sh" --feature-dir "$feature_dir" 2>/dev/null || echo "gate=run reason=probe failed")"
+    if [[ "$autonomous" == true ]]; then grill=self-answer
+    elif [[ "$non_interactive" == true ]]; then grill=skip
+    elif [[ "$style" == "review-only" ]]; then grill=skip
+    else grill=run; fi
+    line="$(bash "$SCRIPT_DIR/graph/probes/spec-critique.sh" --feature-dir "$feature_dir" 2>/dev/null || echo "gate=run reason=probe failed")"
     case "$line" in
       gate=skip*) critique=skip; creason="${line#*reason=}" ;;
       gate=compact*) if [[ "$(compact_gate specCritique)" == "skip" ]]; then critique=skip; creason="compact gatePlan"; else critique=run; creason="compact gatePlan runs it"; fi ;;
       *) critique=run; creason="${line#*reason=}" ;;
     esac
-    oracle_field=""; [[ "$grill" == "self-answer" ]] && oracle_field=" oracle=$(oracle)"
-    echo "grill=$grill$oracle_field critique=$critique reentry=$reentry $budget_line reason=$why; critique: $creason"
+    fields="grill=$grill critique=$critique reentry=$reentry"
+    if [[ -f "$feature_dir/spec-draft.md" ]]; then
+      echo "path=ingest $budget_line $fields reason=spec-draft.md present; critique: $creason greenfield=$gf"
+    elif [[ "$autonomous" == true ]]; then
+      echo "path=self-answer oracle=$(oracle) $budget_line $fields reason=autonomous; critique: $creason greenfield=$gf"
+    elif [[ "$non_interactive" == true ]]; then
+      echo "path=synthesize $budget_line $fields reason=LOOP_SPEC_NON_INTERACTIVE=1; critique: $creason greenfield=$gf"
+    elif [[ "$profile" == "maintenance" ]]; then
+      echo "path=synthesize $budget_line $fields reason=maintenance profile; critique: $creason greenfield=$gf"
+    elif [[ "$profile" == "compact" && "$(compact_gate specInterview)" == "skip" ]]; then
+      echo "path=synthesize $budget_line $fields reason=compact gatePlan skips specInterview; critique: $creason greenfield=$gf"
+    else
+      echo "path=interview $budget_line $fields reason=human attached; critique: $creason greenfield=$gf"
+    fi
     ;;
   plan)
     signal="$(security_signal "$docs/SPEC.md" "$docs/PLAN.md")"

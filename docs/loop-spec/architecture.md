@@ -26,9 +26,8 @@ reading phase state.
 flowchart LR
     user([User]) -->|"Skill(loop-spec:cycle)"| cycle[cycle skill<br/>orchestrator]
     cycle -->|"health-check + style"| init[feature.json<br/>schema v7]
-    init --> spec[SPEC phase<br/>main-thread interview]
-    spec -->|SPEC.md + unresolved_questions| discuss[DISCUSS design evaluation<br/>+ challenger]
-    discuss -->|SPEC.md| plan[PLAN team<br/>planner + challenger]
+    init --> spec[SPEC phase<br/>main-thread interview<br/>+ design lock + challenger]
+    spec -->|SPEC.md| plan[PLAN team<br/>planner + challenger]
     plan -->|PLAN.md task blocks + tasks.json| execute[EXECUTE team<br/>lead + bounded implementers + reviewers]
     execute -->|merged commits on feat/&lcub;slug&rcub;| verify[VERIFY team<br/>verifier + code-reviewer]
     verify -->|VERIFICATION.md| iterate[ITERATE<br/>goal judge]
@@ -37,7 +36,7 @@ flowchart LR
     iterate -.->|goal gap| execute
     verify -.->|remediation tasks<br/>via feature.json| execute
     plan -.->|fix-list<br/>via SendMessage| plan
-    discuss -.->|fix-list<br/>via SendMessage| discuss
+    spec -.->|fix-list<br/>via SendMessage| spec
 ```
 
 Solid arrows are forward progression; dotted arrows are gate-failure retries. Every arrow shown is an edge declared in `graph/cycle.graph.json`, and the dotted rewinds are `route` edges whose conditions name a probe script and an expected token — not prose the orchestrator re-reads each run. Design and verification artifacts are committed before handoff; DELIVER persists its external observation locally without creating a post-check commit that would invalidate the checked SHA.
@@ -191,7 +190,7 @@ loop-spec/
 ├── extensions/opencode/loop-spec.ts # opencode bridge: shell.env/chat.message/event hooks (node builtins only)
 ├── agents/                          # specialized agent definitions (teammates)
 ├── skills/
-│   ├── cycle/ spec/ oneshot/ discuss/ plan/ execute/ verify/ iterate/ deliver/ # phases + orchestrator
+│   ├── cycle/ spec/ oneshot/ plan/ execute/ verify/ iterate/ deliver/ # phases + orchestrator
 │   ├── assess/ debug/ intake/ quality-loop/ revise/ retro/
 │   ├── status/ sentinel/ watch/ micro/ rules/ onboard/
 │   ├── grill/ simplicity/ human-code/ discipline/               # session-mode toggles

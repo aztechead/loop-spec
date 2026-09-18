@@ -222,7 +222,7 @@ egress_check() {
 
 close_phase() {
   # A phase re-entered after an interrupted round closes again; a live feature.json
-  # read "spec,discuss,plan,plan,plan". Record each phase once.
+  # read "spec,plan,plan,plan". Record each phase once.
   bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter ".completedPhases | index(\"$phase\") != null" >/dev/null 2>&1 \
     || lib feature-write append "$feature_dir" completedPhases "\"$phase\"" >/dev/null
   fset currentTeamName null

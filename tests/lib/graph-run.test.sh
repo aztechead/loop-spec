@@ -64,7 +64,7 @@ if bash "$ROOT/lib/graph/validate.sh" "$ROOT/graph/cycle.graph.json" >/dev/null 
   set -e
   check "cycle.graph.json dry-run: execStyle auto reaches completed without pausing (rc 0)" "0" "$rc"
   # The full path: every phase but ONESHOT, which lives on its own route.
-  for phase in spec discuss plan execute verify iterate deliver completed; do
+  for phase in spec plan execute verify iterate deliver completed; do
     echo "$out" | grep -q "^${phase}"$'\t' && visited=0 || visited=1
     check "cycle.graph.json dry-run visits $phase" "0" "$visited"
   done
@@ -85,7 +85,7 @@ if bash "$ROOT/lib/graph/validate.sh" "$ROOT/graph/cycle.graph.json" >/dev/null 
     echo "$os_out" | grep -q "^${phase}"$'\t' && visited=0 || visited=1
     check "oneshot dry-run visits $phase" "0" "$visited"
   done
-  for phase in discuss plan execute verify iterate; do
+  for phase in plan execute verify iterate; do
     echo "$os_out" | grep -q "^${phase}"$'\t' && visited=0 || visited=1
     check "oneshot dry-run skips $phase" "1" "$visited"
   done
@@ -230,7 +230,7 @@ cp -R "$WORK/remediation-boundary" "$remrepo/.loop-spec/features/bad-spec-priori
 bfd="$remrepo/.loop-spec/features/bad-spec-priority"
 bash "$ROOT/lib/feature-write.sh" set "$bfd" reviewRouting '{"route":"bad-spec","pending":true}' >/dev/null
 out="$(bash "$SCRIPT" --step --completed-node verify --feature-dir "$bfd" "$ROOT/graph/cycle.graph.json")"
-check "remediation: bad-spec keeps priority over queued work" "discuss" "$(jq -r '.node' <<<"$out")"
+check "remediation: bad-spec keeps priority over queued work" "spec" "$(jq -r '.node' <<<"$out")"
 check "remediation: bad-spec leaves queued findings intact" "$queued" "$(jq -c '.pendingRemediationTasks' "$bfd/feature.json")"
 
 cp -R "$WORK/remediation-boundary" "$remrepo/.loop-spec/features/ceiling"
@@ -874,14 +874,14 @@ cat > "$WORK/phase-advance.json" <<'EOF'
   "entry": "spec",
   "nodes": [
     {"id":"spec","kind":"agent","body":"skills/spec/SKILL.md","reads":[],"writes":["currentPhase"],"effort":"system1"},
-    {"id":"discuss","kind":"agent","body":"skills/discuss/SKILL.md","reads":[],"writes":["currentPhase"],"effort":"system1"}
+    {"id":"plan","kind":"agent","body":"skills/plan/SKILL.md","reads":[],"writes":["currentPhase"],"effort":"system1"}
   ],
-  "edges": [{"from":"spec","to":"discuss","kind":"chain"}]
+  "edges": [{"from":"spec","to":"plan","kind":"chain"}]
 }
 EOF
 new_feat "$WORK/feat-phase" '{slug:"p",schemaVersion:7,currentPhase:"spec"}'
 bash "$SCRIPT" --feature-dir "$WORK/feat-phase" "$WORK/phase-advance.json" >/dev/null
-check "engine sets currentPhase to discuss" "discuss" "$(jq -r '.currentPhase' "$WORK/feat-phase/feature.json")"
+check "engine sets currentPhase to plan" "plan" "$(jq -r '.currentPhase' "$WORK/feat-phase/feature.json")"
 new_feat "$WORK/feat-phase" '{slug:"p",schemaVersion:7,currentPhase:"spec"}'
 bash "$SCRIPT" --dry-run --feature-dir "$WORK/feat-phase" "$WORK/phase-advance.json" >/dev/null
 check "dry-run leaves currentPhase untouched" "spec" "$(jq -r '.currentPhase' "$WORK/feat-phase/feature.json")"
@@ -895,12 +895,12 @@ cat > "$WORK/phase-markers.json" <<'EOF'
   "entry": "spec",
   "nodes": [
     {"id":"spec","kind":"agent","reads":[],"writes":["currentPhase"],"effort":"system1","body":"skills/spec/SKILL.md"},
-    {"id":"discuss","kind":"agent","reads":[],"writes":["currentPhase"],"effort":"system1","body":"skills/discuss/SKILL.md"},
+    {"id":"plan","kind":"agent","reads":[],"writes":["currentPhase"],"effort":"system1","body":"skills/plan/SKILL.md"},
     {"id":"completed","kind":"function","reads":[],"writes":["currentPhase"],"effort":"system1"}
   ],
   "edges": [
-    {"from":"spec","to":"discuss","kind":"chain"},
-    {"from":"discuss","to":"completed","kind":"chain"}
+    {"from":"spec","to":"plan","kind":"chain"},
+    {"from":"plan","to":"completed","kind":"chain"}
   ]
 }
 EOF
@@ -923,12 +923,12 @@ check "step 1 does not write phase_end yet (the agent has not left spec)" "0" \
   "$(jq -r 'select(.event=="phase_end") | .phase' "$WORK/feat-markers/events.jsonl" | grep -c . || true)"
 
 step2="$(bash "$SCRIPT" --step --completed-node spec --feature-dir "$WORK/feat-markers" "$WORK/phase-markers.json" 2>"$WORK/markers-err2")"
-check "step 2 stdout is parseable JSON" "discuss" "$(jq -r '.node' <<<"$step2")"
+check "step 2 stdout is parseable JSON" "plan" "$(jq -r '.node' <<<"$step2")"
 check "step 2 stderr emits LOOP_SPEC_PHASE_END for spec" "1" \
   "$(grep -c '^LOOP_SPEC_PHASE_END' "$WORK/markers-err2" || true)"
-check "step 2 phase_end next is discuss" "discuss" \
+check "step 2 phase_end next is plan" "plan" \
   "$(jq -r 'select(.event=="phase_end" and .phase=="spec") | .next' "$WORK/feat-markers/events.jsonl" | tail -1)"
-check "step 2 stderr emits LOOP_SPEC_PHASE_START for discuss" "1" \
+check "step 2 stderr emits LOOP_SPEC_PHASE_START for plan" "1" \
   "$(grep -c '^LOOP_SPEC_PHASE_START' "$WORK/markers-err2" || true)"
 
 new_feat "$WORK/feat-markers-dry" '{slug:"mdry",schemaVersion:7,currentPhase:"spec"}'
@@ -1089,11 +1089,6 @@ if [[ -d "$WORK/cyclerepo" ]]; then
   }
   full_path="$(seed_short standard)"
   short_path="$(seed_short maintenance)"
-  check "the standard profile still walks DISCUSS and its critique" "1" \
-    "$(grep -cx 'discuss.critique' <<<"$full_path")"
-  check "the short path skips DISCUSS" "0" "$(grep -cx 'discuss' <<<"$short_path")"
-  check "the short path skips the spec critique protocol" "0" \
-    "$(grep -cx 'discuss.critique' <<<"$short_path")"
   check "the standard profile still walks the code-review agent" "1" \
     "$(grep -cx 'verify.code-review' <<<"$full_path")"
   check "the short path skips the code-review agent" "0" \
@@ -1133,9 +1128,9 @@ if [[ -d "$WORK/cyclerepo" ]]; then
   }
   # A compact plan is not the maintenance shortcut: it names every omission
   # independently and resumes from feature.json with the same declared route.
-  compact_plan='{"specInterview":{"run":false,"reason":"bounded request"},"discuss":{"run":false,"reason":"bounded request"},"specCritique":{"run":false,"reason":"gated spec"},"planCritique":{"run":false,"reason":"small plan"},"repositoryValidation":{"run":false,"reason":"no repository validation"},"placeholderScan":{"run":false,"reason":"no placeholder scan"},"tamperScan":{"run":false,"reason":"no tamper scan"},"acceptance":{"run":false,"reason":"no acceptance run"},"codeReview":{"run":false,"reason":"bounded diff"},"iterate":{"run":false,"reason":"already classified"}}'
+  compact_plan='{"specInterview":{"run":false,"reason":"bounded request"},"specCritique":{"run":false,"reason":"gated spec"},"planCritique":{"run":false,"reason":"small plan"},"repositoryValidation":{"run":false,"reason":"no repository validation"},"placeholderScan":{"run":false,"reason":"no placeholder scan"},"tamperScan":{"run":false,"reason":"no tamper scan"},"acceptance":{"run":false,"reason":"no acceptance run"},"codeReview":{"run":false,"reason":"bounded diff"},"iterate":{"run":false,"reason":"already classified"}}'
   compact_path_out="$(compact_path_with compact-all-skip "$compact_plan")"
-  for skipped in discuss discuss.critique plan.critique verify.marker verify.tamper \
+  for skipped in spec.critique plan.critique verify.marker verify.tamper \
                  verify.acceptance verify.code-review iterate; do
     check "compact plan skips $skipped" "0" "$(grep -cx "$skipped" <<<"$compact_path_out")"
   done
@@ -1146,14 +1141,14 @@ if [[ -d "$WORK/cyclerepo" ]]; then
 
   # Compact decisions are independent. These mixed plans exercise the places
   # where the old chain fallbacks could silently reintroduce a skipped gate.
-  compact_all_run='{"specInterview":{"run":true,"reason":"interview remains useful"},"discuss":{"run":true,"reason":"product decision needs discussion"},"specCritique":{"run":true,"reason":"challenge the specification"},"planCritique":{"run":true,"reason":"challenge the implementation plan"},"repositoryValidation":{"run":true,"reason":"validate repository state"},"placeholderScan":{"run":true,"reason":"scan for placeholders"},"tamperScan":{"run":true,"reason":"scan for weakened tests"},"acceptance":{"run":true,"reason":"collect acceptance evidence"},"codeReview":{"run":true,"reason":"review the implementation"},"iterate":{"run":true,"reason":"judge the final result"}}'
+  compact_all_run='{"specInterview":{"run":true,"reason":"interview remains useful"},"specCritique":{"run":true,"reason":"challenge the specification"},"planCritique":{"run":true,"reason":"challenge the implementation plan"},"repositoryValidation":{"run":true,"reason":"validate repository state"},"placeholderScan":{"run":true,"reason":"scan for placeholders"},"tamperScan":{"run":true,"reason":"scan for weakened tests"},"acceptance":{"run":true,"reason":"collect acceptance evidence"},"codeReview":{"run":true,"reason":"review the implementation"},"iterate":{"run":true,"reason":"judge the final result"}}'
 
-  mixed_discuss_skip="$(jq -c '.discuss.run = false | .discuss.reason = "requirements are already settled" | .specCritique.run = false | .specCritique.reason = "no discussion leaves no critique to run"' <<<"$compact_all_run")"
-  mixed_discuss_out="$(compact_path_with compact-discuss-skip "$mixed_discuss_skip")"
-  check "mixed compact plan skips DISCUSS only when discuss=false" "0" \
-    "$(grep -cx 'discuss' <<<"$mixed_discuss_out")"
+  mixed_speccritique_skip="$(jq -c '.specCritique.run = false | .specCritique.reason = "already gated, nothing to challenge"' <<<"$compact_all_run")"
+  mixed_speccritique_out="$(compact_path_with compact-speccritique-skip "$mixed_speccritique_skip")"
+  check "mixed compact plan skips spec.critique only when specCritique=false" "0" \
+    "$(grep -cx 'spec.critique' <<<"$mixed_speccritique_out")"
   check "mixed compact plan still runs code review when codeReview=true" "1" \
-    "$(grep -cx 'verify.code-review' <<<"$mixed_discuss_out")"
+    "$(grep -cx 'verify.code-review' <<<"$mixed_speccritique_out")"
 
   mixed_verify="$(jq -c '.placeholderScan.run = false | .placeholderScan.reason = "no generated placeholders" | .acceptance.run = false | .acceptance.reason = "evidence is supplied by the selected verifier"' <<<"$compact_all_run")"
   mixed_verify_out="$(compact_path_with compact-verify-mix "$mixed_verify")"
@@ -1178,7 +1173,7 @@ if [[ -d "$WORK/cyclerepo" ]]; then
 import json, sys
 graph = json.load(open(sys.argv[1]))
 adaptive = {
-    "human.after-spec", "discuss.critique.gate", "plan.critique.gate",
+    "human.after-spec", "spec.critique.gate", "plan.critique.gate",
     "verify.placeholder.gate", "verify.tamper.gate", "verify.acceptance.gate",
     "verify.code-review.gate",
     "iterate.gate",
@@ -1231,31 +1226,32 @@ PY
   if [[ "$pair_rc" != 0 ]]; then
     echo "$pair_out" | sed 's/^/    /'
   fi
-  check "the pairing check found the two remaining short-path branches" "2 branch(es)" "$pair_out"
-  # discuss.critique.gate left short-path so an already-gated spec can skip
-  # critique without skipping DISCUSS itself. Same pairing rule: skip and run
-  # routes, default to the run (fail-closed) successor.
+  check "the pairing check found the one remaining short-path branch" "1 branch(es)" "$pair_out"
+  # spec.critique.gate pairs a skip route with a run route the same way the
+  # short-path branches do: both declared, defaulting to the run (fail-closed)
+  # successor -- an already-gated spec can skip critique without skipping
+  # SPEC itself.
   dc_pair="$(python3 - "$ROOT/graph/cycle.graph.json" 2>&1 <<'PY'
 import json, sys
 g = json.load(open(sys.argv[1]))
 nodes = {n["id"]: n for n in g["nodes"]}
-nid = "discuss.critique.gate"
+nid = "spec.critique.gate"
 routes = [
     e for e in g["edges"]
     if e.get("from") == nid and e.get("kind") == "route"
-    and (e.get("condition") or {}).get("probe") == "lib/graph/probes/discuss-critique.sh"
+    and (e.get("condition") or {}).get("probe") == "lib/graph/probes/spec-critique.sh"
 ]
 runs = {e["to"] for e in routes if e["condition"].get("expects") == "gate=run"}
 skips = {e["to"] for e in routes if e["condition"].get("expects") == "gate=skip"}
 default = nodes[nid].get("routeDefault")
-if runs != {"discuss.critique"} or skips != {"human.after-discuss"} or default != "discuss.critique":
-    print("discuss.critique.gate run=%s skip=%s routeDefault=%s" % (
+if runs != {"spec.critique"} or skips != {"human.after-spec"} or default != "spec.critique":
+    print("spec.critique.gate run=%s skip=%s routeDefault=%s" % (
         sorted(runs), sorted(skips), default))
     sys.exit(1)
 print("paired")
 PY
 )"
-  check "discuss-critique skip pairs with routeDefault to the run path" "paired" "$dc_pair"
+  check "spec-critique skip pairs with routeDefault to the run path" "paired" "$dc_pair"
 fi
 
 ## --- 22. human node: an UNRESOLVED admit aborts; it never skips the gate ---

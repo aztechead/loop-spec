@@ -2,7 +2,7 @@
 # deferral-lint.sh - Deterministic probe: no self-authored deferral survives a
 # successful conclusion.
 #
-# Why: loop-spec's contract is that once SPEC/DISCUSS/PLAN fix the design, the
+# Why: loop-spec's contract is that once SPEC/PLAN fix the design, the
 # model runs it to completion. Everything in the spec ships. There is no valid
 # successful conclusion that includes an explicit model-chosen deferred-scope
 # declaration — that is scope the design promised and the run silently dropped.

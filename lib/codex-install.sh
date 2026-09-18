@@ -819,7 +819,7 @@ PY
   echo "  skills: $SKILLS_DIR"
   echo "  agents: $AGENTS_DIR"
   echo "Next: start a new Codex session, trust the loop-spec hooks with /hooks, then invoke \$loop-spec-cycle <description>"
-  echo "      Interactive SPEC/DISCUSS/PLAN wait on request_user_input (Default mode needs"
+  echo "      Interactive SPEC/PLAN wait on request_user_input (Default mode needs"
   echo "      [features] default_mode_request_user_input = true — the installer wrote it)."
   echo "      Headless: LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write \\"
   echo "          '\$loop-spec-auto <description>'"

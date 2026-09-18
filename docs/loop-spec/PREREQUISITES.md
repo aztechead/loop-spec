@@ -18,7 +18,7 @@ the installed version with `claude --version`.
 The cycle records `teamsMode` in `.loop-spec/runtime.json`, but persistent teams
 and Workflow fan-out are disabled by the resource policy. A finite
 `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` value is enforced by one-shot waves, including
-values above one. This keeps the cap meaningful across SPEC, DISCUSS, PLAN, and
+values above one. This keeps the cap meaningful across SPEC, PLAN, and
 EXECUTE. `LOOP_SPEC_WORKTREES=0` clamps both resource caps to one in
 `lib/resource-bounds.sh`.
 

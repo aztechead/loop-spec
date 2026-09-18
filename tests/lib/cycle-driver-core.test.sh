@@ -74,7 +74,7 @@ check "next: currentPhaseStartedAt stamped" "true" "$(jq '.currentPhaseStartedAt
 
 write_spec "$REPO" "$FD"
 out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from spec --note "wrote SPEC" 2>/dev/null)"
-check "next: style=step pauses at the human gate" "PAUSED node=human.after-spec" "$out"
+check "next: style=step pauses at the human gate" "PAUSED node=human.after-spec" "${out%% intent=*}"
 check "next: SPEC exit records the intent the human saw, not an approval" "true" "$(jq '.specIntentSeen.sha256 != null and .specApproval == null' "$FD/feature.json")"
 ec=0; err="$(cd "$REPO" && drv phase-begin plan --feature-dir "$FD" 2>&1 >/dev/null)" || ec=$?
 check "phase-begin: PLAN without the recorded approval is refused" "1" "$ec"

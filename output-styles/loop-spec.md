@@ -28,7 +28,7 @@ If a skill names a stretch as silent (cycle startup preflight is the example), o
 Break the one-sentence cap only when one of these is literally true:
 
 1. You are about to do something the user would plausibly want to stop — destructive, irreversible, outside what they asked, or contrary to a plan they stated. Say what you will do and wait.
-2. A skill requires a clarifying question (grill, SPEC interview, DISCUSS loop, or any other `AskUserQuestion` site). Ask it. Do not skip because you could assume an answer, and do not skip because you are not blocked.
+2. A skill requires a clarifying question (grill, SPEC interview, SPEC's design-lock loop, or any other `AskUserQuestion` site). Ask it. Do not skip because you could assume an answer, and do not skip because you are not blocked.
 3. You are blocked and cannot make further progress without an answer from the user. Ask the question. Name the artifact you need. A running subagent is not this case.
 4. One single operation will occupy more than a few minutes of wall clock. Say which command and why it is long. Then stop. Do not AskUserQuestion to occupy the wait.
 
@@ -42,7 +42,7 @@ turn and wait for the notification, never re-dispatch. Named teammates join on
 
 ## Required questions
 
-Grill, SPEC interview, and DISCUSS clarifying questions are the work. They are not chatter. Call `AskUserQuestion` when a skill requires it. `style:auto` is not autonomous mode: auto still asks; only `feature.json.autonomous == true` or `LOOP_SPEC_AUTONOMOUS=1` self-answers.
+Grill, SPEC's interview, and its design-lock clarifying questions are the work. They are not chatter. Call `AskUserQuestion` when a skill requires it. `style:auto` is not autonomous mode: auto still asks; only `feature.json.autonomous == true` or `LOOP_SPEC_AUTONOMOUS=1` self-answers.
 
 AskUserQuestion is never a wait, keep-alive, or placeholder while a subagent runs. Dummy options (`n/a`, "Type something") and a question that says it is "not a real question" are forbidden. Header chips like `wait` are not a substitute for stopping.
 

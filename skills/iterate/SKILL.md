@@ -105,15 +105,15 @@ weakest point first; by `.route` (`gap.type`):
   again for it and never `AskUserQuestion` (autonomous and headless runs have nobody to
   answer; the result record carries the action).
 - `spec`: the expensive rewind. `auto`/`review-only`/autonomous (ITERATE re-entry; do not block an unattended loop):
-  proceed without asking; DISCUSS refines toward the immutable original goal. `step`/`interactive`
+  proceed without asking; SPEC refines toward the immutable original goal. `step`/`interactive`
   only: emit as written
   ```
   AskUserQuestion({
     questions: [{
-      question: "ITERATE judges the goal still unmet because of a SPEC-level gap: <gap.description>. Re-open SPEC/DISCUSS, ship as-is, or stop?",
+      question: "ITERATE judges the goal still unmet because of a SPEC-level gap: <gap.description>. Re-open SPEC, ship as-is, or stop?",
       header: "Re-open SPEC",
       options: [
-        { label: "Re-open SPEC/DISCUSS", description: "Rewind to refine the spec toward the original goal (costs an iteration)" },
+        { label: "Re-open SPEC", description: "Rewind to refine the spec toward the original goal (costs an iteration)" },
         { label: "Ship as-is", description: "Complete now; the accepted gap is recorded in warnings[] and the backlog" },
         { label: "Stop - hand back", description: "Pause the cycle and return control (resume later)" }
       ],
@@ -122,7 +122,7 @@ weakest point first; by `.route` (`gap.type`):
   })
   ```
   Ship as-is records the gap in `warnings[]` and exits terminal; Stop pauses through the
-  cycle. Re-open reopens the Goal and Boundary freeze for DISCUSS (the driver retires the
+  cycle. Re-open reopens the Goal and Boundary freeze for SPEC (the driver retires the
   record into `specApprovalHistory`) and PLAN freezes them again; an unattended rewind
   keeps the freeze. Non-interactive reads `LOOP_SPEC_ANSWER_ITERATE_SPEC` (`reopen` default |
   `ship`; anything else exits 2).

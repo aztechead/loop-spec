@@ -96,8 +96,8 @@ EXECUTE_CONTRACTS = {
     ),
 }
 ITERATE_CONTRACT = (
-    re.compile(r"ITERATE judges the goal still unmet because of a SPEC-level gap: .+\. Re-open SPEC/DISCUSS, ship as-is, or stop\?", re.I),
-    frozenset({"Re-open SPEC/DISCUSS", "Ship as-is", "Stop - hand back"}),
+    re.compile(r"ITERATE judges the goal still unmet because of a SPEC-level gap: .+\. Re-open SPEC, ship as-is, or stop\?", re.I),
+    frozenset({"Re-open SPEC", "Ship as-is", "Stop - hand back"}),
 )
 
 def load_payload():
@@ -195,7 +195,7 @@ def transcript_context(transcript_path):
                             match = ACTIVE_SKILL.search(skill)
                             if match:
                                 active = match.group(1)
-                                if active in {"cycle", "spec", "discuss", "plan"}:
+                                if active in {"cycle", "spec", "plan"}:
                                     phase = ""
                                 elif active == "specifying-gates":
                                     phase = "execute"

@@ -6,7 +6,7 @@
 # probe. Prose guidance in agent definitions demonstrably failed to enforce this (the
 # BigQuery split-by-UTC-day incident). This script is the deterministic structural
 # gate -- the same pattern as acceptance-lint and decision-coverage -- that catches
-# missing/malformed grounding before DISCUSS commits or PLAN's gate cluster passes.
+# missing/malformed grounding before SPEC commits or PLAN's gate cluster passes.
 #
 # Usage: grounding-lint.sh <artifact_path> [ledger_path]
 #
@@ -123,7 +123,7 @@ none_lineno=0
 has_evidence=0  # set when any EVID-NNN or ASSUMPTION bullet is found
 
 # Optional parenthetical qualifier after the keyword — writers carry tags like
-# 'ASSUMPTION (SPEC):' over from the DISCUSS transcript convention; accept them.
+# 'ASSUMPTION (SPEC):' as a labeling convention; accept them.
 evid_re='^- EVID-[0-9][0-9][0-9]( ?\([^)]*\))?: .+'
 assumption_re='^- ASSUMPTION( ?\([^)]*\))?: (.+)$'
 

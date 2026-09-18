@@ -50,13 +50,13 @@ for published_graph in "$ROOT/graph/cycle.graph.json" "$ROOT/graph/critique.grap
 done
 
 # Phase agent nodes present: the eight the cycle ships, whatever else the graph adds.
-for phase in spec oneshot discuss plan execute verify iterate deliver; do
+for phase in spec oneshot plan execute verify iterate deliver; do
   check "phases.sh lists $phase" "1" "$(bash "$ROOT/lib/graph/phases.sh" list | grep -cx "$phase")"
   n="$(jq -r --arg p "$phase" '[.nodes[] | select(.id==$p)] | length' "$GRAPH")"
   check "phase node $phase present" "1" "$n"
 done
 
-# Forward chain: SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER.
+# Forward chain: SPEC -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER.
 # Allow intermediate human/subgraph/gate nodes: reachability via BFS on all edges.
 reachable() {
   local start="$1" goal="$2"
@@ -79,7 +79,7 @@ sys.exit(1)
 PY
 }
 
-for pair in "spec:discuss" "discuss:plan" "plan:execute" "execute:verify" "verify:iterate" "iterate:deliver" "deliver:completed"; do
+for pair in "spec:plan" "plan:execute" "execute:verify" "verify:iterate" "iterate:deliver" "deliver:completed"; do
   from="${pair%%:*}"; to="${pair##*:}"
   if reachable "$from" "$to"; then
     check "successor $from->$to" "1" "1"
@@ -90,26 +90,26 @@ done
 
 # The oneshot route (the port plan, WP1): the FIRST edge out of
 # human.after-spec, since the engine takes the first satisfied route; the phase then
-# routes to DELIVER, or to DISCUSS when the spec was escalated. The probe is one script
-# answering both readings so the decision never lives in prose.
+# routes to DELIVER, or back through SPEC's critique gate when the spec was escalated.
+# The probe is one script answering both readings so the decision never lives in prose.
 first_after_spec="$(jq -r '[.edges[] | select(.from=="human.after-spec")][0] | .to + " " + (.condition.expects // "")' "$GRAPH")"
 check "oneshot route is the first edge out of human.after-spec" "oneshot route=oneshot" "$first_after_spec"
 check "oneshot route probe is lib/graph/probes/oneshot.sh" "lib/graph/probes/oneshot.sh" \
   "$(jq -r '[.edges[] | select(.from=="human.after-spec" and .to=="oneshot")][0].condition.probe' "$GRAPH")"
 check "oneshot -> deliver on route=oneshot (--after)" "1" \
   "$(jq -r '[.edges[] | select(.from=="oneshot" and .to=="deliver" and .kind=="route" and .condition.expects=="route=oneshot" and (.condition.args | index("--after") != null))] | length' "$GRAPH")"
-check "oneshot -> discuss on route=full (--after)" "1" \
-  "$(jq -r '[.edges[] | select(.from=="oneshot" and .to=="discuss" and .kind=="route" and .condition.expects=="route=full" and (.condition.args | index("--after") != null))] | length' "$GRAPH")"
+check "oneshot -> spec on route=full (--after)" "1" \
+  "$(jq -r '[.edges[] | select(.from=="oneshot" and .to=="spec" and .kind=="route" and .condition.expects=="route=full" and (.condition.args | index("--after") != null))] | length' "$GRAPH")"
 check "oneshot node has no chain successor (the route decides)" "0" \
   "$(jq -r '[.edges[] | select(.from=="oneshot" and .kind=="chain")] | length' "$GRAPH")"
 check "oneshot exit gate is lib/oneshot-exit-gate.sh" "lib/oneshot-exit-gate.sh" \
   "$(jq -r '.nodes[] | select(.id=="oneshot") | .egress.gates[0].body' "$GRAPH")"
 
-# ITERATE rewind routes, each keyed on a deterministic gap probe
-# The gap CLASS and the target PHASE are not the same thing: a spec-level gap
-# rewinds to DISCUSS (autonomous refinement mode), never to SPEC. Asserting
-# to==spec here is what let that regression through in the first place.
-for pair in "execute:execute" "plan:plan" "spec:discuss" "verify:verify"; do
+# ITERATE rewind routes, each keyed on a deterministic gap probe.
+# The gap CLASS and the target PHASE coincide for every rewind, including
+# spec: DISCUSS folded into SPEC, so a spec-level gap now rewinds to SPEC
+# itself rather than to a separate refinement phase.
+for pair in "execute:execute" "plan:plan" "spec:spec" "verify:verify"; do
   gap="${pair%%:*}"; target="${pair##*:}"
   n="$(jq -r --arg t "$target" --arg e "gap=$gap" '[.edges[] | select(.from=="iterate" and .kind=="route" and .to==$t and .condition.expects==$e)] | length' "$GRAPH")"
   check "iterate rewind route: gap=$gap -> $target" "1" "$([[ "$n" -ge 1 ]] && echo 1 || echo 0)"
@@ -200,7 +200,7 @@ fi
 #      "bounded to two/N persisted ...").
 #   4. any LOOP_SPEC_GRAPH mention — there is no opt-in flag and no prose
 #      fallback path; the graph is unconditionally authoritative.
-ROUTE_TARGETS='(spec|discuss|plan|execute|verify|iterate)'
+ROUTE_TARGETS='(spec|plan|execute|verify|iterate)'
 
 residual_prose() {
   # Prints offending lines; returns 0 when the file is clean, 1 when residual found.
@@ -208,7 +208,7 @@ residual_prose() {
   hits="$(grep -nE \
     -e "currentPhase[[:space:]]*=[[:space:]]*\"${ROUTE_TARGETS}\"" \
     -e "set[[:space:]]+currentPhase[[:space:]]+\"${ROUTE_TARGETS}\"" \
-    -e "[Rr]oute to .?loop-spec:(spec|oneshot|discuss|plan|execute|verify|iterate|deliver)" \
+    -e "[Rr]oute to .?loop-spec:(spec|oneshot|plan|execute|verify|iterate|deliver)" \
     -e "fixed at [0-9]+" \
     -e "bounded to (two|[0-9]+) persisted" \
     -e "LOOP_SPEC_GRAPH" \
@@ -243,7 +243,7 @@ cite() {
   fi
 }
 cite "plan escalation defers to critique graph"    skills/plan/SKILL.md    "graph/critique.graph.json"
-cite "discuss escalation defers to critique graph" skills/discuss/SKILL.md "graph/critique.graph.json"
+cite "spec escalation defers to critique graph"    skills/spec/SKILL.md    "graph/critique.graph.json"
 cite "iterate rewinds defer to cycle graph"        skills/iterate/SKILL.md "graph/cycle.graph.json"
 cite "verify remediation defers to cycle graph"    skills/verify/SKILL.md  "graph/cycle.graph.json"
 cite "deliver CI budget defers to cycle graph"     skills/deliver/SKILL.md "graph/cycle.graph.json"

@@ -118,7 +118,7 @@ Usage:
         skeleton, 2 bad invocation.
     (there is no `spec escalate`: a gate escalates from evidence, never the lead; the
         third identical REDO on ONESHOT writes `route: full` with the flag classes as
-        the reason and the run takes the full path from DISCUSS)
+        the reason and the run takes the full path through SPEC's critique gate)
     cycle-driver.sh verification fill --feature-dir DIR
         --row GE-NNN --implementation FILE:LINE --proof TEXT
           [--integration FILE:LINE|none --integration-proof TEXT]
@@ -160,14 +160,14 @@ Usage:
         a spec written next to the lead in the main checkout while the feature lived in
         a worktree was the misplaced-artifact REDO on two runs. Exit 0; 2 bad invocation.
 
-    cycle-driver.sh task dispatch|package|verdict|integrate --feature-dir DIR --task ID ...
+    cycle-driver.sh task dispatch|package|review-groups|verdict|integrate --feature-dir DIR ...
         One EXECUTE task step per call; lib/execute-step.sh owns the contract.
     cycle-driver.sh task add-files --feature-dir DIR --task ID <file...>
         Widens an open task's write scope for a rework attempt (sidecar, collapsed
         list, and prepare.json together); refuses an integrated task.
 
     cycle-driver.sh critique open|findings|fail|revised|delta|pass --feature-dir DIR ...
-        One critique-gate step per call for DISCUSS and PLAN; lib/critique-step.sh owns
+        One critique-gate step per call for SPEC and PLAN; lib/critique-step.sh owns
         the contract.
 
     cycle-driver.sh verify gate|passes --feature-dir DIR ...
@@ -193,8 +193,8 @@ Usage:
           NEXT phase=<id> label="<label>" effort=<system1|system2>
           PAUSED node=<id> [intent=changed|unchanged|unknown]
                                      (human gate; re-invoke the cycle to continue; the
-                                     DISCUSS gate says whether Goal and Boundary still read
-                                     as they did at the SPEC gate, because PLAN freezes them)
+                                     SPEC gate says whether Goal and Boundary still read
+                                     as they did when first frozen, because PLAN freezes them)
           HANDOFF next=<phase> model=<selector>   (one phase per session; relaunch)
           REWIND next=<phase>         (the graph lists <phase> before the returned one; relaunch)
           DONE status=<completed|escalated|paused> [reason=<r>]
@@ -1228,6 +1228,12 @@ def cmd_resume(argv):
                       % feat.get("branch"))
     fset(feature_dir, "currentTeamName", None)
 
+    # 6.9.0 folded DISCUSS into SPEC; a feature paused at DISCUSS resumes at SPEC.
+    if feat.get("currentPhase") == "discuss":
+        fset(feature_dir, "currentPhase", "spec")
+        feat = state(feature_dir)
+        print("loop-spec: DISCUSS folded into SPEC: resuming at SPEC", file=sys.stderr)
+
     done_ids = remaining_ids = ""
     sidecar = (feat.get("artifacts") or {}).get("tasks") or ""
     if sidecar and os.path.isfile(sidecar):
@@ -1283,8 +1289,8 @@ def approval_source(feature_dir, feat):
 
 def record_spec_approval(feature_dir, feat, source, phase):
     """Freeze Goal and Boundary once, at the last moment before implementation:
-    PLAN entry, after SPEC's intent interview and DISCUSS's design questions. Recording
-    at SPEC exit ended a run whose human answered DISCUSS's follow-ups. Raises ValueError."""
+    PLAN entry, after SPEC's intent interview and its critique. Recording
+    at SPEC exit ended a run whose human answered the interview's follow-ups. Raises ValueError."""
     from spec_questions import read_questions
     from spec_intent import intent_digest, verify_intent
     target = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
@@ -1302,7 +1308,7 @@ def record_spec_approval(feature_dir, feat, source, phase):
 
 def reopen_spec_approval(feature_dir, feat):
     """A human approved a SPEC-level rewind: the freeze they approved earlier steps
-    aside so DISCUSS can amend Goal and Boundary, and PLAN records the new one. The
+    aside so SPEC can amend Goal and Boundary, and PLAN records the new one. The
     old record moves to specApprovalHistory, which is the only shape the state writer
     lets an approval leave by. Autonomous rewinds never come here: the judge scores
     against feature_title and the freeze stands."""
@@ -1313,7 +1319,7 @@ def reopen_spec_approval(feature_dir, feat):
     lib("feature-write", "append", feature_dir, "specApprovalHistory", json.dumps(retired))
     fset(feature_dir, "specApproval", None)
     fset(feature_dir, "specIntentSeen", {"sha256": approval["sha256"], "at": now()})
-    lib("events", "emit", feature_dir, "spec-reopened", "--phase", "discuss", "--data", json.dumps(retired))
+    lib("events", "emit", feature_dir, "spec-reopened", "--phase", "spec", "--data", json.dumps(retired))
 
 
 def cmd_next(argv):
@@ -1415,7 +1421,7 @@ def cmd_next(argv):
             return 0
         if recovery == "rewind":
             step_rc, descriptor = graph_step(feature_dir, returned)
-            target = "oneshot" if returned == "oneshot" else "discuss"
+            target = "oneshot" if returned == "oneshot" else "spec"
             if step_rc != 0 or descriptor.get("node") != target:
                 raise Die("review recovery: graph did not route bad-spec to " + target)
             fset(feature_dir, "reviewRouting.pending", False)
@@ -1458,7 +1464,7 @@ def cmd_next(argv):
             flags = [line for line in exit_out.splitlines() if line.startswith("FLAG")]
             if exit_proc.returncode == 1:
                 budget_exhausted = False
-                if returned in ("spec", "discuss", "plan"):
+                if returned in ("spec", "plan"):
                     budget_probe = lib_run("design-budget", "--feature-dir", feature_dir,
                                            "--phase", returned, capture_stderr=True)
                     if budget_probe.returncode != 0:
@@ -1484,7 +1490,7 @@ def cmd_next(argv):
                             not route_is_full(open(spath, encoding="utf-8").read()):
                         # The one escalation the short route has, and it is the gate's, never
                         # the lead's: the deadlock's flag classes go on record and the run
-                        # takes the full path from DISCUSS (port audit 5, R3).
+                        # takes the full path through SPEC's critique gate (port audit 5, R3).
                         classes = sorted({(re.match(r"^FLAG \[([^\]]+)\]", f) or [None, "unlabeled"])[1] for f in flags})
                         capture(lambda a: spec_escalate(a[0], a[1]),
                                 [spath, "the exit gate held after %d attempts on %s" % (redo_count, ", ".join(classes))])
@@ -1532,7 +1538,7 @@ def cmd_next(argv):
                     fset(feature_dir, "driverRedo", None)
 
     if returned == "spec":
-        # What the human read at their SPEC gate: the DISCUSS gate names whether the
+        # What the human read at their SPEC gate: the same gate names whether the
         # sections PLAN will freeze still say that, so approval is of text they saw.
         from spec_intent import intent_digest
         try:
@@ -1566,7 +1572,7 @@ def cmd_next(argv):
         if step_rc == 4:
             nxt = descriptor["node"]
             answer = "PAUSED node=%s" % nxt
-            if nxt == "human.after-discuss":
+            if nxt == "human.after-spec":
                 answer += " intent=%s" % intent_since_spec(feature_dir)
             break
         if step_rc == 5:
@@ -1583,13 +1589,13 @@ def cmd_next(argv):
             break
 
     # The descriptor defers an agent node's edge; the ledger's started entry keeps it.
-    admitted = (engine.latest_checkpoint() or {}).get("edge") or "" if nxt == "discuss" else ""
-    if admitted.endswith("human.iterate-spec-approval->discuss"):
+    admitted = (engine.latest_checkpoint() or {}).get("edge") or "" if nxt == "spec" else ""
+    if admitted.endswith("human.iterate-spec-approval->spec"):
         reopen_spec_approval(feature_dir, feat)
         feat = state(feature_dir)
     if nxt == "plan" and descriptor.get("kind") == "agent":
-        # Every route into PLAN lands here (the DISCUSS gate, the short path, the compact
-        # gate, ITERATE's plan gap), and before any handoff, so a fresh session finds it.
+        # Every route into PLAN lands here (SPEC's human gate after its critique,
+        # ITERATE's plan gap), and before any handoff, so a fresh session finds it.
         try:
             record_spec_approval(feature_dir, feat, approval_source(feature_dir, feat), "plan")
         except (OSError, ValueError) as exc:
@@ -1929,7 +1935,7 @@ def returned_checks(feature_dir, phase):
     started = fget(feature_dir, "currentPhaseStartedAt", "")
     if started:
         mins = (int(time.time()) - iso_epoch(started)) // 60
-        if phase in ("spec", "discuss", "plan"):
+        if phase in ("spec", "plan"):
             budget_line = lib_run("design-budget", "--feature-dir", feature_dir,
                                   "--phase", phase, capture_stderr=True)
             if budget_line.returncode != 0:
@@ -3210,7 +3216,7 @@ def cmd_phase_begin(argv):
         elif line.startswith("FLAG"):
             flags.append(line)
     mode = {}
-    if phase in ("spec", "discuss", "plan", "verify"):
+    if phase in ("spec", "plan", "verify"):
         # `key=value key2=value with spaces`: the mode line ends in a free-text reason,
         # so a value runs until the next ` key=`.
         line = lib("phase-mode", phase, "--feature-dir", feature_dir).strip()

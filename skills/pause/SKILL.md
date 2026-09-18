@@ -108,7 +108,7 @@ Example:
 ```json
 {
   "currentPhase": "execute",
-  "completedTasks": ["discuss", "plan"],
+  "completedTasks": ["plan"],
   "pendingTasks": ["fix: test suite regression"],
   "blockers": [],
   "decisions": [],

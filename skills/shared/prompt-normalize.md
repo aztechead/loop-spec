@@ -57,7 +57,7 @@ task sentence, a vague symptom report. Everything else travels verbatim:
 
 - **Normalize, never invent.** No new requirements, constraints, criteria, or
   assumptions; every statement in the output must be traceable to the input. Gaps
-  stay gaps - the unresolved-question gate, DISCUSS, and micro's one question own resolution,
+  stay gaps - the unresolved-question gate, SPEC's critique, and micro's one question own resolution,
   and a rewrite that fills a hole has fabricated a goal the implementer never stated.
 - **Context is never cruft.** Audience, product, environment facts, quality bar,
   and the reasons behind constraints all survive; never justify a cut by length.

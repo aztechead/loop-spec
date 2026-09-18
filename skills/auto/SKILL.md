@@ -57,12 +57,11 @@ Propose exactly one JSON object with this schema:
 
 Include `gatePlan` **only** when `route` is `compact`; omit it for `micro`,
 `debug`, and `full` rather than emitting `null` or an unapplied plan. For compact,
-replace the omitted field with exactly these ten entries:
+replace the omitted field with exactly these nine entries:
 
 ```json
 "gatePlan": {
   "specInterview": {"run": false, "reason": "nonblank explanation"},
-  "discuss": {"run": false, "reason": "nonblank explanation"},
   "specCritique": {"run": false, "reason": "nonblank explanation"},
   "planCritique": {"run": true, "reason": "nonblank explanation"},
   "repositoryValidation": {"run": true, "reason": "nonblank explanation"},
@@ -87,7 +86,7 @@ Route semantics:
   feature SPEC/PLAN DAG.
 - **compact**: a bounded feature or refactor that stays in the cycle. The classifier
   supplies a durable typed `gatePlan` for every adaptable gate. Read
-  `skills/shared/compact-profile.md` before proposing compact: all ten entries are
+  `skills/shared/compact-profile.md` before proposing compact: all nine entries are
   required, each exactly `{run:boolean, reason:nonblank string}`. A confident compact
   classification may handle security, migration, multi-repository, dirty-worktree,
   interface, seam, or dependency work; destructive work is always full.

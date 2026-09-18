@@ -324,7 +324,12 @@ check "next from oneshot again: one dispatch event, not two" "1" "$(jq -c 'selec
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
 check "next from oneshot in-harness: the driver launches nothing and the gate names the missing dispatch" "0" "$(grep -c 'the driver ran the one review pass' <<<"$out")"
 # The third identical REDO is the gate's escalation (port audit 5, R3): route: full with
-# the flag classes on record, and the run continues on the full path from DISCUSS.
+# the flag classes on record. FD7's SPEC.md is still the oneshot shape (Intent, no
+# Goals/Boundaries) -- DISCUSS used to reshape it before PLAN; folded into SPEC, there
+# is no longer an intervening phase to do that on this path, so PLAN's own
+# approval-recording refuses to digest sections that are not there and escalates
+# rather than mis-approving (lib/graph/driver.py:1595-1604, record_spec_approval).
+# This is the real, observed behavior on the new graph, not a test simplification.
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" driverRedo 'null' >/dev/null
 out1="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
 out2="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
@@ -337,8 +342,7 @@ check "next from oneshot: no NOTE line on stdout" "0" "$(grep -c '^NOTE ' <<<"$o
 check "next from oneshot: route: full is on the spec with the deadlock's classes" "1" "$(grep -c '^- escalated (route: full): the exit gate held after 3 attempts on ' "$DOCS7/SPEC.md")"
 check "next from oneshot: the escalation is an event with its classes" "1" "$(jq -c 'select(.event == "escalate" and .phase == "oneshot" and (.data.classes | length) > 0)' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
 check "next from oneshot: the attempt's verification record is set aside" "1" "$([[ -f "$DOCS7/VERIFICATION.oneshot-attempt.md" ]] && echo 1 || echo 0)"
-check "next from oneshot: the run continues to DISCUSS in a fresh session" "HANDOFF next=discuss" "$(grep -o '^HANDOFF next=discuss' <<<"$out3")"
-[[ -n "$(grep -o '^HANDOFF next=discuss' <<<"$out3")" ]] || printf '%s\n' "$out3" | head -5 | sed 's/^/  out3: /'
+check "next from oneshot: a promotion re-enters SPEC to expand the intent-only draft" "REWIND next=spec" "$out3"
 ec=0; (cd "$REPO7" && drv spec write --feature-dir "$FD7" --file "$WORK/draft7.md" >/dev/null 2>&1) || ec=$?
 check "spec write: allowed over an escalated spec (the full shape is the lead's)" "0" "$ec"
 

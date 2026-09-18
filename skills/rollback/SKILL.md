@@ -14,7 +14,7 @@ Six checkpoint types are created automatically by phase skills and `lib/checkpoi
 
 | Type | Created by | When |
 |------|-----------|------|
-| `post-discuss` | `skills/discuss/SKILL.md` | After `git commit SPEC.md` at the end of the DISCUSS phase |
+| `post-spec` | `skills/spec/SKILL.md` | After `git commit SPEC.md` at the end of the SPEC phase |
 | `post-plan` | `skills/plan/SKILL.md` | After `git commit PLAN.md` at the end of the PLAN phase |
 | `post-execute` | `skills/execute/SKILL.md` | After the final merge step, before advancing to verify |
 | `post-verify` | `skills/verify/SKILL.md` | After VERIFICATION.md is committed at the end of VERIFY |

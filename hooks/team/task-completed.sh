@@ -13,8 +13,7 @@
 #
 # Behavior by currentPhase in feature.json (marked tasks only):
 #   execute  -> run lint and typecheck commands from feature.json.commands if configured
-#   discuss  -> validate task metadata has required fields (blockedBy, files, verifyCommand, acceptanceCriteria)
-#   plan     -> validate task metadata has required fields
+#   plan     -> validate task metadata has required fields (blockedBy, files, verifyCommand, acceptanceCriteria)
 #   other    -> allow (exit 0)
 #
 # If feature.json is missing, exit 0 (graceful).
@@ -163,7 +162,7 @@ case "$CURRENT_PHASE" in
     fi
     ;;
 
-  discuss|plan)
+  plan)
     RESULT=$(validate_metadata)
     if [[ "$RESULT" != "OK" ]]; then
       MISSING_FIELDS="${RESULT#MISSING:}"

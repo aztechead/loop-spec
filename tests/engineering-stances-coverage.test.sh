@@ -22,7 +22,6 @@ checks=(
   "skills/spec/SKILL.md	engineering-stances.md"
   "skills/spec/references/interview-prompts.md	Which input grows in production"
   "agents/spec-writer.md	engineering-stances.md"
-  "skills/discuss/SKILL.md	engineering-stances.md"
   "skills/plan/SKILL.md	engineering-stances.md"
   "agents/planner.md	engineering-stances.md"
   "agents/planner.md	## System design"

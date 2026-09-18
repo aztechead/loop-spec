@@ -87,7 +87,7 @@ Persistent memory scope (`user` | `project` | `local`, validated). Grants the ag
 | `planner` | Produces PATTERNS.md then PLAN.md (task DAG, files, verify cmds) from SPEC.md. Writes only to docs/loop-spec/features/**. |
 | `security-reviewer` | Adversarial security review persona. Checks input handling, authz, injection, secrets exposure, and unsafe defaults. Returns severity-ranked findings (CRITICAL/HIGH/MEDIUM/LOW). Never suppresses its own findings. |
 | `spec-compliance-reviewer` | Verifies one implementer's commit matches its task spec. Read-only. |
-| `spec-writer` | Produces SPEC.md from a discuss-phase conversation. Writes only to docs/loop-spec/features/**. |
+| `spec-writer` | Produces SPEC.md from a SPEC design-lock conversation. Writes only to docs/loop-spec/features/**. |
 | `verifier` | Runs every acceptance criterion's verify command, writes VERIFICATION.md. |
 
 Every shipped agent declares `model: inherit`; there is no per-agent model column

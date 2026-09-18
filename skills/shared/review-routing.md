@@ -13,7 +13,7 @@ Choose the route from the root cause:
 | Route | Required JSON fields beyond `route` and `cause` | Driver action |
 |---|---|---|
 | `intent-gap` | `section`: Goal, Boundary, or Intent; `question`: concrete human decision | Revert implementation and publish an escalation naming the decision. Autonomous runs stop with that condition. |
-| `bad-spec` | `section`: existing section outside frozen intent; `replacement`: corrected section body | Revert implementation, amend that section with a change-log entry, and return through DISCUSS and PLAN on the full route, or repeat ONESHOT. |
+| `bad-spec` | `section`: existing section outside frozen intent; `replacement`: corrected section body | Revert implementation, amend that section with a change-log entry, and return through SPEC and PLAN on the full route, or repeat ONESHOT. |
 | `patch` | `surface`: `none`; `fixCommit`: commit SHA | Verify the fix is on the reviewed branch and changes at most ten lines in one text file. It cannot edit this build's spec. |
 | `defer` | `reason`: evidence for leaving this work to a separate change | Add an idempotent backlog entry containing the finding and reason. |
 

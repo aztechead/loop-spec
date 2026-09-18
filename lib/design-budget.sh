@@ -15,7 +15,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
-  echo "usage: design-budget.sh --feature-dir DIR --phase spec|discuss|plan" >&2
+  echo "usage: design-budget.sh --feature-dir DIR --phase spec|plan" >&2
   exit 2
 }
 
@@ -28,5 +28,5 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || usage
-case "$phase" in spec|discuss|plan) ;; *) usage ;; esac
+case "$phase" in spec|plan) ;; *) usage ;; esac
 exec python3 "$SCRIPT_DIR/design_budget.py" "$feature_dir" "$phase"

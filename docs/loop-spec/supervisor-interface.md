@@ -80,7 +80,7 @@ already reads tells you what to do:
   harnesses record it with `lib/decisions.sh add ... supervised`.
 - `oracle=self` means no one is listening: apply the self-answer rule in
   `skills/shared/autonomous-mode.md` and record `assumed` decisions.
-- `lib/phase-exit.sh` refuses to close SPEC or DISCUSS when a named supervisor was never
+- `lib/phase-exit.sh` refuses to close SPEC when a named supervisor was never
   asked. A rationale is not a question.
 - Never publish `cycle-result.sh write --status completed` before DELIVER; the result
   contract records `phaseReached` and `converged`, and a supervisor reads them.
@@ -189,7 +189,7 @@ warning and `events.sh` exits 0. A broken sink never kills a two-hour run.
 
 ## Port 3: decision oracle
 
-**Today.** Two modes exist. With a human attached, SPEC, DISCUSS, and PLAN interview
+**Today.** Two modes exist. With a human attached, SPEC and PLAN interview
 through the harness's native question tool: `AskUserQuestion` on Claude Code and the
 Agent SDK, `question` on opencode, `get_user_choice` on ADK, `request_user_input` on
 Codex (each harness contract maps the call). In autonomous mode no question is asked;

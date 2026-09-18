@@ -27,6 +27,8 @@
           "execStyle",
           "greenfield",
           "autonomous",
+          "iterate.feedback",
+          "currentGate",
           "artifacts.spec",
           "models.routeJudge"
         ],
@@ -75,8 +77,38 @@
             "{docs}/EVIDENCE.md"
           ]
         },
+        "checkpoint": "post-spec",
         "close": "always"
       }
+    },
+    {
+      "id": "spec.critique.gate",
+      "label": "Check whether the spec needs critique",
+      "kind": "gate",
+      "reads": [
+        "artifacts"
+      ],
+      "writes": [
+        "currentGate"
+      ],
+      "effort": "system1",
+      "routeDefault": "spec.critique"
+    },
+    {
+      "id": "spec.critique",
+      "label": "Run the specification critique",
+      "kind": "subgraph",
+      "reads": [
+        "artifacts",
+        "currentGate"
+      ],
+      "writes": [
+        "artifacts",
+        "currentGate",
+        "gateHistory"
+      ],
+      "effort": "system2",
+      "graph": "graph/critique.graph.json"
     },
     {
       "id": "human.after-spec",
@@ -97,7 +129,7 @@
         ],
         "expects": "gate=pause"
       },
-      "routeDefault": "discuss"
+      "routeDefault": "plan"
     },
     {
       "id": "oneshot",
@@ -176,124 +208,6 @@
         },
         "checkpoint": "post-oneshot",
         "close": "always"
-      }
-    },
-    {
-      "id": "discuss",
-      "label": "Challenge and refine the specification",
-      "kind": "agent",
-      "reads": [
-        "artifacts",
-        "execStyle"
-      ],
-      "writes": [
-        "artifacts",
-        "currentPhase",
-        "warnings"
-      ],
-      "effort": "system2",
-      "body": "skills/discuss/SKILL.md",
-      "ingress": {
-        "fields": [
-          "slug",
-          "feature_title",
-          "execStyle",
-          "autonomous",
-          "iterate.feedback",
-          "currentGate"
-        ],
-        "required": [
-          {
-            "writer": "SPEC",
-            "path": "{docs}/SPEC.md"
-          }
-        ]
-      },
-      "egress": {
-        "misplaced": "SPEC.md",
-        "gates": [
-          {
-            "label": "artifact-lint",
-            "body": "lib/artifact-lint.sh",
-            "args": [
-              "spec",
-              "{docs}/SPEC.md"
-            ]
-          },
-          {
-            "label": "grounding-lint",
-            "body": "lib/grounding-lint.sh",
-            "args": [
-              "{docs}/SPEC.md"
-            ]
-          }
-        ],
-        "oracle": true,
-        "writes": [
-          "artifacts.spec",
-          "artifacts.patternsPrefetch"
-        ],
-        "artifacts": {
-          "spec": "{docs}/SPEC.md"
-        },
-        "commit": {
-          "message": "spec: {slug}",
-          "paths": [
-            "{docs}/SPEC.md",
-            "{docs}/EVIDENCE.md"
-          ]
-        },
-        "checkpoint": "post-discuss",
-        "close": "always"
-      }
-    },
-    {
-      "id": "discuss.critique.gate",
-      "label": "Check whether the spec needs critique",
-      "kind": "gate",
-      "reads": [
-        "artifacts"
-      ],
-      "writes": [
-        "currentGate"
-      ],
-      "effort": "system1",
-      "routeDefault": "discuss.critique"
-    },
-    {
-      "id": "discuss.critique",
-      "label": "Run the specification critique",
-      "kind": "subgraph",
-      "reads": [
-        "artifacts",
-        "currentGate"
-      ],
-      "writes": [
-        "artifacts",
-        "currentGate",
-        "gateHistory"
-      ],
-      "effort": "system2",
-      "graph": "graph/critique.graph.json"
-    },
-    {
-      "id": "human.after-discuss",
-      "label": "Review the refined specification",
-      "kind": "human",
-      "reads": [
-        "execStyle"
-      ],
-      "writes": [
-        "currentPhase"
-      ],
-      "effort": "system1",
-      "admit": {
-        "probe": "lib/graph/probes/human-gate.sh",
-        "args": [
-          "--feature-dir",
-          "{featureDir}"
-        ],
-        "expects": "gate=pause"
       }
     },
     {
@@ -993,7 +907,7 @@
     },
     {
       "from": "verify",
-      "to": "discuss",
+      "to": "spec",
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/review-route.sh",
@@ -1026,7 +940,7 @@
     },
     {
       "from": "spec",
-      "to": "human.after-spec",
+      "to": "spec.critique.gate",
       "kind": "chain"
     },
     {
@@ -1048,60 +962,17 @@
       "to": "plan",
       "kind": "route",
       "condition": {
-        "probe": "lib/graph/probes/compact-gate.sh",
-        "args": [
-          "--feature-dir",
-          "{featureDir}",
-          "--gate",
-          "discuss"
-        ],
-        "expects": "gate=skip"
-      }
-    },
-    {
-      "from": "human.after-spec",
-      "to": "discuss",
-      "kind": "route",
-      "condition": {
-        "probe": "lib/graph/probes/compact-gate.sh",
-        "args": [
-          "--feature-dir",
-          "{featureDir}",
-          "--gate",
-          "discuss"
-        ],
-        "expects": "gate=run"
-      }
-    },
-    {
-      "from": "human.after-spec",
-      "to": "discuss",
-      "kind": "route",
-      "condition": {
-        "probe": "lib/graph/probes/short-path.sh",
+        "probe": "lib/graph/probes/oneshot.sh",
         "args": [
           "--feature-dir",
           "{featureDir}"
         ],
-        "expects": "path=full"
-      }
-    },
-    {
-      "from": "human.after-spec",
-      "to": "plan",
-      "kind": "route",
-      "condition": {
-        "probe": "lib/graph/probes/short-path.sh",
-        "args": [
-          "--feature-dir",
-          "{featureDir}"
-        ],
-        "expects": "path=short"
+        "expects": "route=full"
       }
     },
     {
       "from": "oneshot",
-      "to": "discuss",
+      "to": "spec",
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/oneshot.sh",
@@ -1129,13 +1000,8 @@
       "sameSession": true
     },
     {
-      "from": "discuss",
-      "to": "discuss.critique.gate",
-      "kind": "chain"
-    },
-    {
-      "from": "discuss.critique.gate",
-      "to": "discuss.critique",
+      "from": "spec.critique.gate",
+      "to": "spec.critique",
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
@@ -1149,8 +1015,8 @@
       }
     },
     {
-      "from": "discuss.critique.gate",
-      "to": "human.after-discuss",
+      "from": "spec.critique.gate",
+      "to": "human.after-spec",
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
@@ -1164,11 +1030,11 @@
       }
     },
     {
-      "from": "discuss.critique.gate",
-      "to": "discuss.critique",
+      "from": "spec.critique.gate",
+      "to": "spec.critique",
       "kind": "route",
       "condition": {
-        "probe": "lib/graph/probes/discuss-critique.sh",
+        "probe": "lib/graph/probes/spec-critique.sh",
         "args": [
           "--feature-dir",
           "{featureDir}"
@@ -1177,11 +1043,11 @@
       }
     },
     {
-      "from": "discuss.critique.gate",
-      "to": "human.after-discuss",
+      "from": "spec.critique.gate",
+      "to": "human.after-spec",
       "kind": "route",
       "condition": {
-        "probe": "lib/graph/probes/discuss-critique.sh",
+        "probe": "lib/graph/probes/spec-critique.sh",
         "args": [
           "--feature-dir",
           "{featureDir}"
@@ -1190,13 +1056,8 @@
       }
     },
     {
-      "from": "discuss.critique",
-      "to": "human.after-discuss",
-      "kind": "chain"
-    },
-    {
-      "from": "human.after-discuss",
-      "to": "plan",
+      "from": "spec.critique",
+      "to": "human.after-spec",
       "kind": "chain"
     },
     {
@@ -1621,7 +1482,7 @@
     },
     {
       "from": "iterate",
-      "to": "discuss",
+      "to": "spec",
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/iterate-gap.sh",
@@ -1661,7 +1522,7 @@
     },
     {
       "from": "human.iterate-spec-approval",
-      "to": "discuss",
+      "to": "spec",
       "kind": "chain"
     },
     {
@@ -1680,7 +1541,7 @@
     },
     {
       "from": "iterate",
-      "to": "discuss",
+      "to": "spec",
       "kind": "loop",
       "ceiling": 10,
       "strategy": "contain"
@@ -1770,7 +1631,7 @@
     },
     {
       "from": "verify",
-      "to": "discuss",
+      "to": "spec",
       "kind": "loop",
       "ceiling": 5,
       "strategy": "contain"
@@ -1781,6 +1642,14 @@
       "kind": "loop",
       "ceiling": 5,
       "strategy": "contain"
+    },
+    {
+      "from": "oneshot",
+      "to": "spec",
+      "kind": "loop",
+      "ceiling": 5,
+      "strategy": "contain",
+      "note": "oneshot promoting to the full path and cycling back through human.after-spec is the same bounded escalation as the oneshot self-retry above"
     }
   ]
 }

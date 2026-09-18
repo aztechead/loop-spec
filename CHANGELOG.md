@@ -29,6 +29,26 @@ All notable changes documented here. Format follows Keep a Changelog.
   instead of eight sources through eight Read calls. A task that touches no markdown
   no longer reads the docs contract. `tests/dispatch-read-set.test.sh` pins the bytes
   a fresh dispatch reads before it can act, within 5% of today's measurement.
+- EXECUTE's subagent rung reviews a wave with one spec-compliance reviewer instead of
+  one per task: `cycle-driver.sh task review-groups` groups the wave's packages under
+  `LOOP_SPEC_REVIEW_GROUP_BYTES` (default 150000) and emits one `dispatch` event per
+  group; the reviewer returns `verdicts[]`, one entry per task. Rework and the scoped
+  re-review stay per task. `task package` no longer emits a dispatch event (packaging
+  is not a launch); the session rung's `run --role reviewer` emits it instead.
+- The DISCUSS phase is folded into SPEC. The spec-critique gate now sits between the
+  SPEC phase and the human approval node (`spec -> spec.critique.gate -> spec.critique
+  -> human.after-spec`), so the human reviews the critiqued spec once instead of
+  stopping before and after DISCUSS. SPEC's skill owns the design lock (approach
+  selection, engineering stances, decisions) and the re-entry rule; every loop that
+  re-entered DISCUSS (VERIFY bad-spec, ITERATE gap=spec, the reopened spec approval,
+  ONESHOT promotion) re-enters SPEC or its critique gate. A feature paused at
+  `discuss` resumes at `spec`. The cycle has six phases.
+
+### Removed
+
+- The `discuss` phase id, `skills/discuss/`, `LOOP_SPEC_PHASE_MODEL_DISCUSS`,
+  `lib/graph/probes/discuss-critique.sh` (now `spec-critique.sh`), and the
+  `human.after-discuss` node.
 
 ## [6.8.0] - 2026-09-17
 

@@ -1,6 +1,6 @@
-# Critique gate protocol — shared procedure for the DISCUSS and PLAN gates
+# Critique gate protocol — shared procedure for the SPEC and PLAN gates
 
-Use this procedure for DISCUSS's `spec-critique` and PLAN's `plan-critique` gates.
+Use this procedure for SPEC's `spec-critique` and PLAN's `plan-critique` gates.
 The phase supplies the parameters below and its specific handling rules.
 `graph/critique.graph.json` owns routing. `skills/shared/tier-matrix.md` defines skip policy.
 Critique is **challenger-only**, without an advocate or debate round.
@@ -21,15 +21,15 @@ could have raised. `LOOP_SPEC_CRITIQUE_ROUNDS` outranks the graph
 
 ## Parameters (declared by the invoking phase)
 
-| Parameter | DISCUSS | PLAN |
+| Parameter | SPEC | PLAN |
 |---|---|---|
-| `{phase}` | `discuss` | `plan` |
+| `{phase}` | `spec` | `plan` |
 | `{gate}` | `spec-critique` | `plan-critique` |
 | `{artifact}` | `SPEC.md` | `PLAN.md` |
 | `{artifact_path}` | `docs/loop-spec/features/{slug}/SPEC.md` | `docs/loop-spec/features/{slug}/PLAN.md` |
 | `{author}` | `spec-writer-1` when SPEC.md was missing; otherwise the LEAD edits directly | `planner-1` |
 | `{next_step}` | the phase's exit (step 4) | the phase's exit after the bounded review |
-| Skip policy | `lib/graph/probes/discuss-critique.sh` answers `gate=skip` (maintenance ∪ spec already gated; never on a security signal or ITERATE re-entry) | structural fast-path ∪ maintenance profile (no security signal) |
+| Skip policy | `lib/graph/probes/spec-critique.sh` answers `gate=skip` (maintenance ∪ spec already gated; never on a security signal or ITERATE re-entry) | structural fast-path ∪ maintenance profile (no security signal) |
 | Phase deltas | no-op-revision hash shortcut; lead-authored fixes when there is no spec-writer | the fix-list is the union of `lib/phase-exit.sh plan` FLAG lines and the adjudicated findings; after the one revision, re-extract `tasks.json` (`lib/plan-tasks.sh extract`), re-run the gate command, and count surviving FLAGs with the delta survivors |
 
 The phase skill also declares the two adjudication actions that differ by phase:
@@ -119,7 +119,7 @@ the ceiling:
 - `{answer: "rerun", fixList}`: the artifact is snapshotted for the diff. Re-dispatch
   `{author}` via `SendMessage` (not a fresh Agent call) with `fixList` as written,
   instructing it to read the current artifact, apply every item in place, send team-lead
-  its completion message, then go idle. (Phase deltas apply: DISCUSS has the LEAD edit
+  its completion message, then go idle. (Phase deltas apply: SPEC has the LEAD edit
   directly when there is no spec-writer.)
 - `{answer: "close", reason, residue}`: the gate is closed with `--convergence cap-reached`,
   the open items are in `gate-logs/{gate}-residue.md`, and the phase proceeds to

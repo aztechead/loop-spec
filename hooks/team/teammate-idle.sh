@@ -41,8 +41,8 @@ if [[ -z "$CURRENT_PHASE" ]]; then
 fi
 
 case "$CURRENT_PHASE" in
-  discuss)
-    advisory "Phase: discuss. Teammate idle during DISCUSS. Await spec-critique gate or lead instruction before claiming new work."
+  spec)
+    advisory "Phase: spec. Teammate idle during SPEC. Await spec-critique gate or lead instruction before claiming new work."
     ;;
   plan)
     advisory "Phase: plan. Teammate idle during PLAN. Await the plan-critique gate or lead instruction."

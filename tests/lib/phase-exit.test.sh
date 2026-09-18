@@ -149,7 +149,7 @@ check "exit spec --check: leaves completedPhases unchanged" "$completed_before" 
 check "exit spec --check: creates no commit" "$head_before" "$(git rev-parse HEAD)"
 
 # SPEC grounding is a producer gate: an unresolved evidence reference must stop
-# before DISCUSS, and --check must leave every phase-side effect untouched.
+# before PLAN, and --check must leave every phase-side effect untouched.
 cp "$DOCS/SPEC.md" "$WORK/SPEC.before-grounding.md"
 sed 's/^- none$/- EVID-099: repository behavior/' "$WORK/SPEC.before-grounding.md" \
   > "$DOCS/SPEC.md"
@@ -160,7 +160,7 @@ head_before_bad="$(git rev-parse HEAD)"
 tags_before_bad="$(git tag)"
 ec=0; out="$(bash "$EXIT" spec --feature-dir "$FD" --check 2>&1)" || ec=$?
 check "exit spec --check: unresolved EVID reference is rejected" "1" "$ec"
-check "exit spec --check: grounding failure is reported before DISCUSS" "1" "$(grep -c 'EVID token EVID-099' <<<"$out")"
+check "exit spec --check: grounding failure is reported before PLAN" "1" "$(grep -c 'EVID token EVID-099' <<<"$out")"
 check "exit spec --check: failed grounding check leaves feature state unchanged" "$feature_before_bad" "$(shasum -a 256 "$FD/feature.json" | cut -d' ' -f1)"
 check "exit spec --check: failed grounding check leaves phase-entry state unchanged" "$entry_before_bad" "$(shasum -a 256 "$FD/.phase-entry.json" | cut -d' ' -f1)"
 check "exit spec --check: failed grounding check creates no commit" "$head_before_bad" "$(git rev-parse HEAD)"
@@ -196,36 +196,39 @@ bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1
 check "exit spec: a single-mode workspace record still commits" "3" "$(git log --oneline | grep -c 'spec: my-feature')"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" workspace null >/dev/null
 
-# --- discuss ------------------------------------------------------------------------
-out="$(bash "$MODE" discuss --feature-dir "$FD")"
-check "mode discuss: human attached grills" "grill=run" "${out%% *}"
-check "mode discuss: gated spec skips the critique" "1" "$(grep -c 'critique=skip' <<<"$out")"
-out="$(LOOP_SPEC_AUTONOMOUS=1 bash "$MODE" discuss --feature-dir "$FD")"
-check "mode discuss: autonomous self-answers the grill" "grill=self-answer" "${out%% *}"
-out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$MODE" discuss --feature-dir "$FD")"
-check "mode discuss: a supervisor rides on the grill line" "oracle=supervisor" "$(cut -d' ' -f2 <<<"$out")"
+# --- spec's grill/critique fields (DISCUSS folded into SPEC's own mode/exit) --------
+out="$(bash "$MODE" spec --feature-dir "$FD")"
+check "mode spec: human attached grills" "grill=run" "$(grep -o 'grill=[a-z-]*' <<<"$out")"
+check "mode spec: gated spec skips the critique" "1" "$(grep -c 'critique=skip' <<<"$out")"
+out="$(LOOP_SPEC_AUTONOMOUS=1 bash "$MODE" spec --feature-dir "$FD")"
+check "mode spec: autonomous self-answers the grill" "grill=self-answer" "$(grep -o 'grill=[a-z-]*' <<<"$out")"
+out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$MODE" spec --feature-dir "$FD")"
+check "mode spec: a supervisor rides on the grill line" "oracle=supervisor" "$(grep -o 'oracle=[a-z-]*' <<<"$out")"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"review-only"' >/dev/null
-out="$(bash "$MODE" discuss --feature-dir "$FD")"
-check "mode discuss: review-only skips the grill" "grill=skip" "${out%% *}"
+out="$(bash "$MODE" spec --feature-dir "$FD")"
+check "mode spec: review-only skips the grill" "grill=skip" "$(grep -o 'grill=[a-z-]*' <<<"$out")"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"auto"' >/dev/null
 
-# the oracle gate: a named supervisor that no discuss question reached keeps the phase open
-ec=0; out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" discuss --feature-dir "$FD" 2>&1)" || ec=$?
-check "exit discuss: supervisor named, nothing asked, flags" "1" "$ec"
-check "exit discuss: the flag names the oracle" "1" "$(grep -c 'FLAG \[oracle\]' <<<"$out")"
+# the oracle gate: a named supervisor that no spec question reached keeps the phase open
+ec=0; out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" spec --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit spec: supervisor named, nothing asked, flags" "1" "$ec"
+check "exit spec: the flag names the oracle" "1" "$(grep -c 'FLAG \[oracle\]' <<<"$out")"
 bash "$REPO_ROOT/lib/decisions.sh" add "$FD" spec "Runtime?" "python3" "oracle unavailable: I decided not to ask" >/dev/null
 ec=0; LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
 check "exit spec: an assumed decision naming the oracle does not satisfy the gate" "1" "$ec"
-LOOP_SPEC_ORACLE_WRITE=1 bash "$REPO_ROOT/lib/decisions.sh" add "$FD" discuss "Which store?" "sqlite" "supervisor chose it" supervised >/dev/null
-ec=0; LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" discuss --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
-check "exit discuss: a supervised decision satisfies the gate" "0" "$ec"
-git -C "$REPO" tag | grep post-discuss | xargs -r git -C "$REPO" tag -d >/dev/null 2>&1 || true
+LOOP_SPEC_ORACLE_WRITE=1 bash "$REPO_ROOT/lib/decisions.sh" add "$FD" spec "Which store?" "sqlite" "supervisor chose it" supervised >/dev/null
+ec=0; LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
+check "exit spec: a supervised decision satisfies the gate" "0" "$ec"
 LOOP_SPEC_ORACLE_WRITE=1 bash "$REPO_ROOT/lib/decisions.sh" add "$FD" spec "Runtime?" "(unanswered)" "oracle unavailable: denied" oracle-unavailable >/dev/null
 ec=0; LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
 check "exit spec: a failed question tool satisfies the gate" "0" "$ec"
-ec=0; bash "$EXIT" discuss --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
-check "exit discuss: clean spec passes" "0" "$ec"
-check "exit discuss: checkpoint tagged" "1" "$(git tag | grep -c 'post-discuss')"
+# Every clean SPEC exit in this file tags a checkpoint (a timestamped
+# loop-spec-checkpoint-post-spec-* tag, not a reused name): clear the ones the earlier
+# passes in this file left before proving this specific pass creates its own.
+git -C "$REPO" tag | grep post-spec | xargs -r git -C "$REPO" tag -d >/dev/null 2>&1 || true
+ec=0; bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
+check "exit spec: clean spec passes" "0" "$ec"
+check "exit spec: checkpoint tagged" "1" "$(git tag | grep -c 'post-spec')"
 
 # --- plan ---------------------------------------------------------------------------
 cat > "$DOCS/PLAN.md" <<'MD'

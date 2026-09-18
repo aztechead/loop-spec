@@ -56,7 +56,7 @@ for route, phase in (("bad-spec", "verify"), ("intent-gap", "verify"),
                  "branch":git("branch", "--show-current"), "baseBranch":"main", "baseSha":base,
                  "currentPhase":phase, "execStyle":"auto", "autonomous":True, "artifacts":{}, "commands":{},
                  "specApproval":{"sha256":intent_digest(text), "source":"autonomous"} if phase == "verify" else None,
-                 "completedPhases":["spec", "discuss", "plan", "execute"], "warnings":[],
+                 "completedPhases":["spec", "plan", "execute"], "warnings":[],
                  "iterate":{"used":0,"maxIterations":10}}
         (feature / "feature.json").write_text(json.dumps(state))
         code, entered = driver.graph_step(str(feature), "")
@@ -120,7 +120,7 @@ for route, phase in (("bad-spec", "verify"), ("intent-gap", "verify"),
                 assert "instruction-hash-mismatch" in answer, answer
             else:
                 code, step = driver.graph_step(str(feature), phase)
-                assert code == 0 and step["node"] == "discuss", step
+                assert code == 0 and step["node"] == "spec", step
         elif route == "intent-gap":
             assert result == "intent-gap" and spec.read_text() == text
             terminal = json.loads((feature / "result.json").read_text())

@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "loop-spec",
     "shortDescription": "Spec-driven cycle through ready-for-review PR",
-    "longDescription": "Give Codex a feature description or a pre-authored spec. loop-spec runs SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, and DELIVER from one source tree shared with Claude Code, OpenCode, and Google ADK.",
+    "longDescription": "Give Codex a feature description or a pre-authored spec. loop-spec runs SPEC, PLAN, EXECUTE, VERIFY, ITERATE, and DELIVER from one source tree shared with Claude Code, OpenCode, and Google ADK.",
     "developerName": "aztechead",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],

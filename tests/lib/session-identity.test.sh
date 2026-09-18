@@ -58,7 +58,7 @@ res="$(cd "$ROOT" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID \
   LOOP_SPEC_HARNESS=codex LOOP_SPEC_TEAMS_MODE=none LOOP_SPEC_WORKFLOWS_AVAILABLE=0 \
   LOOP_SPEC_CHECKPOINT_PR=0 GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
   bash -c "$resume_command" 2>/dev/null)"
-check "fresh native driver resumes the handoff" "NEXT phase=discuss" "${res:0:18}"
+check "fresh native driver resumes the handoff" "NEXT phase=plan" "${res:0:15}"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

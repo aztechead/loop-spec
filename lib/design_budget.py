@@ -67,7 +67,7 @@ def main(feature_dir, phase):
                     seen.clear()
                     closed_at.clear()
                     continue
-                if event_name != "phase_end" or event_phase not in ("spec", "discuss", "plan"):
+                if event_name != "phase_end" or event_phase not in ("spec", "plan"):
                     continue
                 data = event.get("data") or {}
                 if not isinstance(data, dict):
@@ -105,6 +105,6 @@ def main(feature_dir, phase):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3 or sys.argv[2] not in ("spec", "discuss", "plan"):
-        raise SystemExit("usage: design_budget.py FEATURE_DIR spec|discuss|plan")
+    if len(sys.argv) != 3 or sys.argv[2] not in ("spec", "plan"):
+        raise SystemExit("usage: design_budget.py FEATURE_DIR spec|plan")
     main(sys.argv[1], sys.argv[2])
