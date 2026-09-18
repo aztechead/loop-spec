@@ -68,6 +68,12 @@ unset LOOP_SPEC_MAX_PARALLEL_SUBAGENTS LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS
 out="$(LOOP_SPEC_WORKTREES=1 bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
 check "resume: persisted subagent cap is restored" "4" "$(jq -r '.rung.maxParallelSubagents' <<<"$out")"
 check "resume: persisted implementer cap is restored" "2" "$(jq -r '.rung.maxParallelImplementers' <<<"$out")"
+# Persisted defaults are not an operator setting: the width decides again.
+jq '.resources={maxParallelSubagents:1,maxParallelImplementers:1,explicit:false}' "$runtime_file" > "$runtime_file.tmp"
+mv "$runtime_file.tmp" "$runtime_file"
+out="$(LOOP_SPEC_WORKTREES=1 bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
+w="$(jq -r '.width' <<<"$out")"; (( w < 3 )) || w=3; (( w >= 1 )) || w=1
+check "resume: persisted defaults yield the width-aware cap" "$w" "$(jq -r '.rung.maxParallelImplementers' <<<"$out")"
 printf '%s\n' "$runtime_saved" > "$runtime_file"
 
 # --- deferred opt-in baseline -----------------------------------------------------

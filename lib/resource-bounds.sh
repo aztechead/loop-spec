@@ -60,8 +60,14 @@ fi
 
 case "${1-}" in
   resolve)
-    jq -cn --argjson i "$implementers" --argjson s "$subagents" \
-      '{maxParallelImplementers:$i,maxParallelSubagents:$s}'
+    # `explicit` says whether an operator set either bound. The record is persisted at
+    # cycle start and restored at EXECUTE, and a restored default read as an operator
+    # setting there, which silenced the width-aware default (the 6.9.0 full-route live
+    # run planned width 3 and still ran one implementer at a time).
+    explicit=false
+    [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS-}" || -n "${LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS-}" ]] && explicit=true
+    jq -cn --argjson i "$implementers" --argjson s "$subagents" --argjson e "$explicit" \
+      '{maxParallelImplementers:$i,maxParallelSubagents:$s,explicit:$e}'
     ;;
   env)
     printf "export LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS=%q\n" "$implementers"

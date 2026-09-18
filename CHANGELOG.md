@@ -40,6 +40,8 @@ All notable changes documented here. Format follows Keep a Changelog.
   set, the implementer wave cap is the plan's DAG width up to 3 (`lib/execute-rung.sh`).
   Every rung defaulted to one at a time, so the width gate and the per-wave review
   never paid off: the 6.9.0 full-route live run planned width 3 and ran serially.
+  `resource-bounds.sh resolve` records whether an operator set a bound (`explicit`), so
+  the defaults persisted at cycle start no longer restore as an operator setting.
 - `lib/python-path.sh` relinks its private python3 only when the target changed; the
   unconditional relink left the link missing for a moment and eight parallel test jobs
   raced through it once every hook called the helper.
