@@ -121,7 +121,10 @@ Use the current checkout without a worktree or DELIVER controller:
   and the terminal result. An outcome of `pushed-no-pr` (no `gh`, or a remote whose URL
   names no host) means the exact commit is on the remote and no PR can exist: that is
   a `completed` run with outcome `pushed-no-pr` and `--converged false` in step 9, not
-  a failure. Any other `ok: false` result is `delivery-blocked`.
+  a failure. An `ok: false` result whose `errorCode` is `checks_unsupported`,
+  `ready_failed`, or `pr_already_ready` means the PR is open and only the readiness flip
+  did not happen: that is `completed` with outcome `delivered-unready` and
+  `--converged false`. Any other `ok: false` result is `delivery-blocked`.
 - Run the terminal feedback check on the PR (`lib/pr-feedback.sh check <number>`) and
   route the result per the shared contract: requested changes at micro scale get fixed
   now. Every feedback-driven edit returns to Step 5: repeat the post-change grounding

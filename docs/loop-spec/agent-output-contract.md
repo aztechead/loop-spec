@@ -137,7 +137,13 @@ conclusion. A full cycle that completed implementation and
 verification but hit a SHA-bound delivery failure (`delivery.json.nextPhase ==
 "deliver"`) reports `status: "failed"`, `outcome: "delivery-blocked"`,
 `phaseReached: "deliver"`, `implementationConverged: true`, `converged: false`, passed
-verification, and a retry at `deliver`. A green draft PR (SHA-bound, required checks
+verification, and a retry at `deliver`. When every blocked target carries only a
+readiness error code (`checks_unsupported`, `ready_failed`, `pr_already_ready`) and the
+record holds the PR URL, the delivery did happen and only the draft-to-ready flip did
+not: that reports `status: "completed"`, `outcome: "delivered-unready"`,
+`workDelivered: true`, and `converged: false`, because readiness was never reached. One
+blocked target with any other code, or a mix of the two kinds, keeps `delivery-blocked`.
+A green draft PR (SHA-bound, required checks
 passed or none configured, PR left draft for human sign-off) reports
 `status: "completed"`, `outcome: "delivered-draft"`, `workDelivered: true`,
 `converged: false`, and `phaseReached: "completed"`. `workDelivered` is true whenever

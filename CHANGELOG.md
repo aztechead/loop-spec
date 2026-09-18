@@ -68,6 +68,14 @@ All notable changes documented here. Format follows Keep a Changelog.
   verification gate as `infra_error` while `make lint` was installed all along; the
   test slot already resolved this way inside `lib/detect-test-cmd.sh`. The bare tool
   stays the fallback when no target exists.
+- A pull request that was delivered but could not be flipped out of draft no longer
+  reports the whole run failed. When every blocked delivery target carries only a
+  readiness error code (`checks_unsupported`, `ready_failed`, `pr_already_ready`) and
+  the record holds the PR URL, the terminal result is `status: "completed"` with the new
+  outcome `delivered-unready`. A GitHub App without the checks scope made `gh pr checks`
+  answer "Resource not accessible by integration", and an open, pushed, correct PR was
+  published as `failed` / `delivery-blocked`. Any other blocked code, and a mix of the
+  two kinds, still reports `delivery-blocked`.
 
 ## [6.8.0] - 2026-09-17
 

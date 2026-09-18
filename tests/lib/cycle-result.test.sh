@@ -1084,6 +1084,72 @@ ec=0; bash "$LIB" write-terminal --result-root "$ARMED" --cycle-type full --stat
 check "write-terminal: an armed full cycle at execute cannot be declared completed" "3" "$ec"
 check "write-terminal: nothing was published" "0" "$([[ -f "$ARMED/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
 
+# --- delivered, readiness not flipped ------------------------------------------------
+# A GitHub App without the checks scope made `gh pr checks` answer "Resource not
+# accessible by integration". The PR was open, pushed, and SHA-bound, and the run still
+# reported failed/delivery-blocked, so a supervisor saw a lost run.
+UNREADY="$LOOP_DIR/features/unready"; mkdir -p "$UNREADY"
+
+unready_delivery() {
+  jq -n --arg code "$1" --arg msg "$2" --argjson extra "${3:-[]}" \
+    '{schema:1,ok:false,status:"blocked",nextPhase:"deliver",
+      attemptedAt:"2026-01-01T01:00:00Z",finishedAt:null,
+      prUrl:"https://github.com/test/repo/pull/7",
+      targets:([{name:"unready",ok:false,outcome:"blocked",branch:"feat/unready",
+        targetSha:"ready123",bindingEligible:true,
+        prUrl:"https://github.com/test/repo/pull/7",
+        checks:{status:"not-run"},errorCode:$code,error:$msg}] + $extra)}'
+}
+
+publish_unready() {
+  jq '.slug="unready" | .currentPhase="deliver" | .delivery={status:"pending",targets:[]}' \
+    <<<"$FIXTURE_FJ" > "$UNREADY/feature.json"
+  rm -f "$UNREADY/result.json"
+  bash "$LIB" write "$UNREADY" --status escalated --reason "${1:-readiness}" \
+    --summary "Implementation verified and the PR is open." >/dev/null 2>&1
+}
+
+unready_delivery checks_unsupported "required checks could not be read: GraphQL: Resource not accessible by integration" > "$UNREADY/delivery.json"
+publish_unready
+check "AF: a readiness-only block is a completed run" "completed" "$(jq -r '.status' "$UNREADY/result.json")"
+check "AF: its outcome is delivered-unready" "delivered-unready" "$(jq -r '.outcome' "$UNREADY/result.json")"
+check "AF: it carries the delivered PR" "https://github.com/test/repo/pull/7" "$(jq -r '.prUrl' "$UNREADY/result.json")"
+check "AF: work was delivered" "true" "$(jq -r '.workDelivered' "$UNREADY/result.json")"
+check "AF: readiness was never reached, so it is not converged" "false" "$(jq -r '.converged' "$UNREADY/result.json")"
+
+unready_delivery ready_failed "required checks passed but the draft PR could not be marked ready" > "$UNREADY/delivery.json"
+publish_unready
+check "AF2: a failed readiness flip is delivered-unready" "delivered-unready" "$(jq -r '.outcome' "$UNREADY/result.json")"
+check "AF2: and a completed run" "completed" "$(jq -r '.status' "$UNREADY/result.json")"
+
+unready_delivery checks_unsupported "checks unreadable" \
+  '[{"name":"sibling","ok":false,"outcome":"blocked","branch":"feat/sib","targetSha":"sib456","bindingEligible":true,"errorCode":"pr_closed","error":"PR is not open"}]' \
+  > "$UNREADY/delivery.json"
+publish_unready
+check "AF3: a mixed block stays a failed delivery" "failed" "$(jq -r '.status' "$UNREADY/result.json")"
+check "AF3: and keeps the delivery-blocked outcome" "delivery-blocked" "$(jq -r '.outcome' "$UNREADY/result.json")"
+
+unready_delivery pr_closed "PR is not open" > "$UNREADY/delivery.json"
+publish_unready
+check "AF4: any other single code is still delivery-blocked" "delivery-blocked" "$(jq -r '.outcome' "$UNREADY/result.json")"
+check "AF4: and still failed" "failed" "$(jq -r '.status' "$UNREADY/result.json")"
+
+# write-terminal's own allow-list, for the short routes that deliver the same way.
+TERM_UNREADY="$WORK/term-unready"; mkdir -p "$TERM_UNREADY/.loop-spec"
+bash "$LIB" write-terminal --result-root "$TERM_UNREADY" --cycle-type micro \
+  --status completed --outcome delivered-unready --title "Micro fix" --converged false \
+  --verification-status passed --pr-url "https://github.com/test/repo/pull/8" \
+  --summary "Fix delivered; the PR could not be marked ready." >/dev/null 2>&1
+check "AF5: micro write-terminal accepts delivered-unready" "delivered-unready" \
+  "$(jq -r '.outcome' "$TERM_UNREADY/.loop-spec/last-result.json" 2>/dev/null)"
+rm -f "$TERM_UNREADY/.loop-spec/last-result.json"
+bash "$LIB" write-terminal --result-root "$TERM_UNREADY" --cycle-type micro \
+  --status failed --outcome delivered-unready --title "Micro fix" --converged false \
+  --verification-status passed --pr-url "https://github.com/test/repo/pull/8" \
+  --summary "Fix delivered; the PR could not be marked ready." >/dev/null 2>&1
+check "AF5: delivered-unready is refused with a failed status" "0" \
+  "$([[ -f "$TERM_UNREADY/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

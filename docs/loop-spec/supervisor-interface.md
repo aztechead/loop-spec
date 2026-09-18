@@ -39,7 +39,9 @@ and one of: `pip install claude-agent-sdk` with a Claude login, or Google ADK wi
    `.loop-spec/last-result.json`: `status: paused` with `reason: phase-handoff` means
    send `/loop-spec:cycle autonomous` again in a fresh context; anything else is
    terminal. The run succeeded when `outcome` is `delivered` (or `no-change-needed`) and
-   `converged` is `true`. `status: completed` alone is not success.
+   `converged` is `true`. `status: completed` alone is not success. `delivered-unready`
+   is the one ending that shipped without converging: the PR in `prUrl` is open and
+   correct and a human flips it out of draft, so retrying the run delivers nothing new.
 6. **Consume events.** Every line of `events.jsonl`, and each terminal result as event
    `result`, reaches the executable named in `LOOP_SPEC_EVENT_SINK` on stdin. On the SDK
    a `PostToolUse` hook on `Bash` sees the same phase markers.
