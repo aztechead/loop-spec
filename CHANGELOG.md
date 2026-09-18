@@ -59,6 +59,16 @@ All notable changes documented here. Format follows Keep a Changelog.
   `lib/graph/probes/discuss-critique.sh` (now `spec-critique.sh`), and the
   `human.after-discuss` node.
 
+### Fixed
+
+- The lint and typecheck slots resolve through the task runner a repository declares
+  before any bare binary: a `make`, `just`, `task`, or `tox` target, then a package
+  script through the manager its lockfile names (`lib/graph/driver.py runner_target`).
+  A container run derived `ruff check .`, got exit 127, and reported the whole
+  verification gate as `infra_error` while `make lint` was installed all along; the
+  test slot already resolved this way inside `lib/detect-test-cmd.sh`. The bare tool
+  stays the fallback when no target exists.
+
 ## [6.8.0] - 2026-09-17
 
 ### Fixed

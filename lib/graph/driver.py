@@ -758,6 +758,53 @@ def cmd_start(argv):
     return 0
 
 
+# A target the repository declares is what its own contributors run and what its
+# container installs; a bare binary may not be there at all. A 6.8.0 container run
+# resolved `ruff check .`, got exit 127, and reported the whole verification gate as
+# infra_error while the test slot -- resolved through `make test` inside
+# detect-test-cmd.sh -- ran. These give lint and typecheck that same order.
+# (marker files, target pattern taking the target name, command taking it) in precedence
+# order, matching detect-test-cmd.sh: make, then just, then task, then tox.
+TASK_RUNNERS = (
+    (("Makefile", "GNUmakefile", "makefile"), r"^%s[ \t]*:", "make %s"),
+    (("justfile", "Justfile", ".justfile"), r"^%s[ \t]*:", "just %s"),
+    (("Taskfile.yml", "Taskfile.yaml", "Taskfile.dist.yml"), r"^[ \t]+%s[ \t]*:", "task %s"),
+    (("tox.ini",), r"^\[testenv:%s\]", "tox -e %s"),
+)
+# lockfile -> the package manager whose `run` a contributor here types. npm when none
+# declares one. prepare-environment.sh answers the install command, not this one.
+NODE_PACKAGE_MANAGERS = (("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"),
+                         ("bun.lockb", "bun"), ("bun.lock", "bun"))
+# command slot -> the target names a repository declares for it.
+RUNNER_TARGETS = {"lint": ("lint",), "typecheck": ("typecheck", "type-check")}
+
+
+def runner_target(root, slot):
+    """The declared task-runner command for one slot (`make lint`, `pnpm run lint`), or
+    "" when this repository declares no such target. Never a bare binary: that stays the
+    caller's fallback."""
+    for markers, pattern, command in TASK_RUNNERS:
+        for marker in markers:
+            path = os.path.join(root, marker)
+            if not os.path.isfile(path):
+                continue
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                body = fh.read()
+            for target in RUNNER_TARGETS[slot]:
+                if re.search(pattern % re.escape(target), body, re.M):
+                    return command % target
+    scripts = (read_json(os.path.join(root, "package.json"), {}) or {}).get("scripts") or {}
+    for target in RUNNER_TARGETS[slot]:
+        if scripts.get(target):
+            manager = "npm"
+            for lockfile, declared in NODE_PACKAGE_MANAGERS:
+                if os.path.isfile(os.path.join(root, lockfile)):
+                    manager = declared
+                    break
+            return "%s run %s" % (manager, target)
+    return ""
+
+
 def detect_commands(root):
     """{prepare,test,lint,typecheck} for one repository, after the env overrides."""
     prepare_proc = lib_run("prepare-environment", "resolve", "--root", root, quiet=True)
@@ -768,35 +815,23 @@ def detect_commands(root):
         except ValueError:
             prepare = ""
     test = lib_run("detect-test-cmd", root, quiet=True).stdout
-    lint = typecheck = ""
+    lint = runner_target(root, "lint")
+    typecheck = runner_target(root, "typecheck")
     node_bin = os.path.join(root, "node_modules", ".bin")
-    package_json = os.path.join(root, "package.json")
-    if os.path.isfile(package_json):
-        scripts = (read_json(package_json, {}) or {}).get("scripts") or {}
-        if os.access(os.path.join(node_bin, "eslint"), os.X_OK):
-            lint = "node_modules/.bin/eslint ."
-        elif scripts.get("lint"):
-            lint = "npm run lint"
-        if os.access(os.path.join(node_bin, "tsc"), os.X_OK) and os.path.isfile(os.path.join(root, "tsconfig.json")):
-            typecheck = "node_modules/.bin/tsc --noEmit"
-        elif scripts.get("typecheck"):
-            typecheck = "npm run typecheck"
+    if not lint and os.access(os.path.join(node_bin, "eslint"), os.X_OK):
+        lint = "node_modules/.bin/eslint ."
+    if not typecheck and os.access(os.path.join(node_bin, "tsc"), os.X_OK) \
+            and os.path.isfile(os.path.join(root, "tsconfig.json")):
+        typecheck = "node_modules/.bin/tsc --noEmit"
     pyproject = ""
     pyproject_path = os.path.join(root, "pyproject.toml")
     if os.path.isfile(pyproject_path):
         with open(pyproject_path, "r", encoding="utf-8", errors="replace") as fh:
             pyproject = fh.read()
-    if not lint:
-        makefile = os.path.join(root, "Makefile")
-        if os.path.isfile(os.path.join(root, "ruff.toml")) or "[tool.ruff" in pyproject:
-            lint = "ruff check ."
-        elif os.path.isfile(makefile):
-            with open(makefile, "r", encoding="utf-8", errors="replace") as fh:
-                if re.search(r"^lint:", fh.read(), re.M):
-                    lint = "make lint"
-    if not typecheck:
-        if os.path.isfile(os.path.join(root, "mypy.ini")) or "[tool.mypy" in pyproject:
-            typecheck = "mypy ."
+    if not lint and (os.path.isfile(os.path.join(root, "ruff.toml")) or "[tool.ruff" in pyproject):
+        lint = "ruff check ."
+    if not typecheck and (os.path.isfile(os.path.join(root, "mypy.ini")) or "[tool.mypy" in pyproject):
+        typecheck = "mypy ."
     return json.loads(lib("project-commands", "resolve", "--prepare", prepare, "--test", test,
                           "--lint", lint, "--typecheck", typecheck))
 
