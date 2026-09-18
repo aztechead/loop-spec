@@ -17,6 +17,7 @@ check "start: slug derived" "add-a-json-flag" "$(jq -r '.invocation.slug' <<<"$o
 check "start: profile standard without evidence" "standard" "$(jq -r '.profile' <<<"$out")"
 check "start: interactive asks only commands" "commands" "$(jq -r '[.decisions[].id] | join(",")' <<<"$out")"
 check "start: runtime.json carries teamsMode" "none" "$(jq -r '.teamsMode' "$REPO/.loop-spec/runtime.json")"
+check "start: default bounds are recorded as not explicit" "false" "$(jq -r '.resources.explicit' "$REPO/.loop-spec/runtime.json")"
 
 out="$(AUTONOMOUS=1 drv start --dir "$REPO" -- add a json flag 2>/dev/null)"
 check "start: autonomous asks nothing" "0" "$(jq -r '.decisions | length' <<<"$out")"

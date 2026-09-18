@@ -6,6 +6,11 @@ check() { [[ "$2" == "$3" ]] || { echo "FAIL: $1 (expected $2, got $3)"; exit 1;
 
 check "default resolve is serial and not explicit" '{"maxParallelImplementers":1,"maxParallelSubagents":1,"explicit":false}' \
   "$(env -u LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS -u LOOP_SPEC_MAX_PARALLEL_SUBAGENTS bash "$LIB" resolve)"
+check "default env exports nothing" '' \
+  "$(env -u LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS -u LOOP_SPEC_MAX_PARALLEL_SUBAGENTS bash "$LIB" env)"
+check "env exports an operator's bounds, validated" \
+  $'export LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS=2\nexport LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=4' \
+  "$(LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=4 LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS=2 bash "$LIB" env)"
 check "subagent override propagates" '4' "$(env -u LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=4 bash "$LIB" get implementers)"
 check "implementer override wins" '2' "$(LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=4 LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS=2 bash "$LIB" get implementers)"
 profile_file="$(mktemp)"
