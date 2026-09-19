@@ -255,14 +255,13 @@ if [[ "$workspace" == "null" ]]; then
     --workflow-optin "$(jq -r '.workflowExecuteOptIn // false' "$runtime" 2>/dev/null || echo false)" \
     --implementer-model "$(fget '.models.implementer // "inherit"')")" || { echo "execute-prepare: rung selection failed" >&2; exit 2; }
 else
-  ws_subagents="$(bash "$SCRIPT_DIR/resource-bounds.sh" get subagents)" || exit $?
-  ws_implementers="$(bash "$SCRIPT_DIR/resource-bounds.sh" get implementers)" || exit $?
-  if [[ "${LOOP_SPEC_WORKTREES:-1}" == "0" ]]; then
-    ws_subagents=1
-    ws_implementers=1
-  fi
-  rung="$(jq -cn --argjson s "$ws_subagents" --argjson i "$ws_implementers" \
-    '{rung:"subagent",reason:"workspace mode always dispatches one-shot subagents",worktreesEnabled:false,subagentIsolation:"none",maxParallelSubagents:$s,maxParallelImplementers:$i}')"
+  # The rung is pinned, but the caps come from the same selection as single-repo mode:
+  # the width-aware default (min(width, 3) with no operator bound) and the
+  # LOOP_SPEC_WORKTREES=0 clamp live in execute-rung.sh, and reading resource-bounds.sh
+  # directly here left a width-3 multi-repo plan at its default of 1.
+  ws_caps="$(lib execute-rung select --width "${width:-0}" --teams-mode none --workflows-available false --workflow-optin false)" \
+    || { echo "execute-prepare: rung selection failed" >&2; exit 2; }
+  rung="$(jq -c '{rung:"subagent",reason:"workspace mode always dispatches one-shot subagents",worktreesEnabled:false,subagentIsolation:"none",maxParallelSubagents:.maxParallelSubagents,maxParallelImplementers:.maxParallelImplementers}' <<<"$ws_caps")"
 fi
 max_retries="$(lib tuning get executeMaxRetriesPerTask 6 2>/dev/null || echo 6)"
 worktree_base=""

@@ -75,8 +75,8 @@
 #               when the PR is open and SHA-bound and only the readiness flip did not
 #               happen; "completed-with-gaps"
 #               for completed runs that did not deliver and are not a draft delivery>,
-#   "retryable": <true for a SHA-bound delivery block>,
-#   "retryPhase": <"deliver" for a SHA-bound delivery block, else null>,
+#   "retryable": <true for a SHA-bound delivery block; false once the run is delivered-unready>,
+#   "retryPhase": <"deliver" for a retryable delivery block, else null>,
 #   "verifiedSha": <single-repo delivery targetSha, else null>,
 #   "iterations": {"used": <.iterate.used // 0>, "max": <.iterate.maxIterations // null>},
 #   "warnings": <.warnings // []>,
@@ -895,15 +895,19 @@ PY
         # Delivered, readiness not flipped. The PR is open, pushed, and SHA-bound and
         # only the draft-to-ready transition did not happen, which is not a blocked
         # delivery: a GitHub App without the checks scope ("Resource not accessible by
-        # integration") reported a correct PR as a failed run. pr_already_ready and
-        # ready_failed reach the same shape with the required checks already passed.
-        # Any other blocked code, or a mix of the two kinds, stays delivery-blocked.
-         def readiness_only_error: ["checks_unsupported","ready_failed","pr_already_ready"];
+        # integration") reported a correct PR as a failed run. ready_failed reaches the
+        # same shape with the required checks already passed. pr_already_ready is not
+        # in the set: that PR is ready, so "unready" would be false, and the staged
+        # invariant it broke is not one a readiness retry clears. Any other blocked
+        # code, or a mix of the two kinds, stays delivery-blocked. The PR must be this
+        # delivery, its own: feature.json.prUrl can hold the checkpoint PR, which proves
+        # nothing about the delivery of this run.
+         def readiness_only_error: ["checks_unsupported","ready_failed"];
          ([$eligibleTargets[] | select(.ok == false)]) as $blockedTargets |
          (($blockedTargets | length) > 0 and
           ($blockedTargets | all(. as $t | (readiness_only_error | index($t.errorCode // "")) != null)))
            as $readinessOnlyBlock |
-         ($deliveryBlocked and $readinessOnlyBlock and $prUrl != null) as $deliveredUnready |
+         ($deliveryBlocked and $readinessOnlyBlock and (($delivery.prUrl // "") != "")) as $deliveredUnready |
         # A delivery ending states the delivery blocker, whatever the caller passed. A
         # run whose frozen-intent check could not read SPEC.md escalated with
         # "[Errno 2] No such file or directory: .../SPEC.md" as its reason, this writer
@@ -977,8 +981,8 @@ PY
          implementationConverged: $implementationConverged,
          converged: $converged,
          workDelivered: $workDelivered,
-         retryable: $deliveryBlocked,
-         retryPhase: (if $deliveryBlocked then "deliver" else null end),
+         retryable: ($deliveryBlocked and ($deliveredUnready | not)),
+         retryPhase: (if $deliveryBlocked and ($deliveredUnready | not) then "deliver" else null end),
          verifiedSha: (if $primaryTarget != null then $primaryTarget.targetSha else null end),
          iterations: {
           used: ($fj.iterate.used // 0),

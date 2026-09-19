@@ -334,20 +334,26 @@ templates cannot drift.
 ```
 IMPORTANT: All paths must be ABSOLUTE. Do not use relative paths. Do not use em-dashes.
 
-ENGINEERING CONTRACT (on by default; every directive binds). The index is
-`${LOOP_SPEC_SKILL_DIR}/../../skills/shared/engineering-directives.md`. The brief's `Read first` section names one file holding the contracts this task's files call for, rendered from these sources at dispatch; read that file once before writing code instead of opening each source, and never paste them:
-`${LOOP_SPEC_SKILL_DIR}/../../skills/shared/implementer-contract.md` (FOUR QUESTIONS (design gate): can I make it more modular?
-more extensible? is this the least amount of code that makes it happen?
+ENGINEERING CONTRACT (on by default; every directive binds). The brief's `Read first`
+section names ONE file, `<taskId>-contracts.md`, rendered at dispatch from the sources
+under `skills/shared/` that this task's files call for. Read that file once before
+writing code. Do not open the sources it was rendered from, and never paste them; the
+index is `skills/shared/engineering-directives.md`, and the sections that follow name
+their source only so you know what binds. `skills/shared/implementer-contract.md`: FOUR QUESTIONS (design gate: can I make it
+more modular? more extensible? is this the least amount of code that makes it happen?
 does this hold at production scale, memory and work bounded against deployment-sized
-input, not the fixture?); `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/laziness-ladder.md` (ponytail laziness ladder: YAGNI, then DRY, reuse
-what is already here); `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/design-for-change.md` (seams, not speculation);
-`${LOOP_SPEC_SKILL_DIR}/../../skills/shared/human-code.md` (house style over habit: read the neighbors, comments carry WHY,
-density matches the file, never cut `simplicity:` markers; CODE A HUMAN CAN OPERATE: fail
-loudly, or say why not); `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/human-docs.md` (DOCS FOR HUMANS: one job per document,
-cite never copy, a document your change makes false is fixed IN THIS DIFF and never a
-deferred follow-up; NEVER cut frontmatter, machine-read contract sections, artifact
-headings, EVID lines, or licenses); `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/writing-good-tests.md` (WRITING GOOD TESTS:
-name the break; no string-presence traps; no change detectors).
+input, not the fixture?).
+`skills/shared/laziness-ladder.md`: the ponytail laziness ladder (YAGNI, then DRY, reuse
+what is already here). `skills/shared/design-for-change.md`: seams, not speculation.
+`skills/shared/human-code.md`: house style over habit (read the neighbors, comments carry
+WHY, density matches the file, never cut `simplicity:` markers; CODE A HUMAN CAN OPERATE:
+fail loudly, or say why not). `skills/shared/human-docs.md`, present only when the task
+touches markdown: DOCS FOR HUMANS (one job per document, cite never copy, a document your
+change makes false is fixed IN THIS DIFF and never a deferred follow-up; NEVER cut
+frontmatter, machine-read contract sections, artifact headings, EVID lines, or
+licenses). `skills/shared/writing-good-tests.md`, present only when the task touches
+tests: WRITING GOOD TESTS (name the break; no string-presence traps; no change
+detectors).
 
 Rules that bind without a file read. TDD, red then green: code-producing tasks write the
 failing test FIRST, run it, confirm red, implement, confirm green; skill/config/docs
@@ -367,8 +373,8 @@ helpers to inline); `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/duplication-scan.sh"
 NO NESTED SUBAGENTS. Do this task yourself. Never dispatch a helper or a reviewer.
 Review arrives from the lead after your report.
 
-EXECUTION DISCIPLINE (evidence over recall). Read `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/execution-discipline.md`, do not
-paste it. You execute a brief a stronger reasoning pass produced: fidelity, not
+EXECUTION DISCIPLINE (evidence over recall; a section of the same rendered file, so no
+second read). You execute a brief a stronger reasoning pass produced: fidelity, not
 improvisation. Never assert what a file, command, or API does from memory; read it, run
 it, paste the output. Output that contradicts your expectation is signal: stop, re-read,
 revise. Re-read the acceptance criteria before DONE and check each against actual
@@ -450,19 +456,19 @@ NO NESTED SUBAGENTS. Do this review yourself. Never spawn a helper or a second r
 For EACH task below, read its brief, its implementer's report, and its review package once;
 judge each task on its own acceptance criteria. Never let one task's verdict decide another's.
   TASK {taskId}: brief {brief path}; report {report path}; worktree {worktree path from the
-  package packet's .worktree}; package {package path}; verify command {verifyCommand} (do not run it)
+  package packet's .worktree}; package {package path} (base {taskBaseSha}, head {implHead});
+  verify command {verifyCommand} (do not run it)
   (one such block per task in the group)
-Do NOT run the task's verify command ({verifyCommand from the packet}): the implementer ran
-it (its output is in the report) and the integration step reruns it after rebase. Run a
-command there only when the diff makes a specific criterion suspicious, and only one that
-reads the checkout (grep, test, jq, diff). Never run a plan, an apply, a test suite, or
-anything that reaches a network or a cloud API. Never `git worktree add` another checkout
-for this review.
-Read the review package once (commit list, stat, diff -U10). Do not re-run git for this
-range if the file exists:
-  {package path from: bash lib/dispatch-files.sh package --repo ... --base {taskBaseSha} --head {implHead}}
-If the package is missing, fetch `git diff --stat {taskBaseSha}..{implHead}` and
-`git diff -U10 {taskBaseSha}..{implHead}` yourself. Never use HEAD~1 as BASE.
+Each package was written by `lib/dispatch-files.sh package` (commit list, stat, diff -U10).
+Read it once; do not re-run git for that range while the file exists. If a package is
+missing, fetch `git diff --stat {taskBaseSha}..{implHead}` and
+`git diff -U10 {taskBaseSha}..{implHead}` for that task yourself. Never use HEAD~1 as BASE.
+Do NOT run the task's verify command for any task: the implementer ran it (its output is
+in the report) and the integration step reruns it after rebase. Run a command in a worktree only when
+the diff makes a specific criterion suspicious, and only one that reads the checkout
+(grep, test, jq, diff). Never run a plan, an apply, a test suite, or anything that
+reaches a network or a cloud API. Never `git worktree add` another checkout for this
+review.
 
 {specPath clause}
 
@@ -480,12 +486,10 @@ is the floor of this pass, not a finding.
 A requirement that lives in unchanged code or spans tasks is not a fail: put it in
 unverified[] with why the diff cannot show it. The lead must resolve each item.
 
-Return one of:
-  - verdict "pass"   if everything is satisfied AND unverified[] is empty
-  - verdict "rework" with specific findings if fixable issues exist (incl. over-engineering)
-  - verdict "block"  if the implementation is fundamentally wrong or unrecoverable
-
-Return JSON: { verdicts: [ { taskId: "...", verdict: "pass"|"rework"|"block", findings: ["<finding 1>", ...], unverified: [{"requirement":"...","why":"..."}] } ] }, one entry per task, none omitted.
+Return JSON, and only this shape: { verdicts: [ { taskId: "...", verdict: "pass"|"rework"|"block", findings: ["<finding 1>", ...], unverified: [{"requirement":"...","why":"..."}] } ] }, one entry per task, none omitted.
+Per entry: "pass" when every criterion is satisfied AND its unverified[] is empty;
+"rework" with specific findings when fixable issues exist (incl. over-engineering);
+"block" when the implementation is fundamentally wrong or unrecoverable.
 Your final message IS the verdict (the lead dispatched you nameless and blocking). Never
 call SendMessage to deliver it (a live reviewer lost three calls to InputValidationError
 sending JSON to a "main" that does not exist).

@@ -711,12 +711,23 @@ printf -- '---\nunresolved_questions: []\nfootprint:\n  - src/f.py\nroute: onesh
 jq -n --arg spec "$RC_SPEC" '{slug:"rc",executionProfile:"standard",iterate:{feedback:null},artifacts:{spec:$spec}}' > "$RC_FD/feature.json"
 check_output "spec-critique skips when the spec took the oneshot route" \
   "gate=skip reason=route=oneshot" "$SPEC_CRITIQUE" --feature-dir "$RC_FD"
-out="$(LOOP_SPEC_ROUTE=full bash "$SPEC_CRITIQUE" --feature-dir "$RC_FD")"
-if grep -q 'route=oneshot' <<<"$out"; then
-  echo "FAIL: LOOP_SPEC_ROUTE=full still answered route=oneshot: $out"; FAIL=$((FAIL + 1))
-else
-  echo "PASS: LOOP_SPEC_ROUTE=full never answers route=oneshot"; PASS=$((PASS + 1))
-fi
+check_output "LOOP_SPEC_ROUTE=full forces the critique on a oneshot spec" \
+  "gate=run reason=LOOP_SPEC_ROUTE=full" -c "LOOP_SPEC_ROUTE=full bash '$SPEC_CRITIQUE' --feature-dir '$RC_FD'"
+# A gated attended spec used to answer `spec already gated` under the override too.
+write_spec "$DC/SPEC.md" true '[]'
+seed_dc standard 'null'
+check_output "LOOP_SPEC_ROUTE=full forces the critique on a gated spec" \
+  "gate=run reason=LOOP_SPEC_ROUTE=full" -c "LOOP_SPEC_ROUTE=full bash '$SPEC_CRITIQUE' --feature-dir '$DC'"
+# The oneshot skip sits below the security signal and the oracle: the ONESHOT reviewer
+# reads a diff, not a spec, so neither a security surface nor a self-answered gate
+# may lose the challenger to the route.
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - src/f.py\nroute: oneshot\n---\n# rc\n\nRotate the OAuth2 credential.\n' > "$RC_SPEC"
+check_output "a security signal outranks the oneshot skip" \
+  "gate=run reason=security signal" "$SPEC_CRITIQUE" --feature-dir "$RC_FD"
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - src/f.py\nroute: oneshot\n---\n# rc\n' > "$RC_SPEC"
+jq '.autonomous=true' "$RC_FD/feature.json" > "$RC_FD/feature.json.tmp" && mv "$RC_FD/feature.json.tmp" "$RC_FD/feature.json"
+check_output "an autonomous oneshot run keeps the critic (oracle self)" \
+  "gate=run reason=self-answered questions" "$SPEC_CRITIQUE" --feature-dir "$RC_FD"
 
 declared="$(bash "$SPEC_CRITIQUE" --answers)"
 missing=0

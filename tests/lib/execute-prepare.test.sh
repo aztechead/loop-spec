@@ -315,6 +315,20 @@ check "workspace: the rung is the one-shot subagent" "subagent" "$(jq -r '.rung.
 out="$(LOOP_SPEC_WORKTREES=0 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=4 LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS=3 bash "$SCRIPT" run --feature-dir "$FDW" 2>/dev/null)"
 check "workspace: no-worktrees forces serial subagent cap" "1:1" \
   "$(jq -r '(.rung.maxParallelSubagents | tostring) + ":" + (.rung.maxParallelImplementers | tostring)' <<<"$out")"
+# Only `execute-rung select` applied min(width, 3); workspace prepare read the
+# resource-bounds default and ran a width-3 plan serially.
+printf '[{"id":"task-001","subject":"first","repo":"fe","files":["fe/a.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["a"]},
+{"id":"task-002","subject":"second","repo":"fe","files":["fe/b.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["b"]},
+{"id":"task-003","subject":"third","repo":"fe","files":["fe/c.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["c"]}]\n' > "$FDW/tasks.json"
+unset LOOP_SPEC_MAX_PARALLEL_SUBAGENTS LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS
+out="$(LOOP_SPEC_WORKTREES=1 bash "$SCRIPT" run --feature-dir "$FDW" 2>/dev/null)"
+check "workspace: width is measured" "3" "$(jq -r '.width' <<<"$out")"
+check "workspace: with no operator bound the cap is the width-aware default" "3:3" \
+  "$(jq -r '(.rung.maxParallelSubagents | tostring) + ":" + (.rung.maxParallelImplementers | tostring)' <<<"$out")"
+check "workspace: the rung stays the one-shot subagent" "subagent" "$(jq -r '.rung.rung' <<<"$out")"
+out="$(LOOP_SPEC_WORKTREES=1 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 bash "$SCRIPT" run --feature-dir "$FDW" 2>/dev/null)"
+check "workspace: an operator bound outranks the width default" "2:2" \
+  "$(jq -r '(.rung.maxParallelSubagents | tostring) + ":" + (.rung.maxParallelImplementers | tostring)' <<<"$out")"
 check "single: the packet has no workspace" "null" "$(jq -r '.workspace' "$FD/dispatch/prepare.json")"
 
 echo "Results: $PASS passed, $FAIL failed"
