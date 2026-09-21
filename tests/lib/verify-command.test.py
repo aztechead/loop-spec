@@ -60,7 +60,7 @@ class CommandIntegrity(unittest.TestCase):
 
     def test_stdin_device_paths_preserve_program_expansion_checks(self):
         for interpreter in ['python3', 'python3 -s', 'node', 'ruby', 'perl', 'php']:
-            for path in ['/dev/stdin', '/dev/fd/0']:
+            for path in ['/dev/stdin', '/dev/fd/0', '/proc/self/fd/0']:
                 for source in ['<<EOF\n"$value"\nEOF\n', '<<< "$value"']:
                     command = f'{interpreter} {path} {source}'
                     with self.subTest(command=command), self.assertRaisesRegex(ValueError, 'shell-expands'):

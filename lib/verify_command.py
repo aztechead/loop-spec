@@ -154,7 +154,7 @@ def validate(command):
                                      'use a test file or literal quoted program')
                 context["stdin_program"] = False
                 interpreter = None
-            elif word in ('-', '/dev/stdin', '/dev/fd/0'):
+            elif word in ('-', '/dev/stdin', '/dev/fd/0', '/proc/self/fd/0'):
                 stdin_selected = True
             elif not word.startswith('-') and not stdin_selected:
                 interpreter = None
