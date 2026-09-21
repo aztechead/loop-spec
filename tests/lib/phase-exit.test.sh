@@ -319,6 +319,22 @@ check "exit plan: LOOP_SPEC_PLAN_MIN_WIDTH=1 accepts a chain" "0" "$(grep -c '\[
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-002","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-003","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: three tasks are left alone" "0" "$(grep -c '\[width\]' <<<"$out")"
+printf '[{"id":"task-001","brief":"real one","files":["a.py"],"blockedBy":[],"verifyCommand":"pytest a.py","acceptanceCriteria":["pytest passes"]},{"id":"task-002","brief":"real two","files":["b.py"],"blockedBy":["task-001"],"verifyCommand":"pytest b.py","acceptanceCriteria":["pytest passes"]}]' > "$FD/tasks.json"
+ec=0; out="$(env -u LOOP_SPEC_PLAN_MIN_WIDTH bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: unset width override keeps small chain heuristic" "0" "$(grep -c '\[width\]' <<<"$out")"
+ec=0; out="$(LOOP_SPEC_PLAN_MIN_WIDTH= bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: empty width override keeps small chain heuristic" "0" "$(grep -c '\[width\]' <<<"$out")"
+ec=0; out="$(LOOP_SPEC_PLAN_MIN_WIDTH=2 bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: explicit width override rejects a two-task chain" "1" "$(grep -c '\[width\]' <<<"$out")"
+printf '[{"id":"task-001","brief":"real one","files":["a.py"],"blockedBy":[],"verifyCommand":"pytest a.py","acceptanceCriteria":["pytest passes"]},{"id":"task-002","brief":"real two","files":["b.py"],"blockedBy":[],"verifyCommand":"pytest b.py","acceptanceCriteria":["pytest passes"]}]' > "$FD/tasks.json"
+ec=0; out="$(LOOP_SPEC_PLAN_MIN_WIDTH=2 bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: explicit width override accepts two independent tasks" "0" "$(grep -c '\[width\]' <<<"$out")"
+printf '[{"id":"task-001","brief":"real one","files":["a.py"],"blockedBy":[],"verifyCommand":"pytest a.py","acceptanceCriteria":["pytest passes"]},{"id":"task-002","brief":"real two","files":["b.py"],"blockedBy":["task-001"],"verifyCommand":"pytest b.py","acceptanceCriteria":["pytest passes"]}]' > "$FD/tasks.json"
+ec=0; out="$(LOOP_SPEC_PLAN_MIN_WIDTH=1 bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: explicit width one accepts a two-task chain" "0" "$(grep -c '\[width\]' <<<"$out")"
+ec=0; out="$(LOOP_SPEC_PLAN_MIN_WIDTH=not-a-number bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: invalid explicit width remains a configuration failure" "1" "$ec"
+check "exit plan: invalid explicit width names the variable" "1" "$(grep -c 'LOOP_SPEC_PLAN_MIN_WIDTH must be a non-negative integer' <<<"$out")"
 printf '[{"id":"task-001","brief":"do a thing","files":["f1.sh"],"blockedBy":["task-003"],"verifyCommand":"pytest a.py","acceptanceCriteria":["pytest passes"]},{"id":"task-002","brief":"do a thing","files":["f1.sh","f2.sh"],"blockedBy":[],"verifyCommand":"pytest b.py","acceptanceCriteria":["pytest passes"]},{"id":"task-003","brief":"do a thing","files":["f2.sh"],"blockedBy":[],"verifyCommand":"pytest c.py","acceptanceCriteria":["pytest passes"]}]' > "$FD/tasks.json"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: declared blockedBy plus overlap edges forming a cycle is flagged" "1" "$(grep -c 'form a cycle' <<<"$out")"

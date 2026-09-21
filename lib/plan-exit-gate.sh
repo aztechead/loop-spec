@@ -73,10 +73,12 @@ if [[ -f "$tasks" ]]; then
   # 6.5.0 cycle here dispatched 12 tasks one at a time, 9 of its 11 edges file overlaps.
   # This measures the width EXECUTE will see, declared plus overlap edges under the same
   # excludes, and flags a chain while the plan can still be reshaped. Plans of up to
-  # three tasks are left alone; merging those buys nothing. LOOP_SPEC_PLAN_MIN_WIDTH is
-  # the operator override (default 2; 1 accepts any chain).
+  # three tasks are left alone by default; merging those buys nothing. A non-empty
+  # LOOP_SPEC_PLAN_MIN_WIDTH is an explicit operator request and applies to small plans
+  # too (default 2; 1 accepts any chain).
   # ponytail: the overlap union mirrors execute-prepare.sh; extract one script when a third caller appears.
-  min_width="${LOOP_SPEC_PLAN_MIN_WIDTH:-2}"
+  min_width_override="${LOOP_SPEC_PLAN_MIN_WIDTH-}"
+  min_width="${min_width_override:-2}"
   [[ "$min_width" =~ ^[0-9]+$ ]] \
     || { echo "plan-exit-gate: LOOP_SPEC_PLAN_MIN_WIDTH must be a non-negative integer, got '$min_width'" >&2; exit 2; }
   if (( rc == 0 && min_width > 1 )); then
@@ -113,8 +115,12 @@ PY
       shared="$(jq -r '.shared | join("; ")' <<<"$width")"
       if [[ "$w" == "-1" ]]; then
         flag "[width] $n tasks: declared blockedBy plus file-overlap edges form a cycle EXECUTE will refuse to dispatch; give each shared file one owning task${shared:+: $shared}"
-      elif (( n >= 4 && w < min_width )); then
-        flag "[width] $n tasks run $w at a time: tasks that share a file wait for each other; give each shared file one owning task or merge the tasks that share it${shared:+: $shared}"
+      elif (( w < min_width )) && { (( n >= 4 )) || [[ -n "$min_width_override" ]]; }; then
+        if [[ -n "$min_width_override" ]]; then
+          flag "[width] $n tasks run $w at a time below the explicit floor $min_width: review declared dependencies and file ownership to expose genuinely independent work; do not remove true prerequisites or add filler${shared:+: $shared}"
+        else
+          flag "[width] $n tasks run $w at a time: tasks that share a file wait for each other; give each shared file one owning task or merge the tasks that share it${shared:+: $shared}"
+        fi
       fi
     fi
   fi
