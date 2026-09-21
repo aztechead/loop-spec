@@ -11,14 +11,14 @@ Continue reducing the context and coordination cost of the full DAG workflow wit
 - Previous working arrangement: Luna implements; the lead reviews actual diffs and runs validation. Retain that arrangement unless the user changes it.
 - Read applicable repository instructions and `/Users/aztechead/.codex/RTK.md`. Shell commands must start with `rtk`.
 
-## Continuation status — 2026-09-20
+## Continuation status — 2026-09-21
 
-- The current implementation scopes critique `open`, `revised`, and `resume` around prompt-file packets. It verifies frozen sources and preserves exact artifact paths, model selection, delta handling, and resume semantics.
-- Durable trace, report, and measurement pointers are under the ignored `inbox/pr108-efficiency/` directory. The static coordinator source comparison uses baseline `596ac02`: protocol plus critic template measured 15,926 bytes; the candidate protocol measures 11,237 bytes. These are source-byte measurements only; they make no live runtime or token claim.
-- The required live current-baseline/candidate PLAN comparison and full candidate DAG run remain unproven. A sandbox Claude attempt failed at login with zero usage. Running two PLAN sessions (baseline and candidate) and one full DAG run with authenticated Claude requires explicit approval to send plugin source and synthetic fixtures to Anthropic.
-- Prepared snapshots and fixtures remain under `/tmp/loop-spec-pr108-next`; no live models were launched from them. The stabilized offline suite now passes 257 suites with zero failures or skips in 216 seconds; the recorded 157-second ceiling remains unchanged. Earlier attempt details remain in ignored audit and log artifacts under `inbox/pr108-efficiency/`.
+- Reviewed code at `461cb9f` ships scoped critique `open`/`revised`/`resume` packets, the explicit small-plan width override, and payload-first concurrent subagent identity. It preserves frozen-source checks, artifact paths, model selection, delta handling, and write restrictions.
+- Measured live evidence is recorded in [PR #108](https://github.com/aztechead/loop-spec/pull/108); durable traces, reports, and measurements remain under the ignored `inbox/pr108-efficiency/` directory. Do not copy detailed live findings or metrics into this shipped handoff.
+- The user has authorized continued Claude debugging in this session, so no new approval blocker remains. The next bounded opportunity is a structural check before critique entry when an explicit width floor already fails; that remains a hypothesis, and no overall runtime or token savings from critique packets have been established.
+- The stabilized offline suite passes 257 suites with zero failures or skips; the latest full-run timing is recorded in PR #108. Historical Sep 20 traces and measurements remain pointers in the ignored evidence directory.
 
-The last implementation passed 257 offline suites, with zero failures or skips. Runtime was 216 seconds; the runner printed an aspirational 157-second ceiling. That ceiling was not raised. Three live Python 3.14 FastAPI scenarios passed their app tests, lint, and independent acceptance checks.
+At the September 20 checkpoint, the implementation passed 257 offline suites with zero failures or skips. Runtime was 216 seconds; the runner printed an aspirational 157-second ceiling. That ceiling was not raised. Three live Python 3.14 FastAPI scenarios passed their app tests, lint, and independent acceptance checks.
 
 ## What already changed
 
@@ -38,7 +38,7 @@ Do not count these improvements again as new work:
 
 Other completed fixes include width-aware resource defaults, batch-collapsed width with raw cycle validation, grouped reviewer contracts, compact classification persistence, critique precedence, jq-less handoff parity, atomic Python shim replacement, spec-lite grounding instructions and immediate linting, and interruption-safe subprocess cleanup. Inspect the commit before reopening these issues.
 
-The full DAG run below used `plugin-run4`, which predates the final PLAN packet and bundle reductions. The packet received a separate live benchmark; the reduced bundles received semantic and size regression checks. A full run of the current implementation is still needed to establish its combined effect.
+The full DAG run below used `plugin-run4`, which predates the final PLAN packet and bundle reductions. The packet received a separate live benchmark; the reduced bundles received semantic and size regression checks. Current live evidence and follow-up runs remain tracked with PR #108 and the ignored `inbox/pr108-efficiency/` evidence.
 
 ## Full DAG baseline
 
