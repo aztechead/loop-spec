@@ -35,6 +35,35 @@ class CommandIntegrity(unittest.TestCase):
             with self.subTest(command=command), self.assertRaisesRegex(ValueError, 'shell-expands'):
                 validate(command)
 
+    def test_stdin_program_expansion(self):
+        for interpreter in ['python3', 'node', 'ruby', 'perl', 'php']:
+            for body in ['"$value"', "'${value}'", '$(touch marker)', '`whoami`']:
+                for redirect in ['<<EOF', '<<-EOF']:
+                    command = f'{interpreter} {redirect}\n{body}\nEOF\n'
+                    with self.subTest(command=command), self.assertRaisesRegex(ValueError, 'shell-expands'):
+                        validate(command)
+            with self.subTest(interpreter=interpreter), self.assertRaisesRegex(ValueError, 'shell-expands'):
+                validate(f'{interpreter} <<< "$value"')
+            for delimiter in ["'EOF'", '"EOF"', r'\EOF']:
+                validate(f'{interpreter} <<{delimiter}\n"$value" `whoami`\nEOF\n')
+            validate(f'{interpreter} <<EOF\nliteral program\nEOF\n')
+            validate(f'{interpreter} <<EOF\n\\$value\nEOF\n')
+            validate(f"{interpreter} <<< '$value'")
+        for command in ['<<EOF python3\n$value\nEOF\n', 'python3 2>/dev/null <<EOF\n$value\nEOF\n', '<<< "$value" python3', 'python3 - argument <<< "$value"']:
+            with self.subTest(command=command), self.assertRaisesRegex(ValueError, 'shell-expands'):
+                validate(command)
+        validate('cat <<EOF\n$value\nEOF\n')
+        validate('python3 script.py <<< "$value"')
+        validate("node -e'console.log(1)' <<< \"$value\"")
+        with self.assertRaisesRegex(ValueError, 'shell-expands'):
+            validate('cat <<EOF; python3 <<PY\n$value\nEOF\n$value\nPY\n')
+
+    def test_continuation_preserves_interpreter(self):
+        continuation = chr(92) + chr(10)
+        with self.assertRaisesRegex(ValueError, 'shell-expands'):
+            validate('python3 ' + continuation + ' -c "print(\'$value\')"')
+        validate('python3 ' + continuation + " -c 'print(1)'")
+
     def test_never_executes_substitutions(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / 'executed'
