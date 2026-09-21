@@ -66,6 +66,20 @@ check "verify gate: --minors @path is read from the file" "1" "$(jq -r '.minorsQ
 ec=0; bash "$DRV" verify gate --feature-dir "$FD" --verifier ALL_PASS --suite PASS --reviewer PASS_WITH_MINOR --minors "@$FD/nope.json" >/dev/null 2>&1 || ec=$?
 check "verify gate: a missing @path is a usage error" "2" "$ec"
 
+# Invalid remediation input is rejected before history, queues, commits, or backlog writes.
+for invalid in '[{"criterion":"GE-001","description":"fix it"}]' '[{"id":"repair"}]' '[false]' '[{"id":"repair","subject":"fix","files":[42]}]'; do
+  before_state="$(cat "$FD/feature.json")"
+  before_head="$(git rev-parse HEAD)"
+  before_backlog="$(cat "$REPO/.loop-spec/BACKLOG.md")"
+  ec=0; out="$(bash "$DRV" verify gate --feature-dir "$FD" --verifier FAIL --suite PASS --reviewer PASS \
+    --remediation-tasks "$invalid" --minors '["a.sh:1 - must not queue"]' 2>/dev/null)" || ec=$?
+  check "invalid remediation input: returns actionable redo" "1:redo" "$ec:$(jq -r '.route' <<<"$out")"
+  check "invalid remediation input: names the invalid task shape" "true" "$(jq '.exit.flags[0] | contains("remediation")' <<<"$out")"
+  check "invalid remediation input: feature state is byte-identical" "$before_state" "$(cat "$FD/feature.json")"
+  check "invalid remediation input: no commit occurs" "$before_head" "$(git rev-parse HEAD)"
+  check "invalid remediation input: no minor reaches the backlog" "$before_backlog" "$(cat "$REPO/.loop-spec/BACKLOG.md")"
+done
+
 # --- verify gate: reviewer blocks ------------------------------------------------------
 ec=0; out="$(bash "$DRV" verify gate --feature-dir "$FD" --verifier ALL_PASS --suite PASS --reviewer BLOCK \
   --remediation-tasks '[{"id":"task-001+remediate-1","subject":"Fix: boundary violation","files":["a.sh"]}]' 2>/dev/null)" || ec=$?

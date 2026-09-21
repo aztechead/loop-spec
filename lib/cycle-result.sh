@@ -49,7 +49,9 @@
 #   "loopSpecVersion": "<version that produced this run, else \"unknown\">",
 #   "slug": "...",
 #   "status": "completed | paused | escalated | terminal",
-#   "reason": "<--reason text or null>",
+#   "reason": "<the delivery blocker's \"<errorCode>: <message>\" when the run ended at
+#              DELIVER with one, else the --reason text or null. A --reason a blocker
+#              replaced is kept as a \"displaced-reason:\" warning>",
 #   "summary": "<required concise terminal synthesis>",
 #   "noChangeReason": "already-satisfied | diagnostic-only | null",
 #   "phaseReached": "<logical phase, including delivery.json completion>",
@@ -69,10 +71,13 @@
 #                     or a delivery target — draft or ready. Independent of
 #                     converged so a sign-off draft is not a gap>,
 #   "outcome": <"delivered" when converged; "delivered-draft" when the sidecar
-#               is a SHA-bound green draft with no iterate gaps; "completed-with-gaps"
+#               is a SHA-bound green draft with no iterate gaps; "delivered-unready"
+#               when the PR is open and SHA-bound and only the readiness flip did not
+#               happen; "completed-with-gaps"
 #               for completed runs that did not deliver and are not a draft delivery>,
-#   "retryable": <true for a SHA-bound delivery block>,
-#   "retryPhase": <"deliver" for a SHA-bound delivery block, else null>,
+#   "retryable": <true for a delivery block that is safe to retry; readiness-only
+#                 delivered-unready results are false>,
+#   "retryPhase": <"deliver" for a retryable delivery block, else null>,
 #   "verifiedSha": <single-repo delivery targetSha, else null>,
 #   "iterations": {"used": <.iterate.used // 0>, "max": <.iterate.maxIterations // null>},
 #   "warnings": <.warnings // []>,
@@ -471,10 +476,10 @@ PY
     # pushed-no-pr is the full cycle's hostless-remote ending (lib/pr-delivery.sh) carried
     # to the short routes: the 6.7.0 haiku micro run pushed a verified commit to a
     # bare-path origin and had only delivery-blocked (failed) to say so.
-    allowed_outcomes="verified no-change-needed verification-failed delivery-blocked promoted-to-full pushed-no-pr"
+    allowed_outcomes="verified no-change-needed verification-failed delivery-blocked delivered-unready promoted-to-full pushed-no-pr"
     if [[ "$cycle_type" == "debug" ]]; then
       success_outcome="fixed"
-      allowed_outcomes="fixed no-change-needed instrumented-and-waiting promoted-to-full verification-failed delivery-blocked pushed-no-pr"
+      allowed_outcomes="fixed no-change-needed instrumented-and-waiting promoted-to-full verification-failed delivery-blocked delivered-unready pushed-no-pr"
     elif [[ "$cycle_type" == "diagnostic" ]]; then
       success_outcome=""
       allowed_outcomes="no-change-needed diagnostic-failed"
@@ -533,6 +538,10 @@ PY
       [[ "$status" == "completed" && "$converged" == "true" &&
          "$verification_status" == "passed" && -n "$pr_url" ]] || {
         echo "cycle-result.sh: successful outcome requires completed/passed/converged with a PR" >&2; exit 0; }
+    elif [[ "$outcome" == "delivered-unready" ]]; then
+      [[ "$status" == "completed" && "$converged" == "false" &&
+         "$verification_status" == "passed" && -n "$pr_url" ]] || {
+        echo "cycle-result.sh: delivered-unready requires completed/passed, not converged, and the PR it delivered" >&2; exit 0; }
     elif [[ "$outcome" == "pushed-no-pr" ]]; then
       [[ "$status" == "completed" && "$converged" == "false" &&
          "$verification_status" == "passed" && -z "$pr_url" && -n "$branch" ]] || {
@@ -884,7 +893,35 @@ PY
           ($delivery.nextPhase // "") == "deliver") as $stoppedAtDelivery |
          ($stoppedAtDelivery and ($eligibleTargets | length) > 0 and ($hasLocalFailure | not)) as $deliveryBlocked |
          ($stoppedAtDelivery and (($eligibleTargets | length) == 0 or $hasLocalFailure)) as $localDeliveryEscalation |
+        # Delivered, readiness not flipped. The PR is open, pushed, and SHA-bound and
+        # only the draft-to-ready transition did not happen, which is not a retryable
+        # delivery: a GitHub App without the checks scope ("Resource not accessible by
+        # integration") reported a correct PR as a failed run. ready_failed has the
+        # same readiness-only treatment; pr_already_ready is not unready.
+        # Any other blocked code, or a mix of the two kinds, stays delivery-blocked.
+         def readiness_only_error: ["checks_unsupported","ready_failed"];
+         ([$eligibleTargets[] | select(.ok == false)]) as $blockedTargets |
+         (($blockedTargets | length) > 0 and
+          ($blockedTargets | all(. as $t | (readiness_only_error | index($t.errorCode // "")) != null)))
+           as $readinessOnlyBlock |
+         # A checkpoint PR in feature.json is not delivery evidence. Require the
+         # delivery sidecar URL before classifying a readiness-only stop as
+         # completed, and never treat an already-ready PR as unready.
+         ($deliveryBlocked and $readinessOnlyBlock and (($delivery.prUrl // "") != "")) as $deliveredUnready |
+        # A delivery ending states the delivery blocker, whatever the caller passed. A
+        # run whose frozen-intent check could not read SPEC.md escalated with
+        # "[Errno 2] No such file or directory: .../SPEC.md" as its reason, this writer
+        # turned that into delivery-blocked, and the published reason named a file
+        # instead of the checks scope that actually stopped the flip. The displaced text
+        # is a warning: it was true about something, just not about the delivery.
+         ([$blockedTargets[] | select((.errorCode // "") != "")
+           | "\(.errorCode): \(.error // "no message")"] | first) as $blockerReason |
+         (if ($deliveryBlocked or $deliveredUnready) and $blockerReason != null
+          then $blockerReason else $reason end) as $endingReason |
+         (if $reason != null and $endingReason != $reason
+          then ["displaced-reason: " + $reason] else [] end) as $displacedWarnings |
           (if $intentionalNoChange then "completed"
+           elif $deliveredUnready then "completed"
            elif $deliveryBlocked then "failed"
            elif $localDeliveryEscalation then "escalated"
            else $status end) as $effectiveStatus |
@@ -928,8 +965,8 @@ PY
          cycleType: "full",
          slug: $fj.slug,
           status: $effectiveStatus,
-          outcome: (if $intentionalNoChange then "no-change-needed" elif $deliveryBlocked then "delivery-blocked" elif $converged then "delivered" elif $draftDelivered then "delivered-draft" elif $pushedNoPr then "pushed-no-pr" elif $effectiveStatus == "completed" then "completed-with-gaps" else $effectiveStatus end),
-          reason: $reason,
+          outcome: (if $intentionalNoChange then "no-change-needed" elif $deliveredUnready then "delivered-unready" elif $deliveryBlocked then "delivery-blocked" elif $converged then "delivered" elif $draftDelivered then "delivered-draft" elif $pushedNoPr then "pushed-no-pr" elif $effectiveStatus == "completed" then "completed-with-gaps" else $effectiveStatus end),
+          reason: $endingReason,
           summary: $summary_arg,
           noChangeReason: (if $intentionalNoChange then $no_change_reason_arg else null end),
           phaseReached: (if $effectiveStatus == "completed" and ((($delivery.status // "") == "ready-for-review") or (($delivery.status // "") == "delivered-draft") or (($delivery.status // "") == "pushed-no-pr") or $intentionalNoChange)
@@ -944,14 +981,14 @@ PY
          implementationConverged: $implementationConverged,
          converged: $converged,
          workDelivered: $workDelivered,
-         retryable: $deliveryBlocked,
-         retryPhase: (if $deliveryBlocked then "deliver" else null end),
+         retryable: ($deliveryBlocked and ($deliveredUnready | not)),
+         retryPhase: (if ($deliveryBlocked and ($deliveredUnready | not)) then "deliver" else null end),
          verifiedSha: (if $primaryTarget != null then $primaryTarget.targetSha else null end),
          iterations: {
           used: ($fj.iterate.used // 0),
           max: ($fj.iterate.maxIterations // null)
         },
-         warnings: $warnings,
+         warnings: ($warnings + $displacedWarnings),
         autonomous: $autonomous,
         feature_title: ($fj.feature_title // $fj.slug),
         createdAt: ($fj.createdAt // null),

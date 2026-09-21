@@ -54,7 +54,7 @@ check_output "j: LOOP_SPEC_AUTONOMOUS=0 -> still injects" 0 "GRILL MODE ACTIVE" 
 # models started treating every reasonably-clear request as a skip.
 check_output "k: skip list stays exclusive" 0 "already unambiguous (goal" CLAUDE_PROJECT_DIR="$LS"
 check_output "l: cycle without autonomous is not a skip" 0 "without that token is not a skip" CLAUDE_PROJECT_DIR="$LS"
-check_output "m: DISCUSS still grills after SPEC" 0 "DISCUSS still runs its design-shape grill" CLAUDE_PROJECT_DIR="$LS"
+check_output "m: SPEC's design-lock step still grills" 0 "SPEC design-lock step still runs its design-shape grill" CLAUDE_PROJECT_DIR="$LS"
 
 
 # --- a proven headless launch injects nothing: the lead pays for every line ---

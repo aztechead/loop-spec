@@ -102,6 +102,21 @@ printf '{"slug":"demo","currentPhase":"execute"}\n' > "$WORK/wt/.loop-spec/featu
 sha3="$(bash "$LIB" commit "$WORK/wt/.loop-spec/features/demo" "state @ execute")"
 check "commit from a worktree: same ref advances" "$sha3" "$(git -C "$REPO" rev-parse refs/loop-spec/state/demo)"
 
+# Portable restore binds legacy artifact metadata to the restored runtime copy.
+PORTABLE="$REPO/.loop-spec/features/portable"; mkdir -p "$PORTABLE"
+printf '{"slug":"portable","currentPhase":"execute","artifacts":{"tasks":"%s/tasks.json"}}\n' "$PORTABLE" > "$PORTABLE/feature.json"
+cp "$PORTABLE/feature.json" "$PORTABLE/feature.json.bak"
+printf '[{"id":"local-task","status":"pending"}]\n' > "$PORTABLE/tasks.json"
+portable_sha="$(bash "$LIB" commit "$PORTABLE" "state @ execute")"
+printf '[{"id":"foreign-complete","status":"done"}]\n' > "$PORTABLE/tasks.json"
+bash "$LIB" restore "$WORK/wt" portable >/dev/null
+RESTORED="$WORK/wt/.loop-spec/features/portable"
+check "restore: legacy task locator is checkout-relative" ".loop-spec/features/portable/tasks.json" "$(jq -r '.artifacts.tasks' "$RESTORED/feature.json")"
+check "restore: backup gets the same local binding" ".loop-spec/features/portable/tasks.json" "$(jq -r '.artifacts.tasks' "$RESTORED/feature.json.bak")"
+check "restore: task content comes from the snapshot, not the old checkout" "local-task" "$(jq -r '.[0].id' "$RESTORED/tasks.json")"
+check "restore: original checkout task state is unchanged" "foreign-complete" "$(jq -r '.[0].id' "$PORTABLE/tasks.json")"
+check "restore: historical snapshot retains original metadata" "$PORTABLE/tasks.json" "$(git -C "$REPO" show "$portable_sha:feature.json" | jq -r '.artifacts.tasks')"
+
 ec=0; bash "$LIB" restore "$REPO" nosuch >/dev/null 2>&1 || ec=$?
 check "restore: no ref is exit 1" "1" "$ec"
 ec=0; bash "$LIB" commit "$WORK" x >/dev/null 2>&1 || ec=$?

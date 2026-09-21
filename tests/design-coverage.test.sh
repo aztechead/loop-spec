@@ -23,7 +23,7 @@ checks=(
   "agents/challenger.md	(corner test|designed into a corner)"
   "agents/code-reviewer.md	design-for-change pass"
   "agents/implementer.md	seams, not speculation"
-  "skills/discuss/SKILL.md	(corner question|corner case)"
+  "skills/spec/SKILL.md	(corner question|corner case)"
   "skills/debug/SKILL.md	sibling sweep"
   "commands/loop-debug.md	sibling sweep"
   "skills/shared/team-prompts/implementer.md	seams, not speculation"

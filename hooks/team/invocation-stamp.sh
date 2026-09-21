@@ -26,6 +26,10 @@ command -v python3 >/dev/null 2>&1 || exit 0
 input="$(cat)"
 project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
 
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
+
 # The payload rides in the environment: the script itself is on stdin.
 LOOP_SPEC_STAMP_INPUT="$input" python3 - "$project_dir" <<'PY' || exit 0
 import json, os, re, sys, time

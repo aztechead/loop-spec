@@ -17,6 +17,7 @@
 #
 # Usage:
 #   dispatch-files.sh brief --feature-dir <dir> --task-id <id> [--out <file>]
+#       also writes <id>-contracts.md beside the brief: the shared contracts the task's files call for, rendered from the sources
 #   dispatch-files.sh package --repo <root> --base <sha> --head <sha> [--out <file>]
 #   dispatch-files.sh report-path --feature-dir <dir> --task-id <id>
 #
@@ -49,6 +50,27 @@ done
 dispatch_dir() {
   mkdir -p "$FEATURE_DIR/dispatch"
   printf '%s\n' "$FEATURE_DIR/dispatch"
+}
+
+render_sections() {
+  local source="$1"; shift
+  local title
+  title="$(awk 'NR == 1 && /^# / { sub(/^# /, ""); print; found=1; exit } END { if (!found) exit 1 }' "$source")" \
+    || { echo "dispatch-files.sh: contract source has no title: $source" >&2; return 2; }
+  printf '# %s\n' "$title"
+  local heading
+  for heading in "$@"; do
+    awk -v wanted="$heading" '
+      $0 == "## " wanted { on=1; found=1; print; next }
+      on && /^## / { exit }
+      on { print }
+      END { if (!found) exit 7 }
+    ' "$source" || {
+      local status=$?
+      [[ "$status" -eq 7 ]] && echo "dispatch-files.sh: required contract section missing: $source: $heading" >&2
+      return 2
+    }
+  done
 }
 
 case "$cmd" in
@@ -117,7 +139,46 @@ case "$cmd" in
     fi
     environment=""
     [[ -f "$FEATURE_DIR/dispatch/environment.txt" ]] && environment="$(cat "$FEATURE_DIR/dispatch/environment.txt")"
-    jq -r --arg id "$TASK_ID" --arg constraints "$constraints" --arg cited "$cited" --arg environment "$environment" '
+    # The contracts this task's files call for, rendered into one file beside the brief.
+    # The stanza names eight sources and the implementer opened each with its own Read
+    # on every dispatch (6.5.0 cycle here, 56 KB and eight turns per task); a task that
+    # touches no markdown never needed the docs contract. Rendered from the sources at
+    # dispatch time, so the copy cannot rot.
+    shared_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../skills/shared" && pwd)"
+    contracts="engineering-directives.md implementer-contract.md execution-discipline.md"
+    jq -e '[.files[]? | select(test("\\.(md|markdown|rst)$") | not)] | length > 0' <<<"$task_json" >/dev/null \
+      && contracts="$contracts laziness-ladder.md design-for-change.md human-code.md"
+    jq -e '[.files[]? | select(test("\\.(md|markdown|mdx|rst)$"))] | length > 0' <<<"$task_json" >/dev/null \
+      && contracts="$contracts human-docs.md"
+    jq -e '[.files[]? | select(test("(^|/)(tests?|__tests__|spec)/|\\.test\\.|_test\\.|(^|/)test_|\\.spec\\."))] | length > 0' <<<"$task_json" >/dev/null \
+      && contracts="$contracts writing-good-tests.md"
+    contracts_out="$(dirname "$OUT")/${TASK_ID}-contracts.md"
+    for c in $contracts; do
+      [[ -f "$shared_dir/$c" ]] \
+        || { echo "dispatch-files.sh: contract source missing: $shared_dir/$c" >&2; exit 2; }
+    done
+    {
+      echo "# Contracts for $TASK_ID (rendered from skills/shared at dispatch; the sources bind)"
+      for c in $contracts; do
+        printf '\n\n---\n\n<!-- source: %s -->\n\n' "$shared_dir/$c"
+        case "$c" in
+          engineering-directives.md)
+            echo "> Rendered sections: Code directives; Version evidence; Test directives. Full diagnostic reference (consult only if a probe needs interpretation): $shared_dir/$c."
+            render_sections "$shared_dir/$c" "Code directives" "Version evidence" "Test directives" || exit 2
+            ;;
+          laziness-ladder.md)
+            echo "> Rendered sections: Compact directive (read this file; do not paste it into a prompt); Resolving the probe (<probe_dir>); Companion directives. Full diagnostic reference (consult only if a probe needs interpretation): $shared_dir/$c."
+            render_sections "$shared_dir/$c" \
+              "Compact directive (read this file; do not paste it into a prompt)" \
+              'Resolving the probe (`<probe_dir>`)' "Companion directives" || exit 2
+            ;;
+          *)
+            cat "$shared_dir/$c"
+            ;;
+        esac
+      done
+    } > "$contracts_out" || { echo "dispatch-files.sh: cannot write $contracts_out" >&2; exit 2; }
+    jq -r --arg id "$TASK_ID" --arg constraints "$constraints" --arg cited "$cited" --arg environment "$environment" --arg contracts_out "$contracts_out" --arg contracts "$contracts" '
       "# Task brief: \($id)",
       "",
       "**Subject:** \(.subject // .brief // "")",
@@ -140,6 +201,10 @@ case "$cmd" in
       "",
       "## Verify",
       (.verifyCommand // "true"),
+      "Run this command exactly. If it rejects behavior allowed by the acceptance criteria, report the contradictory assertion and evidence as NEEDS_CONTEXT. Do not rename symbols, force a representation, or weaken product behavior merely to satisfy a faulty generated check. The lead must repair the check and obtain fresh review before integration.",
+      ((.verifyCommandRepairs // [])[] | "### Verification repair requiring review",
+        "Previous command: \(.expectedCommand)", "Reason: \(.reason)", "Evidence: \(.evidence)",
+        "Review the replacement against the unchanged acceptance criteria before passing this task."),
       (if .expected then "Expected: \(.expected)" else empty end),
       "",
       "## Acceptance criteria",
@@ -156,6 +221,9 @@ case "$cmd" in
       "",
       (if $cited != "" then "## Evidence this task cites (EVIDENCE.md rows; do not re-probe)\n\($cited)\n" else empty end),
       (if $environment != "" then "## Environment (probed by the lead; do not re-check versions or auth)\n\($environment)\n" else empty end),
+      "## Read first",
+      "- \($contracts_out): the engineering contracts these files call for (\($contracts | split(" ") | join(", "))), rendered from skills/shared at dispatch. Read it once instead of opening the sources.",
+      "",
       "## Context rule",
       "Everything that binds this task is in this brief and the files listed. Do not read SPEC.md, PLAN.md, PATTERNS.md, or EVIDENCE.md; ask the lead if a value is missing.",
       "",

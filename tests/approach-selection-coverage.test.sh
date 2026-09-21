@@ -5,8 +5,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.
 
 checks=(
   "skills/spec/SKILL.md	shared/approach-selection.md"
-  "skills/discuss/SKILL.md	shared/approach-selection.md"
-  "skills/plan/SKILL.md	shared/approach-selection.md"
+  "skills/plan/SKILL.md	.planner.promptFile"
+  "skills/plan/SKILL.md	planner assignment"
   "agents/spec-writer.md	shared/approach-selection.md"
   "agents/planner.md	shared/approach-selection.md"
   "agents/iterate-judge.md	shared/approach-selection.md"

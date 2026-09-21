@@ -24,7 +24,7 @@
 #          these via `tuning.sh has-check` (e.g. suite-regression makes the
 #          opt-in regression scan mandatory for this repo).
 #   raise-gate-rounds-spec     tighten   gapCounts.spec >= 3
-#       -> discussMaxCritiqueRounds 2->3
+#       -> specMaxCritiqueRounds 2->3
 #   raise-gate-rounds-plan     tighten   gapCounts.plan >= 3
 #       -> planMaxCritiqueRounds 2->3
 #   raise-gate-rounds-execute  tighten   gapCounts.execute >= 3
@@ -216,7 +216,7 @@ VERDICT="$(jq -cn \
     (if (($m.gapCounts // {}).spec // 0) >= $min then
       {id: "raise-gate-rounds-spec", kind: "tighten",
        trigger: ("gapCounts.spec \($m.gapCounts.spec) >= \($min)"),
-       params: {discussMaxCritiqueRounds: 3}}
+       params: {specMaxCritiqueRounds: 3}}
      else empty end),
     (if (($m.gapCounts // {}).plan // 0) >= $min then
       {id: "raise-gate-rounds-plan", kind: "tighten",

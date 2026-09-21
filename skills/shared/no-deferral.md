@@ -1,6 +1,6 @@
 # No self-authored deferral (shared contract)
 
-Complete the scope set by SPEC, DISCUSS, and PLAN.
+Complete the scope set by SPEC and PLAN.
 **Everything in the spec ships**, except work recorded by the bounded gates below.
 No harness, style, or cycle type permits the model to declare completion after deferring scope on its own.
 Negations, template defaults, quoted reports, and runtime warnings do not by themselves prove that the run dropped scope.
@@ -9,7 +9,7 @@ Negations, template defaults, quoted reports, and runtime warnings do not by the
 
 - If it is in the spec/design, it is in scope. Implement it before concluding.
 - Never suggest deferring spec scope.
-  Resolve scope questions during SPEC or DISCUSS through the user or autonomous decision record.
+  Resolve scope questions during SPEC through the user or autonomous decision record.
   The spec's "Out of scope" section defines the design boundary.
 - If an item cannot or should not ship during EXECUTE or VERIFY, route the gap through ITERATE's rewind machinery.
   Do not replace that route with a deferral note.

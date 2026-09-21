@@ -5,11 +5,12 @@
 #   exit 0  = allow
 #   exit 2  = block (with stderr message shown to user)
 #
-# Caller identity is determined by parsing the session transcript to find the
+# Caller identity comes from Claude Code's `agent_type` hook field when present.
+# Older payloads and fixtures fall back to parsing the session transcript for the
 # most recent Agent dispatch that is still OPEN (its tool_use id has no matching
-# tool_result yet) and reading its subagent_type field. Matching on the last
-# dispatch regardless of completion misattributed main-thread writes to a
-# long-finished subagent and produced spurious DENYs.
+# tool_result yet). Matching on the last dispatch regardless of completion
+# misattributed main-thread writes to a long-finished subagent and produced
+# spurious DENYs; concurrent subagents require the payload identity.
 #
 # Caller subagent_type is namespaced "loop-spec:<role>" (plugin agents); the
 # legacy bare "loop-spec-<role>" form is also accepted. Both are normalized to the
@@ -61,6 +62,10 @@ fi
 INPUT=$(cat 2>/dev/null) || true
 [[ -z "$INPUT" ]] && exit 0
 
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
+
 PARSED=$(printf '%s' "$INPUT" | python3 -c "
 import json, sys
 try:
@@ -72,6 +77,7 @@ tool_input = d.get('tool_input') or {}
 print(tool_name)
 print(tool_input.get('file_path') or '')
 print(d.get('transcript_path') or '')
+print(d.get('agent_type') or '')
 " 2>/dev/null) || PARSED=""
 
 [[ -z "$PARSED" ]] && exit 0
@@ -79,6 +85,7 @@ print(d.get('transcript_path') or '')
 TOOL_NAME=$(printf '%s' "$PARSED" | sed -n '1p')
 FILE_PATH=$(printf '%s' "$PARSED" | sed -n '2p')
 TRANSCRIPT_PATH=$(printf '%s' "$PARSED" | sed -n '3p')
+PAYLOAD_CALLER=$(printf '%s' "$PARSED" | sed -n '4p')
 
 # Only restrict Write and Edit tool calls
 if [[ "$TOOL_NAME" != "Write" && "$TOOL_NAME" != "Edit" ]]; then
@@ -122,6 +129,9 @@ if [[ -n "$plugin_root" && -d "$plugin_root" ]]; then
   fi
 fi
 
+# Prefer Claude Code's authoritative subagent identity from the hook payload. Current
+# Claude Code supplies `agent_type` for hooks running inside a subagent; the transcript
+# walk remains the compatibility path for older payloads and fixtures.
 # Parse transcript to find the caller subagent_type: the most recent Agent
 # dispatch whose tool_use id has NOT been answered by a tool_result. A dispatch
 # with a matching tool_result is finished — writes after it belong to the main
@@ -130,6 +140,8 @@ fi
 # simplicity: this JSONL walk is near-duplicated in hooks/team/placeholder-question-guard.sh
 # (different outputs: caller name here, open/phase there); extract a shared walker when a
 # third hook needs one.
+CALLER="$PAYLOAD_CALLER"
+if [[ -z "$CALLER" ]]; then
 CALLER=$(python3 - "$TRANSCRIPT_PATH" <<'PY' 2>/dev/null
 import json, sys
 
@@ -182,6 +194,7 @@ for tid, subtype in dispatches:
 print(caller)
 PY
 ) || CALLER=""
+fi
 
 # Path match helper: returns 0 if FILE_PATH is under the given prefix segment.
 # Handles both relative and absolute paths by matching on the path fragment.

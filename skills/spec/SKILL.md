@@ -1,18 +1,19 @@
 ---
 name: spec
-description: "Write SPEC.md from repository evidence and recorded decisions. Resolve intent questions before approval. Internal phase of /loop-spec:cycle. Start there for repository work."
-allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
+description: "Write SPEC.md from repository evidence and recorded decisions, lock the design, run the challenger critique, and resolve intent questions before approval. Internal phase of /loop-spec:cycle. Start there for repository work."
+allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch
 ---
 
 # SPEC
 
 Run in the main thread. Write `docs/loop-spec/features/{slug}/SPEC.md` in the existing
 checkout; never create the feature directory here. Set `feature_dir=.loop-spec/features/{slug}`.
-Read only the entry packet first:
+Follow `skills/shared/dispatch.md` for every agent dispatch. Read only the entry packet first:
 
 ```bash
 pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin spec --feature-dir "$feature_dir")"
 # .entry.fields .entry.read[] .entry.flags[] .mode.path .mode.oracle .mode.greenfield
+# .mode.grill .mode.critique .mode.reentry
 # .mode.budget .mode.remaining .mode.exhausted .mode.budgetReason
 ```
 
@@ -92,6 +93,39 @@ Keep the first draft concise; the rule is: Do not dispatch a prose-pruning revie
 Preserve
 criteria, decisions, questions, and grounding. Never AskUserQuestion as a wait.
 
+Lock the design in the same pass. Read `skills/shared/approach-selection.md` and
+compare the requested method with one evidence-backed alternative; a passed intent
+checkpoint does not skip it. Evaluate the corner case and the relevant design shape
+when the spec adds a component, store, service boundary, or cache
+(`skills/shared/engineering-stances.md`). Record each design answer with
+`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/decisions.sh" add`; every answer becomes a
+requirement and a `### Good Enough` criterion. On re-entry from VERIFY or ITERATE
+(`mode.reentry`), read `iterate.feedback`, refine only that gap, and do not restart
+the interview; reopen Goal/Boundary only when the driver says the human approved
+the rewind. If SPEC.md already exists (a re-entry, or a ONESHOT promotion), edit it
+in place and never spawn a second author: on promotion, expand the intent draft with
+the full SPEC template and preserve Intent before the critique.
+
+## Critique
+
+Run `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/phase-exit.sh" spec --feature-dir "$feature_dir" --check`
+and fix every reported FLAG first. Then run
+`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/graph/probes/spec-critique.sh" --feature-dir "$feature_dir"`:
+the entry line's `critique=` was answered before SPEC.md existed, so this answer decides.
+When it says `gate=run`, use
+`skills/shared/critique-gate-protocol.md` and `graph/critique.graph.json` for
+`phase=spec`, `gate=spec-critique`, and `artifact=SPEC.md`. `run` dispatches the
+challenger; `lib/graph/probes/spec-critique.sh` decides whether the gate may skip,
+and `skip` logs `spec critique skipped (<reason>)` only when the probe permits it;
+the critique steps emit the `gate_round` events through the shared protocol.
+Never spawn `advocate-1`. An `UNGROUNDED:` finding gets a probe and EVID citation. A
+reviewer BLOCK or held exit returns flags; substantive findings stay on the fix-list.
+When `critique revised` reports `changed: false`, send a `DELTA-FINDINGS:` header
+followed by one `unaddressed: <item>` line per unresolved fix. `critique fail`
+answering `close` ends the gate with SPEC as it stands and preserves residue. Never
+AskUserQuestion as a wait. Resume from gate logs or the digest; never re-ask answered
+questions. In explicit teams mode, TeamDelete before return.
+
 ## Approval and return
 
 Before approval, run the non-oracle checks:
@@ -103,8 +137,8 @@ Write Goal and Boundary as outcomes and constraints; put implementation choices 
 them. In interview mode get human approval; in supervisor mode get the supervised
 gate; in self/synthesize mode record the authorized recommendation without a human
 wait. Record the result with `decisions.sh add`. Do not freeze here: the driver freezes
-Goal and Boundary when PLAN begins after DISCUSS.
-DISCUSS may change them and reports that change. Return to the cycle; never invoke a
+Goal and Boundary when PLAN begins, after this phase's critique runs.
+The critique may change them and reports that change. Return to the cycle; never invoke a
 successor or run the exit. `next --returned-from spec` runs `lib/phase-exit.sh spec`,
 commits the artifact, or returns REDO with FLAG lines. In step mode report
 `SPEC complete. SPEC.md at docs/loop-spec/features/{slug}/SPEC.md.`

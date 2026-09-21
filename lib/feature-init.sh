@@ -217,25 +217,26 @@ canonical_models() {
   v_specWriter=$(resolve_role_model SPEC_WRITER "${role_phase_default:-$INHERIT}")                           || return 1
   v_planner=$(resolve_role_model PLANNER "${role_phase_default:-$INHERIT}")                                  || return 1
   v_advocate=$(resolve_role_model ADVOCATE "${role_phase_default:-$INHERIT}")                                || return 1
-  # The critic reads and writes nothing; on Claude Code it runs one tier under the
-  # session by default. An Opus session paid Opus for every critique round, and the
-  # challenger's reply is the smallest artifact in the phase. A phase route or
-  # LOOP_SPEC_MODEL_CHALLENGER still outranks this; the peer harnesses have no alias.
-  local challenger_default="$INHERIT"
-  [[ "$HARNESS" == "claude" ]] && challenger_default="sonnet"
-  v_challenger=$(resolve_role_model CHALLENGER "${role_phase_default:-$challenger_default}")                 || return 1
+  # The roles that read an artifact, a diff, or a tree and write only a verdict or a
+  # map run one tier under the session on Claude Code. An Opus session paid Opus for
+  # every critique round, for a reviewer over a 27-58 KB diff on every task, and for
+  # the tree walk before DISCUSS (the 6.5.0 cycle here). A phase route or
+  # LOOP_SPEC_MODEL_<ROLE> still outranks this; the peer harnesses have no alias.
+  local reader_default="$INHERIT"
+  [[ "$HARNESS" == "claude" ]] && reader_default="sonnet"
+  v_challenger=$(resolve_role_model CHALLENGER "${role_phase_default:-$reader_default}")                     || return 1
   # One route-judge call per feature is the cycle's largest cost lever (it replaces
   # three deterministic checks with a single opus read), so it earns the same
   # above-inherit default as the challenger; the peer harnesses have no alias.
   local route_judge_default="$INHERIT"
   [[ "$HARNESS" == "claude" ]] && route_judge_default="opus"
   v_routeJudge=$(resolve_role_model ROUTE_JUDGE "${role_phase_default:-$route_judge_default}")               || return 1
-  v_specComplianceReviewer=$(resolve_role_model SPEC_COMPLIANCE_REVIEWER "${role_phase_default:-$INHERIT}") || return 1
+  v_specComplianceReviewer=$(resolve_role_model SPEC_COMPLIANCE_REVIEWER "${role_phase_default:-$reader_default}") || return 1
   v_iterateJudge=$(resolve_role_model ITERATE_JUDGE "${role_phase_default:-$INHERIT}")                       || return 1
-  v_codeReviewer=$(resolve_role_model CODE_REVIEWER "${role_phase_default:-$INHERIT}")                       || return 1
+  v_codeReviewer=$(resolve_role_model CODE_REVIEWER "${role_phase_default:-$reader_default}")                || return 1
   v_implementer=$(resolve_role_model IMPLEMENTER "${role_phase_default:-$INHERIT}")                          || return 1
   v_verifier=$(resolve_role_model VERIFIER "${role_phase_default:-$INHERIT}")                                || return 1
-  v_patternMapper=$(resolve_role_model PATTERN_MAPPER "${role_phase_default:-$INHERIT}")                     || return 1
+  v_patternMapper=$(resolve_role_model PATTERN_MAPPER "${role_phase_default:-$reader_default}")              || return 1
 
   jq -n \
     --arg specWriter             "$v_specWriter" \
@@ -423,7 +424,14 @@ case "${1:-}" in
       echo "usage: feature-init.sh phase-model PHASE" >&2
       exit 1
     }
-    resolve_phase_model "$2"
+    # Launchers may inspect durable currentPhase on their first call, including
+    # an already completed run. There is no terminal model override. This query
+    # does not make completed a runnable phase; activate/models stay strict.
+    if [[ "$2" == "completed" ]]; then
+      echo inherit
+    else
+      resolve_phase_model "$2"
+    fi
     ;;
   phase-models)
     no_extra_args phase-models "$@"

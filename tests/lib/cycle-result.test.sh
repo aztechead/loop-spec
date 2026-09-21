@@ -702,10 +702,10 @@ check "W6d: draft delivery still counts as work shipped" "true" \
 printf '%s\n' "$(jq '.currentPhase = "plan"' <<<"$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
 bash "$LIB" begin --result-root "$WORK" --cycle-type full \
   --title "Phase handoff" --slug my-feature --branch feat/my-feature \
-  --base-branch main --feature-dir "$FEAT_DIR" --phase discuss
+  --base-branch main --feature-dir "$FEAT_DIR" --phase spec
 LOOP_SPEC_RESULT_ROOT="$WORK" bash "$LIB" write "$FEAT_DIR" --status paused \
   --reason phase-handoff \
-  --summary "Phase discuss completed; plan is ready in durable state." >/dev/null
+  --summary "Phase spec completed; plan is ready in durable state." >/dev/null
 check "X: phase handoff is a paused result" "paused:phase-handoff:plan" \
   "$(jq -r '.status + ":" + .reason + ":" + .phaseReached' "$LOOP_DIR/last-result.json")"
 check "X: phase handoff clears active pointer" "0" \
@@ -902,7 +902,6 @@ check "AB4: begin without a classification stores JSON null" "null" \
 # `classification`, preserving the active-run/public result spelling.
 COMPACT_GATE_PLAN="$(jq -nc '{
   specInterview: {run: false, reason: "bounded requirements are grounded"},
-  discuss: {run: false, reason: "no unresolved product decision"},
   specCritique: {run: false, reason: "scope is deliberately bounded"},
   planCritique: {run: true, reason: "review the compact plan"},
   repositoryValidation: {run: true, reason: "validate repository state"},
@@ -1084,6 +1083,119 @@ printf '{"schema":1,"cycleType":"full","phase":"execute","slug":"s","title":"t",
 ec=0; bash "$LIB" write-terminal --result-root "$ARMED" --cycle-type full --status completed --outcome delivered --title t --converged true --summary s >/dev/null 2>&1 || ec=$?
 check "write-terminal: an armed full cycle at execute cannot be declared completed" "3" "$ec"
 check "write-terminal: nothing was published" "0" "$([[ -f "$ARMED/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
+
+# --- delivered, readiness not flipped ------------------------------------------------
+# A GitHub App without the checks scope made `gh pr checks` answer "Resource not
+# accessible by integration". The PR was open, pushed, and SHA-bound, and the run still
+# reported failed/delivery-blocked, so a supervisor saw a lost run.
+UNREADY="$LOOP_DIR/features/unready"; mkdir -p "$UNREADY"
+
+unready_delivery() {
+  jq -n --arg code "$1" --arg msg "$2" --argjson extra "${3:-[]}" \
+    '{schema:1,ok:false,status:"blocked",nextPhase:"deliver",
+      attemptedAt:"2026-01-01T01:00:00Z",finishedAt:null,
+      prUrl:"https://github.com/test/repo/pull/7",
+      targets:([{name:"unready",ok:false,outcome:"blocked",branch:"feat/unready",
+        targetSha:"ready123",bindingEligible:true,
+        prUrl:"https://github.com/test/repo/pull/7",
+        checks:{status:"not-run"},errorCode:$code,error:$msg}] + $extra)}'
+}
+
+publish_unready() {
+  jq '.slug="unready" | .currentPhase="deliver" | .delivery={status:"pending",targets:[]}' \
+    <<<"$FIXTURE_FJ" > "$UNREADY/feature.json"
+  rm -f "$UNREADY/result.json"
+  bash "$LIB" write "$UNREADY" --status escalated --reason "${1:-readiness}" \
+    --summary "Implementation verified and the PR is open." >/dev/null 2>&1
+}
+
+unready_delivery checks_unsupported "required checks could not be read: GraphQL: Resource not accessible by integration" > "$UNREADY/delivery.json"
+publish_unready
+check "AF: a readiness-only block is a completed run" "completed" "$(jq -r '.status' "$UNREADY/result.json")"
+check "AF: its outcome is delivered-unready" "delivered-unready" "$(jq -r '.outcome' "$UNREADY/result.json")"
+check "AF: it carries the delivered PR" "https://github.com/test/repo/pull/7" "$(jq -r '.prUrl' "$UNREADY/result.json")"
+check "AF: work was delivered" "true" "$(jq -r '.workDelivered' "$UNREADY/result.json")"
+check "AF: readiness was never reached, so it is not converged" "false" "$(jq -r '.converged' "$UNREADY/result.json")"
+# A supervisor that retries on `retryable` re-ran a completed run: the flag followed
+# the parent delivery block, of which delivered-unready is a subset.
+check "AF: a completed run is not retryable" "false" "$(jq -r '.retryable' "$UNREADY/result.json")"
+check "AF: and names no retry phase" "null" "$(jq -r '.retryPhase' "$UNREADY/result.json")"
+
+unready_delivery ready_failed "required checks passed but the draft PR could not be marked ready" > "$UNREADY/delivery.json"
+publish_unready
+check "AF2: a failed readiness flip is delivered-unready" "delivered-unready" "$(jq -r '.outcome' "$UNREADY/result.json")"
+check "AF2: and a completed run" "completed" "$(jq -r '.status' "$UNREADY/result.json")"
+
+unready_delivery checks_unsupported "checks unreadable" \
+  '[{"name":"sibling","ok":false,"outcome":"blocked","branch":"feat/sib","targetSha":"sib456","bindingEligible":true,"errorCode":"pr_closed","error":"PR is not open"}]' \
+  > "$UNREADY/delivery.json"
+publish_unready
+check "AF3: a mixed block stays a failed delivery" "failed" "$(jq -r '.status' "$UNREADY/result.json")"
+check "AF3: and keeps the delivery-blocked outcome" "delivery-blocked" "$(jq -r '.outcome' "$UNREADY/result.json")"
+
+unready_delivery pr_closed "PR is not open" > "$UNREADY/delivery.json"
+publish_unready
+check "AF4: any other single code is still delivery-blocked" "delivery-blocked" "$(jq -r '.outcome' "$UNREADY/result.json")"
+check "AF4: and still failed" "failed" "$(jq -r '.status' "$UNREADY/result.json")"
+
+unready_delivery pr_already_ready "staged readiness requires the PR to remain a draft" > "$UNREADY/delivery.json"
+publish_unready
+check "AF6: an already-ready PR is not labelled unready" "delivery-blocked" "$(jq -r '.outcome' "$UNREADY/result.json")"
+
+# The checkpoint PR in feature.json is not this delivery's PR.
+unready_delivery checks_unsupported "checks unreadable" | jq 'del(.prUrl) | .targets[0] |= del(.prUrl)' > "$UNREADY/delivery.json"
+jq '.slug="unready" | .currentPhase="deliver" | .delivery={status:"pending",targets:[]}
+    | .prUrl="https://github.com/test/repo/pull/1" | .checkpointPrUrl="https://github.com/test/repo/pull/1"' \
+  <<<"$FIXTURE_FJ" > "$UNREADY/feature.json"
+rm -f "$UNREADY/result.json"
+bash "$LIB" write "$UNREADY" --status escalated --reason readiness \
+  --summary "Implementation verified." >/dev/null 2>&1
+check "AF7: a checkpoint PR does not make a readiness block delivered-unready" "delivery-blocked" "$(jq -r '.outcome' "$UNREADY/result.json")"
+check "AF7: and that block stays retryable" "true" "$(jq -r '.retryable' "$UNREADY/result.json")"
+
+# write-terminal's own allow-list, for the short routes that deliver the same way.
+TERM_UNREADY="$WORK/term-unready"; mkdir -p "$TERM_UNREADY/.loop-spec"
+bash "$LIB" write-terminal --result-root "$TERM_UNREADY" --cycle-type micro \
+  --status completed --outcome delivered-unready --title "Micro fix" --converged false \
+  --verification-status passed --pr-url "https://github.com/test/repo/pull/8" \
+  --summary "Fix delivered; the PR could not be marked ready." >/dev/null 2>&1
+check "AF5: micro write-terminal accepts delivered-unready" "delivered-unready" \
+  "$(jq -r '.outcome' "$TERM_UNREADY/.loop-spec/last-result.json" 2>/dev/null)"
+rm -f "$TERM_UNREADY/.loop-spec/last-result.json"
+bash "$LIB" write-terminal --result-root "$TERM_UNREADY" --cycle-type micro \
+  --status failed --outcome delivered-unready --title "Micro fix" --converged false \
+  --verification-status passed --pr-url "https://github.com/test/repo/pull/8" \
+  --summary "Fix delivered; the PR could not be marked ready." >/dev/null 2>&1
+check "AF5: delivered-unready is refused with a failed status" "0" \
+  "$([[ -f "$TERM_UNREADY/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
+
+# --- the reason on a delivery ending names the delivery blocker -----------------------
+# The run above published reason="[Errno 2] No such file or directory: .../SPEC.md": the
+# frozen-intent check could not read SPEC.md in the delivery checkout, escalated with
+# that text, and this writer relabelled the run delivery-blocked while keeping it.
+MISSING_SPEC="[Errno 2] No such file or directory: '/clone/docs/loop-spec/features/unready/SPEC.md'"
+
+unready_delivery checks_unsupported "required checks could not be read: GraphQL: Resource not accessible by integration" > "$UNREADY/delivery.json"
+publish_unready "$MISSING_SPEC"
+check "AG: delivered-unready states the readiness blocker" \
+  "checks_unsupported: required checks could not be read: GraphQL: Resource not accessible by integration" \
+  "$(jq -r '.reason' "$UNREADY/result.json")"
+check "AG: the displaced read failure is a warning" "displaced-reason: $MISSING_SPEC" \
+  "$(jq -r '.warnings[] | select(startswith("displaced-reason:"))' "$UNREADY/result.json")"
+
+unready_delivery pr_closed "PR is not open" > "$UNREADY/delivery.json"
+publish_unready "$MISSING_SPEC"
+check "AG2: a blocked delivery names its errorCode, not a missing file" "pr_closed: PR is not open" \
+  "$(jq -r '.reason' "$UNREADY/result.json")"
+check "AG2: and keeps the read failure as a warning" "1" \
+  "$(jq -r '[.warnings[] | select(startswith("displaced-reason:"))] | length' "$UNREADY/result.json")"
+
+jq '.targets[0] |= del(.errorCode)' "$UNREADY/delivery.json" > "$UNREADY/delivery.tmp" && mv "$UNREADY/delivery.tmp" "$UNREADY/delivery.json"
+publish_unready "$MISSING_SPEC"
+check "AG3: with no errorCode to name, the stated reason stands" "$MISSING_SPEC" \
+  "$(jq -r '.reason' "$UNREADY/result.json")"
+check "AG3: and nothing was displaced" "0" \
+  "$(jq -r '[.warnings[] | select(startswith("displaced-reason:"))] | length' "$UNREADY/result.json")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

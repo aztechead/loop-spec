@@ -61,6 +61,144 @@ check "brief carries steps" "ok" "$r"
 grep -q "Produces: bar" "$brief" && r=ok || r=missing
 check "brief carries interfaces" "ok" "$r"
 
+# The brief renders the shared engineering contracts this task's files call for into
+# one file beside it, so the implementer reads one file instead of opening up to eight.
+cat > "$FDIR/tasks.json" <<'EOF'
+[
+  {
+    "id": "task-003",
+    "subject": "add helper",
+    "brief": "Add a helper and its test.",
+    "files": ["lib/x.sh", "tests/lib/x.test.sh"],
+    "blockedBy": [],
+    "verifyCommand": "true",
+    "acceptanceCriteria": ["works"]
+  }
+]
+EOF
+bash "$SCRIPT" brief --feature-dir "$FDIR" --task-id task-003 --out "$WORK/code-brief.md" >/dev/null
+check "brief: names the rendered contracts file under Read first" "1" "$(grep -c '^## Read first' "$WORK/code-brief.md")"
+check "brief: contracts file exists beside the brief, named by task id" "1" "$([[ -f "$WORK/task-003-contracts.md" ]] && echo 1 || echo 0)"
+check "contracts: code task renders human-code" "1" "$(grep -c '<!-- source: .*/human-code.md -->' "$WORK/task-003-contracts.md")"
+check "contracts: test file renders writing-good-tests" "1" "$(grep -c '<!-- source: .*/writing-good-tests.md -->' "$WORK/task-003-contracts.md")"
+check "contracts: code-only task skips human-docs" "0" "$(grep -c '<!-- source: .*/human-docs.md -->' "$WORK/task-003-contracts.md")"
+check "contracts: the always set is present" "3" "$(grep -cE '<!-- source: .*/(engineering-directives|implementer-contract|execution-discipline).md -->' "$WORK/task-003-contracts.md")"
+check "contracts: engineering code directives are rendered" "1" "$(grep -c '^## Code directives$' "$WORK/task-003-contracts.md")"
+check "contracts: engineering version evidence is rendered" "1" "$(grep -c '^## Version evidence$' "$WORK/task-003-contracts.md")"
+check "contracts: engineering test directives are rendered" "1" "$(grep -c '^## Test directives$' "$WORK/task-003-contracts.md")"
+check "contracts: engineering phase handoff is omitted" "0" "$(grep -c '^## Phase handoff directives' "$WORK/task-003-contracts.md" || true)"
+check "contracts: version evidence body is retained" "1" "$(grep -c 'Read the repository' "$WORK/task-003-contracts.md")"
+check "contracts: TDD body is retained" "1" "$(grep -c 'Write the failing test first' "$WORK/task-003-contracts.md")"
+check "contracts: seven-rung simplicity body is retained" "1" "$(grep -c '(7) Only then:' "$WORK/task-003-contracts.md")"
+check "contracts: validation exception is retained" "1" "$(grep -c 'cut input validation at trust boundaries' "$WORK/task-003-contracts.md")"
+check "contracts: security accessibility exceptions are retained" "1" "$(grep -c 'security, accessibility' "$WORK/task-003-contracts.md")"
+check "contracts: probe fallback body is retained" "1" "$(grep -c 'When no path is available' "$WORK/task-003-contracts.md")"
+check "contracts: diagnostic references defer full-source reads" "2" "$(grep -c 'consult only if a probe needs interpretation' "$WORK/task-003-contracts.md")"
+check "contracts: laziness compact directive is rendered" "1" "$(grep -c '^> Rendered sections: Compact directive' "$WORK/task-003-contracts.md")"
+check "contracts: laziness historical rungs are omitted" "0" "$(grep -c '^## Rungs 1 and 2' "$WORK/task-003-contracts.md" || true)"
+
+cat > "$FDIR/tasks.json" <<'EOF'
+[
+  {
+    "id": "task-004",
+    "subject": "update readme",
+    "brief": "Update README.",
+    "files": ["README.md"],
+    "blockedBy": [],
+    "verifyCommand": "true",
+    "acceptanceCriteria": ["updated"]
+  }
+]
+EOF
+bash "$SCRIPT" brief --feature-dir "$FDIR" --task-id task-004 --out "$WORK/docs-brief.md" >/dev/null
+check "contracts: docs-only task renders human-docs" "1" "$(grep -c '<!-- source: .*/human-docs.md -->' "$WORK/task-004-contracts.md")"
+check "contracts: docs-only task skips human-code" "0" "$(grep -c '<!-- source: .*/human-code.md -->' "$WORK/task-004-contracts.md")"
+
+# A standalone spec/ directory is a conventional test location (for example
+# Ruby RSpec), so it pulls in writing-good-tests just like tests/ and __tests__/.
+cat > "$FDIR/tasks.json" <<'EOF'
+[
+  {
+    "id": "task-006",
+    "subject": "update spec skill",
+    "brief": "Edit the spec skill.",
+    "files": ["spec/models/item_spec.rb"],
+    "blockedBy": [],
+    "verifyCommand": "true",
+    "acceptanceCriteria": ["updated"]
+  }
+]
+EOF
+bash "$SCRIPT" brief --feature-dir "$FDIR" --task-id task-006 --out "$WORK/spec-dir-brief.md" >/dev/null
+check "contracts: a standalone spec/ test path renders writing-good-tests" "1" "$(grep -c '<!-- source: .*/writing-good-tests.md -->' "$WORK/task-006-contracts.md")"
+
+# MDX can contain executable examples as well as human-facing docs, so it gets
+# both contracts. A nested __tests__/spec path is a test path by its shape.
+cat > "$FDIR/tasks.json" <<'EOF'
+[
+  {
+    "id": "task-007",
+    "subject": "update component",
+    "brief": "Update the MDX component and its spec.",
+    "files": ["docs/example.mdx", "src/__tests__/spec/component.test.ts"],
+    "blockedBy": [],
+    "verifyCommand": "true",
+    "acceptanceCriteria": ["updated"]
+  }
+]
+EOF
+bash "$SCRIPT" brief --feature-dir "$FDIR" --task-id task-007 --out "$WORK/mdx-brief.md" >/dev/null
+check "contracts: MDX task renders human-docs" "1" "$(grep -c '<!-- source: .*/human-docs.md -->' "$WORK/task-007-contracts.md")"
+check "contracts: MDX task renders human-code" "1" "$(grep -c '<!-- source: .*/human-code.md -->' "$WORK/task-007-contracts.md")"
+check "contracts: nested __tests__/spec task renders writing-good-tests" "1" "$(grep -c '<!-- source: .*/writing-good-tests.md -->' "$WORK/task-007-contracts.md")"
+check "contracts: approach selection source stays outside bundle" "0" "$(grep -c '<!-- source: .*/approach-selection.md -->' "$WORK/task-007-contracts.md" || true)"
+
+cat > "$FDIR/tasks.json" <<'EOF'
+[
+  {
+    "id": "task-008",
+    "subject": "update guide",
+    "brief": "Update the executable MDX guide.",
+    "files": ["docs/guide.mdx"],
+    "blockedBy": [],
+    "verifyCommand": "true",
+    "acceptanceCriteria": ["updated"]
+  }
+]
+EOF
+bash "$SCRIPT" brief --feature-dir "$FDIR" --task-id task-008 --out "$WORK/mdx-only-brief.md" >/dev/null
+check "contracts: MDX-only task renders human-docs" "1" "$(grep -c '<!-- source: .*/human-docs.md -->' "$WORK/task-008-contracts.md")"
+check "contracts: MDX-only task renders human-code" "1" "$(grep -c '<!-- source: .*/human-code.md -->' "$WORK/task-008-contracts.md")"
+
+# A missing contract source must fail the brief loudly rather than write a Read-first
+# pointer at a file that was never rendered.
+PLUGIN="$WORK/plugin"; mkdir -p "$PLUGIN/lib" "$PLUGIN/skills/shared"
+cp "$ROOT/lib/dispatch-files.sh" "$PLUGIN/lib/dispatch-files.sh"
+for f in "$ROOT"/skills/shared/*.md; do
+  base="$(basename "$f")"
+  [[ "$base" == "human-docs.md" ]] && continue
+  cp "$f" "$PLUGIN/skills/shared/$base"
+done
+MISSING="$WORK/missing-contract"; mkdir -p "$MISSING"
+printf '[{"id":"task-005","subject":"update readme","brief":"Update README.","files":["README.md"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["updated"]}]' > "$MISSING/tasks.json"
+ec=0; err="$(bash "$PLUGIN/lib/dispatch-files.sh" brief --feature-dir "$MISSING" --task-id task-005 2>&1 >/dev/null)" || ec=$?
+check "a missing contract source fails the brief loudly" "2" "$ec"
+grep -q "contract source missing" <<<"$err" && r=ok || r=missing
+check "the missing-contract error names the source" "ok" "$r"
+
+# A required section missing from an otherwise present source must fail closed.
+cp "$ROOT/skills/shared/human-docs.md" "$PLUGIN/skills/shared/human-docs.md"
+python3 - "$PLUGIN/skills/shared/engineering-directives.md" <<'PY'
+import sys
+p = sys.argv[1]
+text = open(p, encoding="utf-8").read()
+text = text.replace("## Version evidence\n", "", 1)
+open(p, "w", encoding="utf-8").write(text)
+PY
+ec=0; err="$(bash "$PLUGIN/lib/dispatch-files.sh" brief --feature-dir "$MISSING" --task-id task-005 2>&1 >/dev/null)" || ec=$?
+check "a missing required contract section fails the brief" "2" "$ec"
+check "the missing-section error names the required heading" "1" "$(grep -c 'required contract section missing.*Version evidence' <<<"$err")"
+
 # The brief must carry fields produced by PLAN extraction, not only fields hand-built
 # by a caller. This catches loss between the durable Markdown artifact and dispatch.
 cat > "$FDIR/PLAN.md" <<'EOF'

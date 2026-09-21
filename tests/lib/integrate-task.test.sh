@@ -42,6 +42,14 @@ run_helper() {
 }
 
 make_fixture
+run_helper --verify 'touch must-not-run; python3 -c "print('\''$field'\'')"' --cleanup
+check "invalid command is an authoring error" invalid-verify-command "$(jq -r .reason <<<"$OUT")"
+check "invalid command does not execute a prefix" no "$([[ -e "$WT/must-not-run" ]] && printf yes || printf no)"
+check "invalid command leaves candidate unchanged" "$TASK_BEFORE" "$(git -C "$WT" rev-parse HEAD)"
+check "invalid command leaves feature unchanged" "$FEATURE_BEFORE" "$(git -C "$REPO" rev-parse HEAD)"
+check "invalid command preserves worktree" yes "$([[ -d "$WT" ]] && printf yes || printf no)"
+
+make_fixture
 run_helper --verify 'test -f task.txt' --cleanup
 check "fast-forward succeeds" success "$(jq -r .status <<<"$OUT")"
 check "success publishes candidate" true "$(jq -r .published <<<"$OUT")"

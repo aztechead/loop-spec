@@ -21,7 +21,7 @@ cat > "$FEATURE_DIR/feature.json" <<'EOF'
 {
   "slug": "test-feature",
   "currentPhase": "execute",
-  "completedPhases": ["discuss", "plan"],
+  "completedPhases": ["plan"],
   "branch": "feat/test-feature",
   "pendingRemediationTasks": [],
   "gateHistory": []

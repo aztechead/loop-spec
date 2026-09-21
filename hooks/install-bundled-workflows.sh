@@ -9,6 +9,10 @@ TPL="$LIB/templates"
 DEST="$ROOT/.claude/workflows"
 mkdir -p "$DEST"
 
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$ROOT/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
+
 inject() {
   local script="$1"
   local tmp

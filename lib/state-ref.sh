@@ -123,6 +123,33 @@ case "$cmd" in
       if [[ "$name" == instruction-snapshots/* ]]; then chmod 444 "$temporary"; fi
       mv -f "$temporary" "$feature_dir/$name"
     done < <(git -C "$repo" ls-tree -r -z --name-only "$ref")
+    # Old snapshots stored an absolute task locator. The task sidecar is restored
+    # beside feature.json; bind display metadata to that copy, never the old checkout.
+    python3 - "$repo" "$feature_dir" <<'PY_REBIND'
+import json, os, pathlib, subprocess, sys, tempfile
+root = subprocess.check_output(["git", "-C", sys.argv[1], "rev-parse", "--show-toplevel"], text=True).strip()
+feature = pathlib.Path(sys.argv[2]).resolve()
+locator = os.path.relpath(str(feature / "tasks.json"), root)
+for name in ("feature.json", "feature.json.bak"):
+    path = feature / name
+    if not path.is_file():
+        continue
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        continue  # Preserve corrupt bytes for the existing backup recovery path.
+    artifacts = value.get("artifacts") if isinstance(value, dict) else None
+    if not isinstance(artifacts, dict) or not artifacts.get("tasks"):
+        continue
+    if artifacts["tasks"] == locator:
+        continue
+    artifacts["tasks"] = locator
+    handle, temporary = tempfile.mkstemp(prefix=".restore-binding-", dir=str(feature))
+    with os.fdopen(handle, "w", encoding="utf-8") as stream:
+        json.dump(value, stream, indent=2)
+        stream.write("\n")
+    os.replace(temporary, path)
+PY_REBIND
     echo "$sha"
     ;;
   show)

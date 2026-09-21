@@ -33,6 +33,39 @@ out="$(TMPDIR="$WORK/tmp" PATH="$WORK/.pyenv/shims:$WORK/bin:$CORE" bash "$LIB")
 check "pyenv shim: prints a private directory" "$WORK/tmp/loop-spec-python-$(id -u)" "$out"
 check "pyenv shim: that directory links only python3 to the real interpreter" "python3 -> $WORK/real/python3" \
   "$(ls "$out" | paste -sd' ' -) -> $(readlink "$out/python3")"
+# A changed manager target replaces the existing link atomically; the name stays
+# present throughout the replacement path and points at the new interpreter.
+printf '#!/bin/sh\nexit 0\n' > "$WORK/real/python3-new"
+chmod +x "$WORK/real/python3-new"
+printf '#!/bin/sh\n[ "$1 $2" = "which python3" ] && echo "%s/real/python3-new"\n' "$WORK" > "$WORK/bin/pyenv"
+out2="$(TMPDIR="$WORK/tmp" PATH="$WORK/.pyenv/shims:$WORK/bin:$CORE" bash "$LIB")"
+check "pyenv shim: existing link is replaced with the new target" "$WORK/real/python3-new" "$(readlink "$out2/python3")"
+# Observe the public name while a target change is in flight. A compatibility
+# wrapper makes the old unlink-then-link implementation expose its gap; the
+# atomic temp-link + rename implementation keeps the name present.
+mkdir -p "$WORK/wrapped-bin"
+REAL_LN="$(command -v ln)"
+cat > "$WORK/wrapped-bin/ln" <<EOF
+#!/bin/sh
+if [ "\$1" = "-sfn" ]; then
+  target="\$3"
+  rm -f "\$target"
+  sleep 0.1
+  exec "$REAL_LN" "\$@"
+fi
+exec "$REAL_LN" "\$@"
+EOF
+chmod +x "$WORK/wrapped-bin/ln"
+printf '#!/bin/sh\n[ "$1 $2" = "which python3" ] && echo "%s/real/python3"\n' "$WORK" > "$WORK/bin/pyenv"
+missing="$WORK/missing-link"
+rm -f "$missing"
+( while [ ! -f "$WORK/replace-done" ]; do
+    [ -L "$out2/python3" ] || : > "$missing"
+  done ) & watcher=$!
+TMPDIR="$WORK/tmp" PATH="$WORK/.pyenv/shims:$WORK/wrapped-bin:$WORK/bin:$CORE" bash "$LIB" >/dev/null
+: > "$WORK/replace-done"
+wait "$watcher"
+check "pyenv shim: public link never disappears during replacement" "0" "$([[ -e "$missing" ]] && echo 1 || echo 0)"
 err="$(TMPDIR="$WORK/tmp" PATH="$WORK/.pyenv/shims:$WORK/bin:$CORE" bash "$LIB" --explain 2>&1 >/dev/null)"
 check "pyenv shim: --explain names the shim and the link" "1" "$(grep -c "ANSWER=$WORK/tmp/loop-spec-python-$(id -u) REASON=pyenv shim at $WORK/.pyenv/shims/python3; pyenv which -> $WORK/real/python3, linked" <<<"$err")"
 

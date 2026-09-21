@@ -29,6 +29,8 @@ trap 'exit 0' ERR
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 [[ -d "$PROJECT_DIR/.loop-spec" || -d "$PWD/.loop-spec" ]] || exit 0
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+py_dir="$(bash "$PLUGIN_ROOT/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 
 INPUT="$(cat 2>/dev/null)" || true
 [[ -n "$INPUT" ]] || exit 0

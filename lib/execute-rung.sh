@@ -56,6 +56,16 @@ loops_optin="${LOOP_SPEC_EXECUTE_LOOPS:-auto}"
 case "$loops_optin" in 0|1|auto) ;; *) loops_optin="auto" ;; esac
 subagent_cap="$(bash "$SCRIPT_DIR/resource-bounds.sh" get subagents)" || exit $?
 implementer_cap="$(bash "$SCRIPT_DIR/resource-bounds.sh" get implementers)" || exit $?
+# With neither bound set, a plan of width W runs min(W, 3) implementers per wave.
+# Every rung defaulted to one at a time, so the PLAN width gate and the per-wave
+# review never paid off: the 6.9.0 full-route live run planned width 3 and executed
+# serially. An operator's LOOP_SPEC_MAX_PARALLEL_* setting still wins either way, and
+# 3 is the ceiling because parallel headless sessions have died under memory pressure
+# on a laptop above it.
+if [[ -z "${LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS-}" && -z "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS-}" ]]; then
+  implementer_cap=$(( width < 3 ? width : 3 )); (( implementer_cap >= 1 )) || implementer_cap=1
+  subagent_cap=$implementer_cap
+fi
 # Teams and Workflow cannot enforce the finite cap. Keep their persistent
 # fan-out disabled for every cap; one-shot dispatch owns the bounded waves.
 teams_mode="none"

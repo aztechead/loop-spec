@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# critique-step.sh - One critique-gate step per call: open, findings, fail, revised, delta, pass.
+# critique-step.sh - One critique-gate step per call: open, findings, fail, revised, delta, pass, resume.
 #
 # Why: skills/shared/critique-gate-protocol.md asked the lead to write each reply into a
 # gate-log by hand, count the round, emit the event, append the fail entry, ask the
@@ -41,6 +41,9 @@
 #       Prints {round, verified, survivors: [...]}.
 #   critique-step.sh pass     --feature-dir DIR [--convergence C]
 #       The fix-list-empty close after round 1 (default convergence single-critic).
+#   critique-step.sh resume   --feature-dir DIR
+#       Reuse or regenerate the current gate's persisted dispatch packet without
+#       opening or incrementing the gate. Prints {gate, round, kind, promptFile, model}.
 #
 # Exit: 0 the step answered; 1 no open gate, an unreadable input, or a failed write
 # (message on stderr); 2 bad invocation.
@@ -63,7 +66,9 @@ while [[ $# -gt 0 ]]; do
   esac
   shift 2 || usage
 done
-[[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || usage
+[[ -n "$feature_dir" ]] || usage
+feature_dir="$(cd "$feature_dir" 2>/dev/null && pwd -P)" || usage
+[[ -f "$feature_dir/feature.json" ]] || usage
 fj="$feature_dir/feature.json"
 logs="$feature_dir/gate-logs"
 fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
@@ -75,7 +80,9 @@ slurp() {
   else [[ -r "$src" ]] || die "cannot read $src"; echo "$src"; fi
 }
 stdin_tmp=""
-trap '[[ -n "$stdin_tmp" ]] && rm -f "$stdin_tmp"' EXIT
+packet_tmp=""
+structure_tasks=""
+trap '[[ -z "$structure_tasks" ]] || rm -f "$structure_tasks"; [[ -n "$stdin_tmp" ]] && rm -f "$stdin_tmp"; [[ -n "$packet_tmp" ]] && rm -f "$packet_tmp"' EXIT
 
 # The open gate and the artifact it guards; every step after open reads both here.
 load_state() {
@@ -89,6 +96,57 @@ load_state() {
   delta_diff="$logs/$gate_name-delta.diff"
   round="$(fget '.currentGate.round // 0')"
   model="$(fget '.models.challenger // "inherit"')"
+  prompt_file="$(jq -r '.promptFile // empty' "$state")"
+}
+
+critic_template_for_phase() {
+  local snapshot_root="$feature_dir/instruction-snapshots" candidate manifest recorded has_instructions
+  next_phase="$(fget '.driverNext.phase // empty')"
+  recorded=""
+  [[ "$next_phase" == "$phase" ]] && recorded="$(fget '.driverNext.instructions.manifest // empty')"
+  has_instructions="$(fget 'if .driverNext.instructions != null then "yes" else "no" end')"
+  if [[ -n "$recorded" && "$recorded" != null ]]; then
+    [[ -d "$snapshot_root" ]] || die "immutable instruction snapshot missing: $snapshot_root"
+    manifest="$snapshot_root/$(basename "$(dirname "$recorded")")/manifest.json"
+    candidate="$(dirname "$manifest")/skills/shared/team-prompts/critic.md"
+    [[ -r "$manifest" ]] || die "immutable critic manifest missing: $manifest"
+    record_json="$(fget '.driverNext.instructions')"
+    python3 "$SCRIPT_DIR/critique_prompt.py" --verify-manifest "$manifest" --record-json "$record_json" --feature-dir "$feature_dir" \
+      || die "immutable critic snapshot verification failed: $manifest"
+  else
+    [[ "$has_instructions" == no ]] || die "driverNext instructions do not match active phase '$phase'"
+    candidate="$SCRIPT_DIR/../skills/shared/team-prompts/critic.md"
+  fi
+  [[ -r "$candidate" ]] || die "immutable critic contract missing for phase '$phase' in $snapshot_root"
+  printf '%s' "$candidate"
+}
+prompt_packet() {
+  local kind="$1" destination="$2" slug template transport root spec_path evidence_path
+  template="$(critic_template_for_phase)"
+  slug="$(fget '.slug // empty')"
+  [[ -n "$slug" ]] || slug="$(basename "$feature_dir")"
+  root="$(fget '.workspace.root // empty')"
+  [[ -n "$root" && "$root" != null ]] || root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null || true)"
+  [[ -n "$root" ]] || root="$(cd "$feature_dir/../../.." 2>/dev/null && pwd -P || true)"
+  [[ -n "$root" ]] || die "cannot resolve feature checkout root for critique paths: $feature_dir"
+  spec_path="$(fget '.artifacts.spec // empty')"
+  evidence_path="$(fget '.artifacts.evidence // empty')"
+  [[ -n "$spec_path" && "$spec_path" != null ]] || spec_path="docs/loop-spec/features/$slug/SPEC.md"
+  [[ -n "$evidence_path" && "$evidence_path" != null ]] || evidence_path="docs/loop-spec/features/$slug/EVIDENCE.md"
+  [[ "$spec_path" = /* ]] || spec_path="$root/$spec_path"
+  [[ "$evidence_path" = /* ]] || evidence_path="$root/$evidence_path"
+  transport="the caller's active harness transport (team messages in teams mode; the Agent result channel in one-shot mode)"
+  if [[ "$kind" == delta ]]; then
+    python3 "$SCRIPT_DIR/critique_prompt.py" --template "$template" --kind "$kind" \
+      --slug "$slug" --phase "$phase" --artifact "$artifact" --spec "$spec_path" --evidence "$evidence_path" --diff "$delta_diff" \
+      --fix-list "$fixlist" --transport "$transport" --output "$destination" \
+      || die "could not render immutable critique packet: $destination"
+  else
+    python3 "$SCRIPT_DIR/critique_prompt.py" --template "$template" --kind "$kind" \
+      --slug "$slug" --phase "$phase" --artifact "$artifact" --spec "$spec_path" --evidence "$evidence_path" \
+      --fix-list "" --transport "$transport" --output "$destination" \
+      || die "could not render immutable critique packet: $destination"
+  fi
 }
 
 emit_round() {
@@ -99,17 +157,38 @@ emit_round() {
 # Lines after the reply's header, non-empty, list numbering kept for the gate-log.
 reply_lines() { sed -n '2,$p' "$1" | sed '/^[[:space:]]*$/d'; }
 
+check_plan_structure() {
+  # Check the authored artifact, not a possibly stale tasks.json. Failure leaves
+  # gate state and review packets untouched so ownership is repaired before review.
+  if [[ "$phase" == plan ]]; then
+    structure_tasks="$(mktemp "${TMPDIR:-/tmp}/plan-critique-tasks.XXXXXX")"
+    lib plan-tasks extract "$artifact" > "$structure_tasks" \
+      || die "PLAN extraction failed; repair the task blocks before critique"
+    lib plan-conflicts edges "$structure_tasks" >/dev/null \
+      || die "PLAN inferred dependencies are invalid; repair them before critique"
+    lib plan-structure "$feature_dir" "$structure_tasks" >&2 \
+      || die "PLAN structure failed; repair ownership/dependencies in PLAN.md, re-extract, and retry"
+    rm -f "$structure_tasks"; structure_tasks=""
+  fi
+}
+
 case "$cmd" in
   open)
     [[ -n "$phase" && -n "$gate_name" && -n "$artifact" ]] || usage
     [[ -f "$artifact" ]] || die "artifact $artifact missing"
     artifact="$(cd "$(dirname "$artifact")" && pwd -P)/$(basename "$artifact")"
-    gate open --feature-dir "$feature_dir" --phase "$phase" --gate "$gate_name" --challenger challenger-1 || exit 1
+    check_plan_structure
     mkdir -p "$logs"
-    jq -n --arg a "$artifact" '{artifact:$a}' > "$logs/$gate_name-state.json"
+    prompt_file="$logs/$gate_name-round-1-prompt.md"
+    packet_tmp="$(mktemp "$logs/.critique-packet.XXXXXX")"
+    prompt_packet findings "$packet_tmp"
+    gate open --feature-dir "$feature_dir" --phase "$phase" --gate "$gate_name" --challenger challenger-1 || exit 1
+    mv "$packet_tmp" "$prompt_file"
+    packet_tmp=""
+    jq -n --arg a "$artifact" --arg p "$prompt_file" '{artifact:$a, promptFile:$p, kind:"findings"}' > "$logs/$gate_name-state.json"
     model="$(fget '.models.challenger // "inherit"')"
-    jq -n --arg g "$gate_name" --arg p "$phase" --arg a "$artifact" --arg l "$logs" --arg m "$model" \
-      '{gate:$g, phase:$p, artifact:$a, logDir:$l, model:(if $m == "inherit" or $m == "" then null else $m end)}'
+    jq -n --arg g "$gate_name" --arg p "$phase" --arg a "$artifact" --arg l "$logs" --arg m "$model" --arg pf "$prompt_file" \
+      '{gate:$g, phase:$p, artifact:$a, logDir:$l, promptFile:$pf, model:(if $m == "inherit" or $m == "" then null else $m end)}'
     ;;
   findings)
     load_state; [[ -n "$reply" ]] || usage; src="$(slurp "$reply")"
@@ -161,6 +240,7 @@ case "$cmd" in
     ;;
   revised)
     load_state
+    check_plan_structure
     [[ -f "$snapshot" ]] || die "$snapshot missing: 'findings' was never called, or 'fail' answered close"
     # diff exits 1 on the ordinary case (the revision changed the artifact); capture that.
     diff -u "$snapshot" "$artifact" > "$delta_diff" || diff_rc=$?
@@ -168,8 +248,11 @@ case "$cmd" in
     fixlist="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '
       [.gateHistory[]? | select(.phase == $p and .gate == $g and .result == "fail")] | last
       | (.findingsAddressed // []) | to_entries[] | "\(.key + 1). \(.value)"' -- --arg p "$phase" --arg g "$gate_name")"
-    jq -n --arg d "$delta_diff" --argjson c "$changed" --argjson n "$(wc -l < "$delta_diff")" --arg f "$fixlist" \
-      '{diffPath:$d, changed:($c == 1), lines:$n, fixList:$f}'
+    prompt_file="$logs/$gate_name-round-$((round + 1))-prompt.md"
+    prompt_packet delta "$prompt_file"
+    jq --arg p "$prompt_file" '.promptFile=$p | .kind="delta"' "$state" > "$state.tmp" && mv "$state.tmp" "$state"
+    jq -n --arg d "$delta_diff" --argjson c "$changed" --argjson n "$(wc -l < "$delta_diff")" --arg f "$fixlist" --arg p "$prompt_file" \
+      '{diffPath:$d, changed:($c == 1), lines:$n, fixList:$f, promptFile:$p}'
     ;;
   delta)
     load_state; [[ -n "$reply" ]] || usage; src="$(slurp "$reply")"
@@ -197,6 +280,50 @@ case "$cmd" in
     gate pass --feature-dir "$feature_dir" --rounds "$round" --convergence "$convergence" \
       --challenger-model "$model" >/dev/null || exit 1
     jq -n --argjson r "$round" --arg c "$convergence" '{passed:true, rounds:$r, convergence:$c}'
+    ;;
+  resume)
+    load_state
+    check_plan_structure
+    stored_kind="$(jq -r '.kind // empty' "$state")"
+    resume_kind="${stored_kind:-findings}"
+    [[ "$resume_kind" == findings || "$resume_kind" == delta ]] || die "critique resume sidecar has invalid kind: $resume_kind"
+    if [[ "$prompt_file" != /* && -n "$prompt_file" ]]; then
+      prompt_file="$logs/$(basename "$prompt_file")"
+    fi
+    if [[ "$resume_kind" == delta ]]; then
+      delta_diff="$logs/$gate_name-delta.diff"
+      [[ -r "$delta_diff" ]] || die "critique resume diff missing: $delta_diff"
+    fi
+    if [[ -z "$prompt_file" ]]; then
+      if [[ "$resume_kind" == delta ]]; then
+        prompt_file="$logs/$gate_name-round-$((round + 1))-prompt.md"
+      else
+        prompt_file="$logs/$gate_name-round-1-prompt.md"
+      fi
+    fi
+    packet_tmp="$(mktemp "$logs/.critique-resume.XXXXXX")"
+    if [[ "$resume_kind" == delta ]]; then
+      fixlist="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '
+        [.gateHistory[]? | select(.phase == $p and .gate == $g and .result == "fail")] | last
+        | (.findingsAddressed // []) | to_entries[] | "\(.key + 1). \(.value)"' -- --arg p "$phase" --arg g "$gate_name")"
+      prompt_packet delta "$packet_tmp"
+    else
+      prompt_packet findings "$packet_tmp"
+      if [[ "$round" -gt 0 ]]; then
+        printf '\nResume context: prior reviewer reports (read these only; preserve first-pass independence from author explanations):\n' >> "$packet_tmp"
+        for ((review_round=1; review_round<=round; review_round++)); do
+          review_log="$logs/$gate_name-round-$review_round.md"
+          [[ -r "$review_log" ]] || die "critique resume reviewer log missing: $review_log"
+          printf -- '- `%s`\n' "$review_log" >> "$packet_tmp"
+        done
+      fi
+    fi
+    mv "$packet_tmp" "$prompt_file"
+    packet_tmp=""
+    jq --arg p "$prompt_file" --arg k "$resume_kind" '.promptFile=$p | .kind=$k' "$state" > "$state.tmp" && mv "$state.tmp" "$state"
+    [[ -r "$prompt_file" ]] || die "critique resume packet missing: $prompt_file"
+    jq -n --arg p "$prompt_file" --arg g "$gate_name" --argjson r "$round" --arg k "$resume_kind" --arg m "$model" \
+      '{gate:$g, round:$r, kind:$k, promptFile:$p, model:(if $m == "inherit" or $m == "" then null else $m end)}'
     ;;
   *) usage ;;
 esac

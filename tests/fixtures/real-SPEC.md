@@ -10,7 +10,7 @@ unresolved_questions: []
 
 ## Problem
 
-During SPEC/DISCUSS/PLAN, the orchestrator and its teammates assert facts about
+During SPEC/PLAN, the orchestrator and its teammates assert facts about
 external systems from model memory. Observed failure: a session using this plugin
 stated a BigQuery dataset "could not be split out by UTC"; when the user pushed back
 and said "actually query BigQuery first," the claim reversed. The wrong claim would
@@ -44,7 +44,7 @@ already exists and demonstrably did not prevent the failure.
   (`EVIDENCE.md`) written via a new `lib/evidence.sh`, with stable `EVID-NNN` ids
   cited from SPEC.md/PLAN.md.
 - Gate the artifacts deterministically: a new `lib/grounding-lint.sh` blocks
-  DISCUSS's commit and PLAN's coverage-gate cluster when a `## Grounding` section is
+  SPEC's commit and PLAN's coverage-gate cluster when a `## Grounding` section is
   missing/malformed, an `EVID-*` reference does not resolve to the ledger, an
   `ASSUMPTION` entry lacks a runnable `verify:` command, or an `UNVERIFIED`
   placeholder survives inside the `## Grounding` section (the writer's explicit
@@ -97,7 +97,7 @@ already exists and demonstrably did not prevent the failure.
 ## User-facing behavior
 
 A user running `/loop-spec:cycle` on a feature that touches an external system sees:
-during SPEC/DISCUSS the lead runs visible read-only probe commands *before* stating
+during SPEC the lead runs visible read-only probe commands *before* stating
 external facts in questions or options; SPEC.md and PLAN.md carry a `## Grounding`
 section listing each load-bearing external fact as `EVID-NNN` (backed by a ledger
 entry showing the exact command and output) or as an explicit
@@ -139,25 +139,25 @@ re-dispatches — the user never has to say "actually query BigQuery first."
 - [ ] `agents/challenger.md` and `skills/shared/team-prompts/challenger.md` define
       the Ungrounded-claim issue class with the `UNGROUNDED: "<verbatim quote>"`
       output marker and a suggested read-only probe per finding.
-- [ ] `skills/discuss/SKILL.md` (a) instructs probe-before-assert during the Step 1
+- [ ] `skills/spec/SKILL.md` (a) instructs probe-before-assert during the Scout
       loop, (b) passes the evidence ledger path in the spec-writer brief, (c) maps
       `UNGROUNDED:` findings to lead-run probes + `lib/evidence.sh add` + writer
-      re-dispatch in Step 5, and (d) runs `lib/grounding-lint.sh` as a blocking gate
-      before the Step 6 commit, re-dispatching on exit 1 under the existing retry
-      budgets; the Step 6 commit includes `EVIDENCE.md` when present.
+      re-dispatch in the Critique step, and (d) runs `lib/grounding-lint.sh` as a
+      blocking gate before the Approval commit, re-dispatching on exit 1 under the
+      existing retry budgets; the Approval commit includes `EVIDENCE.md` when present.
 - [ ] `skills/plan/SKILL.md` runs `lib/grounding-lint.sh` on PLAN.md in the
       Step 5.5 gate cluster with the same blocking/re-dispatch handling, the
       planner brief carries the ledger path, and the plan critique's fix-list
       synthesis maps challenger `UNGROUNDED:` findings to lead-run read-only probes
-      + `lib/evidence.sh add` + planner re-dispatch, exactly as DISCUSS Step 5 does.
+      + `lib/evidence.sh add` + planner re-dispatch, exactly as SPEC's Critique step does.
 - [ ] `skills/spec/SKILL.md` Step 1 scout enumerates external systems named in the
       ask and probes factual premises (read-only) before treating them as fact, with
       the autonomous-mode fallback (unverifiable -> recorded `ASSUMPTION`, no user
       question).
 - [ ] `tests/contract-strings.test.sh` pins both sides of the new couplings:
-      `grounding-lint.sh"` in discuss+plan skills, `evidence.sh" add` in
-      spec+discuss+plan skills, `UNGROUNDED:` in challenger agent + team prompt +
-      discuss skill + plan skill, `EVID-` in `lib/evidence.sh` +
+      `grounding-lint.sh"` in spec+plan skills, `evidence.sh" add` in
+      spec+plan skills, `UNGROUNDED:` in challenger agent + team prompt +
+      spec skill + plan skill, `EVID-` in `lib/evidence.sh` +
       `lib/grounding-lint.sh`.
 - [ ] `bash tests/run-all.sh` passes with the two new suites registered.
 

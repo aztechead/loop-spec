@@ -10,7 +10,7 @@ appears in the invocation (stripped from the title) or `LOOP_SPEC_AUTONOMOUS=1` 
 the cycle persists it as `feature.json.autonomous = true` so phases and resumes see it.
 
 `execStyle: auto` is not this mode. Auto is the default style: the cycle does not pause
-between phases, but a human is attached and grill, SPEC, and DISCUSS questions still
+between phases, but a human is attached and grill and SPEC's questions still
 fire (the SPEC checkpoint uses consolidated AskUserQuestion questions (`auto` included)).
 
 Do not ask for permission to perform work the original request already authorizes;
@@ -79,9 +79,9 @@ callback, ADK routes `get_user_choice` to the caller. `bash
 "${LOOP_SPEC_SKILL_DIR}/../../lib/supervisor/oracle.sh" mode --feature-dir "$feature_dir"`
 answers `oracle=supervisor` when `LOOP_SPEC_ORACLE=supervisor` (the `supervised`
 profile preset sets it, `docs/loop-spec/supervisor-interface.md`); `lib/phase-mode.sh`
-carries that answer on the SPEC and DISCUSS mode lines as `oracle=`, and
-`lib/phase-exit.sh` keeps either phase open when a named supervisor was never asked.
-On that answer, at every self-answer site in SPEC and DISCUSS:
+carries that answer on the SPEC mode line as `oracle=`, and
+`lib/phase-exit.sh` keeps the phase open when a named supervisor was never asked.
+On that answer, at every self-answer site in SPEC:
 
 1. Formulate the question exactly as the self-answer rule would, and ask it through the
    native question tool with the recommended option FIRST and labeled `(Recommended)`.
@@ -112,11 +112,11 @@ Self-answering collapses preference questions, never safety aborts: dirty-repo a
 schema guards, the iteration ceiling, VERIFY's code-review HARD-GATE and tamper scan,
 and DELIVER's exact-SHA, required-check, and unique-PR gates stay hard failures.
 Goal and Boundary freeze when the cycle enters PLAN (`lib/spec_intent.py`), after
-SPEC and DISCUSS have both asked their questions. From then on self-answering cannot
+SPEC has asked its questions. From then on self-answering cannot
 change them or rewrite the approval digest: return genuine post-approval
 intent gaps to the human. Implementation choices outside those sections can change
 within the approved outcomes and constraints. Subject to that freeze, sites
-that normally reach a human only in one style (DISCUSS unresolved dimensions and
+that normally reach a human only in one style (SPEC's unresolved dimensions and
 intent findings: AskUserQuestion in `auto`/`step`/`interactive`; ITERATE's spec-rewind
 approval in `step`/`interactive`) take the grounded assumption here.
 

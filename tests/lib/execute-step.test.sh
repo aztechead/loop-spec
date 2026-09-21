@@ -55,6 +55,18 @@ FD="$(new_feature inplace)"; ROOT="$(git -C "$FD" rev-parse --show-toplevel)"
 ec=0; bash "$STEP" dispatch --feature-dir "$FD" --task task-001 >/dev/null 2>&1 || ec=$?
 check "dispatch: refuses before prepare ran" "2" "$ec"
 bash "$PREP" run --feature-dir "$FD" >/dev/null 2>&1
+# Recovery must not follow a cached packet into another checkout either.
+cp "$FD/dispatch/prepare.json" "$WORK/prepare.saved.json"
+printf '[{"id":"foreign-task","status":"done"}]\n' > "$WORK/foreign-tasks.json"
+foreign_before="$(cat "$WORK/foreign-tasks.json")"
+jq --arg sidecar "$WORK/foreign-tasks.json" '.sidecar=$sidecar' "$FD/dispatch/prepare.json" > "$FD/dispatch/prepare.tmp"
+mv "$FD/dispatch/prepare.tmp" "$FD/dispatch/prepare.json"
+ec=0; error="$(bash "$STEP" dispatch --feature-dir "$FD" --task task-001 2>&1)" || ec=$?
+check "dispatch: stale cached sidecar is refused" "2" "$ec"
+check "dispatch: stale cache requests a new preparation" "1" "$(grep -c 'rerun lib/execute-prepare.sh' <<<"$error")"
+check "dispatch: stale cache writes no task state" "0" "$([[ -f "$FD/dispatch/task-001.json" ]] && echo 1 || echo 0)"
+check "dispatch: stale cache leaves foreign progress untouched" "$foreign_before" "$(cat "$WORK/foreign-tasks.json")"
+mv "$WORK/prepare.saved.json" "$FD/dispatch/prepare.json"
 ec=0; blocked="$(bash "$STEP" dispatch --feature-dir "$FD" --task task-002 2>/dev/null)" || ec=$?
 check "dispatch: a blocked task is refused" "1" "$ec"
 check "dispatch: the refusal names the blocker" "blocked" "$(jq -r '.reason' <<<"$blocked")"
@@ -68,8 +80,28 @@ check "dispatch: the model is the role default" "inherit" "$(jq -r '.model' <<<"
 check "dispatch: task_start was emitted" "1" "$(grep -c '"event":"task_start"' "$FD/events.jsonl")"
 check "dispatch: progress index and total" "1/2" "$(jq -r '"\(.index)/\(.total)"' <<<"$out")"
 
+jq '.verificationRepairPending = true' "$FD/dispatch/task-001.json" > "$WORK/state-repair.json"
+mv "$WORK/state-repair.json" "$FD/dispatch/task-001.json"
+ec=0; out="$(bash "$STEP" integrate --feature-dir "$FD" --task task-001)" || ec=$?
+check "repaired check: cannot integrate on the stale review" "command-review-required:1" "$(jq -r '.reason' <<<"$out"):$ec"
+ec=0; out="$(bash "$STEP" verdict --feature-dir "$FD" --task task-001 --verdict pass)" || ec=$?
+check "repaired check: needs a fresh review package" "command-review-required:1" "$(jq -r '.reason' <<<"$out"):$ec"
+jq '.package = "fresh-review.md"' "$FD/dispatch/task-001.json" > "$WORK/state-repair.json"
+mv "$WORK/state-repair.json" "$FD/dispatch/task-001.json"
 out="$(bash "$STEP" verdict --feature-dir "$FD" --task task-001 --verdict pass)"
 check "verdict pass: integrate" "integrate" "$(jq -r '.action' <<<"$out")"
+check "repaired check: fresh pass clears pending review" "false" "$(jq -r '.verificationRepairPending' "$FD/dispatch/task-001.json")"
+out="$(bash "$STEP" verdict --feature-dir "$FD" --task task-001 --verdict rework --attempt 0)"
+check "first failure: schedules the first retry" "oneshot:1" "$(jq -r '.action + ":" + (.nextAttempt | tostring)' <<<"$out")"
+printf 'raise AssertionError("candidate check failed")\n' > "$ROOT/a.py"
+ec=0; out="$(bash "$STEP" integrate --feature-dir "$FD" --task task-001 2>/dev/null)" || ec=$?
+check "integration failure: keeps the check failure and offers rework" "verify-failed:oneshot:1:null" "$(jq -r '[.reason,.action,(.nextAttempt | tostring),(.blocked | tostring)] | join(":")' <<<"$out")"
+check "integration failure: publishes no task progress" "" "$(bash "$REPO_ROOT/lib/task-progress.sh" done "$FD/tasks.json")"
+check "integration failure: is not a terminal task event" "0" "$(grep -c '"event":"task_end"' "$FD/events.jsonl" || true)"
+git -C "$ROOT" show HEAD:a.py > "$ROOT/a.py"
+ec=0; out="$(bash "$STEP" verdict --feature-dir "$FD" --task task-001 --verdict rework --attempt 5)" || ec=$?
+check "last permitted attempt: no seventh implementation" "retry-exhausted:1" "$(jq -r '.reason' <<<"$out"):$ec"
+: > "$FD/events.jsonl"
 out="$(bash "$STEP" verdict --feature-dir "$FD" --task task-001 --verdict rework --attempt 1)"
 check "verdict rework on a one-shot rung: a fresh dispatch reads the report" "oneshot" "$(jq -r '.action' <<<"$out")"
 check "verdict rework: next attempt is counted" "2" "$(jq -r '.nextAttempt' <<<"$out")"
@@ -121,6 +153,18 @@ if [[ "$(jq -r '.rung.subagentIsolation' "$FD2/dispatch/prepare.json")" == "lead
   out="$(bash "$STEP" package --feature-dir "$FD2" --task task-001 --head "$(git -C "$WT" rev-parse HEAD)")"
   check "package: a review package is written" "1" "$([[ -f "$(jq -r '.package' <<<"$out")" ]] && echo 1 || echo 0)"
   check "package: names the task worktree for the reviewer" "$WT" "$(jq -r '.worktree' <<<"$out")"
+  before="$(grep -c 'spec-compliance-reviewer' "$FD2/events.jsonl" 2>/dev/null || true)"
+  rg="$(bash "$STEP" review-groups --feature-dir "$FD2" --tasks task-001)"
+  check "review-groups: one task is one group" "1" "$(jq -r '.groups | length' <<<"$rg")"
+  check "review-groups: the group names its package" "$(jq -r '.package' <<<"$out")" "$(jq -r '.groups[0].tasks[0].package' <<<"$rg")"
+  # The session rung emits at launch (run --role reviewer), every other rung here.
+  launches=1; [[ "$(jq -r '.rung.rung' "$FD2/dispatch/prepare.json")" == "session" ]] && launches=0
+  check "review-groups: emits one reviewer dispatch per group off the session rung" "$((before + launches))" "$(grep -c 'spec-compliance-reviewer' "$FD2/events.jsonl")"
+  check "review-groups: the event lists the tasks" "$launches" "$(grep -c '"tasks":\["task-001"\]' "$FD2/events.jsonl")"
+  ec=0; LOOP_SPEC_REVIEW_GROUP_BYTES=zero bash "$STEP" review-groups --feature-dir "$FD2" --tasks task-001 >/dev/null 2>&1 || ec=$?
+  check "review-groups: a bad cap is a configuration error" "2" "$ec"
+  rg="$(LOOP_SPEC_REVIEW_GROUP_BYTES=1 bash "$STEP" review-groups --feature-dir "$FD2" --tasks task-001,task-001)"
+  check "review-groups: a cap below one package still yields one task per group" "2" "$(jq -r '.groups | length' <<<"$rg")"
   # dispatch modified the tracked feature.json; integrate must not refuse its own state.
   git -C "$ROOT2" add -f -- "$FD2/feature.json" >/dev/null 2>&1; git -C "$ROOT2" commit -q -m "track state" -- "$FD2/feature.json" >/dev/null 2>&1 || true
   jq '.touched = "by the driver"' "$FD2/feature.json" > "$FD2/feature.json.tmp" && mv "$FD2/feature.json.tmp" "$FD2/feature.json"
@@ -175,6 +219,7 @@ sess bash "$STEP" package --feature-dir "$FDS" --task task-001 --head "$(git -C 
 ec=0; out="$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role reviewer 2>&1)" || ec=$?
 check "run reviewer: the session completed" "completed" "$(jq -r '.status' <<<"$out")"
 check "run reviewer: the prompt names the package and the verdict path" "1" "$(grep -c '^Review the package in .* against the spec .*\. Write your verdict to .*task-001.report.md.$' "$FDS/dispatch/task-001.reviewer.md")"
+check "run reviewer: emits the reviewer dispatch" "1" "$(grep -c 'spec-compliance-reviewer' "$FDS/events.jsonl")"
 check "run: a failing session is exit 1 with status failed" "failed:1" "$(printf '#!/usr/bin/env bash\nexit 3\n' > "$SBIN/codex"; ec=0; o="$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role implementer 2>/dev/null)" || ec=$?; echo "$(jq -r '.status' <<<"$o"):$ec")"
 check "run: on another rung the answer is in-harness" "in-harness" "$(jq '.rung.rung = "subagent"' "$FDS/dispatch/prepare.json" > "$WORK/p.json" && mv "$WORK/p.json" "$FDS/dispatch/prepare.json"; sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role implementer | jq -r '.action')"
 ec=0; out="$(sess bash "$STEP" integrate --feature-dir "$FDS" --task task-001 2>/dev/null)" || ec=$?

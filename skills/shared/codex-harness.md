@@ -96,7 +96,7 @@ wrong on a machine that also has Claude Code installed.
 | ToolSearch (deferred-tool rescue) | does not exist; nothing is deferred under Codex — skip rescue steps entirely |
 | EnterWorktree / ExitWorktree | no session-root switch exists. Cycle uses `executionRootMode: "in-place"`: after a clean-base guard it creates/checks out `feat/{slug}` in the session repo and never calls either tool. It does not pretend worktree creation changed cwd |
 
-## Human-in-the-loop (SPEC / DISCUSS / PLAN)
+## Human-in-the-loop (SPEC / PLAN)
 
 Codex Default-mode models assume and continue unless a tool **blocks**. Claude
 Code's `AskUserQuestion` and OpenCode's `question` both block. "Ask in the

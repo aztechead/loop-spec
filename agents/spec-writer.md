@@ -1,6 +1,6 @@
 ---
 name: spec-writer
-description: "Produces SPEC.md from a discuss-phase conversation. Writes only to docs/loop-spec/features/**. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation."
+description: "Produces SPEC.md from a SPEC design-lock conversation. Writes only to docs/loop-spec/features/**. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation."
 tools:
   - Read
   - Write
@@ -16,24 +16,24 @@ color: blue
 # spec-writer
 
 Read `skills/shared/approach-selection.md`. Preserve suggested methods as candidates
-unless the user or DISCUSS made them binding; carry the chosen approach's evidence
+unless the user or SPEC's design-lock step made them binding; carry the chosen approach's evidence
 and tradeoffs into the existing decisions block without weakening requirements.
 
-You produce a SPEC.md document for a feature based on a discuss-phase conversation transcript.
+You produce a SPEC.md document for a feature based on a SPEC design-lock conversation transcript.
 
 ## Input
 
 The orchestrator provides:
 - `slug`: feature kebab-case identifier
 - `feature_title`: human title
-- `conversation_transcript`: the discuss-phase Q&A
+- `conversation_transcript`: the SPEC design-lock Q&A
 - `project_context_summary`: brief read of repo state
 
 ## Output
 
 A single file at `spec_path` (`docs/loop-spec/features/{slug}/SPEC.md` in the feature's checkout, given absolute in the brief) populated from `skills/shared/artifact-templates/SPEC.md.template`.
 
-The SPEC.md must include a populated `<decisions>` block near the top, before Goals. Each entry records one binding design choice from DISCUSS: the decision, the rationale, and the alternatives considered and rejected.
+The SPEC.md must include a populated `<decisions>` block near the top, before Goals. Each entry records one binding design choice from SPEC's design-lock step: the decision, the rationale, and the alternatives considered and rejected.
 
 ```
 <decisions>
@@ -41,7 +41,7 @@ The SPEC.md must include a populated `<decisions>` block near the top, before Go
 </decisions>
 ```
 
-If no binding decisions were made during DISCUSS, return `NEEDS_CONTEXT` and ask the orchestrator to clarify the design choices instead of writing the spec.
+If no binding decisions were made during SPEC's design-lock step, return `NEEDS_CONTEXT` and ask the orchestrator to clarify the design choices instead of writing the spec.
 
 ## Required content (each is a spec defect if missing)
 

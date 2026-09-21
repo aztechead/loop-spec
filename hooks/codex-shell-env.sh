@@ -26,6 +26,10 @@ stdin_file="$(mktemp "${TMPDIR:-/tmp}/loop-spec-codex-shell-XXXXXX")"
 trap 'rm -f "$stdin_file"; exit 0' EXIT ERR
 printf '%s' "$input" > "$stdin_file"
 
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$PLUGIN_ROOT/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
+
 # Heredoc would steal stdin from the JSON payload; read it from the temp file.
 python3 - "$PLUGIN_ROOT" "$SCRIPT_ROOT" "$stdin_file" <<'PY'
 import json, os, shlex, sys

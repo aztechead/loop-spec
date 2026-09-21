@@ -20,9 +20,10 @@ consuming code in `execute` SKILL Step 3 is shape-identical:
 { "merged": ["task-001", ...], "blocked": [{"taskId": "...", "reason": "..."}], "escalation": null | {"reason": "...", "detail": "..."} }
 ```
 
-`blocked[].reason` and `escalation.reason` use the SAME fixed vocabulary as
+`blocked[].reason` and `escalation.reason` retain the helper's reason, as does
 `lib/workflows/execute-dag.js` (`spec-compliance-block`, `retry-exhausted`,
-`commit-missing`, `zero-commit`, `dirty-worktree`; `deadlock`, `rebase-conflict`). Display only.
+`commit-missing`, `zero-commit`, `dirty-worktree`, `deadlock`, `rebase-conflict`,
+`prepare-failed`, `invalid-verify-command`, or another publication refusal). Display only.
 
 ## When this path runs
 
@@ -109,7 +110,10 @@ Apply these replacements to the lead wave loop:
    the checkout is clean, persists `lib/task-progress.sh mark-done`, and emits `task_end`;
    add the task to `mergedSet`. There is no `integrate-task.sh` call because the accepted
    commit is already on the feature branch.
-5. On `block`, retry exhaustion, out-of-scope dirt, verification failure, missing
+5. A verification failure uses `.action` and `.nextAttempt` from integration, as in
+   wave-loop step 6: rework in the same checkout, re-review with the new attempt,
+   and integrate again. Do not dispatch a second worktree or reset the dirty diff.
+   On `block`, retry exhaustion, out-of-scope dirt, missing
    commit, or an unreadable Git state, stop with the existing structured blocked or
    escalation reason. Preserve the working tree for diagnosis; never reset or clean it.
 6. Each task runs its own `verifyCommand` before publication; the repository-wide
@@ -192,17 +196,30 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    implementer's report. Never AskUserQuestion as a wait (`skills/shared/dispatch.md`).
    Then review.
    Each call returns `{taskId, branch, committed, sha, notes}`. (Per-task model override applies to the subagent and loop rungs; the team rung pre-spawns implementer teammates and uses the role default for all of them.)
-5. **Review each committed task** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, one call writes the review package from the recorded BASE to the implementer's HEAD and emits the reviewer's `dispatch` event:
+5. **Review the wave** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, one call writes the review package from the recorded BASE to the implementer's HEAD:
 
    ```bash
    pk="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task package \
      --feature-dir "$fdir" --task "{taskId}" --head "{implHead}")"
-   # .package .model .base .head .brief .report .worktree
+   # .package .model .base .head .brief .report .worktree .verifyCommand
    ```
 
-   Then dispatch a spec-compliance reviewer `Agent` using `.model` (the activated
-   `models.specComplianceReviewer` selector; alias → add `model`; `inherit` → omit) and the
-   review prompt below. It returns `{verdict: "pass"|"rework"|"block", findings[], unverified[]}`.
+   Then one call groups the wave's packages under the byte cap and emits one reviewer
+   `dispatch` event per group (a wave of small tasks is one group; a group never splits
+   below one task):
+
+   ```bash
+   rg="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task review-groups \
+     --feature-dir "$fdir" --tasks "{taskId1},{taskId2},...")"
+   # .model .groups[] = {tasks:[{task,package,bytes}], bytes}
+   ```
+
+   For each group dispatch ONE spec-compliance reviewer `Agent` using `.model` (the
+   activated `models.specComplianceReviewer` selector; alias → add `model`; `inherit` →
+   omit) and the review prompt below, listing every task in the group with the paths from
+   its `pk` packet. It returns `{verdicts: [{taskId, verdict: "pass"|"rework"|"block", findings[], unverified[]}]}`,
+   one entry per task; a missing entry is a malformed verdict: re-dispatch that group once,
+   then treat the missing task as `block`. Apply each entry as below.
    - Resolve every `unverified[]` item before marking the task complete: confirm from
      the plan / prior tasks (ledger a note) or promote to `rework`. Unverified items
      must not evaporate.
@@ -216,7 +233,7 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
 
    - `pass` with empty unresolved unverified: `.action == "integrate"`, the task is
      ready to merge.
-   - `rework` and attempts remaining: `.action` is `lib/fix-loop.sh action {attempt}
+   - `rework` and attempts remaining: `.action` is `lib/fix-loop.sh action {attempt+1}
      {maxRetriesPerTask}` (the effective cap, so a tuned `executeMaxRetriesPerTask`
      moves the breaker with it). `resume` on a live teammate (`fix-loop.sh live team`
      → `resumeable`) is `SendMessage` to that identity with the findings. `oneshot`
@@ -225,7 +242,10 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
      `retry-exhausted` is the breaker: park residuals in `warnings[]` and
      `blocked.push({taskId, reason: "retry-exhausted"})`.
      Re-review is scoped (`skills/shared/review-prompts/re-review.md`) against
-     `FIX_BASE..HEAD`, not a full-task re-read. When the findings require touching a
+     `FIX_BASE..HEAD`, not a full-task re-read. A re-review is one task and returns the
+     single-task shape `{verdict, findings[], unverified[]}`. Re-package the fix with
+     `task package`, then `task review-groups --tasks {taskId}` (one group, one
+     `dispatch` event) before the scoped re-review Agent. When the findings require touching a
      file outside `task.files`, widen the task's write scope first with
      `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task add-files
      --feature-dir "$fdir" --task "{taskId}" <file...>` before re-dispatching; it
@@ -248,15 +268,30 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    ```bash
    integration_json="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task integrate \
      --feature-dir "$fdir" --task "{taskId}")"
-   # .published .reason .detail .sha .blocked
+   # .published .reason .detail .sha .blocked .action .model .nextAttempt
    ```
 
    Parse `integration_json`, never command prose. If `.published == true`, add the
-   task id to `mergedSet` even when cleanup reports a failure. Otherwise map
-   `zero-commit` to the existing `zero-commit` blocked reason, `verify-failed` or
-   `prepare-failed` to `retry-exhausted`, and any rebase/publication/cleanliness
-   failure to `escalation.reason = "rebase-conflict"` with the helper's `reason`
-   and `detail`, then stop. Never remove or reset a failed task worktree manually.
+   task id to `mergedSet` even when cleanup reports a failure. A `verify-failed`
+   result includes the same `.action`, `.model`, and `.nextAttempt` as review rework:
+   feed the exact failing command and `.detail` into that fix loop, re-review, then
+   integrate again. Only `.blocked == "retry-exhausted"` means the budget is spent.
+   Preserve other failure reasons and details when stopping. `prepare-failed` is an
+   environment failure; `invalid-verify-command` requires repairing task authoring
+   without weakening its criteria, not changing product code to satisfy a broken check.
+   Never remove or reset a failed task worktree manually.
+   If the recorded check contradicts the criterion, retain the failed output and
+   inspect the criterion and actual behavior before another implementation attempt.
+   For a generated remediation task, write a JSON repair file with `expectedCommand`
+   (the exact old command), `verifyCommand` (the corrected check), `reason`, and
+   `evidence` (the observed contradiction and why the replacement preserves the
+   criterion). Run `cycle-driver.sh task repair-verify --feature-dir "$fdir"
+   --task "{taskId}" --repair-file <absolute-path>`. It permits one correction,
+   synchronizes all task copies, preserves criteria and attempts, and blocks integration
+   until a fresh package and reviewer pass. Refresh the task from prepare.json and
+   include the repair record in that review. Never weaken criteria or alter correct
+   product behavior to satisfy an incidental spelling or serialization. Planned tasks
+   need PLAN revision; user gates cannot be replaced through this helper.
    The helper runs `verifyCommand` after any required rebase and before publication,
    so each task's focused proof covers exactly the commit that fast-forwards the feature
    branch. A task whose files need no edit (the review already matches the spec) commits
@@ -291,7 +326,7 @@ result (on Claude Code >= 2.1.251 it rides the idle notification, which this run
 not parse), and the reviewer personas have no SendMessage to fall back on -- a live
 6.6.1 run lost a verdict to a named dispatch and had to redispatch.
 
-**Dispatch telemetry (`skills/shared/dispatch.md`):** `task dispatch` and `task package` emit `dispatch` with the resolved model.
+**Dispatch telemetry (`skills/shared/dispatch.md`):** `task dispatch` and `task review-groups` emit `dispatch` with the resolved model, one event per Agent launch (a review group is one launch).
 The lead emits no duplicate event. Retries use `task dispatch` again and emit a new event.
 
 **Task progress (emitted for you).** EXECUTE is the longest phase; without progress
@@ -318,20 +353,26 @@ templates cannot drift.
 ```
 IMPORTANT: All paths must be ABSOLUTE. Do not use relative paths. Do not use em-dashes.
 
-ENGINEERING CONTRACT (on by default; every directive binds). The index is
-`${LOOP_SPEC_SKILL_DIR}/../../skills/shared/engineering-directives.md`. Read these before writing code, never paste them:
-`${LOOP_SPEC_SKILL_DIR}/../../skills/shared/implementer-contract.md` (FOUR QUESTIONS (design gate): can I make it more modular?
-more extensible? is this the least amount of code that makes it happen?
+ENGINEERING CONTRACT (on by default; every directive binds). The brief's `Read first`
+section names ONE file, `<taskId>-contracts.md`, rendered at dispatch from the sources
+under `skills/shared/` that this task's files call for. Read that file once before
+writing code. Do not open the sources it was rendered from, and never paste them; the
+index is `skills/shared/engineering-directives.md`, and the sections that follow name
+their source only so you know what binds. `skills/shared/implementer-contract.md`: FOUR QUESTIONS (design gate: can I make it
+more modular? more extensible? is this the least amount of code that makes it happen?
 does this hold at production scale, memory and work bounded against deployment-sized
-input, not the fixture?); `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/laziness-ladder.md` (ponytail laziness ladder: YAGNI, then DRY, reuse
-what is already here); `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/design-for-change.md` (seams, not speculation);
-`${LOOP_SPEC_SKILL_DIR}/../../skills/shared/human-code.md` (house style over habit: read the neighbors, comments carry WHY,
-density matches the file, never cut `simplicity:` markers; CODE A HUMAN CAN OPERATE: fail
-loudly, or say why not); `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/human-docs.md` (DOCS FOR HUMANS: one job per document,
-cite never copy, a document your change makes false is fixed IN THIS DIFF and never a
-deferred follow-up; NEVER cut frontmatter, machine-read contract sections, artifact
-headings, EVID lines, or licenses); `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/writing-good-tests.md` (WRITING GOOD TESTS:
-name the break; no string-presence traps; no change detectors).
+input, not the fixture?).
+`skills/shared/laziness-ladder.md`: the ponytail laziness ladder (YAGNI, then DRY, reuse
+what is already here). `skills/shared/design-for-change.md`: seams, not speculation.
+`skills/shared/human-code.md`: house style over habit (read the neighbors, comments carry
+WHY, density matches the file, never cut `simplicity:` markers; CODE A HUMAN CAN OPERATE:
+fail loudly, or say why not). `skills/shared/human-docs.md`, present only when the task
+touches markdown: DOCS FOR HUMANS (one job per document, cite never copy, a document your
+change makes false is fixed IN THIS DIFF and never a deferred follow-up; NEVER cut
+frontmatter, machine-read contract sections, artifact headings, EVID lines, or
+licenses). `skills/shared/writing-good-tests.md`, present only when the task touches
+tests: WRITING GOOD TESTS (name the break; no string-presence traps; no change
+detectors).
 
 Rules that bind without a file read. TDD, red then green: code-producing tasks write the
 failing test FIRST, run it, confirm red, implement, confirm green; skill/config/docs
@@ -351,8 +392,8 @@ helpers to inline); `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/duplication-scan.sh"
 NO NESTED SUBAGENTS. Do this task yourself. Never dispatch a helper or a reviewer.
 Review arrives from the lead after your report.
 
-EXECUTION DISCIPLINE (evidence over recall). Read `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/execution-discipline.md`, do not
-paste it. You execute a brief a stronger reasoning pass produced: fidelity, not
+EXECUTION DISCIPLINE (evidence over recall; a section of the same rendered file, so no
+second read). You execute a brief a stronger reasoning pass produced: fidelity, not
 improvisation. Never assert what a file, command, or API does from memory; read it, run
 it, paste the output. Output that contradicts your expectation is signal: stop, re-read,
 revise. Re-read the acceptance criteria before DONE and check each against actual
@@ -427,24 +468,26 @@ re-review after a fix round uses `skills/shared/review-prompts/re-review.md`
 with FIX_BASE = the HEAD the previous review saw.
 
 ```
-You are a spec-compliance reviewer for task {taskId} (attempt {n}).
+You are a spec-compliance reviewer for one wave of tasks: {taskIds} (attempt {n} each).
 
 NO NESTED SUBAGENTS. Do this review yourself. Never spawn a helper or a second reviewer.
 
-Read the task brief: {brief path}
-Read the implementer's report: {report path}
-The implementation is checked out at {worktree path from the package packet's .worktree}.
-Do NOT run the task's verify command ({verifyCommand from the packet}): the implementer ran
-it (its output is in the report) and the integration step reruns it after rebase. Run a
-command there only when the diff makes a specific criterion suspicious, and only one that
-reads the checkout (grep, test, jq, diff). Never run a plan, an apply, a test suite, or
-anything that reaches a network or a cloud API. Never `git worktree add` another checkout
-for this review.
-Read the review package once (commit list, stat, diff -U10). Do not re-run git for this
-range if the file exists:
-  {package path from: bash lib/dispatch-files.sh package --repo ... --base {taskBaseSha} --head {implHead}}
-If the package is missing, fetch `git diff --stat {taskBaseSha}..{implHead}` and
-`git diff -U10 {taskBaseSha}..{implHead}` yourself. Never use HEAD~1 as BASE.
+For EACH task below, read its brief, its implementer's report, and its review package once;
+judge each task on its own acceptance criteria. Never let one task's verdict decide another's.
+  TASK {taskId}: brief {brief path}; report {report path}; worktree {worktree path from the
+  package packet's .worktree}; package {package path} (base {taskBaseSha}, head {implHead});
+  verify command {verifyCommand} (do not run it)
+  (one such block per task in the group)
+Each package was written by `lib/dispatch-files.sh package` (commit list, stat, diff -U10).
+Read it once; do not re-run git for that range while the file exists. If a package is
+missing, fetch `git diff --stat {taskBaseSha}..{implHead}` and
+`git diff -U10 {taskBaseSha}..{implHead}` for that task yourself. Never use HEAD~1 as BASE.
+Do NOT run the task's verify command for any task: the implementer ran it (its output is
+in the report) and the integration step reruns it after rebase. Run a command in a worktree only when
+the diff makes a specific criterion suspicious, and only one that reads the checkout
+(grep, test, jq, diff). Never run a plan, an apply, a test suite, or anything that
+reaches a network or a cloud API. Never `git worktree add` another checkout for this
+review.
 
 {specPath clause}
 
@@ -462,12 +505,10 @@ is the floor of this pass, not a finding.
 A requirement that lives in unchanged code or spans tasks is not a fail: put it in
 unverified[] with why the diff cannot show it. The lead must resolve each item.
 
-Return one of:
-  - verdict "pass"   if everything is satisfied AND unverified[] is empty
-  - verdict "rework" with specific findings if fixable issues exist (incl. over-engineering)
-  - verdict "block"  if the implementation is fundamentally wrong or unrecoverable
-
-Return JSON: { verdict: "pass"|"rework"|"block", findings: ["<finding 1>", ...], unverified: [{"requirement":"...","why":"..."}] }
+Return JSON, and only this shape: { verdicts: [ { taskId: "...", verdict: "pass"|"rework"|"block", findings: ["<finding 1>", ...], unverified: [{"requirement":"...","why":"..."}] } ] }, one entry per task, none omitted.
+Per entry: "pass" when every criterion is satisfied AND its unverified[] is empty;
+"rework" with specific findings when fixable issues exist (incl. over-engineering);
+"block" when the implementation is fundamentally wrong or unrecoverable.
 Your final message IS the verdict (the lead dispatched you nameless and blocking). Never
 call SendMessage to deliver it (a live reviewer lost three calls to InputValidationError
 sending JSON to a "main" that does not exist).

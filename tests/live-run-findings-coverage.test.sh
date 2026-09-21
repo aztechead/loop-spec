@@ -6,9 +6,8 @@
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.sh"
 
 checks=(
-  $'skills/discuss/SKILL.md\tDo not prefetch or dispatch a second scan'
-  $'skills/plan/SKILL.md\tartifact-templates/PATTERNS.md.template'
-  $'skills/plan/SKILL.md\tartifact-templates/PLAN.md.template'
+  $'lib/graph/driver.py\tartifact-templates'
+  $'skills/plan/SKILL.md\t.planner.promptFile'
   $'agents/planner.md\ttemplate_path'
   $'agents/pattern-mapper.md\tnever search the disk'
   $'skills/shared/dispatch.md\tThis holds'

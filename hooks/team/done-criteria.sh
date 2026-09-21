@@ -38,6 +38,9 @@ input=$(cat 2>/dev/null || true)
 # Extract user prompt via python3 inline. Fall back gracefully.
 prompt=""
 if command -v python3 &>/dev/null; then
+  # Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+  py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+  [[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
   prompt=$(printf '%s' "$input" | python3 -c "
 import sys, json
 try:

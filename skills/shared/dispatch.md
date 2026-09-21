@@ -116,9 +116,11 @@ interactive styles and lead-authored output in autonomous mode (recorded in
 
 ## Concurrency
 
-Resource bounds default to one implementer and one child agent. On startup and resume, `N` comes
-from `.loop-spec/runtime.json.resources.maxParallelSubagents` when present, otherwise from
-`lib/resource-bounds.sh resolve`; a current environment value wins, and the default is `1`.
+With no operator bound, EXECUTE's wave cap is min(DAG width, 3) (`lib/execute-rung.sh select`,
+on the single-repo and workspace paths alike); every other dispatch surface defaults to one
+child agent. On startup and resume, `N` comes from
+`.loop-spec/runtime.json.resources.maxParallelSubagents` when that record says `explicit`,
+otherwise from `lib/resource-bounds.sh resolve`; a current environment value wins.
 `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=N`
 and `LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS=N` (positive integers) are explicit operator
 opt-ins for wider waves; the resource resolver validates both once and propagates the

@@ -27,7 +27,6 @@ LOW_RISK='{"route":"full","taskKind":"maintenance","confidence":0.9,"estimatedFi
 
 COMPACT_GATE_PLAN='{
   "specInterview":{"run":false,"reason":"bounded requirements are grounded"},
-  "discuss":{"run":false,"reason":"no unresolved product decision"},
   "specCritique":{"run":false,"reason":"scope is deliberately bounded"},
   "planCritique":{"run":true,"reason":"review the compact plan"},
   "repositoryValidation":{"run":true,"reason":"validate repository state"},
@@ -71,8 +70,6 @@ check "compact evidence with a newline reason stays standard" "standard" \
   "$(printf '%s' "$COMPACT" | jq -c '.gatePlan.acceptance.reason = "line one\nline two"' | bash "$SCRIPT" select - | profile)"
 check "compact evidence with an oversized gate reason stays standard" "standard" \
   "$(printf '%s' "$COMPACT" | jq -c '.gatePlan.acceptance.reason = ("x" * 241)' | bash "$SCRIPT" select - | profile)"
-check "compact cannot run spec critique after skipping discuss" "standard" \
-  "$(printf '%s' "$COMPACT" | jq -c '.gatePlan.specCritique.run = true' | bash "$SCRIPT" select - | profile)"
 check "compact evidence beyond its file bound stays standard" "standard" \
   "$(printf '%s' "$COMPACT" | jq -c '.reviewableEstimatedFiles = 13' | bash "$SCRIPT" select - | profile)"
 check "compact evidence with high ambiguity stays standard" "standard" \

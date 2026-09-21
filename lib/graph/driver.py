@@ -118,7 +118,7 @@ Usage:
         skeleton, 2 bad invocation.
     (there is no `spec escalate`: a gate escalates from evidence, never the lead; the
         third identical REDO on ONESHOT writes `route: full` with the flag classes as
-        the reason and the run takes the full path from DISCUSS)
+        the reason and the run takes the full path through SPEC's critique gate)
     cycle-driver.sh verification fill --feature-dir DIR
         --row GE-NNN --implementation FILE:LINE --proof TEXT
           [--integration FILE:LINE|none --integration-proof TEXT]
@@ -160,14 +160,17 @@ Usage:
         a spec written next to the lead in the main checkout while the feature lived in
         a worktree was the misplaced-artifact REDO on two runs. Exit 0; 2 bad invocation.
 
-    cycle-driver.sh task dispatch|package|verdict|integrate --feature-dir DIR --task ID ...
+    cycle-driver.sh task dispatch|package|review-groups|verdict|integrate --feature-dir DIR ...
         One EXECUTE task step per call; lib/execute-step.sh owns the contract.
     cycle-driver.sh task add-files --feature-dir DIR --task ID <file...>
         Widens an open task's write scope for a rework attempt (sidecar, collapsed
         list, and prepare.json together); refuses an integrated task.
+    cycle-driver.sh task repair-verify --feature-dir DIR --task ID --repair-file PATH
+        Repair a generated remediation command with evidence, preserving criteria
+        and retry accounting; requires fresh review before integration.
 
     cycle-driver.sh critique open|findings|fail|revised|delta|pass --feature-dir DIR ...
-        One critique-gate step per call for DISCUSS and PLAN; lib/critique-step.sh owns
+        One critique-gate step per call for SPEC and PLAN; lib/critique-step.sh owns
         the contract.
 
     cycle-driver.sh verify gate|passes --feature-dir DIR ...
@@ -193,8 +196,8 @@ Usage:
           NEXT phase=<id> label="<label>" effort=<system1|system2>
           PAUSED node=<id> [intent=changed|unchanged|unknown]
                                      (human gate; re-invoke the cycle to continue; the
-                                     DISCUSS gate says whether Goal and Boundary still read
-                                     as they did at the SPEC gate, because PLAN freezes them)
+                                     SPEC gate says whether Goal and Boundary still read
+                                     as they did when first frozen, because PLAN freezes them)
           HANDOFF next=<phase> model=<selector>   (one phase per session; relaunch)
           REWIND next=<phase>         (the graph lists <phase> before the returned one; relaunch)
           DONE status=<completed|escalated|paused> [reason=<r>]
@@ -758,6 +761,53 @@ def cmd_start(argv):
     return 0
 
 
+# A target the repository declares is what its own contributors run and what its
+# container installs; a bare binary may not be there at all. A 6.8.0 container run
+# resolved `ruff check .`, got exit 127, and reported the whole verification gate as
+# infra_error while the test slot -- resolved through `make test` inside
+# detect-test-cmd.sh -- ran. These give lint and typecheck that same order.
+# (marker files, target pattern taking the target name, command taking it) in precedence
+# order, matching detect-test-cmd.sh: make, then just, then task, then tox.
+TASK_RUNNERS = (
+    (("Makefile", "GNUmakefile", "makefile"), r"^%s[ \t]*:", "make %s"),
+    (("justfile", "Justfile", ".justfile"), r"^%s[ \t]*:", "just %s"),
+    (("Taskfile.yml", "Taskfile.yaml", "Taskfile.dist.yml"), r"^[ \t]+%s[ \t]*:", "task %s"),
+    (("tox.ini",), r"^\[testenv:%s\]", "tox -e %s"),
+)
+# lockfile -> the package manager whose `run` a contributor here types. npm when none
+# declares one. prepare-environment.sh answers the install command, not this one.
+NODE_PACKAGE_MANAGERS = (("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"),
+                         ("bun.lockb", "bun"), ("bun.lock", "bun"))
+# command slot -> the target names a repository declares for it.
+RUNNER_TARGETS = {"lint": ("lint",), "typecheck": ("typecheck", "type-check")}
+
+
+def runner_target(root, slot):
+    """The declared task-runner command for one slot (`make lint`, `pnpm run lint`), or
+    "" when this repository declares no such target. Never a bare binary: that stays the
+    caller's fallback."""
+    for markers, pattern, command in TASK_RUNNERS:
+        for marker in markers:
+            path = os.path.join(root, marker)
+            if not os.path.isfile(path):
+                continue
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                body = fh.read()
+            for target in RUNNER_TARGETS[slot]:
+                if re.search(pattern % re.escape(target), body, re.M):
+                    return command % target
+    scripts = (read_json(os.path.join(root, "package.json"), {}) or {}).get("scripts") or {}
+    for target in RUNNER_TARGETS[slot]:
+        if scripts.get(target):
+            manager = "npm"
+            for lockfile, declared in NODE_PACKAGE_MANAGERS:
+                if os.path.isfile(os.path.join(root, lockfile)):
+                    manager = declared
+                    break
+            return "%s run %s" % (manager, target)
+    return ""
+
+
 def detect_commands(root):
     """{prepare,test,lint,typecheck} for one repository, after the env overrides."""
     prepare_proc = lib_run("prepare-environment", "resolve", "--root", root, quiet=True)
@@ -768,35 +818,23 @@ def detect_commands(root):
         except ValueError:
             prepare = ""
     test = lib_run("detect-test-cmd", root, quiet=True).stdout
-    lint = typecheck = ""
+    lint = runner_target(root, "lint")
+    typecheck = runner_target(root, "typecheck")
     node_bin = os.path.join(root, "node_modules", ".bin")
-    package_json = os.path.join(root, "package.json")
-    if os.path.isfile(package_json):
-        scripts = (read_json(package_json, {}) or {}).get("scripts") or {}
-        if os.access(os.path.join(node_bin, "eslint"), os.X_OK):
-            lint = "node_modules/.bin/eslint ."
-        elif scripts.get("lint"):
-            lint = "npm run lint"
-        if os.access(os.path.join(node_bin, "tsc"), os.X_OK) and os.path.isfile(os.path.join(root, "tsconfig.json")):
-            typecheck = "node_modules/.bin/tsc --noEmit"
-        elif scripts.get("typecheck"):
-            typecheck = "npm run typecheck"
+    if not lint and os.access(os.path.join(node_bin, "eslint"), os.X_OK):
+        lint = "node_modules/.bin/eslint ."
+    if not typecheck and os.access(os.path.join(node_bin, "tsc"), os.X_OK) \
+            and os.path.isfile(os.path.join(root, "tsconfig.json")):
+        typecheck = "node_modules/.bin/tsc --noEmit"
     pyproject = ""
     pyproject_path = os.path.join(root, "pyproject.toml")
     if os.path.isfile(pyproject_path):
         with open(pyproject_path, "r", encoding="utf-8", errors="replace") as fh:
             pyproject = fh.read()
-    if not lint:
-        makefile = os.path.join(root, "Makefile")
-        if os.path.isfile(os.path.join(root, "ruff.toml")) or "[tool.ruff" in pyproject:
-            lint = "ruff check ."
-        elif os.path.isfile(makefile):
-            with open(makefile, "r", encoding="utf-8", errors="replace") as fh:
-                if re.search(r"^lint:", fh.read(), re.M):
-                    lint = "make lint"
-    if not typecheck:
-        if os.path.isfile(os.path.join(root, "mypy.ini")) or "[tool.mypy" in pyproject:
-            typecheck = "mypy ."
+    if not lint and (os.path.isfile(os.path.join(root, "ruff.toml")) or "[tool.ruff" in pyproject):
+        lint = "ruff check ."
+    if not typecheck and (os.path.isfile(os.path.join(root, "mypy.ini")) or "[tool.mypy" in pyproject):
+        typecheck = "mypy ."
     return json.loads(lib("project-commands", "resolve", "--prepare", prepare, "--test", test,
                           "--lint", lint, "--typecheck", typecheck))
 
@@ -1228,6 +1266,22 @@ def cmd_resume(argv):
                       % feat.get("branch"))
     fset(feature_dir, "currentTeamName", None)
 
+    # 6.9.0 folded DISCUSS into SPEC; a feature paused at DISCUSS resumes at SPEC.
+    if feat.get("currentPhase") == "discuss":
+        fset(feature_dir, "currentPhase", "spec")
+        feat = state(feature_dir)
+        print("loop-spec: DISCUSS folded into SPEC: resuming at SPEC", file=sys.stderr)
+        # A pause recorded at the old approval node must resume at the new one, or the
+        # engine re-steps toward a node the graph no longer has.
+        pause_path = os.path.join(feature_dir, "graph-pause.json")
+        pause = read_json(pause_path, {}) or {}
+        if pause.get("node") == "human.after-discuss":
+            pause["node"] = "human.after-spec"
+            with open(pause_path, "w", encoding="utf-8") as fh:
+                json.dump(pause, fh)
+            print("loop-spec: DISCUSS folded into SPEC: the pending approval resumes at human.after-spec",
+                  file=sys.stderr)
+
     done_ids = remaining_ids = ""
     sidecar = (feat.get("artifacts") or {}).get("tasks") or ""
     if sidecar and os.path.isfile(sidecar):
@@ -1283,8 +1337,8 @@ def approval_source(feature_dir, feat):
 
 def record_spec_approval(feature_dir, feat, source, phase):
     """Freeze Goal and Boundary once, at the last moment before implementation:
-    PLAN entry, after SPEC's intent interview and DISCUSS's design questions. Recording
-    at SPEC exit ended a run whose human answered DISCUSS's follow-ups. Raises ValueError."""
+    PLAN entry, after SPEC's intent interview and its critique. Recording
+    at SPEC exit ended a run whose human answered the interview's follow-ups. Raises ValueError."""
     from spec_questions import read_questions
     from spec_intent import intent_digest, verify_intent
     target = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
@@ -1296,13 +1350,16 @@ def record_spec_approval(feature_dir, feat, source, phase):
         raise ValueError("resolve intent questions before approving SPEC.md")
     approval = {"sha256": intent_digest(text), "source": source, "approvedAt": now()}
     fset(feature_dir, "specApproval", approval)
+    # The human approved this amended text; clear the `reopened` flag reopen_spec_approval
+    # set so a later SPEC return does not treat the intent as still pending comparison.
+    fset(feature_dir, "specIntentSeen", {"sha256": approval["sha256"], "at": now()})
     lib("events", "emit", feature_dir, "spec-approved", "--phase", phase, "--data", json.dumps(approval))
     return approval
 
 
 def reopen_spec_approval(feature_dir, feat):
     """A human approved a SPEC-level rewind: the freeze they approved earlier steps
-    aside so DISCUSS can amend Goal and Boundary, and PLAN records the new one. The
+    aside so SPEC can amend Goal and Boundary, and PLAN records the new one. The
     old record moves to specApprovalHistory, which is the only shape the state writer
     lets an approval leave by. Autonomous rewinds never come here: the judge scores
     against feature_title and the freeze stands."""
@@ -1312,8 +1369,11 @@ def reopen_spec_approval(feature_dir, feat):
     retired = dict(approval, reopenedAt=now(), reopenedBy="human.iterate-spec-approval")
     lib("feature-write", "append", feature_dir, "specApprovalHistory", json.dumps(retired))
     fset(feature_dir, "specApproval", None)
-    fset(feature_dir, "specIntentSeen", {"sha256": approval["sha256"], "at": now()})
-    lib("events", "emit", feature_dir, "spec-reopened", "--phase", "discuss", "--data", json.dumps(retired))
+    # The human's next SPEC gate must compare the amended text against what they
+    # approved, so the SPEC return (cmd_next) must not restamp this until a fresh
+    # approval clears the flag (record_spec_approval).
+    fset(feature_dir, "specIntentSeen", {"sha256": approval["sha256"], "at": now(), "reopened": True})
+    lib("events", "emit", feature_dir, "spec-reopened", "--phase", "spec", "--data", json.dumps(retired))
 
 
 def cmd_next(argv):
@@ -1415,7 +1475,7 @@ def cmd_next(argv):
             return 0
         if recovery == "rewind":
             step_rc, descriptor = graph_step(feature_dir, returned)
-            target = "oneshot" if returned == "oneshot" else "discuss"
+            target = "oneshot" if returned == "oneshot" else "spec"
             if step_rc != 0 or descriptor.get("node") != target:
                 raise Die("review recovery: graph did not route bad-spec to " + target)
             fset(feature_dir, "reviewRouting.pending", False)
@@ -1458,7 +1518,7 @@ def cmd_next(argv):
             flags = [line for line in exit_out.splitlines() if line.startswith("FLAG")]
             if exit_proc.returncode == 1:
                 budget_exhausted = False
-                if returned in ("spec", "discuss", "plan"):
+                if returned in ("spec", "plan"):
                     budget_probe = lib_run("design-budget", "--feature-dir", feature_dir,
                                            "--phase", returned, capture_stderr=True)
                     if budget_probe.returncode != 0:
@@ -1484,7 +1544,7 @@ def cmd_next(argv):
                             not route_is_full(open(spath, encoding="utf-8").read()):
                         # The one escalation the short route has, and it is the gate's, never
                         # the lead's: the deadlock's flag classes go on record and the run
-                        # takes the full path from DISCUSS (port audit 5, R3).
+                        # takes the full path through SPEC's critique gate (port audit 5, R3).
                         classes = sorted({(re.match(r"^FLAG \[([^\]]+)\]", f) or [None, "unlabeled"])[1] for f in flags})
                         capture(lambda a: spec_escalate(a[0], a[1]),
                                 [spath, "the exit gate held after %d attempts on %s" % (redo_count, ", ".join(classes))])
@@ -1532,7 +1592,7 @@ def cmd_next(argv):
                     fset(feature_dir, "driverRedo", None)
 
     if returned == "spec":
-        # What the human read at their SPEC gate: the DISCUSS gate names whether the
+        # What the human read at their SPEC gate: the same gate names whether the
         # sections PLAN will freeze still say that, so approval is of text they saw.
         from spec_intent import intent_digest
         try:
@@ -1543,9 +1603,13 @@ def cmd_next(argv):
             return 1
         if route_is_full(text) or not re.search(r"^## Intent$", text, re.M):
             # The oneshot shape has an Intent block and no Goals; it is not the full-spec freeze.
-            # The exit gate linted the sections, but a repeat return skips that gate.
+            # The exit gate linted the sections, but a repeat return skips that gate. A rewind
+            # that reopened the approval already stamped specIntentSeen with `reopened: True`
+            # so the human's next SPEC gate compares against what they approved; this repeat
+            # return must not overwrite that flag with the just-amended text's own digest.
             try:
-                fset(feature_dir, "specIntentSeen", {"sha256": intent_digest(text), "at": now()})
+                if not (feat.get("specIntentSeen") or {}).get("reopened"):
+                    fset(feature_dir, "specIntentSeen", {"sha256": intent_digest(text), "at": now()})
             except ValueError as exc:
                 print("ABORT reason=spec-intent-unreadable")
                 print("cycle-driver: %s" % exc, file=sys.stderr)
@@ -1566,7 +1630,7 @@ def cmd_next(argv):
         if step_rc == 4:
             nxt = descriptor["node"]
             answer = "PAUSED node=%s" % nxt
-            if nxt == "human.after-discuss":
+            if nxt == "human.after-spec":
                 answer += " intent=%s" % intent_since_spec(feature_dir)
             break
         if step_rc == 5:
@@ -1583,13 +1647,13 @@ def cmd_next(argv):
             break
 
     # The descriptor defers an agent node's edge; the ledger's started entry keeps it.
-    admitted = (engine.latest_checkpoint() or {}).get("edge") or "" if nxt == "discuss" else ""
-    if admitted.endswith("human.iterate-spec-approval->discuss"):
+    admitted = (engine.latest_checkpoint() or {}).get("edge") or "" if nxt == "spec" else ""
+    if admitted.endswith("human.iterate-spec-approval->spec"):
         reopen_spec_approval(feature_dir, feat)
         feat = state(feature_dir)
     if nxt == "plan" and descriptor.get("kind") == "agent":
-        # Every route into PLAN lands here (the DISCUSS gate, the short path, the compact
-        # gate, ITERATE's plan gap), and before any handoff, so a fresh session finds it.
+        # Every route into PLAN lands here (SPEC's human gate after its critique,
+        # ITERATE's plan gap), and before any handoff, so a fresh session finds it.
         try:
             record_spec_approval(feature_dir, feat, approval_source(feature_dir, feat), "plan")
         except (OSError, ValueError) as exc:
@@ -1698,6 +1762,63 @@ def print_next(nxt, label, effort, feature_dir):
     if node_skill:
         print("EXT skill=%s" % node_skill)
     print("EXT instructions=%s sha256=%s" % (record["prompt"], record["promptSha256"]))
+
+
+def plan_dispatch_packet(feature_dir, feat, instructions, mode):
+    """Write PLAN's deterministic source packet after ingress has passed.
+
+    The coordinator names durable artifacts and the rendered snapshot only; the
+    planner remains responsible for reading the focused source files and writing
+    PLAN. Keeping this packet on disk also gives every harness the same handoff.
+    """
+    root = feature_root(feature_dir, feat)
+    docs = docs_dir(feature_dir, feat)
+    artifacts = feat.get("artifacts") or {}
+    def artifact(key, fallback):
+        value = artifacts.get(key) or fallback
+        return value if os.path.isabs(value) else os.path.join(root, value)
+    spec = artifact("spec", os.path.join(docs, "SPEC.md"))
+    evidence = artifact("evidence", os.path.join(docs, "EVIDENCE.md"))
+    plan = artifact("plan", os.path.join(docs, "PLAN.md"))
+    patterns = artifact("patterns", os.path.join(docs, "PATTERNS.md"))
+    snapshot_root = Path(instructions["manifest"]).parent
+    templates = snapshot_root / "skills" / "shared" / "artifact-templates"
+    contracts = snapshot_root / "agents" / "planner.md"
+    dispatch = Path(feature_dir) / "dispatch"
+    dispatch.mkdir(parents=True, exist_ok=True)
+    brief = dispatch / "plan-planner-brief.md"
+    lines = [
+        "# PLAN planner packet",
+        "",
+        "Role: planner. Read the focused source artifacts below, then author PLAN.md and PATTERNS.md.",
+        "The coordinator has already completed phase ingress and does not paraphrase these sources.",
+        "",
+        "## Source artifacts",
+        "- spec_path: %s" % spec,
+        "- evidence_path: %s%s" % (evidence, " (optional; absent until authored)" if not os.path.isfile(evidence) else ""),
+        "- patterns_path: %s (reuse when present; create it when absent)" % patterns,
+        "- plan_path: %s" % plan,
+        "- decisions ledger: %s" % (Path(feature_dir) / "decisions.jsonl"),
+        "",
+        "## Snapshot contracts",
+        "- planner role contract: %s" % contracts,
+        "- template_path: %s" % (templates / "PLAN.md.template"),
+        "- patterns_template_path: %s" % (templates / "PATTERNS.md.template"),
+        "- repository root: %s" % root,
+        "- feature directory: %s" % feature_dir,
+        "- greenfield: %s" % bool(feat.get("greenfield")),
+        "- workspace: %s" % json.dumps(feat.get("workspace"), sort_keys=True),
+        "- budget: %s" % mode.get("budget", "unknown"),
+        "- remaining: %s" % mode.get("remaining", "unknown"),
+        "- exhausted: %s" % mode.get("exhausted", "false"),
+    ]
+    feedback_value = feat.get("iterate", {}).get("feedback") if isinstance(feat.get("iterate"), dict) else None
+    if mode.get("reentry") == "true" or feedback_value is not None:
+        lines += ["", "## Reentry", "- iterate feedback JSON: %s" % json.dumps(feedback_value, sort_keys=True)]
+    brief.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    model = (feat.get("models") or {}).get("planner") or "inherit"
+    return {"role": "planner", "model": model, "subagentType": "loop-spec:planner",
+            "promptFile": str(brief)}
 
 
 def redo_max():
@@ -1929,7 +2050,7 @@ def returned_checks(feature_dir, phase):
     started = fget(feature_dir, "currentPhaseStartedAt", "")
     if started:
         mins = (int(time.time()) - iso_epoch(started)) // 60
-        if phase in ("spec", "discuss", "plan"):
+        if phase in ("spec", "plan"):
             budget_line = lib_run("design-budget", "--feature-dir", feature_dir,
                                   "--phase", phase, capture_stderr=True)
             if budget_line.returncode != 0:
@@ -2606,7 +2727,8 @@ def spec_fill(target, o):
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(text)
     flags = []
-    for name, args in (("artifact-lint", ["spec", target]), ("oneshot-spec-lint", [target])):
+    for name, args in (("artifact-lint", ["spec", target]), ("oneshot-spec-lint", [target]),
+                       ("grounding-lint", [target])):
         out = lib_run(name, *args, quiet=True).stdout
         flags += [line for line in out.splitlines() if line.startswith("FLAG")]
     print(json.dumps({"spec": target, "filled": filled, "flags": flags}))
@@ -2662,6 +2784,17 @@ def spec_judge(feature_dir, feat, verdict_flag):
     the route is the cycle's largest cost lever, and a second call here would double it
     for nothing the first call did not already answer. lib/route-judgment.sh authorizes
     the verdict; lib/graph/probes/oneshot.sh reads what this stores."""
+    fixed_route = os.environ.get("LOOP_SPEC_ROUTE") or ""
+    if fixed_route:
+        # The operator already fixed the route, and the probe answers full for any value
+        # of it without reading routeJudgment. Calling the judge here could only spend an
+        # opus dispatch on a verdict nothing would read -- and, in-harness, park the lead
+        # on a judge call the run does not need.
+        print(json.dumps({"route": None, "code": "operator-override", "stored": False,
+                          "skipped": True,
+                          "reason": "LOOP_SPEC_ROUTE=%s fixes the route; the deterministic "
+                                    "probe answers it" % fixed_route}))
+        return 0
     cached = feat.get("routeJudgment")
     if isinstance(cached, dict) and cached.get("route"):
         print(json.dumps(dict(cached, cached=True)))
@@ -3210,7 +3343,7 @@ def cmd_phase_begin(argv):
         elif line.startswith("FLAG"):
             flags.append(line)
     mode = {}
-    if phase in ("spec", "discuss", "plan", "verify"):
+    if phase in ("spec", "plan", "verify"):
         # `key=value key2=value with spaces`: the mode line ends in a free-text reason,
         # so a value runs until the next ` key=`.
         line = lib("phase-mode", phase, "--feature-dir", feature_dir).strip()
@@ -3225,6 +3358,17 @@ def cmd_phase_begin(argv):
         packet["skeletons"] = skeletons
     if phase in ("execute", "verify"):
         packet[phase] = extra
+    if phase == "plan" and entry.returncode == 0 and not flags:
+        packet["planner"] = plan_dispatch_packet(feature_dir, phase_state, instructions, mode)
+    if phase == "verify" and entry.returncode == 0 and not flags:
+        from verify_dispatch import render as render_verifier
+        try:
+            verifier = render_verifier(REPO_ROOT, feature_dir, feature_root(feature_dir, phase_state),
+                                       phase_state, instructions, extra)
+        except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+            raise Die("cannot prepare verifier assignment: " + str(exc), 2)
+        if verifier:
+            packet["verifier"] = verifier
     print(json.dumps(packet))
     if entry.returncode != 0:
         return 1

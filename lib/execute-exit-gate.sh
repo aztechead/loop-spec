@@ -34,7 +34,8 @@ case "$cmd" in
     fi
     if ! tasks="$(fget '.artifacts.tasks // ""')"; then
       flag "[plan-adherence] cannot read artifacts.tasks; repair feature state before leaving EXECUTE"
-    elif [[ -n "$tasks" && -f "$tasks" ]]; then
+    elif [[ -f "$feature_dir/tasks.json" ]]; then
+      tasks="$feature_dir/tasks.json"
       if lint_out="$(lib artifact-lint tasks "$tasks" 2>&1)"; then
         if remaining="$(lib task-progress remaining "$tasks" 2>&1)"; then
           remaining="$(printf '%s' "$remaining" | paste -sd, -)"

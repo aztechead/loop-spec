@@ -9,7 +9,7 @@ precedence are `model-matrix.md`.
 
 | Gate | Behavior |
 |---|---|
-| Spec critique | Challenger-only. `lib/phase-mode.sh discuss` skips it when `lib/graph/probes/discuss-critique.sh` answers skip (already-gated SPEC or maintenance, no security signal); ITERATE re-entry always runs. |
+| Spec critique | Challenger-only. `lib/phase-mode.sh spec` skips it when `lib/graph/probes/spec-critique.sh` answers skip (already-gated SPEC or maintenance, no security signal); ITERATE re-entry always runs. |
 | Plan critique | Challenger-only. `lib/phase-mode.sh plan` skips it on the structural fast-path, the maintenance profile, or a compact gate plan, never on a security signal. |
 | Spec-compliance, acceptance, test-tamper, placeholder | run (tamper and placeholder fail fast) |
 | Code-review HARD-GATE | Critical and Important block; Minor goes to `lib/backlog.sh`, never dropped |
@@ -24,8 +24,9 @@ whole word). Both bounds read through the tuning overlay.
 **Maintenance profile** (decided before any phase by `lib/cycle-profile.sh select` from
 a validated low-risk classification, or an explicit `profile:` / `LOOP_SPEC_CYCLE_PROFILE`
 override; persisted as `feature.json.executionProfile`): SPEC synthesizes instead of
-interviewing (the unresolved-question gate blocks until concrete intent questions are resolved); the graph short path (`lib/graph/probes/short-path.sh`)
-routes around `discuss`, the spec critique, and the `verify.code-review` agent when no
+interviewing (the unresolved-question gate blocks until concrete intent questions are resolved)
+and skips its own critique; the graph short path (`lib/graph/probes/short-path.sh`)
+routes around the `verify.code-review` agent when no
 security signal appears in the written artifacts. Same graph, same ledger, same terminal
 result; the signal is re-read from the artifacts that exist now, so a change that turns
 out to touch a security surface lengthens its own path. Every other VERIFY gate runs on
@@ -51,7 +52,7 @@ two consecutive delta rounds closes it too (`critique-gate-protocol.md`).
 | iterate.maxIterations | 10 |
 | critique delta rounds | the `critique.adjudicate` -> `critique.challenge` loop ceiling in `graph/critique.graph.json` (`LOOP_SPEC_CRITIQUE_ROUNDS` overrides; `0` = unbounded) |
 | fastPathMaxTasks / fastPathMaxFiles | 2 / 3 |
-| DISCUSS `auto` rounds | 5 (`step`/`interactive`: unlimited) |
+| SPEC `auto` rounds | 5 (`step`/`interactive`: unlimited) |
 | Workflow fan-out (refuteVoters, planAngles, dimensionReviewers) | 3 / 3 / 3, completenessCritic on |
 
 `lib/tuning.sh` overlays from deterministic triggers over `lib/status.sh metrics`: the

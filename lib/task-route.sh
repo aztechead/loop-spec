@@ -47,10 +47,15 @@ fi
 # autonomous by definition. The guard reads that flag to leave interactive runs alone.
 arm_route() {
   local route="$1" title="$2" classification="${3:-}"
+  local cycle_type="$route"
   local -a extra=()
+  # Compact is a profile of the full cycle, not a cycle-result lifecycle type.
+  # Keep the normalized classification.route=compact so cycle-profile can select
+  # its gate plan while arming with the lifecycle type accepted by cycle-result.
+  [[ "$route" == "compact" ]] && cycle_type="full"
   [[ -n "$classification" ]] && extra+=(--classification "$classification")
   bash "$script_dir/cycle-result.sh" begin --result-root "$repo_path" \
-    --cycle-type "$route" --title "$title" --phase routing \
+    --cycle-type "$cycle_type" --title "$title" --phase routing \
     --autonomous true ${extra[@]+"${extra[@]}"} >/dev/null 2>&1 || true
 }
 

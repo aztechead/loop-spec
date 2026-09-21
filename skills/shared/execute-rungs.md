@@ -158,7 +158,11 @@ lead-created task worktrees (`subagentIsolation=lead-worktree`), the same ff-mer
 Only the launch differs, and the driver owns it: each implementer and each reviewer is
 its own headless CLI process that the driver starts, so nothing it reads or writes
 lands in the lead's context, and the lead never sees a launch command
-(the port principles, rule 12).
+(the port principles, rule 12). Two consequences for the wave loop: never issue an
+`Agent` call on this rung, and review stays per task through `task run --role reviewer`
+below (`task review-groups` and the one-reviewer-per-wave Agent of the subagent path are
+not part of this rung; `review-groups` emits no event here, so a group dispatch would
+record nothing).
 
 Per task, after `cycle-driver.sh task dispatch` returns the packet:
 

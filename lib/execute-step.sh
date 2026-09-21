@@ -15,8 +15,12 @@
 #       SHA, writes the brief and report paths, resolves the implementer model, emits the
 #       dispatch and task_start events. Prints the dispatch packet (JSON).
 #   execute-step.sh package   --feature-dir DIR --task ID --head SHA
-#       Writes the review package from the recorded base to HEAD, emits the reviewer's
-#       dispatch event. Prints {package, model}.
+#       Writes the review package from the recorded base to HEAD (no event; the reviewer's
+#       dispatch event moved to review-groups). Prints {package, model, ...}.
+#   execute-step.sh review-groups --feature-dir DIR --tasks ID[,ID...]
+#       Groups the tasks' review packages in the given order under
+#       LOOP_SPEC_REVIEW_GROUP_BYTES (default 150000), emits one reviewer dispatch
+#       event per group, prints {model, groups:[{tasks:[{task,package,bytes}], bytes}]}.
 #   execute-step.sh verdict   --feature-dir DIR --task ID --verdict pass|rework|block --attempt N
 #       Applies the reviewer's verdict: pass -> {action:"integrate"}; rework ->
 #       lib/fix-loop.sh's action with the model to use; block or a spent breaker ->
@@ -35,7 +39,11 @@
 #       task-progress.sh already marked done (add-files is for an open rework, not a
 #       closed one). Prints {task, files, updated: [paths]}.
 #       Exit 0 done; 1 already integrated; 2 bad invocation or path.
+#   execute-step.sh repair-verify --feature-dir DIR --task ID --repair-file PATH
+#       Correct one generated remediation check with diagnosis evidence. Preserves
+#       criteria and attempts; requires a fresh review before integration.
 #   execute-step.sh run       --feature-dir DIR --task ID --role implementer|reviewer
+#       `--role reviewer` emits the reviewer's dispatch event before the launch.
 #       The session rung's launch, in the driver and never in the lead
 #       (the port principles, rule 12). On rung=session it
 #       writes the prompt, one line and the paths (the brief and the report for the
@@ -61,14 +69,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
-usage() { sed -n '2,48p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2 || true; exit 2; }
+usage() { sed -n '2,53p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2 || true; exit 2; }
 
 cmd="${1:-}"; shift || true
-feature_dir="" task_id="" attempt=0 head_sha="" verdict="" role="implementer"
+feature_dir="" task_id="" task_ids="" attempt=0 attempt_set=false head_sha="" verdict="" role="implementer" repair_file=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --feature-dir) feature_dir="${2:-}" ;; --task) task_id="${2:-}" ;; --attempt) attempt="${2:-0}" ;;
+    --feature-dir) feature_dir="${2:-}" ;; --task) task_id="${2:-}" ;; --attempt) attempt="${2:-0}"; attempt_set=true ;;
     --head) head_sha="${2:-}" ;; --verdict) verdict="${2:-}" ;; --role) role="${2:-}" ;;
+    --tasks) task_ids="${2:-}" ;;
+    --repair-file) repair_file="${2:-}" ;;
     # add-files' trailing paths are not --flags; every other subcommand keeps the strict
     # flags-only grammar, so a stray positional argument there still fails usage.
     *) [[ "$cmd" == "add-files" ]] && break; usage ;;
@@ -76,9 +86,9 @@ while [[ $# -gt 0 ]]; do
   shift 2 || usage
 done
 files=("$@")
-case "$cmd" in dispatch|package|verdict|integrate|run|add-files) ;; *) usage ;; esac
+case "$cmd" in dispatch|package|review-groups|verdict|integrate|run|add-files|repair-verify) ;; *) usage ;; esac
 case "$role" in implementer|reviewer) ;; *) usage ;; esac
-[[ -n "$feature_dir" && -f "$feature_dir/feature.json" && -n "$task_id" ]] || usage
+[[ -n "$feature_dir" && -f "$feature_dir/feature.json" && ( -n "$task_id" || -n "$task_ids" ) ]] || usage
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
 prep="$feature_dir/dispatch/prepare.json"
@@ -87,23 +97,32 @@ fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 pget() { jq -r "$1" "$prep"; }
 slug="$(fget '.slug')"
 root="$(pget '.featureRoot')"
-sidecar="$(pget '.sidecar')"
+sidecar="$feature_dir/tasks.json"
+# A cached preparation from another checkout is not authority to read or publish
+# that checkout's progress. Rebuild the packet before any task side effects.
+if [[ "$(pget '.sidecar')" != "$sidecar" ]]; then
+  echo "execute-step: prepared sidecar belongs to another feature location; rerun lib/execute-prepare.sh" >&2
+  exit 2
+fi
 # The dispatch list is the collapsed one (lib/task-batch.sh): a merged chain or batch
 # carries the union of its members' files and verifies, which the sidecar row for the
 # surviving id does not. The sidecar is the fallback for a task that is not listed.
-task_json="$(jq -c --arg id "$task_id" '.tasks | map(select(.id == $id)) | first // empty' "$prep")"
-[[ -n "$task_json" ]] || task_json="$(jq -c --arg id "$task_id" '(if type == "object" and has("tasks") then .tasks else . end) | map(select(.id == $id)) | first // empty' "$sidecar")"
-[[ -n "$task_json" ]] || { echo "execute-step: no task $task_id in $sidecar" >&2; exit 2; }
-# A live workspace run recorded taskBaseSha="" and ran verify outside every repo because
-# the packet's root was the orchestration root: in workspace mode the root is the task's.
-repo_name="" repo_rel=""
-if [[ "$(pget '.workspace // "null"')" != "null" ]]; then
-  repo_name="$(jq -r '.repo // ""' <<<"$task_json")"
-  [[ -n "$repo_name" ]] || { echo "execute-step: workspace task $task_id names no repo (tasks[].repo)" >&2; exit 2; }
-  repo_rel="$(jq -r --arg n "$repo_name" '[.workspace.repos[] | select(.name == $n) | .path] | first // ""' "$prep")"
-  [[ -n "$repo_rel" ]] || { echo "execute-step: task $task_id names repo '$repo_name', which feature.workspace.repos does not list" >&2; exit 2; }
-  root="$(pget '.workspace.root')/$repo_rel"
-  [[ -d "$root/.git" || -f "$root/.git" ]] || { echo "execute-step: repo '$repo_name' at $root is not a git work tree" >&2; exit 2; }
+# review-groups names no single task.id here; it groups a wave's ids inside its own case.
+if [[ -n "$task_id" ]]; then
+  task_json="$(jq -c --arg id "$task_id" '.tasks | map(select(.id == $id)) | first // empty' "$prep")"
+  [[ -n "$task_json" ]] || task_json="$(jq -c --arg id "$task_id" '(if type == "object" and has("tasks") then .tasks else . end) | map(select(.id == $id)) | first // empty' "$sidecar")"
+  [[ -n "$task_json" ]] || { echo "execute-step: no task $task_id in $sidecar" >&2; exit 2; }
+  # A live workspace run recorded taskBaseSha="" and ran verify outside every repo because
+  # the packet's root was the orchestration root: in workspace mode the root is the task's.
+  repo_name="" repo_rel=""
+  if [[ "$(pget '.workspace // "null"')" != "null" ]]; then
+    repo_name="$(jq -r '.repo // ""' <<<"$task_json")"
+    [[ -n "$repo_name" ]] || { echo "execute-step: workspace task $task_id names no repo (tasks[].repo)" >&2; exit 2; }
+    repo_rel="$(jq -r --arg n "$repo_name" '[.workspace.repos[] | select(.name == $n) | .path] | first // ""' "$prep")"
+    [[ -n "$repo_rel" ]] || { echo "execute-step: task $task_id names repo '$repo_name', which feature.workspace.repos does not list" >&2; exit 2; }
+    root="$(pget '.workspace.root')/$repo_rel"
+    [[ -d "$root/.git" || -f "$root/.git" ]] || { echo "execute-step: repo '$repo_name' at $root is not a git work tree" >&2; exit 2; }
+  fi
 fi
 state="$feature_dir/dispatch/$task_id.json"
 sget() { jq -r "$1" "$state" 2>/dev/null || true; }
@@ -115,7 +134,19 @@ emit() { lib events emit "$feature_dir" "$1" --phase execute --data "$2" >/dev/n
 task_end() { emit task_end "$(jq -cn --argjson i "$index" --argjson t "$total" --arg id "$task_id" --arg r "$1" '{index:$i,total:$t,id:$id,result:$r}')"; }
 
 case "$cmd" in
+  repair-verify)
+    [[ -f "$repair_file" ]] || usage
+    if grep -qxF "$task_id" <<<"$(lib task-progress done "$sidecar")"; then
+      echo "execute-step: cannot replace verification for an integrated task" >&2
+      exit 1
+    fi
+    python3 "$SCRIPT_DIR/repair_verify.py" "$feature_dir" "$task_id" "$repair_file"
+    ;;
   dispatch)
+    command_error="$(jq -r '.verifyCommand' <<<"$task_json" | python3 "$SCRIPT_DIR/verify_command.py" 2>&1)" || {
+      jq -cn --arg id "$task_id" --arg d "$command_error" '{taskId:$id,dispatchable:false,reason:"invalid-verify-command",detail:$d}'
+      exit 2
+    }
     # A dispatch is not a query: it creates a worktree and records a base SHA. A live
     # lead called it on a blocked task while diagnosing and had to tear the worktree down.
     unmet="$(jq -r --arg done "$(lib task-progress done "$sidecar" 2>/dev/null | tr '\n' ' ')" \
@@ -143,7 +174,7 @@ case "$cmd" in
       [[ -n "$tier" ]] && model="$(lib model-tier model "$tier" 2>/dev/null || true)"
     fi
     [[ -n "$model" && "$model" != "inherit" ]] || model="$(fget '.models.implementer // "inherit"')"
-    sset taskBaseSha "\"$base_sha\""; sset worktree "\"$worktree\""; sset branch "\"$branch\""; sset attempt "$attempt"; sset inPlace "$in_place"; sset model "\"$model\""
+    sset taskBaseSha "\"$base_sha\""; sset worktree "\"$worktree\""; sset branch "\"$branch\""; sset attempt "$attempt"; sset inPlace "$in_place"; sset model "\"$model\""; sset blocked null
     emit dispatch "$(jq -cn --arg m "$model" --arg r "$(pget '.rung.rung')" '{role:"implementer",model:$m,rung:$r}')"
     emit task_start "$(jq -cn --argjson i "$index" --argjson t "$total" --arg id "$task_id" --arg s "$(jq -r '.subject' <<<"$task_json")" '{index:$i,total:$t,id:$id,subject:$s}')"
     jq -cn --argjson task "$task_json" --arg root "$root" --arg wt "$worktree" --arg br "$branch" --arg base "$base_sha" \
@@ -160,12 +191,46 @@ case "$cmd" in
     [[ -n "$base_sha" && "$base_sha" != "null" ]] || { echo "execute-step: no recorded base SHA for $task_id; dispatch first" >&2; exit 2; }
     pkg="$(lib dispatch-files package --repo "$repo" --base "$base_sha" --head "$head_sha")" || { echo "execute-step: package failed" >&2; exit 2; }
     model="$(fget '.models.specComplianceReviewer // "inherit"')"
-    emit dispatch "$(jq -cn --arg m "$model" --arg r "$(pget '.rung.rung')" '{role:"spec-compliance-reviewer",model:$m,rung:$r}')"
     sset package "\"$pkg\""; sset reviewerModel "\"$model\""
     jq -cn --arg p "$pkg" --arg m "$model" --arg base "$base_sha" --arg head "$head_sha" --arg brief "$(lib dispatch-files brief --feature-dir "$feature_dir" --task-id "$task_id" 2>/dev/null || true)" \
       --arg report "$(lib dispatch-files report-path --feature-dir "$feature_dir" --task-id "$task_id")" --arg wt "$repo" \
       --arg vc "$(jq -r '.verifyCommand // ""' <<<"$task_json")" \
       '{package:$p, model:$m, base:$base, head:$head, brief:$brief, report:$report, worktree:$wt, verifyCommand:$vc}'
+    ;;
+  review-groups)
+    # One reviewer per wave, not per task: each reviewer launch was a fresh context
+    # over one 27-58 KB diff (6.5.0 cycle here, 12 launches). Packages are grouped in
+    # wave order under a byte cap so one Agent reads a whole wave; a group never
+    # splits below one task. LOOP_SPEC_REVIEW_GROUP_BYTES is the operator override.
+    [[ -n "$task_ids" ]] || usage
+    cap="${LOOP_SPEC_REVIEW_GROUP_BYTES:-150000}"
+    [[ "$cap" =~ ^[1-9][0-9]*$ ]] || { echo "execute-step: LOOP_SPEC_REVIEW_GROUP_BYTES must be a positive integer, got '$cap'" >&2; exit 2; }
+    model="$(fget '.models.specComplianceReviewer // "inherit"')"
+    rung="$(pget '.rung.rung')"
+    groups='[]'; cur='[]'; cur_bytes=0
+    IFS=, read -ra ids <<<"$task_ids"
+    for id in "${ids[@]}"; do
+      state="$feature_dir/dispatch/$id.json"
+      pkg="$(sget '.package')"
+      [[ -n "$pkg" && "$pkg" != "null" && -f "$pkg" ]] || { echo "execute-step: no review package for $id; run package first" >&2; exit 2; }
+      bytes="$(wc -c < "$pkg" | tr -d ' ')"
+      if (( cur_bytes > 0 && cur_bytes + bytes > cap )); then
+        groups="$(jq -c --argjson g "$cur" --argjson b "$cur_bytes" '. + [{tasks:$g, bytes:$b}]' <<<"$groups")"
+        cur='[]'; cur_bytes=0
+      fi
+      cur="$(jq -c --arg t "$id" --arg p "$pkg" --argjson b "$bytes" '. + [{task:$t, package:$p, bytes:$b}]' <<<"$cur")"
+      cur_bytes=$((cur_bytes + bytes))
+    done
+    groups="$(jq -c --argjson g "$cur" --argjson b "$cur_bytes" '. + [{tasks:$g, bytes:$b}]' <<<"$groups")"
+    # The session rung launches its reviewer through `run --role reviewer`, which emits
+    # at launch; grouping there would count every reviewer twice (the 6.9.0 full-route
+    # live run recorded two events per task).
+    if [[ "$rung" != "session" ]]; then
+      while IFS= read -r g; do
+        emit dispatch "$(jq -cn --arg m "$model" --arg r "$rung" --argjson g "$g" '{role:"spec-compliance-reviewer",model:$m,rung:$r,tasks:[$g.tasks[].task],bytes:$g.bytes}')"
+      done < <(jq -c '.[]' <<<"$groups")
+    fi
+    jq -cn --arg m "$model" --argjson g "$groups" '{model:$m, groups:$g}'
     ;;
   run)
     rung="$(pget '.rung.rung')"
@@ -192,6 +257,7 @@ case "$cmd" in
       [[ -n "$pkg" && "$pkg" != "null" ]] || { echo "execute-step: no review package for $task_id; run package first" >&2; exit 2; }
       cwd="$root"
       model="$(sget '.reviewerModel')"; [[ -n "$model" && "$model" != "null" ]] || model="$(fget '.models.specComplianceReviewer // "inherit"')"
+      emit dispatch "$(jq -cn --arg m "$model" --arg r "$(pget '.rung.rung')" '{role:"spec-compliance-reviewer",model:$m,rung:$r}')"
       printf 'Review the package in %s against the spec %s. Write your verdict to %s.\n' "$pkg" "$spec" "$report" > "$prompt"
     fi
     mkdir -p "$feature_dir/dispatch/sessions"
@@ -221,12 +287,25 @@ case "$cmd" in
     ;;
   verdict)
     case "$verdict" in pass|rework|block) ;; *) usage ;; esac
+    [[ "$attempt_set" == true ]] || attempt="$(sget '.attempt // 0')"
+    [[ "$attempt" =~ ^[0-9]+$ ]] || usage
+    # In-place rework uses the existing dirty checkout without another dispatch.
+    # Keep integration's budget aligned with the reviewed implementation attempt.
+    sset attempt "$attempt"
     max="$(pget '.maxRetries')"
     case "$verdict" in
-      pass) jq -cn '{action:"integrate"}' ;;
+      pass)
+        if [[ "$(sget '.verificationRepairPending // false')" == true ]]; then
+          [[ -n "$(sget '.package // empty')" ]] || {
+            jq -cn '{action:"blocked",reason:"command-review-required",detail:"package and review the repaired check before accepting it"}'
+            exit 1
+          }
+          sset verificationRepairPending false
+        fi
+        jq -cn '{action:"integrate"}' ;;
       block) sset blocked '"spec-compliance-block"'; task_end failed; jq -cn '{action:"blocked", reason:"spec-compliance-block"}'; exit 1 ;;
       rework)
-        action="$(lib fix-loop action "$attempt" "$max")"
+        action="$(lib fix-loop action "$((attempt + 1))" "$max")"
         case "$action" in
           breaker) sset blocked '"retry-exhausted"'; task_end failed; jq -cn '{action:"blocked", reason:"retry-exhausted"}'; exit 1 ;;
           resume)
@@ -240,7 +319,15 @@ case "$cmd" in
     esac
     ;;
   integrate)
+    if [[ "$(sget '.verificationRepairPending // false')" == true ]]; then
+      jq -cn '{published:false,reason:"command-review-required",blocked:"command-review-required",detail:"review the repaired verification command before integration",sha:null}'
+      exit 1
+    fi
     verify_cmd="$(jq -r '.verifyCommand' <<<"$task_json")"
+    command_error="$(python3 "$SCRIPT_DIR/verify_command.py" <<<"$verify_cmd" 2>&1)" || {
+      jq -cn --arg d "$command_error" '{published:false,reason:"invalid-verify-command",detail:$d,sha:null,blocked:"invalid-verify-command"}'
+      exit 2
+    }
     if [[ "$(sget '.inPlace')" != "true" ]]; then
       worktree="$(sget '.worktree')"; branch="$(sget '.branch')"
       res="$(lib integrate-task --feature-root "$root" --feature-branch "feat/$slug" --task-worktree "$worktree" \
@@ -309,7 +396,14 @@ case "$cmd" in
     # A refusal keeps its own name: every unlisted reason used to read as
     # `rebase-conflict`, and a dirty feature worktree sent a lead hunting for a conflict.
     case "$reason" in
-      verify-failed|prepare-failed) sset blocked '"retry-exhausted"' ;;
+      verify-failed)
+        # Integration is another check in the same bounded fix loop, not proof
+        # that the implementer has already spent its retry allowance.
+        retry="$(bash "$0" verdict --feature-dir "$feature_dir" --task "$task_id" \
+          --verdict rework --attempt "$(sget '.attempt // 0')")" || true
+        jq -cn --argjson a "$answer" --argjson r "$retry" \
+          '$a + ($r | del(.reason)) + {blocked:(if $r.action == "blocked" then $r.reason else null end)}'
+        exit 1 ;;
       zero-commit|commit-missing) sset blocked '"commit-missing"' ;;
       check-dirty-worktree|candidate-changed|feature-moved) sset blocked '"dirty-worktree"' ;;
       rebase-conflict) sset blocked '"rebase-conflict"' ;;

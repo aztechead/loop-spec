@@ -66,6 +66,26 @@ fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 slug="$(fget '.slug')"
 default_verify="$(fget '.commands.test // ""')"
 
+route=pass; class=null
+if [[ "$verifier" == "FAIL" ]]; then route=remediate; class=acceptance
+elif [[ "$suite" == "FAIL" ]]; then route=remediate; class=suite-regression
+elif [[ "$reviewer" == "BLOCK" ]]; then route=remediate; class=code-review
+fi
+
+if [[ "$route" == "remediate" && "$(jq 'length' <<<"$tasks")" == "0" ]]; then
+  # No tasks from the lead: one for the verdict itself.
+  tasks="$(jq -cn --arg c "$class" --arg v "$default_verify" '[{id:("task-verify-" + $c + "-1"), subject:("Fix the " + $c + " failure VERIFY reported"), files:[], verifyCommand:$v, acceptanceCriteria:[("VERIFY " + $c + " gate passes")], blockedBy:[], retries:0}]')"
+fi
+# Validate before phase-exit can commit artifacts or write any gate history. Invalid
+# findings must be repaired here, not queued as null subjects and discarded later.
+if normalized="$(python3 "$SCRIPT_DIR/execute_remediation.py" --normalize "$default_verify" <<<"$tasks" 2>/dev/null)"; then
+  tasks="$normalized"
+else
+  jq -cn --arg error "$normalized" '{exit:{ok:false,flags:[("FLAG [remediation] repair full-shape tasks: " + $error)]},route:"redo",class:null,tasks:[],minorsQueued:0,repeat:false}'
+  exit 1
+fi
+
+
 exit_rc=0; exit_out="$(lib phase-exit verify --feature-dir "$feature_dir" 2>&1)" || exit_rc=$?
 # grep finds nothing on a clean exit (no FLAG lines); that is the common case, not
 # a script error, so pipefail's non-zero must not abort the assignment.
@@ -80,17 +100,6 @@ if [[ "$exit_ok" == false ]]; then
   jq -cn --argjson flags "$flags" '{exit:{ok:false, flags:$flags}, route:"redo", class:null, tasks:[], minorsQueued:0, repeat:false}'
   exit 1
 fi
-route=pass; class=null
-if [[ "$verifier" == "FAIL" ]]; then route=remediate; class=acceptance
-elif [[ "$suite" == "FAIL" ]]; then route=remediate; class=suite-regression
-elif [[ "$reviewer" == "BLOCK" ]]; then route=remediate; class=code-review
-fi
-
-if [[ "$route" == "remediate" && "$(jq 'length' <<<"$tasks")" == "0" ]]; then
-  # No tasks from the lead: one for the verdict itself.
-  tasks="$(jq -cn --arg c "$class" --arg v "$default_verify" '[{id:("task-verify-" + $c + "-1"), subject:("Fix the " + $c + " failure VERIFY reported"), files:[], verifyCommand:$v, acceptanceCriteria:[("VERIFY " + $c + " gate passes")], blockedBy:[], retries:0}]')"
-fi
-tasks="$(jq -c --arg v "$default_verify" 'map(.verifyCommand = (if (.verifyCommand // "") == "" then $v else .verifyCommand end) | .blockedBy = (.blockedBy // []) | .files = (.files // []) | .retries = (.retries // 0) | .acceptanceCriteria = (if (.acceptanceCriteria // []) == [] then [.subject] else .acceptanceCriteria end))' <<<"$tasks")"
 
 minors_queued=0
 while IFS= read -r m; do

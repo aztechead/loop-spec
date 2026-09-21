@@ -45,6 +45,8 @@ expect "subagent names re-review" \
   skills/shared/execute-subagent.md 'review-prompts/re-review.md'
 expect "subagent names fix-loop" \
   skills/shared/execute-subagent.md 'fix-loop.sh'
+expect "subagent re-review emits a dispatch event" \
+  skills/shared/execute-subagent.md 'review-groups --tasks \{taskId\}'
 expect "subagent names task-batch" \
   skills/shared/execute-subagent.md 'task-batch.sh'
 count_ge "subagent writing-good-tests in the shared stanza" \

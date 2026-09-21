@@ -217,6 +217,7 @@ def main(argv):
         proc = subprocess.Popen(command, cwd=args.cwd, env=child_env(profile["env"], args.lead),
                                 stdin=subprocess.DEVNULL, stdout=out, stderr=err, start_new_session=True)
         previous_term = signal.getsignal(signal.SIGTERM)
+        previous_int = signal.getsignal(signal.SIGINT)
         def interrupted(signum, frame):
             raise KeyboardInterrupt
         signal.signal(signal.SIGTERM, interrupted)
@@ -224,14 +225,19 @@ def main(argv):
             code = proc.wait(timeout=timeout)
         except (subprocess.TimeoutExpired, KeyboardInterrupt) as exc:
             # CLI tools spawn test and shell processes that can outlive the CLI.
+            status = "interrupted" if isinstance(exc, KeyboardInterrupt) else "timeout"
+            # A second termination signal must not interrupt process-group cleanup.
+            # Restore the caller's handlers only after the child has been reaped.
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
             try:
                 os.killpg(proc.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
             proc.wait()
-            status = "interrupted" if isinstance(exc, KeyboardInterrupt) else "timeout"
         finally:
             signal.signal(signal.SIGTERM, previous_term)
+            signal.signal(signal.SIGINT, previous_int)
     fault = None
     if status == "completed" and code != 0:
         status = "failed"

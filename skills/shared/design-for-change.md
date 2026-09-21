@@ -7,7 +7,7 @@ this directive governs where its boundaries sit. Enforced by
 `tests/design-coverage.test.sh`, mirroring `tests/ponytail-coverage.test.sh`.
 
 Relevant phases:
-- **DISCUSS** — the design loop asks the corner question when shaping options (`skills/discuss/SKILL.md`).
+- **SPEC** — the design-lock step asks the corner question when shaping options (`skills/spec/SKILL.md`).
 - **SPEC/PLAN critique** — the challenger runs the corner test and coupling checks (`agents/challenger.md`).
 - **PLAN / planner** — seams shape task boundaries (`agents/planner.md`).
 - **EXECUTE / implementer** — every rung: team (`agents/implementer.md`,

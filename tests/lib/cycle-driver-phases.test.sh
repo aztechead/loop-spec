@@ -44,23 +44,23 @@ bash "$REPO_ROOT/lib/feature-write.sh" set "$FD6" driverRedo null >/dev/null
 DOCS6="$REPO6/docs/loop-spec/features/$(jq -r '.slug' "$FD6/feature.json")"; mkdir -p "$DOCS6"
 cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCS6/SPEC.md"
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec 2>/dev/null)"
-check "next: a clean exit hands the successor to a fresh session" "HANDOFF next=discuss model=" "${out:0:27}"
+check "next: a clean exit hands the successor to a fresh session" "HANDOFF next=plan model=" "${out:0:24}"
 check "next: the handoff wrote the paused result" "phase-handoff" "$(jq -r '.reason' "$FD6/result.json")"
-out="$(cd "$REPO6" && AUTONOMOUS=1 SESSION=phase-discuss-fresh drv next --feature-dir "$FD6" 2>/dev/null)"
-check "next: the fresh session enters the handed phase" "NEXT phase=discuss" "${out:0:18}"
-# From the record, never a second graph step: one phase_start for DISCUSS, the handoff
+out="$(cd "$REPO6" && AUTONOMOUS=1 SESSION=phase-plan-fresh drv next --feature-dir "$FD6" 2>/dev/null)"
+check "next: the fresh session enters the handed phase" "NEXT phase=plan" "${out:0:15}"
+# From the record, never a second graph step: one phase_start for PLAN, the handoff
 # record consumed (the full-route runs entered DISCUSS and PLAN twice; port audit 5, R5).
-check "next: the fresh session's entry adds no second phase_start" "1" "$(jq -c 'select(.event == "phase_start" and .phase == "discuss")' "$FD6/events.jsonl" | wc -l | tr -d ' ')"
+check "next: the fresh session's entry adds no second phase_start" "1" "$(jq -c 'select(.event == "phase_start" and .phase == "plan")' "$FD6/events.jsonl" | wc -l | tr -d ' ')"
 check "next: the handoff record is consumed by the entry" "null" "$(jq -r '.handoffSession' "$FD6/feature.json")"
-# The markers name phases, never the gate nodes between them: SPEC's end says discuss,
+# The markers name phases, never the gate nodes between them: SPEC's end says plan,
 # not human.after-spec (the 6.7.0 live run's consumer read a gate as the phase).
-check "next: the SPEC end marker names the phase entered as next" "discuss" "$(jq -r 'select(.event == "phase_end" and .phase == "spec") | .data.next' "$FD6/events.jsonl" | tail -1)"
+check "next: the SPEC end marker names the phase entered as next" "plan" "$(jq -r 'select(.event == "phase_end" and .phase == "spec") | .data.next' "$FD6/events.jsonl" | tail -1)"
 check "next: the end marker lands before the start it hands to" "phase_end phase_start" "$(jq -r 'select(.event == "phase_end" or .event == "phase_start") | .event' "$FD6/events.jsonl" | tail -2 | paste -sd ' ' -)"
-# A bare next that re-processes the open attempt (the ledger holds discuss started) is
+# A bare next that re-processes the open attempt (the ledger holds plan started) is
 # the same attempt: no second start marker, the same answer.
-out="$(cd "$REPO6" && AUTONOMOUS=1 SESSION=phase-discuss-fresh drv next --feature-dir "$FD6" 2>/dev/null)"
-check "next: re-entering the open attempt answers the same phase" "NEXT phase=discuss" "${out:0:18}"
-check "next: re-entering the open attempt emits no second phase_start" "1" "$(jq -c 'select(.event == "phase_start" and .phase == "discuss")' "$FD6/events.jsonl" | wc -l | tr -d ' ')"
+out="$(cd "$REPO6" && AUTONOMOUS=1 SESSION=phase-plan-fresh drv next --feature-dir "$FD6" 2>/dev/null)"
+check "next: re-entering the open attempt answers the same phase" "NEXT phase=plan" "${out:0:15}"
+check "next: re-entering the open attempt emits no second phase_start" "1" "$(jq -c 'select(.event == "phase_start" and .phase == "plan")' "$FD6/events.jsonl" | wc -l | tr -d ' ')"
 check "next: the exit committed the artifact" "1" "$(git -C "$REPO6" log --oneline | grep -c 'spec: ')"
 
 # --- claude worktree path -------------------------------------------------------------
@@ -142,7 +142,7 @@ moved="$(jq -r '.driverNext.instructions.manifest' "$FD11/feature.json" | xargs 
 printf '\n<!-- moved mid-phase -->\n' >> "$PLUGIN/$moved"
 write_spec "$REPO11" "$FD11"
 out="$(cd "$REPO11" && SCRIPT="$PLUGIN/lib/cycle-driver.sh" drv next --feature-dir "$FD11" --returned-from spec 2>"$WORK/moving.err")"
-check "moving plugin: the first stdout line is the protocol line" "PAUSED node=human.after-spec" "$(head -1 <<<"$out")"
+check "moving plugin: the first stdout line is the protocol line" "PAUSED node=human.after-spec intent=unchanged" "$(head -1 <<<"$out")"
 check "moving plugin: no NOTE line on stdout" "0" "$(grep -c '^NOTE ' <<<"$out")"
 check "moving plugin: the snapshot note names the moved source on stderr" "1" "$(grep -c "^NOTE \[snapshot\] plugin source changed since the phase was rendered: $moved;" "$WORK/moving.err")"
 check "moving plugin: the note is on the feature's warnings" "1" "$(jq -r '.warnings[]' "$FD11/feature.json" | grep -c '^NOTE \[snapshot\]')"

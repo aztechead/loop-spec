@@ -53,6 +53,10 @@ check "mode spec: human attached interviews" "path=interview" "${out%% *}"
 out="$(LOOP_SPEC_AUTONOMOUS=1 bash "$MODE" spec --feature-dir "$FD")"
 check "mode spec: autonomous self-answers" "path=self-answer" "${out%% *}"
 check "mode spec: self-answer names the oracle" "oracle=self" "$(cut -d' ' -f2 <<<"$out")"
+touch "$FD/spec-draft.md"
+out="$(LOOP_SPEC_AUTONOMOUS=1 bash "$MODE" spec --feature-dir "$FD")"
+check "mode spec: ingest with self-answer names the oracle" "oracle=self" "$(cut -d' ' -f2 <<<"$out")"
+rm -f "$FD/spec-draft.md"
 printf '%s\n' '{"route":"full","estimatedFiles":7,"reviewableEstimatedFiles":7,"criteriaCount":5}' \
   > "$WORK/classification.json"
 jq --argjson classification "$(<"$WORK/classification.json")" \
@@ -149,7 +153,7 @@ check "exit spec --check: leaves completedPhases unchanged" "$completed_before" 
 check "exit spec --check: creates no commit" "$head_before" "$(git rev-parse HEAD)"
 
 # SPEC grounding is a producer gate: an unresolved evidence reference must stop
-# before DISCUSS, and --check must leave every phase-side effect untouched.
+# before PLAN, and --check must leave every phase-side effect untouched.
 cp "$DOCS/SPEC.md" "$WORK/SPEC.before-grounding.md"
 sed 's/^- none$/- EVID-099: repository behavior/' "$WORK/SPEC.before-grounding.md" \
   > "$DOCS/SPEC.md"
@@ -160,7 +164,7 @@ head_before_bad="$(git rev-parse HEAD)"
 tags_before_bad="$(git tag)"
 ec=0; out="$(bash "$EXIT" spec --feature-dir "$FD" --check 2>&1)" || ec=$?
 check "exit spec --check: unresolved EVID reference is rejected" "1" "$ec"
-check "exit spec --check: grounding failure is reported before DISCUSS" "1" "$(grep -c 'EVID token EVID-099' <<<"$out")"
+check "exit spec --check: grounding failure is reported before PLAN" "1" "$(grep -c 'EVID token EVID-099' <<<"$out")"
 check "exit spec --check: failed grounding check leaves feature state unchanged" "$feature_before_bad" "$(shasum -a 256 "$FD/feature.json" | cut -d' ' -f1)"
 check "exit spec --check: failed grounding check leaves phase-entry state unchanged" "$entry_before_bad" "$(shasum -a 256 "$FD/.phase-entry.json" | cut -d' ' -f1)"
 check "exit spec --check: failed grounding check creates no commit" "$head_before_bad" "$(git rev-parse HEAD)"
@@ -196,36 +200,39 @@ bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1
 check "exit spec: a single-mode workspace record still commits" "3" "$(git log --oneline | grep -c 'spec: my-feature')"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" workspace null >/dev/null
 
-# --- discuss ------------------------------------------------------------------------
-out="$(bash "$MODE" discuss --feature-dir "$FD")"
-check "mode discuss: human attached grills" "grill=run" "${out%% *}"
-check "mode discuss: gated spec skips the critique" "1" "$(grep -c 'critique=skip' <<<"$out")"
-out="$(LOOP_SPEC_AUTONOMOUS=1 bash "$MODE" discuss --feature-dir "$FD")"
-check "mode discuss: autonomous self-answers the grill" "grill=self-answer" "${out%% *}"
-out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$MODE" discuss --feature-dir "$FD")"
-check "mode discuss: a supervisor rides on the grill line" "oracle=supervisor" "$(cut -d' ' -f2 <<<"$out")"
+# --- spec's grill/critique fields (DISCUSS folded into SPEC's own mode/exit) --------
+out="$(bash "$MODE" spec --feature-dir "$FD")"
+check "mode spec: human attached grills" "grill=run" "$(grep -o 'grill=[a-z-]*' <<<"$out")"
+check "mode spec: gated spec skips the critique" "1" "$(grep -c 'critique=skip' <<<"$out")"
+out="$(LOOP_SPEC_AUTONOMOUS=1 bash "$MODE" spec --feature-dir "$FD")"
+check "mode spec: autonomous self-answers the grill" "grill=self-answer" "$(grep -o 'grill=[a-z-]*' <<<"$out")"
+out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$MODE" spec --feature-dir "$FD")"
+check "mode spec: a supervisor rides on the grill line" "oracle=supervisor" "$(grep -o 'oracle=[a-z-]*' <<<"$out")"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"review-only"' >/dev/null
-out="$(bash "$MODE" discuss --feature-dir "$FD")"
-check "mode discuss: review-only skips the grill" "grill=skip" "${out%% *}"
+out="$(bash "$MODE" spec --feature-dir "$FD")"
+check "mode spec: review-only skips the grill" "grill=skip" "$(grep -o 'grill=[a-z-]*' <<<"$out")"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"auto"' >/dev/null
 
-# the oracle gate: a named supervisor that no discuss question reached keeps the phase open
-ec=0; out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" discuss --feature-dir "$FD" 2>&1)" || ec=$?
-check "exit discuss: supervisor named, nothing asked, flags" "1" "$ec"
-check "exit discuss: the flag names the oracle" "1" "$(grep -c 'FLAG \[oracle\]' <<<"$out")"
+# the oracle gate: a named supervisor that no spec question reached keeps the phase open
+ec=0; out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" spec --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit spec: supervisor named, nothing asked, flags" "1" "$ec"
+check "exit spec: the flag names the oracle" "1" "$(grep -c 'FLAG \[oracle\]' <<<"$out")"
 bash "$REPO_ROOT/lib/decisions.sh" add "$FD" spec "Runtime?" "python3" "oracle unavailable: I decided not to ask" >/dev/null
 ec=0; LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
 check "exit spec: an assumed decision naming the oracle does not satisfy the gate" "1" "$ec"
-LOOP_SPEC_ORACLE_WRITE=1 bash "$REPO_ROOT/lib/decisions.sh" add "$FD" discuss "Which store?" "sqlite" "supervisor chose it" supervised >/dev/null
-ec=0; LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" discuss --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
-check "exit discuss: a supervised decision satisfies the gate" "0" "$ec"
-git -C "$REPO" tag | grep post-discuss | xargs -r git -C "$REPO" tag -d >/dev/null 2>&1 || true
+LOOP_SPEC_ORACLE_WRITE=1 bash "$REPO_ROOT/lib/decisions.sh" add "$FD" spec "Which store?" "sqlite" "supervisor chose it" supervised >/dev/null
+ec=0; LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
+check "exit spec: a supervised decision satisfies the gate" "0" "$ec"
 LOOP_SPEC_ORACLE_WRITE=1 bash "$REPO_ROOT/lib/decisions.sh" add "$FD" spec "Runtime?" "(unanswered)" "oracle unavailable: denied" oracle-unavailable >/dev/null
 ec=0; LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
 check "exit spec: a failed question tool satisfies the gate" "0" "$ec"
-ec=0; bash "$EXIT" discuss --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
-check "exit discuss: clean spec passes" "0" "$ec"
-check "exit discuss: checkpoint tagged" "1" "$(git tag | grep -c 'post-discuss')"
+# Every clean SPEC exit in this file tags a checkpoint (a timestamped
+# loop-spec-checkpoint-post-spec-* tag, not a reused name): clear the ones the earlier
+# passes in this file left before proving this specific pass creates its own.
+git -C "$REPO" tag | grep post-spec | xargs -r git -C "$REPO" tag -d >/dev/null 2>&1 || true
+ec=0; bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
+check "exit spec: clean spec passes" "0" "$ec"
+check "exit spec: checkpoint tagged" "1" "$(git tag | grep -c 'post-spec')"
 
 # --- plan ---------------------------------------------------------------------------
 cat > "$DOCS/PLAN.md" <<'MD'
@@ -293,6 +300,44 @@ check "exit plan: cleared extraction marker allows the derived sidecar" "0" "$ec
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":["task-001"],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: a self-blocking task is a cycle" "1" "$(grep -c 'dependency cycle' <<<"$out")"
+printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-002","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-003","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-004","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: four tasks sharing one file are a chain" "1" "$(grep -c '\[width\]' <<<"$out")"
+check "exit plan: the width flag names the shared file" "1" "$(grep -c 'a.sh (task-001,task-002,task-003,task-004)' <<<"$out")"
+printf '[{"id":"task-001","brief":"local one","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-002","brief":"local two","files":["b.sh"],"blockedBy":["task-001"],"verifyCommand":"bash -n b.sh","acceptanceCriteria":["`bash -n b.sh` exits 0"]},{"id":"task-003","brief":"local three","files":["c.sh"],"blockedBy":["task-002"],"verifyCommand":"bash -n c.sh","acceptanceCriteria":["`bash -n c.sh` exits 0"]},{"id":"task-004","brief":"local four","files":["d.sh"],"blockedBy":["task-003"],"verifyCommand":"bash -n d.sh","acceptanceCriteria":["`bash -n d.sh` exits 0"]}]' > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: four local bash-n tasks collapse before width gate" "0" "$(grep -c '\[width\]' <<<"$out")"
+printf '[{"id":"task-001","brief":"real one","files":["a.py"],"blockedBy":[],"verifyCommand":"pytest a.py","acceptanceCriteria":["pytest passes"]},{"id":"task-002","brief":"real two","files":["b.py"],"blockedBy":["task-001"],"verifyCommand":"pytest b.py","acceptanceCriteria":["pytest passes"]},{"id":"task-003","brief":"real three","files":["c.py"],"blockedBy":["task-002"],"verifyCommand":"pytest c.py","acceptanceCriteria":["pytest passes"]},{"id":"task-004","brief":"real four","files":["d.py"],"blockedBy":["task-003"],"verifyCommand":"pytest d.py","acceptanceCriteria":["pytest passes"]}]' > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: four real verification tasks still trigger width gate" "1" "$(grep -c '\[width\]' <<<"$out")"
+printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-002","brief":"do a thing","files":["b.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-003","brief":"do a thing","files":["c.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-004","brief":"do a thing","files":["d.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: four independent tasks are not a chain" "0" "$(grep -c '\[width\]' <<<"$out")"
+printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-002","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-003","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-004","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
+ec=0; out="$(LOOP_SPEC_PLAN_MIN_WIDTH=1 bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: LOOP_SPEC_PLAN_MIN_WIDTH=1 accepts a chain" "0" "$(grep -c '\[width\]' <<<"$out")"
+printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-002","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]},{"id":"task-003","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: three tasks are left alone" "0" "$(grep -c '\[width\]' <<<"$out")"
+printf '[{"id":"task-001","brief":"real one","files":["a.py"],"blockedBy":[],"verifyCommand":"pytest a.py","acceptanceCriteria":["pytest passes"]},{"id":"task-002","brief":"real two","files":["b.py"],"blockedBy":["task-001"],"verifyCommand":"pytest b.py","acceptanceCriteria":["pytest passes"]}]' > "$FD/tasks.json"
+ec=0; out="$(env -u LOOP_SPEC_PLAN_MIN_WIDTH bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: unset width override keeps small chain heuristic" "0" "$(grep -c '\[width\]' <<<"$out")"
+ec=0; out="$(LOOP_SPEC_PLAN_MIN_WIDTH= bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: empty width override keeps small chain heuristic" "0" "$(grep -c '\[width\]' <<<"$out")"
+ec=0; out="$(LOOP_SPEC_PLAN_MIN_WIDTH=2 bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: explicit width override rejects a two-task chain" "1" "$(grep -c '\[width\]' <<<"$out")"
+printf '[{"id":"task-001","brief":"real one","files":["a.py"],"blockedBy":[],"verifyCommand":"pytest a.py","acceptanceCriteria":["pytest passes"]},{"id":"task-002","brief":"real two","files":["b.py"],"blockedBy":[],"verifyCommand":"pytest b.py","acceptanceCriteria":["pytest passes"]}]' > "$FD/tasks.json"
+ec=0; out="$(LOOP_SPEC_PLAN_MIN_WIDTH=2 bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: explicit width override accepts two independent tasks" "0" "$(grep -c '\[width\]' <<<"$out")"
+printf '[{"id":"task-001","brief":"real one","files":["a.py"],"blockedBy":[],"verifyCommand":"pytest a.py","acceptanceCriteria":["pytest passes"]},{"id":"task-002","brief":"real two","files":["b.py"],"blockedBy":["task-001"],"verifyCommand":"pytest b.py","acceptanceCriteria":["pytest passes"]}]' > "$FD/tasks.json"
+ec=0; out="$(LOOP_SPEC_PLAN_MIN_WIDTH=1 bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: explicit width one accepts a two-task chain" "0" "$(grep -c '\[width\]' <<<"$out")"
+ec=0; out="$(LOOP_SPEC_PLAN_MIN_WIDTH=not-a-number bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: invalid explicit width remains a configuration failure" "1" "$ec"
+check "exit plan: invalid explicit width names the variable" "1" "$(grep -c 'LOOP_SPEC_PLAN_MIN_WIDTH must be a non-negative integer' <<<"$out")"
+printf '[{"id":"task-001","brief":"do a thing","files":["f1.sh"],"blockedBy":["task-003"],"verifyCommand":"pytest a.py","acceptanceCriteria":["pytest passes"]},{"id":"task-002","brief":"do a thing","files":["f1.sh","f2.sh"],"blockedBy":[],"verifyCommand":"pytest b.py","acceptanceCriteria":["pytest passes"]},{"id":"task-003","brief":"do a thing","files":["f2.sh"],"blockedBy":[],"verifyCommand":"pytest c.py","acceptanceCriteria":["pytest passes"]}]' > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: declared blockedBy plus overlap edges forming a cycle is flagged" "1" "$(grep -c 'form a cycle' <<<"$out")"
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"pip install -e . && uv venv --python 3.14 && bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: a verify command that installs is a feasibility flag" "1" "$(grep -c 'installs or creates an environment' <<<"$out")"

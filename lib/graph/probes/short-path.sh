@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Route probe: may this run take the short path through the cycle graph?
 #
-# Why: the graph's shape was fixed. Every run walked all seven phases and the full
+# Why: the graph's shape was fixed. Every run walked all six phases and the full
 # critique protocol, so an hour was the FLOOR even for a dependency bump — and the only
 # escape was routing to a different protocol entirely (micro/debug), which trades the
 # cycle's continuity for the saving. This probe puts the flexibility on the graph itself:
@@ -12,8 +12,8 @@
 #   1. `feature.json.executionProfile == "maintenance"` -- earned by a validated low-risk
 #      classification or an explicit operator override (lib/cycle-profile.sh).
 #   2. `lib/security-signal.sh` finds nothing in the feature's own artifacts. The signal
-#      is re-checked HERE rather than trusted from classification time, because SPEC and
-#      DISCUSS write artifacts after the profile was chosen: a change that turns out to
+#      is re-checked HERE rather than trusted from classification time, because SPEC
+#      writes artifacts after the profile was chosen: a change that turns out to
 #      touch a security surface must lengthen its own path.
 #
 # Usage:
@@ -58,8 +58,8 @@ if [[ "$profile" == "compact" ]]; then
 fi
 [[ "$profile" == "maintenance" ]] || full "executionProfile=${profile:-unset} is not maintenance"
 
-# Only artifacts that exist: a run reaching this probe before DISCUSS has written its
-# own has nothing yet to contradict the classification.
+# Only artifacts that exist: an early probe run has nothing yet to contradict the
+# classification.
 artifacts=()
 while IFS= read -r artifact; do
   [[ -n "$artifact" && -f "$artifact" ]] && artifacts+=("$artifact")

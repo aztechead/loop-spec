@@ -32,13 +32,15 @@ with the manifest even when the plan's `files[]` did not name it. A task that le
 - `task_spec`: full task description (Goal, Files, Acceptance Criteria, Verify, Steps)
 - `worktree_path`: absolute path to your worktree (cd here first)
 - `worktree_branch`: branch name (e.g., `task/001-foo`)
-- `probe_dir`: absolute path to the plugin's `lib/` directory, supplied by the dispatcher (`${LOOP_SPEC_SKILL_DIR}/../../lib`); the code-for-humans probes live there. Optional — absent, match the neighbors by reading them.
+- `probe_dir`: absolute plugin `lib/` path supplied by the dispatcher. Optional; without it, match neighbors by reading them.
 
 ## Working directory
 
 ALL of your work happens in `worktree_path`. Do not cd elsewhere. Do not write outside this dir.
 
-The `worktree_path` is created explicitly by the caller (EXECUTE lead / self-claim loop) via `git worktree add <path> -b task/<id>-<slug> feat/<slug>` — branched off the **feature branch HEAD**, not the base commit. Do NOT add `isolation: worktree` to this agent's frontmatter: harness auto-isolation branches from the base commit (origin/main), which would hide prior tasks' committed changes in a sequential DAG and strand work in a throwaway worktree. The explicit `git worktree add` in the dispatch contract is the single, correct worktree mechanism.
+The caller creates `worktree_path` with `git worktree add` from feature HEAD.
+Do not add `isolation: worktree`: harness isolation branches from origin/main
+and hides prior sequential task commits.
 
 ## Procedure
 
@@ -46,12 +48,10 @@ The `worktree_path` is created explicitly by the caller (EXECUTE lead / self-cla
 2. Read task spec carefully.
 3. For every code-producing task: write the failing test FIRST, run it, confirm red. Skill/config/docs tasks are excluded. Omitting a TDD label does not exempt this step.
 4. Implement minimal code to pass (green).
-5. Run verify command. Confirm pass.
-6. Red before green is necessary, not sufficient, for a test named for a guard: it goes red
-   because the feature is absent and green when the feature lands, without ever
-   reaching the branch it names. For each test that names a guard, a branch, or a
-   condition, delete or invert that guard, run the test, confirm it fails, then
-   restore the guard. The failing output is the evidence.
+5. Run the exact verify command. If it contradicts acceptance criteria, return
+   NEEDS_CONTEXT with command and output. The lead repairs faulty checks with fresh review.
+6. For a guard test, remove or invert its guard, run it red, then restore it.
+   The failing output is the evidence.
 7. `git add <files>` (specific files from task spec, not -A).
 8. Commit using a heredoc (bash does NOT expand `\n` inside `git commit -m "..."`):
    ```bash
@@ -64,6 +64,13 @@ The `worktree_path` is created explicitly by the caller (EXECUTE lead / self-cla
    ```
 9. Self-review (completeness, quality, discipline, testing).
 10. Report back.
+
+## Rendered contract precedence
+
+If the brief supplies a rendered contract bundle, read it once; it is
+authoritative and its sources stay closed. Apply its applicability decisions.
+Read `skills/shared/approach-selection.md` once separately; it stays outside
+the bundle. Without a bundle, read applicable sources below.
 
 ## Engineering principles
 

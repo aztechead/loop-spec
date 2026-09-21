@@ -108,7 +108,7 @@ for index in range(start, len(lines)):
 row_re = re.compile(
     r'^- criterion:\s*(.+?)\s*\|\s*implementation:\s*(.+?)\s*'
     r'\|\s*integration:\s*(.+?)\s*$')
-ref_re = re.compile(r'^(.+):([1-9][0-9]*)\s+-\s+(.+)$')
+ref_re = re.compile(r'^(.+):([1-9][0-9]*)(?:-([1-9][0-9]*))?\s+-\s+(.+)$')
 none_re = re.compile(r'^none\s+-\s+(.{10,})$', re.I)
 rows = {}
 
@@ -116,11 +116,14 @@ def validate_ref(value, line, label):
     match = ref_re.match(value)
     if not match:
         fail(line, '%s must be <repo-relative-file>:<line> - <what it proves>' % label)
-    relative, line_text, proof = match.groups()
+    relative, line_text, end_text, proof = match.groups()
     relative = relative.strip()
     if os.path.isabs(relative) or '..' in relative.replace('\\', '/').split('/'):
         fail(line, '%s path must stay within a declared repository root' % label)
     cited_line = int(line_text)
+    end_line = int(end_text) if end_text else cited_line
+    if end_line < cited_line:
+        fail(line, '%s citation range ends before it starts' % label)
     for root in roots:
         candidate = os.path.realpath(os.path.join(root, relative))
         try:
@@ -131,9 +134,9 @@ def validate_ref(value, line, label):
             continue
         with open(candidate, encoding='utf-8', errors='replace') as cited:
             line_count = sum(1 for _ in cited)
-        if cited_line > line_count:
+        if end_line > line_count:
             fail(line, '%s line %s exceeds %s line count %s' %
-                 (label, cited_line, relative, line_count))
+                 (label, end_line, relative, line_count))
         if not proof.strip():
             fail(line, '%s must explain what the reference proves' % label)
         return

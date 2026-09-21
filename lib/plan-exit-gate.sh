@@ -39,9 +39,11 @@ if [[ -f "$tasks" ]]; then
   run_gate doc-deps lib doc-deps gate --tasks "$tasks" --artifact "$docs/PLAN.md"
   # Structural feasibility: a task with no runnable check or no criterion cannot be
   # verified, and a cyclic DAG never dispatches.
-  while IFS=$'\t' read -r id cmd ncrit; do
+  while IFS=$'\t' read -r id ncrit; do
+    cmd="$(jq -r --arg id "$id" '.[] | select(.id == $id) | .verifyCommand // ""' "$tasks")"
     [[ -n "$cmd" ]] || { flag "[feasibility] $id has no verifyCommand"; continue; }
-    bash -n -c "$cmd" 2>/dev/null || flag "[feasibility] $id verifyCommand does not parse: $cmd"
+    command_error="$(python3 "$SCRIPT_DIR/verify_command.py" <<<"$cmd" 2>&1)" \
+      || flag "[feasibility] $id $command_error"
     # A verify command checks; an install belongs to commands.prepare. A plan that
     # bootstrapped the runtime inside every verify failed integration on a venv that
     # already existed and paid a planner round to add --clear.
@@ -49,9 +51,8 @@ if [[ -f "$tasks" ]]; then
       flag "[feasibility] $id verifyCommand installs or creates an environment; move that step to commands.prepare and keep the command a check: $cmd"
     fi
     [[ "$ncrit" != "0" ]] || flag "[feasibility] $id has no acceptance criteria"
-  done < <(jq -r '.[] | [.id, (.verifyCommand // ""), ((.acceptanceCriteria // []) | length)] | @tsv' "$tasks")
-  rc=0; lib dag-width < "$tasks" >/dev/null 2>&1 || rc=$?
-  (( rc == 3 )) && flag "[feasibility] task DAG has a dependency cycle"
+  done < <(jq -r '.[] | [.id, ((.acceptanceCriteria // []) | length)] | @tsv' "$tasks")
+  run_gate structure lib plan-structure "$feature_dir" "$tasks"
   if [[ -n "$ws_root" ]]; then
     names="$(fget '[.workspace.repos[].name] | join(" ")')" || true
     while IFS=$'\t' read -r id repo; do

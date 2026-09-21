@@ -42,7 +42,7 @@ capture requires a temporary worktree.
 
 The preparation call performs these task steps:
 
-1. Reads `artifacts.tasks` from `feature_dir/tasks.json`.
+1. Reads the owning feature's `feature_dir/tasks.json`; saved `artifacts.tasks` locators never select another checkout.
 2. Registers `pendingRemediationTasks[]` from VERIFY, ITERATE, or DELIVER.
    Missing fields default to `blockedBy: []`, `files: []`, `acceptanceCriteria: [subject]`, and `verifyCommand: feature.commands.test`.
    A missing usable verify command fails intake; it never silently omits the task.
@@ -76,7 +76,7 @@ Print `[EXECUTE] DAG width W=<width> -> rung: <rung.rung> (<rung.reason>)`.
 Workspace mode always uses `subagent` and rejects `LOOP_SPEC_EXECUTE_LOOPS=1`.
 Use these operating parameters:
 
-- `maxParallelImplementers`: `.execute.rung.maxParallelImplementers` from the validated resource policy (serial by default; explicit operator caps may widen it). `LOOP_SPEC_WORKTREES=0` sets it to 1.
+- `maxParallelImplementers`: `.execute.rung.maxParallelImplementers` from the validated resource policy: min(DAG width, 3) when no `LOOP_SPEC_MAX_PARALLEL_*` bound is set, the operator's bound when one is, and 1 under `LOOP_SPEC_WORKTREES=0`. Use it as given; never narrow it to 1 on your own.
 - Pass this exact value to the selected subagent wave, loop-fleet `--parallel`, session dispatch, or Workflow `maxParallelImplementers`; do not recreate a default in the skill.
 - `maxRetriesPerTask`: `.execute.maxRetries`, from `lib/tuning.sh get executeMaxRetriesPerTask 6`.
 - Task worktree root: `.execute.worktreeBase`, resolved once by `lib/worktree-base.sh resolve`.
@@ -95,11 +95,15 @@ Every rung returns `{merged, blocked, escalation}`.
 If `escalation` is non-null or `blocked` is non-empty, print the reasons and return to the cycle for escalation.
 Dispatch, then stop. Never AskUserQuestion as a wait.
 
-Use one driver call per task step: `cycle-driver.sh task dispatch|package|verdict|integrate` through `lib/execute-step.sh`.
+Use one driver call per task step: `cycle-driver.sh task dispatch|package|review-groups|verdict|integrate` through `lib/execute-step.sh`.
 `dispatch` creates the task worktree and records its base SHA, brief, report paths, and model.
 It emits `dispatch` and `task_start`.
 `integrate` publishes the task, runs `lib/task-progress.sh mark-done`, and emits `task_end`.
-`dispatch` and `package` emit `dispatch` for the implementer and reviewer respectively. The lead emits no task events.
+`dispatch` emits `dispatch` for the implementer. `package` only writes the review package (no
+event); `review-groups` groups a wave's packages under a byte cap and emits one reviewer
+`dispatch` event per group. On the `session` rung it emits nothing: review there stays per
+task, and `task run --role reviewer` launches that reviewer and emits at launch. The lead
+emits no task events.
 
 Pass the packet's `.model` to the Agent call unless it is `inherit`.
 Issue each wave's Agent calls in one message.

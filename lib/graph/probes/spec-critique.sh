@@ -1,28 +1,32 @@
 #!/usr/bin/env bash
-# Route probe: should DISCUSS run the spec-critique subgraph?
+# Route probe: should SPEC run the spec-critique subgraph?
 #
 # Why: the default new-feature path already gated SPEC.md to no unresolved intent questions,
 # then paid a second author (spec-writer) and a second critic (plus, formerly,
 # an advocate debate) for the same artifact. Skipping that critique is a
 # declared graph route, not a model judgment: the probe answers from
-# feature.json + SPEC.md frontmatter + the security signal. The DISCUSS skill
+# feature.json + SPEC.md frontmatter + the security signal. The SPEC skill
 # runs the same probe so the skill body and graph/cycle.graph.json agree.
 #
 # Skip (gate=skip) when ALL of these hold, in this order of reasons:
 #   1. maintenance profile and no security signal in SPEC.md (same lightening
-#      the discuss node itself already takes via short-path.sh).
-#   2. SPEC.md is already gated: unresolved_questions is empty AND no security signal AND this is not
+#      SPEC's own mode line already takes for a maintenance profile).
+#   2. The run took the oneshot route (oneshot.sh) with no security signal and the
+#      gate independently answered: an attended run already had an independent
+#      human input, while a self-answered run is handled by the oracle check below.
+#   3. SPEC.md is already gated: unresolved_questions is empty AND no security signal AND this is not
 #      an ITERATE re-entry (iterate.feedback non-null always runs) AND the gate
 #      was independently answered: an autonomous run with no supervisor selects
 #      its own recommended answers and the critic is the only independent read the spec
 #      gets. Two live runs skipped it that way.
+# LOOP_SPEC_ROUTE=full is the operator's override and answers gate=run ahead of every skip.
 # Fail closed: missing/unreadable inputs, a security-signal scan failure, or
 # an ungated spec all answer gate=run. An unresolved probe never satisfies a
 # skip route (graph-contract.md).
 #
 # Usage:
-#   discuss-critique.sh --feature-dir DIR
-#   discuss-critique.sh --answers
+#   spec-critique.sh --feature-dir DIR
+#   spec-critique.sh --answers
 #
 # Exit: 0 with one `gate=<run|skip|compact> reason=<text>` line. Compact's
 # durable gate plan owns this decision, so this legacy probe must not supply a
@@ -50,14 +54,18 @@ skip() {
 feature_dir=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --feature-dir) feature_dir="${2:-}"; shift 2 || { echo "discuss-critique.sh: $1 needs a value" >&2; exit 2; } ;;
-    *) echo "usage: discuss-critique.sh --feature-dir DIR | --answers" >&2; exit 2 ;;
+    --feature-dir) feature_dir="${2:-}"; shift 2 || { echo "spec-critique.sh: $1 needs a value" >&2; exit 2; } ;;
+    *) echo "usage: spec-critique.sh --feature-dir DIR | --answers" >&2; exit 2 ;;
   esac
 done
-[[ -n "$feature_dir" ]] || { echo "usage: discuss-critique.sh --feature-dir DIR | --answers" >&2; exit 2; }
+[[ -n "$feature_dir" ]] || { echo "usage: spec-critique.sh --feature-dir DIR | --answers" >&2; exit 2; }
 
 feature_json="$feature_dir/feature.json"
 [[ -f "$feature_json" ]] || run "no feature.json in $feature_dir"
+
+# The operator's word outranks every skip below, including compact and
+# maintenance profiles or a missing SPEC.md artifact.
+[[ "${LOOP_SPEC_ROUTE:-}" == "full" ]] && run "LOOP_SPEC_ROUTE=full forces the full route and its critique"
 
 profile="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.executionProfile // "standard"' 2>/dev/null)" \
   || run "feature.json could not be read"
@@ -107,6 +115,16 @@ case "$oracle" in
   # No `=` and no comma in the reason: the driver splits a mode line on spaces and `=`
   # to build its JSON, and a reason that carried `oracle=self` became a field.
   oracle=self*) run "self-answered questions; autonomous run with no supervisor; the critic is the spec's only independent read" ;;
+esac
+
+# An attended oneshot run already had independent human input before ONESHOT;
+# its implementation review can therefore replace this duplicate critique.
+# The skip sits below the security signal and oracle because a security surface
+# still needs the challenger, and a self-answered spec still has no independent
+# read.
+route_line="$(bash "$SCRIPT_DIR/oneshot.sh" --feature-dir "$feature_dir" 2>/dev/null || true)"
+case "$route_line" in
+  route=oneshot*) skip "route=oneshot: the ONESHOT review gate is the spec's independent read" ;;
 esac
 
 gate_status="$(python3 - "$spec_path" "$SCRIPT_DIR/../.." <<'PY'

@@ -66,7 +66,8 @@ ws_root="$(fget 'if (.workspace != null and (.workspace.mode // "") != "single")
 if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir" rev-parse --show-toplevel)"; fi
 docs="$root/docs/loop-spec/features/$slug"
 spec="$(fget '.artifacts.spec // ""')"; [[ -n "$spec" ]] || spec="$docs/SPEC.md"
-tasks="$(fget '.artifacts.tasks // ""')"; [[ -n "$tasks" ]] || tasks="$feature_dir/tasks.json"
+# PLAN extraction and task progress belong to this feature, never a saved checkout path.
+tasks="$feature_dir/tasks.json"
 flags=0
 
 # {docs} resolves absolute,

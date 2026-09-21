@@ -11,6 +11,41 @@ import sys
 
 from feature_read import load_state
 from feature_write import main as write_feature, publish
+from verify_command import validate as validate_command
+
+
+def normalize_task(raw, default_verify, index):
+    """The same full-shape contract at VERIFY intake and EXECUTE publication."""
+    label = "pendingRemediationTasks[{}]".format(index)
+    if not isinstance(raw, dict):
+        raise ValueError(label + " must be a task object")
+    task = dict(raw)
+    for key, value in (("id", task.get("id")), ("subject", task.get("subject") or task.get("brief"))):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(label + "." + key + " must be a non-empty string")
+        task[key] = value
+    for key in ("files", "blockedBy"):
+        task.setdefault(key, [])
+    if task.get("verifyCommand") in (None, ""):
+        task["verifyCommand"] = default_verify
+    if not isinstance(task["verifyCommand"], str) or not task["verifyCommand"].strip():
+        raise ValueError(label + " needs verifyCommand or commands.test")
+    validate_command(task["verifyCommand"])
+    if task.get("acceptanceCriteria") in (None, []):
+        task["acceptanceCriteria"] = [task["subject"]]
+    for key in ("files", "blockedBy", "acceptanceCriteria"):
+        values = task[key]
+        if not isinstance(values, list) or any(not isinstance(v, str) or not v.strip() for v in values):
+            raise ValueError(label + "." + key + " must be an array of non-empty strings")
+    task["retries"] = 0
+    task.pop("status", None)
+    return task
+
+
+def normalize_queue(queue, default_verify):
+    if not isinstance(queue, list):
+        raise ValueError("pendingRemediationTasks must be an array")
+    return [normalize_task(raw, default_verify, index) for index, raw in enumerate(queue)]
 
 
 def register(feature_dir, sidecar, reader=load_state, writer=write_feature, publisher=publish):
@@ -58,16 +93,7 @@ def register(feature_dir, sidecar, reader=load_state, writer=write_feature, publ
             if receipt in published:
                 renamed[task_id] = published[receipt]["id"] if task_id not in renamed else None
                 continue
-            task.setdefault("files", [])
-            task.setdefault("blockedBy", [])
-            if task.get("acceptanceCriteria") in (None, []):
-                task["acceptanceCriteria"] = [task.get("subject") or task.get("brief")]
-            if task.get("verifyCommand") in (None, ""):
-                task["verifyCommand"] = default_verify
-            if not isinstance(task["verifyCommand"], str) or not task["verifyCommand"].strip():
-                raise ValueError("{} needs verifyCommand or commands.test before EXECUTE can dispatch it".format(task_id))
-            task["retries"] = 0
-            task.pop("status", None)
+            task = normalize_task(raw, default_verify, index)
             task["remediationReceipt"] = receipt
             if task_id in ids:
                 task["id"] = task_id + "+remediate-" + receipt
@@ -108,8 +134,11 @@ def register(feature_dir, sidecar, reader=load_state, writer=write_feature, publ
 if __name__ == "__main__":
     try:
         if len(sys.argv) != 3:
-            raise ValueError("usage: execute_remediation.py <feature-dir> <tasks-path>")
-        print(json.dumps({"registered": register(*sys.argv[1:])}))
+            raise ValueError("usage: execute_remediation.py <feature-dir> <tasks-path> | --normalize <default-verify>")
+        if sys.argv[1] == "--normalize":
+            print(json.dumps(normalize_queue(json.load(sys.stdin), sys.argv[2])))
+        else:
+            print(json.dumps({"registered": register(*sys.argv[1:])}))
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         message = "execute-prepare: remediation intake failed: {}".format(exc)
         print(message, file=sys.stderr)

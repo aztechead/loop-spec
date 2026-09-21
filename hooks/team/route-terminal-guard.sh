@@ -40,6 +40,9 @@ if [[ "${LOOP_SPEC_ROUTE_GUARD:-1}" == "0" ]]; then
 fi
 
 INPUT="$(cat 2>/dev/null || true)"
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 payload_cwd="$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("cwd") or "")' 2>/dev/null || true)"
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-${payload_cwd:-$PWD}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

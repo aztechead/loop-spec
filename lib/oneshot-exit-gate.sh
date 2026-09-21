@@ -7,7 +7,7 @@
 # phase-exit.sh's data cannot key on: `route: full` lives in SPEC.md's frontmatter, not
 # feature.json. This script reads it once. The `oneshot` node of graph/cycle.graph.json
 # lists it as a gate; lib/graph/probes/oneshot.sh --after then routes the escalated
-# run to DISCUSS and the finished one to DELIVER.
+# run to SPEC and the finished one to DELIVER.
 #
 # Usage: oneshot-exit-gate.sh <feature-dir>
 # Output: `FLAG [<gate>] <finding>` lines; exit 1 when any, 0 when clean, 2 bad call.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Route probe: may this run take the oneshot route (SPEC -> ONESHOT -> DELIVER)?
 #
-# Why: every run walked DISCUSS, PLAN, EXECUTE, VERIFY, and ITERATE, so a two-line bug
+# Why: every run walked SPEC's critique, PLAN, EXECUTE, VERIFY, and ITERATE, so a two-line bug
 # fix paid the whole cycle (the 6.4.0 haiku slugify-bug run: 1.99 USD, 16 minutes, 384
 # artifact lines for 2 lines of code). The route is the cycle's single largest lever
 # (the port plan, WP1), and it is decided here, from facts

@@ -90,6 +90,19 @@ printf '# Verification\n' > "$WORK/no-section.md"
 
 echo "=== verification-grounding-lint.sh tests ==="
 check "valid evidence passes" 0 "$WORK/valid.md" --repo "$WORK" --criterion SC-1
+sed 's/src\/app.py:2 /src\/app.py:1-3 /' "$WORK/valid.md" > "$WORK/range.md"
+check "bounded line range is valid evidence" 0 "$WORK/range.md" --repo "$WORK" --criterion SC-1
+sed 's/:1-3 /:3-1 /' "$WORK/range.md" > "$WORK/backward-range.md"
+check "backward line range is rejected" 1 "$WORK/backward-range.md" --repo "$WORK" --criterion SC-1
+sed 's/:1-3 /:1-99 /' "$WORK/range.md" > "$WORK/long-range.md"
+check "range end must exist in the cited file" 1 "$WORK/long-range.md" --repo "$WORK" --criterion SC-1
+# Filling the shipped template must not leave instructional prose inside the strict row section.
+python3 - "$REPO_ROOT/skills/shared/artifact-templates/VERIFICATION.md.template" "$WORK/filled-template.md" <<'PY_TEMPLATE'
+import sys
+text = open(sys.argv[1]).read().replace('{path}:{line}', 'src/app.py:1-3').replace('{what it proves}', 'proves the required behavior')
+open(sys.argv[2], 'w').write(text)
+PY_TEMPLATE
+check "filled canonical template passes grounding grammar" 0 "$WORK/filled-template.md" --repo "$WORK" --criterion GE-001
 sed 's/SC-1/GE-001/' "$WORK/valid.md" > "$WORK/spec-derived.md"
 check "Good Enough IDs derive from SPEC" 0 "$WORK/spec-derived.md" --repo "$WORK" --spec "$WORK/SPEC.md"
 check "explicit no-integration reason passes" 0 "$WORK/no-integration.md" --repo "$WORK" --criterion SC-1

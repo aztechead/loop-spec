@@ -16,6 +16,7 @@ only the entry packet first:
 ```bash
 pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin plan --feature-dir "$feature_dir")"
 # .entry.fields .entry.read[] .entry.flags[]
+# .planner.model .planner.subagentType .planner.promptFile .planner.brief
 # .mode.critique .mode.reentry .mode.budget .mode.remaining .mode.exhausted
 ```
 
@@ -33,17 +34,15 @@ depends on it. Workspace tasks carry one `repo` and workspace-relative paths.
 ## PATTERNS and PLAN
 
 The planner owns the compact PATTERNS scan. Reuse an existing artifact when present;
-otherwise pass its absolute `patterns_path` and
-`skills/shared/artifact-templates/PATTERNS.md.template` and
-`skills/shared/artifact-templates/PLAN.md.template` to the planner. Do not prefetch,
+otherwise use the absolute paths in the planner assignment. Do not prefetch,
 dispatch a second scan, or poll for a teammate.
 
-Spawn `planner-1` with `feature.models.planner`, absolute `spec_path`, `patterns_path`,
-`evidence_path`, and absolute `template_path` for `PLAN.md.template`. Require authored
-Markdown task blocks containing `**Files:**`, `**Verify:**`, `**Acceptance criteria:**`,
-`**BlockedBy:**`, and `**read_first:**`; `lib/plan-tasks.sh extract` creates the JSON
-sidecar. Include approach-selection, grounding, scale, TDD, relevant engineering
-stances, and global constraints. Do not compute waves or duplicate task prose.
+Immediately dispatch one `planner-1` through the active harness adapter using
+`.planner.model`, `.planner.subagentType`, and the exact one-line prompt
+`Read the planner assignment at <.planner.promptFile> and complete it.` The planner role contract
+in the packet owns the task-block shape, approach selection, grounding,
+scale, TDD, engineering stances, and global constraints. The coordinator only runs
+`lib/plan-tasks.sh extract` after PLAN is authored; it never writes `tasks.json`.
 
 Then run:
 
@@ -78,7 +77,13 @@ The phase also runs `lib/acceptance-lint.sh` before leaving PLAN. The exit runs
 Use `skills/shared/critique-gate-protocol.md` and `graph/critique.graph.json` with
 `phase=plan`,
 `gate=plan-critique`, `artifact=PLAN.md`, and author `planner-1`. Run the gate after
-mechanical checks. Send the planner one combined list of flags and critique findings;
+mechanical checks. `critique open` rejects extraction, cycle, and width failures before
+creating a review packet. On structural failure, send the planner the flags once,
+repair PLAN ownership/dependencies, and rerun extraction and the check before
+retrying; if still blocked, return the flags to the cycle without dispatching a critic.
+Use the planner's shared-file ownership rule; retain every required README example
+and its verification. Send the planner one combined list of remaining flags and
+critique findings;
 the critique steps emit the `gate_round` events through the shared protocol.
 allow one revision, then re-run extraction and gates. Never spawn `advocate-1`.
 The critique never re-opens on a `REDO`; a final phase exit handles remaining flags.
@@ -95,7 +100,6 @@ declined proposals go to `.loop-spec/BACKLOG.md`. Return to the cycle; never run
 exit yourself. In explicit teams mode, TeamDelete first. Resume from gate logs and do
 not repeat completed scans.
 
-Read `skills/shared/engineering-directives.md`, `skills/shared/engineering-stances.md`,
-and `skills/shared/approach-selection.md`. On a 4GB/1vCPU host use one planner/reviewer
-at a time and compact artifacts. `lib/task-batch.sh` may merge safe linear tasks.
+On a 4GB/1vCPU host use one planner/reviewer at a time and compact artifacts.
+`lib/task-batch.sh` may merge safe linear tasks.
 Report `PLAN complete. PLAN.md at docs/loop-spec/features/{slug}/PLAN.md.` in step mode.

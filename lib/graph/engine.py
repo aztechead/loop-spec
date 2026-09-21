@@ -446,7 +446,7 @@ def emit_phase_boundaries(current, admitting, reentry=False):
     Both markers land when a PHASE node is entered: phase_end for the phase the
     currentPhase pointer still holds, naming the phase entered as `next`, then
     phase_start for the new one. Emitting phase_end when the phase was LEFT named
-    whatever node came next (`human.after-spec`, `discuss.critique.gate`), so a
+    whatever node came next (`human.after-spec`, `spec.critique.gate`), so a
     consumer reading `next` for the phase saw a gate (the 6.7.0 live run), and
     deliver.sh's `.next == "deliver"` gate record depended on a direct edge. The
     terminal node closes the open phase the same way. A re-entry of an attempt the

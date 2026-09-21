@@ -41,6 +41,10 @@ trap 'trace "?" "error" "trap-ERR"; exit 0' ERR
 
 INPUT=$(cat)
 
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
+
 # stop_hook_active guard: when Claude Code is already continuing because of a
 # previous Stop-hook block, do not block again. Claude Code force-overrides
 # after 8 consecutive blocks; re-blocking only wastes turns. Exit 0 early.

@@ -75,9 +75,8 @@ check_output "compact-gate enumerates gate=unplanned" "gate=unplanned" "$COMPACT
 check "compact-gate needs a gate name" 2 "$COMPACT_GATE" --feature-dir "$CG"
 
 compact_plan() {
-  jq -n --argjson discuss "$1" --argjson review "$2" --argjson iterate "$3" '
+  jq -n --argjson review "$1" --argjson iterate "$2" '
     {specInterview:{run:true,reason:"interview evidence"},
-     discuss:{run:$discuss,reason:"discussion scope"},
      specCritique:{run:true,reason:"spec challenge"},
      planCritique:{run:true,reason:"plan challenge"},
      repositoryValidation:{run:true,reason:"candidate validation"},
@@ -88,44 +87,45 @@ compact_plan() {
      iterate:{run:$iterate,reason:"convergence scope"}}'
 }
 
-plan="$(compact_plan false false false | jq '.specCritique.run = false')"
+plan="$(compact_plan false false | jq '.specCritique.run = false')"
 jq -n --argjson plan "$plan" '{executionProfile:"compact",gatePlan:$plan}' > "$CG/feature.json"
 check "compact-gate rejects an undeclared persisted gate" 2 \
   "$COMPACT_GATE" --feature-dir "$CG" --gate notAGate
 check_output "compact-gate skips a persisted false gate with its reason" \
-  "gate=skip reason=compact gatePlan discuss: discussion scope" \
-  "$COMPACT_GATE" --feature-dir "$CG" --gate discuss
-run_plan="$(compact_plan true false false)"
+  "gate=skip reason=compact gatePlan codeReview: review scope" \
+  "$COMPACT_GATE" --feature-dir "$CG" --gate codeReview
+run_plan="$(compact_plan false false)"
 jq -n --argjson plan "$run_plan" '{executionProfile:"compact",gatePlan:$plan}' > "$CG/feature.json"
 check_output "compact-gate runs a persisted true gate with its reason" \
   "gate=run reason=compact gatePlan specCritique: spec challenge" \
   "$COMPACT_GATE" --feature-dir "$CG" --gate specCritique
 
-incoherent_plan="$(jq -c '.specCritique.run = true' <<<"$plan")"
-jq -n --argjson plan "$incoherent_plan" '{executionProfile:"compact",gatePlan:$plan}' > "$CG/feature.json"
-check_output "compact-gate fails upward when spec critique lacks discuss" \
-  "gate=run reason=compact gatePlan is missing or invalid" \
-  "$COMPACT_GATE" --feature-dir "$CG" --gate specCritique
-
-newline_plan="$(jq -c '.discuss.reason = "line one\nline two"' <<<"$plan")"
+newline_plan="$(jq -c '.specInterview.reason = "line one\nline two"' <<<"$plan")"
 jq -n --argjson plan "$newline_plan" '{executionProfile:"compact",gatePlan:$plan}' > "$CG/feature.json"
 check_output "compact-gate fails upward on a multiline reason" \
   "gate=run reason=compact gatePlan is missing or invalid" \
-  "$COMPACT_GATE" --feature-dir "$CG" --gate discuss
-oversized_plan="$(jq -c '.discuss.reason = ("x" * 241)' <<<"$plan")"
+  "$COMPACT_GATE" --feature-dir "$CG" --gate specInterview
+oversized_plan="$(jq -c '.specInterview.reason = ("x" * 241)' <<<"$plan")"
 jq -n --argjson plan "$oversized_plan" '{executionProfile:"compact",gatePlan:$plan}' > "$CG/feature.json"
 check_output "compact-gate fails upward on an oversized reason" \
   "gate=run reason=compact gatePlan is missing or invalid" \
-  "$COMPACT_GATE" --feature-dir "$CG" --gate discuss
+  "$COMPACT_GATE" --feature-dir "$CG" --gate specInterview
 
 jq -n '{executionProfile:"compact"}' > "$CG/feature.json"
 check_output "compact-gate fails upward when compact state is incomplete" \
   "gate=run reason=compact gatePlan is missing or invalid" \
-  "$COMPACT_GATE" --feature-dir "$CG" --gate discuss
+  "$COMPACT_GATE" --feature-dir "$CG" --gate specInterview
 jq -n --argjson plan "$plan" '{executionProfile:"standard",gatePlan:$plan}' > "$CG/feature.json"
 check_output "compact-gate marks standard runs as unplanned" \
   "gate=unplanned reason=executionProfile=standard is not compact" \
-  "$COMPACT_GATE" --feature-dir "$CG" --gate discuss
+  "$COMPACT_GATE" --feature-dir "$CG" --gate specInterview
+
+# LOOP_SPEC_ROUTE=full is an operator override for the compact spec-critique
+# decision, even when the persisted compact plan says to skip it.
+jq -n --argjson plan "$plan" '{executionProfile:"compact",gatePlan:$plan}' > "$CG/feature.json"
+check_output "compact-gate full route overrides a compact spec critique skip" \
+  "gate=run reason=full route override" \
+  -c "LOOP_SPEC_ROUTE=full bash '$COMPACT_GATE' --feature-dir '$CG' --gate specCritique"
 
 # =====================================================================
 # iterate-gap.sh
@@ -432,8 +432,8 @@ fi
 # Regression: gap and style lived in separate routes, and the engine takes the
 # first satisfied route in declaration order -- so `gap=spec` matched before the
 # style routes and the approval gate was UNREACHABLE. step/interactive silently
-# lost the approval they opted into. Also: a spec gap rewinds to DISCUSS (the
-# autonomous refinement mode), never to SPEC -- see skills/iterate/SKILL.md.
+# lost the approval they opted into. Also: a spec gap rewinds to SPEC itself
+# (DISCUSS folded into it) -- see skills/iterate/SKILL.md.
 APPROVAL="$ROOT/lib/graph/probes/iterate-approval.sh"
 IA="$WORK/ia"; mkdir -p "$IA"
 set_state() {
@@ -586,9 +586,8 @@ check_output "the standard profile takes the long path" \
   "path=full reason=executionProfile=standard" "$SHORT_PATH" --feature-dir "$SP"
 
 # The security signal is re-checked against the artifacts the run has WRITTEN, not
-# trusted from classification time: SPEC and DISCUSS author them after the profile
-# was chosen, so a change that turns out to touch a security surface lengthens its
-# own path.
+# trusted from classification time: SPEC authors them after the profile was chosen,
+# so a change that turns out to touch a security surface lengthens its own path.
 printf '# Spec\n\nRotate the OAuth2 credential.\n' > "$SP/SPEC.md"
 seed_sp maintenance "$(jq -n --arg s "$SP/SPEC.md" '{spec:$s}')"
 check_output "a security signal in a written artifact forces the long path" \
@@ -629,19 +628,19 @@ fi
 
 # The spec rewind target, asserted against the graph itself.
 spec_target="$(jq -r '.edges[]|select(.from=="iterate" and .condition.expects=="gap=spec")|.to' "$ROOT/graph/cycle.graph.json")"
-if [[ "$spec_target" == "discuss" ]]; then
-  echo "PASS: spec gap rewinds to discuss"; PASS=$((PASS + 1))
+if [[ "$spec_target" == "spec" ]]; then
+  echo "PASS: spec gap rewinds to spec"; PASS=$((PASS + 1))
 else
-  echo "FAIL: spec gap rewinds to '$spec_target', expected 'discuss'"; FAIL=$((FAIL + 1))
+  echo "FAIL: spec gap rewinds to '$spec_target', expected 'spec'"; FAIL=$((FAIL + 1))
 fi
 
-# --- discuss-critique: skip the spec-critique subgraph without skipping the grill ---
-DISCUSS_CRITIQUE="$PROBES/discuss-critique.sh"
-DC="$WORK/discuss-critique"
+# --- spec-critique: skip the critique subgraph without skipping the grill ---
+SPEC_CRITIQUE="$PROBES/spec-critique.sh"
+DC="$WORK/spec-critique"
 mkdir -p "$DC"
-check_output "discuss-critique enumerates gate=run" "gate=run" "$DISCUSS_CRITIQUE" --answers
-check_output "discuss-critique enumerates gate=skip" "gate=skip" "$DISCUSS_CRITIQUE" --answers
-check "discuss-critique needs a feature dir" 2 "$DISCUSS_CRITIQUE"
+check_output "spec-critique enumerates gate=run" "gate=run" "$SPEC_CRITIQUE" --answers
+check_output "spec-critique enumerates gate=skip" "gate=skip" "$SPEC_CRITIQUE" --answers
+check "spec-critique needs a feature dir" 2 "$SPEC_CRITIQUE"
 
 write_spec() {
   local path="$1" gate="$2" unresolved="$3"
@@ -666,25 +665,25 @@ seed_dc() {
 write_spec "$DC/SPEC.md" true '[]'
 seed_dc standard 'null'
 check_output "an already-gated spec skips critique" \
-  "gate=skip reason=spec already gated" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+  "gate=skip reason=spec already gated" "$SPEC_CRITIQUE" --feature-dir "$DC"
 
 write_spec "$DC/SPEC.md" false '[]'
 check_output "an ungated spec runs critique" \
-  "gate=run reason=spec not already gated" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+  "gate=run reason=spec not already gated" "$SPEC_CRITIQUE" --feature-dir "$DC"
 
 write_spec "$DC/SPEC.md" true '["Which behavior is required?"]'
 check_output "unresolved dimensions force critique" \
-  "gate=run reason=spec not already gated" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+  "gate=run reason=spec not already gated" "$SPEC_CRITIQUE" --feature-dir "$DC"
 
 write_spec "$DC/SPEC.md" true '[]'
 jq -n --arg spec "$DC/SPEC.md" \
   '{slug:"dc",executionProfile:"standard",autonomous:true,iterate:{feedback:null},artifacts:{spec:$spec}}' \
   > "$DC/feature.json"
 check_output "a self-scored gate in an autonomous run still runs critique" \
-  "gate=run reason=self-answered questions" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+  "gate=run reason=self-answered questions" "$SPEC_CRITIQUE" --feature-dir "$DC"
 # The driver splits a mode line on spaces and `=`; a reason carrying `oracle=self`
 # once became a field of its own and cut the reason short.
-reason_text="$(bash "$DISCUSS_CRITIQUE" --feature-dir "$DC" | sed 's/^gate=[a-z]* reason=//')"
+reason_text="$(bash "$SPEC_CRITIQUE" --feature-dir "$DC" | sed 's/^gate=[a-z]* reason=//')"
 if grep -q '[a-z]=' <<<"$reason_text"; then
   echo "FAIL: the probe's reason carries a field-shaped token: $reason_text"; FAIL=$((FAIL + 1))
 else
@@ -694,33 +693,64 @@ fi
 write_spec "$DC/SPEC.md" true '[]'
 seed_dc standard '{"type":"spec"}'
 check_output "iterate re-entry runs critique even when gated" \
-  "gate=run reason=iterate re-entry" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+  "gate=run reason=iterate re-entry" "$SPEC_CRITIQUE" --feature-dir "$DC"
 
 seed_dc maintenance 'null'
 check_output "maintenance profile skips critique when the spec is clean" \
   "gate=skip reason=maintenance profile, no security signal" \
-  "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+  "$SPEC_CRITIQUE" --feature-dir "$DC"
+check_output "LOOP_SPEC_ROUTE=full overrides a maintenance critique skip" \
+  "gate=run reason=LOOP_SPEC_ROUTE=full" \
+  -c "LOOP_SPEC_ROUTE=full bash '$SPEC_CRITIQUE' --feature-dir '$DC'"
 
 printf '# Spec\n\nRotate the OAuth2 credential.\n' > "$DC/SPEC.md"
 seed_dc standard 'null'
 check_output "a security signal forces critique even on a gated-looking skip path" \
-  "gate=run reason=security signal" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+  "gate=run reason=security signal" "$SPEC_CRITIQUE" --feature-dir "$DC"
 
 check_output "a missing feature.json fails closed to run" \
-  "gate=run reason=no feature.json" "$DISCUSS_CRITIQUE" --feature-dir "$WORK/no-such-dir"
+  "gate=run reason=no feature.json" "$SPEC_CRITIQUE" --feature-dir "$WORK/no-such-dir"
 
-declared="$(bash "$DISCUSS_CRITIQUE" --answers)"
+# A spec that already took the oneshot route skips the critique subgraph: the ONESHOT
+# review gate reads the spec independently, so a second critic before it is redundant.
+RC="$WORK/spec-critique-oneshot"; mkdir -p "$RC/docs/loop-spec/features/rc" "$RC/src" "$RC/.loop-spec/features/rc"
+git -C "$RC" init -q
+RC_FD="$RC/.loop-spec/features/rc"; RC_SPEC="$RC/docs/loop-spec/features/rc/SPEC.md"
+printf 'def f():\n    return 1\n' > "$RC/src/f.py"
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - src/f.py\nroute: oneshot\n---\n# rc\n' > "$RC_SPEC"
+jq -n --arg spec "$RC_SPEC" '{slug:"rc",executionProfile:"standard",iterate:{feedback:null},artifacts:{spec:$spec}}' > "$RC_FD/feature.json"
+check_output "spec-critique skips when the spec took the oneshot route" \
+  "gate=skip reason=route=oneshot" "$SPEC_CRITIQUE" --feature-dir "$RC_FD"
+check_output "LOOP_SPEC_ROUTE=full forces the critique on a oneshot spec" \
+  "gate=run reason=LOOP_SPEC_ROUTE=full" -c "LOOP_SPEC_ROUTE=full bash '$SPEC_CRITIQUE' --feature-dir '$RC_FD'"
+# A gated attended spec used to answer `spec already gated` under the override too.
+write_spec "$DC/SPEC.md" true '[]'
+seed_dc standard 'null'
+check_output "LOOP_SPEC_ROUTE=full forces the critique on a gated spec" \
+  "gate=run reason=LOOP_SPEC_ROUTE=full" -c "LOOP_SPEC_ROUTE=full bash '$SPEC_CRITIQUE' --feature-dir '$DC'"
+# The oneshot skip sits below the security signal and the oracle: the ONESHOT reviewer
+# reads a diff, not a spec, so neither a security surface nor a self-answered gate
+# may lose the challenger to the route.
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - src/f.py\nroute: oneshot\n---\n# rc\n\nRotate the OAuth2 credential.\n' > "$RC_SPEC"
+check_output "a security signal outranks the oneshot skip" \
+  "gate=run reason=security signal" "$SPEC_CRITIQUE" --feature-dir "$RC_FD"
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - src/f.py\nroute: oneshot\n---\n# rc\n' > "$RC_SPEC"
+jq '.autonomous=true' "$RC_FD/feature.json" > "$RC_FD/feature.json.tmp" && mv "$RC_FD/feature.json.tmp" "$RC_FD/feature.json"
+check_output "an autonomous oneshot run keeps the critic (oracle self)" \
+  "gate=run reason=self-answered questions" "$SPEC_CRITIQUE" --feature-dir "$RC_FD"
+
+declared="$(bash "$SPEC_CRITIQUE" --answers)"
 missing=0
 while IFS= read -r expects; do
   [[ -z "$expects" ]] && continue
   grep -qxF "$expects" <<<"$declared" || { echo "  undeclared: $expects"; missing=$((missing + 1)); }
 done < <(jq -r '[.edges[].condition]
-  | map(select(. != null and (.probe | test("discuss-critique.sh$")))) | .[].expects' \
+  | map(select(. != null and (.probe | test("spec-critique.sh$")))) | .[].expects' \
   "$ROOT/graph/cycle.graph.json")
 if [[ "$missing" -eq 0 ]]; then
-  echo "PASS: every discuss-critique route expects a declared answer"; PASS=$((PASS + 1))
+  echo "PASS: every spec-critique route expects a declared answer"; PASS=$((PASS + 1))
 else
-  echo "FAIL: $missing discuss-critique route(s) expect an undeclared answer"; FAIL=$((FAIL + 1))
+  echo "FAIL: $missing spec-critique route(s) expect an undeclared answer"; FAIL=$((FAIL + 1))
 fi
 
 debate_nodes="$(jq -r '[.nodes[]|select(.id=="critique.debate" or .id=="critique.escalate")]|length' \

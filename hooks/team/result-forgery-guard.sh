@@ -30,6 +30,9 @@ if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.loop-spec" && ! -d "$PWD/.loop-spec" ]]
 command -v python3 >/dev/null 2>&1 || exit 0
 
 INPUT="$(cat)"
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 # Bash 3.2 misparses this heredoc inside quoted command substitution; assignments
 # already preserve whitespace without word splitting.
 VERDICT=$(LOOP_SPEC_GUARD_INPUT="$INPUT" python3 - <<'PY' 2>/dev/null || true

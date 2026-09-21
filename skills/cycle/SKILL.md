@@ -1,6 +1,6 @@
 ---
 name: cycle
-description: "Use when starting or resuming repository work from a feature description or spec file. Runs SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER, one phase per invocation. Use /loop-spec:debug for stack traces and /loop-spec:micro for one-file fixes."
+description: "Use when starting or resuming repository work from a feature description or spec file. Runs SPEC -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER, one phase per invocation. Use /loop-spec:debug for stack traces and /loop-spec:micro for one-file fixes."
 argument-hint: "[new] [feature description | path/to/spec.md | backlog]  (optional inline overrides: style:auto|step|interactive|review-only, autonomous, profile:compact|maintenance|standard)"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet EnterWorktree ExitWorktree ToolSearch Workflow
 ---
@@ -68,7 +68,7 @@ Otherwise, read `.action`:
 
 The grill directive (`hooks/team/grill-inject.sh`) may already have elicited answers;
 feed them into the title and scope. SPEC's interview continues the grill and
-DISCUSS still runs its design-shape grill afterward unless the run is autonomous
+its own design-lock step still runs the design-shape grill afterward unless the run is autonomous
 (`execStyle: auto` is not autonomous). `.resume.cleanup[]` lists explicit-mode teams
 that may still be live; probe each with `TaskList({team})`, and if it answers, tell
 the user to `TeamDelete` that team before resuming.
@@ -119,8 +119,8 @@ Handle the first line of `ans` using these rules. Stop when the selected rule re
   feature, `ExitWorktree({action:"keep"})` first.
 - `PAUSED node=...` — a human gate (`style:step|interactive`). Print `loop-spec: paused
   at <node>; re-invoke /loop-spec:cycle to continue.`, exit a Claude worktree, stop.
-  `PAUSED node=human.after-discuss intent=changed` means DISCUSS rewrote Goal or
-  Boundary since the SPEC gate: print those two sections of SPEC.md before the pause
+  `PAUSED node=human.after-spec intent=changed` means SPEC's critique rewrote Goal or
+  Boundary since the interview drafted them: print those two sections of SPEC.md before the pause
   line, because PLAN freezes them as they stand.
 - `DONE status=completed` — step 4. `DONE ... reason=already-satisfied` — print the
   result summary, exit the worktree, stop. `DONE status=escalated|paused ...` — print

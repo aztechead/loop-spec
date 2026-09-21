@@ -58,4 +58,5 @@ check "marker: a verify_failure event was emitted" "1" "$(grep -c '"event":"veri
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
-[[ "$FAIL" -eq 0 ]]
+[[ "$FAIL" -eq 0 ]] || exit 1
+python3 "$REPO_ROOT/tests/lib/verify-dispatch.test.py"

@@ -38,6 +38,9 @@ input=""
 if [ ! -t 0 ]; then
   input="$(cat 2>/dev/null || true)"
 fi
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$PLUGIN_ROOT/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 cwd="$(printf '%s' "$input" | python3 -c '
 import json, sys
 try:
@@ -49,7 +52,7 @@ print(d.get("cwd") or "")
 export CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-${cwd:-$PWD}}"
 
 contexts=()
-contexts+=("loop-spec Codex harness is active. Apply skills/shared/codex-harness.md for tool, dispatch, HITL, and execution-root substitutions. Plugin root: ${PLUGIN_ROOT}. AskUserQuestion maps to request_user_input: when a human is attached, call it and wait through SPEC, DISCUSS, and PLAN. Do not self-answer unless autonomous or LOOP_SPEC_NON_INTERACTIVE=1. If request_user_input is missing, print the question with numbered options and end the turn.")
+contexts+=("loop-spec Codex harness is active. Apply skills/shared/codex-harness.md for tool, dispatch, HITL, and execution-root substitutions. Plugin root: ${PLUGIN_ROOT}. AskUserQuestion maps to request_user_input: when a human is attached, call it and wait through SPEC and PLAN. Do not self-answer unless autonomous or LOOP_SPEC_NON_INTERACTIVE=1. If request_user_input is missing, print the question with numbered options and end the turn.")
 
 stdin_file="$(mktemp "${TMPDIR:-/tmp}/loop-spec-codex-session-XXXXXX")"
 trap 'rm -f "$stdin_file"; printf "{}\n"; exit 0' ERR

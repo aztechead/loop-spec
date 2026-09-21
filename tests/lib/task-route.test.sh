@@ -57,7 +57,6 @@ candidate() {
 compact_gate_plan() {
   jq -nc '{
     specInterview: {run: false, reason: "bounded change has grounded requirements"},
-    discuss: {run: false, reason: "classifier found no unresolved product decision"},
     specCritique: {run: false, reason: "bounded scope makes a separate critique unnecessary"},
     planCritique: {run: true, reason: "review the compact execution plan"},
     repositoryValidation: {run: true, reason: "validate the target repository before change"},
@@ -173,9 +172,6 @@ assert_route "compact gate reasons cannot inject a second probe line" "full" \
   "$(compact_candidate | jq '.gatePlan.acceptance.reason = "line one\nline two"')"
 assert_route "compact gate reasons have a bounded probe-safe length" "full" \
   "$(compact_candidate | jq '.gatePlan.acceptance.reason = ("x" * 241)')"
-assert_route "compact cannot run spec critique after skipping discuss" "full" \
-  "$(compact_candidate | jq '.gatePlan.specCritique.run = true')"
-
 # Routing arms the run: from here on, an exit with no terminal result is detectable.
 armed="$CLEAN_REPO/.loop-spec/active-run.json"
 rm -f "$armed"
@@ -185,6 +181,28 @@ armed_type="$(jq -r '.cycleType' "$armed" 2>/dev/null || echo missing)"
 [[ "$armed_type" == "micro" ]] \
   && pass "armed record carries the normalized route" \
   || fail "armed record carries the normalized route (got $armed_type)"
+rm -f "$armed"
+compact_input="$(compact_candidate)"
+route "$compact_input" >/dev/null
+compact_armed_type="$(jq -r '.cycleType' "$armed" 2>/dev/null || echo missing)"
+[[ "$compact_armed_type" == "full" ]] \
+  && pass "compact validation arms the full cycle lifecycle" \
+  || fail "compact validation arms the full cycle lifecycle (got $compact_armed_type)"
+compact_stored_route="$(jq -r '.classification.route // ""' "$armed")"
+[[ "$compact_stored_route" == "compact" ]] \
+  && pass "compact classification remains normalized as compact" \
+  || fail "compact classification route (got $compact_stored_route)"
+compact_stored_plan="$(jq -c '.classification.gatePlan' "$armed")"
+compact_input_plan="$(jq -c '.gatePlan' <<<"$compact_input")"
+[[ "$compact_stored_plan" == "$compact_input_plan" ]] \
+  && pass "compact gate plan is preserved in the armed classification" \
+  || fail "compact gate plan was not preserved"
+compact_profile="$(jq -c '.classification' "$armed" \
+  | bash "$(cd "$(dirname "$SCRIPT")" && pwd)/cycle-profile.sh" select - \
+  | sed -E 's/^profile=([a-z]+).*/\1/')"
+[[ "$compact_profile" == "compact" ]] \
+  && pass "armed compact classification selects the compact profile" \
+  || fail "armed compact classification profile (got $compact_profile)"
 rm -f "$armed"
 route '{not-json' >/dev/null
 armed_type="$(jq -r '.cycleType' "$armed" 2>/dev/null || echo missing)"

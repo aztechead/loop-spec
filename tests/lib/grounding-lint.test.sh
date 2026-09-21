@@ -259,7 +259,7 @@ ec13=$(lint_exit "$WORK/does-not-exist.md")
 check "missing artifact exits 1" "$([[ "$ec13" == "1" ]] && echo 1 || echo 0)"
 
 # ─── Fixture 15: parenthetical qualifier after ASSUMPTION / EVID ────────────
-# Writers carry 'ASSUMPTION ({dimension}):' over from the DISCUSS transcript
+# Writers carry 'ASSUMPTION ({dimension}):' over from the SPEC interview
 # convention; the lint must accept the qualifier, not force a repair round.
 ledger15="$WORK/EVIDENCE-15.md"
 cat > "$ledger15" <<'EOF'

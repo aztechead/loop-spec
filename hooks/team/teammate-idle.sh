@@ -33,6 +33,8 @@ fi
 
 # The typed reader; empty on a missing or corrupt file, advisory below.
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+py_dir="$(bash "$PLUGIN_ROOT/lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 CURRENT_PHASE=$(bash "$PLUGIN_ROOT/lib/feature-read.sh" "$FEATURE_JSON" -r --filter '.currentPhase // empty' 2>/dev/null) || true
 
 if [[ -z "$CURRENT_PHASE" ]]; then
@@ -41,8 +43,8 @@ if [[ -z "$CURRENT_PHASE" ]]; then
 fi
 
 case "$CURRENT_PHASE" in
-  discuss)
-    advisory "Phase: discuss. Teammate idle during DISCUSS. Await spec-critique gate or lead instruction before claiming new work."
+  spec)
+    advisory "Phase: spec. Teammate idle during SPEC. Await spec-critique gate or lead instruction before claiming new work."
     ;;
   plan)
     advisory "Phase: plan. Teammate idle during PLAN. Await the plan-critique gate or lead instruction."

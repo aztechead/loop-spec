@@ -85,6 +85,14 @@ grep -q 'to: "team-lead"' skills/shared/team-prompts/implementer.md \
   && grep -q 'to: "team-lead"' skills/shared/team-prompts/reviewer.md \
   && grep -q 'to: "team-lead"' skills/shared/team-prompts/critic.md && v=1 || v=0
 check "every team prompt reports to team-lead" "$v"
+grep -qF 'one-shot mode returns the final report directly' skills/shared/team-prompts/critic.md \
+  && grep -qF 'Team mode sends the report with `SendMessage({to: "team-lead", message, summary})`' \
+    skills/shared/team-prompts/critic.md \
+  && v=1 || v=0
+check "critic report transport stays neutral across adapters" "$v"
+grep -qF 'Read the critique assignment at <promptFile> and complete it.' \
+  skills/shared/critique-gate-protocol.md && v=1 || v=0
+check "critique coordinator dispatches the prompt file by reference" "$v"
 
 # 4) TaskList takes no status/filter arguments.
 bad=$(grep -rn 'TaskList({status' skills agents --include='*.md' 2>/dev/null | grep -v 'shared/dispatch.md' | head -5 || true)
@@ -159,7 +167,6 @@ wait_missing=""
 for f in \
   skills/spec/SKILL.md \
   skills/plan/SKILL.md \
-  skills/discuss/SKILL.md \
   skills/execute/SKILL.md \
   skills/verify/SKILL.md \
   skills/iterate/SKILL.md \
@@ -203,10 +210,9 @@ bad=$(grep -rnE 'sleep \$interval' skills --include='*.md' || true)
 check "no sleep-poll join of background Agents" \
   "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
 grep -qF 'Do not prefetch' skills/plan/SKILL.md \
-  && grep -qF 'Do not prefetch' skills/discuss/SKILL.md \
   && ! grep -qF 'check once' skills/plan/SKILL.md \
   && v=1 || v=0
-check "PLAN and DISCUSS avoid speculative prefetch and placeholder waits" "$v"
+check "PLAN avoids speculative prefetch and placeholder waits" "$v"
 
 # 9) For every SendMessage({ occurrence, the 4-line window must NOT contain body:
 #    (dispatch.md excluded — it documents the invalid param).

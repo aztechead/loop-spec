@@ -84,6 +84,10 @@ command -v python3 &>/dev/null || { trace "fail-open" "python3 not found"; exit 
 
 INPUT=$(cat)
 
+# Every python3 launch below skips the version-manager shim (lib/python-path.sh).
+py_dir="$(bash "$SCRIPT_DIR/../../lib/python-path.sh" 2>/dev/null || true)"
+[[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
+
 # Parse the final assistant text and retain the ordered assistant content stream.
 # The content cursor is persisted at denial time so a retry can prove that work and
 # verification happened AFTER the guard raised the scope obligation.
