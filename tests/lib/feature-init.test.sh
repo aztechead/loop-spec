@@ -15,6 +15,12 @@ check() {
   else FAIL=$((FAIL+1)); echo "FAIL: $name"; fi
 }
 
+# A fresh launcher can query a persisted terminal state before any initialization.
+terminal_model="$(bash "$LIB" phase-model completed 2>&1)"
+check "first model query accepts completed without an error" "$([[ $? -eq 0 && "$terminal_model" == inherit ]] && echo 1 || echo 0)"
+check "completed never becomes a runnable phase" "$(bash "$LIB" models --phase completed >/dev/null 2>&1; [[ $? -ne 0 ]] && echo 1 || echo 0)"
+check "unknown model phase remains an error" "$(bash "$LIB" phase-model misspelled >/dev/null 2>&1; [[ $? -ne 0 ]] && echo 1 || echo 0)"
+
 # --- models subcommand ---
 models="$(bash "$LIB" models)"
 check "models is valid JSON" "$(echo "$models" | jq -e . >/dev/null 2>&1 && echo 1 || echo 0)"

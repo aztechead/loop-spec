@@ -424,7 +424,14 @@ case "${1:-}" in
       echo "usage: feature-init.sh phase-model PHASE" >&2
       exit 1
     }
-    resolve_phase_model "$2"
+    # Launchers may inspect durable currentPhase on their first call, including
+    # an already completed run. There is no terminal model override. This query
+    # does not make completed a runnable phase; activate/models stay strict.
+    if [[ "$2" == "completed" ]]; then
+      echo inherit
+    else
+      resolve_phase_model "$2"
+    fi
     ;;
   phase-models)
     no_extra_args phase-models "$@"
