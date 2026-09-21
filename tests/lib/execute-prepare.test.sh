@@ -74,6 +74,27 @@ mv "$runtime_file.tmp" "$runtime_file"
 out="$(LOOP_SPEC_WORKTREES=1 bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
 w="$(jq -r '.width' <<<"$out")"; (( w < 3 )) || w=3; (( w >= 1 )) || w=1
 check "resume: persisted defaults yield the width-aware cap" "$w" "$(jq -r '.rung.maxParallelImplementers' <<<"$out")"
+# A pre-6.9 record with no explicit marker and materialized 1/1 values is also
+# a default record; the current DAG width must still widen the implementer cap.
+jq '.resources={maxParallelSubagents:1,maxParallelImplementers:1}' "$runtime_file" > "$runtime_file.tmp"
+mv "$runtime_file.tmp" "$runtime_file"
+unset LOOP_SPEC_MAX_PARALLEL_SUBAGENTS LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS
+out="$(LOOP_SPEC_WORKTREES=1 bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
+legacy_w="$(jq -r '.width' <<<"$out")"; (( legacy_w < 3 )) || legacy_w=3; (( legacy_w >= 2 )) || legacy_w=2
+check "resume: legacy unmarked 1/1 remains width-aware" "$legacy_w" "$(jq -r '.rung.maxParallelImplementers' <<<"$out")"
+# Pre-6.9 records have no explicit marker: ambiguous 1/1 values remain width-aware,
+# while clearly non-default operator bounds are preserved.
+jq '.resources={maxParallelSubagents:4,maxParallelImplementers:2}' "$runtime_file" > "$runtime_file.tmp"
+mv "$runtime_file.tmp" "$runtime_file"
+unset LOOP_SPEC_MAX_PARALLEL_SUBAGENTS LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS
+out="$(LOOP_SPEC_WORKTREES=1 bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
+check "resume: legacy non-default bounds are retained" "4:2" \
+  "$(jq -r '(.rung.maxParallelSubagents | tostring) + ":" + (.rung.maxParallelImplementers | tostring)' <<<"$out")"
+jq '.resources={maxParallelSubagents:1,maxParallelImplementers:1,explicit:true}' "$runtime_file" > "$runtime_file.tmp"
+mv "$runtime_file.tmp" "$runtime_file"
+out="$(LOOP_SPEC_WORKTREES=1 bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
+check "resume: explicit 1/1 remains an operator bound" "1:1" \
+  "$(jq -r '(.rung.maxParallelSubagents | tostring) + ":" + (.rung.maxParallelImplementers | tostring)' <<<"$out")"
 printf '%s\n' "$runtime_saved" > "$runtime_file"
 
 # --- deferred opt-in baseline -----------------------------------------------------
@@ -314,6 +335,20 @@ check "workspace: the packet carries the repos for execute-step" "fe:fe" "$(jq -
 check "workspace: the rung is the one-shot subagent" "subagent" "$(jq -r '.rung.rung' <<<"$out")"
 out="$(LOOP_SPEC_WORKTREES=0 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=4 LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS=3 bash "$SCRIPT" run --feature-dir "$FDW" 2>/dev/null)"
 check "workspace: no-worktrees forces serial subagent cap" "1:1" \
+  "$(jq -r '(.rung.maxParallelSubagents | tostring) + ":" + (.rung.maxParallelImplementers | tostring)' <<<"$out")"
+# Only `execute-rung select` applied min(width, 3); workspace prepare read the
+# resource-bounds default and ran a width-3 plan serially.
+printf '[{"id":"task-001","subject":"first","repo":"fe","files":["fe/a.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["a"]},
+{"id":"task-002","subject":"second","repo":"fe","files":["fe/b.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["b"]},
+{"id":"task-003","subject":"third","repo":"fe","files":["fe/c.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["c"]}]\n' > "$FDW/tasks.json"
+unset LOOP_SPEC_MAX_PARALLEL_SUBAGENTS LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS
+out="$(LOOP_SPEC_WORKTREES=1 bash "$SCRIPT" run --feature-dir "$FDW" 2>/dev/null)"
+check "workspace: width is measured" "3" "$(jq -r '.width' <<<"$out")"
+check "workspace: with no operator bound the cap is the width-aware default" "3:3" \
+  "$(jq -r '(.rung.maxParallelSubagents | tostring) + ":" + (.rung.maxParallelImplementers | tostring)' <<<"$out")"
+check "workspace: the rung stays the one-shot subagent" "subagent" "$(jq -r '.rung.rung' <<<"$out")"
+out="$(LOOP_SPEC_WORKTREES=1 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 bash "$SCRIPT" run --feature-dir "$FDW" 2>/dev/null)"
+check "workspace: an operator bound outranks the width default" "2:2" \
   "$(jq -r '(.rung.maxParallelSubagents | tostring) + ":" + (.rung.maxParallelImplementers | tostring)' <<<"$out")"
 check "single: the packet has no workspace" "null" "$(jq -r '.workspace' "$FD/dispatch/prepare.json")"
 

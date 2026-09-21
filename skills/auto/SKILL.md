@@ -10,6 +10,11 @@ allowed-tools: Bash Read Glob Grep Skill
 Select a route without asking questions or implementing the request.
 Preserve the request verbatim when delegating. Always include the `autonomous` token.
 
+Resolve bundled references from this skill's supplied Base directory: shared
+contracts are at `../shared/` (including `../shared/compact-profile.md`) and
+helpers are at `../../lib/`. Use those paths directly; never search the whole
+filesystem to locate them.
+
 ## Entry Contract
 
 - `/loop-spec:auto <description>` is autonomous by definition. You may remove a redundant inline `autonomous` token from the description.

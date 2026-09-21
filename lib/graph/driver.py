@@ -1761,6 +1761,63 @@ def print_next(nxt, label, effort, feature_dir):
     print("EXT instructions=%s sha256=%s" % (record["prompt"], record["promptSha256"]))
 
 
+def plan_dispatch_packet(feature_dir, feat, instructions, mode):
+    """Write PLAN's deterministic source packet after ingress has passed.
+
+    The coordinator names durable artifacts and the rendered snapshot only; the
+    planner remains responsible for reading the focused source files and writing
+    PLAN. Keeping this packet on disk also gives every harness the same handoff.
+    """
+    root = feature_root(feature_dir, feat)
+    docs = docs_dir(feature_dir, feat)
+    artifacts = feat.get("artifacts") or {}
+    def artifact(key, fallback):
+        value = artifacts.get(key) or fallback
+        return value if os.path.isabs(value) else os.path.join(root, value)
+    spec = artifact("spec", os.path.join(docs, "SPEC.md"))
+    evidence = artifact("evidence", os.path.join(docs, "EVIDENCE.md"))
+    plan = artifact("plan", os.path.join(docs, "PLAN.md"))
+    patterns = artifact("patterns", os.path.join(docs, "PATTERNS.md"))
+    snapshot_root = Path(instructions["manifest"]).parent
+    templates = snapshot_root / "skills" / "shared" / "artifact-templates"
+    contracts = snapshot_root / "agents" / "planner.md"
+    dispatch = Path(feature_dir) / "dispatch"
+    dispatch.mkdir(parents=True, exist_ok=True)
+    brief = dispatch / "plan-planner-brief.md"
+    lines = [
+        "# PLAN planner packet",
+        "",
+        "Role: planner. Read the focused source artifacts below, then author PLAN.md and PATTERNS.md.",
+        "The coordinator has already completed phase ingress and does not paraphrase these sources.",
+        "",
+        "## Source artifacts",
+        "- spec_path: %s" % spec,
+        "- evidence_path: %s%s" % (evidence, " (optional; absent until authored)" if not os.path.isfile(evidence) else ""),
+        "- patterns_path: %s (reuse when present; create it when absent)" % patterns,
+        "- plan_path: %s" % plan,
+        "- decisions ledger: %s" % (Path(feature_dir) / "decisions.jsonl"),
+        "",
+        "## Snapshot contracts",
+        "- planner role contract: %s" % contracts,
+        "- template_path: %s" % (templates / "PLAN.md.template"),
+        "- patterns_template_path: %s" % (templates / "PATTERNS.md.template"),
+        "- repository root: %s" % root,
+        "- feature directory: %s" % feature_dir,
+        "- greenfield: %s" % bool(feat.get("greenfield")),
+        "- workspace: %s" % json.dumps(feat.get("workspace"), sort_keys=True),
+        "- budget: %s" % mode.get("budget", "unknown"),
+        "- remaining: %s" % mode.get("remaining", "unknown"),
+        "- exhausted: %s" % mode.get("exhausted", "false"),
+    ]
+    feedback_value = feat.get("iterate", {}).get("feedback") if isinstance(feat.get("iterate"), dict) else None
+    if mode.get("reentry") == "true" or feedback_value is not None:
+        lines += ["", "## Reentry", "- iterate feedback JSON: %s" % json.dumps(feedback_value, sort_keys=True)]
+    brief.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    model = (feat.get("models") or {}).get("planner") or "inherit"
+    return {"role": "planner", "model": model, "subagentType": "loop-spec:planner",
+            "promptFile": str(brief)}
+
+
 def redo_max():
     return int(os.environ.get("LOOP_SPEC_REDO_MAX") or 3)
 
@@ -2667,7 +2724,8 @@ def spec_fill(target, o):
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(text)
     flags = []
-    for name, args in (("artifact-lint", ["spec", target]), ("oneshot-spec-lint", [target])):
+    for name, args in (("artifact-lint", ["spec", target]), ("oneshot-spec-lint", [target]),
+                       ("grounding-lint", [target])):
         out = lib_run(name, *args, quiet=True).stdout
         flags += [line for line in out.splitlines() if line.startswith("FLAG")]
     print(json.dumps({"spec": target, "filled": filled, "flags": flags}))
@@ -3297,6 +3355,8 @@ def cmd_phase_begin(argv):
         packet["skeletons"] = skeletons
     if phase in ("execute", "verify"):
         packet[phase] = extra
+    if phase == "plan" and entry.returncode == 0 and not flags:
+        packet["planner"] = plan_dispatch_packet(feature_dir, phase_state, instructions, mode)
     print(json.dumps(packet))
     if entry.returncode != 0:
         return 1

@@ -72,6 +72,31 @@ check "next: the approval digests the SPEC text" "1" "$(python3 -c "
 import sys, json; sys.path.insert(0, '$REPO_ROOT/lib'); from spec_intent import intent_digest
 print(int(intent_digest(open('$DOCS1/SPEC.md').read()) == json.load(open('$FD/feature.json'))['specApproval']['sha256']))")"
 check "next: the spec-approved event names PLAN" "plan" "$(jq -r 'select(.event == "spec-approved") | .phase' "$FD/events.jsonl")"
+# PLAN entry emits one deterministic planner packet after ingress succeeds. The
+# packet points at the rendered snapshot and absolute artifact/template paths.
+packet="$(cd "$REPO" && drv phase-begin plan --feature-dir "$FD" 2>/dev/null)"
+check "phase-begin plan: planner packet is present" "loop-spec:planner" "$(jq -r '.planner.subagentType' <<<"$packet")"
+planner_brief="$(jq -r '.planner.promptFile' <<<"$packet")"
+check "phase-begin plan: packet brief is readable" "1" "$([[ -f "$planner_brief" ]] && echo 1 || echo 0)"
+check "phase-begin plan: packet role is explicit" "planner" "$(jq -r '.planner.role' <<<"$packet")"
+template_path="$(sed -n 's/^- template_path: //p' "$planner_brief")"
+check "phase-begin plan: brief names absolute PLAN template" "1" "$(grep -c '^/' <<<"$template_path")"
+check "phase-begin plan: brief template is readable" "1" "$([[ -f "$template_path" ]] && echo 1 || echo 0)"
+check "phase-begin plan: inherited planner model is carried" "inherit" "$(jq -r '.planner.model' <<<"$packet")"
+check "phase-begin plan: packet names approved SPEC" "1" "$(grep -c '^\- spec_path: .*SPEC.md$' "$planner_brief")"
+check "phase-begin plan: spec_path is the approved artifact" "1" "$(grep -Fx -- "- spec_path: $DOCS1/SPEC.md" "$planner_brief" | wc -l | tr -d ' ')"
+snapshot_dir="$(dirname "$(jq -r '.driverNext.instructions.manifest' "$FD/feature.json")")"
+check "phase-begin plan: template comes from the instruction snapshot" "1" "$(grep -Fx -- "- template_path: $snapshot_dir/skills/shared/artifact-templates/PLAN.md.template" "$planner_brief" | wc -l | tr -d ' ')"
+check "phase-begin plan: brief does not delegate phase workflow" "0" "$(grep -c 'instruction snapshot\|phase instructions' "$planner_brief" || true)"
+check "phase-begin plan: false reentry has no feedback section" "0" "$(grep -c '^## Reentry' "$planner_brief" || true)"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" models.planner '"sonnet"' >/dev/null
+packet_native="$(cd "$REPO" && drv phase-begin plan --feature-dir "$FD" 2>/dev/null)"
+check "phase-begin plan: stored planner model is preserved" "sonnet" "$(jq -r '.planner.model' <<<"$packet_native")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" iterate.feedback '{"gap":"execute","reason":"retain"}' >/dev/null
+packet_feedback="$(cd "$REPO" && drv phase-begin plan --feature-dir "$FD" 2>/dev/null)"
+feedback_brief="$(jq -r '.planner.promptFile' <<<"$packet_feedback")"
+check "phase-begin plan: reentry feedback is exact JSON" "1" "$(grep -F -c 'iterate feedback JSON: {"gap": "execute", "reason": "retain"}' "$feedback_brief")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" iterate.feedback null >/dev/null
 
 # declined SPEC gate is terminal for the invocation
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" currentPhase '"spec"' >/dev/null

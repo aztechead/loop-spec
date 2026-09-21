@@ -5,6 +5,9 @@ Use the compact directive below when assembling subagent, team, loop-fleet, or w
 For inline work, the lead reads this contract directly.
 `tests/implementer-contract-coverage.test.sh` checks that all dispatch paths include it.
 
+Engineering directives require a separate, single read of `skills/shared/approach-selection.md`.
+That selection guide is intentionally not copied into rendered contract bundles.
+
 ## The four questions (design gate — on by default)
 
 Before implementing, and again before DONE, ask of the change:
@@ -33,8 +36,12 @@ report. A question never asked is the failure mode.
 
 ## The directives that travel with it
 
-Every code-producing dispatch prompt names each of these (read, never paste), with the
-probe commands resolved for its rung:
+When a rendered contract bundle is supplied, read that bundle once; the table below
+identifies its directive sources, and documentation or test guidance appears only when
+the task files make it relevant. Do not reopen bundled sources. Only a no-bundle path
+names and reads the applicable individual sources, with probe commands resolved for its
+rung. Read `skills/shared/approach-selection.md` once separately in either path; it is
+intentionally excluded from rendered bundles.
 
 | Directive | Canonical file | Probes before DONE |
 |---|---|---|

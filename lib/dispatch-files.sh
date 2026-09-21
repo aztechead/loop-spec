@@ -52,6 +52,27 @@ dispatch_dir() {
   printf '%s\n' "$FEATURE_DIR/dispatch"
 }
 
+render_sections() {
+  local source="$1"; shift
+  local title
+  title="$(awk 'NR == 1 && /^# / { sub(/^# /, ""); print; found=1; exit } END { if (!found) exit 1 }' "$source")" \
+    || { echo "dispatch-files.sh: contract source has no title: $source" >&2; return 2; }
+  printf '# %s\n' "$title"
+  local heading
+  for heading in "$@"; do
+    awk -v wanted="$heading" '
+      $0 == "## " wanted { on=1; found=1; print; next }
+      on && /^## / { exit }
+      on { print }
+      END { if (!found) exit 7 }
+    ' "$source" || {
+      local status=$?
+      [[ "$status" -eq 7 ]] && echo "dispatch-files.sh: required contract section missing: $source: $heading" >&2
+      return 2
+    }
+  done
+}
+
 case "$cmd" in
   brief)
     [[ -n "$FEATURE_DIR" && -n "$TASK_ID" ]] \
@@ -127,9 +148,9 @@ case "$cmd" in
     contracts="engineering-directives.md implementer-contract.md execution-discipline.md"
     jq -e '[.files[]? | select(test("\\.(md|markdown|rst)$") | not)] | length > 0' <<<"$task_json" >/dev/null \
       && contracts="$contracts laziness-ladder.md design-for-change.md human-code.md"
-    jq -e '[.files[]? | select(test("\\.(md|markdown|rst)$"))] | length > 0' <<<"$task_json" >/dev/null \
+    jq -e '[.files[]? | select(test("\\.(md|markdown|mdx|rst)$"))] | length > 0' <<<"$task_json" >/dev/null \
       && contracts="$contracts human-docs.md"
-    jq -e '[.files[]? | select(test("(^|/)tests?/|\\.test\\.|_test\\.|(^|/)test_|\\.spec\\."))] | length > 0' <<<"$task_json" >/dev/null \
+    jq -e '[.files[]? | select(test("(^|/)(tests?|__tests__|spec)/|\\.test\\.|_test\\.|(^|/)test_|\\.spec\\."))] | length > 0' <<<"$task_json" >/dev/null \
       && contracts="$contracts writing-good-tests.md"
     contracts_out="$(dirname "$OUT")/${TASK_ID}-contracts.md"
     for c in $contracts; do
@@ -140,7 +161,21 @@ case "$cmd" in
       echo "# Contracts for $TASK_ID (rendered from skills/shared at dispatch; the sources bind)"
       for c in $contracts; do
         printf '\n\n---\n\n<!-- source: %s -->\n\n' "$shared_dir/$c"
-        cat "$shared_dir/$c"
+        case "$c" in
+          engineering-directives.md)
+            echo "> Rendered sections: Code directives; Version evidence; Test directives. Full diagnostic reference (consult only if a probe needs interpretation): $shared_dir/$c."
+            render_sections "$shared_dir/$c" "Code directives" "Version evidence" "Test directives" || exit 2
+            ;;
+          laziness-ladder.md)
+            echo "> Rendered sections: Compact directive (read this file; do not paste it into a prompt); Resolving the probe (<probe_dir>); Companion directives. Full diagnostic reference (consult only if a probe needs interpretation): $shared_dir/$c."
+            render_sections "$shared_dir/$c" \
+              "Compact directive (read this file; do not paste it into a prompt)" \
+              'Resolving the probe (`<probe_dir>`)' "Companion directives" || exit 2
+            ;;
+          *)
+            cat "$shared_dir/$c"
+            ;;
+        esac
       done
     } > "$contracts_out" || { echo "dispatch-files.sh: cannot write $contracts_out" >&2; exit 2; }
     jq -r --arg id "$TASK_ID" --arg constraints "$constraints" --arg cited "$cited" --arg environment "$environment" --arg contracts_out "$contracts_out" --arg contracts "$contracts" '

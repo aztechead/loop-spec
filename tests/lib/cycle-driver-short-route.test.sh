@@ -75,13 +75,16 @@ ec=0; (cd "$REPO7" && drv spec fill --feature-dir "$FD7" --command true --expect
 check "spec fill --row: a row the spec does not hold is refused" "1" "$ec"
 out="$(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --grounding "slugify.py:2 is the one transform" 2>/dev/null)"
 check "spec fill: a grounding bullet replaces none" "0" "$(grep -c '^- none$' "$DOCS7/SPEC.md")"
-check "spec fill: the filled skeleton passes both spec lints" "[]" "$(jq -c '.flags' <<<"$out")"
+check "spec fill: invalid raw file-line grounding is flagged immediately" "1" "$(jq -r '.flags[]' <<<"$out" | grep -c 'malformed grounding bullet')"
+printf '%s\n' '- EVID-001 | slugify transform is defined in the cited source | inspect slugify.py:2 | observed in fixture' > "$DOCS7/EVIDENCE.md"
+out="$(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --grounding "EVID-001: slugify transform is defined in the cited source" --row 1 2>/dev/null)"
+check "spec fill: a valid evidence row has no flags" "[]" "$(jq -c '.flags' <<<"$out")"
 ec=0; (cd "$REPO7" && drv spec fill --feature-dir "$FD7" >/dev/null 2>&1) || ec=$?
 check "spec fill: nothing to fill is a bad invocation" "2" "$ec"
 # One call for the whole spec (port audit 4, item 5): the same fills from a JSON object.
 cp "$DOCS7/SPEC.md" "$WORK/spec7.filled"; rm -f "$DOCS7/SPEC.md"
 (cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" >/dev/null 2>&1)
-out="$(cd "$REPO7" && printf '%s' '{"intent":"Dots survive slugify.","notes":{"slugify.py":"strip dots in slugify()"},"criteria":[{"command":"true","expect":"it runs"}],"grounding":["slugify.py:2 is the one transform"]}' | drv spec fill --feature-dir "$FD7" --json - 2>/dev/null)"
+out="$(cd "$REPO7" && printf '%s' '{"intent":"Dots survive slugify.","notes":{"slugify.py":"strip dots in slugify()"},"criteria":[{"command":"true","expect":"it runs"}],"grounding":["EVID-001: slugify transform is defined in the cited source"]}' | drv spec fill --feature-dir "$FD7" --json - 2>/dev/null)"
 check "spec fill --json: every field in one call" "intent note:slugify.py criterion:GE-001 grounding" "$(jq -r '.filled | join(" ")' <<<"$out")"
 ec=0; (cd "$REPO7" && printf '%s' '{"criteria":["`true` exits 0: a sentence"]}' | drv spec fill --feature-dir "$FD7" --json - >/dev/null 2>&1) || ec=$?
 check "spec fill --json: a criterion sentence is refused" "2" "$ec"

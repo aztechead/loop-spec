@@ -11,11 +11,15 @@
 # Skip (gate=skip) when ALL of these hold, in this order of reasons:
 #   1. maintenance profile and no security signal in SPEC.md (same lightening
 #      SPEC's own mode line already takes for a maintenance profile).
-#   2. SPEC.md is already gated: unresolved_questions is empty AND no security signal AND this is not
+#   2. The run took the oneshot route (oneshot.sh) with no security signal and the
+#      gate independently answered: an attended run already had an independent
+#      human input, while a self-answered run is handled by the oracle check below.
+#   3. SPEC.md is already gated: unresolved_questions is empty AND no security signal AND this is not
 #      an ITERATE re-entry (iterate.feedback non-null always runs) AND the gate
 #      was independently answered: an autonomous run with no supervisor selects
 #      its own recommended answers and the critic is the only independent read the spec
 #      gets. Two live runs skipped it that way.
+# LOOP_SPEC_ROUTE=full is the operator's override and answers gate=run ahead of every skip.
 # Fail closed: missing/unreadable inputs, a security-signal scan failure, or
 # an ungated spec all answer gate=run. An unresolved probe never satisfies a
 # skip route (graph-contract.md).
@@ -59,6 +63,10 @@ done
 feature_json="$feature_dir/feature.json"
 [[ -f "$feature_json" ]] || run "no feature.json in $feature_dir"
 
+# The operator's word outranks every skip below, including compact and
+# maintenance profiles or a missing SPEC.md artifact.
+[[ "${LOOP_SPEC_ROUTE:-}" == "full" ]] && run "LOOP_SPEC_ROUTE=full forces the full route and its critique"
+
 profile="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.executionProfile // "standard"' 2>/dev/null)" \
   || run "feature.json could not be read"
 if [[ "$profile" == "compact" ]]; then
@@ -85,15 +93,6 @@ if [[ -z "$spec_path" || ! -f "$spec_path" ]]; then
 fi
 [[ -n "$spec_path" && -f "$spec_path" ]] || run "no SPEC.md to judge"
 
-# Every autonomous oneshot run paid a challenger critique before ONESHOT once the gate
-# moved ahead of the human node in 6.9.0; the ONESHOT review gate already reads the
-# spec independently, so this gate skips there. LOOP_SPEC_ROUTE=full still forces the
-# full route and its critique (oneshot.sh honors the same override).
-route_line="$(bash "$SCRIPT_DIR/oneshot.sh" --feature-dir "$feature_dir" 2>/dev/null || true)"
-case "$route_line" in
-  route=oneshot*) skip "route=oneshot: the ONESHOT review gate is the spec's independent read" ;;
-esac
-
 signal_rc=0
 signal=""
 if [[ -x "$SECURITY_SIGNAL" ]]; then
@@ -116,6 +115,16 @@ case "$oracle" in
   # No `=` and no comma in the reason: the driver splits a mode line on spaces and `=`
   # to build its JSON, and a reason that carried `oracle=self` became a field.
   oracle=self*) run "self-answered questions; autonomous run with no supervisor; the critic is the spec's only independent read" ;;
+esac
+
+# An attended oneshot run already had independent human input before ONESHOT;
+# its implementation review can therefore replace this duplicate critique.
+# The skip sits below the security signal and oracle because a security surface
+# still needs the challenger, and a self-answered spec still has no independent
+# read.
+route_line="$(bash "$SCRIPT_DIR/oneshot.sh" --feature-dir "$feature_dir" 2>/dev/null || true)"
+case "$route_line" in
+  route=oneshot*) skip "route=oneshot: the ONESHOT review gate is the spec's independent read" ;;
 esac
 
 gate_status="$(python3 - "$spec_path" "$SCRIPT_DIR/../.." <<'PY'

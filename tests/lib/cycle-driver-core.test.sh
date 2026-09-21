@@ -79,6 +79,7 @@ check "next: style=step pauses at the human gate" "PAUSED node=human.after-spec"
 check "next: SPEC exit records the intent the human saw, not an approval" "true" "$(jq '.specIntentSeen.sha256 != null and .specApproval == null' "$FD/feature.json")"
 ec=0; err="$(cd "$REPO" && drv phase-begin plan --feature-dir "$FD" 2>&1 >/dev/null)" || ec=$?
 check "phase-begin: PLAN without the recorded approval is refused" "1" "$ec"
+check "phase-begin: refused PLAN emits no planner packet" "0" "$(find "$FD/dispatch" -name 'plan-planner-brief.md' -print 2>/dev/null | wc -l | tr -d ' ')"
 check "phase-begin: the refusal names the record" "1" "$(grep -c 'PLAN needs the recorded Goal and Boundary approval' <<<"$err")"
 check "phase-begin: the refusal is on the ledger as a refusal" "1" "$(jq -c 'select(.event == "entry_refused" and .phase == "plan")' "$FD/events.jsonl" | wc -l | tr -d ' ')"
 check "phase-begin: the refusal escalates nothing" "0" "$(jq -c 'select(.event == "escalated")' "$FD/events.jsonl" | wc -l | tr -d ' ')"

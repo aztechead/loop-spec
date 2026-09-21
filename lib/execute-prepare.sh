@@ -235,10 +235,10 @@ rung='{}'
 # A resumed phase may start in a fresh process with no startup environment.
 # Carry the validated startup bounds from durable runtime state into every rung,
 # including workspace mode; an operator export still takes precedence.
-# A record without `explicit` predates 6.9.0 and restores as before; one that says
-# false holds the defaults, which execute-rung.sh derives from the width instead.
-# (`//` would read a stored false as missing, so the test is an equality.)
-if [[ -f "$runtime" && "$(jq -r 'if .resources.explicit == false then "false" else "true" end' "$runtime" 2>/dev/null)" != "false" ]]; then
+# An explicit startup marker is authoritative. Older records without a marker
+# retain only clearly non-default bounds; ambiguous 1/1 records use width-aware
+# defaults on resume.
+if [[ -f "$runtime" && "$(jq -r 'if .resources.explicit == true then "true" elif (.resources.explicit == null and (((.resources.maxParallelSubagents // 1) > 1) or ((.resources.maxParallelImplementers // 1) > 1))) then "true" else "false" end' "$runtime" 2>/dev/null)" == "true" ]]; then
   if [[ -z "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
     persisted_subagents="$(jq -r '.resources.maxParallelSubagents // empty' "$runtime" 2>/dev/null || true)"
     [[ "$persisted_subagents" =~ ^[1-9][0-9]*$ ]] && export LOOP_SPEC_MAX_PARALLEL_SUBAGENTS="$persisted_subagents"
@@ -255,14 +255,12 @@ if [[ "$workspace" == "null" ]]; then
     --workflow-optin "$(jq -r '.workflowExecuteOptIn // false' "$runtime" 2>/dev/null || echo false)" \
     --implementer-model "$(fget '.models.implementer // "inherit"')")" || { echo "execute-prepare: rung selection failed" >&2; exit 2; }
 else
-  ws_subagents="$(bash "$SCRIPT_DIR/resource-bounds.sh" get subagents)" || exit $?
-  ws_implementers="$(bash "$SCRIPT_DIR/resource-bounds.sh" get implementers)" || exit $?
-  if [[ "${LOOP_SPEC_WORKTREES:-1}" == "0" ]]; then
-    ws_subagents=1
-    ws_implementers=1
-  fi
-  rung="$(jq -cn --argjson s "$ws_subagents" --argjson i "$ws_implementers" \
-    '{rung:"subagent",reason:"workspace mode always dispatches one-shot subagents",worktreesEnabled:false,subagentIsolation:"none",maxParallelSubagents:$s,maxParallelImplementers:$i}')"
+  selected="$(lib execute-rung select --width "${width:-0}" \
+    --teams-mode "$(jq -r '.teamsMode // "none"' "$runtime" 2>/dev/null || echo none)" \
+    --workflows-available "$(jq -r '.workflowsAvailable // false' "$runtime" 2>/dev/null || echo false)" \
+    --workflow-optin "$(jq -r '.workflowExecuteOptIn // false' "$runtime" 2>/dev/null || echo false)" \
+    --implementer-model "$(fget '.models.implementer // "inherit"')")" || { echo "execute-prepare: workspace rung selection failed" >&2; exit 2; }
+  rung="$(jq '.rung="subagent" | .reason="workspace mode always dispatches width-aware one-shot subagents" | .worktreesEnabled=false | .subagentIsolation="none"' <<<"$selected")"
 fi
 max_retries="$(lib tuning get executeMaxRetriesPerTask 6 2>/dev/null || echo 6)"
 worktree_base=""

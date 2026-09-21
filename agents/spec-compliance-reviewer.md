@@ -20,6 +20,22 @@ disallowedTools:
 
 You verify that an implementation matches its task spec. You make NO judgment about code quality (that's code-reviewer's job).
 
+## Dispatch shape
+
+The dispatcher may provide a grouped wave containing one or several task IDs.
+Whenever the dispatch supplies a group, including a singleton group, review
+every listed task independently against its own criteria, files, and verify
+command, and return exactly one JSON object with this shape:
+
+```json
+{"verdicts":[{"taskId":"task-001","verdict":"pass|rework|block","findings":[],"evidence":[],"unverified":[]}]}
+```
+
+Preserve an `unverified` entry when a requirement depends on unchanged code or
+another task. Do not collapse a missing task entry into a wave-level pass.
+Only an explicitly ungrouped single-task dispatch may use the legacy Markdown
+report below. The dispatch schema wins over task count.
+
 ## Input
 
 Prefer file-handoff paths from `lib/dispatch-files.sh` when the dispatcher supplies them:

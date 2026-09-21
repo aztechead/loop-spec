@@ -43,8 +43,22 @@ fi
 py_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/python-path.sh" 2>/dev/null || true)"
 [[ -z "$py_dir" ]] || export PATH="$py_dir:$PATH"
 LOOP_SPEC_PHASE_ALT=""
+phase_graph_fallback=0
 if [[ -z "$tool" || "$tool" == "Skill" ]]; then
   LOOP_SPEC_PHASE_ALT="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/phases.sh" regex 2>/dev/null || true)"
+  # A restricted hook PATH may intentionally omit jq. Keep phase recognition
+  # available through the Python runtime already required by this hook.
+  if [[ -z "$LOOP_SPEC_PHASE_ALT" ]]; then
+    phase_graph_fallback=1
+    graph="${LOOP_SPEC_GRAPH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/graph/cycle.graph.json}"
+    LOOP_SPEC_PHASE_ALT="$(python3 -c '
+import json, re, sys
+g = json.load(open(sys.argv[1]))
+print("|".join(n["id"] for n in g.get("nodes", [])
+    if n.get("kind") == "agent"
+    and re.fullmatch(r"skills/[^/]+/SKILL\.md", str(n.get("body", "")))))
+' "$graph" 2>/dev/null || true)"
+  fi
 fi
 export LOOP_SPEC_PHASE_ALT
 IDENTITY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/session_identity.py"
@@ -216,8 +230,44 @@ PRIOR=$(printf '%s' "$PARSED" | python3 -c \
 # end to end (#10, 6.6.4 live run); lib/graph/driver.py record_transition reads the
 # same variable.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ "${LOOP_SPEC_SAME_SESSION:-}" == "1" ]] \
-    || bash "$SCRIPT_DIR/../../lib/graph/phases.sh" same-session "$PRIOR" "$TARGET" 2>/dev/null; then
+same_session=0
+if [[ "${LOOP_SPEC_SAME_SESSION:-}" == "1" ]]; then
+  same_session=1
+elif bash "$SCRIPT_DIR/../../lib/graph/phases.sh" same-session "$PRIOR" "$TARGET" 2>/dev/null; then
+  same_session=1
+elif ! command -v jq >/dev/null 2>&1 || (( phase_graph_fallback )); then
+  graph="${LOOP_SPEC_GRAPH:-$SCRIPT_DIR/../../graph/cycle.graph.json}"
+  if python3 - "$graph" "$PRIOR" "$TARGET" <<'PY' 2>/dev/null
+import json
+import sys
+
+with open(sys.argv[1]) as stream:
+    graph = json.load(stream)
+kind = {node.get("id"): node.get("kind") for node in graph.get("nodes", [])}
+edges = {}
+for edge in graph.get("edges", []):
+    edges.setdefault(edge.get("from"), []).append(edge)
+source = sys.argv[2]
+target = sys.argv[3]
+
+def reaches(node, seen):
+    for edge in edges.get(node, []):
+        destination = edge.get("to")
+        if destination == target and edge.get("sameSession") is True:
+            return True
+        if (destination != target and kind.get(destination) != "agent"
+                and destination not in seen
+                and reaches(destination, seen | {destination})):
+            return True
+    return False
+
+raise SystemExit(0 if reaches(source, {source}) else 1)
+PY
+  then
+    same_session=1
+  fi
+fi
+if (( same_session )); then
   exit 0
 fi
 

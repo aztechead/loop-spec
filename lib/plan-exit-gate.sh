@@ -18,6 +18,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/exit-gate-prelude.sh" "${1:-}"
 
 tasks="$feature_dir/tasks.json"
+collapsed_tasks=""
+cleanup_width_tasks() { [[ -z "$collapsed_tasks" ]] || rm -f "$collapsed_tasks"; }
+trap cleanup_width_tasks EXIT
 extract="bash lib/plan-tasks.sh extract $docs/PLAN.md > $tasks"
 if [[ -f "$feature_dir/tasks.extract.err" ]]; then
   flag "[tasks] PLAN extraction failed; repair PLAN.md and rerun plan-tasks.sh extract before using the sidecar"
@@ -50,8 +53,21 @@ if [[ -f "$tasks" ]]; then
     fi
     [[ "$ncrit" != "0" ]] || flag "[feasibility] $id has no acceptance criteria"
   done < <(jq -r '.[] | [.id, (.verifyCommand // ""), ((.acceptanceCriteria // []) | length)] | @tsv' "$tasks")
-  rc=0; lib dag-width < "$tasks" >/dev/null 2>&1 || rc=$?
-  (( rc == 3 )) && flag "[feasibility] task DAG has a dependency cycle"
+  # Preserve raw PLAN cycle validation before batching can rewrite dependencies.
+  raw_rc=0; lib dag-width < "$tasks" >/dev/null 2>&1 || raw_rc=$?
+  (( raw_rc == 3 )) && flag "[feasibility] task DAG has a dependency cycle"
+  # EXECUTE dispatches the collapsed task graph. Measure that same graph here so
+  # PLAN's width gate and the rung selector cannot disagree about batching.
+  width_tasks="$tasks"
+  collapsed_tasks="$(mktemp "${TMPDIR:-/tmp}/loop-spec-plan-width.XXXXXX")" \
+    || { flag "[width] could not allocate temporary collapsed task graph"; exit 1; }
+  if ! bash "$SCRIPT_DIR/task-batch.sh" collapse "$tasks" > "$collapsed_tasks" 2>/dev/null; then
+    flag "[width] task-batch collapse failed; refusing to measure a graph different from EXECUTE"
+    exit 1
+  fi
+  width_tasks="$collapsed_tasks"
+  rc=0; lib dag-width < "$width_tasks" >/dev/null 2>&1 || rc=$?
+  (( rc == 3 )) && flag "[feasibility] collapsed task DAG has a dependency cycle"
   # A task that names a file another task names waits for it (execute-prepare.sh adds
   # the edge), so tasks that share files run as one chain however many there are: the
   # 6.5.0 cycle here dispatched 12 tasks one at a time, 9 of its 11 edges file overlaps.
@@ -67,7 +83,7 @@ if [[ -f "$tasks" ]]; then
     excludes="$(fget '(.fileConflictExcludeGlobs // []) | join("\n")')" || excludes=""
     [[ -f ".loop-spec/file-conflict-exclude.txt" ]] && excludes="$excludes
 $(cat ".loop-spec/file-conflict-exclude.txt")"
-    width="$(EXCLUDES="$excludes" python3 - "$tasks" "$SCRIPT_DIR/dag-width.sh" <<'PY'
+    width="$(EXCLUDES="$excludes" python3 - "$width_tasks" "$SCRIPT_DIR/dag-width.sh" <<'PY'
 import fnmatch, json, os, subprocess, sys
 tasks = json.load(open(sys.argv[1]))
 globs = [g.strip() for g in os.environ.get("EXCLUDES", "").splitlines() if g.strip()]

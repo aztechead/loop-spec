@@ -130,6 +130,55 @@ check "the timeout kills the session" "timeout" "$(jq -r '.status' <<<"$out")"
 check "timeout exits 5" "5" "$rc"
 sleep 2
 check "a timed-out session cannot keep writing through its child" "absent" "$([[ -e "$WORK/child-survived" ]] && echo present || echo absent)"
+
+# Cleanup must ignore a second termination signal while killing and reaping the
+# process group. This deterministic mock avoids launching a provider CLI.
+repeat_out="$WORK/repeat-signal.out"
+repeat_err="$WORK/repeat-signal.err"
+repeat_rc=0
+python3 - "$RUNNER" "$WORK" >"$repeat_out" 2>"$repeat_err" <<'PY' || repeat_rc=$?
+import importlib.util
+import os
+import signal
+import sys
+
+runner, work = sys.argv[1:]
+spec = importlib.util.spec_from_file_location("session_run_repeat", runner)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.shutil.which = lambda binary: "/fake/" + binary
+
+class MockChild:
+    pid = 424242
+    def __init__(self):
+        self.waits = 0
+    def wait(self, timeout=None):
+        self.waits += 1
+        if self.waits == 1:
+            raise KeyboardInterrupt
+        return -signal.SIGKILL
+
+child = MockChild()
+module.subprocess.Popen = lambda *args, **kwargs: child
+def repeat_signal(pid, sig):
+    os.kill(os.getpid(), signal.SIGTERM)
+module.os.killpg = repeat_signal
+before_term = signal.getsignal(signal.SIGTERM)
+before_int = signal.getsignal(signal.SIGINT)
+
+rc = module.main([
+    "--profile", os.path.join(work, "profiles", "fake.toml"),
+    "--cwd", os.path.join(work, "cwd"),
+    "--prompt-file", os.path.join(work, "prompt.md"),
+    "--log-dir", os.path.join(work, "logs"),
+])
+assert rc == 130, rc
+assert child.waits == 2, child.waits
+assert signal.getsignal(signal.SIGTERM) == before_term
+assert signal.getsignal(signal.SIGINT) == before_int
+PY
+check "repeated termination during cleanup preserves interrupted status" "0" "$repeat_rc"
+check "repeated termination during cleanup emits no traceback" "0" "$(grep -c Traceback "$repeat_err" || true)"
 run "${common[@]}" --timeout 0
 check "a non-positive timeout is a bad call" "2" "$rc"
 

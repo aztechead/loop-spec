@@ -55,6 +55,13 @@ profile="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '
   exit 0
 }
 
+# An explicit full route is an operator override of the compact skip plan for
+# SPEC critique. Other compact gates retain their persisted policy.
+if [[ "${LOOP_SPEC_ROUTE:-}" == "full" && "$gate_name" == "specCritique" ]]; then
+  echo 'gate=run reason=full route override'
+  exit 0
+fi
+
 if ! bash "$SCRIPT_DIR/../../cycle-profile.sh" validate-gate-plan "$feature_json"; then
   echo 'gate=run reason=compact gatePlan is missing or invalid'
   exit 0

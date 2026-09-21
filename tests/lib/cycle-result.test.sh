@@ -1116,6 +1116,10 @@ check "AF: its outcome is delivered-unready" "delivered-unready" "$(jq -r '.outc
 check "AF: it carries the delivered PR" "https://github.com/test/repo/pull/7" "$(jq -r '.prUrl' "$UNREADY/result.json")"
 check "AF: work was delivered" "true" "$(jq -r '.workDelivered' "$UNREADY/result.json")"
 check "AF: readiness was never reached, so it is not converged" "false" "$(jq -r '.converged' "$UNREADY/result.json")"
+# A supervisor that retries on `retryable` re-ran a completed run: the flag followed
+# the parent delivery block, of which delivered-unready is a subset.
+check "AF: a completed run is not retryable" "false" "$(jq -r '.retryable' "$UNREADY/result.json")"
+check "AF: and names no retry phase" "null" "$(jq -r '.retryPhase' "$UNREADY/result.json")"
 
 unready_delivery ready_failed "required checks passed but the draft PR could not be marked ready" > "$UNREADY/delivery.json"
 publish_unready
@@ -1133,6 +1137,21 @@ unready_delivery pr_closed "PR is not open" > "$UNREADY/delivery.json"
 publish_unready
 check "AF4: any other single code is still delivery-blocked" "delivery-blocked" "$(jq -r '.outcome' "$UNREADY/result.json")"
 check "AF4: and still failed" "failed" "$(jq -r '.status' "$UNREADY/result.json")"
+
+unready_delivery pr_already_ready "staged readiness requires the PR to remain a draft" > "$UNREADY/delivery.json"
+publish_unready
+check "AF6: an already-ready PR is not labelled unready" "delivery-blocked" "$(jq -r '.outcome' "$UNREADY/result.json")"
+
+# The checkpoint PR in feature.json is not this delivery's PR.
+unready_delivery checks_unsupported "checks unreadable" | jq 'del(.prUrl) | .targets[0] |= del(.prUrl)' > "$UNREADY/delivery.json"
+jq '.slug="unready" | .currentPhase="deliver" | .delivery={status:"pending",targets:[]}
+    | .prUrl="https://github.com/test/repo/pull/1" | .checkpointPrUrl="https://github.com/test/repo/pull/1"' \
+  <<<"$FIXTURE_FJ" > "$UNREADY/feature.json"
+rm -f "$UNREADY/result.json"
+bash "$LIB" write "$UNREADY" --status escalated --reason readiness \
+  --summary "Implementation verified." >/dev/null 2>&1
+check "AF7: a checkpoint PR does not make a readiness block delivered-unready" "delivery-blocked" "$(jq -r '.outcome' "$UNREADY/result.json")"
+check "AF7: and that block stays retryable" "true" "$(jq -r '.retryable' "$UNREADY/result.json")"
 
 # write-terminal's own allow-list, for the short routes that deliver the same way.
 TERM_UNREADY="$WORK/term-unready"; mkdir -p "$TERM_UNREADY/.loop-spec"

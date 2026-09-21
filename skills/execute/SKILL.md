@@ -76,7 +76,7 @@ Print `[EXECUTE] DAG width W=<width> -> rung: <rung.rung> (<rung.reason>)`.
 Workspace mode always uses `subagent` and rejects `LOOP_SPEC_EXECUTE_LOOPS=1`.
 Use these operating parameters:
 
-- `maxParallelImplementers`: `.execute.rung.maxParallelImplementers` from the validated resource policy (serial by default; explicit operator caps may widen it). `LOOP_SPEC_WORKTREES=0` sets it to 1.
+- `maxParallelImplementers`: `.execute.rung.maxParallelImplementers` from the validated resource policy: min(DAG width, 3) when no `LOOP_SPEC_MAX_PARALLEL_*` bound is set, the operator's bound when one is, and 1 under `LOOP_SPEC_WORKTREES=0`. Use it as given; never narrow it to 1 on your own.
 - Pass this exact value to the selected subagent wave, loop-fleet `--parallel`, session dispatch, or Workflow `maxParallelImplementers`; do not recreate a default in the skill.
 - `maxRetriesPerTask`: `.execute.maxRetries`, from `lib/tuning.sh get executeMaxRetriesPerTask 6`.
 - Task worktree root: `.execute.worktreeBase`, resolved once by `lib/worktree-base.sh resolve`.
@@ -101,7 +101,9 @@ It emits `dispatch` and `task_start`.
 `integrate` publishes the task, runs `lib/task-progress.sh mark-done`, and emits `task_end`.
 `dispatch` emits `dispatch` for the implementer. `package` only writes the review package (no
 event); `review-groups` groups a wave's packages under a byte cap and emits one reviewer
-`dispatch` event per group. The lead emits no task events.
+`dispatch` event per group. On the `session` rung it emits nothing: review there stays per
+task, and `task run --role reviewer` launches that reviewer and emits at launch. The lead
+emits no task events.
 
 Pass the packet's `.model` to the Agent call unless it is `inherit`.
 Issue each wave's Agent calls in one message.

@@ -47,7 +47,10 @@ esac
 subagents="$(read_bound LOOP_SPEC_MAX_PARALLEL_SUBAGENTS 1)"
 if [[ -n "${LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS-}" ]]; then
   requested_implementers="$(read_bound LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS 1)"
-  if (( requested_implementers < subagents )); then
+  if [[ -z "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS-}" ]]; then
+    subagents="$requested_implementers"
+    implementers="$requested_implementers"
+  elif (( requested_implementers < subagents )); then
     implementers="$requested_implementers"
   else
     implementers="$subagents"
