@@ -33,14 +33,17 @@ You verify a complete feature meets its SPEC's acceptance criteria after EXECUTE
 1. `cd` to project root, ensure on `branch`. Run `git status --porcelain`  -  if any uncommitted changes exist, report FAIL with "workspace not clean" and halt. Do not run test commands against a dirty workspace.
 2. Read SPEC.md and list Success Criteria. The gate is the `### Good Enough` subsection only: a Good Enough criterion that fails => overall FAIL. Treat `### Exceptional` (stretch) criteria as informational -- report their status but never FAIL the feature on a stretch criterion.
 3. **Repository grounding:** apply `skills/shared/verification-grounding.md`. Inspect the final diff from `base_sha`, re-read every changed file, and read the nearest affected caller, test, configuration, interface, or documented contract. Number Good Enough criteria by SPEC order as `GE-001`, `GE-002`, and so on; record concrete `file:line` implementation and integration evidence for each. Re-probe affected external premises. Missing evidence, an unsupported assumption, or a mismatch is FAIL; a test command cannot clear this gate.
-4. For each criterion: run its verify command (Bash), capture full output, classify PASS/FAIL/BLOCKED/N/A. BLOCKED is for a check that could not run for a reason outside the repository (expired credentials, an unreachable service, a missing approval): name the reason and the operator action in the evidence cell. A SPEC "allowance" for the blocked case does not turn it into PASS; the converged floor rejects a PASS whose evidence says the check did not run
-5. Validate and record `validation_json`. Its outcome must be `accepted`; label any retained baseline failures as known and pre-existing. Do not rerun repository-wide test/lint/typecheck commands: the adapter already ran them against the exact candidate and prevents an absolute-green assumption from contradicting the baseline.
+4. For each criterion: derive the expected observables from SPEC's behavior and binding decisions, then inspect what PLAN's command and tests actually assert. Follow the shared contract's validation gate: strengthen inadequate criterion probes, inspect exported contracts themselves, and report expected versus observed evidence. Run the adequate command (Bash), capture full output, classify PASS/FAIL/BLOCKED/N/A. BLOCKED is for a check that could not run for a reason outside the repository (expired credentials, an unreachable service, a missing approval): name the reason and the operator action in the evidence cell. A SPEC "allowance" for the blocked case does not turn it into PASS; the converged floor rejects a PASS whose evidence says the check did not run
+5. Validate and record `validation_json`. When the packet explicitly sets `repository_validation_ran` to false, record the policy skip and suite status N/A; otherwise its outcome must be `accepted`. Label retained baseline failures as known and pre-existing. Do not rerun repository-wide test/lint/typecheck commands: the adapter already ran them against the exact candidate and prevents an absolute-green assumption from contradicting the baseline.
 8. Generate `docs/loop-spec/features/{slug}/VERIFICATION.md` from template, populated with:
    - One exact repository-grounding row per Good Enough criterion:
      `- criterion: <id> | implementation: <repo-relative-file>:<line> - <what it proves> | integration: <repo-relative-file>:<line> - <what it proves>`
    - Use `integration: none - <concrete reason of at least 10 characters>` only when no separate integration site exists. Workspace paths are relative to the workspace root.
    - Acceptance criteria table, in the grammar `lib/converged-floor.sh` reads (VERIFY's exit runs it with `--shape`; ITERATE's converged floor runs it in full): one row per Good Enough criterion keyed `GE-NNN` (or its number) in the `#` column, and a `Status` or `Result` column whose cell begins with `PASS`, `FAIL`, or `N/A` (`PASS (12 passed)` reads; `passed` does not). Escape a pipe inside a cell as `\|`.
-   - Verify command outputs
+   - Verify command outputs. For every FAIL, include the exact adequate executable
+     reproducer and its captured failure, in a fenced shell block outside the table.
+     This is the remediation check: resolve referenced structures and assert the
+     required semantics, rather than requiring one serialization or symbol spelling.
     - Repository-wide baseline comparison, including known failures and new-failure count
 7. Return result.
 
@@ -64,4 +67,4 @@ You verify a complete feature meets its SPEC's acceptance criteria after EXECUTE
 - **Status**: ALL_PASS | FAIL ({n} criteria failed)
 - **Failed criteria**: list with which acceptance bullet, the verify command, and the failure output
 - **Verification path**: written file location
-- **Test suite status**: PASS | FAIL | N/A (no commands) - PASS means no new repository-wide failures plus all criterion commands green
+- **Test suite status**: PASS | FAIL | N/A - the repository-wide comparison from `validation_json` (N/A for an explicit policy skip or no configured commands). Criterion failures belong in **Status** and **Failed criteria**; a passing suite never overrides them.

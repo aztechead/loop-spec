@@ -31,11 +31,23 @@ PLAN is the source for task extraction. Keep the template headings, including
 fields are `id`, `subject`,
 `goal`, `files`, `read_first`, `interfaces`, `verifyCommand`, `expected`,
 `acceptanceCriteria`, `blockedBy`, and `steps`; workspace tasks also need `repo`.
+Use a test file for complex verification. Inline interpreter programs must be
+literal (single quotes or a quoted heredoc); pass dynamic values as arguments.
+The feasibility gate rejects shell expansion inside interpreter code.
 Do not compute waves. `blockedBy` contains logical dependencies; file-overlap edges
 come from the harness, so two tasks that name the same file run one after the other
 whatever `blockedBy` says. Give each file one owning task and fold a shared edit (a
 test registration, a shared module) into that task; a plan of four or more tasks
 that runs as a chain fails the PLAN exit gate (`lib/plan-exit-gate.sh`, `[width]`).
+For a shared README, assign all required examples to one owner before writing task
+blocks. If the examples depend on several independent slices, use one documentation
+task blocked on those slices; each slice lists README only in `read_first`, not
+`files`. Keep the examples, acceptance criteria, and verification with the owner.
+Docs must land in this feature's delivery diff; they need not be edited by every
+implementer. Do not invent dependencies between independent slices just to order
+README edits. Preserve real code prerequisites and do not exclude README conflicts
+to manufacture width. An explicit `LOOP_SPEC_PLAN_MIN_WIDTH` also applies to small
+plans.
 `batchGroup` and `modelTier: mechanical` are optional.
 
 Shape tasks as vertical slices: each `Goal` names the observable capability a caller
@@ -75,8 +87,9 @@ or add a blanket hardening phase.
 ## Compact review loop
 
 The lead runs `lib/plan-tasks.sh extract`, `lib/plan-conflicts.sh edges`, and
-`lib/phase-exit.sh plan`. The lead sends one combined fix-list for mechanical flags and
-critique findings; allow one revision and re-run the gates. Never spawn `advocate-1`;
+`lib/phase-exit.sh plan`. Resolve structural ownership/dependency flags before
+critique; the lead then sends one combined fix-list for remaining mechanical flags
+and critique findings; allow one revision and re-run the gates. Never spawn `advocate-1`;
 use the challenger-only protocol. The critique never re-opens on a `REDO`. Do not
 dispatch a prose-pruning agent or a second pattern scan. Preserve gate text. Never
 poll for teammates.

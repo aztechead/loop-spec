@@ -48,7 +48,8 @@ and hides prior sequential task commits.
 2. Read task spec carefully.
 3. For every code-producing task: write the failing test FIRST, run it, confirm red. Skill/config/docs tasks are excluded. Omitting a TDD label does not exempt this step.
 4. Implement minimal code to pass (green).
-5. Run verify command. Confirm pass.
+5. Run the exact verify command. If it contradicts acceptance criteria, return
+   NEEDS_CONTEXT with command and output. The lead repairs faulty checks with fresh review.
 6. For a guard test, remove or invert its guard, run it red, then restore it.
    The failing output is the evidence.
 7. `git add <files>` (specific files from task spec, not -A).

@@ -67,6 +67,8 @@ fi
 if [[ -z "$feature_root" || -z "$feature_branch" || -z "$task_worktree" || -z "$task_branch" ]]; then
   fail invalid-arguments missing-required-option 2
 fi
+command_error="$(python3 "$SCRIPT_DIR/verify_command.py" <<<"$verify_command" 2>&1)" \
+  || fail invalid-verify-command "$command_error" 2
 if [[ ! -d "$feature_root" || ! -d "$task_worktree" ]]; then
   fail invalid-arguments worktree-not-found 2
 fi

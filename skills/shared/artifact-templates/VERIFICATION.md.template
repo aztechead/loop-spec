@@ -3,11 +3,11 @@
 **Spec:** `docs/loop-spec/features/{slug}/SPEC.md`
 **Plan:** `docs/loop-spec/features/{slug}/PLAN.md`
 
-## Repository grounding
-
 One exact row per Good Enough criterion, identified by SPEC order as `GE-001`, `GE-002`,
 and so on. Paths are repository-relative; workspace paths are relative to the workspace
 root. `integration: none` requires a concrete reason.
+
+## Repository grounding
 
 - criterion: GE-001 | implementation: {path}:{line} - {what it proves} | integration: {path}:{line} - {what it proves}
 
@@ -23,6 +23,9 @@ root. `integration: none` requires a concrete reason.
      rejects PASS rows whose evidence says blocked, not run, skipped, or reauth. -->
 
 ## Verify command outputs
+
+For each criterion, state the required observable, what the executed assertion checks,
+and the actual observation. A green command with weaker assertions is insufficient.
 
 ### Criterion 1
 

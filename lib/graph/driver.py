@@ -165,6 +165,9 @@ Usage:
     cycle-driver.sh task add-files --feature-dir DIR --task ID <file...>
         Widens an open task's write scope for a rework attempt (sidecar, collapsed
         list, and prepare.json together); refuses an integrated task.
+    cycle-driver.sh task repair-verify --feature-dir DIR --task ID --repair-file PATH
+        Repair a generated remediation command with evidence, preserving criteria
+        and retry accounting; requires fresh review before integration.
 
     cycle-driver.sh critique open|findings|fail|revised|delta|pass --feature-dir DIR ...
         One critique-gate step per call for SPEC and PLAN; lib/critique-step.sh owns
@@ -3357,6 +3360,15 @@ def cmd_phase_begin(argv):
         packet[phase] = extra
     if phase == "plan" and entry.returncode == 0 and not flags:
         packet["planner"] = plan_dispatch_packet(feature_dir, phase_state, instructions, mode)
+    if phase == "verify" and entry.returncode == 0 and not flags:
+        from verify_dispatch import render as render_verifier
+        try:
+            verifier = render_verifier(REPO_ROOT, feature_dir, feature_root(feature_dir, phase_state),
+                                       phase_state, instructions, extra)
+        except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+            raise Die("cannot prepare verifier assignment: " + str(exc), 2)
+        if verifier:
+            packet["verifier"] = verifier
     print(json.dumps(packet))
     if entry.returncode != 0:
         return 1

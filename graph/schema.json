@@ -114,7 +114,7 @@
     "phasePath": {
       "type": "string",
       "minLength": 1,
-      "description": "A path or argument phase-entry.sh / phase-exit.sh resolves at call time. Placeholders: {docs} (the feature's docs directory, docs/loop-spec/features/<slug>), {featureDir}, {root} (the repository root, or the workspace root in workspace mode), {slug}, {spec} (artifacts.spec or {docs}/SPEC.md), {tasks} (artifacts.tasks or {featureDir}/tasks.json), {f:<dotted.key>} (that feature.json value). No other placeholder is legal."
+      "description": "A path or argument phase-entry.sh / phase-exit.sh resolves at call time. Placeholders: {docs} (the feature's docs directory, docs/loop-spec/features/<slug>), {featureDir}, {root} (the repository root, or the workspace root in workspace mode), {slug}, {spec} (artifacts.spec or {docs}/SPEC.md), {tasks} (the owning feature's {featureDir}/tasks.json; saved artifact locators never select another checkout), {f:<dotted.key>} (that feature.json value). No other placeholder is legal."
     },
     "phaseIngress": {
       "type": "object",

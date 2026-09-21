@@ -25,8 +25,30 @@ escalate it, then repeat the grounding gate after the new final edit.
 
 ## Validation gate
 
-Only after grounding passes, run the strongest applicable behavioral command for every
-criterion and capture the command output and exit status. Run the project suite, lint,
+Derive each criterion's expected observables from SPEC, including its user-facing
+behavior and binding decisions. PLAN's commands and existing tests are candidate
+checks, not the definition of success. Read their assertions: each required part of
+a compound criterion needs evidence. Strengthen a focused probe when the supplied
+command can pass while the required behavior is wrong.
+
+For a structured or generated contract (schemas, manifests, configuration, exported
+interfaces), inspect the actual representation its consumer receives. Assert the
+required fields, types, constraints, relationships, and status/error behavior;
+resolve references when present. Runtime values or source declarations do not prove
+that an exported contract describes them. Existence, truthiness, a nonempty object,
+or a matching name proves only presence. Printing an artifact is not an asserting
+probe: execute checks of its required properties before claiming PASS. Do not invent constraints or require a
+particular representation unless SPEC requires it.
+
+Check the probe's sensitivity to a concrete contract violation: could a still-present
+artifact with a required nested field missing or mistyped pass? If so, strengthen
+the assertions. A small in-memory counterexample can test the predicate without
+editing the implementation or tracked tests. Record the required observable, actual
+observation, and asserting command in the criterion's evidence. A demonstrated
+mismatch is a failed criterion, not an advisory coverage improvement.
+
+Only after grounding passes, run the adequate behavioral command for every criterion
+and capture the command output and exit status. Run the project suite, lint,
 build, or typecheck as applicable. If there is genuinely no behavioral runner, use the
 strongest static check available (at minimum `git diff --check`) and state the limitation.
 

@@ -81,7 +81,8 @@ slurp() {
 }
 stdin_tmp=""
 packet_tmp=""
-trap '[[ -n "$stdin_tmp" ]] && rm -f "$stdin_tmp"; [[ -n "$packet_tmp" ]] && rm -f "$packet_tmp"' EXIT
+structure_tasks=""
+trap '[[ -z "$structure_tasks" ]] || rm -f "$structure_tasks"; [[ -n "$stdin_tmp" ]] && rm -f "$stdin_tmp"; [[ -n "$packet_tmp" ]] && rm -f "$packet_tmp"' EXIT
 
 # The open gate and the artifact it guards; every step after open reads both here.
 load_state() {
@@ -156,11 +157,27 @@ emit_round() {
 # Lines after the reply's header, non-empty, list numbering kept for the gate-log.
 reply_lines() { sed -n '2,$p' "$1" | sed '/^[[:space:]]*$/d'; }
 
+check_plan_structure() {
+  # Check the authored artifact, not a possibly stale tasks.json. Failure leaves
+  # gate state and review packets untouched so ownership is repaired before review.
+  if [[ "$phase" == plan ]]; then
+    structure_tasks="$(mktemp "${TMPDIR:-/tmp}/plan-critique-tasks.XXXXXX")"
+    lib plan-tasks extract "$artifact" > "$structure_tasks" \
+      || die "PLAN extraction failed; repair the task blocks before critique"
+    lib plan-conflicts edges "$structure_tasks" >/dev/null \
+      || die "PLAN inferred dependencies are invalid; repair them before critique"
+    lib plan-structure "$feature_dir" "$structure_tasks" >&2 \
+      || die "PLAN structure failed; repair ownership/dependencies in PLAN.md, re-extract, and retry"
+    rm -f "$structure_tasks"; structure_tasks=""
+  fi
+}
+
 case "$cmd" in
   open)
     [[ -n "$phase" && -n "$gate_name" && -n "$artifact" ]] || usage
     [[ -f "$artifact" ]] || die "artifact $artifact missing"
     artifact="$(cd "$(dirname "$artifact")" && pwd -P)/$(basename "$artifact")"
+    check_plan_structure
     mkdir -p "$logs"
     prompt_file="$logs/$gate_name-round-1-prompt.md"
     packet_tmp="$(mktemp "$logs/.critique-packet.XXXXXX")"
@@ -223,6 +240,7 @@ case "$cmd" in
     ;;
   revised)
     load_state
+    check_plan_structure
     [[ -f "$snapshot" ]] || die "$snapshot missing: 'findings' was never called, or 'fail' answered close"
     # diff exits 1 on the ordinary case (the revision changed the artifact); capture that.
     diff -u "$snapshot" "$artifact" > "$delta_diff" || diff_rc=$?
@@ -265,6 +283,7 @@ case "$cmd" in
     ;;
   resume)
     load_state
+    check_plan_structure
     stored_kind="$(jq -r '.kind // empty' "$state")"
     resume_kind="${stored_kind:-findings}"
     [[ "$resume_kind" == findings || "$resume_kind" == delta ]] || die "critique resume sidecar has invalid kind: $resume_kind"

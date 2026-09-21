@@ -104,8 +104,8 @@ print(json.dumps({"ok": not bad, "expected": None, "actual": None, "repos": bad}
 fi
 
 # -- sidecar + remediation intake -------------------------------------------------------
-sidecar="$(fget '.artifacts.tasks // ""')"; [[ -n "$sidecar" ]] || sidecar="$feature_dir/tasks.json"
-[[ "$sidecar" == /* ]] || sidecar="$root/$sidecar"
+# PLAN extraction and task progress belong to this feature, never a saved checkout path.
+sidecar="$feature_dir/tasks.json"
 sidecar_ok=true; sidecar_flags='[]'
 if lint_out="$(lib artifact-lint tasks "$sidecar" 2>&1)"; then :; else
   sidecar_ok=false; sidecar_flags="$(grep '^FLAG' <<<"$lint_out" | jq -R . | jq -cs .)"

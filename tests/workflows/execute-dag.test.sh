@@ -47,6 +47,44 @@ let invalid = false
 try { await run({ ...base, maxParallelImplementers: 0 }) } catch { invalid = true }
 if (!invalid) throw new Error('invalid cap was accepted')
 console.log('workflow wave cap passed')
+for (const permanent of [false, true]) {
+  let implementations = 0
+  let integrations = 0
+  let repairPrompt = ''
+  const retryAgent = async (prompt, options) => {
+    if (options.label === 'merge-agent') {
+      integrations++
+      return integrations === 1 || permanent
+        ? {merged: [], integrationFailure: {taskId: 'task-001', reason: 'verify-failed', detail: 'assertion mismatch'}}
+        : {merged: ['task-001']}
+    }
+    implementations++
+    if (implementations === 2) repairPrompt = prompt
+    return {taskId: 'task-001', committed: true, verdict: 'pass'}
+  }
+  const result = await __workflow__({...base, tasks: [tasks[0]], maxRetriesPerTask: 3}, null, retryAgent, parallel, null)
+  if (!repairPrompt.includes('assertion mismatch')) throw new Error('integration evidence lost on retry')
+  if (permanent) {
+    if (implementations !== 3 || result.blocked[0]?.reason !== 'retry-exhausted') throw new Error('integration retry budget not enforced')
+  } else if (implementations !== 2 || result.merged[0] !== 'task-001') throw new Error('fixable integration failure did not recover')
+}
+console.log('workflow integration recovery passed')
+const counts = {}
+let merges = 0
+const siblingAgent = async (prompt, options) => {
+  if (options.label === 'merge-agent') {
+    merges++
+    return merges === 1
+      ? {merged: [], integrationFailure: {taskId: 'task-001', reason: 'verify-failed', detail: 'repair first candidate'}}
+      : {merged: ['task-001', 'task-002']}
+  }
+  const id = prompt.match(/task (task-\d+)/)[1]
+  counts[id] = (counts[id] || 0) + 1
+  return {taskId: id, committed: true, verdict: 'pass'}
+}
+const siblings = await __workflow__({...base, maxParallelImplementers: 2, maxRetriesPerTask: 2}, null, siblingAgent, parallel, null)
+if (counts['task-001'] !== 2 || counts['task-002'] !== 1 || siblings.merged.length !== 2) throw new Error('integration retry discarded an approved sibling')
+console.log('workflow preserves approved siblings during recovery')
 JS
 cat > "$TMP/runner.mjs" <<'JS'
 import fs from 'node:fs'

@@ -8,17 +8,39 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STEP = ROOT / "lib" / "critique-step.sh"
+TASKS = """
+## Tasks
+### task-001: endpoint
+**Goal:** endpoint works
+**Files:**
+- `api.py`
+**Verify:** `pytest tests/test_api.py`
+**Acceptance criteria:**
+- endpoint returns the expected response
+**BlockedBy:** []
+
+### task-002: CSV
+**Goal:** CSV works
+**Files:**
+- `csv.py`
+**Verify:** `pytest tests/test_csv.py`
+**Acceptance criteria:**
+- CSV contains the expected rows
+**BlockedBy:** []
+"""
 
 
-def snapshot_render(feature):
+
+def snapshot_render(feature, phase="plan"):
     spec = importlib.util.spec_from_file_location("phase_snapshot", str(ROOT / "lib/phase_snapshot.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.render(str(ROOT), str(feature), "plan", "plan", "claude", {})
+    return module.render(str(ROOT), str(feature), phase, phase, "claude", {})
 
 
 class CritiquePacketTest(unittest.TestCase):
@@ -26,6 +48,7 @@ class CritiquePacketTest(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp(prefix="critique-packet-"))
         self.feature = self.tmp / "feature"
         self.feature.mkdir()
+        subprocess.run(["git", "init", "-q", str(self.tmp)], check=True)
         init = subprocess.run([
             "bash", str(ROOT / "lib/feature-init.sh"), "skeleton", "--mode", "single",
             "--slug", "packet-test", "--now", "2026-09-20T00:00:00Z", "--style", "auto",
@@ -38,7 +61,7 @@ class CritiquePacketTest(unittest.TestCase):
         self.repo.mkdir()
         self.artifact = self.repo / "docs/custom plan &.md"
         self.artifact.parent.mkdir(parents=True)
-        self.artifact.write_text("# Plan\n\nInitial\n")
+        self.artifact.write_text("# Plan\n\nInitial\n" + TASKS)
         self.data = json.loads((self.feature / "feature.json").read_text())
         self.data["artifacts"] = {"spec": str(self.repo / "docs/custom spec &.md"), "evidence": str(self.repo / "docs/custom evidence &.md")}
         Path(self.data["artifacts"]["spec"]).write_text("# Spec\n")
@@ -58,6 +81,81 @@ class CritiquePacketTest(unittest.TestCase):
 
     def open_gate(self, name="plan-critique"):
         return json.loads(self.run_step("open", "--phase", "plan", "--gate", name, "--artifact", str(self.artifact)).stdout)
+
+    def test_shared_readme_refused_before_review_and_repair_preserves_scope(self):
+        original = (self.feature / "feature.json").read_bytes()
+        stale = self.feature / "tasks.json"
+        stale.write_text('[]\n')
+        shared = TASKS.replace('- `api.py`', '- `api.py`\n- `README.md`').replace(
+            '- `csv.py`', '- `csv.py`\n- `README.md`')
+        self.artifact.write_text("# Plan\n" + shared)
+        with unittest.mock.patch.dict(os.environ, {"LOOP_SPEC_PLAN_MIN_WIDTH": "2"}):
+            failed = self.run_step("open", "--phase", "plan", "--gate", "plan-critique",
+                                   "--artifact", str(self.artifact), check=False)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn("README.md (task-001,task-002)", failed.stderr)
+            self.assertEqual((self.feature / "feature.json").read_bytes(), original)
+            self.assertFalse((self.feature / "gate-logs/plan-critique-state.json").exists())
+            self.assertFalse((self.feature / "gate-logs/plan-critique-round-1-prompt.md").exists())
+            self.assertEqual(stale.read_text(), '[]\n')
+            # One downstream owner retains both examples and checks in this delivery.
+            docs = """
+### task-003: document both operations
+**Goal:** readers can call the endpoint and export CSV
+**Files:**
+- `README.md`
+**Verify:** `pytest tests/test_readme_examples.py`
+**Acceptance criteria:**
+- endpoint and CSV examples produce the documented output
+**BlockedBy:** [task-001, task-002]
+"""
+            self.artifact.write_text("# Plan\n" + TASKS + docs)
+            opened = self.open_gate()
+            self.assertTrue(Path(opened["promptFile"]).is_file())
+            self.assertEqual(stale.read_text(), '[]\n')
+            packet = Path(opened["promptFile"]).read_bytes()
+            state = (self.feature / "feature.json").read_bytes()
+            self.artifact.write_text("# Plan\n" + shared)
+            failed_resume = self.run_step("resume", check=False)
+            self.assertNotEqual(failed_resume.returncode, 0)
+            self.assertEqual((self.feature / "feature.json").read_bytes(), state)
+            self.assertEqual(Path(opened["promptFile"]).read_bytes(), packet)
+
+    def test_invalid_plan_and_cycle_refused_before_review(self):
+        for plan in ("# Plan without tasks\n", TASKS.replace(
+                '**BlockedBy:** []', '**BlockedBy:** [task-002]', 1)):
+            self.artifact.write_text(plan)
+            if "task-002]" in plan:
+                self.artifact.write_text(plan.rsplit('**BlockedBy:** []', 1)[0] +
+                                         '**BlockedBy:** [task-001]\n')
+            result = self.run_step("open", "--phase", "plan", "--gate", "plan-critique",
+                                   "--artifact", str(self.artifact), check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((self.feature / "gate-logs/plan-critique-state.json").exists())
+
+    def test_width_one_still_rejects_overlap_cycles(self):
+        tasks = [
+            {"id": "task-001", "files": ["a.py"], "blockedBy": ["task-003"],
+             "verifyCommand": "pytest tests/test_a.py"},
+            {"id": "task-002", "files": ["a.py", "b.py"], "blockedBy": [],
+             "verifyCommand": "pytest tests/test_b.py"},
+            {"id": "task-003", "files": ["b.py"], "blockedBy": [],
+             "verifyCommand": "pytest tests/test_c.py"}]
+        path = self.feature / "tasks.json"
+        path.write_text(json.dumps(tasks))
+        with unittest.mock.patch.dict(os.environ, {"LOOP_SPEC_PLAN_MIN_WIDTH": "1"}):
+            result = subprocess.run(["bash", str(ROOT / "lib/plan-structure.sh"),
+                                     str(self.feature), str(path)], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("form a cycle", result.stdout)
+
+    def test_non_plan_critique_does_not_require_task_blocks(self):
+        self.data["driverNext"] = {"phase": "spec", "instructions": snapshot_render(self.feature, "spec")}
+        (self.feature / "feature.json").write_text(json.dumps(self.data) + "\n")
+        self.artifact.write_text("# Specification without task blocks\n")
+        opened = self.run_step("open", "--phase", "spec", "--gate", "spec-critique",
+                               "--artifact", str(self.artifact))
+        self.assertTrue(Path(json.loads(opened.stdout)["promptFile"]).is_file())
 
     def test_snapshot_tamper_and_custom_paths_fail_closed(self):
         opened = self.open_gate()
@@ -94,7 +192,7 @@ class CritiquePacketTest(unittest.TestCase):
         self.open_gate()
         self.run_step("findings", "--reply", "-", input_text="FINDINGS:\n[major] fix\n")
         self.run_step("fail", "--fix-list", "-", input_text="[major] fix\n")
-        self.artifact.write_text("# Plan\n\nFixed\n")
+        self.artifact.write_text("# Plan\n\nFixed\n" + TASKS)
         revised = json.loads(self.run_step("revised").stdout)
         delta_diff = Path(revised["diffPath"])
         saved_diff = delta_diff.read_bytes()

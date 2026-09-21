@@ -20,9 +20,10 @@ consuming code in `execute` SKILL Step 3 is shape-identical:
 { "merged": ["task-001", ...], "blocked": [{"taskId": "...", "reason": "..."}], "escalation": null | {"reason": "...", "detail": "..."} }
 ```
 
-`blocked[].reason` and `escalation.reason` use the SAME fixed vocabulary as
+`blocked[].reason` and `escalation.reason` retain the helper's reason, as does
 `lib/workflows/execute-dag.js` (`spec-compliance-block`, `retry-exhausted`,
-`commit-missing`, `zero-commit`, `dirty-worktree`; `deadlock`, `rebase-conflict`). Display only.
+`commit-missing`, `zero-commit`, `dirty-worktree`, `deadlock`, `rebase-conflict`,
+`prepare-failed`, `invalid-verify-command`, or another publication refusal). Display only.
 
 ## When this path runs
 
@@ -109,7 +110,10 @@ Apply these replacements to the lead wave loop:
    the checkout is clean, persists `lib/task-progress.sh mark-done`, and emits `task_end`;
    add the task to `mergedSet`. There is no `integrate-task.sh` call because the accepted
    commit is already on the feature branch.
-5. On `block`, retry exhaustion, out-of-scope dirt, verification failure, missing
+5. A verification failure uses `.action` and `.nextAttempt` from integration, as in
+   wave-loop step 6: rework in the same checkout, re-review with the new attempt,
+   and integrate again. Do not dispatch a second worktree or reset the dirty diff.
+   On `block`, retry exhaustion, out-of-scope dirt, missing
    commit, or an unreadable Git state, stop with the existing structured blocked or
    escalation reason. Preserve the working tree for diagnosis; never reset or clean it.
 6. Each task runs its own `verifyCommand` before publication; the repository-wide
@@ -229,7 +233,7 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
 
    - `pass` with empty unresolved unverified: `.action == "integrate"`, the task is
      ready to merge.
-   - `rework` and attempts remaining: `.action` is `lib/fix-loop.sh action {attempt}
+   - `rework` and attempts remaining: `.action` is `lib/fix-loop.sh action {attempt+1}
      {maxRetriesPerTask}` (the effective cap, so a tuned `executeMaxRetriesPerTask`
      moves the breaker with it). `resume` on a live teammate (`fix-loop.sh live team`
      → `resumeable`) is `SendMessage` to that identity with the findings. `oneshot`
@@ -264,15 +268,30 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    ```bash
    integration_json="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task integrate \
      --feature-dir "$fdir" --task "{taskId}")"
-   # .published .reason .detail .sha .blocked
+   # .published .reason .detail .sha .blocked .action .model .nextAttempt
    ```
 
    Parse `integration_json`, never command prose. If `.published == true`, add the
-   task id to `mergedSet` even when cleanup reports a failure. Otherwise map
-   `zero-commit` to the existing `zero-commit` blocked reason, `verify-failed` or
-   `prepare-failed` to `retry-exhausted`, and any rebase/publication/cleanliness
-   failure to `escalation.reason = "rebase-conflict"` with the helper's `reason`
-   and `detail`, then stop. Never remove or reset a failed task worktree manually.
+   task id to `mergedSet` even when cleanup reports a failure. A `verify-failed`
+   result includes the same `.action`, `.model`, and `.nextAttempt` as review rework:
+   feed the exact failing command and `.detail` into that fix loop, re-review, then
+   integrate again. Only `.blocked == "retry-exhausted"` means the budget is spent.
+   Preserve other failure reasons and details when stopping. `prepare-failed` is an
+   environment failure; `invalid-verify-command` requires repairing task authoring
+   without weakening its criteria, not changing product code to satisfy a broken check.
+   Never remove or reset a failed task worktree manually.
+   If the recorded check contradicts the criterion, retain the failed output and
+   inspect the criterion and actual behavior before another implementation attempt.
+   For a generated remediation task, write a JSON repair file with `expectedCommand`
+   (the exact old command), `verifyCommand` (the corrected check), `reason`, and
+   `evidence` (the observed contradiction and why the replacement preserves the
+   criterion). Run `cycle-driver.sh task repair-verify --feature-dir "$fdir"
+   --task "{taskId}" --repair-file <absolute-path>`. It permits one correction,
+   synchronizes all task copies, preserves criteria and attempts, and blocks integration
+   until a fresh package and reviewer pass. Refresh the task from prepare.json and
+   include the repair record in that review. Never weaken criteria or alter correct
+   product behavior to satisfy an incidental spelling or serialization. Planned tasks
+   need PLAN revision; user gates cannot be replaced through this helper.
    The helper runs `verifyCommand` after any required rebase and before publication,
    so each task's focused proof covers exactly the commit that fast-forwards the feature
    branch. A task whose files need no edit (the review already matches the spec) commits

@@ -55,6 +55,18 @@ FD="$(new_feature inplace)"; ROOT="$(git -C "$FD" rev-parse --show-toplevel)"
 ec=0; bash "$STEP" dispatch --feature-dir "$FD" --task task-001 >/dev/null 2>&1 || ec=$?
 check "dispatch: refuses before prepare ran" "2" "$ec"
 bash "$PREP" run --feature-dir "$FD" >/dev/null 2>&1
+# Recovery must not follow a cached packet into another checkout either.
+cp "$FD/dispatch/prepare.json" "$WORK/prepare.saved.json"
+printf '[{"id":"foreign-task","status":"done"}]\n' > "$WORK/foreign-tasks.json"
+foreign_before="$(cat "$WORK/foreign-tasks.json")"
+jq --arg sidecar "$WORK/foreign-tasks.json" '.sidecar=$sidecar' "$FD/dispatch/prepare.json" > "$FD/dispatch/prepare.tmp"
+mv "$FD/dispatch/prepare.tmp" "$FD/dispatch/prepare.json"
+ec=0; error="$(bash "$STEP" dispatch --feature-dir "$FD" --task task-001 2>&1)" || ec=$?
+check "dispatch: stale cached sidecar is refused" "2" "$ec"
+check "dispatch: stale cache requests a new preparation" "1" "$(grep -c 'rerun lib/execute-prepare.sh' <<<"$error")"
+check "dispatch: stale cache writes no task state" "0" "$([[ -f "$FD/dispatch/task-001.json" ]] && echo 1 || echo 0)"
+check "dispatch: stale cache leaves foreign progress untouched" "$foreign_before" "$(cat "$WORK/foreign-tasks.json")"
+mv "$WORK/prepare.saved.json" "$FD/dispatch/prepare.json"
 ec=0; blocked="$(bash "$STEP" dispatch --feature-dir "$FD" --task task-002 2>/dev/null)" || ec=$?
 check "dispatch: a blocked task is refused" "1" "$ec"
 check "dispatch: the refusal names the blocker" "blocked" "$(jq -r '.reason' <<<"$blocked")"
@@ -68,8 +80,28 @@ check "dispatch: the model is the role default" "inherit" "$(jq -r '.model' <<<"
 check "dispatch: task_start was emitted" "1" "$(grep -c '"event":"task_start"' "$FD/events.jsonl")"
 check "dispatch: progress index and total" "1/2" "$(jq -r '"\(.index)/\(.total)"' <<<"$out")"
 
+jq '.verificationRepairPending = true' "$FD/dispatch/task-001.json" > "$WORK/state-repair.json"
+mv "$WORK/state-repair.json" "$FD/dispatch/task-001.json"
+ec=0; out="$(bash "$STEP" integrate --feature-dir "$FD" --task task-001)" || ec=$?
+check "repaired check: cannot integrate on the stale review" "command-review-required:1" "$(jq -r '.reason' <<<"$out"):$ec"
+ec=0; out="$(bash "$STEP" verdict --feature-dir "$FD" --task task-001 --verdict pass)" || ec=$?
+check "repaired check: needs a fresh review package" "command-review-required:1" "$(jq -r '.reason' <<<"$out"):$ec"
+jq '.package = "fresh-review.md"' "$FD/dispatch/task-001.json" > "$WORK/state-repair.json"
+mv "$WORK/state-repair.json" "$FD/dispatch/task-001.json"
 out="$(bash "$STEP" verdict --feature-dir "$FD" --task task-001 --verdict pass)"
 check "verdict pass: integrate" "integrate" "$(jq -r '.action' <<<"$out")"
+check "repaired check: fresh pass clears pending review" "false" "$(jq -r '.verificationRepairPending' "$FD/dispatch/task-001.json")"
+out="$(bash "$STEP" verdict --feature-dir "$FD" --task task-001 --verdict rework --attempt 0)"
+check "first failure: schedules the first retry" "oneshot:1" "$(jq -r '.action + ":" + (.nextAttempt | tostring)' <<<"$out")"
+printf 'raise AssertionError("candidate check failed")\n' > "$ROOT/a.py"
+ec=0; out="$(bash "$STEP" integrate --feature-dir "$FD" --task task-001 2>/dev/null)" || ec=$?
+check "integration failure: keeps the check failure and offers rework" "verify-failed:oneshot:1:null" "$(jq -r '[.reason,.action,(.nextAttempt | tostring),(.blocked | tostring)] | join(":")' <<<"$out")"
+check "integration failure: publishes no task progress" "" "$(bash "$REPO_ROOT/lib/task-progress.sh" done "$FD/tasks.json")"
+check "integration failure: is not a terminal task event" "0" "$(grep -c '"event":"task_end"' "$FD/events.jsonl" || true)"
+git -C "$ROOT" show HEAD:a.py > "$ROOT/a.py"
+ec=0; out="$(bash "$STEP" verdict --feature-dir "$FD" --task task-001 --verdict rework --attempt 5)" || ec=$?
+check "last permitted attempt: no seventh implementation" "retry-exhausted:1" "$(jq -r '.reason' <<<"$out"):$ec"
+: > "$FD/events.jsonl"
 out="$(bash "$STEP" verdict --feature-dir "$FD" --task task-001 --verdict rework --attempt 1)"
 check "verdict rework on a one-shot rung: a fresh dispatch reads the report" "oneshot" "$(jq -r '.action' <<<"$out")"
 check "verdict rework: next attempt is counted" "2" "$(jq -r '.nextAttempt' <<<"$out")"

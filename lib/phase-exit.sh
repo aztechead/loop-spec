@@ -86,7 +86,8 @@ if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir"
 cd "$root"
 docs="docs/loop-spec/features/$slug"
 spec="$(fget '.artifacts.spec // ""')"; [[ -n "$spec" ]] || spec="$docs/SPEC.md"
-tasks="$(fget '.artifacts.tasks // ""')"; [[ -n "$tasks" ]] || tasks="$feature_dir/tasks.json"
+# PLAN extraction and task progress belong to this feature, never a saved checkout path.
+tasks="$feature_dir/tasks.json"
 flags=0
 flag() { echo "FLAG $*"; flags=$((flags + 1)); }
 
@@ -247,7 +248,12 @@ fi
 if (( flags == 0 && check == 0 )); then
   while IFS=$'\t' read -r key path; do
     [[ -n "$key" ]] || continue
-    fset "artifacts.$key" "\"$(resolve "$path")\""
+    path="$(resolve "$path")"
+    # Durable pointers are checkout-relative; runtime consumers use the owning feature directory.
+    if [[ "$key" == tasks ]]; then
+      path="$(python3 -c 'import os,sys; print(os.path.relpath(os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2])))' "$path" "$root")"
+    fi
+    fset "artifacts.$key" "$(jq -Rn --arg path "$path" '$path')"
   done < <(nget '.artifacts // {} | to_entries[] | [.key, .value] | @tsv')
   while IFS=$'\t' read -r key path; do
     [[ -n "$key" ]] || continue

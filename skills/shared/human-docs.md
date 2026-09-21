@@ -52,11 +52,12 @@ paragraph serves neither — the reader has to change mental gears mid-page.
    2.35 (CLAUDE.md). Point at `file:line` and let the reader read the truth. Copy a snippet
    only when the reader cannot run the command that produces it, and say where it came
    from.
-5. **The doc ships in the diff that changes the behavior.** A change that makes a document
-   false has not finished until that document is true again — README, help text, runbook,
-   configuration table, whichever a human actually operates from. Docs live in the repo
-   and are reviewed with the code (docs-as-code); a follow-up task to fix the docs is the
-   deferral this project already refuses (`skills/shared/no-deferral.md`).
+5. **The doc ships in the diff that changes the behavior.** Update README, help,
+   runbooks, or configuration tables made false by the change. Docs live in the repo
+   and are reviewed with the code (docs-as-code). One task may own shared README
+   examples and checks after parallel code slices, provided it completes in the same
+   feature delivery. Deferring docs beyond delivery violates
+   `skills/shared/no-deferral.md`.
 6. **Write the document the project will maintain.** Volume is not value. Prefer one page
    a maintainer will keep true over five that decay by the next release, and never invent
    a documentation convention the repository does not have — an ADR set, a docs site, a

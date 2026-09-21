@@ -15,6 +15,7 @@ Read only the entry packet as input. It includes the preliminary scans:
 pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin verify --feature-dir "$feature_dir")"
 # .entry.fields .entry.read[] .entry.flags[] (a missing ingress; relay and return)
 # .mode: placeholder=run|skip tamper=... validation=... acceptance=... codeReview=... regression=... reason=...
+# .verifier.model .verifier.subagentType .verifier.promptFile
 # .verify = lib/verify-prepare.sh: placeholder{ran,ok,signals}, tamper{...}, validation{rc,outcome,result},
 #           regression{...}, route=continue|remediate|escalate, class, remediationTasks[]
 ```
@@ -55,14 +56,14 @@ Workflow `lib/workflows/acceptance-verify.js` and the review Workflow
 `lib/workflows/code-review-dimensions.js` replace the agents; their results feed the same
 gates.
 
-Verifier brief: `slug`, `spec_path`, `plan_path`, `branch`, `baseSha` (workspace: each
-repo's absolute path, branch, and `baseSha`), and `VALIDATION_JSON` verbatim; apply
-`skills/shared/verification-grounding.md`; run every `### Good Enough` criterion's verify
-command from PLAN.md; do NOT rerun the repository-wide commands; write exactly one row
-per criterion `- criterion: GE-NNN | implementation: <file>:<line> - <proof> |
-integration: <file>:<line> - <proof>` (`integration: none - <reason>` only when no
-separate site exists); Exceptional is informational; report
-`VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>`.
+Dispatch `verifier-1` with `.verifier.model`, `.verifier.subagentType`, and the exact
+prompt `Read the verifier assignment at <.verifier.promptFile> and complete it.`
+The packet embeds the frozen role and `skills/shared/verification-grounding.md`, artifact and
+template paths, candidate revisions, and `VALIDATION_JSON` verbatim. Do not replace
+it with a summary, an acceptance checklist, or a new report format. No `.verifier`
+means no acceptance dispatch (a failed preparation or policy skip). The contract
+requires SPEC-derived assertions and `repositoryEvidence`; Exceptional is informational.
+Report `VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>`.
 
 Reviewer brief: `slug`, `branch`, `baseSha`, `spec_path`, `plan_path`, and `probe_dir`
 (absolute `${LOOP_SPEC_SKILL_DIR}/../../lib`, so its code-for-humans and duplication passes
@@ -86,7 +87,7 @@ gate="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" verify gate --fe
 # .exit{ok,flags[]} .route=redo|pass|remediate .class .tasks[] .minorsQueued .repeat
 ```
 
-It runs `lib/phase-exit.sh verify` first: `.route == "redo"` means VERIFICATION.md
+It validates remediation task shape before writing state, then runs `lib/phase-exit.sh verify`: `.route == "redo"` means VERIFICATION.md
 FLAGged (`artifact-lint`; `[verification-grounding]` from
 `lib/verification-grounding-lint.sh`: a criterion row without post-change
 `repositoryEvidence`, a missing file, an out-of-range line; `[acceptance-table]` from
@@ -94,11 +95,20 @@ FLAGged (`artifact-lint`; `[verification-grounding]` from
 that does not begin with PASS, FAIL, or N/A; `[misplaced]`: the verifier wrote the file
 into another checkout, and the flag names the move). Fix the file in place and
 call `verify gate` again with the same verdicts; nothing is recorded for a redo, and the
-agents are not re-dispatched. A criterion whose evidence cannot be written is a
+agents are not re-dispatched. A `[remediation]` flag requires repairing task ids,
+subjects, criteria, or verify commands and retrying with the same failing verdict;
+never clear the failure or its work to pass the gate. Prefer a repository test file
+for complex checks. Inline interpreter programs must be literal: single quote the
+program or use a quoted heredoc, and pass dynamic values as arguments. Shell expansion
+inside a program is rejected before the task is queued. A criterion whose evidence cannot be written is a
 verifier FAIL regardless of green commands: pass `--verifier FAIL`. Then:
 
 - Verifier `FAIL`, or `ALL_PASS` with `Test suite status: FAIL`: class `acceptance`
-  (or `suite-regression`); pass one remediation task per failed criterion.
+  (or `suite-regression`); pass one remediation task per failed criterion. Copy the
+  verifier's exact adequate failing reproducer into `verifyCommand`; do not invent
+  a weaker proxy from the finding's summary. If the report lacks a reproducer,
+  resume the verifier to supply and run it before queuing the task. Preserve the
+  criterion's semantics and permitted representations, including referenced structures.
 - Reviewer `BLOCK`: class `code-review`; pass one task per blocking finding.
 - `PASS_WITH_MINOR`: pass every Minor in `--minors`; the call appends each to the
   backlog (`lib/backlog.sh add {slug} verify-deferred "<file:line — claim>"`); write the
@@ -147,8 +157,12 @@ passes="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" verify passes 
   once in interactive styles).
 - **Verification-gap pass**: `lib/verification-gap-scan.sh "$baseSha" HEAD` is `.gaps`;
   `rc` 1 means no non-test definition changed. Otherwise ONE fresh reviewer carrying
-  `skills/shared/review-prompts/verification-gap.md` plus `.gaps.lines[]`. Findings are
-  advisory: `## Verification gaps` in VERIFICATION.md and the backlog.
+  `skills/shared/review-prompts/verification-gap.md` plus `.gaps.lines[]`. Coverage
+  improvements are advisory: `## Verification gaps` in VERIFICATION.md and the
+  backlog. A finding that demonstrates a violated required contract or Good Enough
+  criterion instead reopens acceptance: record FAIL and route through `verify gate`
+  with `--verifier FAIL` and a remediation task. Do not defer an observed violation
+  merely because the gap pass found it after an earlier PASS.
 - **Plain language** (advisory): `lib/plain-language-lint.sh prose` over the feature's
   artifacts and `comments` over changed `.sh`/`.py` are `.plainLanguage`; record counts
   under `## Plain language`.

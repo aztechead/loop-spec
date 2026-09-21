@@ -216,8 +216,7 @@ Paths and arguments in both blocks resolve through a closed placeholder set: `{d
 `phase-entry.sh` so a `read=` line opens from any cwd, relative in `phase-exit.sh`
 because that is what `artifacts.*` pointers record), `{featureDir}`, `{root}` (the
 repository root, or the workspace root in workspace mode), `{slug}`, `{spec}`
-(`artifacts.spec` or `{docs}/SPEC.md`), `{tasks}` (`artifacts.tasks` or
-`{featureDir}/tasks.json`), and `{f:<dotted.key>}` (that feature.json value). This is
+(`artifacts.spec` or `{docs}/SPEC.md`), `{tasks}` (the owning feature's `{featureDir}/tasks.json`), and `{f:<dotted.key>}` (that feature.json value). This is
 not the engine's `bodyArgs` set above: the engine dispatches gate NODES, these scripts
 run inside a phase. `lib/graph/validate.sh` flags an unknown placeholder, a gate body
 that does not exist, an `ingress`/`egress` on a node that is not a phase agent node, and

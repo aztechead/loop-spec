@@ -39,13 +39,15 @@ const validResult = {
 
 async function execute(args, results) {
   let dispatches = 0
+  const prompts = []
   const agent = async (prompt, options) => {
     dispatches += 1
+    prompts.push({ prompt, label: options.label })
     if (options.label.startsWith('verify:')) {
       const id = options.label.split(':')[1]
       return Object.prototype.hasOwnProperty.call(results, id) ? results[id] : null
     }
-    return { real: true, rationale: 'upheld' }
+    return { real: args.refuteResult !== false, rationale: 'independent observation' }
   }
   const parallel = async fns => Promise.all(fns.map(fn => fn()))
   const pipeline = async (items, mapper, reducer) => {
@@ -58,7 +60,7 @@ async function execute(args, results) {
     return out
   }
   const value = await __workflow__(args, null, agent, parallel, null, pipeline)
-  return { value, dispatches }
+  return { value, dispatches, prompts }
 }
 
 let pass = 0
@@ -71,6 +73,18 @@ function check(name, condition) {
 let run = await execute(validArgs, { 'GE-001': validResult })
 check('valid grounded result passes', run.value.allPass === true)
 check('valid result preserves groundingPass', run.value.criteria[0].groundingPass === true)
+
+const structuralArgs = {
+  ...validArgs,
+  criteria: [{ id: 'GE-001', description: 'The generated bundle preserves the declared nested field types', verifyCommand: 'python check_bundle.py' }],
+}
+run = await execute(structuralArgs, { 'GE-001': validResult })
+const refutes = run.prompts.filter(p => p.label.startsWith('refute:'))
+check('all independent voters receive the actual criterion', refutes.length === 3 && refutes.every(p => p.prompt.includes(structuralArgs.criteria[0].description)))
+check('all independent voters can locate the authoritative SPEC and checkout', refutes.every(p => p.prompt.includes(structuralArgs.specPath) && p.prompt.includes(structuralArgs.repositoryRoot) && p.prompt.includes(structuralArgs.baseSha)))
+run = await execute({ ...structuralArgs, refuteResult: false }, { 'GE-001': validResult })
+check('an independently refuted green command cannot pass acceptance', run.value.allPass === false && run.value.criteria[0].upheld === false)
+
 
 run = await execute(validArgs, {})
 check('missing verifier result fails closed', run.value.allPass === false)

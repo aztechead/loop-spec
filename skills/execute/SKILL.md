@@ -42,7 +42,7 @@ capture requires a temporary worktree.
 
 The preparation call performs these task steps:
 
-1. Reads `artifacts.tasks` from `feature_dir/tasks.json`.
+1. Reads the owning feature's `feature_dir/tasks.json`; saved `artifacts.tasks` locators never select another checkout.
 2. Registers `pendingRemediationTasks[]` from VERIFY, ITERATE, or DELIVER.
    Missing fields default to `blockedBy: []`, `files: []`, `acceptanceCriteria: [subject]`, and `verifyCommand: feature.commands.test`.
    A missing usable verify command fails intake; it never silently omits the task.

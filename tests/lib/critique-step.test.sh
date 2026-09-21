@@ -8,6 +8,7 @@ WORK="${TMPDIR:-/tmp}/loop-spec-critique-step.$$"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/feature" "$WORK/docs"
 WORK="$(cd "$WORK" && pwd -P)"
+git -C "$WORK" init -q
 PASS=0; FAIL=0
 
 check() {
@@ -18,6 +19,29 @@ check() {
 feat() { jq -r "$1" "$WORK/feature/feature.json"; }
 FD="$WORK/feature"; ART="$WORK/docs/PLAN & custom.md"
 
+append_tasks() {
+  cat >> "$ART" <<'MD'
+
+### task-001: endpoint
+**Goal:** endpoint works
+**Files:**
+- `api.py`
+**Verify:** `pytest tests/test_api.py`
+**Acceptance criteria:**
+- endpoint returns the expected response
+**BlockedBy:** []
+
+### task-002: CSV
+**Goal:** CSV works
+**Files:**
+- `csv.py`
+**Verify:** `pytest tests/test_csv.py`
+**Acceptance criteria:**
+- CSV contains the expected rows
+**BlockedBy:** []
+MD
+}
+
 LOOP_SPEC_HARNESS=claude bash "$ROOT/lib/feature-init.sh" skeleton --mode single \
   --slug step-unit --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --style auto --title "step test" \
   --branch feat/step-unit --base-sha deadbeef --base-branch main \
@@ -25,6 +49,7 @@ LOOP_SPEC_HARNESS=claude bash "$ROOT/lib/feature-init.sh" skeleton --mode single
 jq --arg spec "$WORK/docs/SPEC & custom.md" --arg evidence "$WORK/docs/EVIDENCE & custom.md" \
   '.artifacts.spec=$spec | .artifacts.evidence=$evidence' "$FD/feature.json" > "$FD/feature.json.tmp" && mv "$FD/feature.json.tmp" "$FD/feature.json"
 printf '# Plan\n\n## Tasks\n\n- T1: add the endpoint\n- T2: write the CSV\n' > "$ART"
+append_tasks
 
 # --- open ---
 rc=0; bash "$STEP" findings --feature-dir "$FD" --reply - <<<"FINDINGS:" >/dev/null 2>&1 || rc=$?
@@ -50,6 +75,7 @@ check "findings gate-log written" "1" "$(grep -c 'Round 1 (single-critic)' "$FD/
 check "findings emits gate_round" "1" "$(grep -c '"gate_round"' "$FD/events.jsonl")"
 check "findings snapshots the artifact the challenger read" "1" "$([[ -f "$FD/gate-logs/PLAN & custom.pre-revision.md" ]] && echo 1 || echo 0)"
 printf '# Plan\n\n## Tasks\n\n- T1: add the endpoint (edited before fail)\n- T2: write the CSV\n' > "$ART"
+append_tasks
 
 # --- fail -> rerun (ceiling 1 leaves one delta round) ---
 out="$(printf '[major] Gap: no retry budget\n' | bash "$STEP" fail --feature-dir "$FD" --fix-list -)"
@@ -62,6 +88,7 @@ check "fail keeps the gate open" "plan-critique" "$(feat '.currentGate.gate')"
 
 # --- revised ---
 printf '# Plan\n\n## Tasks\n\n- T1: add the endpoint with a retry budget of 3\n- T2: write the CSV\n' > "$ART"
+append_tasks
 out="$(bash "$STEP" revised --feature-dir "$FD")"
 check "revised sees the change" "true" "$(jq -r '.changed' <<<"$out")"
 check "revised keeps the diff in the file, not the answer" "null" "$(jq -r '.diff' <<<"$out")"
@@ -100,6 +127,7 @@ check "open answers null when the role inherits" "null" "$(jq -r '.model' <<<"$o
 printf 'FINDINGS:\n1. [major] Gap: no schema\n' | bash "$STEP" findings --feature-dir "$FD" --reply - >/dev/null
 printf '[major] Gap: no schema\n' | bash "$STEP" fail --feature-dir "$FD" --fix-list - >/dev/null
 printf '# Plan\n\n## Tasks\n\n- T1: add the endpoint with a retry budget of 3\n- T2: write the CSV with the schema in lib/schema.py\n' > "$ART"
+append_tasks
 bash "$STEP" revised --feature-dir "$FD" >/dev/null
 out="$(printf 'DELTA-VERIFIED: both addressed\n' | bash "$STEP" delta --feature-dir "$FD" --reply -)"
 check "verified delta answers verified" "true" "$(jq -r '.verified' <<<"$out")"

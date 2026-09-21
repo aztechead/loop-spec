@@ -59,6 +59,27 @@ check "run: dispatch files are written" "2" "$(ls "$FD/dispatch" | grep -cE 'con
 check "run: the toolchain is probed once for the briefs" "1" "$(grep -c '^jq: jq-' "$FD/dispatch/environment.txt")"
 check "run: quoted pattern fragments are not probed as programs" "0" "$(grep -c 'apply\|\\b' "$FD/dispatch/environment.txt")"
 
+# A restored absolute locator must never load another checkout's completed tasks.
+foreign="$WORK/foreign-tasks.json"
+jq 'map(.status="done")' "$FD/tasks.json" > "$foreign"
+foreign_before="$(cat "$foreign")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" artifacts.tasks "\"$foreign\"" >/dev/null
+out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
+check "restored locator: preparation uses this feature's sidecar" "$FD/tasks.json" "$(jq -r '.sidecar' <<<"$out")"
+check "restored locator: foreign done statuses cannot suppress local work" "3" "$(jq '.remaining | length' <<<"$out")"
+check "restored locator: foreign task state is untouched" "$foreign_before" "$(cat "$foreign")"
+entry_out="$(bash "$REPO_ROOT/lib/phase-entry.sh" execute --feature-dir "$FD" 2>/dev/null || true)"
+check "restored locator: ingress reads local tasks" "1" "$(grep -Fxc "read=$FD/tasks.json" <<<"$entry_out")"
+ec=0; gate_out="$(bash "$REPO_ROOT/lib/execute-exit-gate.sh" check "$FD" 2>&1)" || ec=$?
+check "restored locator: foreign completion cannot pass EXECUTE exit" "1" "$ec"
+check "restored locator: exit names unpublished local tasks" "1" "$(grep -c 'tasks not published' <<<"$gate_out")"
+mv "$FD/tasks.json" "$FD/tasks.saved.json"
+ec=0; out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)" || ec=$?
+check "restored locator: missing local sidecar fails instead of falling back" "1:false" "$ec:$(jq -r '.sidecarOk' <<<"$out")"
+check "restored locator: missing local data never changes the foreign file" "$foreign_before" "$(cat "$foreign")"
+mv "$FD/tasks.saved.json" "$FD/tasks.json"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" artifacts.tasks "\"$FD/tasks.json\"" >/dev/null
+
 # A resumed process with no inherited cap uses the durable startup resource policy.
 runtime_file="$REPO/.loop-spec/runtime.json"
 runtime_saved="$(cat "$runtime_file")"
@@ -352,5 +373,7 @@ check "workspace: an operator bound outranks the width default" "2:2" \
   "$(jq -r '(.rung.maxParallelSubagents | tostring) + ":" + (.rung.maxParallelImplementers | tostring)' <<<"$out")"
 check "single: the packet has no workspace" "null" "$(jq -r '.workspace' "$FD/dispatch/prepare.json")"
 
+python3 "$REPO_ROOT/tests/lib/verify-command.test.py"
+python3 "$REPO_ROOT/tests/lib/repair-verify.test.py"
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

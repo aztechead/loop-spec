@@ -77,7 +77,13 @@ The phase also runs `lib/acceptance-lint.sh` before leaving PLAN. The exit runs
 Use `skills/shared/critique-gate-protocol.md` and `graph/critique.graph.json` with
 `phase=plan`,
 `gate=plan-critique`, `artifact=PLAN.md`, and author `planner-1`. Run the gate after
-mechanical checks. Send the planner one combined list of flags and critique findings;
+mechanical checks. `critique open` rejects extraction, cycle, and width failures before
+creating a review packet. On structural failure, send the planner the flags once,
+repair PLAN ownership/dependencies, and rerun extraction and the check before
+retrying; if still blocked, return the flags to the cycle without dispatching a critic.
+Use the planner's shared-file ownership rule; retain every required README example
+and its verification. Send the planner one combined list of remaining flags and
+critique findings;
 the critique steps emit the `gate_round` events through the shared protocol.
 allow one revision, then re-run extraction and gates. Never spawn `advocate-1`.
 The critique never re-opens on a `REDO`; a final phase exit handles remaining flags.
