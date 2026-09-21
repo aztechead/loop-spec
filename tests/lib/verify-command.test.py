@@ -58,6 +58,17 @@ class CommandIntegrity(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'shell-expands'):
             validate('cat <<EOF; python3 <<PY\n$value\nEOF\n$value\nPY\n')
 
+    def test_stdin_device_paths_preserve_program_expansion_checks(self):
+        for interpreter in ['python3', 'python3 -s', 'node', 'ruby', 'perl', 'php']:
+            for path in ['/dev/stdin', '/dev/fd/0']:
+                for source in ['<<EOF\n"$value"\nEOF\n', '<<< "$value"']:
+                    command = f'{interpreter} {path} {source}'
+                    with self.subTest(command=command), self.assertRaisesRegex(ValueError, 'shell-expands'):
+                        validate(command)
+                for delimiter in ["'EOF'", '"EOF"', r'\EOF']:
+                    validate(f'{interpreter} {path} <<{delimiter}\n"$value"\nEOF\n')
+                validate(f"{interpreter} {path} <<< '$value'")
+
     def test_continuation_preserves_interpreter(self):
         continuation = chr(92) + chr(10)
         with self.assertRaisesRegex(ValueError, 'shell-expands'):
