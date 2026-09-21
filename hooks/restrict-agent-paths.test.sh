@@ -34,8 +34,11 @@ payload() {
   local tool_name="$1"
   local file_path="$2"
   local transcript_path="$3"
-  printf '{"tool_name":"%s","tool_input":{"file_path":"%s"},"transcript_path":"%s"}' \
-    "$tool_name" "$file_path" "$transcript_path"
+  local agent_type="${4:-}"
+  local identity=""
+  [[ -n "$agent_type" ]] && identity=",\"agent_type\":\"$agent_type\",\"agent_id\":\"agent-test\""
+  printf '{"tool_name":"%s","tool_input":{"file_path":"%s"},"transcript_path":"%s"%s}' \
+    "$tool_name" "$file_path" "$transcript_path" "$identity"
 }
 
 echo "=== restrict-agent-paths.sh tests ==="
@@ -164,6 +167,15 @@ fi
 # Case T: code-reviewer (memory-enabled, read-only for code) Write to source path -> DENY (exit 2)
 check "T: code-reviewer Write to src/foo.py DENY" 2 \
   "$(payload "Write" "src/foo.py" "$FIXTURES/code-reviewer.jsonl")"
+
+# Case T2: the hook payload's verifier identity outranks a concurrent open
+# code-reviewer dispatch in the parent transcript; verifier code writes stay allowed.
+check "T2: payload verifier identity allows exact VERIFICATION.md" 0 \
+  "$(payload "Write" "docs/loop-spec/features/foo/VERIFICATION.md" "$FIXTURES/code-reviewer.jsonl" "loop-spec:verifier")"
+check "T3: payload verifier still cannot write a loop-spec contract file" 2 \
+  "$(payload "Write" ".loop-spec/feature.json" "$FIXTURES/code-reviewer.jsonl" "loop-spec:verifier")"
+check "T4: payload code-reviewer identity still denies source writes" 2 \
+  "$(payload "Write" "src/foo.py" "$FIXTURES/implementer.jsonl" "loop-spec:code-reviewer")"
 
 # Case U: code-reviewer Write to its agent-memory dir -> ALLOW (exit 0)
 check "U: code-reviewer Write to .claude/agent-memory/code-reviewer/MEMORY.md ALLOW" 0 \
