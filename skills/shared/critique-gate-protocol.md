@@ -51,7 +51,7 @@ DRV="${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh"
 bash "$DRV" critique open     --feature-dir "$feature_dir" --phase {phase} --gate {gate} --artifact {artifact_path}   # {..., model}
 bash "$DRV" critique findings --feature-dir "$feature_dir" --reply <path|->      # round 1: {verdict, lines[]}; snapshots the artifact
 bash "$DRV" critique fail     --feature-dir "$feature_dir" --fix-list <path|->   # {answer: rerun|close|apply, reason, fixList|residue}
-bash "$DRV" critique revised  --feature-dir "$feature_dir"                        # {diffPath, changed, lines, fixList}
+bash "$DRV" critique revised  --feature-dir "$feature_dir"                        # {diffPath, changed, lines, fixList, promptFile}
 bash "$DRV" critique delta    --feature-dir "$feature_dir" --reply <path|-> [--flags <path>]   # {round, verified, survivors[]}
 bash "$DRV" critique pass     --feature-dir "$feature_dir"                        # the fix-list-empty close
 ```
@@ -64,29 +64,23 @@ declares `currentGate` in the `reads[]` of both critique subgraph nodes, and
 
 ## Single-critic pass
 
-`critique open`, then send `challenger-1` the solo-critic brief. Under the `oneshot`
-spawn kind (`skills/shared/dispatch.md`) this and every later message is a nameless
-`Agent({description, subagent_type: "loop-spec:challenger", run_in_background: false,
-model: <open's .model>, prompt})` with the prior gate-logs inlined; omit `model` only
-when `open` answered null:
+`critique open` returns `promptFile` and `model`. The coordinator does not read,
+rebuild, or paste the assignment. Use the active dispatch adapter described by
+`skills/shared/dispatch.md` and send exactly this one-line task, substituting the
+returned path:
 
 ```
-SendMessage({
-  to: "challenger-1",
-  message: """
-    [Populate from skills/shared/team-prompts/critic.md with these substitutions:
-      {slug} = slug
-      {N} = 1
-      {phase} = {phase}
-      {artifact} = {artifact}
-    ]
-
-    Run your findings pass on {artifact} now and report to team-lead.
-  """
-})
+Read the critique assignment at <promptFile> and complete it.
 ```
 
-Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from
+For a one-shot adapter, pass the line as the Agent `prompt` and let the Agent's final
+response be the critic report. For a team adapter, send the line to `challenger-1`; the
+assignment specifies the team-lead report transport. Pass the non-null `model` returned
+by `open` to a one-shot Agent; omit the field when it is null. The adapter owns the
+exact tool shape and maps these two report transports on peer harnesses. Never inline
+the assignment or reconstruct critic prose in the coordinator.
+
+Stop after dispatch. The harness resumes this turn on `TeammateIdle` from
 `challenger-1`. Never AskUserQuestion as a wait. Hand the reply to
 `critique findings --reply -` on stdin, verbatim: it writes `gate-logs/{gate}-round-1.md`,
 counts the round, emits the event, and answers `{verdict: findings|no-findings,
@@ -130,32 +124,17 @@ A non-zero exit is a message on stderr (no open gate, a graph with no ceiling, a
 malformed override): relay it and stop.
 
 When the revision lands, `critique revised` diffs the snapshot `findings` took against
-the artifact and answers `{diffPath, lines, fixList}`. The author may have edited the
-artifact before or after `fail`; the snapshot is what the challenger read. Send the
-**delta re-verify** naming the diff file, never pasting it (the challenger has Read,
-and the diff in the lead's context is paid on every later call) — and never the full
-gate protocol again (`skills/shared/tier-matrix.md`, critique gate ladder):
+the artifact and returns a delta `promptFile` containing `{diffPath, lines, fixList}`.
+The author may have edited the artifact before or after `fail`; the snapshot is what
+the challenger read. Use the active dispatch adapter and send exactly this one-line
+delta task, substituting the returned path:
 
 ```
-SendMessage({
-  to: "challenger-1",
-  message: """
-    Delta re-verify (per your solo-critic brief). The fix-list below was applied to {artifact}.
-    Confirm each item is addressed and check the CHANGED sections only for new issues.
-    Every DELTA-FINDINGS line is `unaddressed: <item>` or `introduced: "<added line>" ... [major]`.
-
-    Fix-list applied:
-    {.fixList}
-
-    Diff: Read {.diffPath} ({.lines} lines).
-
-    Reply to team-lead with DELTA-VERIFIED or DELTA-FINDINGS, then go idle.
-  """
-})
+Read the critique assignment at <promptFile> and complete it.
 ```
 
-The challenger reads the round's diff from `diffPath` (`gate-logs/{gate}-delta.diff`)
-itself; the lead does not inline it into the message. Stop after SendMessage. The
+The assignment directs the challenger to read the round's diff from `diffPath`
+(`gate-logs/{gate}-delta.diff`) itself; the lead does not inline it. Stop after dispatch. The
 harness resumes this turn on `TeammateIdle` from `challenger-1`, under `claude -p` as
 well. Never AskUserQuestion as a wait. Hand the reply to
 `critique delta --reply -` (PLAN adds `--flags` with the re-run gate's FLAG lines): it
@@ -184,7 +163,13 @@ order. Proceed to `{next_step}`.
 
 ## Resume (gate in progress)
 
-When the phase resumes with `currentGate.round > 0`: the gate is open and
-`gate-logs/{gate}-state.json` names the artifact, so skip `open` and re-run from the
-single-critic findings pass with the existing gate-logs inlined as prior context. There
-is no advocate transcript to reload.
+When the phase resumes with an open `currentGate` (including `round == 0` after an
+open but before the first reply), `gate-logs/{gate}-state.json` names the artifact, so
+call `critique resume` and use its active `{kind, promptFile, round, model}` packet
+(`model` is optional for legacy state). Send exactly the same one-line task through the
+active dispatch adapter, using the resume packet's non-null `model` for a one-shot Agent
+and omitting the field otherwise. Route the returned report by `kind`: `findings` goes
+to `critique findings --reply -`, and `delta` goes to `critique delta --reply -` with
+PLAN flags when required. Do not regenerate a legacy packet or inline prior gate-log
+content. The resume packet preserves the existing assignment and gate-log semantics,
+including the current round. There is no advocate transcript to reload.

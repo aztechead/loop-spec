@@ -16,12 +16,14 @@ check() {
   else echo "FAIL: $name (expected '$expected', got '$actual')"; FAIL=$((FAIL + 1)); fi
 }
 feat() { jq -r "$1" "$WORK/feature/feature.json"; }
-FD="$WORK/feature"; ART="$WORK/docs/PLAN.md"
+FD="$WORK/feature"; ART="$WORK/docs/PLAN & custom.md"
 
 LOOP_SPEC_HARNESS=claude bash "$ROOT/lib/feature-init.sh" skeleton --mode single \
   --slug step-unit --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --style auto --title "step test" \
   --branch feat/step-unit --base-sha deadbeef --base-branch main \
   --worktree "" --prepare "" --test "" --lint "" --typecheck "" > "$FD/feature.json"
+jq --arg spec "$WORK/docs/SPEC & custom.md" --arg evidence "$WORK/docs/EVIDENCE & custom.md" \
+  '.artifacts.spec=$spec | .artifacts.evidence=$evidence' "$FD/feature.json" > "$FD/feature.json.tmp" && mv "$FD/feature.json.tmp" "$FD/feature.json"
 printf '# Plan\n\n## Tasks\n\n- T1: add the endpoint\n- T2: write the CSV\n' > "$ART"
 
 # --- open ---
@@ -31,6 +33,11 @@ out="$(bash "$STEP" open --feature-dir "$FD" --phase plan --gate plan-critique -
 check "open records the gate" "plan-critique" "$(feat '.currentGate.gate')"
 check "open answers the absolute artifact path" "$ART" "$(jq -r '.artifact' <<<"$out")"
 check "open writes the state sidecar" "1" "$([[ -f "$FD/gate-logs/plan-critique-state.json" ]] && echo 1 || echo 0)"
+check "open returns an immutable findings packet" "1" "$(jq -r '.promptFile' <<<"$out" | grep -c '/gate-logs/plan-critique-round-1-prompt.md$')"
+check "findings packet uses the canonical critic contract" "1" "$(grep -c 'Solo Critic Teammate Prompt Template' "$(jq -r '.promptFile' <<<"$out")")"
+check "findings packet uses the authoritative artifact path" "1" "$(grep -Fxc "Read the artifact at \`$ART\`. This path is authoritative for this attempt." "$(jq -r '.promptFile' <<<"$out")")"
+check "findings packet uses custom SPEC and EVIDENCE paths" "1" "$([[ "$(grep -Fc "$WORK/docs/SPEC & custom.md" "$(jq -r '.promptFile' <<<"$out")")" -gt 0 && "$(grep -Fc "$WORK/docs/EVIDENCE & custom.md" "$(jq -r '.promptFile' <<<"$out")")" -gt 0 ]] && echo 1 || echo 0)"
+check "packet uses caller transport" "1" "$([[ "$(grep -c 'active harness transport' "$(jq -r '.promptFile' <<<"$out")")" -gt 0 ]] && echo 1 || echo 0)"
 check "open answers the challenger's alias to pass on the Agent call" "sonnet" "$(jq -r '.model' <<<"$out")"
 
 # --- findings ---
@@ -41,14 +48,14 @@ check "findings verdict" "findings" "$(jq -r '.verdict' <<<"$out")"
 check "findings lines skip the header and blanks" "2" "$(jq '.lines | length' <<<"$out")"
 check "findings gate-log written" "1" "$(grep -c 'Round 1 (single-critic)' "$FD/gate-logs/plan-critique-round-1.md")"
 check "findings emits gate_round" "1" "$(grep -c '"gate_round"' "$FD/events.jsonl")"
-check "findings snapshots the artifact the challenger read" "1" "$([[ -f "$FD/gate-logs/PLAN.pre-revision.md" ]] && echo 1 || echo 0)"
+check "findings snapshots the artifact the challenger read" "1" "$([[ -f "$FD/gate-logs/PLAN & custom.pre-revision.md" ]] && echo 1 || echo 0)"
 printf '# Plan\n\n## Tasks\n\n- T1: add the endpoint (edited before fail)\n- T2: write the CSV\n' > "$ART"
 
 # --- fail -> rerun (ceiling 1 leaves one delta round) ---
 out="$(printf '[major] Gap: no retry budget\n' | bash "$STEP" fail --feature-dir "$FD" --fix-list -)"
 check "fail answers rerun inside the ceiling" "rerun" "$(jq -r '.answer' <<<"$out")"
 check "fail numbers the fix-list for the author" "1. [major] Gap: no retry budget" "$(jq -r '.fixList' <<<"$out")"
-check "fail keeps the findings-time snapshot, not the edited file" "0" "$(grep -c 'edited before fail' "$FD/gate-logs/PLAN.pre-revision.md")"
+check "fail keeps the findings-time snapshot, not the edited file" "0" "$(grep -c 'edited before fail' "$FD/gate-logs/PLAN & custom.pre-revision.md")"
 check "fail records the entry with the items verbatim" "[major] Gap: no retry budget" \
   "$(feat '.gateHistory[-1].findingsAddressed[0]')"
 check "fail keeps the gate open" "plan-critique" "$(feat '.currentGate.gate')"
@@ -62,6 +69,10 @@ check "revised counts the diff lines" "1" "$([[ "$(jq -r '.lines' <<<"$out")" -g
 check "revised wrote the change into the diff file" "1" "$(grep -c '^+- T1: add the endpoint with a retry budget of 3' "$FD/gate-logs/plan-critique-delta.diff")"
 check "revised repeats the fix-list" "1. [major] Gap: no retry budget" "$(jq -r '.fixList' <<<"$out")"
 check "revised writes the diff file" "1" "$([[ -s "$FD/gate-logs/plan-critique-delta.diff" ]] && echo 1 || echo 0)"
+check "revised returns a delta packet" "1" "$(jq -r '.promptFile' <<<"$out" | grep -c 'round-2-prompt.md$')"
+check "delta packet omits first-pass findings section" "1" "$(grep -c 'Delta re-verify pass' "$(jq -r '.promptFile' <<<"$out")")"
+check "delta packet omits whole-artifact read" "1" "$([[ "$(grep -Fc 'Read the artifact at' "$(jq -r '.promptFile' <<<"$out")")" == 0 ]] && echo 1 || echo 0)"
+check "resume returns the persisted packet" "1" "$(bash "$STEP" resume --feature-dir "$FD" | jq -r '.promptFile' | grep -c 'round-2-prompt.md$')"
 
 # --- delta with survivors: unaddressed kept, out-of-scope dropped, FLAG added ---
 printf 'FLAG [feasibility] task-002 has no verifyCommand\n' > "$WORK/flags.txt"
@@ -138,4 +149,5 @@ check "a major among minors still answers rerun" "rerun" "$(jq -r '.answer' <<<"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
-[[ "$FAIL" -eq 0 ]]
+[[ "$FAIL" -eq 0 ]] || exit 1
+python3 "$ROOT/tests/lib/critique-packet.test.py"

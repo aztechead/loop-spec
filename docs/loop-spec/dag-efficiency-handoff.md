@@ -11,6 +11,13 @@ Continue reducing the context and coordination cost of the full DAG workflow wit
 - Previous working arrangement: Luna implements; the lead reviews actual diffs and runs validation. Retain that arrangement unless the user changes it.
 - Read applicable repository instructions and `/Users/aztechead/.codex/RTK.md`. Shell commands must start with `rtk`.
 
+## Continuation status — 2026-09-20
+
+- The current implementation scopes critique `open`, `revised`, and `resume` around prompt-file packets. It verifies frozen sources and preserves exact artifact paths, model selection, delta handling, and resume semantics.
+- Durable trace, report, and measurement pointers are under the ignored `inbox/pr108-efficiency/` directory. The static coordinator source comparison uses baseline `596ac02`: protocol plus critic template measured 15,926 bytes; the candidate protocol measures 11,237 bytes. These are source-byte measurements only; they make no live runtime or token claim.
+- The required live current-baseline/candidate PLAN comparison and full candidate DAG run remain unproven. A sandbox Claude attempt failed at login with zero usage. Running two PLAN sessions (baseline and candidate) and one full DAG run with authenticated Claude requires explicit approval to send plugin source and synthetic fixtures to Anthropic.
+- Prepared snapshots and fixtures remain under `/tmp/loop-spec-pr108-next`; no live models were launched from them. The stabilized offline suite now passes 257 suites with zero failures or skips in 216 seconds; the recorded 157-second ceiling remains unchanged. Earlier attempt details remain in ignored audit and log artifacts under `inbox/pr108-efficiency/`.
+
 The last implementation passed 257 offline suites, with zero failures or skips. Runtime was 216 seconds; the runner printed an aspirational 157-second ceiling. That ceiling was not raised. Three live Python 3.14 FastAPI scenarios passed their app tests, lint, and independent acceptance checks.
 
 ## What already changed
