@@ -52,6 +52,7 @@ for (const permanent of [false, true]) {
   let integrations = 0
   let repairPrompt = ''
   const retryAgent = async (prompt, options) => {
+    if (options.label === 'integration-diagnosis') return {kind: 'product', detail: 'Output violates the criterion'}
     if (options.label === 'merge-agent') {
       integrations++
       return integrations === 1 || permanent
@@ -72,6 +73,7 @@ console.log('workflow integration recovery passed')
 const counts = {}
 let merges = 0
 const siblingAgent = async (prompt, options) => {
+  if (options.label === 'integration-diagnosis') return {kind: 'product', detail: 'Output violates the criterion'}
   if (options.label === 'merge-agent') {
     merges++
     return merges === 1
@@ -85,6 +87,25 @@ const siblingAgent = async (prompt, options) => {
 const siblings = await __workflow__({...base, maxParallelImplementers: 2, maxRetriesPerTask: 2}, null, siblingAgent, parallel, null)
 if (counts['task-001'] !== 2 || counts['task-002'] !== 1 || siblings.merged.length !== 2) throw new Error('integration retry discarded an approved sibling')
 console.log('workflow preserves approved siblings during recovery')
+for (const kind of ['check', 'uncertain', null]) {
+  let implementations = 0
+  let integrations = 0
+  const checkAgent = async (prompt, options) => {
+    if (options.label === 'integration-diagnosis') {
+      if (!prompt.includes('assertion mismatch') || !prompt.includes('Recorded command: true')) throw new Error('diagnosis lacks evidence')
+      return kind && {kind, detail: 'Check does not establish the criterion'}
+    }
+    if (options.label === 'merge-agent') {
+      integrations++
+      return {merged: [], integrationFailure: {taskId: 'task-001', reason: 'verify-failed', detail: 'assertion mismatch'}}
+    }
+    implementations++
+    return {taskId: 'task-001', committed: true, verdict: 'pass'}
+  }
+  const result = await __workflow__({...base, tasks: [tasks[0]], maxRetriesPerTask: 3}, null, checkAgent, parallel, null)
+  if (implementations !== 1 || integrations !== 1 || result.blocked.length || result.merged.length || result.escalation?.reason !== 'verify-command-repair-required') throw new Error('faulty or uncertain check consumed implementation attempts')
+}
+console.log('workflow stops for command repair without changing product or spending retries')
 JS
 cat > "$TMP/runner.mjs" <<'JS'
 import fs from 'node:fs'
