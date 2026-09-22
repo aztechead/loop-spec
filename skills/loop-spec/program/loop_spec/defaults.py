@@ -5,13 +5,12 @@ Use `run_lead_phase` as `contract.invoke`'s `implementation == "default"` handle
 for the `spec` and `plan` phases; EXECUTE/VERIFY/ITERATE/DELIVER have no default
 yet, so `contract.py` still raises "lands at M3/M4/M5" for those.
 """
-import os
 from pathlib import Path
 
 from . import external
 from .jsonio import atomic_write_json, read_json
 from .paths import FeaturePaths, ensure_results_dir
-from .roles import compose_prompt, load_role
+from .roles import compose_prompt, load_role, resolve_model
 from .schema import load_schema, validate
 
 
@@ -64,13 +63,12 @@ def run_lead_phase(phase: str, role_name: str, context_path: Path, product_path:
     }
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=cwd, phase=phase)
 
-    env_key = "LOOP_SPEC_MODEL_" + role_name.upper().replace("-", "_")
     step_request = {
         "kind": "lead", "role": role_name, "phase": phase, "cwd": str(cwd), "prompt": prompt,
         "resultPath": str(result_path), "schema": load_schema(phase),
         "postconditions": external.PHASE_POSTCONDITIONS[phase],
         "attempt": context["attempt"]["id"], "inputsDigest": context["inputs"]["digest"],
-        "retryOf": None, "reason": None, "model": os.environ.get(env_key),
+        "retryOf": None, "reason": None, "model": resolve_model(project_root, role_name),
     }
     atomic_write_json(product_path.parent / "step.json", step_request)
     return 2

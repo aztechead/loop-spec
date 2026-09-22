@@ -4,8 +4,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from loop_spec import contract
 from loop_spec.errors import LoopSpecError
-from loop_spec.roles import CONTRACTS, ROLE_NAMES, Role, compose_prompt, load_role
+from loop_spec.jsonio import atomic_write_json
+from loop_spec.roles import CONTRACTS, ROLE_NAMES, Role, compose_prompt, load_role, resolve_model
 from loop_spec.schema import load_schema
 
 
@@ -113,6 +115,46 @@ class RoleSchemaDriftGuardTests(unittest.TestCase):
             for role_name, product_name in pairs:
                 role = load_role(role_name, Path(tmp))
                 self.assertEqual(role.schema, load_schema(product_name), role_name)
+
+
+class ResolveModelTests(unittest.TestCase):
+    """Post-hardening item 3, Part B: every role dispatch's model, not just
+    SPEC/PLAN's. roles.<role> config accepts both shapes: a plain string is
+    still just the binding (contract.resolve_role), an object also carries a
+    model (roles.resolve_model); contract.resolve_role reads the same object's
+    "binding" so the two never disagree about which skill is bound."""
+
+    def test_env_wins_over_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".loop-spec").mkdir()
+            atomic_write_json(root / ".loop-spec" / "config.json",
+                               {"roles": {"implementer": {"binding": "custom-skill", "model": "config-model"}}})
+            with patch.dict("os.environ", {"LOOP_SPEC_MODEL_IMPLEMENTER": "env-model"}, clear=True):
+                self.assertEqual(resolve_model(root, "implementer"), "env-model")
+
+    def test_object_form_config_yields_binding_and_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".loop-spec").mkdir()
+            atomic_write_json(root / ".loop-spec" / "config.json",
+                               {"roles": {"code-reviewer": {"binding": "custom-skill", "model": "config-model"}}})
+            with patch.dict("os.environ", {}, clear=True):
+                self.assertEqual(contract.resolve_role(root, "code-reviewer"), "custom-skill")
+                self.assertEqual(resolve_model(root, "code-reviewer"), "config-model")
+
+    def test_string_form_config_yields_binding_and_no_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".loop-spec").mkdir()
+            atomic_write_json(root / ".loop-spec" / "config.json", {"roles": {"verifier": "custom-skill"}})
+            with patch.dict("os.environ", {}, clear=True):
+                self.assertEqual(contract.resolve_role(root, "verifier"), "custom-skill")
+                self.assertIsNone(resolve_model(root, "verifier"))
+
+    def test_nothing_configured_is_none(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {}, clear=True):
+            self.assertIsNone(resolve_model(Path(tmp), "planner"))
 
 
 if __name__ == "__main__":

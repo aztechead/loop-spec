@@ -189,7 +189,13 @@ def is_ancestor(repo: Path, ancestor_sha: str, descendant_sha: str) -> bool:
 
 
 def commits_between(repo: Path, base_sha: str, head_sha: str) -> list[str]:
-    out = run_git(repo, "rev-list", "--reverse", f"{base_sha}..{head_sha}")
+    # --no-merges: a merge commit the program records while integrating two
+    # same-wave siblings (execute.py's --no-ff fallback) is nobody's task
+    # commit; E4/E5/the adopted range all enumerate commits through this same
+    # function, so leaving merges out here keeps both sides of every
+    # comparison (a task's own recorded commits vs. what is actually on the
+    # branch) agreeing regardless of which path integrated a task.
+    out = run_git(repo, "rev-list", "--reverse", "--no-merges", f"{base_sha}..{head_sha}")
     return [line for line in out.splitlines() if line]
 
 

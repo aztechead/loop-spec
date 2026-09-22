@@ -16,7 +16,7 @@ from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
 from .execute import IssueStep, Product
 from .paths import ensure_results_dir
-from .roles import compose_prompt, load_role
+from .roles import compose_prompt, load_role, resolve_model
 
 _DIFF_CAP = 200_000  # ponytail: same flat cap as execute.py's review diff
 
@@ -87,6 +87,7 @@ def _reviser_request(store, paths, ctx) -> dict:
         "kind": "lead", "role": "reviser", "phase": "revise", "cwd": str(repo_path), "prompt": prompt,
         "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"], "retryOf": None, "reason": None,
+        "model": resolve_model(project_root, "reviser"),
     }
     errors = validate_request("step", request)
     if errors:

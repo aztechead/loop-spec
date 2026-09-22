@@ -6,7 +6,7 @@ question result. This module is the ONLY place that transitions a phase, spends 
 T1 rewind budget, writes the SPEC approval record, or writes a terminal result;
 `postconditions.py` only answers whether a claimed exit's requirements hold.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -39,9 +39,15 @@ _RESUMABLE_PHASES = ("spec", "plan", "execute", "verify", "iterate", "deliver")
 
 @dataclass
 class Next:
-    kind: Literal["step", "question", "result"]
+    kind: Literal["step", "question", "result", "wait"]
     path: Path
     slug: str
+    # A wave issuing several steps at once (Part A of the post-hardening item 3)
+    # needs several LOOP_SPEC_NEXT lines from one continue_run call; every
+    # existing caller reads only kind/path/slug on the primary Next unchanged,
+    # so this stays additive rather than turning continue_run's return type
+    # into a list everywhere it is read.
+    also: list["Next"] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -323,8 +329,10 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
             return Next(kind="question", path=Path(open_question["path"]), slug=slug)
         open_steps = store.state["steps"]["open"]
         if open_steps:
-            first = open_steps[0]
-            return Next(kind="step", path=paths.steps_dir / first["stepAttemptId"] / "step.json", slug=slug)
+            nexts = [Next(kind="step", path=paths.steps_dir / s["stepAttemptId"] / "step.json", slug=slug)
+                     for s in open_steps]
+            nexts[0].also = nexts[1:]
+            return nexts[0]
 
         blocked_question_id = store.state["phase"].get("blockedQuestionId")
         if blocked_question_id is not None:
@@ -377,7 +385,9 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
             _accept_product(store, paths, project_root, phase, attempt_id, product)
             continue
 
-        _drive_phase(store, paths, project_root)
+        waiting = _drive_phase(store, paths, project_root)
+        if waiting is not None:
+            return waiting
 
 
 def build_envelope(store: StateStore, paths: FeaturePaths, phase: str, attempt_id: str, project_root: Path) -> dict:
@@ -421,7 +431,13 @@ def build_envelope(store: StateStore, paths: FeaturePaths, phase: str, attempt_i
     }
 
 
-def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> None:
+def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> Next | None:
+    # None means "state changed, let continue_run's loop re-evaluate from the
+    # top" (every existing branch); a Next means "nothing new to report, hand
+    # this back to the caller directly" -- only the "wait" outcome does that,
+    # since looping back to the top would just call this again with nothing
+    # about the state having changed (contract.invoke() would report the same
+    # wait every time).
     # An attempt spans every step round-trip for one phase invocation: the first
     # call here (attemptId is None) mints the attempt and writes its context once;
     # a later call for the SAME attempt (after a step the phase's own implementation
@@ -472,12 +488,32 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
             store, paths, phase=phase, attempt_id=attempt_id, kind=request["kind"], role=request.get("role"),
             cwd=Path(request["cwd"]), prompt=request["prompt"], schema=request["schema"],
             postconditions=request["postconditions"], inputs_digest=request["inputsDigest"],
-            retry_of=retry_of, reason=reason,
+            retry_of=retry_of, reason=reason, model=request.get("model"),
             result_path=Path(request["resultPath"]),
         )
         store.state["phase"]["lastStepId"] = record["stepAttemptId"]
         store.save()
-        return
+        return None
+    if outcome.kind == "steps":
+        # A wave's several requests at once (execute.py's IssueSteps): the LF-03
+        # rejection override above is a single "the rejected attempt's own
+        # product step" retryOf, which does not generalize to several
+        # simultaneous re-issues, so each request here keeps its own
+        # reason/retryOf as its implementation (execute.py's own per-task
+        # rejection handling) already set them.
+        for request in read_json(outcome.path):
+            record = steps.issue(
+                store, paths, phase=phase, attempt_id=attempt_id, kind=request["kind"], role=request.get("role"),
+                cwd=Path(request["cwd"]), prompt=request["prompt"], schema=request["schema"],
+                postconditions=request["postconditions"], inputs_digest=request["inputsDigest"],
+                retry_of=request.get("retryOf"), reason=request.get("reason"), model=request.get("model"),
+                result_path=Path(request["resultPath"]),
+            )
+            store.state["phase"]["lastStepId"] = record["stepAttemptId"]
+        store.save()
+        return None
+    if outcome.kind == "wait":
+        return Next(kind="wait", path=outcome.path, slug=store.state["run"]["slug"])
     if outcome.kind == "question":
         request = read_json(outcome.path)
         record = questions.ask(
@@ -682,7 +718,7 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
     # the role's own schema.json; every other role step goes through
     # roles.compose_prompt/load_role (see _issue_adopted_review), and the critic
     # step now does too.
-    from .roles import compose_prompt, load_role
+    from .roles import compose_prompt, load_role, resolve_model
     repo_path = next(iter(store.state["repos"].values()))["path"]
     spec_product = store.state["products"]["spec"]["product"]
     inputs = {"specCriteria": spec_product["criteria"], "planTasks": plan_product["tasks"]}
@@ -698,6 +734,7 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
         kind="external" if is_external else "role", role=None if is_external else "plan-critic",
         cwd=Path(repo_path), prompt=prompt, schema=role.schema, postconditions=["P7"],
         inputs_digest=inputs_digest, result_path=result_path,
+        model=None if is_external else resolve_model(project_root, "plan-critic"),
     )
     store.state["phase"]["criticStepId"] = record["stepAttemptId"]
     # Recorded so a later call for a DIFFERENT (corrected) revision recognizes this
@@ -1097,7 +1134,7 @@ def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: 
     # code-reviewer pass over the whole adopted range is on record. Issued once,
     # before EXECUTE's own attempt starts, so that record exists before any task
     # can claim it.
-    from .roles import compose_prompt, load_role
+    from .roles import compose_prompt, load_role, resolve_model
     adoption = store.state["adoption"]
     repo_info = store.state["repos"][adoption["repo"]]
     repo_path = Path(repo_info["path"])
@@ -1122,7 +1159,7 @@ def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: 
     record = steps.issue(
         store, paths, phase="execute", attempt_id=attempt_id, kind="role", role="code-reviewer",
         cwd=checkout, prompt=prompt, schema=role.schema, postconditions=[], inputs_digest=digest(inputs),
-        result_path=result_path,
+        result_path=result_path, model=resolve_model(project_root, "code-reviewer"),
     )
     store.state["phase"]["adoptedReviewStepId"] = record["stepAttemptId"]
     store.save()

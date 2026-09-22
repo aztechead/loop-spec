@@ -1,4 +1,4 @@
-"""Invoke a phase implementation under the process contract, exit codes 0-3.
+"""Invoke a phase implementation under the process contract, exit codes 0-4.
 
 Use `resolve_implementation`/`resolve_role` to look up which implementation or role a
 phase or role is bound to, `write_context` to hand an implementation its input
@@ -28,7 +28,7 @@ _REQUEST_ID_FIELDS = {
 @dataclass
 class PhaseOutcome:
     code: int
-    kind: Literal["product", "error", "step", "question"]
+    kind: Literal["product", "error", "step", "steps", "wait", "question"]
     path: Path | None
     stderr: str
 
@@ -51,7 +51,12 @@ def resolve_role(project_root: Path, role: str) -> str:
     env = os.environ.get(f"LOOP_SPEC_ROLE_{role.upper()}")
     if env:
         return env
-    return load_config(project_root).get("roles", {}).get(role, "default")
+    configured = load_config(project_root).get("roles", {}).get(role, "default")
+    # roles.<role> is normally the binding string itself; roles.resolve_model
+    # (which this module cannot import without a cycle) reads the same config
+    # to also allow an object form ({"binding": ..., "model": ...}) so a project
+    # can set a role's model without forcing a bound skill.
+    return configured.get("binding", "default") if isinstance(configured, dict) else configured
 
 
 def write_context(paths, attempt_id: str, envelope: dict) -> Path:
@@ -98,6 +103,31 @@ def _accept_request(path: Path, kind: str, code: int) -> PhaseOutcome:
     return PhaseOutcome(code=code, kind=kind, path=path, stderr="")
 
 
+def _accept_requests(path: Path, code: int) -> PhaseOutcome:
+    # A wave's several step requests at once (execute.py's IssueSteps): same
+    # per-request "step" schema as _accept_request, just one list instead of
+    # one file, so a bad request among several is named by its position.
+    if not path.is_file():
+        return PhaseOutcome(code=code, kind="error", path=None, stderr=f"exit {code} but no step requests at {path}")
+    requests = read_json(path)
+    if not isinstance(requests, list) or not requests:
+        return PhaseOutcome(code=code, kind="error", path=None, stderr=f"{path} must be a non-empty JSON list of step requests")
+    for i, request in enumerate(requests):
+        errors = validate_request("step", request)
+        if errors:
+            return PhaseOutcome(code=code, kind="error", path=None, stderr=f"step request {i}: " + "; ".join(errors))
+    return PhaseOutcome(code=code, kind="steps", path=path, stderr="")
+
+
+def _accept_wait(path: Path, code: int) -> PhaseOutcome:
+    if not path.is_file():
+        return PhaseOutcome(code=code, kind="error", path=None, stderr=f"exit {code} but no wait request at {path}")
+    data = read_json(path)
+    if not isinstance(data, dict) or not isinstance(data.get("open"), list) or not all(isinstance(s, str) for s in data["open"]):
+        return PhaseOutcome(code=code, kind="error", path=None, stderr=f"{path} must be a JSON object with an 'open' list of step ids")
+    return PhaseOutcome(code=code, kind="wait", path=path, stderr="")
+
+
 # The two phases with a default lead-run implementation (spec-writer, planner) and
 # the five with a default step()/on_submit() implementation (execute.py's own
 # pattern, reused by verify/iterate/debug/revise).
@@ -118,9 +148,15 @@ def _run_default_stepped(module, store, paths, attempt_dir: Path, product_path: 
     if isinstance(outcome, execute_module.Product):
         atomic_write_json(product_path, outcome.product)
         return 0
+    if isinstance(outcome, execute_module.IssueSteps):
+        atomic_write_json(attempt_dir / "steps.json", outcome.requests)
+        return 2
     if isinstance(outcome, execute_module.IssueStep):
         atomic_write_json(attempt_dir / "step.json", outcome.request)
         return 2
+    if isinstance(outcome, execute_module.Wait):
+        atomic_write_json(attempt_dir / "wait.json", {"open": outcome.open})
+        return 4
     atomic_write_json(attempt_dir / "question.json", outcome.question_request)
     return 3
 
@@ -183,9 +219,14 @@ def invoke(paths, *, phase: str, attempt_id: str, implementation: str, program_l
     if code == 0:
         return _accept_product(phase, implementation, product_path)
     if code == 2:
+        steps_path = attempt_dir / "steps.json"
+        if steps_path.is_file():
+            return _accept_requests(steps_path, code)
         return _accept_request(attempt_dir / "step.json", "step", code)
     if code == 3:
         return _accept_request(attempt_dir / "question.json", "question", code)
+    if code == 4:
+        return _accept_wait(attempt_dir / "wait.json", code)
     if code == 1:
         return PhaseOutcome(code=1, kind="error", path=None, stderr="implementation exited 1")
-    return PhaseOutcome(code=code, kind="error", path=None, stderr=f"implementation exited {code}; only 0-3 advance")
+    return PhaseOutcome(code=code, kind="error", path=None, stderr=f"implementation exited {code}; only 0-4 advance")

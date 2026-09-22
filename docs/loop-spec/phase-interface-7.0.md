@@ -129,7 +129,7 @@ earlier phase or re-enters the same one. It appears in each such exit's `Require
 | E1 | product validates; bound to the plan and requirements revisions per repo | every exit |
 | E2 | every required task has an accepted disposition | `integrated`, `no change` |
 | E3 | for every task, its dependencies completed before it was dispatched | `integrated` |
-| E4 | every commit in `base..head` maps to exactly one `done` or `adopted` task; in a revise run the adopted PR's own commits count as mapped by the adoption | `integrated` |
+| E4 | every commit in `base..head` maps to exactly one `done` or `adopted` task; in a revise run the adopted PR's own commits count as mapped by the adoption; merge commits the program records during integration are not task commits and are excluded from `base..head` on both sides | `integrated` |
 | E5 | every `done` or `adopted` task has a review record whose reviewed range covers all of that task's commits; for an `adopted` task the record comes from a full review step the program ran over the adopted range at entry, never from the PR's own history | `integrated` |
 | E6 | every such review record's evidence level meets the accepted class for review steps; otherwise the task is listed in `unreviewed` | `integrated` |
 | E7 | each task's verify command produced no new failure identity against its baseline; a `featureAdded` command had a meaningful first success (exit zero, at least one parsed identity where a parser exists) that became its task-local baseline; a `mustFlip` command failed at baseline with the recorded digest and passes at integration | `integrated` |
@@ -199,7 +199,7 @@ outright incorrect implementations; the PR review catches the rest.
 | I1 | product validates; the verdict binds every repo's integrated SHA (`boundShas`), the requirements revision, and the plan revision | every exit |
 | I2 | every gap names a target of SPEC, PLAN, EXECUTE, or VERIFY | `rewind` |
 | I3 | T1 holds for this rewind | `rewind` |
-| I4 | a rewind is needed and T1 refuses it, or a criterion or goal gap is open that no route can close | `escalated` |
+| I4 | a rewind is needed and T1 refuses it, or the verdict is unmet and the judge names no gap any route can close | `escalated` |
 | I5 | VERIFY `passed` at this SHA and no open gap against the original goal; the shared convergence predicate | `converged`, `converged with caveats` |
 | I6 | no Critical finding open; the caveats list contains only accepted non-Critical review findings, each with a recorded disposition, and nothing else | `converged with caveats` |
 

@@ -712,7 +712,7 @@ class Boundary:
 
     def _i4(self) -> str | None:
         rewind_refused = self.product.get("verdict") == "unmet" and not budget_module.has_room(self.store)
-        unclosable_gap = any(g.get("target") is None for g in self.product.get("gaps", []))
+        unclosable_gap = self.product.get("verdict") == "unmet" and not self.product.get("gaps")
         return None if (rewind_refused or unclosable_gap) else "escalated claimed with budget remaining and every gap routable"
 
     def _i5(self) -> str | None:

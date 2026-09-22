@@ -103,8 +103,9 @@ A step is one worker dispatch, `schemas/step.json`. Fields: `stepAttemptId`,
 `external`), `phase`, `cwd`, `prompt` (the composed prompt plus a trailer naming
 the step id, inputs digest, phase, and result path), `resultPath`, `schema` (the
 result's own JSON Schema), `postconditions[]`, `attempt`, `inputsDigest`,
-`issuedAt`, `retryOf`, `reason`, and an optional `model` (only `defaults.py`'s
-SPEC/PLAN lead dispatch sets this, from `LOOP_SPEC_MODEL_<ROLE>`).
+`issuedAt`, `retryOf`, `reason`, and an optional `model` (every role dispatch sets
+this from `roles.resolve_model`, env `LOOP_SPEC_MODEL_<ROLE>` or config
+`roles.<role>.model`).
 
 A worker writes its result to `resultPath` (write to a temp file in the same
 directory and rename) and, for a transcript-attested dispatch, ends its final
@@ -158,7 +159,12 @@ question that carries a `defaultValue` without asking again; the result's
 Every controller entry ends its stdout with one line,
 `LOOP_SPEC_NEXT {"kind": "step"|"question"|"result", "path": <file>, "slug": <slug>}`
 (`events.marker_next`). Open the named file and act on it; every later `submit` or
-`answer` call needs `--slug` from this line, since nothing else names the run.
+`answer` call needs `--slug` from this line, since nothing else names the run. A
+wave that issues several step requests at once (`execute.py`'s `IssueSteps`) prints
+one `LOOP_SPEC_NEXT` line of kind `step` per request instead of one, for the caller
+to dispatch in parallel; when a wave has open steps but nothing new to issue
+(`execute.py`'s `Wait`), the program prints `LOOP_SPEC_WAIT {"open": [<stepAttemptId>,
+...]}` (`events.marker_wait`) instead of any `LOOP_SPEC_NEXT` line.
 Phase boundaries also print `LOOP_SPEC_PHASE_START {...}` and
 `LOOP_SPEC_PHASE_END {...}` (`marker_phase_start`/`marker_phase_end`), and a new
 question prints `LOOP_SPEC_QUESTION {"questionId": ...}`. Every marker also lands
@@ -226,7 +232,7 @@ optional:
 | Key | Effect |
 |---|---|
 | `phases.<phase>` | binds that phase's implementation (`"external"`, or a phase name is otherwise `"default"`) |
-| `roles.<role>` | binds that role to a skill other than the bundled default (`roles.load_role`) |
+| `roles.<role>` | binds that role to a skill other than the bundled default (`roles.load_role`); a plain string is the binding, or an object `{"binding": ..., "model": ...}` also names a model for that role's dispatches (`roles.resolve_model`), reachable without also rebinding the skill |
 | `deliver.base` | overrides the branch DELIVER's PR targets, instead of the repo's detected default branch |
 | `deliver.readiness` | `"checks"` makes D3 wait on `gh pr checks`; default `"none"` skips that wait |
 | `deliver.escalatedPartialDraft` | `true` routes an escalated ITERATE forward into DELIVER for a draft PR instead of terminating |
@@ -241,7 +247,7 @@ Environment variables, precedence over config where both apply:
 | `LOOP_SPEC_PYTHON` | interpreter the `loop-spec` launcher execs; default `python3`, must resolve to >= 3.11 |
 | `LOOP_SPEC_PHASE_<NAME>` | overrides `phases.<phase>`; `<NAME>` is the phase name uppercased (`EXECUTE`, `DELIVER`, ...) |
 | `LOOP_SPEC_ROLE_<ROLE>` | overrides `roles.<role>`; `<ROLE>` is the role name uppercased with hyphens kept as-is (`SPEC-WRITER`, `CODE-REVIEWER`) |
-| `LOOP_SPEC_MODEL_<ROLE>` | sets the model on a SPEC or PLAN lead step's request (`defaults.py`); `<ROLE>` has hyphens replaced with underscores (`SPEC_WRITER`). No other role dispatch reads this in this release |
+| `LOOP_SPEC_MODEL_<ROLE>` | sets the model on that role's step request (`roles.resolve_model`, read by every role dispatch: execute.py, controller.py's critic and adopted review, verify.py, iterate.py, debug.py, revise.py, defaults.py); `<ROLE>` has hyphens replaced with underscores (`SPEC_WRITER`). Overrides `roles.<role>.model` when both are set |
 | `LOOP_SPEC_STEP_RETRIES` | per-phase retry limit before a rejected product asks a `fix-and-re-enter`/`stop` question; default 3 |
 | `LOOP_SPEC_REWIND_BUDGET` | the shared T1 budget's limit; default 2, never resets within a run |
 | `LOOP_SPEC_EXECUTE_WIDTH` | EXECUTE's max tasks per wave; default 3 |

@@ -13,7 +13,7 @@ from pathlib import Path
 from . import VERSION, attest, contract, controller, questions, steps
 from .errors import LoopSpecError
 from .events import emit as emit_event
-from .events import marker_next
+from .events import marker_next, marker_wait
 from .jsonio import read_json
 from .paths import FeaturePaths, feature_dir, repo_id, state_home
 from .postconditions import retry_limit
@@ -148,13 +148,29 @@ def _cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _feature_paths(args: argparse.Namespace, slug: str) -> FeaturePaths:
+    home = state_home(args.state_home)
+    rid = repo_id(Path(args.project_root))
+    return FeaturePaths(root=feature_dir(home, rid, slug))
+
+
 def _open_store(args: argparse.Namespace) -> tuple[StateStore, FeaturePaths]:
     if not args.slug:
         raise LoopSpecError("--slug is required", repair="pass --slug <slug>, see `loop-spec status`")
-    home = state_home(args.state_home)
-    rid = repo_id(Path(args.project_root))
-    paths = FeaturePaths(root=feature_dir(home, rid, args.slug))
+    paths = _feature_paths(args, args.slug)
     return StateStore.open(paths), paths
+
+
+def _print_next(paths: FeaturePaths, next_) -> None:
+    # A "wait" Next means the run is waiting on steps a caller already
+    # dispatched: LOOP_SPEC_WAIT, never a LOOP_SPEC_NEXT (there is nothing new
+    # to act on). Otherwise print one LOOP_SPEC_NEXT per step a wave issued at
+    # once (the primary Next plus its `also` siblings).
+    if next_.kind == "wait":
+        marker_wait(paths, read_json(next_.path)["open"])
+        return
+    for n in [next_, *next_.also]:
+        marker_next(n.kind, str(n.path), n.slug)
 
 
 def _request_text(args: argparse.Namespace) -> str | None:
@@ -180,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
                 slug=args.slug, state_home=args.state_home, answer_policy=args.answer_policy,
                 pr=getattr(args, "pr", None),
             )
-            marker_next(next_.kind, str(next_.path), next_.slug)
+            _print_next(_feature_paths(args, next_.slug), next_)
             return 0
         if args.command == "submit":
             store, paths = _open_store(args)
@@ -198,13 +214,13 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             controller.route_submission(store, paths, submission.step, submission.result)
             next_ = controller.continue_run(store, paths, project_root=Path(args.project_root))
-            marker_next(next_.kind, str(next_.path), next_.slug)
+            _print_next(paths, next_)
             return 0
         if args.command == "answer":
             store, paths = _open_store(args)
             questions.answer(store, paths, question_id=args.question, value=args.answer, scope=args.scope, by="human")
             next_ = controller.continue_run(store, paths, project_root=Path(args.project_root))
-            marker_next(next_.kind, str(next_.path), next_.slug)
+            _print_next(paths, next_)
             return 0
         raise LoopSpecError(f"{args.command} lands in a later wave", repair="wait for the wave")
     except LoopSpecError as exc:

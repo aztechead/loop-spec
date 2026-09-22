@@ -20,7 +20,7 @@ from .events import emit
 from .execute import IssueStep, Product
 from .ids import new_id
 from .paths import ensure_results_dir
-from .roles import compose_prompt, load_role
+from .roles import compose_prompt, load_role, resolve_model
 
 _DIFF_CAP = 200_000  # ponytail: same flat cap as execute.py's review diff
 
@@ -214,6 +214,7 @@ def _verifier_request(store, paths, ctx, verify_state: dict) -> dict:
         # verifier (see _handle_rejection) is the one case with a reason already
         # set and a prior verifier step to retry.
         "retryOf": verify_state.get("verifierStep"), "reason": verify_state.get("reason"),
+        "model": resolve_model(project_root, "verifier"),
     }
     errors = validate_request("step", request)
     if errors:
@@ -256,6 +257,7 @@ def _reviewer_request(store, paths, ctx, verify_state: dict, repo_name: str) -> 
         # repo's review (see _handle_rejection) is the one case with a reason
         # already set and a prior reviewer step to retry.
         "retryOf": verify_state["reviewerSteps"].get(repo_name), "reason": verify_state.get("reviewerReasons", {}).get(repo_name),
+        "model": resolve_model(project_root, "code-reviewer"),
     }
     errors = validate_request("step", request)
     if errors:

@@ -15,7 +15,7 @@ from .errors import LoopSpecError
 from .events import emit
 from .execute import IssueStep, Product
 from .paths import ensure_results_dir
-from .roles import compose_prompt, load_role
+from .roles import compose_prompt, load_role, resolve_model
 
 _DIFF_CAP = 200_000  # ponytail: same flat cap as execute.py's review diff
 
@@ -75,6 +75,7 @@ def _judge_request(store, paths, ctx, heads: dict[str, str]) -> dict:
         "kind": "role", "role": "iterate-judge", "phase": "iterate", "cwd": str(cwd),
         "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"], "retryOf": None, "reason": None,
+        "model": resolve_model(project_root, "iterate-judge"),
     }
     errors = validate_request("step", request)
     if errors:
@@ -83,32 +84,50 @@ def _judge_request(store, paths, ctx, heads: dict[str, str]) -> dict:
     return request
 
 
-def _final_product(store, ctx, iterate_state: dict) -> dict:
+def _final_product(store, paths, ctx, iterate_state: dict) -> dict:
     judge = iterate_state["judge"]
     ledger_findings = store.state["ledger"]["findings"]
     open_findings = [f for f in ledger_findings if f["disposition"] == "open"]
     accepted_non_critical = [f["id"] for f in ledger_findings
                               if f["disposition"] in ("rejected", "deferred", "fixed") and f["severity"] != "Critical"]
 
+    # A "met" verdict over an open ledger finding is not met: reconciled here,
+    # before the four rules below ever see it, rather than left as a fifth rule of
+    # its own. I4 only accepts "escalated" for a refused rewind (unmet, no budget
+    # room) or an unclosable gap (unmet, no gap at all) -- routing a met-but-open
+    # verdict to "unmet" with a synthesized gap per open finding keeps it on one of
+    # those two paths instead of needing a justification of its own.
+    if judge["verdict"] == "met" and open_findings:
+        verdict = "unmet"
+        gaps = judge["gaps"] + [
+            {"target": "execute", "text": f"open finding {f['id']} ({f['severity']}): {f['cause']}"}
+            for f in open_findings
+        ]
+        emit(paths, "iterate_verdict_reconciled",
+             {"judgeVerdict": "met", "openFindings": [f["id"] for f in open_findings]},
+             phase="iterate", attempt_id=ctx["attempt"]["id"])
+    else:
+        verdict, gaps = judge["verdict"], judge["gaps"]
+
     # Order matters: "at least one accepted finding" must be checked before the
     # plain "no open finding" rule, or a met verdict with only closed findings would
     # never reach "converged with caveats".
-    if judge["verdict"] == "met" and not open_findings and accepted_non_critical:
+    if verdict == "met" and not open_findings and accepted_non_critical:
         exit_, caveats = "converged with caveats", accepted_non_critical
-    elif judge["verdict"] == "met" and not open_findings:
+    elif verdict == "met" and not open_findings:
         exit_, caveats = "converged", []
-    elif judge["verdict"] == "unmet" and judge["gaps"] and has_room(store):
+    elif verdict == "unmet" and gaps and has_room(store):
         exit_, caveats = "rewind", []
     else:
-        # Escalate on anything the design's four rules don't name outright (a "met"
-        # verdict with findings still open and undispositioned, or "unmet" with no
-        # gaps at all): never converge on an unresolved finding by default.
+        # The reconciliation above means "met" only ever reaches here with no open
+        # findings left to explain, so this now only ever covers "unmet": no gap at
+        # all, or a gap but no budget room left to rewind into.
         exit_, caveats = "escalated", []
 
     return {
         "exit": exit_, "inputsDigest": ctx["inputs"]["digest"],
         "boundTo": {"requirements": store.state["revisions"]["requirements"], "plan": store.state["revisions"]["plan"]},
-        "verdict": judge["verdict"], "gaps": judge["gaps"], "caveats": caveats, "boundShas": iterate_state["boundShas"],
+        "verdict": verdict, "gaps": gaps, "caveats": caveats, "boundShas": iterate_state["boundShas"],
     }
 
 
@@ -140,7 +159,7 @@ def step(store, paths, ctx):
 
     if iterate_state["judge"] is None:
         return IssueStep(_judge_request(store, paths, ctx, heads))
-    return Product(_final_product(store, ctx, iterate_state))
+    return Product(_final_product(store, paths, ctx, iterate_state))
 
 
 def on_submit(store, paths, step, result: dict) -> None:

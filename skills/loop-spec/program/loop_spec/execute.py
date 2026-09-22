@@ -22,7 +22,7 @@ from .errors import LoopSpecError
 from .events import emit
 from .paths import ensure_results_dir
 from .postconditions import adopted_commits, retry_limit
-from .roles import compose_prompt, load_role
+from .roles import compose_prompt, load_role, resolve_model
 
 _TERMINAL = {"done", "already-satisfied", "removed", "blocked", "planGap", "adopted"}
 _DIFF_CAP = 200_000  # ponytail: a flat cap, raise it if a real diff gets truncated in practice
@@ -52,6 +52,28 @@ class IssueStep:
 
     def __init__(self, request: dict) -> None:
         self.request = request
+
+
+class IssueSteps:
+    """Two or more requests from the SAME wave, for the lead to dispatch in
+    parallel (step() falls back to the single-request IssueStep when a wave
+    only ever has one request to issue, so every other module's step() and
+    every existing test of it are unaffected)."""
+    __slots__ = ("requests",)
+
+    def __init__(self, requests: list[dict]) -> None:
+        self.requests = requests
+
+
+class Wait:
+    """Nothing new to issue this call, but the wave is not done: one or more of
+    its tasks already have a step open (implementing/reviewing) from an earlier
+    call in this same wave. `open` names those steps' ids so the caller knows
+    what it is waiting on rather than being told to start something new."""
+    __slots__ = ("open",)
+
+    def __init__(self, open: list[str]) -> None:
+        self.open = open
 
 
 class Product:
@@ -199,6 +221,12 @@ def _init(store, paths, ctx) -> dict:
             # (feature_head == task_head, nothing new to merge) has no range of its
             # own to overwrite these with.
             "integratedFrom": None, "integratedTo": None,
+            # The feature head this task's own worktree/branch forked from (set once,
+            # in _ensure_worktree): a same-wave sibling issued at the same time can
+            # merge first and move the feature head before this task's own review or
+            # integration happen, so both must diff/compare against the head this
+            # task actually started from, never whatever the feature head is now.
+            "forkedFrom": None,
         }
         for t in plan_tasks
     }
@@ -239,8 +267,23 @@ def _ensure_worktree(store, paths, ctx, task_id: str, task_state: dict, plan_tas
     task_state["worktree"] = str(worktree)
     task_state["branch"] = branch
     task_state["baseLayers"] = probes_module.indirection_scan(worktree, plan_task["files"])["layers"]
+    task_state["forkedFrom"] = repo_state["head"]
     store.save()
     return None
+
+
+def _fork_point(paths, execute_state: dict, task_state: dict, task_id: str, attempt_id: str | None) -> str:
+    # Legacy state (written before forkedFrom existed) has no recorded fork
+    # point for a task whose worktree already existed; the current feature head
+    # is the same safe adoption _drifted_repo already uses for its own missing
+    # defaultHead (a run that started before this key existed has no better
+    # answer than "assume nothing has moved yet").
+    if task_state.get("forkedFrom") is None:
+        task_state["forkedFrom"] = execute_state["repos"][task_state["repo"]]["head"]
+        emit(paths, "module_state_reset",
+             {"summary": f"execute task {task_id} had no forkedFrom; adopted the current feature head", "missingKey": "forkedFrom"},
+             phase="execute", attempt_id=attempt_id)
+    return task_state["forkedFrom"]
 
 
 # --- step requests ---------------------------------------------------------
@@ -281,7 +324,7 @@ def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, tas
         "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
         "retryOf": task_state["implementSteps"][-1] if task_state["implementSteps"] else None,
-        "reason": task_state["reason"],
+        "reason": task_state["reason"], "model": resolve_model(project_root, "implementer"),
     }
     errors = validate_request("step", request)
     if errors:
@@ -297,18 +340,23 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
     project_root = Path(ctx["paths"]["projectRoot"])
     role = load_role("code-reviewer", project_root, resolve_role(project_root, "code-reviewer"))
     execute_state = store.state["execute"]
-    feature_head = execute_state["repos"][task_state["repo"]]["head"]
+    # The range/diff a reviewer sees is always base..task from the head this
+    # task's own worktree FORKED from, never the feature branch's current head:
+    # a same-wave sibling can merge first and move that current head, and a
+    # two-dot diff against a moved head would show the sibling's own work as
+    # removed (a plain wrong diff), not just a stale one.
+    fork = _fork_point(paths, execute_state, task_state, plan_task["id"], ctx["attempt"]["id"])
     task_head = repo_module.branch_sha(worktree, task_state["branch"])
     result_path = _result_path(paths, plan_task["id"], "review", len(task_state["reviewSteps"]) + 1)
 
-    diff = repo_module.run_git(worktree, "diff", f"{feature_head}..{task_head}")
+    diff = repo_module.run_git(worktree, "diff", f"{fork}..{task_head}")
     if len(diff) > _DIFF_CAP:
         diff = diff[:_DIFF_CAP] + "\n...(truncated)"
 
     signals = (ctx.get("probes") or {}).get("securitySignals") or []
     inputs = {
         "task": plan_task,
-        "range": {"from": feature_head, "to": task_head},
+        "range": {"from": fork, "to": task_head},
         "diff": diff,
         "probes": task_state["probes"],
         "ledger": store.state.get("ledger", {}),
@@ -325,7 +373,7 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
         # review (see _handle_rejection) is the one case with a reason already
         # set and a prior review step to retry.
         "retryOf": task_state["reviewSteps"][-1] if task_state["reviewSteps"] else None,
-        "reason": task_state["reason"],
+        "reason": task_state["reason"], "model": resolve_model(project_root, "code-reviewer"),
     }
     errors = validate_request("step", request)
     if errors:
@@ -431,6 +479,16 @@ def _unmapped_commits_pause(store, ctx, execute_state: dict) -> Pause | None:
                      f"recorded commits; reconcile them, then fix-and-re-enter, or stop")
             return Pause(_blocked_pause_request(ctx, text, {"repo": name, "commits": mismatched}))
     return None
+
+
+def _open_step_id(store, task_state: dict) -> str | None:
+    # task_state["implementSteps"]/["reviewSteps"] only gain an id once that step
+    # is SUBMITTED (_on_implement_submit/_on_review_submit append it there); a
+    # task mid-flight ("implementing"/"reviewing") with no submission yet -- the
+    # common case Wait exists for -- has nothing in either list yet. The step
+    # actually open for it lives in store.state["steps"]["open"], keyed by the
+    # same worktree cwd on_submit itself uses to find a task.
+    return next((s["stepAttemptId"] for s in store.state["steps"]["open"] if s["cwd"] == task_state["worktree"]), None)
 
 
 def _rejection_task_ids(message: str, execute_state: dict) -> list[str]:
@@ -602,13 +660,47 @@ def step(store, paths, ctx):
         wave_states = [execute_state["tasks"][tid] for tid in wave]
         if all(t["status"] in _TERMINAL for t in wave_states):
             continue
+
+        # Every pending task's worktree must exist before any request is built:
+        # _implement_request flips a task to "implementing" as its last step, and
+        # once two or more requests are collected below, discovering a LATER
+        # task's worktree pause would strand an earlier one already flipped with
+        # no step actually issued for it. Settling every worktree first (cheap
+        # and idempotent -- _ensure_worktree no-ops once a task has one) means
+        # the collection loop below can no longer pause partway through.
+        for task_id in wave:
+            task_state = execute_state["tasks"][task_id]
+            if task_state["status"] == "pending":
+                pause = _ensure_worktree(store, paths, ctx, task_id, task_state, plan_tasks[task_id])
+                if pause is not None:
+                    return pause
+
+        requests: list[dict] = []
+        open_steps: list[str] = []
         for task_id in wave:
             task_state = execute_state["tasks"][task_id]
             if task_state["status"] == "pending":
                 outcome = _implement_request(store, paths, ctx, plan_tasks[task_id], task_state, task_id)
-                return outcome if isinstance(outcome, Pause) else IssueStep(outcome)
-            if task_state["status"] == "probing":
-                return IssueStep(_review_request(store, paths, ctx, plan_tasks[task_id], task_state))
+                if isinstance(outcome, Pause):
+                    # Defensive: the pre-scan above already settled every worktree,
+                    # so this should not fire, but a Pause still wins immediately.
+                    return outcome
+                requests.append(outcome)
+            elif task_state["status"] == "probing":
+                requests.append(_review_request(store, paths, ctx, plan_tasks[task_id], task_state))
+            elif task_state["status"] in ("implementing", "reviewing"):
+                open_id = _open_step_id(store, task_state)
+                if open_id is not None:
+                    open_steps.append(open_id)
+            elif task_state["status"] not in _TERMINAL:
+                raise LoopSpecError(
+                    f"execute task {task_id} is in status {task_state['status']!r}, which step() does not understand",
+                    repair="check execute.py's task status machine for a missing case",
+                )
+        if requests:
+            return IssueStep(requests[0]) if len(requests) == 1 else IssueSteps(requests)
+        if open_steps:
+            return Wait(open_steps)
         raise LoopSpecError(
             "execute.step() was called with an outstanding submission still open",
             repair="submit the open step (on_submit) before calling step() again",
@@ -642,14 +734,18 @@ def _on_implement_submit(store, task_id: str, task_state: dict, step_record: dic
     task_state["status"] = "probing"
 
 
-def _on_review_submit(store, task_id: str, task_state: dict, step_record: dict, result: dict) -> None:
+def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record: dict, result: dict) -> None:
     task_state["reviewSteps"].append(step_record["stepAttemptId"])
     execute_state = store.state["execute"]
     worktree = Path(task_state["worktree"])
-    feature_head = execute_state["repos"][task_state["repo"]]["head"]
+    # The reviewed range is base..task from the head this task's own worktree
+    # FORKED from, matching what _review_request actually showed the reviewer
+    # -- never the feature branch's current head, which a same-wave sibling can
+    # have already moved by merging first.
+    fork = _fork_point(paths, execute_state, task_state, task_id, step_record.get("attempt"))
     task_head = repo_module.branch_sha(worktree, task_state["branch"])
     task_state["review"] = {
-        "reviewedRange": {"from": feature_head, "to": task_head},
+        "reviewedRange": {"from": fork, "to": task_head},
         "verdict": result["verdict"], "findings": result["findings"],
         "securityDispositions": result["securityDispositions"],
     }
@@ -674,15 +770,57 @@ def _on_review_submit(store, task_id: str, task_state: dict, step_record: dict, 
         return
 
     feature_worktree = Path(execute_state["repos"][task_state["repo"]]["worktree"])
-    repo_module.run_git(feature_worktree, "merge", "--ff-only", task_head)
-    new_commits = repo_module.commits_between(feature_worktree, feature_head, task_head)
+    feature_head = execute_state["repos"][task_state["repo"]]["head"]
+    if repo_module.is_ancestor(feature_worktree, feature_head, task_head):
+        # The common case: nothing else has merged into this repo's feature
+        # branch since this task forked (or a re-review of an already-
+        # integrated task, feature_head == task_head -- LF-17), so the linear
+        # history every other check assumes stays exactly that.
+        repo_module.run_git(feature_worktree, "merge", "--ff-only", task_head)
+    else:
+        # A same-wave sibling merged first and moved the feature head past
+        # where this task forked; a real merge commit is the only way to bring
+        # a divergent branch in without rewriting either side's already-
+        # reviewed commits.
+        try:
+            repo_module.run_git(feature_worktree, "merge", "--no-ff", "--no-edit",
+                                 "-m", f"loop-spec: integrate {task_id}", task_head)
+        except LoopSpecError:
+            repo_module.run_git(feature_worktree, "merge", "--abort")
+            # The task's own commits conflict with a sibling's on the new head:
+            # nothing here can resolve that but a fresh implementation against
+            # it. Delete and recreate the same worktree/branch this task
+            # started with (the creation half of _ensure_worktree, minus its
+            # stale-branch pause check -- a branch this call just deleted
+            # itself can never trigger it) from the CURRENT feature head, and
+            # spend a retry the same way any other implement-again route does.
+            repo_path = Path(store.state["repos"][task_state["repo"]]["path"])
+            repo_module.remove_worktree(repo_path, worktree, force=True)
+            repo_module.run_git(repo_path, "branch", "-D", task_state["branch"])
+            new_head = execute_state["repos"][task_state["repo"]]["head"]
+            repo_module.create_feature_branch(repo_path, task_state["branch"], new_head)
+            repo_module.add_worktree(repo_path, worktree, branch=task_state["branch"])
+            plan_task = _plan_tasks(store)[task_id]
+            task_state["baseLayers"] = probes_module.indirection_scan(worktree, plan_task["files"])["layers"]
+            task_state["forkedFrom"] = new_head
+            task_state["commits"] = []
+            task_state["review"] = None
+            task_state["probes"] = None
+            _retry_or_block(
+                execute_state, task_id, task_state,
+                f"{task_id} conflicts with the feature head after a sibling merged; re-implement on {new_head[:12]}",
+            )
+            return
+    new_commits = repo_module.commits_between(feature_worktree, fork, task_head)
     if new_commits:
         # LF-17: a re-review of an already-integrated task (an E5/E6/E11 remediation
         # retry -- feature_head == task_head, nothing new to merge) must not wipe the
         # commits its FIRST integration recorded; only a genuine new merge updates them.
         task_state["commits"] = new_commits
-        task_state["integratedFrom"], task_state["integratedTo"] = feature_head, task_head
-    execute_state["repos"][task_state["repo"]]["head"] = task_head
+        task_state["integratedFrom"], task_state["integratedTo"] = fork, task_head
+    # HEAD, not task_head: a --no-ff merge just above leaves the feature branch
+    # at a NEW merge commit task_head never names.
+    execute_state["repos"][task_state["repo"]]["head"] = repo_module.branch_sha(feature_worktree, "HEAD")
     task_state["status"] = "done"
     task_state["reason"] = None
 
@@ -706,7 +844,7 @@ def on_submit(store, paths, step, result: dict) -> None:
     if step["role"] == "implementer":
         _on_implement_submit(store, task_id, task_state, step, result)
     elif step["role"] == "code-reviewer":
-        _on_review_submit(store, task_id, task_state, step, result)
+        _on_review_submit(store, paths, task_id, task_state, step, result)
     else:
         raise LoopSpecError(f"execute got a submission for an unknown role {step['role']!r}",
                              repair="check the submitted step's role field")

@@ -3,16 +3,19 @@ dispatched worker reads.
 
 Use `load_role` to resolve a role name to its body and schema (the plugin's own
 `skills/loop-spec/roles/<name>/` unless a project or user binds a different skill in
-its place), and `compose_prompt` to turn that role plus one attempt's inputs into the
-text a worker or the lead session actually reads. `CONTRACTS` is the per-role text
-loop-spec always appends, independent of whatever body a bound skill supplies, so a
-borrowed skill cannot drop the program's own requirements on its way in.
+its place), `compose_prompt` to turn that role plus one attempt's inputs into the
+text a worker or the lead session actually reads, and `resolve_model` for the model
+every role's dispatch request carries. `CONTRACTS` is the per-role text loop-spec
+always appends, independent of whatever body a bound skill supplies, so a borrowed
+skill cannot drop the program's own requirements on its way in.
 """
 import glob
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from .contract import load_config
 from .errors import LoopSpecError
 from .ids import digest_bytes
 
@@ -77,6 +80,19 @@ def load_role(name: str, project_root: Path, binding: str = "default") -> Role:
     # program still validates the product against the DEFAULT role's shape, so a bound
     # skill cannot smuggle in an incompatible contract.
     return Role(name=name, body=body, schema=default_schema, source=str(found), version=digest_bytes(body.encode()))
+
+
+def resolve_model(project_root: Path, role: str) -> str | None:
+    # env first (LOOP_SPEC_MODEL_<ROLE>, hyphens to underscores, upper -- the
+    # same key defaults.py's SPEC/PLAN lead dispatch already read before this),
+    # then config.json's own roles.<role>.model when that role is bound as an
+    # object rather than a plain binding string, else no override (the caller's
+    # own default model applies).
+    env = os.environ.get("LOOP_SPEC_MODEL_" + role.upper().replace("-", "_"))
+    if env:
+        return env
+    configured = load_config(project_root).get("roles", {}).get(role)
+    return configured.get("model") if isinstance(configured, dict) else None
 
 
 # A debug or revise task can slip a path or a guess into `repo`; the planner

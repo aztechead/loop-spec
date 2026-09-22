@@ -28,10 +28,15 @@ the program writes `state.json`; nothing else should edit it.
 ## The `LOOP_SPEC_NEXT` protocol
 
 Every controller entry ends its stdout with one line,
-`LOOP_SPEC_NEXT {"kind": "step"|"question"|"result", "path": "<file>", "slug": "<slug>"}`.
-Open the file at `path` and act on it. Pass `--slug <slug from LOOP_SPEC_NEXT>` on
-every `submit` and `answer` below (both require it, and this line is the only place
-a stub is told the run's slug):
+`LOOP_SPEC_NEXT {"kind": "step"|"question"|"result", "path": "<file>", "slug": "<slug>"}`,
+open the file at `path` and act on it. A wave that issues several steps at once
+prints several `LOOP_SPEC_NEXT` lines of kind `step`: dispatch every one of them in
+the same `Agent` tool message so they run concurrently, each under its own
+`stepAttemptId`, then submit each as it returns. `LOOP_SPEC_WAIT
+{"open": ["<stepAttemptId>", ...]}` in place of `LOOP_SPEC_NEXT` means the run is
+waiting on steps you already dispatched: submit them, do not start anything new.
+Pass `--slug <slug from LOOP_SPEC_NEXT>` on every `submit` and `answer` below (both
+require it, and this line is the only place a stub is told the run's slug):
 
 - `step`: check `kind` in `step.json`:
   - `lead`: do the work the prompt describes yourself, in this session (you may use

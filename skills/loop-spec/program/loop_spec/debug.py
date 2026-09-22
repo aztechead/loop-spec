@@ -15,7 +15,7 @@ from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
 from .execute import IssueStep, Product
 from .paths import ensure_results_dir
-from .roles import compose_prompt, load_role
+from .roles import compose_prompt, load_role, resolve_model
 from .schema import load_schema
 
 
@@ -40,6 +40,7 @@ def _debugger_request(store, paths, ctx) -> dict:
         "resultPath": str(result_path), "schema": load_schema("debug"),
         "postconditions": external.PHASE_POSTCONDITIONS["debug"],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"], "retryOf": None, "reason": None,
+        "model": resolve_model(project_root, "debugger"),
     }
     errors = validate_request("step", request)
     if errors:

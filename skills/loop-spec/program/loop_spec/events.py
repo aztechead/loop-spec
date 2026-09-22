@@ -81,6 +81,12 @@ def marker_question(paths: FeaturePaths, question_id: str) -> None:
     _marker(paths, "LOOP_SPEC_QUESTION", {"questionId": question_id})
 
 
+def marker_wait(paths: FeaturePaths, open_step_ids: list[str]) -> None:
+    # A wave with steps already dispatched and nothing new to issue: the caller
+    # submits what it already sent workers out for, and starts nothing new.
+    _marker(paths, "LOOP_SPEC_WAIT", {"open": open_step_ids})
+
+
 def marker_result(paths: FeaturePaths, result_dict: dict) -> None:
     _marker(paths, "LOOP_SPEC_RESULT", result_dict)
 

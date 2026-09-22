@@ -66,6 +66,9 @@ run under `claude -p "/loop-spec:cycle <request>"`; a paused run prints a
 question and exits, and the next `claude -p` invocation with the same slug
 answers it and continues (`loop-spec answer`, in
 [references/contract.md](skills/loop-spec/references/contract.md#questions)).
+Pass `--answer-policy default` to auto-answer any question that carries a
+default value (the requirements approval does) instead of stopping for it, for
+a fully unattended run.
 
 ## How a run proceeds
 
