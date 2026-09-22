@@ -75,7 +75,10 @@ class DeliverTests(unittest.TestCase):
         self.store.state["repos"] = {"repo": {"path": str(self.repo), "baseSha": self.base_sha,
                                                "featureBranch": "feature", "defaultBranch": "main",
                                                "lastKnownHead": self.head_sha}}
-        self.store.state["credentialChecks"] = {"repo": {"git_ok": True, "gh_ok": True}}
+        self.store.state["credentialChecks"] = {"repo": {
+            "git_ok": True, "gh_ok": True, "checked": ["git ls-remote --exit-code origin HEAD", "gh auth status"],
+            "failedCommand": None, "repair": None,
+        }}
         self.store.state["products"]["execute"] = {"exit": "integrated", "product": {"heads": {"repo": self.head_sha}}}
         self.store.state["products"]["spec"] = {"exit": "approved", "product": {
             "goal": "add a widget", "boundaries": [], "criteria": [{"id": "AC-1", "text": "it works"}],
@@ -145,14 +148,20 @@ class DeliverTests(unittest.TestCase):
         self.assertFalse(any(c[:2] == ("pr", "create") for c in calls))
 
     def test_failed_credential_check_blocks_delivery(self):
-        self.store.state["credentialChecks"]["repo"]["gh_ok"] = False
+        check = self.store.state["credentialChecks"]["repo"]
+        check["gh_ok"] = False
+        check["failedCommand"] = "gh auth status"
+        check["repair"] = "run: gh auth login"
         self.store.save()
         with self._run_gh_reconcile():
             action = deliver.run(self.store, self.paths, self.ctx)
         self.assertEqual(action.product["exit"], "delivery blocked")
         entry = action.product["repos"][0]
         self.assertEqual(entry["state"], "failed")
-        self.assertIn("gh credential check failed", entry["caveats"][0])
+        # LF-21(b): quotes the recorded failedCommand/repair, not a generic
+        # "re-run loop-spec status" pointer.
+        self.assertIn("gh credential check failed: gh auth status", entry["caveats"][0])
+        self.assertIn("run: gh auth login", entry["caveats"][0])
 
     def test_a_real_push_rejection_blocks_delivery_without_forcing(self):
         # A second clone pushes a divergent commit to origin/feature first, so our

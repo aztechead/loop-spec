@@ -333,9 +333,6 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
             product = store.state["phase"]["provisional"]
             _accept_product(store, paths, project_root, phase, attempt_id, product)
             continue
-        if pending == "deliver-credentials":
-            _check_deliver_credentials(store, paths, project_root)
-            continue
 
         _drive_phase(store, paths, project_root)
 
@@ -403,6 +400,13 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
         emit(paths, "phase_start", {"summary": f"{phase} attempt {attempt_id}"}, phase=phase, attempt_id=attempt_id)
         envelope = build_envelope(store, paths, phase, attempt_id, project_root)
         contract.write_context(paths, attempt_id, envelope)
+
+    if phase == "deliver" and store.state["phase"].get("credentialsCheckedForAttempt") != attempt_id:
+        # LF-21: this has to run before DELIVER's implementation is ever invoked for
+        # this attempt -- deliver.py reads store.state["credentialChecks"] on its
+        # first pass, and an empty dict there reads as every repo's credentials
+        # unchecked, not as "not checked yet, check later".
+        _record_deliver_credentials(store, attempt_id)
 
     implementation = store.state["implementations"]["phases"][phase]
     outcome = contract.invoke(paths, phase=phase, attempt_id=attempt_id, implementation=implementation, program_launcher=Path("loop-spec"), store=store)
@@ -508,12 +512,6 @@ def _accept_product(store: StateStore, paths: FeaturePaths, project_root: Path, 
 
     if phase == "verify" and exit_ == "passed":
         _run_verify_reruns(store, paths, product)
-
-    if phase == "deliver" and store.state["phase"].get("credentialsCheckedForAttempt") != attempt_id:
-        store.state["phase"]["provisional"] = product
-        store.state["phase"]["pending"] = "deliver-credentials"
-        store.save()
-        return
 
     _finalize(store, paths, project_root, phase, attempt_id, product, exit_)
 
@@ -818,17 +816,16 @@ def _run_verify_reruns(store: StateStore, paths: FeaturePaths, verify_product: d
     store.save()
 
 
-def _check_deliver_credentials(store: StateStore, paths: FeaturePaths, project_root: Path) -> None:
-    attempt_id = store.state["phase"]["attemptId"]
+def _record_deliver_credentials(store: StateStore, attempt_id: str) -> None:
     checks = store.state.setdefault("credentialChecks", {})
     for name, info in store.state["repos"].items():
         status = repo_module.check_credentials(Path(info["path"]))
-        checks[name] = {"git_ok": status.git_ok, "gh_ok": status.gh_ok}
+        checks[name] = {
+            "git_ok": status.git_ok, "gh_ok": status.gh_ok, "checked": status.checked,
+            "failedCommand": status.failed_command, "repair": status.repair,
+        }
     store.state["phase"]["credentialsCheckedForAttempt"] = attempt_id
-    store.state["phase"]["pending"] = None
-    product = store.state["phase"]["provisional"]
     store.save()
-    _accept_product(store, paths, project_root, "deliver", attempt_id, product)
 
 
 # ---------------------------------------------------------------------------
@@ -946,8 +943,25 @@ def _reject_product(store: StateStore, paths: FeaturePaths, phase: str, attempt_
         store.save()
 
 
+def _pause_cause(phase: str, product: dict, exit_: str) -> str:
+    # Each phase's blocked-style product names the cause in its own field: EXECUTE's
+    # issues, VERIFY's blocked verdicts, DELIVER's per-repo caveats. Falling through
+    # to the exit name (the pre-fix behavior) reads as a tautology, e.g. "DELIVER
+    # exited delivery blocked: delivery blocked".
+    if phase == "deliver":
+        caveats = [c for entry in product.get("repos", []) for c in entry.get("caveats", [])]
+        return "; ".join(caveats) if caveats else exit_
+    issues = product.get("issues") or []
+    if issues:
+        return "; ".join(f"{i.get('task', '?')}: {i.get('text', '')}" for i in issues)
+    blocked = [v["cause"] for v in product.get("verdicts", []) if v.get("verdict") == "blocked" and v.get("cause")]
+    if blocked:
+        return "; ".join(blocked)
+    return exit_
+
+
 def _ask_pause_question(store: StateStore, paths: FeaturePaths, phase: str, exit_: str, product: dict) -> None:
-    cause = product.get("issues") or [v.get("cause") for v in product.get("verdicts", []) if v.get("verdict") == "blocked"] or exit_
+    cause = _pause_cause(phase, product, exit_)
     attempt_id = store.state["phase"]["attemptId"]
     record = questions.ask(
         store, paths, phase=phase, attempt_id=attempt_id,

@@ -95,8 +95,7 @@ def run(store, paths, ctx):
         check = credential_checks.get(repo_name) or {}
         if not (check.get("git_ok") and check.get("gh_ok")):
             failed_tool = "git" if not check.get("git_ok") else "gh"
-            reason = (f"the {failed_tool} credential check failed; repair: re-run "
-                      "`loop-spec status` to see the recorded detail, fix it, and resume")
+            reason = f"the {failed_tool} credential check failed: {check.get('failedCommand')}; repair: {check.get('repair')}"
             repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"})
             blocked = True
             break

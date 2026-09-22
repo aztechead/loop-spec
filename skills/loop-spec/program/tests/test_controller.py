@@ -264,14 +264,10 @@ class FullExternalCycleTests(_QuietStdout):
                 atomic_write_json(Path(step["resultPath"]), iterate_product)
                 store = _open(paths)
                 steps.submit(store, paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
-                with contextlib.redirect_stdout(markers):
-                    next_ = controller.continue_run(store, paths, project_root=repo_dir)
-                self.assertEqual(next_.kind, "step")  # DELIVER's own step
 
-                # --- DELIVER: push the branch for real; fake gh ---
-                step = read_json(next_.path)
-                _git(repo_dir, "push", "-q", "origin", feature_branch)
-
+                # LF-21: the credential check now runs before DELIVER's own step is
+                # even issued, so `gh` needs its fake from here on, not only after
+                # DELIVER's product is submitted below.
                 def fake_run_gh(repo, *args):
                     if args[:2] == ("auth", "status"):
                         return 0, "", ""
@@ -281,6 +277,25 @@ class FullExternalCycleTests(_QuietStdout):
                             "baseRefName": "main", "number": 1, "url": "https://example.invalid/pull/1",
                         }), ""
                     return 1, "", "unexpected gh call in test"
+
+                with patch.object(repo_module, "run_gh", fake_run_gh):
+                    with contextlib.redirect_stdout(markers):
+                        next_ = controller.continue_run(store, paths, project_root=repo_dir)
+                self.assertEqual(next_.kind, "step")  # DELIVER's own step
+
+                # LF-21: DELIVER's own (external) step is not issued until the
+                # credential check has already run and recorded every field, not
+                # just git_ok/gh_ok -- deliver.py reads failedCommand/repair too.
+                store = _open(paths)
+                check = store.state["credentialChecks"][repo_name]
+                self.assertTrue(check["git_ok"])
+                self.assertTrue(check["gh_ok"])
+                self.assertIn("git ls-remote", check["checked"][0])
+                self.assertIsNone(check["failedCommand"])
+
+                # --- DELIVER: push the branch for real ---
+                step = read_json(next_.path)
+                _git(repo_dir, "push", "-q", "origin", feature_branch)
 
                 deliver_product = {
                     "exit": "delivered", "inputsDigest": "sha256:" + "0" * 64,
@@ -540,6 +555,28 @@ class EscalatedPartialDraftTests(_QuietStdout):
             result = read_json(paths.result_json)
             self.assertEqual(result["result"], "escalated")
             self.assertIsNotNone(result["delivery"])
+
+
+class PauseCauseTests(unittest.TestCase):
+    """LF-21: a blocked-style product names its own cause (EXECUTE's issues, VERIFY's
+    blocked verdicts, DELIVER's per-repo caveats); falling through to the exit name
+    read as a tautology, e.g. "DELIVER exited delivery blocked: delivery blocked"."""
+
+    def test_execute_uses_issue_text(self):
+        product = {"issues": [{"task": "T-1", "text": "reproduction still fails at head"}]}
+        self.assertEqual(controller._pause_cause("execute", product, "blocked"), "T-1: reproduction still fails at head")
+
+    def test_verify_uses_blocked_verdict_cause(self):
+        product = {"verdicts": [{"criterion": "AC-1", "verdict": "blocked", "cause": "the runner errored"}]}
+        self.assertEqual(controller._pause_cause("verify", product, "blocked"), "the runner errored")
+
+    def test_deliver_uses_repo_caveats(self):
+        product = {"repos": [{"repo": "repo", "caveats": ["the gh credential check failed: gh auth status"]}]}
+        self.assertEqual(controller._pause_cause("deliver", product, "delivery blocked"),
+                          "the gh credential check failed: gh auth status")
+
+    def test_falls_back_to_exit_when_the_product_names_nothing(self):
+        self.assertEqual(controller._pause_cause("deliver", {"repos": []}, "delivery blocked"), "delivery blocked")
 
 
 class ResumeBySlugTests(_QuietStdout):
