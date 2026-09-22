@@ -1,6 +1,7 @@
-"""Unit test for R5: controller._finish_run must not force-remove a worktree
-that is an open step's cwd or has uncommitted changes, and must carry any
-skipped path into the terminal result's cleanupBacklog field."""
+"""Unit tests for controller._finish_run (R5: worktree cleanup skips a protected
+or dirty one) and controller._write_terminal_result (R7 residual: a DELIVER
+`partially delivered` exit after a converged ITERATE must not classify as
+`converged`)."""
 import contextlib
 import io
 import subprocess
@@ -68,6 +69,36 @@ class FinishRunWorktreeCleanupTests(unittest.TestCase):
 
             record = read_json(paths.result_json)
             self.assertEqual(record["cleanupBacklog"], [{"path": str(open_wt.resolve()), "reason": "open step or quarantined"}])
+
+
+class WriteTerminalResultPartialDeliveryTests(unittest.TestCase):
+    def test_partially_delivered_after_converged_iterate_escalates_naming_the_undelivered_repo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = FeaturePaths(root=Path(tmp) / "state" / "feature-a")
+            store = StateStore.create(paths, dict(_RUN_FIELDS, slug="feature-a"), "do the thing")
+            store.state["phase"]["current"] = "deliver"
+            store.state["repos"] = {}
+            store.state["products"]["execute"] = {"exit": "integrated", "product": {"tasks": [], "heads": {}}}
+            store.state["products"]["iterate"] = {"exit": "converged", "product": {"verdict": "met", "gaps": [], "caveats": []}}
+            store.state["products"]["deliver"] = {"exit": "partially delivered", "product": {"repos": [
+                {"repo": "repo-a", "state": "delivered", "pr": {"number": 1, "url": "u", "headRef": "x"},
+                 "deliveredSha": "a" * 40, "caveats": []},
+                {"repo": "repo-b", "state": "failed", "pr": None, "deliveredSha": None,
+                 "caveats": ["credential check failed"]},
+            ]}}
+            store.save()
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                controller._write_terminal_result(store, paths, "deliver", "partially delivered")
+
+            record = read_json(paths.result_json)
+            self.assertEqual(record["result"], "escalated")
+            self.assertEqual(record["status"], "escalated")
+            self.assertFalse(record["converged"])
+            self.assertTrue(record["workDelivered"])
+            self.assertTrue(record["partiallyDelivered"])
+            self.assertIn("repo-b", record["reason"])
+            self.assertNotIn("repo-a", record["reason"])
 
 
 if __name__ == "__main__":

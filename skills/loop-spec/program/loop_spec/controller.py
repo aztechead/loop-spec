@@ -1180,6 +1180,16 @@ def _write_terminal_result(store: StateStore, paths: FeaturePaths, phase: str, e
         # fills in `delivery` with whatever it managed to publish (roadmap 15).
         _finish_run(store, paths, "escalated", partially_delivered=(exit_ == "partially delivered"))
         return
+    if exit_ == "partially delivered":
+        # R7: a converged ITERATE whose DELIVER only reached some repos is not
+        # "converged" -- the schema-1 table has no row for a converged
+        # classification that left a repo undelivered. The deliver outcome, not
+        # just ITERATE's verdict, decides the terminal classification here.
+        not_delivered = [entry["repo"] for entry in store.state["products"]["deliver"]["product"]["repos"]
+                          if entry["state"] != "delivered"]
+        _finish_run(store, paths, "escalated", partially_delivered=True,
+                    reason=f"did not deliver: {', '.join(not_delivered)}")
+        return
     execute_exit = store.state["products"]["execute"]["exit"]
     iterate_exit = store.state["products"]["iterate"]["exit"]
     if execute_exit == "no change":
@@ -1188,7 +1198,7 @@ def _write_terminal_result(store: StateStore, paths: FeaturePaths, phase: str, e
         classification = "converged-with-caveats"
     else:
         classification = "converged"
-    _finish_run(store, paths, classification, partially_delivered=(exit_ == "partially delivered"))
+    _finish_run(store, paths, classification)
 
 
 # ---------------------------------------------------------------------------

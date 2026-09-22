@@ -713,7 +713,7 @@ Kept as in 6.9:
   | `converged` | `status: completed`, `outcome: delivered`, `converged: true`, `workDelivered: true`, `verification.status: passed`, `delivery` filled |
   | `converged-with-caveats` | 6.9's green draft delivery, unchanged: `status: completed`, `outcome: delivered-draft`, `workDelivered: true`, `converged: false`, `phaseReached: completed`; each outstanding finding listed in `warnings`. `converged` stays false because 6.9 consumers read it as end-to-end convergence, and a draft left for human sign-off is not that |
   | `no-change` | `status: completed`, `outcome: no-change-needed`, `noChangeReason: already-satisfied`, `converged: true`, `workDelivered: false`, `verification.status: passed` |
-  | `escalated` | `status: escalated`, `converged: false`, `verification` as observed; a partial draft, when policy allowed one, uses the `delivered-draft` fields above inside `delivery` |
+  | `escalated` | `status: escalated`, `converged: false`, `verification` as observed; a partial draft, when policy allowed one, uses the `delivered-draft` fields above inside `delivery`. A DELIVER `partially delivered` exit after a converged ITERATE is the same bucket, not `converged`: `workDelivered: true` (the delivered targets stay recorded), `partiallyDelivered: true`, `reason` names the repos that did not deliver |
   | `failed` | `status: failed`, `converged: false` |
   | question pending | `status: paused`, `reason` names the question id |
 

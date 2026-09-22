@@ -246,7 +246,7 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | Exit | Requires | Route |
 |---|---|---|
 | `delivered` | D1 to D4, D7, D8 for every repo | terminal `converged` or `converged-with-caveats` |
-| `partially delivered` | D1, D2, D4, D5, D7, D8 for every repo whose remote write was attempted | terminal; result carries `partiallyDelivered` and per-repo state |
+| `partially delivered` | D1, D2, D4, D5, D7, D8 for every repo whose remote write was attempted | terminal `escalated` (never `converged`, whatever ITERATE's own verdict was) with `partiallyDelivered: true`, `workDelivered: true`, and `reason` naming the repos that did not deliver |
 | `delivery blocked` | D4 | pause: a question naming the failed command and repair, with the answers fix-and-re-enter DELIVER or stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` with `result: escalated` and per-repo state |
 
 ## debug
