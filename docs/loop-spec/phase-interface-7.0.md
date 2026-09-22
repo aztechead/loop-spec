@@ -24,7 +24,8 @@ code at M1; this page fixes the shape they must have.
 | `entry` | `fresh`; `remediation` with the gaps to close; or `rewind` with the findings that sent the run back |
 | `repos` | repository or workspace map, per-repo base SHA, feature branch, worktree root |
 | `paths` | state directory; paths the implementation may write to |
-| `answers` | answers recorded against question ids from this attempt |
+| `answers` | answers recorded against question ids from this attempt, each with scope `question` or `run`; the run's answer policy when a `run`-scoped answer or `--answer-policy` set one |
+| `probes` | program probe output for this phase: at PLAN the neighbourhood conventions, existing helpers, base layer count, security signals, and dependency docs per named file; per EXECUTE task the diff-mode findings; at VERIFY the whole-range findings |
 
 ### Process contract
 
@@ -35,7 +36,9 @@ code at M1; this page fixes the shape they must have.
 | 2 | `step.json` | hand the step to the lead or the SDK runner; re-invoke on `submit` |
 | 3 | `question.json` | surface the question; record the answer against its one-time id; re-invoke |
 
-Any other code advances nothing. An answer to a retired question id is rejected.
+Any other code advances nothing. An answer to a retired question id is rejected. An
+answer scoped `run` answers every later question by the default policy and the result
+lists those questions.
 
 ### Identities
 
@@ -79,10 +82,10 @@ unattested` in config, and the result then carries `weakenedAssurance`.
 
 | | |
 |---|---|
-| Inputs | approved SPEC product; on `rewind` or `remediation`, the plan-gap findings |
+| Inputs | approved SPEC product; program probes on the files the request names; on `rewind` or `remediation`, the plan-gap findings |
 | Product | `tasks[]` each with `id`, `dependsOn`, `files`, `repo`, `verify` command, `criteria` covered, optional `featureAdded` target path; `prepare` command; declared evidence exceptions |
 | Preconditions | requirements revision approved and current |
-| Runs in | the lead session |
+| Runs in | the lead session; then one light critic pass over the drafted product for Critical misses only, before submit |
 
 | Id | Postcondition | Gates |
 |---|---|---|
@@ -92,10 +95,11 @@ unattested` in config, and the result then carries `weakenedAssurance`.
 | P4 | the baseline is captured (section 11) with the prepare command applied; environment health recorded once per failing command | `ready` |
 | P5 | the task graph is acyclic and every `dependsOn` names a task in the plan | `ready` |
 | P6 | workspace resolved once and the repo list stored in state; every task names a repo in it | `ready` |
+| P7 | the critic pass ran and recorded either no Critical finding or a disposition for each | `ready` |
 
 | Exit | Requires | Route |
 |---|---|---|
-| `ready` | P1 to P6 | EXECUTE, `fresh` |
+| `ready` | P1 to P7 | EXECUTE, `fresh` |
 | `spec gap` | P1 | SPEC, `remediation`, with the gap named |
 
 ## EXECUTE
@@ -105,7 +109,7 @@ unattested` in config, and the result then carries `weakenedAssurance`.
 | Inputs | PLAN product; baseline; ledger; on `remediation`, the tasks or gaps to close; on `rewind`, the findings |
 | Product | per task a `disposition` of `done`, `already-satisfied` with evidence, or `removed` by an approved plan amendment; `commits[]` per task; `issues[]` unresolved; per-repo `head` |
 | Preconditions | PLAN bound to the current requirements revision; baseline present |
-| Runs as | program-run: waves of at most three, one worktree per task, implement step then review step per task |
+| Runs as | program-run: waves of at most three, one worktree per task, implement step, then the diff-mode probes on the task's commits, then the review step with the probe findings as inputs |
 
 | Id | Postcondition | Gates |
 |---|---|---|
@@ -119,10 +123,11 @@ unattested` in config, and the result then carries `weakenedAssurance`.
 | E8 | the feature head is reachable from base and was not moved out of band | `integrated`, `no change` |
 | E9 | `base..head` is empty and every task is `already-satisfied` or `removed` | `no change`; forbids `integrated` |
 | E10 | a rejected step was re-issued with its reason up to the per-step retry limit before `blocked` is claimed | `blocked` |
+| E11 | for a task touching a file with a security signal, the review record carries a disposition per signal | `integrated` |
 
 | Exit | Requires | Route |
 |---|---|---|
-| `integrated` | E1 to E8; E9 false | VERIFY at the integrated head |
+| `integrated` | E1 to E8, E11; E9 false | VERIFY at the integrated head |
 | `no change` | E1, E2, E8, E9 | VERIFY at base |
 | `blocked` | E1, E10 | terminal `escalated` unless an operator answer re-enters EXECUTE; unspecified, settle at M1 |
 | `plan gap` | E1 | PLAN, `remediation` |
@@ -138,7 +143,7 @@ integration reason code, not an exit.
 | Inputs | requirements revision; EXECUTE product and head; baseline; ledger; on re-entry, the prior VERIFY product |
 | Product | per criterion a `verdict` of `pass`, `fail`, or `blocked` with `evidence` (command, SHA, exit status, parsed failure identities, raw output digest); `findings[]` with dispositions and typed `supersedes`; `remediationTasks[]`; `reviewedRange` |
 | Preconditions | EXECUTE exited `integrated` or `no change` at the current revisions; the verified head equals the integrated head, or base for `no change` |
-| Runs as | verifier and reviewer as fresh contexts; the program re-runs every cited command |
+| Runs as | the probes once over `base..head`; verifier and reviewer as fresh contexts with those findings; the program re-runs every cited command |
 
 | Id | Postcondition | Gates |
 |---|---|---|
@@ -210,10 +215,11 @@ input flags forbid new broad assertions.
 | D4 | a retried creation was reconciled by identity against existing remote state; no duplicate PR | every exit |
 | D5 | partial publication is recorded per repo and never reported as all delivered | `partially delivered` |
 | D6 | a `no change` head that ITERATE converged opened no PR and the product says so | terminal `no-change` |
+| D7 | before the first remote write the program checked git and `gh` credentials and attempted the host's own refresh; a failure exits `delivery blocked` naming the command | `delivered`, `partially delivered` |
 
 | Exit | Requires | Route |
 |---|---|---|
-| `delivered` | D1 to D4 for every repo | terminal `converged` or `converged-with-caveats` |
+| `delivered` | D1 to D4, D7 for every repo | terminal `converged` or `converged-with-caveats` |
 | `partially delivered` | D4, D5 | terminal; result carries `partiallyDelivered` and per-repo state |
 | `delivery blocked` | D4 | terminal; result mapping is an M1 fixture (section 15) |
 
@@ -245,6 +251,7 @@ input flags forbid new broad assertions.
 | `debug` | debug, then VERIFY onward | error report |
 | `micro` | the full order with compact presets | cannot drop a required phase |
 | `status` | nothing; read-only | none |
+| `revise` | EXECUTE in `remediation` on the adopted PR branch, with PR comments as gaps; then VERIFY onward | an open PR the repo module can adopt |
 
 A standalone `deliver` cannot bypass VERIFY or ITERATE: its preconditions require an
 ITERATE exit at the current revisions.
@@ -259,6 +266,8 @@ ITERATE exit at the current revisions.
 | ITERATE `escalated`; EXECUTE `blocked` | `escalated` | `status: escalated`, `converged: false` |
 | process exit 1; environment cannot run the plan | `failed` | `status: failed`, `converged: false` |
 | process exit 3 outstanding | question pending | `status: paused`, `reason` names the question id |
+
+The `last-result.json` pointer is written in the state home beside `state.json`.
 
 ## Unspecified routes to settle at M1
 

@@ -196,7 +196,14 @@ loop-spec phase <name> --context <dir>/context.json --product <dir>/product.json
 - A question for the human is a `question.json` in the state directory and exit
   code 3. The question carries a one-time id. The program surfaces it, records the
   answer against that id, and re-invokes with the answer in context. An answer to a
-  retired id, such as one asked before SPEC changed, is rejected.
+  retired id, such as one asked before SPEC changed, is rejected. An answer carries a
+  scope: `question` answers this id only; `run` answers this id and every later
+  question of the run by the default policy, recorded in state. `--answer-policy
+  default` at entry sets the `run` scope from the start. The result lists every
+  question a policy answered. This is how a harness that federates questions to a
+  chat channel lets the person answer, or say "proceed without me" for the rest of
+  the run; it replaces 6.9's `LOOP_SPEC_NON_INTERACTIVE` and `LOOP_SPEC_AUTONOMOUS`
+  (decided 2026-09-22).
 - A request for the lead to execute something is a `step.json` and exit code 2. The
   step names a role, a working directory, a prompt, an output schema, a result path,
   and a step attempt id. This is how the default implementation dispatches a worker
@@ -332,7 +339,17 @@ report a review that has no evidence record, or a task that has no disposition.
 These are what 7.0 builds. They are the reference implementations of section 4, and
 the parts of 6.9 worth keeping live here.
 
-SPEC and PLAN run in the lead session, in-context. The spec role interviews with
+SPEC and PLAN run in the lead session, in-context. Before either role drafts, the
+program runs its deterministic probes on the files the request or the plan names and
+hands the facts in as inputs: neighbourhood conventions (`house-style probe`),
+existing helpers near the touched files (`duplication-scan`), the layer count at base
+(`indirection-scan`), the security or destructive-change signal per file, and the
+third-party dependencies the touched files import together with fetched excerpts of
+their current documentation (`doc-deps`, `docs-probe`). After the PLAN product is
+drafted and before it is submitted, a light critic role reads it once for Critical
+misses only: a criterion no task covers, a task whose verify command cannot test what
+it claims, a destructive change with no boundary. It raises Critical findings or
+nothing; it does not restyle the plan (decided 2026-09-22). The spec role interviews with
 `AskUserQuestion` natively, exactly as 6.9 does. In Claude Code that reaches the
 person. Under the SDK the supervisor's `can_use_tool` answers it by policy, which
 `examples/supervisor` already does. The lead submits each product; the program records
@@ -345,7 +362,13 @@ boundary; the next session enters from state and the answered questions travel i
 Fresh phase entry is therefore a property of the harness's choice, and fresh worker
 context is a property of the design.
 
-EXECUTE is program-run. The program resolves the task DAG into waves of at most three,
+EXECUTE is program-run. After an implementer commits and before the review step is
+issued, the program runs the same probes in diff mode on that task's commits in its
+worktree (`comment-tells`, `failure-tells`, `indirection-scan` against the base
+count, `duplication-scan`, `house-style compare`, `doc-tells` on touched markdown)
+and hands the findings to the reviewer as inputs. A task touching a file with a
+security signal needs a disposition per signal in its review record. The probes are
+facts in; the judgment on them is the reviewer's. The program resolves the task DAG into waves of at most three,
 creates a worktree per task before anything is dispatched, and hands out one step at a
 time: implement, then review, for each task. Each worker runs as a fresh context in
 its worktree and writes its JSON result to the file the step names. The lead submits
@@ -360,7 +383,8 @@ A rejected step is handed out again with the reason attached, up to a per-step r
 limit, after which the phase exits `blocked`. An out-of-band change to the feature
 branch pauses for reconciliation and is never reset automatically.
 
-VERIFY dispatches a verifier and a reviewer as fresh contexts with the ledger as
+VERIFY runs the probes once more over the whole `base..head` range as a cross-check for
+the first and final review pass, then dispatches a verifier and a reviewer as fresh contexts with the ledger as
 input. The reviewer sees the full diff on the first pass and on an explicit final
 pass, and the delta since the last reviewed SHA otherwise. The verifier is told to try
 an offline stand-in before marking a criterion blocked, and may mark it blocked only
@@ -375,7 +399,18 @@ checklist missed, and routes gaps.
 
 DELIVER is program code: push, one PR per touched repo with the rendered summary,
 draft when caveats remain, reconciled against existing remote state before any
-external write is retried.
+external write is retried. DELIVER may run hours or days after PLAN, so before its
+first remote write it checks the git and `gh` credentials and attempts the host's
+own refresh (the credential helper, `gh auth status`); it never runs a configured
+refresh command. When credentials cannot be refreshed it exits `delivery blocked`
+naming the command and the repair (decided 2026-09-22).
+
+`revise` re-enters after a human has reviewed the delivered PR: the program fetches the
+PR comments, maps them to gaps, and enters EXECUTE in `remediation` mode on the PR's
+branch; VERIFY, ITERATE, and DELIVER then update the same PR by identity. A request
+that names an open PR at SPEC entry adopts that PR's branch as the execution branch
+through the repo module, failing safe to a new branch when `gh` is missing, the PR is
+closed, or its head is a fork (decided 2026-09-22).
 
 debug keeps the 6.9 loop-debug principles as role input flags: a failing
 reproduction before any repair, bounded retries, and a blocker recorded when no
@@ -557,7 +592,11 @@ inside Bash tool calls.
 
 - The state home is `${CLAUDE_PLUGIN_DATA}` when the plugin is installed in Claude
   Code and the skill passes the resolved path to the program, else `$LOOP_SPEC_HOME`,
-  else `~/.loop-spec/`. Keyed by repository identity and slug. One `state.json` per
+  else `~/.loop-spec/`. Keyed by repository identity and slug. The
+  `last-result.json` pointer lives here too, beside `state.json`, not in the consumer
+  repo (decided 2026-09-22; 6.9 consumers change one path, pinned by an M1 fixture).
+  An empty directory is initialized in place by the repo module, with 6.9's refusals
+  to nest a repository or to init inside a workspace. One `state.json` per
   feature with one writer, plus `events.jsonl`, worktrees, per-phase context and
   product files, and the rendered artifacts.
 - Nothing is committed to the consumer repo by default. The PR body carries the
@@ -600,6 +639,7 @@ preconditions checked by the program.
 | `debug` | triage and red reproduction, repair, then VERIFY onward |
 | `micro` | compact preset for a small change; it cannot remove a required phase from a full cycle |
 | `status` | read-only state and outstanding decisions |
+| `revise` | PR comments after human review become remediation gaps; EXECUTE onward on the PR branch |
 
 Removal of other 6.9 entry points, phase modes, the teams rung, hooks, and output
 styles is subject to the migration inventory in section 17.
@@ -632,7 +672,8 @@ Kept as in 6.9:
   `delivered` and `no-change-needed`, `reason`, `summary`, `noChangeReason`,
   `converged`, `workDelivered`, `verification`, `delivery`, `prUrl`,
   `checkpointPrUrl`, `verifiedSha`, `iterations`, `warnings`, plus the atomic
-  `.loop-spec/last-result.json` pointer and its stale-result clearing. No existing
+  `last-result.json` pointer and its stale-result clearing, now in the state home
+  (section 12). No existing
   value is renamed and no existing field changes meaning. The 7.x classification is
   a new field, `result`, added beside them:
 
@@ -675,8 +716,8 @@ byte-for-byte compatibility.
 The repo is a Claude Code plugin and an Agent Skills repository at once, because both
 read `skills/*/SKILL.md`. `npx skills add <owner>/loop-spec` installs the skill
 directories into any of that tool's supported agents, symlinked to one canonical copy
-by default. The Claude Code plugin adds what only Claude Code has: the manifest, one
-hook, and the data directory placeholder.
+by default. The Claude Code plugin adds what only Claude Code has: the manifest and
+the data directory placeholder. 7.x ships no hook (decided 2026-09-22).
 
 - The program ships inside the skill tree so a skills install carries it. The entry
   skills share the program by a relative path. Whether that path survives a per-skill
@@ -714,7 +755,7 @@ turn permission denial, malformed output, and budget exhaustion into truthful re
 rather than widened permissions or false completion. The `claude -p` entry gets a
 smoke test for question policy, background execution, markers, and resumption.
 
-Cutover deletes `extensions/`, `hooks/` except the one kept, every `lib/*.sh` and the
+Cutover deletes `extensions/`, `hooks/`, every `lib/*.sh` and the
 graph driver, the 6.9 skills, agents, and the 6.9 tests, and rewrites `CLAUDE.md`. The
 output style stays (section 15). The offline suite adds one rejection fixture per
 counterexample in the second review: a forged review result at the right path, a
@@ -736,7 +777,7 @@ behavior.
 | M4 | VERIFY and ITERATE defaults: acceptance, ledger, delta review, full evidence re-run in a clean checkout, goal judgment, bounded rewinds | the report's four-pass sequence terminates `converged-with-caveats` after two rewinds; a green checklist with an unmet goal rewinds |
 | M5 | DELIVER, workspace, result contract, role binding, supervisor example | a two-repo workspace delivers two PRs offline against a local remote; a bound review role runs |
 | M6 | live gates | section 17 passes in interactive Claude Code and in the SDK; evidence recorded |
-| M7 | cutover | `main` is 7.0.0, `6.x` branch cut, marketplace follows, CHANGELOG written |
+| M7 | cutover | `main` is 7.0.0, `6.x` branch cut, marketplace follows, CHANGELOG written; the README carries exemplar Claude Code use cases, an exemplar Agent SDK implementation, and the one-off Claude Code commands each entry supports; [migrating-6-to-7.md](migrating-6-to-7.md) (a how-to for consumers, first version at M0) is updated with the M1 names |
 
 ## 19. To verify before M1
 
@@ -794,8 +835,19 @@ independent release gate; a draft delivery keeps 6.9's `delivered-draft` fields 
 by an operator answer, never self-declared; grace expiry quarantines a retired
 worktree and never deletes it.
 
-Pending for M0: supported host versions, the migration inventory, and
-the route matrix as its own reference page.
+Decided 2026-09-22 from the migration inventory: no hook ships; `revise` is an entry
+that enters EXECUTE in remediation mode from PR comments; the critique gate becomes a
+light Critical-only critic on the PLAN product; the six code probes run as program
+inputs, at PLAN on the named files, per task before review, and once over the range at
+VERIFY; dependency docs are program inputs at PLAN; no configured credential refresh,
+but DELIVER checks and attempts the host's own refresh before its first remote write;
+no unattended flag, answers carry a `question` or `run` scope; the result pointer
+moves to the state home; PR adoption stays in the repo module; greenfield keeps only
+init-in-place; issue intake is removed; a security signal is a required review input
+with a disposition per signal; `inbox/` is deleted; every proposed removal in the
+inventory is accepted.
+
+Pending for M0: supported host versions.
 
 Audit notes from the review round: the raw report was read after the first
 comparison; the report is one observed run and demonstrates failure modes without
