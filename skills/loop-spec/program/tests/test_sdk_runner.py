@@ -79,6 +79,11 @@ def _fake_sdk_module(messages: list) -> types.ModuleType:
     module.PermissionResultAllow = PermissionResultAllow
     module.PermissionResultDeny = PermissionResultDeny
     module.ClaudeAgentOptions = ClaudeAgentOptions
+    module.__version__ = "0.2.157-fake"
+    # `from claude_agent_sdk import _cli_version` resolves via getattr on an
+    # already-imported package before it tries a real submodule import, so a
+    # plain attribute here is enough -- no sys.modules entry for the submodule.
+    module._cli_version = types.SimpleNamespace(__cli_version__="2.1.277-fake")
 
     async def fake_query(*, prompt, options=None, transport=None):
         for msg in messages:
@@ -137,7 +142,7 @@ class RunStepSdkTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.result_path = Path(self._tmp.name, "result.json")
         self.step = {"cwd": self._tmp.name, "prompt": "do the thing", "schema": {"type": "object"},
-                     "resultPath": str(self.result_path)}
+                     "resultPath": str(self.result_path), "stepAttemptId": "step-1"}
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -156,6 +161,20 @@ class RunStepSdkTests(unittest.TestCase):
         self.assertEqual(json.loads(self.result_path.read_text()), {"exit": "ok"})
         kinds = [e["kind"] for e in run.events]
         self.assertEqual(kinds, ["worker_text", "worker_tool_use", "worker_result"])
+
+        receipt = json.loads(self.result_path.with_name("sdk-receipt.json").read_text())
+        self.assertEqual(receipt["stepAttemptId"], "step-1")
+        self.assertEqual(receipt["sessionId"], "sess-42")
+        self.assertEqual(receipt["resultDigest"], run.result_digest)
+        self.assertEqual(receipt["sdkVersion"], "0.2.157-fake")
+        self.assertEqual(receipt["cliVersion"], "2.1.277-fake")
+        self.assertTrue(receipt["unverifiedLive"])
+
+    def test_failure_writes_no_receipt(self):
+        messages = [ResultMessage(subtype="error_max_structured_output_retries")]
+        with patch.dict(sys.modules, {"claude_agent_sdk": _fake_sdk_module(messages)}):
+            run_step_sdk(self.step, plugin_path=Path("/plugin"), model=None)
+        self.assertFalse(self.result_path.with_name("sdk-receipt.json").exists())
 
     def test_missing_structured_output_fails_closed(self):
         messages = [ResultMessage(subtype="success", structured_output=None)]

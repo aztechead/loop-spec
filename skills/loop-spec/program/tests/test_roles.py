@@ -69,12 +69,14 @@ class ComposePromptTests(unittest.TestCase):
 
 class RoleSchemaDriftGuardTests(unittest.TestCase):
     def test_role_schemas_equal_their_product_schemas(self):
+        # verifier/iterate-judge are excluded: VERIFY/ITERATE dispatch them as one
+        # step in a multi-step flow, so their role.schema is that step's own result
+        # shape (see roles/verifier/schema.json, roles/iterate-judge/schema.json),
+        # not the full verify.json/iterate.json product the module assembles itself.
         with tempfile.TemporaryDirectory() as tmp:
             pairs = [
                 ("spec-writer", "spec"),
                 ("planner", "plan"),
-                ("verifier", "verify"),
-                ("iterate-judge", "iterate"),
                 ("debugger", "debug"),
             ]
             for role_name, product_name in pairs:

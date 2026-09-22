@@ -1,51 +1,12 @@
 {
   "type": "object",
   "required": [
-    "exit",
-    "inputsDigest",
-    "boundTo",
     "verdict",
     "gaps",
-    "caveats",
-    "boundSha"
+    "caveats"
   ],
   "additionalProperties": false,
   "properties": {
-    "exit": {
-      "type": "string",
-      "enum": [
-        "converged",
-        "converged with caveats",
-        "rewind",
-        "escalated"
-      ]
-    },
-    "inputsDigest": {
-      "type": "string",
-      "pattern": "^sha256:[0-9a-f]{64}$"
-    },
-    "boundTo": {
-      "type": "object",
-      "required": [
-        "requirements",
-        "plan"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "requirements": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "plan": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      }
-    },
     "verdict": {
       "type": "string",
       "enum": [
@@ -83,9 +44,6 @@
       "items": {
         "type": "string"
       }
-    },
-    "boundSha": {
-      "type": "string"
     }
   }
 }

@@ -17,26 +17,6 @@ from .roles import compose_prompt, load_role
 
 _DIFF_CAP = 200_000  # ponytail: same flat cap as execute.py's review diff
 
-# The judge's OWN step result: the module computes exit/boundSha/boundTo/inputsDigest
-# itself from this plus the ledger, so those are not part of what the judge submits.
-_JUDGE_RESULT_SCHEMA = {
-    "type": "object", "required": ["verdict", "gaps", "caveats"], "additionalProperties": False,
-    "properties": {
-        "verdict": {"type": "string", "enum": ["met", "unmet"]},
-        "gaps": {
-            "type": "array",
-            "items": {
-                "type": "object", "required": ["target", "text"], "additionalProperties": False,
-                "properties": {
-                    "target": {"type": "string", "enum": ["spec", "plan", "execute", "verify"]},
-                    "text": {"type": "string"},
-                },
-            },
-        },
-        "caveats": {"type": "array", "items": {"type": "string"}},
-    },
-}
-
 
 def _judge_request(store, paths, ctx, head: str) -> dict:
     project_root = Path(ctx["paths"]["projectRoot"])
@@ -67,7 +47,7 @@ def _judge_request(store, paths, ctx, head: str) -> dict:
     # helper would need a module none of those three currently import from.
     request = {
         "kind": "role", "role": "iterate-judge", "phase": "iterate", "cwd": str(cwd),
-        "prompt": prompt, "resultPath": str(result_path), "schema": _JUDGE_RESULT_SCHEMA, "postconditions": [],
+        "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"], "retryOf": None, "reason": None,
     }
     errors = validate_request("step", request)

@@ -122,10 +122,25 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host) -> Su
         raise LoopSpecError("; ".join(errors), repair=f"fix the listed fields in {result_path} and re-issue the step")
 
     result_digest = digest_bytes(result_path.read_bytes())
+    receipt_path = result_path.with_name("sdk-receipt.json")
 
     attestation = None
     if step["kind"] == "external":
         evidence_level = "human-attested"
+    elif receipt_path.is_file():
+        # sdk_runner.run_step_sdk wrote this beside the result: this process
+        # itself watched the SDK session end successfully, so "controller-observed"
+        # needs no host at all, only a receipt that actually names this submission.
+        try:
+            receipt = read_json(receipt_path)
+        except json.JSONDecodeError:
+            receipt = {}
+        if receipt.get("stepAttemptId") == step_id and receipt.get("resultDigest") == result_digest:
+            evidence_level = "controller-observed"
+            attestation = {"ok": True, "kind": "sdk-receipt", "sessionId": receipt.get("sessionId")}
+        else:
+            evidence_level = "unattested"
+            attestation = {"ok": False, "reason": "sdk receipt digest mismatch"}
     elif host is None or dispatch_name is None:
         evidence_level = "unattested"
     else:

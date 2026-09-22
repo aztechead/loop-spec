@@ -141,10 +141,10 @@ def drive(project_root: Path, state_home: str | None, slug: str | None, request:
                 if not run.ok:
                     print(f"role step ({step.get('role')}) failed: {run.reason}", file=sys.stderr)
                     return 1
-                # host is None outside a real Claude Code session (no
-                # CLAUDE_CODE_SESSION_ID here), so this still submits "unattested"
-                # regardless of --dispatch; passed anyway for protocol fidelity
-                # with the role-dispatch shape SKILL.md describes.
+                # run_step_sdk wrote a receipt beside the result; steps.submit
+                # reads it and grants "controller-observed" evidence with no host
+                # needed. --dispatch is passed anyway for protocol fidelity with
+                # the role-dispatch shape SKILL.md describes.
                 stdout = run_cli("submit", *common, "--step", step["stepAttemptId"], "--dispatch", step["stepAttemptId"])
             elif step["kind"] == "lead":
                 asyncio.run(run_lead_step(step, plugin_path=REPO_ROOT, model=step.get("model") or model))

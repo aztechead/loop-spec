@@ -6,7 +6,7 @@ from pathlib import Path
 
 from loop_spec import steps
 from loop_spec.errors import LoopSpecError
-from loop_spec.ids import digest
+from loop_spec.ids import digest, digest_bytes
 from loop_spec.jsonio import atomic_write_json
 from loop_spec.paths import FeaturePaths
 from loop_spec.repo import add_worktree, head_sha
@@ -143,6 +143,39 @@ class SubmitTests(StepsTestCase):
             submission = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name="worker-1", host=_FakeAttestor(False, "opening mismatch"))
             self.assertEqual(submission.evidence_level, "unattested")
             self.assertEqual(store.state["steps"]["submissions"][record["stepAttemptId"]]["attestation"]["reason"], "opening mismatch")
+
+    def test_matching_sdk_receipt_is_controller_observed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._issue(store, paths)
+            result_path = Path(record["resultPath"])
+            atomic_write_json(result_path, {"ok": True})
+            result_digest = digest_bytes(result_path.read_bytes())
+            atomic_write_json(result_path.with_name("sdk-receipt.json"), {
+                "stepAttemptId": record["stepAttemptId"], "sessionId": "sess-1", "resultDigest": result_digest,
+                "sdkVersion": "0.2.157", "cliVersion": "2.1.277", "finishedAt": "2026-01-01T00:00:00+00:00",
+                "unverifiedLive": True,
+            })
+            submission = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name=None, host=None)
+            self.assertEqual(submission.evidence_level, "controller-observed")
+            attestation = store.state["steps"]["submissions"][record["stepAttemptId"]]["attestation"]
+            self.assertEqual(attestation, {"ok": True, "kind": "sdk-receipt", "sessionId": "sess-1"})
+
+    def test_mismatched_sdk_receipt_is_unattested(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._issue(store, paths)
+            result_path = Path(record["resultPath"])
+            atomic_write_json(result_path, {"ok": True})
+            atomic_write_json(result_path.with_name("sdk-receipt.json"), {
+                "stepAttemptId": record["stepAttemptId"], "sessionId": "sess-1", "resultDigest": "sha256:" + "0" * 64,
+                "sdkVersion": "0.2.157", "cliVersion": "2.1.277", "finishedAt": "2026-01-01T00:00:00+00:00",
+                "unverifiedLive": True,
+            })
+            submission = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name=None, host=None)
+            self.assertEqual(submission.evidence_level, "unattested")
+            attestation = store.state["steps"]["submissions"][record["stepAttemptId"]]["attestation"]
+            self.assertEqual(attestation, {"ok": False, "reason": "sdk receipt digest mismatch"})
 
 
 class RetireTests(StepsTestCase):

@@ -21,56 +21,6 @@ from .roles import compose_prompt, load_role
 
 _DIFF_CAP = 200_000  # ponytail: same flat cap as execute.py's review diff
 
-# The verifier's OWN step result: per-criterion verdicts plus a remediation hint and
-# the two gap flags the module needs to pick an exit. Bespoke, not verify.json's full
-# product shape (verify.json also needs findings/remediationTasks/reviewedRange,
-# which the reviewer and this module supply, not the verifier).
-_VERIFIER_RESULT_SCHEMA = {
-    "type": "object", "required": ["verdicts", "planGap", "intentGap"], "additionalProperties": False,
-    "properties": {
-        "planGap": {"type": "boolean"},
-        "intentGap": {"type": "boolean"},
-        "verdicts": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "required": ["criterion", "verdict", "evidence", "cause", "remediation"],
-                "additionalProperties": False,
-                "properties": {
-                    "criterion": {"type": "string"},
-                    "verdict": {"type": "string", "enum": ["pass", "fail", "blocked"]},
-                    "evidence": {
-                        "anyOf": [
-                            {"type": "null"},
-                            {
-                                "type": "object",
-                                "required": ["command", "sha", "exitStatus", "failureIdentities", "outputDigest"],
-                                "additionalProperties": False,
-                                "properties": {
-                                    "command": {"type": "string"}, "sha": {"type": "string"},
-                                    "exitStatus": {"type": "integer"},
-                                    "failureIdentities": {"type": "array", "items": {"type": "string"}},
-                                    "outputDigest": {"type": "string"},
-                                },
-                            },
-                        ],
-                    },
-                    "cause": {"type": ["string", "null"]},
-                    "remediation": {
-                        "anyOf": [
-                            {"type": "null"},
-                            {
-                                "type": "object", "required": ["files"], "additionalProperties": False,
-                                "properties": {"files": {"type": "array", "items": {"type": "string"}}},
-                            },
-                        ],
-                    },
-                },
-            },
-        },
-    },
-}
-
 
 def _verify_checkout(repo_path: Path, head: str, prepare: str | None, checkouts_dir: Path) -> Path:
     dest = Path(checkouts_dir) / f"verify-{head[:12]}"
@@ -142,7 +92,7 @@ def _verifier_request(store, paths, ctx, verify_state: dict) -> dict:
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=cwd, phase="verify")
     request = {
         "kind": "role", "role": "verifier", "phase": "verify", "cwd": str(cwd),
-        "prompt": prompt, "resultPath": str(result_path), "schema": _VERIFIER_RESULT_SCHEMA, "postconditions": [],
+        "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"], "retryOf": None, "reason": None,
     }
     errors = validate_request("step", request)

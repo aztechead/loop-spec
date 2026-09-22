@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .errors import LoopSpecError
-from .ids import digest_bytes
+from .ids import digest_bytes, now_iso
 from .jsonio import atomic_write_json
 
 _ASK_USER_QUESTION_MESSAGE = "questions go through loop-spec question.json"
@@ -122,6 +122,16 @@ async def _run_step_sdk_async(step: dict, *, plugin_path: Path, model: str | Non
     result_path = Path(step["resultPath"])
     atomic_write_json(result_path, result_msg.structured_output)
     result_digest = digest_bytes(result_path.read_bytes())
+
+    # steps.submit reads this beside the result to grant "controller-observed"
+    # evidence: this process watched the SDK session end successfully, even though
+    # no host attests it the way a real Claude Code dispatch would.
+    from claude_agent_sdk import _cli_version
+    atomic_write_json(result_path.with_name("sdk-receipt.json"), {
+        "stepAttemptId": step["stepAttemptId"], "sessionId": session_id, "resultDigest": result_digest,
+        "sdkVersion": sdk.__version__, "cliVersion": _cli_version.__cli_version__,
+        "finishedAt": now_iso(), "unverifiedLive": True,
+    })
     return StepRun(ok=True, reason=None, session_id=session_id, events=events, result_digest=result_digest)
 
 

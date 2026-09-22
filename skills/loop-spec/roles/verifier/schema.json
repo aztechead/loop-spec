@@ -1,186 +1,17 @@
 {
   "type": "object",
   "required": [
-    "exit",
-    "inputsDigest",
-    "boundTo",
     "verdicts",
-    "findings",
-    "remediationTasks",
-    "reviewedRange"
+    "planGap",
+    "intentGap"
   ],
   "additionalProperties": false,
-  "$defs": {
-    "finding": {
-      "type": "object",
-      "required": [
-        "id",
-        "location",
-        "cause",
-        "severity",
-        "disposition",
-        "reason",
-        "supersedes"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "location": {
-          "type": "string"
-        },
-        "cause": {
-          "type": "string"
-        },
-        "severity": {
-          "type": "string",
-          "enum": [
-            "Critical",
-            "Important",
-            "Minor"
-          ]
-        },
-        "disposition": {
-          "type": "string",
-          "enum": [
-            "fixed",
-            "rejected",
-            "deferred",
-            "open"
-          ]
-        },
-        "reason": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "supersedes": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "object",
-              "required": [
-                "kind",
-                "id"
-              ],
-              "additionalProperties": false,
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "enum": [
-                    "finding",
-                    "range"
-                  ]
-                },
-                "id": {
-                  "type": "string"
-                }
-              }
-            }
-          ]
-        }
-      }
-    },
-    "planTask": {
-      "type": "object",
-      "required": [
-        "id",
-        "title",
-        "dependsOn",
-        "files",
-        "repo",
-        "verify",
-        "criteria",
-        "featureAdded",
-        "mustFlip"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^T-[0-9]+$"
-        },
-        "title": {
-          "type": "string"
-        },
-        "dependsOn": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "files": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "repo": {
-          "type": "string"
-        },
-        "verify": {
-          "type": "string"
-        },
-        "criteria": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string"
-          }
-        },
-        "featureAdded": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "mustFlip": {
-          "type": "boolean"
-        }
-      }
-    }
-  },
   "properties": {
-    "exit": {
-      "type": "string",
-      "enum": [
-        "passed",
-        "implementation gap",
-        "plan gap",
-        "intent gap",
-        "evidence incomplete",
-        "blocked"
-      ]
+    "planGap": {
+      "type": "boolean"
     },
-    "inputsDigest": {
-      "type": "string",
-      "pattern": "^sha256:[0-9a-f]{64}$"
-    },
-    "boundTo": {
-      "type": "object",
-      "required": [
-        "requirements",
-        "plan"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "requirements": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "plan": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      }
+    "intentGap": {
+      "type": "boolean"
     },
     "verdicts": {
       "type": "array",
@@ -190,7 +21,8 @@
           "criterion",
           "verdict",
           "evidence",
-          "cause"
+          "cause",
+          "remediation"
         ],
         "additionalProperties": false,
         "properties": {
@@ -248,39 +80,29 @@
               "string",
               "null"
             ]
+          },
+          "remediation": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "files"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
           }
-        }
-      }
-    },
-    "findings": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/finding"
-      }
-    },
-    "remediationTasks": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/planTask"
-      }
-    },
-    "reviewedRange": {
-      "type": "object",
-      "required": [
-        "from",
-        "to",
-        "full"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "from": {
-          "type": "string"
-        },
-        "to": {
-          "type": "string"
-        },
-        "full": {
-          "type": "boolean"
         }
       }
     }
