@@ -6,9 +6,8 @@ you can run. Why 7.x is shaped this way is in [ROADMAP-7.0.md](ROADMAP-7.0.md). 
 full surface-by-surface mapping is
 [migration-inventory-7.0.md](migration-inventory-7.0.md).
 
-Status: first version, written at M0 from the inventory. Every value marked *M1* is
-fixed when the code lands and this page is updated in the same change. Until then,
-treat those values as the shape, not the spelling.
+Status: updated at M7 cutover against the shipped 7.0.0 code; every value below is
+the real name, not a placeholder.
 
 ## Before you start
 
@@ -38,7 +37,7 @@ Check: `loop-spec status` in a repository prints "no run" and the resolved state
 | `/loop-spec:micro` | `/loop-spec:micro`; the `on`, `off`, and `status` modes are gone |
 | `/loop-spec:intake <file>` | `/loop-spec:cycle <file>` |
 | `/loop-spec:pause` | nothing to run; every run resumes from state, and `status` shows the pending question |
-| `/loop-spec:revise <pr>` | `/loop-spec:revise <pr>`, now re-entering EXECUTE in remediation mode on the PR branch |
+| `/loop-spec:revise <pr>` | `/loop-spec:revise --pr <n-or-url>`, now compacting the PR's gaps into SPEC and PLAN and running the cycle forward, with one full review pass over the adopted commits before EXECUTE's own tasks |
 | `/loop-spec:status` | unchanged |
 | `/loop-spec:auto`, `oneshot`, `spec-lite` | removed; name the entry you want, `micro` for a small change |
 | `assess`, `sentinel`, `watch`, `retro`, `rules`, `forensics`, `walkthrough`, `quality-loop`, `checking-gates`, `specifying-gates`, `onboard`, `settings`, `rollback`, `loop-runner` | removed; see the inventory for what, if anything, replaces each |
@@ -52,32 +51,38 @@ consumer repository for what remains:
 
 ```json
 {
-  "prepare": "npm ci",
   "commitArtifacts": false,
   "phases": {},
   "roles": {}
 }
 ```
 
+`prepare` is no longer a config key: PLAN's own product carries a `prepare`
+command (the planner writes it), applied before every baseline capture and
+re-verification.
+
 | 6.9 variable | 7.x |
 |---|---|
-| `LOOP_SPEC_MODEL_<ROLE>` | unchanged, the one model override |
-| `LOOP_SPEC_CMD_PREPARE`, `LOOP_SPEC_CMD_TEST`, `_LINT`, `_TYPECHECK` | `prepare` in config; test, lint, and typecheck commands are detected from the manifests at baseline |
+| `LOOP_SPEC_MODEL_<ROLE>` | narrower: sets the model on a SPEC or PLAN lead step only (`defaults.py`); other role dispatches do not read it yet |
+| `LOOP_SPEC_CMD_PREPARE`, `LOOP_SPEC_CMD_TEST`, `_LINT`, `_TYPECHECK` | removed; PLAN's own product names each task's `verify` command and the plan's `prepare` command directly, nothing is detected from manifests |
 | `LOOP_SPEC_ARTIFACTS_IN_PR` | `commitArtifacts` in config |
 | `LOOP_SPEC_NON_INTERACTIVE` | nothing; your harness receives every question as `question.json` on exit 3 and re-invokes with the answer |
 | `LOOP_SPEC_AUTONOMOUS` | `--answer-policy default` at entry, or a `run`-scoped answer to any question |
-| `LOOP_SPEC_ITERATE_MAX_ITERATIONS` | rewind budget override (*M1* name) |
-| `LOOP_SPEC_REDO_MAX`, `LOOP_SPEC_RALPH_THRESHOLD` | per-step retry limit (*M1* name) |
-| `LOOP_SPEC_CHECKS_*`, `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | DELIVER readiness policy in config (*M1* names) |
-| `LOOP_SPEC_WORKTREES`, `LOOP_SPEC_WORKTREE_DIR` | removed; worktrees live in the state home, one per task |
+| `LOOP_SPEC_ITERATE_MAX_ITERATIONS` | `LOOP_SPEC_REWIND_BUDGET` (the shared T1 budget's limit; default 2) |
+| `LOOP_SPEC_REDO_MAX`, `LOOP_SPEC_RALPH_THRESHOLD` | `LOOP_SPEC_STEP_RETRIES` (per-phase retry limit; default 3) |
+| `LOOP_SPEC_CHECKS_*`, `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | `deliver.readiness`/`deliver.base` in config; no configurable timeout in this release |
+| `LOOP_SPEC_WORKTREES`, `LOOP_SPEC_WORKTREE_DIR` | removed; worktrees live in the state home, one per repo under EXECUTE |
 | `LOOP_SPEC_CREDENTIAL_REFRESH_*` | removed; DELIVER checks credentials before its first push and exits `delivery blocked` if they cannot be refreshed |
 | `LOOP_SPEC_HARNESS`, `LOOP_SPEC_TEAMS_MODE`, `LOOP_SPEC_EXECUTE_WORKFLOW`, every `*_GUARD` | removed |
 
 Anything not listed here is in the inventory's environment table, each with its fate.
 
-Check: `grep -r LOOP_SPEC_ your-harness/` lists only `LOOP_SPEC_MODEL_<ROLE>`,
-`LOOP_SPEC_HOME`, `LOOP_SPEC_PHASE_<NAME>`, `LOOP_SPEC_ROLE_<ROLE>`, the stdout
-markers, and `LOOP_SPEC_CONSOLE_*`.
+Check: `grep -r LOOP_SPEC_ your-harness/` lists only `LOOP_SPEC_HOME`,
+`LOOP_SPEC_PYTHON`, `LOOP_SPEC_PHASE_<NAME>`, `LOOP_SPEC_ROLE_<ROLE>`,
+`LOOP_SPEC_MODEL_<ROLE>`, `LOOP_SPEC_REWIND_BUDGET`, `LOOP_SPEC_STEP_RETRIES`,
+`LOOP_SPEC_EXECUTE_WIDTH`, the stdout markers, and `LOOP_SPEC_CONSOLE_*`. The full
+list, grounded in the program's own source, is
+[../../skills/loop-spec/references/contract.md](../../skills/loop-spec/references/contract.md#configuration-and-environment).
 
 ## 4. Move the state you read
 
@@ -85,12 +90,14 @@ markers, and `LOOP_SPEC_CONSOLE_*`.
 |---|---|
 | `docs/loop-spec/features/<slug>/feature.json` | `<state home>/<repo id>/<slug>/state.json`, program-written only |
 | `docs/loop-spec/features/<slug>/*.md` | rendered into the PR body; in the state home; in the repo only under `commitArtifacts: true` |
-| `.loop-spec/last-result.json` | `<state home>/.../last-result.json`, beside `state.json` |
+| `.loop-spec/last-result.json` | `<state home>/<repo id>/last-result.json`, one level above `state.json`, shared across every slug for that repository |
 | `.loop-spec/events.jsonl` | `<state home>/.../events.jsonl` |
 | `refs/loop-spec/state/<slug>` | not available at 7.0; `loop-spec state push|pull` is a seam the roadmap builds only when a harness needs it |
 
-The state home is `${CLAUDE_PLUGIN_DATA}` under a Claude Code plugin install, else
-`$LOOP_SPEC_HOME`, else `~/.loop-spec/`. `loop-spec status` prints the resolved path.
+The state home resolves in this order: an explicit `--state-home` flag (the
+Claude Code skill stubs pass `${CLAUDE_PLUGIN_DATA}`, substituted by the host),
+else `$LOOP_SPEC_HOME`, else `~/.loop-spec/`. `loop-spec status` prints the
+resolved path.
 
 Check: after one `micro` run, `state.json` and `last-result.json` exist in the printed
 state home and the consumer repository's `git status` is clean.
@@ -101,12 +108,15 @@ The terminal result keeps schema 1: every existing field keeps its name and mean
 One field is added, `result`, with values `converged`, `converged-with-caveats`,
 `no-change`, `escalated`, `failed`. Read `result` for the 7.x classification and keep
 reading `converged` for what 6.9 meant by it. The stdout markers
-`LOOP_SPEC_PHASE_START`, `LOOP_SPEC_PHASE_END`, `LOOP_SPEC_HANDOFF`, and
-`LOOP_SPEC_RESULT` are unchanged; `LOOP_SPEC_QUESTION` is added on exit 3.
+`LOOP_SPEC_PHASE_START`, `LOOP_SPEC_PHASE_END`, and `LOOP_SPEC_RESULT` are
+unchanged; `LOOP_SPEC_QUESTION` is added on exit 3, and `LOOP_SPEC_NEXT` is new —
+the last line of every controller entry, naming the file to read next (`step`,
+`question`, or `result`) and the slug every later call needs.
 
-Check: your consumer accepts a result with an unknown extra field. Each result row is
-produced by a recorded live run on the M1 checklist; 7.x has unit tests for its
-deterministic Python modules only.
+Check: your consumer accepts a result with an unknown extra field. loop-spec's own
+unit tests cover its deterministic Python modules only; a result's actual shape is
+confirmed by a recorded live run, listed in
+[live-runs-7.0.md](live-runs-7.0.md).
 
 ## 6. If your harness federates questions
 

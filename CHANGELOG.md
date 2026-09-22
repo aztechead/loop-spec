@@ -4,6 +4,65 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.0.0] - 2026-09-21
+
+A ground-up rewrite: loop-spec is now a stdlib-only Python program
+(`skills/loop-spec/program/loop_spec/`) driven by thin Claude Code skill stubs,
+instead of the 6.x bash/jq implementation.
+
+### Added
+
+- The 7.x program: `controller.py` drives SPEC, PLAN, EXECUTE, VERIFY, ITERATE,
+  DELIVER (plus the DEBUG and REVISE entries) one phase at a time, and
+  `postconditions.py` checks every claimed exit before it advances.
+- Twelve Claude Code entries: `cycle`, `micro`, `debug`, `revise`, `spec`, `plan`,
+  `execute`, `verify`, `iterate`, `deliver`, `status`, and the `loop-spec` hub.
+- `loop_spec/sdk_runner.py` and [`examples/supervisor/`](examples/supervisor/README.md):
+  an unattended runner and reference supervisor on `claude-agent-sdk`, for driving
+  a cycle with no Claude Code session at all.
+- `controller-observed` evidence: an SDK receipt beside a step's result grants the
+  same standing as a native host attestation, with no host process required.
+- [`skills/loop-spec/references/contract.md`](skills/loop-spec/references/contract.md):
+  the process contract — files, fields, exit codes, config, environment — for an
+  implementer or a harness author.
+- [`docs/loop-spec/live-runs-7.0.md`](docs/loop-spec/live-runs-7.0.md): which
+  checklist case was shown by which recorded live run.
+
+### Changed
+
+- Run state moves off `docs/loop-spec/features/<slug>/feature.json` and committed
+  markdown into `<state home>/<repo id>/<slug>/state.json`, durable outside the
+  consumer repository. Configuration moves from environment variables into
+  `.loop-spec/config.json`'s `phases`/`roles`/`deliver` keys.
+  [migrating-6-to-7.md](docs/loop-spec/migrating-6-to-7.md) maps each surface.
+  The terminal result keeps schema 1; a new `result` field carries the 7.x
+  classification (`converged`, `converged-with-caveats`, `no-change`,
+  `escalated`, `failed`, `paused`) alongside the fields a 6.x consumer already
+  reads.
+
+### Removed
+
+Per the M7 cutover plan in [ROADMAP-7.0.md](docs/loop-spec/ROADMAP-7.0.md#17-testing-live-gates-and-cutover):
+`hooks/`, `extensions/`, `lib/`, `graph/`, `agents/`, `commands/`, `evals/`,
+`.codex-plugin/`, the 6.x `skills/` tree (every skill but the twelve listed
+above), and the 6.x `tests/` suite. The environment variables each one read are
+listed, with their 7.x fate, in
+[migrating-6-to-7.md](docs/loop-spec/migrating-6-to-7.md#3-move-your-environment-variables-into-config-or-flags).
+opencode, Google ADK, and OpenAI Codex support goes with them; 7.x targets
+Claude Code and the Claude Agent SDK only.
+
+### Shown live
+
+Recorded in [docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md),
+against Claude Code 2.1.278 on `sonnet`.
+
+### Not shown live
+
+The SDK runner and reference supervisor: this repository has no Claude Agent SDK
+credentials. Deferred by the maintainer's own accepted decision of 2026-09-22
+(recorded in ROADMAP-7.0.md); grounded from the installed package's source and
+its docs instead of a live run's output.
+
 ## [6.9.0] - 2026-09-17
 
 ### Changed
