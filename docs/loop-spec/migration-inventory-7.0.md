@@ -504,4 +504,4 @@ Removals no roadmap decision covers. Sign-off here makes them accepted removals.
 
 - [ROADMAP-7.0.md](ROADMAP-7.0.md): why each replacement exists.
 - [runner-decision-7.0.md](runner-decision-7.0.md): the runner rows.
-- `phase-interface-7.0.md` (M0, pending): the route matrix that replaces the graph probes.
+- [phase-interface-7.0.md](phase-interface-7.0.md): the route matrix that replaces the graph probes.
