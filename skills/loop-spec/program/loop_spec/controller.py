@@ -800,9 +800,15 @@ def _run_verify_reruns(store: StateStore, paths: FeaturePaths, verify_product: d
     prepare = store.state["products"]["plan"]["product"].get("prepare")
     verify_runs = store.state.setdefault("verifyRuns", {})
     for verdict in verify_product["verdicts"]:
-        if verdict["verdict"] not in ("pass", "fail") or verdict["criterion"] in verify_runs:
+        if verdict["verdict"] not in ("pass", "fail"):
             continue
         evidence = verdict.get("evidence") or {}
+        # Reuse a re-run only when it matched the SAME claim; a stale mismatch from an
+        # earlier attempt (LF-29: recorded at another repo's head) must be redone.
+        prior = verify_runs.get(verdict["criterion"])
+        if prior and prior.get("matched") and prior["rerun"].get("sha") == evidence.get("sha") \
+                and prior["rerun"].get("command") == evidence.get("command"):
+            continue
         repo_name = evidence["repo"]
         repo_path = Path(store.state["repos"][repo_name]["path"])
         head = heads[repo_name]
