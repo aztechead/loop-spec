@@ -22,6 +22,7 @@ from loop_spec.repo import (
     is_ancestor,
     is_clean,
     remove_worktree,
+    remove_worktrees,
 )
 
 
@@ -127,6 +128,35 @@ class WorktreeTests(unittest.TestCase):
             self.assertTrue(checkout_dest.is_dir())
             remove_worktree(Path(tmp), checkout_dest)
             self.assertFalse(checkout_dest.exists())
+
+    def test_remove_worktrees_only_touches_those_under_paths_root(self):
+        # LF-39: a terminal run's own feature dir is paths_root; a worktree some
+        # OTHER run (or a checkout the test itself made) owns must survive.
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as run_dir, \
+                tempfile.TemporaryDirectory() as other_dir:
+            _init_repo(tmp)
+            _commit(tmp, "a.txt", "first")
+            sha = head_sha(Path(tmp))
+            create_feature_branch(Path(tmp), "feat/x", sha)
+            create_feature_branch(Path(tmp), "feat/y", sha)
+
+            in_run = Path(run_dir, "worktrees", "feature")
+            add_worktree(Path(tmp), in_run, branch="feat/x")
+            outside = Path(other_dir, "wt")
+            add_worktree(Path(tmp), outside, branch="feat/y")
+
+            removed = remove_worktrees(Path(tmp), Path(run_dir))
+            self.assertEqual(removed, [str(in_run.resolve())])
+            self.assertFalse(in_run.exists())
+            self.assertTrue(outside.is_dir())
+
+            listing = subprocess.run(["git", "worktree", "list"], cwd=tmp, capture_output=True, text=True, check=True).stdout
+            self.assertNotIn(str(in_run.resolve()), listing)
+            self.assertIn(str(outside.resolve()), listing)
+
+    def test_remove_worktrees_on_a_non_repo_returns_empty_instead_of_raising(self):
+        with tempfile.TemporaryDirectory() as not_a_repo, tempfile.TemporaryDirectory() as run_dir:
+            self.assertEqual(remove_worktrees(Path(not_a_repo), Path(run_dir)), [])
 
 
 class ExcludePathTests(unittest.TestCase):

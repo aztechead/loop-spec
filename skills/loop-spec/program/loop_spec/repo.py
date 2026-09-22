@@ -232,6 +232,35 @@ def remove_worktree(repo: Path, dest: Path, *, force: bool = False) -> None:
     run_git(repo, *args)
 
 
+def remove_worktrees(repo: Path, paths_root: Path) -> list[str]:
+    """Remove every worktree of `repo` under `paths_root` (a run's own feature
+    dir) and prune. LF-39: a terminal run that keeps its worktrees leaves its
+    feature branch checked out somewhere, so a LATER run's `git worktree add` of
+    that same branch is refused as already in use. Never raises, on the listing
+    itself (a repo that no longer exists or was never a real checkout, a test
+    fixture's own stand-in) or on one worktree it cannot remove -- a terminal
+    run's result must still get written either way; this is best-effort tidying,
+    never a precondition for it."""
+    paths_root = Path(paths_root).resolve()
+    removed: list[str] = []
+    try:
+        listing = run_git(repo, "worktree", "list", "--porcelain")
+    except LoopSpecError:
+        return removed
+    for line in listing.splitlines():
+        if not line.startswith("worktree "):
+            continue
+        wt_path = Path(line[len("worktree "):]).resolve()
+        try:
+            wt_path.relative_to(paths_root)
+        except ValueError:
+            continue
+        if _git(repo, "worktree", "remove", "--force", str(wt_path)).returncode == 0:
+            removed.append(str(wt_path))
+    _git(repo, "worktree", "prune")
+    return removed
+
+
 def clean_checkout(repo: Path, sha: str, dest: Path) -> Path:
     dest = Path(dest)
     if dest.exists():

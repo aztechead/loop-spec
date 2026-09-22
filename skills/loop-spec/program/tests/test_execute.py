@@ -483,5 +483,107 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertIn("handledRejections", events_text)
 
 
+class AdoptedTaskTests(unittest.TestCase):
+    """LF-38: a revise run's reviser carries an unchanged prior task forward
+    verbatim (its own contract says to); EXECUTE must adopt it instead of
+    re-dispatching an implementer that finds nothing left to do."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.repo = self.tmp / "repo"
+        self.repo.mkdir()
+        _init_repo(self.repo)
+        self.base_sha = _head(self.repo)
+        _git(self.repo, "checkout", "-q", "-b", "pr-branch")
+        _commit(self.repo, "T-1.txt", "T-1: the delivered task")
+        self.pr_head_sha = _head(self.repo)
+        _git(self.repo, "checkout", "-q", "main")
+
+        self.paths = FeaturePaths(root=self.tmp / "run")
+        self.store = StateStore.create(self.paths, {"id": "run-1", "slug": "revise-1"}, "revise PR #1")
+        # Same shape controller._run_revise_entry builds: the feature branch IS the
+        # PR's own branch, already at the adopted head.
+        self.store.state["repos"] = {
+            "repo": {"path": str(self.repo), "baseSha": self.base_sha, "featureBranch": "pr-branch",
+                     "defaultBranch": "main", "lastKnownHead": self.pr_head_sha},
+        }
+        self.store.state["adoption"] = {
+            "repo": "repo", "number": 1, "url": "https://example/pull/1", "headRef": "pr-branch",
+            "baseBranch": "main", "baseSha": self.base_sha, "headSha": self.pr_head_sha,
+        }
+        self.store.state["products"]["spec"] = {
+            "exit": "approved", "product": {"criteria": [{"id": "AC-1", "text": "it works"}]},
+        }
+        r1 = _plan_task("R-1")
+        r1["title"] = "fix the remaining gap"
+        self.plan_tasks = [_plan_task("T-1"), r1]
+        self.store.state["products"]["plan"] = {"exit": "ready", "product": {"tasks": self.plan_tasks}}
+        self.store.state["revise"] = {"gaps": [], "product": None, "prior": {
+            "slug": "delivered", "spec": {"criteria": [{"id": "AC-1", "text": "it works"}]},
+            "plan": {"tasks": [_plan_task("T-1")]},
+        }}
+        baseline_run = run_command("sh verify.sh", self.repo, self.pr_head_sha)
+        entry = BaselineEntry(command="sh verify.sh", task=None, status="ran", run=baseline_run)
+        self.store.state["baseline"] = {"entries": {"sh verify.sh": entry.to_dict()}}
+        self.store.save()
+
+        self.ctx = {"attempt": {"id": "attempt-1"}, "inputs": {"digest": "sha256:" + "a" * 64},
+                    "paths": {"projectRoot": str(self.repo)}, "probes": {},
+                    "entry": {"mode": "fresh", "payload": None}}
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _implementer_result(self, task_id, worktree, filename):
+        _commit(worktree, filename, f"implement {task_id}")
+        return {"taskId": task_id, "commits": [_head(worktree)], "summary": f"did {task_id}",
+                "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []}
+
+    def _pass_review(self, sha, from_sha, to_sha):
+        return {"sha": sha, "reviewedRange": {"from": from_sha, "to": to_sha}, "verdict": "pass",
+                "findings": [], "securityDispositions": []}
+
+    def test_revise_run_adopts_unchanged_prior_tasks_and_dispatches_only_new_ones(self):
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "implementer")
+        r1_worktree = self.store.state["execute"]["tasks"]["R-1"]["worktree"]
+        self.assertTrue(Path(r1_worktree).is_dir())
+
+        t1_state = self.store.state["execute"]["tasks"]["T-1"]
+        self.assertEqual(t1_state["status"], "adopted")
+        self.assertEqual(t1_state["commits"], repo_module.commits_between(self.repo, self.base_sha, self.pr_head_sha))
+        events_text = self.paths.events_jsonl.read_text()
+        self.assertIn('"task_adopted"', events_text)
+
+        result = self._implementer_result("R-1", r1_worktree, "R-1.txt")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "step-1"}, result)
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        r1_head = _head(r1_worktree)
+        review = self._pass_review(r1_head, self.pr_head_sha, r1_head)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "step-2"}, review)
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, Product)
+        self.assertEqual(action.product["exit"], "integrated")
+        by_id = {t["id"]: t for t in action.product["tasks"]}
+        self.assertEqual(by_id["T-1"]["disposition"], "adopted")
+        self.assertEqual(by_id["T-1"]["commits"], repo_module.commits_between(self.repo, self.base_sha, self.pr_head_sha))
+        self.assertEqual(by_id["R-1"]["disposition"], "done")
+
+    def test_a_changed_prior_task_is_not_adopted(self):
+        # The delivering run's T-1 ran a different verify command -- the reviser
+        # changed it, so EXECUTE must redo the task rather than adopt stale work.
+        self.store.state["revise"]["prior"]["plan"]["tasks"][0]["verify"] = "sh other-verify.sh"
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "implementer")
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "pending")
+
+
 if __name__ == "__main__":
     unittest.main()

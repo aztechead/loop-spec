@@ -28,7 +28,11 @@ it.
    output is the only proof the test would catch the guard's removal.
 7. Commit only the files the task named (plus a lockfile the package manager
    wrote next to a manifest you changed), with a message that names the task id.
-8. Report the commits, the verify command's actual output, and any issue you could
+8. When the task is already satisfied at the branch head — the verify command
+   passes with no change from you — commit nothing and begin `summary` with
+   `already satisfied:`; the program reads that prefix and accepts the task
+   without a commit.
+9. Report the commits, the verify command's actual output, and any issue you could
    not resolve — never guess past it.
 
 ## Engineering principles

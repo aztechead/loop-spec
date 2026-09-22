@@ -24,7 +24,7 @@ from .paths import ensure_results_dir
 from .postconditions import retry_limit
 from .roles import compose_prompt, load_role
 
-_TERMINAL = {"done", "already-satisfied", "removed", "blocked", "planGap"}
+_TERMINAL = {"done", "already-satisfied", "removed", "blocked", "planGap", "adopted"}
 _DIFF_CAP = 200_000  # ponytail: a flat cap, raise it if a real diff gets truncated in practice
 # LF-16: a rejected EXECUTE product's failures route to the task-state change that
 # gives the NEXT attempt a chance to actually differ, instead of resubmitting the
@@ -127,6 +127,38 @@ def _route_verify_comparison(execute_state: dict, task_id: str, task_state: dict
 
 # --- initialization (first step() call only) ------------------------------
 
+def _mark_adopted_tasks(store, paths, ctx, tasks: dict, plan_tasks: list[dict]) -> None:
+    # LF-38: the reviser's own contract carries an unchanged prior task forward
+    # verbatim; EXECUTE must not re-implement work the adopted PR already
+    # delivered, or the worker finds nothing to do and the run blocks after
+    # retries exhaust. A task counts as adopted only when its full dict (every
+    # field a reviser could have touched) still matches the delivering run's plan.
+    adoption = store.state.get("adoption")
+    prior = (store.state.get("revise") or {}).get("prior")
+    if adoption is None or not prior or not prior.get("plan"):
+        return
+    prior_tasks = {t["id"]: t for t in prior["plan"]["tasks"]}
+    fields = ("title", "files", "repo", "verify", "criteria", "dependsOn", "featureAdded", "mustFlip")
+    for plan_task in plan_tasks:
+        prior_task = prior_tasks.get(plan_task["id"])
+        if prior_task is None or any(plan_task.get(f) != prior_task.get(f) for f in fields):
+            continue
+        repo_name = plan_task["repo"]
+        # The adopted range only covers the PR's own repo; a workspace's other
+        # repos have no adopted commits to attribute a task's work to.
+        if repo_name != adoption.get("repo"):
+            continue
+        repo_info = store.state["repos"][repo_name]
+        commits = repo_module.commits_between(Path(repo_info["path"]), repo_info["baseSha"], adoption["headSha"])
+        task_state = tasks[plan_task["id"]]
+        task_state.update({
+            "status": "adopted", "commits": commits,
+            "integratedFrom": repo_info["baseSha"], "integratedTo": adoption["headSha"],
+            "evidence": None, "review": None,
+        })
+        emit(paths, "task_adopted", {"task": plan_task["id"]}, phase="execute", attempt_id=ctx["attempt"]["id"])
+
+
 def _init(store, paths, ctx) -> dict:
     plan_tasks = store.state["products"]["plan"]["product"]["tasks"]
     width = int(os.environ.get("LOOP_SPEC_EXECUTE_WIDTH", "3"))
@@ -170,6 +202,7 @@ def _init(store, paths, ctx) -> dict:
         }
         for t in plan_tasks
     }
+    _mark_adopted_tasks(store, paths, ctx, tasks, plan_tasks)
 
     execute_state = {"waves": waves, "tasks": tasks, "repos": repos, "issues": [], "handledRejections": []}
     store.state["execute"] = execute_state
@@ -476,6 +509,15 @@ def _final_product(store, ctx, execute_state: dict) -> dict:
             tasks_out.append({
                 "id": task_id, "disposition": "already-satisfied",
                 "evidence": task_state["evidence"], "commits": [], "review": None,
+            })
+        elif task_state["status"] == "adopted":
+            # LF-38: delivered by the adopted PR, not this run -- counts as done
+            # for the exit decision so a run whose only new work is a remediation
+            # task still exits `integrated`, not `no change`.
+            any_done = True
+            tasks_out.append({
+                "id": task_id, "disposition": "adopted", "evidence": None,
+                "commits": task_state["commits"], "review": None,
             })
 
     if any(t["status"] == "planGap" for t in execute_state["tasks"].values()):

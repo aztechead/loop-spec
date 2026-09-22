@@ -211,7 +211,7 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
 
     base_sha = repo_module.run_git(repo_path, "merge-base", adoption.base_branch, adoption.head_sha).strip()
     request_text = f"revise PR #{adoption.number}: {adoption.url}"
-    run_fields = {"id": new_id("run"), "entry": "revise", "createdAt": now_iso(), "slug": slug, "repoId": rid, "cycleType": "full"}
+    run_fields = {"id": new_id("run"), "entry": "revise", "createdAt": now_iso(), "slug": slug, "repoId": rid, "cycleType": "revise"}
     store = StateStore.create(paths, run_fields, request_text)
     store.state["repos"] = {repo_name: {
         "path": str(repo_path), "baseSha": base_sha, "featureBranch": adoption.branch,
@@ -333,7 +333,7 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
                 store.state["phase"]["blockedQuestionId"] = None
                 if answered["value"] in ("stop", "reject with reason"):
                     store.save()
-                    result_module.write(
+                    _finish_run(
                         store, paths, "escalated",
                         reason=f"{store.state['phase']['current']} paused; operator chose {answered['value']!r}",
                     )
@@ -487,7 +487,7 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
         questions.resolve_policy_answer(store, paths, record)
         return
     if outcome.kind == "error":
-        result_module.write(store, paths, "failed", reason=outcome.stderr)
+        _finish_run(store, paths, "failed", reason=outcome.stderr)
         return
     _accept_product(store, paths, project_root, phase, attempt_id, read_json(outcome.path))
 
@@ -903,7 +903,7 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
         # phase or looping the product back into remediation (phase-interface-7.0.md
         # "Backward-transition budget"). ITERATE's own refused rewind is the one
         # named exception (its "rewind" exit gates on I3/I4 instead of T1).
-        result_module.write(store, paths, "escalated", reason=f"the rewind budget has no room for {phase} {exit_}")
+        _finish_run(store, paths, "escalated", reason=f"the rewind budget has no room for {phase} {exit_}")
         return
 
     boundary = postconditions.Boundary(store, paths, phase=phase, product=product, exit=exit_, project_root=project_root)
@@ -941,7 +941,7 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
         try:
             budget_module.spend(store, from_phase=phase, exit=exit_, to_phase=next_phase, attempt_id=attempt_id, reason=exit_)
         except budget_module.BudgetExhausted as exc:
-            result_module.write(store, paths, "escalated", reason=str(exc))
+            _finish_run(store, paths, "escalated", reason=str(exc))
             return
 
     if mode == "terminal":
@@ -1045,15 +1045,33 @@ def _ask_pause_question(store: StateStore, paths: FeaturePaths, phase: str, exit
     store.save()
 
 
+def _finish_run(store: StateStore, paths: FeaturePaths, classification: str, *, reason: str | None = None,
+                 summary: str | None = None, partially_delivered: bool = False) -> Path:
+    # LF-39: every result_module.write in this module writes a terminal result
+    # (nothing here passes "paused", the one classification that leaves a run
+    # resumable) -- removing each repo's worktrees under this run's own feature
+    # dir here, once, is the one place that covers every route into a terminal
+    # state instead of one more site to remember at each call.
+    path = result_module.write(store, paths, classification, reason=reason, summary=summary,
+                                partially_delivered=partially_delivered)
+    if classification != "paused":
+        removed = []
+        for info in store.state.get("repos", {}).values():
+            removed.extend(repo_module.remove_worktrees(Path(info["path"]), paths.root))
+        if removed:
+            emit(paths, "worktrees_removed", {"removed": removed}, phase=store.state["phase"]["current"])
+    return path
+
+
 def _write_terminal_result(store: StateStore, paths: FeaturePaths, phase: str, exit_: str) -> None:
     if phase == "iterate" and exit_ == "escalated":
-        result_module.write(store, paths, "escalated")
+        _finish_run(store, paths, "escalated")
         return
     if store.state.get("escalatedDraft"):
         # This run reached DELIVER only because escalatedPartialDraft routed an
         # escalated ITERATE forward; it still classifies as escalated, DELIVER just
         # fills in `delivery` with whatever it managed to publish (roadmap 15).
-        result_module.write(store, paths, "escalated", partially_delivered=(exit_ == "partially delivered"))
+        _finish_run(store, paths, "escalated", partially_delivered=(exit_ == "partially delivered"))
         return
     execute_exit = store.state["products"]["execute"]["exit"]
     iterate_exit = store.state["products"]["iterate"]["exit"]
@@ -1063,7 +1081,7 @@ def _write_terminal_result(store: StateStore, paths: FeaturePaths, phase: str, e
         classification = "converged-with-caveats"
     else:
         classification = "converged"
-    result_module.write(store, paths, classification, partially_delivered=(exit_ == "partially delivered"))
+    _finish_run(store, paths, classification, partially_delivered=(exit_ == "partially delivered"))
 
 
 # ---------------------------------------------------------------------------
