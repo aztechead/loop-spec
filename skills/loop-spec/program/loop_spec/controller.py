@@ -28,7 +28,7 @@ from .errors import LoopSpecError
 from .ids import digest, new_id, now_iso
 from .jsonio import atomic_write_json, read_json
 from .events import emit, marker_phase_end, marker_phase_start
-from .paths import FeaturePaths, feature_dir, repo_id, slug_from_request
+from .paths import FeaturePaths, ensure_results_dir, feature_dir, repo_id, slug_from_request
 from .paths import state_home as resolve_state_home
 from .state import StateStore
 
@@ -1020,14 +1020,19 @@ def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: 
         diff = diff[:_ADOPTED_REVIEW_DIFF_CAP] + "\n...(truncated)"
 
     role = load_role("code-reviewer", project_root, contract.resolve_role(project_root, "code-reviewer"))
-    result_path = checkout / "loop-spec-adopted-review-result.json"
+    attempt_id = new_id("attempt")
+    # LF-27: a model-written result goes under the project's results dir, never
+    # the state home (checkout is under state home; a live model's default
+    # permission mode refuses writes there).
+    ensure_results_dir(paths)
+    result_path = paths.results_dir / f"adopted-review-{attempt_id}.json"
     inputs = {
         "range": {"from": adoption["baseSha"], "to": adoption["headSha"], "full": True}, "diff": diff,
         "ledger": {"reviewedRanges": [], "openFindings": []}, "rangeProbes": {}, "securitySignals": [], "full": True,
     }
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=checkout, phase="execute")
     record = steps.issue(
-        store, paths, phase="execute", attempt_id=new_id("attempt"), kind="role", role="code-reviewer",
+        store, paths, phase="execute", attempt_id=attempt_id, kind="role", role="code-reviewer",
         cwd=checkout, prompt=prompt, schema=role.schema, postconditions=[], inputs_digest=digest(inputs),
         result_path=result_path,
     )

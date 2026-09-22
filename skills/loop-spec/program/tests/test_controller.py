@@ -807,6 +807,9 @@ class DebugAndReviseEntryTests(_QuietStdout):
                 self.assertEqual(next_.kind, "step")
                 review_step = read_json(next_.path)
                 self.assertEqual(review_step["role"], "code-reviewer")
+                # LF-27: the adopted review's result is model-written, so it belongs
+                # under the project's results dir, never the state home.
+                self.assertIn(str(Path(".loop-spec") / "results"), review_step["resultPath"])
                 review_result = {
                     "sha": head_sha, "reviewedRange": {"from": base_sha, "to": head_sha},
                     "verdict": "pass", "findings": [], "securityDispositions": [],
