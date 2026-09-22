@@ -1,0 +1,222 @@
+"""Unit tests for loop_spec.execute: dag_waves and the EXECUTE state machine."""
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+from loop_spec.baseline import BaselineEntry, run_command
+from loop_spec.errors import LoopSpecError
+from loop_spec.execute import IssueStep, Pause, Product, dag_waves, on_submit, step
+from loop_spec.paths import FeaturePaths
+from loop_spec.postconditions import retry_limit
+from loop_spec.state import StateStore
+
+
+# simplicity: _git/_init_repo repeat test_repo.py's and test_baseline.py's own
+# copies verbatim; there is no shared test-fixture module in this tree yet, and
+# adding one is a cross-file change outside this file's own scope.
+def _git(cwd, *args):
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
+
+
+def _init_repo(cwd):
+    _git(cwd, "init", "-q", "-b", "main")
+    _git(cwd, "config", "user.name", "Test")
+    _git(cwd, "config", "user.email", "test@example.com")
+    Path(cwd, "verify.sh").write_text("#!/bin/sh\nexit 0\n")
+    _git(cwd, "add", "verify.sh")
+    _git(cwd, "commit", "-q", "-m", "init")
+
+
+def _commit(cwd, filename, message):
+    Path(cwd, filename).write_text(f"{filename}\n")
+    _git(cwd, "add", filename)
+    _git(cwd, "commit", "-q", "-m", message)
+
+
+def _head(cwd):
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()
+
+
+class DagWavesTests(unittest.TestCase):
+    def test_diamond(self):
+        tasks = [
+            {"id": "T-1", "dependsOn": []},
+            {"id": "T-2", "dependsOn": ["T-1"]},
+            {"id": "T-3", "dependsOn": ["T-1"]},
+            {"id": "T-4", "dependsOn": ["T-2", "T-3"]},
+        ]
+        self.assertEqual(dag_waves(tasks), [["T-1"], ["T-2", "T-3"], ["T-4"]])
+
+    def test_width_overflow(self):
+        tasks = [{"id": f"T-{n}", "dependsOn": []} for n in range(1, 5)]
+        self.assertEqual(dag_waves(tasks, width=3), [["T-1", "T-2", "T-3"], ["T-4"]])
+
+    def test_cycle_raises(self):
+        tasks = [{"id": "T-1", "dependsOn": ["T-2"]}, {"id": "T-2", "dependsOn": ["T-1"]}]
+        with self.assertRaises(LoopSpecError):
+            dag_waves(tasks)
+
+
+# simplicity: indirection-scan sees one call site (setUp's list comprehension
+# line) though it constructs both T-1 and T-2; keeping it avoids repeating the
+# plan-task schema's nine fields twice in setUp.
+def _plan_task(task_id, verify="sh verify.sh", depends_on=None):
+    return {
+        "id": task_id, "title": task_id, "dependsOn": depends_on or [], "files": [f"{task_id}.txt"],
+        "repo": "repo", "verify": verify, "criteria": ["AC-1"], "featureAdded": None, "mustFlip": False,
+    }
+
+
+class ExecuteLifecycleTests(unittest.TestCase):
+    """One consumer repo, a two-task plan, and the implement/review/verify loop."""
+
+    # simplicity: setUp/tearDown are unittest's fixed method names, not a naming
+    # choice; house-style.sh's camelCase deviation on this file is the same
+    # pre-existing false positive test_result.py and test_postconditions.py hit.
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.repo = self.tmp / "repo"
+        self.repo.mkdir()
+        _init_repo(self.repo)
+        self.base_sha = _head(self.repo)
+        _git(self.repo, "branch", "feature", self.base_sha)
+
+        self.paths = FeaturePaths(root=self.tmp / "run")
+        self.store = StateStore.create(self.paths, {"id": "run-1"}, "add a widget")
+        self.store.state["repos"] = {
+            "repo": {"path": str(self.repo), "baseSha": self.base_sha, "featureBranch": "feature",
+                     "defaultBranch": "main", "lastKnownHead": self.base_sha},
+        }
+        self.store.state["products"]["spec"] = {
+            "exit": "approved", "product": {"criteria": [{"id": "AC-1", "text": "it works"}]},
+        }
+        self.plan_tasks = [_plan_task("T-1"), _plan_task("T-2", depends_on=["T-1"])]
+        self.store.state["products"]["plan"] = {"exit": "ready", "product": {"tasks": self.plan_tasks}}
+        # A real run_command call, not a hand-built CommandRun: fingerprints() hashes
+        # even a clean run's "<no failure output>" marker, so a guessed empty list
+        # would never match compare_to_baseline's real candidate fingerprints.
+        baseline_run = run_command("sh verify.sh", self.repo, self.base_sha)
+        entry = BaselineEntry(command="sh verify.sh", task=None, status="ran", run=baseline_run)
+        self.store.state["baseline"] = {"entries": {"sh verify.sh": entry.to_dict()}}
+        self.store.save()
+
+        self.ctx = {"attempt": {"id": "attempt-1"}, "inputs": {"digest": "sha256:" + "a" * 64},
+                    "paths": {"projectRoot": str(self.repo)}, "probes": {}}
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _implementer_result(self, task_id, worktree, filename):
+        _commit(worktree, filename, f"implement {task_id}")
+        return {"taskId": task_id, "commits": [_head(worktree)], "summary": f"did {task_id}",
+                "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []}
+
+    def _pass_review(self, sha, from_sha, to_sha):
+        return {"sha": sha, "reviewedRange": {"from": from_sha, "to": to_sha}, "verdict": "pass",
+                "findings": [], "securityDispositions": []}
+
+    def test_full_success_lifecycle(self):
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "implementer")
+        t1_worktree = self.store.state["execute"]["tasks"]["T-1"]["worktree"]
+        self.assertTrue(Path(t1_worktree).is_dir())
+
+        result = self._implementer_result("T-1", t1_worktree, "T-1.txt")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "step-1"}, result)
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "probing")
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        self.assertIn(self.base_sha, action.request["prompt"])  # the range's "from" names the feature head
+
+        task_head = _head(t1_worktree)
+        review = self._pass_review(task_head, self.base_sha, task_head)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "step-2"}, review)
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "done")
+        self.assertEqual(self.store.state["execute"]["repos"]["repo"]["head"], task_head)
+
+        # T-2 depends on T-1 and only becomes issuable now that T-1 is done.
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "implementer")
+        t2_worktree = self.store.state["execute"]["tasks"]["T-2"]["worktree"]
+
+        result = self._implementer_result("T-2", t2_worktree, "T-2.txt")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "step-3"}, result)
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        t2_head = _head(t2_worktree)
+        review = self._pass_review(t2_head, task_head, t2_head)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "step-4"}, review)
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, Product)
+        self.assertEqual(action.product["exit"], "integrated")
+        ids = {t["id"] for t in action.product["tasks"]}
+        self.assertEqual(ids, {"T-1", "T-2"})
+        self.assertEqual(action.product["heads"]["repo"], t2_head)
+        done_task = next(t for t in action.product["tasks"] if t["id"] == "T-1")
+        self.assertEqual(done_task["review"]["verdict"], "pass")
+
+    def test_review_fail_reissues_implement_with_the_finding_in_reason(self):
+        action = step(self.store, self.paths, self.ctx)
+        worktree = action.request["cwd"]
+        result = self._implementer_result("T-1", worktree, "T-1.txt")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "step-1"}, result)
+
+        action = step(self.store, self.paths, self.ctx)
+        task_head = _head(worktree)
+        finding = {"id": "F-1", "location": "T-1.txt:1", "cause": "missing a null check",
+                   "severity": "Critical", "disposition": "open", "reason": None, "supersedes": None}
+        review = {"sha": task_head, "reviewedRange": {"from": self.base_sha, "to": task_head}, "verdict": "fail",
+                  "findings": [finding], "securityDispositions": []}
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "step-2"}, review)
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "pending")
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "implementer")
+        self.assertIn("missing a null check", action.request["reason"])
+
+    def test_retries_past_the_limit_block_the_task(self):
+        # Each retry costs two step() calls (implement, then review), so the loop
+        # needs headroom for 2 * (retry_limit() + 1) calls, not retry_limit() + 1.
+        for attempt in range(2 * (retry_limit() + 2)):
+            action = step(self.store, self.paths, self.ctx)
+            if isinstance(action, Product):
+                break
+            worktree = action.request["cwd"]
+            if action.request["role"] == "implementer":
+                filename = f"T-1-{attempt}.txt"
+                result = self._implementer_result("T-1", worktree, filename)
+                on_submit(self.store, self.paths, action.request | {"stepAttemptId": f"impl-{attempt}"}, result)
+            else:
+                task_head = _head(worktree)
+                finding = {"id": f"F-{attempt}", "location": "T-1.txt:1", "cause": "still broken",
+                           "severity": "Critical", "disposition": "open", "reason": None, "supersedes": None}
+                review = {"sha": task_head, "reviewedRange": {"from": self.base_sha, "to": task_head},
+                          "verdict": "fail", "findings": [finding], "securityDispositions": []}
+                on_submit(self.store, self.paths, action.request | {"stepAttemptId": f"rev-{attempt}"}, review)
+
+        self.assertIsInstance(action, Product)
+        self.assertEqual(action.product["exit"], "blocked")
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "blocked")
+        self.assertTrue(action.product["issues"])
+
+    def test_out_of_band_commit_pauses(self):
+        step(self.store, self.paths, self.ctx)  # initializes worktrees, including worktrees/feature
+        feature_worktree = self.store.state["execute"]["repos"]["repo"]["worktree"]
+        _commit(feature_worktree, "sneaky.txt", "out of band")
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, Pause)
+        self.assertEqual(action.question_request["payload"]["repo"], "repo")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -11,10 +11,11 @@ from loop_spec.jsonio import atomic_write_json, read_json
 def _context(tmp: str) -> dict:
     return {
         "run": {"id": "run-1"}, "attempt": {"id": "attempt-1"}, "inputs": {"digest": "sha256:" + "a" * 64},
+        "request": {"text": "add a widget", "digest": "sha256:" + "b" * 64},
         "products": {}, "state": {"requirementsRevision": None, "approval": None, "planRevision": None,
                                    "baseline": None, "ledger": {}, "budget": {}},
         "entry": {"mode": "fresh", "payload": None}, "repos": [{"name": "repo", "path": tmp}],
-        "paths": {"stateDir": tmp, "writable": []},
+        "paths": {"stateDir": tmp, "writable": [], "projectRoot": tmp},
         "answers": {"byQuestion": {}, "policy": None}, "probes": {},
     }
 
@@ -36,6 +37,8 @@ class RunLeadPhaseTests(unittest.TestCase):
             self.assertEqual(step["resultPath"], str(product_path))
             self.assertIn("## Method", step["prompt"])
             self.assertIn("## Output", step["prompt"])
+            self.assertIn("### request", step["prompt"])
+            self.assertIn("add a widget", step["prompt"])
 
     def test_returns_0_when_a_valid_product_already_exists(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -77,6 +80,23 @@ class RunLeadPhaseTests(unittest.TestCase):
             step = read_json(product_path.parent / "step.json")
             self.assertIsNone(step["model"])
             self.assertEqual(step["role"], "planner")
+
+    def test_dict_shaped_repos_does_not_crash(self):
+        # state.repos (and so context.repos) is a dict keyed by repo name in the
+        # real controller, not a list; run_lead_phase must resolve cwd from either
+        # shape without raising.
+        with tempfile.TemporaryDirectory() as tmp:
+            context_path = Path(tmp, "context.json")
+            product_path = Path(tmp, "product.json")
+            context = _context(tmp)
+            context["repos"] = {"myrepo": {"path": tmp}}
+            atomic_write_json(context_path, context)
+
+            code = run_lead_phase("spec", "spec-writer", context_path, product_path)
+
+            self.assertEqual(code, 2)
+            step = read_json(product_path.parent / "step.json")
+            self.assertEqual(step["cwd"], tmp)
 
 
 if __name__ == "__main__":
