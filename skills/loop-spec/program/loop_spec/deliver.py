@@ -8,6 +8,7 @@ here needs it, since an out-of-band remote move maps to a normal `delivery block
 product exit, the same way EXECUTE's `blocked` exit is a product, not a raw pause.
 """
 import json
+import tempfile
 from pathlib import Path
 
 from . import render
@@ -50,7 +51,9 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
         # reconciles a lost create response on its own, so nothing reads this back.
         store.state.setdefault("deliverCreating", {})[repo_name] = {"at": now_iso(), "branch": branch}
         store.save()
-        body_path = Path(worktree) / ".loop-spec-pr-body.md"
+        # LF-48: the body file lives outside the worktree; an untracked file inside it
+        # made the feature checkout "dirty" and terminal cleanup kept it as backlog.
+        body_path = Path(tempfile.mkstemp(prefix="loop-spec-pr-body-", suffix=".md")[1])
         body_path.write_text(body)
         args = ["pr", "create", "--base", base, "--head", branch, "--title", pr_title(title), "--body-file", str(body_path)]
         if draft:

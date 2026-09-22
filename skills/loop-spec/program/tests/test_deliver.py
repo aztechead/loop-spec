@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from loop_spec import deliver
+from loop_spec import repo as repo_module
 from loop_spec.execute import Product
 from loop_spec.paths import FeaturePaths
 from loop_spec.state import StateStore
@@ -118,6 +119,12 @@ class DeliverTests(unittest.TestCase):
         self.assertEqual(entry["pr"]["number"], 42)
         self.assertEqual(entry["deliveredSha"], self.head_sha)
         self.assertEqual(_head(self.remote, "feature"), self.head_sha)  # actually pushed
+        # LF-48: the PR body file never lands in the worktree (it made the checkout
+        # dirty, and terminal cleanup then kept it as backlog).
+        execute_repos = (self.store.state.get("execute") or {}).get("repos") or {}
+        worktree = Path(execute_repos["repo"]["worktree"]) if "repo" in execute_repos else self.repo
+        self.assertFalse(list(worktree.glob(".loop-spec-pr-body*")))
+        self.assertTrue(repo_module.is_clean(worktree))
 
     def test_skips_an_untouched_repo(self):
         self.store.state["products"]["execute"]["product"]["heads"]["repo"] = self.base_sha
