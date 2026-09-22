@@ -136,13 +136,22 @@ def _ensure_worktree(store, paths, task_id: str, task_state: dict, plan_task: di
 
 # --- step requests ---------------------------------------------------------
 
+def _result_path(paths, task_id: str, kind: str, n: int) -> Path:
+    results = paths.root / "results"
+    results.mkdir(parents=True, exist_ok=True)
+    return results / f"{task_id}-{kind}-{n}.json"
+
+
 def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, task_id: str) -> dict:
     _ensure_worktree(store, paths, task_id, task_state, plan_task)
     worktree = Path(task_state["worktree"])
     project_root = Path(ctx["paths"]["projectRoot"])
     role = load_role("implementer", project_root, resolve_role(project_root, "implementer"))
     spec = store.state["products"]["spec"]["product"]
-    result_path = worktree / "loop-spec-implement-result.json"
+    # The result file lives outside the worktree: a result written into the checkout
+    # shows up in `git status` and made every implement submission fail is_clean until
+    # the lead hacked the repo's exclude file (live finding LF-07).
+    result_path = _result_path(paths, task_id, "implement", len(task_state["implementSteps"]) + 1)
 
     inputs = {
         "task": plan_task,
@@ -170,14 +179,14 @@ def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, tas
     return request
 
 
-def _review_request(store, ctx, plan_task: dict, task_state: dict) -> dict:
+def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dict:
     worktree = Path(task_state["worktree"])
     project_root = Path(ctx["paths"]["projectRoot"])
     role = load_role("code-reviewer", project_root, resolve_role(project_root, "code-reviewer"))
     execute_state = store.state["execute"]
     feature_head = execute_state["repos"][task_state["repo"]]["head"]
     task_head = repo_module.branch_sha(worktree, task_state["branch"])
-    result_path = worktree / "loop-spec-review-result.json"
+    result_path = _result_path(paths, plan_task["id"], "review", len(task_state["reviewSteps"]) + 1)
 
     diff = repo_module.run_git(worktree, "diff", f"{feature_head}..{task_head}")
     if len(diff) > _DIFF_CAP:
@@ -292,7 +301,7 @@ def step(store, paths, ctx):
             if task_state["status"] == "pending":
                 return IssueStep(_implement_request(store, paths, ctx, plan_tasks[task_id], task_state, task_id))
             if task_state["status"] == "probing":
-                return IssueStep(_review_request(store, ctx, plan_tasks[task_id], task_state))
+                return IssueStep(_review_request(store, paths, ctx, plan_tasks[task_id], task_state))
         raise LoopSpecError(
             "execute.step() was called with an outstanding submission still open",
             repair="submit the open step (on_submit) before calling step() again",
