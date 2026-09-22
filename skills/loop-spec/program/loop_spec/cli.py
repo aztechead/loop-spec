@@ -16,6 +16,7 @@ from .events import emit as emit_event
 from .events import marker_next
 from .jsonio import read_json
 from .paths import FeaturePaths, feature_dir, repo_id, state_home
+from .postconditions import retry_limit
 from .state import StateStore
 
 # Full-cycle and single-phase controller entries: same later-wave behavior for now.
@@ -186,6 +187,15 @@ def main(argv: list[str] | None = None) -> int:
             host = attest.ClaudeCodeAttestor() if os.environ.get("CLAUDE_CODE_SESSION_ID") else None
             submission = steps.submit(store, paths, step_id=args.step, dispatch_name=args.dispatch, host=host,
                                        result_file=args.result_file)
+            if submission.redispatch is not None:
+                step_path = paths.steps_dir / submission.step["stepAttemptId"] / "step.json"
+                tag = submission.step["phase"].upper()
+                attempts = submission.step["attestationAttempts"]
+                print(f"[{tag}] step {args.step} unattested ({attempts}/{retry_limit()}): "
+                      f"{submission.step['reason']}; dispatch a fresh worker named {submission.redispatch} "
+                      f"with the same prompt and submit again with --dispatch {submission.redispatch}")
+                marker_next("step", str(step_path), args.slug)
+                return 0
             controller.route_submission(store, paths, submission.step, submission.result)
             next_ = controller.continue_run(store, paths, project_root=Path(args.project_root))
             marker_next(next_.kind, str(next_.path), next_.slug)

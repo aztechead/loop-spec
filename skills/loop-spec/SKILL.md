@@ -53,8 +53,11 @@ a stub is told the run's slug):
     command below and the program reads it from there instead. Then run
     `"${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" submit --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --slug <slug from LOOP_SPEC_NEXT> --step <stepAttemptId> --dispatch <stepAttemptId>`
     (`--dispatch` is the same name you gave the Agent) and repeat from "read the last
-    stdout line". Never add your own instructions to a worker; if a step must be
-    redone, submit what you have and let the program re-issue it with the reason.
+    stdout line". If submit answers that the step is unattested and names a new
+    dispatch name, dispatch a fresh worker under that exact name with the same step
+    prompt verbatim and submit again with that `--dispatch`; never edit the result
+    file. Never add your own instructions to a worker; if a step must be redone,
+    submit what you have and let the program re-issue it with the reason.
   - `external`: a person or another tool produces the product, not you. Stop, print
     the step path and its prompt, and tell the user an external implementation owns
     this phase; the operator submits with

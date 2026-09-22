@@ -124,3 +124,22 @@ class MetaNameLayoutTests(unittest.TestCase):
             self.assertEqual([p.name for p in by_name], ["agent-a7b7490498fde8aac.jsonl"])
             self.assertEqual(by_name, by_id)
             self.assertEqual(find_transcripts(home, Path("/repo"), "sess", "other"), [])
+
+    def test_redispatch_name_matches_exactly_not_its_original_step(self):
+        # A redispatched attestation-required step is named "<stepId>-2"; the exact
+        # meta-name match must find that transcript and not the original "<stepId>"
+        # one, even though "step-x" is a prefix of "step-x-2".
+        import json as _json
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            subagents = home / "projects" / "-repo" / "sess" / "subagents"
+            subagents.mkdir(parents=True)
+            _write_transcript(subagents / "agent-aoriginal.jsonl", _valid_records())
+            (subagents / "agent-aoriginal.meta.json").write_text(_json.dumps({"name": "step-x"}))
+            _write_transcript(subagents / "agent-aretry.jsonl", _valid_records())
+            (subagents / "agent-aretry.meta.json").write_text(_json.dumps({"name": "step-x-2"}))
+
+            found = find_transcripts(home, Path("/repo"), "sess", "step-x-2")
+            self.assertEqual([p.name for p in found], ["agent-aretry.jsonl"])
+            found_original = find_transcripts(home, Path("/repo"), "sess", "step-x")
+            self.assertEqual([p.name for p in found_original], ["agent-aoriginal.jsonl"])

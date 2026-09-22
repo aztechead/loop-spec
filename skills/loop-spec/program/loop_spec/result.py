@@ -127,7 +127,7 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         "outstanding": _outstanding(store),
         "blocked": [],
         "partiallyDelivered": partially_delivered,
-        "weakenedAssurance": store.state.get("weakenedAssurance", []),
+        "weakenedAssurance": store.state.get("weakenedAssurance", []) + store.state.get("attestationWaivers", []),
         "cleanupBacklog": store.state["steps"]["quarantined"],
         "implementations": store.state["implementations"],
         "policyAnsweredQuestions": store.state["questions"]["policyAnswered"],

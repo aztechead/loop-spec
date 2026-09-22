@@ -3,6 +3,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from loop_spec import steps
 from loop_spec.errors import LoopSpecError
@@ -212,6 +213,83 @@ class SubmitTests(StepsTestCase):
             self.assertEqual(submission.evidence_level, "unattested")
             attestation = store.state["steps"]["submissions"][record["stepAttemptId"]]["attestation"]
             self.assertEqual(attestation, {"ok": False, "reason": "sdk receipt digest mismatch"})
+
+
+class AttestationRequiredRoleTests(StepsTestCase):
+    """LF-30's post-hardening item 2: a plan-critic/code-reviewer/iterate-judge step
+    with nothing behind it but the transcript is never accepted unattested -- the
+    program refuses and re-dispatches instead, bounded by retry_limit()."""
+
+    def test_unattested_plan_critic_is_not_retired_and_carries_a_redispatch_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._issue(store, paths, role="plan-critic")
+            atomic_write_json(Path(record["resultPath"]), {"ok": True})
+            submission = steps.submit(
+                store, paths, step_id=record["stepAttemptId"], dispatch_name="worker-1",
+                host=_FakeAttestor(False, "final message does not end with the result digest"),
+            )
+            self.assertEqual(submission.evidence_level, "unattested")
+            self.assertEqual(submission.redispatch, f"{record['stepAttemptId']}-2")
+            self.assertTrue(any(s["stepAttemptId"] == record["stepAttemptId"] for s in store.state["steps"]["open"]))
+            self.assertNotIn(record["stepAttemptId"], store.state["steps"]["retired"])
+            self.assertNotIn(record["stepAttemptId"], store.state["steps"]["submissions"])
+            open_record = next(s for s in store.state["steps"]["open"] if s["stepAttemptId"] == record["stepAttemptId"])
+            self.assertEqual(open_record["attestationAttempts"], 1)
+
+    def test_past_the_retry_limit_the_step_is_retired_unattested_with_one_waiver(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._issue(store, paths, role="code-reviewer")
+            atomic_write_json(Path(record["resultPath"]), {"ok": True})
+            host = _FakeAttestor(False, "opening does not contain the composed prompt")
+
+            with patch.dict("os.environ", {"LOOP_SPEC_STEP_RETRIES": "1"}):
+                first = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name="worker-1", host=host)
+                self.assertIsNotNone(first.redispatch)
+                second = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name="worker-1", host=host)
+
+            self.assertIsNone(second.redispatch)
+            self.assertEqual(second.evidence_level, "unattested")
+            self.assertIn(record["stepAttemptId"], store.state["steps"]["retired"])
+            self.assertEqual(store.state.get("attestationWaivers"), [
+                {"kind": "evidence.unattested-step", "step": record["stepAttemptId"], "role": "code-reviewer", "attempts": 2},
+            ])
+
+    def test_implementer_role_is_accepted_unattested_on_the_first_submit(self):
+        # implementer is not in ATTESTATION_REQUIRED_ROLES: its own evidence is the
+        # task's verify command, so an unattested transcript is accepted as today.
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._issue(store, paths, role="implementer")
+            atomic_write_json(Path(record["resultPath"]), {"ok": True})
+            submission = steps.submit(
+                store, paths, step_id=record["stepAttemptId"], dispatch_name="worker-1",
+                host=_FakeAttestor(False, "opening does not contain the composed prompt"),
+            )
+            self.assertEqual(submission.evidence_level, "unattested")
+            self.assertIsNone(submission.redispatch)
+            self.assertIn(record["stepAttemptId"], store.state["steps"]["retired"])
+
+    def test_a_later_successful_attestation_retires_the_step_host_attested(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._issue(store, paths, role="iterate-judge")
+            atomic_write_json(Path(record["resultPath"]), {"ok": True})
+            failing_submission = steps.submit(
+                store, paths, step_id=record["stepAttemptId"], dispatch_name="worker-1",
+                host=_FakeAttestor(False, "opening does not contain the composed prompt"),
+            )
+            self.assertIsNotNone(failing_submission.redispatch)
+
+            submission = steps.submit(
+                store, paths, step_id=record["stepAttemptId"], dispatch_name=failing_submission.redispatch,
+                host=_FakeAttestor(True, "matched"),
+            )
+            self.assertEqual(submission.evidence_level, "host-attested")
+            self.assertIsNone(submission.redispatch)
+            self.assertIn(record["stepAttemptId"], store.state["steps"]["retired"])
+            self.assertNotIn(record["stepAttemptId"], [s["stepAttemptId"] for s in store.state["steps"]["open"]])
 
 
 class RetireTests(StepsTestCase):

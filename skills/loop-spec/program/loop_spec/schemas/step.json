@@ -83,6 +83,9 @@
         "string",
         "null"
       ]
+    },
+    "attestationAttempts": {
+      "type": "integer"
     }
   }
 }

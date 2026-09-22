@@ -15,8 +15,15 @@ from .events import emit
 from .ids import digest_bytes, new_id, now_iso
 from .jsonio import atomic_write_json, read_json
 from .paths import ensure_results_dir
+from .postconditions import retry_limit
 from .repo import remove_worktree
 from .schema import validate, validate_or_raise
+
+# The verifier and debugger are re-run by the program itself (V4, B1), and the
+# implementer's evidence is its own review; these three roles are pure judgment
+# with nothing behind them but the transcript, so an unattested submission for
+# one of them is refused rather than silently accepted.
+ATTESTATION_REQUIRED_ROLES = frozenset({"plan-critic", "code-reviewer", "iterate-judge"})
 
 _STEP_TRAILER = """
 --- loop-spec step ---
@@ -75,6 +82,7 @@ class Submission:
     result: dict
     result_digest: str
     evidence_level: str
+    redispatch: str | None = None
 
 
 def _open_step_record(store, step_id: str) -> dict:
@@ -114,7 +122,8 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
             f"step {step_id} is retired; a new attempt was issued",
             repair="check `loop-spec status` for the current step",
         )
-    if _open_step_record(store, step_id) is None:
+    open_record = _open_step_record(store, step_id)
+    if open_record is None:
         raise LoopSpecError(f"no open step {step_id}", repair="check `loop-spec status` for the open step id")
 
     if not result_path.is_file():
@@ -166,6 +175,29 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
         ok, reason_text = host.attest(step, result_digest, dispatch_name)
         evidence_level = "host-attested" if ok else "unattested"
         attestation = {"ok": ok, "reason": reason_text}
+
+    if (step["kind"] == "role" and step["role"] in ATTESTATION_REQUIRED_ROLES
+            and host is not None and evidence_level == "unattested" and not receipt_path.is_file()):
+        reason_text = attestation["reason"] if attestation else "no dispatch name given"
+        attempts = open_record.get("attestationAttempts", 0) + 1
+        open_record["attestationAttempts"] = attempts
+        open_record["reason"] = reason_text
+        step["attestationAttempts"] = attempts
+        step["reason"] = reason_text
+        atomic_write_json(step_path, step)
+        limit = retry_limit()
+        if attempts <= limit:
+            redispatch = f"{step_id}-{attempts + 1}"
+            emit(paths, "step_redispatch", {
+                "stepAttemptId": step_id, "attempt": attempts, "dispatch": redispatch, "reason": reason_text,
+                "summary": f"{step_id} unattested ({attempts}/{limit}): re-dispatch as {redispatch}",
+            }, phase=step["phase"], attempt_id=step["attempt"], source="program")
+            store.save()
+            return Submission(step=step, result=result, result_digest=result_digest,
+                               evidence_level=evidence_level, redispatch=redispatch)
+        store.state.setdefault("attestationWaivers", []).append(
+            {"kind": "evidence.unattested-step", "step": step_id, "role": step["role"], "attempts": attempts}
+        )
 
     store.state["steps"]["submissions"][step_id] = {
         "digest": result_digest, "evidenceLevel": evidence_level, "attestation": attestation,

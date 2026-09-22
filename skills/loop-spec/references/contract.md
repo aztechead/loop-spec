@@ -132,6 +132,15 @@ A mismatched `sdk-receipt.json` (wrong id or digest) is recorded as
 stays `unattested`. A step is retired once submitted; resubmitting the same digest
 replays the same result (idempotent); resubmitting a different one is refused.
 
+A `role` step whose `role` is `plan-critic`, `code-reviewer`, or `iterate-judge`
+(pure judgment the program cannot re-derive) is never accepted `unattested`: an
+unattested submission for one of these leaves the step open, bumps its
+`attestationAttempts`, emits `step_redispatch`, and `submit` returns a `redispatch`
+name (`<stepId>-<n+1>`) for a fresh worker dispatched under that exact name with
+the same prompt, up to `retry_limit()` (`LOOP_SPEC_STEP_RETRIES`, default 3)
+attempts; past the bound it is accepted `unattested` as usual and an entry lands in
+`attestationWaivers`, surfaced in the result's `weakenedAssurance`.
+
 ## Questions
 
 A question is `schemas/question.json`: `questionId`, `attempt`, `phase`, `text`,

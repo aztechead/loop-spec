@@ -57,7 +57,10 @@ Set by the program per worker step, never by the implementation: `controller-obs
 `human-attested` (external phase, answer recorded against a question id),
 `unattested` (everything else). Review steps accept `controller-observed` and
 `host-attested`; `unattested` is accepted only under `evidence.review.accept:
-unattested` in config, and the result then carries `weakenedAssurance`.
+unattested` in config, and the result then carries `weakenedAssurance`. A judgment
+role (`plan-critic`, `code-reviewer`, `iterate-judge`) refuses an `unattested`
+submission outright and re-dispatches instead, up to the retry bound; see
+`skills/loop-spec/references/contract.md`'s evidence section.
 
 ### Backward-transition budget
 
