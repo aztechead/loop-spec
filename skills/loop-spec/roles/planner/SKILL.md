@@ -32,6 +32,8 @@ never for installing, building, or running the plan's own verify commands.
 5. Name a `prepare` command for anything the environment needs before verify can
    run (installs, migrations, fixtures); leave it `null` when nothing is needed.
 6. Declare `exit: "ready"`, or `"spec gap"` naming exactly what SPEC is missing.
+7. Under the micro preset (`inputs.entry.payload.preset` is `micro`), one task
+   unless the change spans repos; no `prepare` unless the repo needs it.
 
 ## Engineering principles
 

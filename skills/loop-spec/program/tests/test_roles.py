@@ -66,6 +66,12 @@ class ComposePromptTests(unittest.TestCase):
         prompt = compose_prompt(role, inputs={}, result_path=Path("/tmp/out/product.json"), cwd=Path("/tmp/out"), phase="debug")
         self.assertNotIn("## loop-spec contract", prompt)
 
+    def test_micro_preset_reaches_the_composed_prompt(self):
+        role = Role(name="spec-writer", body="Do the thing.", schema={"type": "object"}, source="default", version="sha256:" + "0" * 64)
+        inputs = {"entry": {"mode": "fresh", "payload": {"preset": "micro"}}}
+        prompt = compose_prompt(role, inputs=inputs, result_path=Path("/tmp/out/product.json"), cwd=Path("/tmp/out"), phase="spec")
+        self.assertIn("micro", prompt)
+
 
 class RoleSchemaDriftGuardTests(unittest.TestCase):
     def test_role_schemas_equal_their_product_schemas(self):

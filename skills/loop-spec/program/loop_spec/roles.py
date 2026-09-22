@@ -86,7 +86,10 @@ CONTRACTS: dict[str, str] = {
         "product never contains an approval -- the program asks the human for that "
         "itself. Declare `exit: \"approved\"` when the interview is done, or "
         "`\"needs answer\"` with the question in `openQuestions` when you cannot "
-        "proceed without one."
+        "proceed without one. When `inputs.entry.payload.preset` is `micro`, write "
+        "the fewest criteria that prove the change (usually one or two), no open "
+        "questions unless the request is ambiguous, and declare `approved` without "
+        "an interview unless a boundary is unclear."
     ),
     "planner": (
         "Every task names a repo, files, and a `verify` command that runs from the "
@@ -98,7 +101,8 @@ CONTRACTS: dict[str, str] = {
         "debug repair task whose verify is the failing reproduction, and is false for "
         "every ordinary task; a verify command must run from the repository root of a "
         "clean checkout. Declare `exit: \"ready\"`, or `\"spec gap\"` naming the "
-        "missing requirement."
+        "missing requirement. Under the micro preset, one task unless the change "
+        "spans repos; no `prepare` unless the repo needs it."
     ),
     "plan-critic": (
         "Critical-only: a criterion no task covers, a verify command that cannot test "
@@ -123,13 +127,15 @@ CONTRACTS: dict[str, str] = {
         "code a prior pass already cleared names what it supersedes. Critical means a "
         "show-stopper or an outright incorrect implementation -- the PR review catches "
         "the rest. One disposition per security signal in `inputs.probes.securitySignals` "
-        "for files the range touches."
+        "for files the range touches. Under the micro preset the range is small: "
+        "still read all of it; a Critical is still Critical."
     ),
     "verifier": (
         "One verdict per criterion. Evidence is the command you ran, the SHA, the "
         "exit status, and the parsed failure identities. `blocked` only for a cause "
         "you actually observed, and only after trying an offline stand-in (say what "
-        "you tried). Never `pass` on inference."
+        "you tried). Never `pass` on inference. Under the micro preset the range is "
+        "small: still read all of it; a Critical is still Critical."
     ),
     "iterate-judge": (
         "Judge the delivered behavior against the ORIGINAL request text, not the "

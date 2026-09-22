@@ -15,7 +15,7 @@ When the phase changes, write one line that names the phase before the next tool
 
 For each action, write one thought — one sentence — then the tool call(s) that carry it out. The thought names what you are doing and why.
 
-An action is a step you would name to the operator: enter or leave a phase, ask a question, dispatch an agent or team, choose a rung, write or edit a file, run a gate or verify command, commit, push, or open a PR.
+An action is a step you would name to the operator: enter or leave a phase, ask a question, dispatch an agent, choose a rung, write or edit a file, run a gate or verify command, commit, push, or open a PR.
 
 A Read, Grep, or Glob that belongs to a thought you already wrote is not a new action. Chain those calls. Do not add a sentence per tool.
 
@@ -23,12 +23,12 @@ The thought is one sentence that names the action and its reason. It does not an
 
 If a skill names a stretch as silent (cycle startup preflight is the example), obey the skill. The first human-visible line is the launch line or the first phase.
 
-`lib/events.sh` still prints greppable `[PHASE]` lines to stderr. Chat phase lines do not replace those emits. Skip an emit and the unattended log goes dark.
+The `loop-spec` program itself still prints greppable `[PHASE]` lines to the console as it drives a run. Chat phase lines do not replace those; they are a second, human-facing signal alongside the program's own.
 
 Break the one-sentence cap only when one of these is literally true:
 
 1. You are about to do something the user would plausibly want to stop — destructive, irreversible, outside what they asked, or contrary to a plan they stated. Say what you will do and wait.
-2. A skill requires a clarifying question (grill, SPEC interview, SPEC's design-lock loop, or any other `AskUserQuestion` site). Ask it. Do not skip because you could assume an answer, and do not skip because you are not blocked.
+2. A skill requires a clarifying question (SPEC's own interview, or any other `AskUserQuestion` site). Ask it. Do not skip because you could assume an answer, and do not skip because you are not blocked.
 3. You are blocked and cannot make further progress without an answer from the user. Ask the question. Name the artifact you need. A running subagent is not this case.
 4. One single operation will occupy more than a few minutes of wall clock. Say which command and why it is long. Then stop. Do not AskUserQuestion to occupy the wait.
 
@@ -37,12 +37,12 @@ Background notifications, subagent completions, and scheduled wakeups continue t
 When you dispatch an Agent whose result this step still needs, first complete any safe
 independent lead work. Then issue the call with `run_in_background: false`; the tool
 result is the report. A launch stub ("Async agent launched") is not a report: end the
-turn and wait for the notification, never re-dispatch. Named teammates join on
-`TeammateIdle`; stop at that join. Do not fill a wait with AskUserQuestion.
+turn and wait for the notification, never re-dispatch. Do not fill a wait with
+AskUserQuestion.
 
 ## Required questions
 
-Grill, SPEC's interview, and its design-lock clarifying questions are the work. They are not chatter. Call `AskUserQuestion` when a skill requires it. `style:auto` is not autonomous mode: auto still asks; only `feature.json.autonomous == true` or `LOOP_SPEC_AUTONOMOUS=1` self-answers.
+SPEC's own interview and its acceptance-criteria clarifying questions are the work. They are not chatter. Call `AskUserQuestion` when a skill requires it. Only a run started with `--answer-policy default` self-answers; every other run still asks.
 
 AskUserQuestion is never a wait, keep-alive, or placeholder while a subagent runs. Dummy options (`n/a`, "Type something") and a question that says it is "not a real question" are forbidden. Header chips like `wait` are not a substitute for stopping.
 

@@ -28,6 +28,10 @@ Write your result to the path the step names; write nowhere else.
 5. Declare `exit: "approved"` once the interview is done — the program asks the
    human for approval itself, never you — or `"needs answer"` with the blocking
    question named in `openQuestions`.
+6. When `inputs.entry.payload.preset` is `micro`, write the fewest criteria that
+   prove the change (usually one or two), no open questions unless the request
+   is ambiguous, and declare `approved` without an interview unless a boundary
+   is unclear.
 
 ## Engineering principles
 

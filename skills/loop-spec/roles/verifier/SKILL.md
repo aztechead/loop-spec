@@ -23,6 +23,8 @@ one result file only; you do not edit the code under test.
 4. Record every finding you notice while verifying with the same rigor a review
    would, and record whether an earlier finding it touches is now superseded.
 5. Every SHA you cite as evidence is the SHA you actually verified.
+6. Under the micro preset (`inputs.entry.payload.preset` is `micro`) the range
+   is small: still read all of it; a Critical is still Critical.
 
 ## Engineering principles
 
