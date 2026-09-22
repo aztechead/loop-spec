@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "required": ["findings"],
+  "additionalProperties": false,
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "location", "cause", "severity"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "cause": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["Critical", "Important", "Minor"]
+          }
+        }
+      }
+    }
+  }
+}

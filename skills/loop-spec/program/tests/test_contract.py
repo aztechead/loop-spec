@@ -6,8 +6,19 @@ from unittest.mock import patch
 
 from loop_spec import contract
 from loop_spec.errors import LoopSpecError
-from loop_spec.jsonio import atomic_write_json
+from loop_spec.jsonio import atomic_write_json, read_json
 from loop_spec.paths import FeaturePaths
+
+
+def _envelope(attempt_id: str, tmp: str, paths: FeaturePaths) -> dict:
+    return {
+        "run": {"id": "run-1"}, "attempt": {"id": attempt_id}, "inputs": {"digest": "sha256:" + "a" * 64},
+        "products": {}, "state": {"requirementsRevision": None, "approval": None, "planRevision": None,
+                                   "baseline": None, "ledger": {}, "budget": {}},
+        "entry": {"mode": "fresh", "payload": None}, "repos": [{"name": "repo", "path": str(tmp)}],
+        "paths": {"stateDir": str(paths.root), "writable": []},
+        "answers": {"byQuestion": {}, "policy": None}, "probes": {},
+    }
 
 
 class ResolveImplementationTests(unittest.TestCase):
@@ -41,24 +52,32 @@ class InvokeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             paths = FeaturePaths(root=Path(tmp) / "feature")
             attempt_id = "attempt-1"
-            envelope = {
-                "run": {"id": "run-1"}, "attempt": {"id": attempt_id}, "inputs": {"digest": "sha256:" + "a" * 64},
-                "products": {}, "state": {"requirementsRevision": None, "approval": None, "planRevision": None,
-                                           "baseline": None, "ledger": {}, "budget": {}},
-                "entry": {"mode": "fresh", "payload": None}, "repos": [{"name": "repo", "path": str(tmp)}],
-                "paths": {"stateDir": str(paths.root), "writable": []},
-                "answers": {"byQuestion": {}, "policy": None}, "probes": {},
-            }
-            contract.write_context(paths, attempt_id, envelope)
+            contract.write_context(paths, attempt_id, _envelope(attempt_id, tmp, paths))
             outcome = contract.invoke(paths, phase="spec", attempt_id=attempt_id, implementation="external", program_launcher=Path("/bin/true"))
             self.assertEqual(outcome.code, 2)
             self.assertEqual(outcome.kind, "step")
 
-    def test_invoke_default_raises(self):
+    # simplicity: shares its tmp/paths/write_context/invoke setup with the test
+    # above (duplication-scan flags ~8 lines); each test stays readable top to
+    # bottom on its own, and the two differ in the one line that matters
+    # (implementation="external" vs "default") plus their own assertions.
+    def test_invoke_default_dispatches_a_lead_step_for_spec(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = FeaturePaths(root=Path(tmp) / "feature")
+            attempt_id = "attempt-1"
+            contract.write_context(paths, attempt_id, _envelope(attempt_id, tmp, paths))
+            outcome = contract.invoke(paths, phase="spec", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"))
+            self.assertEqual(outcome.code, 2)
+            self.assertEqual(outcome.kind, "step")
+            step = read_json(outcome.path)
+            self.assertEqual(step["kind"], "lead")
+            self.assertEqual(step["role"], "spec-writer")
+
+    def test_invoke_default_raises_for_a_phase_with_no_default_yet(self):
         with tempfile.TemporaryDirectory() as tmp:
             paths = FeaturePaths(root=Path(tmp) / "feature")
             with self.assertRaises(LoopSpecError):
-                contract.invoke(paths, phase="spec", attempt_id="attempt-1", implementation="default", program_launcher=Path("/bin/true"))
+                contract.invoke(paths, phase="execute", attempt_id="attempt-1", implementation="default", program_launcher=Path("/bin/true"))
 
     def test_invoke_bound_skill_raises(self):
         with tempfile.TemporaryDirectory() as tmp:

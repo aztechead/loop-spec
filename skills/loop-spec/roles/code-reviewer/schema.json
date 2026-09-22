@@ -1,0 +1,100 @@
+{
+  "type": "object",
+  "required": ["sha", "reviewedRange", "verdict", "findings", "securityDispositions"],
+  "additionalProperties": false,
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": ["id", "location", "cause", "severity", "disposition", "reason", "supersedes"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "cause": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["Critical", "Important", "Minor"]
+        },
+        "disposition": {
+          "type": "string",
+          "enum": ["fixed", "rejected", "deferred", "open"]
+        },
+        "reason": {
+          "type": ["string", "null"]
+        },
+        "supersedes": {
+          "anyOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "required": ["kind", "id"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": ["finding", "range"]
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "properties": {
+    "sha": {
+      "type": "string"
+    },
+    "reviewedRange": {
+      "type": "object",
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        }
+      }
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["pass", "fail"]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "securityDispositions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["signal", "disposition", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "signal": {
+            "type": "string"
+          },
+          "disposition": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

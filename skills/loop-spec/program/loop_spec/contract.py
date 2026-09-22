@@ -33,7 +33,7 @@ class PhaseOutcome:
     stderr: str
 
 
-def _config(project_root: Path) -> dict:
+def load_config(project_root: Path) -> dict:
     path = Path(project_root) / ".loop-spec" / "config.json"
     if not path.is_file():
         return {}
@@ -44,14 +44,14 @@ def resolve_implementation(project_root: Path, phase: str) -> str:
     env = os.environ.get(f"LOOP_SPEC_PHASE_{phase.upper()}")
     if env:
         return env
-    return _config(project_root).get("phases", {}).get(phase, "default")
+    return load_config(project_root).get("phases", {}).get(phase, "default")
 
 
 def resolve_role(project_root: Path, role: str) -> str:
     env = os.environ.get(f"LOOP_SPEC_ROLE_{role.upper()}")
     if env:
         return env
-    return _config(project_root).get("roles", {}).get(role, "default")
+    return load_config(project_root).get("roles", {}).get(role, "default")
 
 
 def write_context(paths, attempt_id: str, envelope: dict) -> Path:
@@ -93,15 +93,24 @@ def _accept_request(path: Path, kind: str, code: int) -> PhaseOutcome:
     return PhaseOutcome(code=code, kind=kind, path=path, stderr="")
 
 
-def invoke(paths, *, phase: str, attempt_id: str, implementation: str, program_launcher: Path) -> PhaseOutcome:
-    if implementation == "default":
-        raise LoopSpecError(f"default implementation for {phase} lands at M2+", repair='bind "external" in .loop-spec/config.json until M2')
-    if implementation != "external":
-        raise LoopSpecError("bound implementations land at M5", repair='bind "external" in .loop-spec/config.json until M5')
+# The only two phases wave E gave a default (lead-run) implementation to; the rest
+# still have none until M3/M4/M5 bind an implementation of their own.
+_DEFAULT_ROLE_BY_PHASE = {"spec": "spec-writer", "plan": "planner"}
 
+
+def invoke(paths, *, phase: str, attempt_id: str, implementation: str, program_launcher: Path) -> PhaseOutcome:
     attempt_dir = paths.attempts_dir / attempt_id
     product_path = attempt_dir / "product.json"
-    code = run_phase(phase, attempt_dir / "context.json", product_path)
+
+    if implementation == "default":
+        if phase not in _DEFAULT_ROLE_BY_PHASE:
+            raise LoopSpecError(f"default implementation for {phase} lands at M3/M4/M5", repair='bind "external" in .loop-spec/config.json until then')
+        from . import defaults  # local: defaults.py calls back into resolve_role
+        code = defaults.run_lead_phase(phase, _DEFAULT_ROLE_BY_PHASE[phase], attempt_dir / "context.json", product_path)
+    elif implementation == "external":
+        code = run_phase(phase, attempt_dir / "context.json", product_path)
+    else:
+        raise LoopSpecError("bound implementations land at M5", repair='bind "external" in .loop-spec/config.json until M5')
 
     if code == 0:
         return _accept_product(phase, product_path)
