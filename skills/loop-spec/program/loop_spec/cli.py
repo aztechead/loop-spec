@@ -10,9 +10,11 @@ import os
 import sys
 from pathlib import Path
 
-from . import VERSION, attest, contract, questions, steps
+from . import VERSION, attest, contract, controller, questions, steps
 from .errors import LoopSpecError
 from .events import emit as emit_event
+from .events import marker_next
+from .jsonio import read_json
 from .paths import FeaturePaths, feature_dir, repo_id, state_home
 from .state import StateStore
 
@@ -87,18 +89,31 @@ def _cmd_emit(args: argparse.Namespace) -> int:
     return 0
 
 
-def _print_summary(state: dict) -> None:
+def _print_summary(state: dict, paths: FeaturePaths) -> None:
     run, phase, budget = state["run"], state["phase"], state["budget"]
     print(f"run: {run['id']} entry: {run['entry']}")
     print(f"phase: {phase['current']} attempt: {phase['attemptId']}")
     print(f"revisions: requirements={state['revisions']['requirements']} plan={state['revisions']['plan']}")
     print(f"budget: {budget['spent']}/{budget['limit']}")
+
     open_question = state["questions"]["open"]
-    print(f"open question: {open_question['questionId'] if open_question else None}")
-    open_steps = [s["stepAttemptId"] if isinstance(s, dict) else s for s in state["steps"]["open"]]
-    print(f"open steps: {open_steps}")
+    if open_question is None:
+        print("open question: None")
+    else:
+        try:
+            text = read_json(Path(open_question["path"]))["text"]
+        except (OSError, ValueError, KeyError):
+            text = None
+        print(f"open question: {open_question['questionId']}: {text}")
+
+    open_steps = state["steps"]["open"]
+    if not open_steps:
+        print("open steps: []")
+    for s in open_steps:
+        print(f"open step: {s['stepAttemptId']}: {paths.steps_dir / s['stepAttemptId'] / 'step.json'}")
+
     result = state.get("result")
-    print(f"result: {result.get('result') if result else None}")
+    print(f"result: {result.get('classification') if result else None}")
 
 
 def _cmd_status(args: argparse.Namespace) -> int:
@@ -112,7 +127,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
         if not paths.state_json.exists():
             print(f"no loop-spec state for {root}")
             return 0
-        _print_summary(StateStore.open(paths).state)
+        _print_summary(StateStore.open(paths).state, paths)
         return 0
 
     if not repo_home.exists():
@@ -136,6 +151,13 @@ def _open_store(args: argparse.Namespace) -> tuple[StateStore, FeaturePaths]:
     return StateStore.open(paths), paths
 
 
+def _request_text(args: argparse.Namespace) -> str | None:
+    request_file = getattr(args, "request_file", None)
+    if request_file:
+        return Path(request_file).read_text(encoding="utf-8")
+    return getattr(args, "request", None)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -146,15 +168,27 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_status(args)
         if args.command == "phase":
             return contract.run_phase(args.name, Path(args.context), Path(args.product))
+        if args.command in _CONTROLLER_ENTRIES:
+            next_ = controller.run_entry(
+                args.command, project_root=Path(args.project_root), request_text=_request_text(args),
+                slug=args.slug, state_home=args.state_home, answer_policy=args.answer_policy,
+                pr=getattr(args, "pr", None),
+            )
+            marker_next(next_.kind, str(next_.path))
+            return 0
         if args.command == "submit":
             store, paths = _open_store(args)
             host = attest.ClaudeCodeAttestor() if os.environ.get("CLAUDE_CODE_SESSION_ID") else None
             steps.submit(store, paths, step_id=args.step, dispatch_name=args.dispatch, host=host)
-            raise LoopSpecError("submit lands in a later wave", repair="wait for the wave")
+            next_ = controller.continue_run(store, paths, project_root=Path(args.project_root))
+            marker_next(next_.kind, str(next_.path))
+            return 0
         if args.command == "answer":
             store, paths = _open_store(args)
             questions.answer(store, paths, question_id=args.question, value=args.answer, scope=args.scope, by="human")
-            raise LoopSpecError("answer lands in a later wave", repair="wait for the wave")
+            next_ = controller.continue_run(store, paths, project_root=Path(args.project_root))
+            marker_next(next_.kind, str(next_.path))
+            return 0
         raise LoopSpecError(f"{args.command} lands in a later wave", repair="wait for the wave")
     except LoopSpecError as exc:
         print(f"loop-spec: {exc.message}", file=sys.stderr)

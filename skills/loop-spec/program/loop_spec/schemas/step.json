@@ -1,21 +1,88 @@
 {
   "type": "object",
-  "required": ["stepAttemptId", "kind", "role", "phase", "cwd", "prompt", "resultPath", "schema", "postconditions", "attempt", "inputsDigest", "issuedAt", "retryOf", "reason"],
+  "required": [
+    "stepAttemptId",
+    "kind",
+    "role",
+    "phase",
+    "cwd",
+    "prompt",
+    "resultPath",
+    "schema",
+    "postconditions",
+    "attempt",
+    "inputsDigest",
+    "issuedAt",
+    "retryOf",
+    "reason"
+  ],
   "additionalProperties": false,
   "properties": {
-    "stepAttemptId": {"type": "string"},
-    "kind": {"type": "string", "enum": ["role", "external"]},
-    "role": {"type": ["string", "null"]},
-    "phase": {"type": "string"},
-    "cwd": {"type": "string"},
-    "prompt": {"type": "string"},
-    "resultPath": {"type": "string"},
-    "schema": {"type": "object"},
-    "postconditions": {"type": "array", "items": {"type": "string"}},
-    "attempt": {"type": "string"},
-    "inputsDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-    "issuedAt": {"type": "string"},
-    "retryOf": {"type": ["string", "null"]},
-    "reason": {"type": ["string", "null"]}
+    "stepAttemptId": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "role",
+        "lead",
+        "external"
+      ]
+    },
+    "role": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "phase": {
+      "type": "string"
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "resultPath": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "object"
+    },
+    "postconditions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "attempt": {
+      "type": "string"
+    },
+    "inputsDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "issuedAt": {
+      "type": "string"
+    },
+    "retryOf": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "model": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
   }
 }

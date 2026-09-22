@@ -95,8 +95,11 @@ def run(context_path: Path, product_path: Path, phase: str) -> int:
     if external_done or already_valid:
         return 0
 
-    repos = context.get("repos") or []
-    cwd = repos[0]["path"] if repos else context["paths"]["stateDir"]
+    repos = context.get("repos") or {}
+    # `repos` is the repo-name-keyed map the controller stores, not a list; take
+    # whichever repo sorts first as "the" repo for a single-repo M1 run.
+    first_repo = next(iter(repos.values()), None) if isinstance(repos, dict) else (repos[0] if repos else None)
+    cwd = first_repo["path"] if first_repo else context["paths"]["stateDir"]
     exits = PHASE_EXITS[phase]
     postcondition_ids = PHASE_POSTCONDITIONS[phase]
     postcondition_lines = "; ".join(f"{pid}: {POSTCONDITION_TEXT[pid]}" for pid in postcondition_ids)

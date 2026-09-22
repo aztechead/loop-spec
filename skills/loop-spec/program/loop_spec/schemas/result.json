@@ -1,76 +1,255 @@
 {
   "type": "object",
-  "required": ["schema"],
+  "required": [
+    "schema"
+  ],
   "additionalProperties": true,
   "properties": {
-    "schema": {"type": "integer", "const": 1},
-    "loopSpecVersion": {"type": "string"},
-    "cycleType": {"type": "string", "enum": ["full", "micro", "debug", "diagnostic"]},
-    "slug": {"type": ["string", "null"]},
-    "status": {"type": "string", "enum": ["completed", "paused", "escalated", "terminal", "failed"]},
-    "outcome": {"type": "string"},
-    "reason": {"type": ["string", "null"]},
-    "summary": {"type": "string", "minLength": 1},
-    "noChangeReason": {"type": ["string", "null"], "enum": ["already-satisfied", "diagnostic-only", null]},
-    "phaseReached": {"type": ["string", "null"]},
-    "branch": {"type": ["string", "null"]},
-    "baseBranch": {"type": ["string", "null"]},
-    "prUrl": {"type": ["string", "null"]},
-    "checkpointPrUrl": {"type": ["string", "null"]},
-    "delivery": {"type": ["object", "null"]},
-    "converged": {"type": "boolean"},
-    "workDelivered": {"type": "boolean"},
+    "schema": {
+      "type": "integer",
+      "const": 1
+    },
+    "loopSpecVersion": {
+      "type": "string"
+    },
+    "cycleType": {
+      "type": "string",
+      "enum": [
+        "full",
+        "micro",
+        "debug",
+        "diagnostic"
+      ]
+    },
+    "slug": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "paused",
+        "escalated",
+        "terminal",
+        "failed"
+      ]
+    },
+    "outcome": {
+      "type": "string"
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "noChangeReason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "already-satisfied",
+        "diagnostic-only",
+        null
+      ]
+    },
+    "phaseReached": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "branch": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "baseBranch": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "prUrl": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "checkpointPrUrl": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "delivery": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "converged": {
+      "type": "boolean"
+    },
+    "workDelivered": {
+      "type": "boolean"
+    },
     "iterations": {
       "type": "object",
-      "required": ["used", "max"],
+      "required": [
+        "used",
+        "max"
+      ],
       "additionalProperties": false,
       "properties": {
-        "used": {"type": "integer"},
-        "max": {"type": ["integer", "null"]}
+        "used": {
+          "type": "integer"
+        },
+        "max": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
       }
     },
-    "warnings": {"type": "array", "items": {"type": "string"}},
-    "autonomous": {"type": "boolean"},
-    "feature_title": {"type": "string"},
-    "createdAt": {"type": ["string", "null"]},
-    "finishedAt": {"type": "string"},
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "autonomous": {
+      "type": "boolean"
+    },
+    "feature_title": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "finishedAt": {
+      "type": "string"
+    },
     "verification": {
       "type": "object",
-      "required": ["status", "command"],
+      "required": [
+        "status",
+        "command"
+      ],
       "additionalProperties": false,
       "properties": {
-        "status": {"type": "string", "enum": ["passed", "failed", "not-run"]},
-        "command": {"type": ["string", "null"]}
+        "status": {
+          "type": "string",
+          "enum": [
+            "passed",
+            "failed",
+            "not-run"
+          ]
+        },
+        "command": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
-    "implementationConverged": {"type": "boolean"},
+    "implementationConverged": {
+      "type": "boolean"
+    },
     "eligibleTargets": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["branch", "targetSha"],
+        "required": [
+          "branch",
+          "targetSha"
+        ],
         "additionalProperties": false,
         "properties": {
-          "branch": {"type": "string"},
-          "targetSha": {"type": "string"}
+          "branch": {
+            "type": "string"
+          },
+          "targetSha": {
+            "type": "string"
+          }
         }
       }
     },
-    "retryable": {"type": "boolean"},
-    "retryPhase": {"type": ["string", "null"]},
-    "verifiedSha": {"type": ["string", "null"]},
-    "result": {"type": "string", "enum": ["converged", "converged-with-caveats", "no-change", "escalated", "failed", "paused"]},
-    "rewinds": {"type": "integer"},
-    "prs": {"type": "array"},
-    "reviewed": {"type": "array"},
-    "unreviewed": {"type": "array"},
-    "outstanding": {"type": "array"},
-    "blocked": {"type": "array"},
-    "partiallyDelivered": {"type": "boolean"},
-    "weakenedAssurance": {"type": "array"},
-    "cleanupBacklog": {"type": "array"},
-    "implementations": {"type": "object"},
-    "policyAnsweredQuestions": {"type": "array"},
-    "hostVersions": {"type": "object"}
+    "retryable": {
+      "type": "boolean"
+    },
+    "retryPhase": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "verifiedSha": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "converged",
+        "converged-with-caveats",
+        "no-change",
+        "escalated",
+        "failed",
+        "paused"
+      ]
+    },
+    "rewinds": {
+      "type": "integer"
+    },
+    "prs": {
+      "type": "array"
+    },
+    "reviewed": {
+      "type": "object"
+    },
+    "unreviewed": {
+      "type": "array"
+    },
+    "outstanding": {
+      "type": "array"
+    },
+    "blocked": {
+      "type": "array"
+    },
+    "partiallyDelivered": {
+      "type": "boolean"
+    },
+    "weakenedAssurance": {
+      "type": "array"
+    },
+    "cleanupBacklog": {
+      "type": "array"
+    },
+    "implementations": {
+      "type": "object"
+    },
+    "policyAnsweredQuestions": {
+      "type": "array"
+    },
+    "hostVersions": {
+      "type": "object"
+    }
   }
 }

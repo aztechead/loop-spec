@@ -30,13 +30,25 @@ Every controller entry ends its stdout with one line,
 `LOOP_SPEC_NEXT {"kind": "step"|"question"|"result", "path": "<file>"}`. Open the file at
 `path` and act on it:
 
-- `step`: do what `step.json` says (dispatch the named role in the named directory with
-  the composed prompt; the worker writes the result file it names), then run
+- `step`: check `kind` in `step.json`:
+  - `lead`: do the work the prompt describes yourself, in this session (you may use
+    AskUserQuestion); write the JSON result to `resultPath` (temp file then rename);
+    then submit with no `--dispatch`.
+  - `role`: dispatch a fresh worker with the `Agent` tool: name = the step attempt id,
+    prompt = the step's prompt verbatim, subagent_type `general-purpose`, model only
+    when the step carries `model`.
+  - `external`: dispatch the named role in the named directory with the composed
+    prompt; the worker writes the result file it names.
+
+  Then run
   `loop-spec submit --project-root "{project-root}" --step <stepAttemptId> [--dispatch <name>]`
   and repeat from "read the last stdout line".
 - `question`: ask the user the question in `question.json` (with `AskUserQuestion`), then
   run `loop-spec answer --project-root "{project-root}" --question <id> --answer "<text>"`
-  and repeat.
+  and repeat. If you have no way to ask the user (no AskUserQuestion tool, or a
+  headless run), stop and print the question file path and its text; the operator
+  answers with `loop-spec answer ...` and re-runs this entry with `--slug <slug>` to
+  resume.
 - `result`: report the result file to the user in the chat shape. Stop.
 
 ## Checking a run

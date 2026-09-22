@@ -28,11 +28,16 @@ When done, write your JSON result to the result path above (write to a temporary
 
 def issue(store, paths, *, phase: str, attempt_id: str, kind: str, role: str | None, cwd: Path,
           prompt: str, schema: dict, postconditions: list[str], inputs_digest: str,
-          retry_of: str | None = None, reason: str | None = None) -> dict:
+          retry_of: str | None = None, reason: str | None = None, result_path: Path | None = None) -> dict:
     step_id = new_id("step")
     step_dir = paths.steps_dir / step_id
     step_dir.mkdir(parents=True, exist_ok=True)
-    result_path = step_dir / "result.json"
+    # A phase's own step (an external/lead/role implementation producing that
+    # phase's product) must land its result exactly where contract.invoke checks
+    # for it (attempts/<id>/product.json), not at the auto-generated path below;
+    # the caller passes that path in. Every other step (the PLAN critic, a future
+    # per-task EXECUTE/VERIFY step) is content with a result.json of its own.
+    result_path = Path(result_path) if result_path is not None else step_dir / "result.json"
     issued_at = now_iso()
 
     full_prompt = prompt + _STEP_TRAILER.format(

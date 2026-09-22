@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "required": ["run", "attempt", "inputs", "products", "state", "entry", "repos", "paths", "answers", "probes"],
+  "required": ["run", "attempt", "inputs", "request", "products", "state", "entry", "repos", "paths", "answers", "probes"],
   "additionalProperties": false,
   "properties": {
     "run": {
@@ -20,6 +20,15 @@
       "required": ["digest"],
       "additionalProperties": false,
       "properties": {"digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}
+    },
+    "request": {
+      "type": "object",
+      "required": ["text", "digest"],
+      "additionalProperties": false,
+      "properties": {
+        "text": {"type": "string"},
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
     },
     "products": {"type": "object"},
     "state": {
@@ -47,11 +56,12 @@
     "repos": {"type": ["object", "array", "null"]},
     "paths": {
       "type": "object",
-      "required": ["stateDir", "writable"],
+      "required": ["stateDir", "writable", "projectRoot"],
       "additionalProperties": false,
       "properties": {
         "stateDir": {"type": "string"},
-        "writable": {"type": "array", "items": {"type": "string"}}
+        "writable": {"type": "array", "items": {"type": "string"}},
+        "projectRoot": {"type": "string"}
       }
     },
     "answers": {

@@ -13,10 +13,11 @@ from loop_spec.paths import FeaturePaths
 def _envelope(attempt_id: str, tmp: str, paths: FeaturePaths) -> dict:
     return {
         "run": {"id": "run-1"}, "attempt": {"id": attempt_id}, "inputs": {"digest": "sha256:" + "a" * 64},
+        "request": {"text": "add a widget", "digest": "sha256:" + "b" * 64},
         "products": {}, "state": {"requirementsRevision": None, "approval": None, "planRevision": None,
                                    "baseline": None, "ledger": {}, "budget": {}},
         "entry": {"mode": "fresh", "payload": None}, "repos": [{"name": "repo", "path": str(tmp)}],
-        "paths": {"stateDir": str(paths.root), "writable": []},
+        "paths": {"stateDir": str(paths.root), "writable": [], "projectRoot": str(tmp)},
         "answers": {"byQuestion": {}, "policy": None}, "probes": {},
     }
 
