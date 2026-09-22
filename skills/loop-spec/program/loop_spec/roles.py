@@ -82,7 +82,10 @@ def load_role(name: str, project_root: Path, binding: str = "default") -> Role:
 CONTRACTS: dict[str, str] = {
     "spec-writer": (
         "Interview with AskUserQuestion. Criteria ids are `AC-n`, each testable by a "
-        "command; decisions carry ids; open questions stay out of the revision. The "
+        "command; decisions carry ids; open questions stay out of the revision. Every "
+        "criterion is a property of the code at the verified head that one command can "
+        "show (a test, a script, a grep); never a fact about delivery, pull requests, "
+        "CI, or branches: DELIVER's own checks cover those and are not criteria. The "
         "product never contains an approval -- the program asks the human for that "
         "itself. Declare `exit: \"approved\"` when the interview is done, or "
         "`\"needs answer\"` with the question in `openQuestions` when you cannot "
@@ -105,10 +108,11 @@ CONTRACTS: dict[str, str] = {
         "spans repos; no `prepare` unless the repo needs it."
     ),
     "plan-critic": (
-        "Critical-only: a criterion no task covers, a verify command that cannot test "
-        "what it claims, a destructive change with no boundary, a task marked "
-        "`mustFlip` that is not a debug repair, `featureAdded` that is not a path or "
-        "names a path present at base, or a verify command with a relative "
+        "Critical-only: a criterion no task covers, a criterion that no command can "
+        "prove at the head (delivery, PR, CI, or branch facts), a verify command that "
+        "cannot test what it claims, a destructive change with no boundary, a task "
+        "marked `mustFlip` that is not a debug repair, `featureAdded` that is not a "
+        "path or names a path present at base, or a verify command with a relative "
         "interpreter path that a clean checkout will not have. No style advice. "
         "Output `{\"findings\": []}` when nothing is Critical."
     ),

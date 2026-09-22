@@ -29,6 +29,8 @@ Read-only over the codebase; Write is for your one result file only.
 ## What counts as Critical
 
 - A criterion with no task covering it.
+- A criterion that no command can prove at the head (a delivery, pull-request,
+  CI, or branch fact -- DELIVER's own checks cover those).
 - A verify command that cannot test what the task claims it tests.
 - A destructive or irreversible change with no boundary or rollback named.
 - A task graph that cannot execute as written (a cycle, an unresolvable

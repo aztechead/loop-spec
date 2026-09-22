@@ -70,6 +70,12 @@ class ComposePromptTests(unittest.TestCase):
         self.assertIn(CONTRACTS["debugger"], prompt)
         self.assertTrue(CONTRACTS["debugger"].startswith("You do not repair anything. You modify no file."))
 
+    def test_spec_writer_contract_forbids_delivery_facts_as_criteria(self):
+        # LF-26: the spec-writer wrote a criterion about a pull request existing,
+        # which no VERIFY run can prove before DELIVER; the contract text must
+        # name pull requests among the delivery facts a criterion is never about.
+        self.assertIn("pull request", CONTRACTS["spec-writer"])
+
     def test_no_contract_section_when_role_has_none(self):
         # Every real role name now has a CONTRACTS entry (debugger's joined the
         # rest under LF-22); this exercises the "none" branch with a name that

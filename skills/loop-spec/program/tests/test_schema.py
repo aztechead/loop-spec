@@ -115,6 +115,27 @@ class BundledSchemaTests(unittest.TestCase):
         }
         self.assertEqual(validate(instance, load_schema("execute")), [])
 
+    def test_verify_remediation_task_id_accepts_r_prefix(self):
+        # LF-25: verify.py names remediation tasks R-<n>, not T-<n>; the schema's
+        # plan-task id pattern (verify.json's own $defs.planTask, shared with plan.json's
+        # own tasks and debug/revise's compact plans) has to accept both.
+        remediation_task = {
+            "id": "R-1", "title": "fix it", "dependsOn": [], "files": [], "repo": "repo",
+            "verify": "python3 -m unittest", "criteria": ["AC-1"], "featureAdded": None, "mustFlip": False,
+        }
+        instance = {
+            "exit": "implementation gap", "inputsDigest": _DIGEST, "boundTo": _BOUND_TO,
+            "verdicts": [{
+                "criterion": "AC-1", "verdict": "fail",
+                "evidence": {"command": "python3 -m unittest", "sha": "a" * 40, "exitStatus": 1,
+                             "failureIdentities": [], "outputDigest": _DIGEST},
+                "cause": "it failed",
+            }],
+            "findings": [], "remediationTasks": [remediation_task],
+            "reviewedRange": {"from": "a" * 40, "to": "b" * 40, "full": True},
+        }
+        self.assertEqual(validate(instance, load_schema("verify")), [])
+
     def test_minimal_question_instance_validates(self):
         instance = {
             "questionId": "question-1", "attempt": "attempt-1", "phase": "spec",

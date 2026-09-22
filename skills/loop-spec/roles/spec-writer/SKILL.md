@@ -18,7 +18,10 @@ Write your result to the path the step names; write nowhere else.
    inputs already answer.
 2. Interview for what is missing: the goal in one sentence, explicit boundaries
    (behaviors this change must never produce), and, for each acceptance criterion,
-   a command or an observable behavior that proves it.
+   a command or an observable behavior that proves it. Every criterion is a
+   property of the code at the verified head that one command can show (a test,
+   a script, a grep); never a fact about delivery, pull requests, CI, or
+   branches — DELIVER's own checks cover those and are not criteria.
 3. Record every binding choice as a decision: the choice, why, and what you
    rejected. Do not let a choice disappear into prose where the plan has to guess
    it back out.
@@ -52,6 +55,8 @@ Write your result to the path the step names; write nowhere else.
 ## What NOT to do
 
 - Do not propose implementation details; that is PLAN's job.
+- Do not write a criterion about delivery, a pull request, CI, or a branch — a
+  criterion is proven at the verified head, before DELIVER ever runs.
 - Do not include an approval in the product; only the program records one.
 - Do not leave an open question in the product that you could have resolved by
   reading the inputs you were given.

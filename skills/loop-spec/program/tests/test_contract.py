@@ -123,6 +123,21 @@ class InvokeTests(unittest.TestCase):
             self.assertEqual(outcome.code, 0)
             self.assertEqual(outcome.kind, "product")
 
+    def test_invoke_names_the_implementation_and_phase_for_an_invalid_product(self):
+        # LF-25: a bad product's error must say WHO produced it, not just list schema
+        # errors, so a reader debugging a "failed" run does not blame the code that
+        # merely validated it.
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = FeaturePaths(root=Path(tmp) / "feature")
+            attempt_id = "attempt-1"
+            contract.write_context(paths, attempt_id, _envelope(attempt_id, tmp, paths))
+            from loop_spec import execute as execute_module
+            invalid_product = {"exit": "no change", "inputsDigest": "sha256:" + "a" * 64}  # missing required fields
+            with patch.object(execute_module, "step", return_value=execute_module.Product(invalid_product)):
+                outcome = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
+            self.assertEqual(outcome.kind, "error")
+            self.assertTrue(outcome.stderr.startswith("default EXECUTE implementation produced an invalid product: "))
+
     def test_invoke_default_execute_converts_pause(self):
         with tempfile.TemporaryDirectory() as tmp:
             paths = FeaturePaths(root=Path(tmp) / "feature")

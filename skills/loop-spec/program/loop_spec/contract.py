@@ -75,12 +75,17 @@ def run_phase(phase: str, context_path: Path, product_path: Path) -> int:
     return external.run(context_path, product_path, phase)
 
 
-def _accept_product(phase: str, product_path: Path) -> PhaseOutcome:
+def _accept_product(phase: str, implementation: str, product_path: Path) -> PhaseOutcome:
     if not product_path.is_file():
         return PhaseOutcome(code=0, kind="error", path=None, stderr=f"exit 0 but no product at {product_path}")
     errors = validate(read_json(product_path), load_schema(phase))
     if errors:
-        return PhaseOutcome(code=0, kind="error", path=None, stderr="; ".join(errors))
+        # LF-25: name which implementation and phase produced the invalid product,
+        # not just the schema errors -- otherwise a reader debugging a "failed" run
+        # blames the validator or the phase itself instead of the implementation that
+        # actually wrote the bad file (most often the program's own default one).
+        stderr = f"{implementation} {phase.upper()} implementation produced an invalid product: " + "; ".join(errors)
+        return PhaseOutcome(code=0, kind="error", path=None, stderr=stderr)
     return PhaseOutcome(code=0, kind="product", path=product_path, stderr="")
 
 
@@ -176,7 +181,7 @@ def invoke(paths, *, phase: str, attempt_id: str, implementation: str, program_l
         )
 
     if code == 0:
-        return _accept_product(phase, product_path)
+        return _accept_product(phase, implementation, product_path)
     if code == 2:
         return _accept_request(attempt_dir / "step.json", "step", code)
     if code == 3:
