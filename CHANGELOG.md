@@ -4,6 +4,36 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.0.1] - 2026-09-22
+
+Four defects found by the first end-to-end workspace run on the audited 7.0 program
+(LF-49 to LF-52), each fixed at its root with deterministic module tests:
+
+- An "already satisfied" implement result is honored only when Git agrees: a
+  recorded fork, an existing branch at that fork, and a clean worktree. Commits
+  past the fork take the ordinary review path (`already_satisfied_contradicted`).
+- A reviewer that repeats an open ledger finding by its id carries it forward
+  instead of minting a duplicate V8 rejects; the ledger records an observation and
+  takes a closure with a reason; an echo of a closed finding is dropped; a reopen
+  needs an explicit `supersedes`. V7 evaluates the ledger with the product's valid
+  closures overlaid.
+- A VERIFY `implementation gap` now reaches EXECUTE: the transition carries the
+  failing verdicts and remediation tasks, and the plan task owning each failed
+  criterion is re-opened against the current feature head with a fresh retry
+  allowance. A worktree is reused only when clean, its writers known terminated,
+  and already containing the head; otherwise a new generation branch and worktree
+  is forked and the old worktree is kept (quarantined unless clean and
+  terminated). Tasks carry `forkedFrom` (attributes new commits) and `reviewFrom`
+  (one review record covers every commit a task owns); conflict recovery keeps
+  integrated commits and never deletes the branch. Forward transitions clear the
+  entry payload. `confirm_terminated` no longer force-removes a dirty worktree.
+- VERIFY and ITERATE key their module state on their inputs (requirements and
+  plan revisions, heads, and for ITERATE the accepted VERIFY attempt) and rebuild
+  when any changed, so a repaired head is never judged by pre-repair evidence.
+  EXECUTE reconciles a changed plan by task identity and refuses a dropped or
+  repo-moved task that owns integrated commits, and legacy state without plan
+  snapshots.
+
 ## [7.0.0] - 2026-09-21
 
 A ground-up rewrite: loop-spec is now a stdlib-only Python program
