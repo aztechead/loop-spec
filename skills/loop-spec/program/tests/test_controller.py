@@ -141,16 +141,21 @@ def _approve_compacted_spec_and_submit_critic(paths, repo_dir, markers, next_):
     return _submit_and_continue(paths, repo_dir, markers, critic_step["stepAttemptId"])
 
 
-def _write_sdk_receipt(step: dict) -> None:
-    """A real dispatch leaves this beside a role step's result so steps.submit can
-    mark it "controller-observed" (ACCEPTED_REVIEW_LEVELS) without a live host to
-    attest it; dispatch_name=None/host=None (this file's usual submit call) would
-    otherwise leave it "unattested" and E6 would reject a DEFAULT-mode EXECUTE
-    task's review. Only EXECUTE's own review-role steps (never SPEC/PLAN/DEBUG/
-    REVISE's compacted-approval or external-phase steps) need this -- E6 is the
-    only postcondition that reads a step's own evidenceLevel."""
+def _write_sdk_receipt(store, paths, step: dict) -> None:
+    """A real SDK-runner dispatch leaves this under the step's own directory
+    (steps.py: `paths.steps_dir / step_id / "receipt.json"`, only ever consulted
+    when the run's own state says an SDK actually launched it) so steps.submit
+    can mark the submission "controller-observed" (ACCEPTED_REVIEW_LEVELS)
+    without a live host to attest it; dispatch_name=None/host=None (this file's
+    usual submit call) would otherwise leave it "unattested" and E6 would reject
+    a DEFAULT-mode EXECUTE task's review. Only EXECUTE's own review-role steps
+    (never SPEC/PLAN/DEBUG/REVISE's compacted-approval or external-phase steps)
+    need this -- E6 is the only postcondition that reads a step's own
+    evidenceLevel."""
+    store.state["run"]["runner"] = "sdk"
+    store.save()
     result_path = Path(step["resultPath"])
-    receipt_path = result_path.with_name("sdk-receipt.json")
+    receipt_path = paths.steps_dir / step["stepAttemptId"] / "receipt.json"
     atomic_write_json(receipt_path, {
         "stepAttemptId": step["stepAttemptId"], "resultDigest": digest_bytes(result_path.read_bytes()),
         "sessionId": "test-session",
@@ -1081,7 +1086,7 @@ class DebugAndReviseEntryTests(_QuietStdout):
                     "verdict": "pass", "findings": [], "securityDispositions": [],
                 }
                 atomic_write_json(Path(review_step["resultPath"]), review_result)
-                _write_sdk_receipt(review_step)  # E6 needs T-1's adopted-review evidence "controller-observed"
+                _write_sdk_receipt(store, paths, review_step)  # E6 needs T-1's adopted-review evidence "controller-observed"
                 next_ = _submit_and_continue(paths, repo_dir, markers, review_step["stepAttemptId"])
                 store = _open(paths)
                 adopted_review = store.state.get("adoptedReview")
@@ -1118,7 +1123,8 @@ class DebugAndReviseEntryTests(_QuietStdout):
                     "verdict": "pass", "findings": [], "securityDispositions": [],
                 }
                 atomic_write_json(Path(review_t2_step["resultPath"]), review_t2_result)
-                _write_sdk_receipt(review_t2_step)  # E6 needs T-2's own review evidence "controller-observed"
+                store = _open(paths)
+                _write_sdk_receipt(store, paths, review_t2_step)  # E6 needs T-2's own review evidence "controller-observed"
                 next_ = _submit_and_continue(paths, repo_dir, markers, review_t2_step["stepAttemptId"])
                 self.assertEqual(next_.kind, "step")  # VERIFY's own step (EXECUTE's product just accepted)
 
@@ -1428,6 +1434,114 @@ class WorktreeReuseTests(_QuietStdout):
             self.assertNotIn(str(first_paths.root), second_listing)
 
 
+class BaselineCaptureTests(unittest.TestCase):
+    """R3: a workspace baseline is captured (and re-checked at EXECUTE) per repo,
+    never always the first one."""
+
+    def test_capture_and_rerun_use_each_tasks_own_repo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_a = _init_repo(tmp)
+            (repo_a / "check.py").write_text("import sys; sys.exit(0)\n", encoding="utf-8")
+            _git(repo_a, "add", "check.py")
+            _git(repo_a, "commit", "-q", "-m", "add check")
+            head_a = repo_module.head_sha(repo_a)
+
+            repo_b = tmp / "repo-b"
+            repo_b.mkdir()
+            _git(repo_b, "init", "-q", "-b", "main")
+            _git(repo_b, "config", "user.email", "test@example.com")
+            _git(repo_b, "config", "user.name", "Test")
+            (repo_b / "README.md").write_text("hello from b\n", encoding="utf-8")
+            _git(repo_b, "add", "README.md")
+            _git(repo_b, "commit", "-q", "-m", "init")
+            # Same command string as A's, a DIFFERENT check.py: if capture or the
+            # EXECUTE re-run ever ran against A's checkout for B's task (the
+            # pre-fix bug), this would come back 0, not 1.
+            (repo_b / "check.py").write_text("import sys; sys.exit(1)\n", encoding="utf-8")
+            _git(repo_b, "add", "check.py")
+            _git(repo_b, "commit", "-q", "-m", "add check")
+            head_b = repo_module.head_sha(repo_b)
+
+            paths = FeaturePaths(root=tmp / "feature")
+            store = StateStore.create(
+                paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x", "createdAt": "2026-01-01T00:00:00+00:00"}, "do it",
+            )
+            store.state["repos"] = {
+                "a": {"path": str(repo_a), "baseSha": head_a, "featureBranch": "feat/x", "defaultBranch": "main", "lastKnownHead": head_a},
+                "b": {"path": str(repo_b), "baseSha": head_b, "featureBranch": "feat/x", "defaultBranch": "main", "lastKnownHead": head_b},
+            }
+            store.save()
+
+            plan_product = {
+                "tasks": [
+                    {"id": "T-a", "title": "a", "dependsOn": [], "files": [], "repo": "a", "verify": "python3 check.py",
+                     "criteria": ["AC-a"], "featureAdded": None, "mustFlip": False},
+                    {"id": "T-b", "title": "b", "dependsOn": [], "files": [], "repo": "b", "verify": "python3 check.py",
+                     "criteria": ["AC-b"], "featureAdded": None, "mustFlip": False},
+                ],
+                "prepare": None,
+            }
+            controller._capture_plan_baseline(store, paths, plan_product, "rev-1")
+
+            baseline = store.state["baseline"]
+            self.assertEqual(set(baseline["repos"]), {"a", "b"})
+            entry_a = baseline["repos"]["a"]["entries"]["python3 check.py"]
+            entry_b = baseline["repos"]["b"]["entries"]["python3 check.py"]
+            self.assertEqual(entry_a["run"]["exitStatus"], 0)
+            self.assertEqual(entry_b["run"]["exitStatus"], 1)
+
+            # --- EXECUTE's own re-run: T-b's record names repo B's own SHA ---
+            store.state["products"]["plan"] = {"product": plan_product}
+            execute_product = {"heads": {"a": head_a, "b": head_b}, "tasks": [
+                {"id": "T-a", "disposition": "done", "evidence": None, "commits": [], "review": None},
+                {"id": "T-b", "disposition": "done", "evidence": None, "commits": [], "review": None},
+            ]}
+            controller._run_execute_verifications(store, paths, execute_product)
+            runs = store.state["executeRuns"]
+            self.assertEqual(runs["T-a"]["run"]["sha"], head_a)
+            self.assertEqual(runs["T-b"]["run"]["sha"], head_b)
+            self.assertEqual(runs["T-b"]["run"]["exitStatus"], 1)
+            self.assertEqual(runs["T-b"]["comparison"]["verdict"], "no-regression")  # matches B's own baseline
+
+    def test_migrate_legacy_baseline_wraps_the_sole_repos_flat_shape(self):
+        # R3: a run whose baseline was captured before the per-repo shape existed
+        # (flat, no "repos" key) is migrated in place the first time EXECUTE's
+        # phase is driven afterward, since with exactly one repo there is only
+        # one thing that flat baseline could ever have meant.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo = _init_repo(tmp)
+            head = repo_module.head_sha(repo)
+            paths = FeaturePaths(root=tmp / "feature")
+            store = StateStore.create(
+                paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x", "createdAt": "2026-01-01T00:00:00+00:00"}, "do it",
+            )
+            store.state["repos"] = {
+                "repo": {"path": str(repo), "baseSha": head, "featureBranch": "feat/x", "defaultBranch": "main", "lastKnownHead": head},
+            }
+            store.state["baseline"] = {
+                "baseSha": head, "repo": "repo", "prepare": None, "prepareRun": None,
+                "entries": {"true": {"command": "true", "task": "T-1", "status": "ran", "run": None}},
+                "capturedAt": "2026-01-01T00:00:00+00:00", "normalizationVersion": 1, "planRevision": "rev-1",
+            }
+            store.save()
+
+            controller._migrate_legacy_baseline(store, paths)
+
+            self.assertEqual(store.state["baseline"]["planRevision"], "rev-1")
+            migrated = store.state["baseline"]["repos"]["repo"]
+            self.assertEqual(migrated["baseSha"], head)
+            self.assertEqual(migrated["entries"]["true"]["task"], "T-1")
+            self.assertNotIn("planRevision", migrated)
+            events_text = paths.events_jsonl.read_text()
+            self.assertIn('"module_state_reset"', events_text)
+
+            # Idempotent: a second call on the already-migrated state is a no-op.
+            controller._migrate_legacy_baseline(store, paths)
+            self.assertEqual(store.state["baseline"]["repos"]["repo"], migrated)
+
+
 class VerifyRerunsTests(unittest.TestCase):
     """LF-28: V4's clean re-run has to happen in the repo a verdict's evidence
     names, not always the workspace's first repo."""
@@ -1490,6 +1604,83 @@ class VerifyRerunsTests(unittest.TestCase):
             self.assertEqual(runs["AC-b"]["repo"], "b")
             self.assertTrue(runs["AC-a"]["matched"])
             self.assertTrue(runs["AC-b"]["matched"])
+
+    def _single_repo_store(self, tmp: Path, repo_dir: Path, head: str) -> tuple[FeaturePaths, StateStore]:
+        paths = FeaturePaths(root=tmp / "feature")
+        store = StateStore.create(
+            paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x", "createdAt": "2026-01-01T00:00:00+00:00"}, "do it",
+        )
+        store.state["repos"] = {
+            "repo": {"path": str(repo_dir), "baseSha": head, "featureBranch": "feat/x", "defaultBranch": "main", "lastKnownHead": head},
+        }
+        store.state["products"]["execute"] = {
+            "attemptId": "attempt-e", "inputsDigest": "sha256:" + "0" * 64,
+            "boundTo": {"requirements": None, "plan": None}, "exit": "no change",
+            "product": {"heads": {"repo": head}, "tasks": []},
+            "receivedAt": "2026-01-01T00:00:00+00:00", "evidenceLevel": "human-attested",
+        }
+        store.state["products"]["plan"] = {
+            "attemptId": "attempt-p", "inputsDigest": "sha256:" + "0" * 64,
+            "boundTo": {"requirements": None, "plan": None}, "exit": "ready",
+            "product": {"prepare": None}, "receivedAt": "2026-01-01T00:00:00+00:00", "evidenceLevel": "human-attested",
+        }
+        return paths, store
+
+    def test_run_verify_reruns_rechecks_a_changed_claim_against_a_cached_execution(self):
+        # R9: a cached execution (same repo/sha/command) may be reused, but
+        # "matched" must be re-evaluated against the CURRENT claim every time,
+        # not trusted as a fact recorded by an earlier, possibly different, claim.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo = _init_repo(tmp)
+            head = repo_module.head_sha(repo)
+            paths, store = self._single_repo_store(tmp, repo, head)
+            store.save()
+
+            evidence = {
+                "command": 'python3 -c "import sys; sys.exit(0)"', "repo": "repo", "sha": head,
+                "exitStatus": 0, "failureIdentities": [], "outputDigest": "sha256:" + "0" * 64,
+            }
+            verify_product = {"verdicts": [{"criterion": "AC-1", "verdict": "pass", "cause": None, "evidence": evidence}]}
+            controller._run_verify_reruns(store, paths, verify_product)
+            self.assertTrue(store.state["verifyRuns"]["AC-1"]["matched"])
+
+            # Same sha/command, a different claimed exit status.
+            changed_evidence = dict(evidence, exitStatus=7)
+            changed_product = {"verdicts": [{"criterion": "AC-1", "verdict": "pass", "cause": None, "evidence": changed_evidence}]}
+            controller._run_verify_reruns(store, paths, changed_product)
+            self.assertFalse(store.state["verifyRuns"]["AC-1"]["matched"])
+
+            boundary = postconditions.Boundary(
+                store, paths, phase="verify", product=changed_product, exit="passed", project_root=repo,
+            )
+            self.assertIsNotNone(boundary._v4())
+
+    def test_run_verify_reruns_never_executes_an_exempt_criterions_command(self):
+        # R10: an approved non-repeatable command must never run a second time --
+        # not even once more here, to find out it was exempt. A criterion in
+        # verifyExceptionsThisAttempt is skipped before any re-run is scheduled.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo = _init_repo(tmp)
+            head = repo_module.head_sha(repo)
+            marker = tmp / "marker"
+            paths, store = self._single_repo_store(tmp, repo, head)
+            store.state["verifyExceptionsThisAttempt"] = [{"criterion": "AC-1", "reason": "not repeatable"}]
+            store.save()
+
+            verify_product = {
+                "verdicts": [{
+                    "criterion": "AC-1", "verdict": "pass", "cause": None,
+                    "evidence": {
+                        "command": f"python3 -c \"open({str(marker)!r}, 'w').close()\"", "repo": "repo", "sha": head,
+                        "exitStatus": 0, "failureIdentities": [], "outputDigest": "sha256:" + "0" * 64,
+                    },
+                }],
+            }
+            controller._run_verify_reruns(store, paths, verify_product)
+            self.assertFalse(marker.exists())
+            self.assertNotIn("AC-1", store.state["verifyRuns"])
 
 
 class FindDeliveringRunProductsTests(unittest.TestCase):

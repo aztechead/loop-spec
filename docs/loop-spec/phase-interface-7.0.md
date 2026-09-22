@@ -53,7 +53,9 @@ lists those questions.
 ### Evidence levels
 
 Set by the program per worker step, never by the implementation: `controller-observed`
-(SDK runner), `host-attested` (native dispatch with a checked transcript),
+(the SDK runner itself launched the run and its receipt lives under the state home,
+never beside a worker-writable result), `host-attested` (native dispatch with a
+transcript checked against the step's entire composed prompt, not just its trailer),
 `human-attested` (external phase, answer recorded against a question id),
 `unattested` (everything else). Review steps accept `controller-observed` and
 `host-attested`; `unattested` is accepted only under `evidence.review.accept:
@@ -163,7 +165,7 @@ integration reason code, not an exit.
 | V1 | product validates; bound to both revisions | every exit |
 | V2 | every criterion id in the requirements revision has exactly one verdict | every exit except `evidence incomplete` |
 | V3 | every evidence SHA equals the verified head of its repo | `passed` |
-| V4 | for every criterion without a V5 exception, the program re-ran its cited command in a clean checkout of that SHA that it created, with prepare fixtures applied, and command identity, exit status, parsed failure identities, and normalized output digest matched | `passed` |
+| V4 | for every criterion without a V5 exception, its cited command was run by the program in a clean checkout of that SHA it created, with prepare fixtures applied (that execution may be reused across submissions naming the same repo, SHA, and command, but is re-matched against each submission's own claim, never a fact an earlier claim left recorded), and command identity, exit status, parsed failure identities, and normalized output digest matched | `passed` |
 | V5 | a criterion skipped V4 only under an exception declared in the PLAN product and approved with it, or granted by an operator answer at VERIFY; its verdict is recorded at assurance `claimed` and listed under `weakenedAssurance` | `passed` |
 | V6 | a `blocked` verdict cites a cause the program observed, in the baseline record or in its own re-run | `blocked` |
 | V7 | every verdict is `pass` and the review policy holds per repo: first and final passes saw that repo's full diff, other passes the delta since its last reviewed SHA, no Critical finding open | `passed` |
@@ -193,6 +195,11 @@ outright incorrect implementations; the PR review catches the rest.
 | Product | `verdict` against the original request; `gaps[]`; `route` |
 | Preconditions | VERIFY `passed` at the current revisions, including the `no change` head |
 | Runs as | a fresh goal-judgment role |
+
+The program, not the judge role, dispositions every non-Critical open finding
+before deciding the exit: Minor is always deferred; Important becomes a PLAN gap
+while the rewind budget has room, and is deferred once it does not; Critical is
+never deferred (decided 2026-09-22, LF-46).
 
 | Id | Postcondition | Gates |
 |---|---|---|
@@ -234,11 +241,12 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | D5 | partial publication is recorded per repo and never reported as all delivered | `partially delivered` |
 | D6 | a `no change` head that ITERATE converged opened no PR and the product says so | terminal `no-change` |
 | D7 | before the first remote write the program checked git and `gh` credentials and attempted the host's own refresh; a failure exits `delivery blocked` naming the command | `delivered`, `partially delivered` |
+| D8 | the product's repos cover exactly the set of repos EXECUTE touched with an accepted task's commits, no duplicates; a `skipped` row is only valid for a repo EXECUTE did not touch; every row marked `delivered` has a non-null PR | `delivered`, `partially delivered` |
 
 | Exit | Requires | Route |
 |---|---|---|
-| `delivered` | D1 to D4, D7 for every repo | terminal `converged` or `converged-with-caveats` |
-| `partially delivered` | D4, D5, and D7 for every repo whose remote write was attempted | terminal; result carries `partiallyDelivered` and per-repo state |
+| `delivered` | D1 to D4, D7, D8 for every repo | terminal `converged` or `converged-with-caveats` |
+| `partially delivered` | D1, D2, D4, D5, D7, D8 for every repo whose remote write was attempted | terminal; result carries `partiallyDelivered` and per-repo state |
 | `delivery blocked` | D4 | pause: a question naming the failed command and repair, with the answers fix-and-re-enter DELIVER or stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` with `result: escalated` and per-repo state |
 
 ## debug

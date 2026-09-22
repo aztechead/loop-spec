@@ -148,6 +148,8 @@ def _init(store, paths, ctx) -> dict:
     final_pass = bool(entry_payload.get("finalPass"))
 
     checkouts, ranges, range_probes = {}, {}, {}
+    reused_reviewers: dict[str, dict] = {}
+    pending_reviews: list[str] = []
     for name in touched:
         repo_info = repos[name]
         repo_path = Path(repo_info["path"])
@@ -157,8 +159,19 @@ def _init(store, paths, ctx) -> dict:
         # genuinely first pass -- never silently skips content nothing has seen.
         prior = next((e for e in reversed(reviewed_ranges) if e.get("repo") == name), None)
         repo_full = final_pass or prior is None
-        range_from = repo_info["baseSha"] if repo_full else prior["to"]
-        ranges[name] = {"repo": name, "from": range_from, "to": head, "full": repo_full}
+        # LF-47: an empty delta (nothing changed since the last reviewed SHA)
+        # needs no reviewer step at all; a final pass reuses the same prior
+        # entry too, but only once some earlier pass already reviewed base..head
+        # in full -- a final pass still has to have SEEN the whole diff once.
+        reused = prior is not None and prior["to"] == head and (not final_pass or prior["full"])
+        if reused:
+            ranges[name] = {"repo": prior["repo"], "from": prior["from"], "to": prior["to"], "full": prior["full"]}
+            reused_reviewers[name] = {"findings": []}
+            emit(paths, "review_reused", {"repo": name, "rangeId": prior["id"]}, phase="verify", attempt_id=ctx["attempt"]["id"])
+        else:
+            range_from = repo_info["baseSha"] if repo_full else prior["to"]
+            ranges[name] = {"repo": name, "from": range_from, "to": head, "full": repo_full}
+            pending_reviews.append(name)
         checkouts[name] = str(_verify_checkout(repo_path, head, plan_product.get("prepare"), paths.checkouts_dir))
         files = sorted(files_by_repo.get(name, set()))
         base_layers = _base_layers(repo_path, repo_info["baseSha"], files, paths.checkouts_dir)
@@ -168,7 +181,7 @@ def _init(store, paths, ctx) -> dict:
         "planRevision": store.state["revisions"]["plan"], "heads": heads,
         "checkouts": checkouts, "ranges": ranges, "rangeProbes": range_probes,
         "phase": "verifying", "verifierStep": None, "reviewerSteps": {}, "verifier": None, "reason": None,
-        "reviewers": {}, "reviewerReasons": {}, "pendingReviews": list(touched),
+        "reviewers": reused_reviewers, "reviewerReasons": {}, "pendingReviews": pending_reviews,
         "handledRejections": [], "pass": len(reviewed_ranges) + 1,
     }
     store.state["verify"] = verify_state

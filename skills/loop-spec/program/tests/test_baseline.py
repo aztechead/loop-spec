@@ -165,6 +165,19 @@ class RunCommandTests(unittest.TestCase):
             self.assertEqual(run.log_path, str(log_path))
             self.assertEqual(log_path.read_text(), "hello\n")
 
+    def test_timeout_decodes_partial_output_instead_of_raising(self):
+        # R11: a command that prints, then outlives its timeout, hands
+        # TimeoutExpired.stdout back as bytes even though text=True was
+        # requested; before the fix this TypeError'd in the string regexes below
+        # instead of producing a normal exit-124 record.
+        with tempfile.TemporaryDirectory() as tmp:
+            command = (
+                'python3 -c "import sys, time; print(\'partial\'); sys.stdout.flush(); time.sleep(1)"'
+            )
+            run = _run(command, tmp, timeout=0.1)
+            self.assertEqual(run.exit_status, 124)
+            self.assertEqual(run.error_class, "timeout")
+
 
 class CompareToBaselineTests(unittest.TestCase):
     def _cr(self, exit_status=0, runner=None, failure_identities=None, fingerprints_=None, error_class=None, tests_ran=1):
@@ -189,6 +202,27 @@ class CompareToBaselineTests(unittest.TestCase):
         result = compare_to_baseline(entry, candidate)
         self.assertEqual(result.verdict, "regression")
         self.assertEqual(result.new_identities, ["fp2"])
+
+    def test_collection_failure_with_no_parsed_ids_is_a_regression(self):
+        # R4: a passing pytest baseline (no failed IDs) versus a candidate that
+        # never got past collection (exit 2, no parsed test IDs, a different
+        # import-error fingerprint) is not "empty set minus empty set" no-
+        # regression -- nothing about the baseline excuses a runner that never
+        # collected any tests.
+        base_run = self._cr(exit_status=0, runner="pytest", failure_identities=[], fingerprints_=["fp-base"])
+        entry = BaselineEntry(command="pytest", task="T-1", status="ran", run=base_run)
+        candidate = self._cr(exit_status=2, runner="pytest", failure_identities=[], fingerprints_=["fp-import-error"])
+        result = compare_to_baseline(entry, candidate)
+        self.assertEqual(result.verdict, "regression")
+
+    def test_same_collection_failure_as_baseline_is_no_regression(self):
+        # The baseline was ALREADY in this exact broken state -- same error
+        # class, same fingerprints -- so nothing new failed.
+        base_run = self._cr(exit_status=2, runner="pytest", failure_identities=[], fingerprints_=["fp-import-error"])
+        entry = BaselineEntry(command="pytest", task="T-1", status="ran", run=base_run)
+        candidate = self._cr(exit_status=2, runner="pytest", failure_identities=[], fingerprints_=["fp-import-error"])
+        result = compare_to_baseline(entry, candidate)
+        self.assertEqual(result.verdict, "no-regression")
 
     def test_feature_added_ok(self):
         entry = BaselineEntry(command="cmd", task="T-1", status="no-baseline", run=None)

@@ -444,6 +444,8 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
     # issued is submitted) re-invokes contract.invoke so it can see the file that
     # step wrote (e.g. an external phase's product.json) instead of starting over.
     phase = store.state["phase"]["current"]
+    if phase == "execute":
+        _migrate_legacy_baseline(store, paths)
     if (phase == "execute" and store.state.get("adoption") is not None and store.state.get("adoptedReview") is None
             and store.state["phase"].get("adoptedReviewStepId") is None):
         _issue_adopted_review(store, paths, project_root)
@@ -832,32 +834,60 @@ def _close_critic_rejections(store: StateStore, reason: str) -> None:
             finding["reason"] = reason
 
 
+def _migrate_legacy_baseline(store: StateStore, paths: FeaturePaths) -> None:
+    # R3: store.state["baseline"] used to be one flat Baseline dict for the
+    # workspace's first repo; every reader now expects it keyed by repo under
+    # "repos". A run whose baseline was captured under the old shape (still
+    # mid-EXECUTE when this fix landed) is migrated in place, once, the first
+    # time EXECUTE's own phase is driven afterward -- a sole repo's baseline
+    # carries over as that repo's own entry (the only repo it could have meant);
+    # an ambiguous multi-repo one is dropped, since which repo it belonged to
+    # can no longer be told apart, rather than guessed at.
+    baseline = store.state.get("baseline")
+    if baseline is None or "repos" in baseline:
+        return
+    repos = store.state.get("repos") or {}
+    migrated = {"planRevision": baseline.get("planRevision"), "repos": {}}
+    if len(repos) == 1:
+        repo_name = next(iter(repos))
+        migrated["repos"][repo_name] = {k: v for k, v in baseline.items() if k != "planRevision"}
+    store.state["baseline"] = migrated
+    emit(paths, "module_state_reset",
+         {"summary": "baseline state predates the per-repo shape; re-initializing", "missingKey": "repos"},
+         phase="execute")
+    store.save()
+
+
 def _capture_plan_baseline(store: StateStore, paths: FeaturePaths, plan_product: dict, revision: str) -> None:
-    repo_name, repo_info = next(iter(store.state["repos"].items()))
-    commands = [(t["verify"], t["id"], t.get("featureAdded")) for t in plan_product["tasks"]]
-    baseline_obj = baseline_module.capture_baseline(
-        Path(repo_info["path"]), repo_info["baseSha"], commands, plan_product.get("prepare"), paths.checkouts_dir, repo_name,
-    )
-    baseline_dict = baseline_obj.to_dict()
-    baseline_dict["planRevision"] = revision
-    store.state["baseline"] = baseline_dict
+    # R3: each task's verify command is captured in THAT task's own repo, at that
+    # repo's own base SHA -- a workspace's other repos never stand in for it.
+    tasks_by_repo: dict[str, list[tuple]] = {}
+    for t in plan_product["tasks"]:
+        tasks_by_repo.setdefault(t["repo"], []).append((t["verify"], t["id"], t.get("featureAdded")))
+
+    baselines: dict[str, dict] = {}
+    # environmentHealth stays keyed per repo too, the same reason entries do: a
+    # failing command string is only meaningful against the repo it failed in.
     health = store.state.setdefault("environmentHealth", {})
-    for entry in baseline_obj.entries.values():
-        if entry.run and entry.run.error_class is not None:
-            health[entry.command] = {"errorClass": entry.run.error_class, "recordedAt": now_iso()}
+    for repo_name, commands in tasks_by_repo.items():
+        repo_info = store.state["repos"][repo_name]
+        baseline_obj = baseline_module.capture_baseline(
+            Path(repo_info["path"]), repo_info["baseSha"], commands, plan_product.get("prepare"), paths.checkouts_dir, repo_name,
+        )
+        baselines[repo_name] = baseline_obj.to_dict()
+        repo_health = health.setdefault(repo_name, {})
+        for entry in baseline_obj.entries.values():
+            if entry.run and entry.run.error_class is not None:
+                repo_health[entry.command] = {"errorClass": entry.run.error_class, "recordedAt": now_iso()}
+
+    store.state["baseline"] = {"planRevision": revision, "repos": baselines}
     store.save()
 
 
 def _run_execute_verifications(store: StateStore, paths: FeaturePaths, execute_product: dict) -> None:
-    baseline_dict = store.state.get("baseline")
-    if baseline_dict is None:
+    baseline_state = store.state.get("baseline")
+    if baseline_state is None:
         return
-    repo_name, repo_info = next(iter(store.state["repos"].items()))
-    repo_path = Path(repo_info["path"])
-    head = execute_product["heads"].get(repo_name)
-    if head is None:
-        return
-    baseline_obj = baseline_module.Baseline.from_dict(baseline_dict)
     plan_tasks = {t["id"]: t for t in store.state["products"]["plan"]["product"]["tasks"]}
     prepare = store.state["products"]["plan"]["product"].get("prepare")
     execute_runs = store.state.setdefault("executeRuns", {})
@@ -867,6 +897,18 @@ def _run_execute_verifications(store: StateStore, paths: FeaturePaths, execute_p
         plan_task = plan_tasks.get(task["id"])
         if plan_task is None:
             continue
+        # R3: the re-run happens in THIS task's own repo, at that repo's own
+        # EXECUTE head -- never always the workspace's first repo.
+        repo_name = plan_task["repo"]
+        repo_baseline_dict = baseline_module.repo_baseline_dict(baseline_state, repo_name, store.state["repos"])
+        if repo_baseline_dict is None:
+            continue
+        repo_info = store.state["repos"][repo_name]
+        repo_path = Path(repo_info["path"])
+        head = execute_product["heads"].get(repo_name)
+        if head is None:
+            continue
+        baseline_obj = baseline_module.Baseline.from_dict(repo_baseline_dict)
         checkout = paths.checkouts_dir / f"execute-{task['id']}-{head[:12]}"
         repo_module.clean_checkout(repo_path, head, checkout)
         try:
@@ -888,16 +930,28 @@ def _run_verify_reruns(store: StateStore, paths: FeaturePaths, verify_product: d
     # to happen at THAT repo's head, not the first repo in the workspace.
     heads = postconditions.verified_heads(store)
     prepare = store.state["products"]["plan"]["product"].get("prepare")
+    # R10: resolved and consulted before any re-run is scheduled -- an approved
+    # non-repeatable command must never be executed a second time just to record
+    # that it was exempt (V4/V5 already skip an exempt criterion on their own).
+    exceptions = postconditions.resolved_exceptions(store)
     verify_runs = store.state.setdefault("verifyRuns", {})
     for verdict in verify_product["verdicts"]:
-        if verdict["verdict"] not in ("pass", "fail"):
+        if verdict["verdict"] not in ("pass", "fail") or verdict["criterion"] in exceptions:
             continue
         evidence = verdict.get("evidence") or {}
-        # Reuse a re-run only when it matched the SAME claim; a stale mismatch from an
-        # earlier attempt (LF-29: recorded at another repo's head) must be redone.
+        # R9: the EXECUTION may be reused when it was against the same repo, SHA,
+        # and command (nothing about running the command again would differ), but
+        # "matched" is a property of THIS claim against that execution, never a
+        # fact stored once and trusted for a later, possibly different, claim.
         prior = verify_runs.get(verdict["criterion"])
-        if prior and prior.get("matched") and prior["rerun"].get("sha") == evidence.get("sha") \
+        if prior and prior.get("repo") == evidence.get("repo") \
+                and prior["rerun"].get("sha") == evidence.get("sha") \
                 and prior["rerun"].get("command") == evidence.get("command"):
+            rerun = baseline_module.CommandRun.from_dict(prior["rerun"])
+            matched, reason = baseline_module.evidence_matches(evidence, rerun)
+            verify_runs[verdict["criterion"]] = {
+                "rerun": prior["rerun"], "matched": matched, "reason": reason, "repo": prior["repo"],
+            }
             continue
         repo_name = evidence["repo"]
         repo_path = Path(store.state["repos"][repo_name]["path"])
@@ -1082,22 +1136,38 @@ def _ask_pause_question(store: StateStore, paths: FeaturePaths, phase: str, exit
     store.save()
 
 
+def _protected_worktree_paths(store: StateStore) -> set[Path]:
+    # R5: an open step's own worktree, or one already quarantined pending host
+    # confirmation (steps.confirm_terminated), is never safe to force-remove
+    # just because the RUN reached a terminal result elsewhere -- a worker
+    # process touching one of them may still be running.
+    open_paths = {Path(s["cwd"]).resolve() for s in store.state["steps"]["open"]}
+    quarantined_paths = {Path(q["path"]).resolve() for q in store.state["steps"]["quarantined"]}
+    return open_paths | quarantined_paths
+
+
 def _finish_run(store: StateStore, paths: FeaturePaths, classification: str, *, reason: str | None = None,
                  summary: str | None = None, partially_delivered: bool = False) -> Path:
     # LF-39: every result_module.write in this module writes a terminal result
     # (nothing here passes "paused", the one classification that leaves a run
     # resumable) -- removing each repo's worktrees under this run's own feature
     # dir here, once, is the one place that covers every route into a terminal
-    # state instead of one more site to remember at each call.
-    path = result_module.write(store, paths, classification, reason=reason, summary=summary,
-                                partially_delivered=partially_delivered)
+    # state instead of one more site to remember at each call. Cleanup runs
+    # BEFORE result_module.write (R5) so a skipped worktree's cleanupBacklog
+    # entry is already in state for this same terminal result to carry, not
+    # left for a result nobody will write again.
     if classification != "paused":
+        protected = _protected_worktree_paths(store)
         removed = []
         for info in store.state.get("repos", {}).values():
-            removed.extend(repo_module.remove_worktrees(Path(info["path"]), paths.root))
+            repo_removed, repo_skipped = repo_module.remove_worktrees(Path(info["path"]), paths.root, protected=protected)
+            removed.extend(repo_removed)
+            if repo_skipped:
+                store.state.setdefault("cleanupBacklog", []).extend(repo_skipped)
         if removed:
             emit(paths, "worktrees_removed", {"removed": removed}, phase=store.state["phase"]["current"])
-    return path
+    return result_module.write(store, paths, classification, reason=reason, summary=summary,
+                                partially_delivered=partially_delivered)
 
 
 def _write_terminal_result(store: StateStore, paths: FeaturePaths, phase: str, exit_: str) -> None:

@@ -757,7 +757,10 @@ def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record:
         return
 
     plan_task = _plan_tasks(store)[task_id]
-    baseline_entry = baseline_module.BaselineEntry.from_dict(store.state["baseline"]["entries"][plan_task["verify"]])
+    # R3: this task's own repo has its own baseline; a workspace's other repos
+    # never stand in for it.
+    repo_baseline_dict = baseline_module.repo_baseline_dict(store.state.get("baseline"), plan_task["repo"], store.state["repos"])
+    baseline_entry = baseline_module.BaselineEntry.from_dict(repo_baseline_dict["entries"][plan_task["verify"]])
     candidate = baseline_module.run_command(plan_task["verify"], worktree, task_head)
     comparison = baseline_module.compare_to_baseline(
         baseline_entry, candidate,

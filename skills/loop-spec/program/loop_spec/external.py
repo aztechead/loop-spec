@@ -28,7 +28,7 @@ PHASE_POSTCONDITIONS: dict[str, list[str]] = {
     "execute": ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11"],
     "verify": ["V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9"],
     "iterate": ["I1", "I2", "I3", "I4", "I5", "I6"],
-    "deliver": ["D1", "D2", "D3", "D4", "D5", "D6", "D7"],
+    "deliver": ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"],
     "debug": ["B1", "B2", "B3"],
 }
 
@@ -59,7 +59,7 @@ POSTCONDITION_TEXT: dict[str, str] = {
     "V1": "product validates; bound to both revisions",
     "V2": "every criterion id in the requirements revision has exactly one verdict",
     "V3": "every evidence SHA equals the verified head of its repo",
-    "V4": "for every criterion without a V5 exception, the program re-ran its cited command in a clean checkout of that SHA that it created, with prepare fixtures applied, and command identity, exit status, parsed failure identities, and normalized output digest matched",
+    "V4": "for every criterion without a V5 exception, its cited command was run by the program in a clean checkout of that SHA it created, with prepare fixtures applied (that execution may be reused across submissions naming the same repo, SHA, and command, but is re-matched against each submission's own claim, never a fact an earlier claim left recorded), and command identity, exit status, parsed failure identities, and normalized output digest matched",
     "V5": "a criterion skipped V4 only under an exception declared in the PLAN product and approved with it, or granted by an operator answer at VERIFY; its verdict is recorded at assurance claimed and listed under weakenedAssurance",
     "V6": "a blocked verdict cites a cause the program observed, in the baseline record or in its own re-run",
     "V7": "every verdict is pass and the review policy holds per repo: first and final passes saw that repo's full diff, other passes the delta since its last reviewed SHA, no Critical finding open",
@@ -78,6 +78,7 @@ POSTCONDITION_TEXT: dict[str, str] = {
     "D5": "partial publication is recorded per repo and never reported as all delivered",
     "D6": "a no change head that ITERATE converged opened no PR and the product says so",
     "D7": "before the first remote write the program checked git and gh credentials and attempted the host's own refresh; a failure exits delivery blocked naming the command",
+    "D8": "the product's repos cover exactly the set of repos EXECUTE touched with an accepted task's commits, no duplicates; a skipped row is only valid for a repo EXECUTE did not touch; every row marked delivered has a non-null PR",
     "B1": "the program ran the recorded reproduction at base in a clean checkout and it failed with at least one parsed identity or fingerprint; the failure digest it recorded is the mustFlip baseline",
     "B2": "a changed reproduction states a reason and the original was run too, with both results recorded",
     "B3": "no reproduction exists",

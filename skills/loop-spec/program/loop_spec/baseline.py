@@ -268,7 +268,14 @@ def run_command(
         exit_status = 127
         error_class = "command-not-found"
     except subprocess.TimeoutExpired as exc:
+        # R11: TimeoutExpired.stdout can be bytes even with text=True requested --
+        # Popen only decodes output it reads to completion; the partial output a
+        # timeout hands back comes straight from the pipe. Decode it the same way
+        # a normal completion's text=True read would, so the regexes/digest/
+        # write_text calls below see a str either way.
         output = exc.stdout or ""
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
         exit_status = 124
         error_class = "timeout"
     except (ValueError, OSError) as exc:
@@ -396,6 +403,42 @@ def capture_baseline(
         repo_module.remove_worktree(repo, checkout_dest, force=True)
 
 
+def repo_baseline_dict(baseline_state: dict | None, repo_name: str, repos: dict) -> dict | None:
+    """This repo's own Baseline dict (the shape `Baseline.to_dict()` returns) out
+    of `store.state["baseline"]`.
+
+    R3: a workspace's baseline is captured once per repo, keyed under
+    `baseline_state["repos"][repo_name]`, since each repo has its own base SHA,
+    prepare run, and verify-command entries -- a plan task's own repo names which
+    one is its. A baseline captured before that shape existed is one flat
+    Baseline dict for the whole workspace's first (and, before workspaces, only)
+    repo; that only means anything when there is exactly one repo to attribute it
+    to, so it is read as `repo_name`'s own baseline in that case and as nothing
+    captured otherwise -- never guessed at for a workspace it can't be told apart
+    for."""
+    if baseline_state is None:
+        return None
+    repos_dict = baseline_state.get("repos")
+    if repos_dict is not None:
+        return repos_dict.get(repo_name)
+    if len(repos) == 1 and repo_name in repos:
+        return baseline_state
+    return None
+
+
+def all_baseline_entries(baseline_state: dict | None) -> list[dict]:
+    """Every BaselineEntry dict across every repo's own baseline, for a check
+    that only cares whether ANY command anywhere recorded a given fact (V6),
+    never which repo it belongs to. Handles a pre-R3 flat baseline the same way
+    repo_baseline_dict does."""
+    if baseline_state is None:
+        return []
+    repos_dict = baseline_state.get("repos")
+    if repos_dict is not None:
+        return [entry for repo_dict in repos_dict.values() for entry in repo_dict.get("entries", {}).values()]
+    return list(baseline_state.get("entries", {}).values())
+
+
 # ---------------------------------------------------------------------------
 # Comparison
 # ---------------------------------------------------------------------------
@@ -446,6 +489,22 @@ def compare_to_baseline(entry: BaselineEntry, candidate: CommandRun, *, feature_
         return Comparison("featureAdded-ok", [], "feature-added command passed")
 
     if candidate.runner is not None and baseline_run.runner is not None:
+        # R4: a nonzero exit with nothing parsed is a collection/build/runner
+        # failure, not "zero test failures" -- comparing empty identity sets
+        # would read it as no-regression even though nothing was actually run.
+        # Only a baseline in that SAME broken state (same error class, same
+        # fingerprints) excuses it; anything else is a new regression.
+        if candidate.exit_status != 0 and not candidate.failure_identities:
+            same_pre_existing_failure = (
+                baseline_run.exit_status != 0 and not baseline_run.failure_identities
+                and candidate.error_class == baseline_run.error_class
+                and set(candidate.fingerprints) == set(baseline_run.fingerprints)
+            )
+            if same_pre_existing_failure:
+                return Comparison("no-regression", [], "same pre-existing collection/runner failure as base")
+            return Comparison(
+                "regression", [], f"runner failed before collecting tests (exit {candidate.exit_status})",
+            )
         new_identities = sorted(set(candidate.failure_identities) - set(baseline_run.failure_identities))
     else:
         new_identities = sorted(set(candidate.fingerprints) - set(baseline_run.fingerprints))

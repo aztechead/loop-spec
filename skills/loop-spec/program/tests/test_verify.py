@@ -139,6 +139,35 @@ class VerifyTests(unittest.TestCase):
         self.assertTrue(product["reviewedRanges"][0]["full"])
         assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
 
+    def test_final_pass_on_an_unchanged_head_reuses_the_prior_range_with_no_reviewer_step(self):
+        # LF-47: ITERATE rewound to EXECUTE with nothing to do, then VERIFY
+        # re-entered as a final pass on the SAME head an earlier pass already
+        # reviewed in full -- the verifier still runs, but no reviewer step is
+        # issued a second time for a range nothing has changed since.
+        self.store.state["ledger"]["reviewedRanges"] = [
+            {"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.head_sha, "full": True},
+        ]
+        self.store.save()
+        self.ctx["entry"]["payload"] = {"finalPass": True}
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "verifier")
+
+        verifier_result = _verifier_result([_verdict("AC-1", "pass")])
+        for v in verifier_result["verdicts"]:
+            v["evidence"]["sha"] = self.head_sha
+            self.store.state.setdefault("verifyRuns", {})[v["criterion"]] = {"matched": True}
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "v-step"}, verifier_result)
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, Product)  # no reviewer step issued
+        product = action.product
+        self.assertEqual(product["reviewedRanges"], [{"repo": "repo", "from": self.base_sha, "to": self.head_sha, "full": True}])
+        events_text = self.paths.events_jsonl.read_text()
+        self.assertIn('"review_reused"', events_text)
+        assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
+
     def test_all_pass_exits_passed(self):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]))
         self.assertEqual(product["exit"], "passed")

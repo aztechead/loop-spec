@@ -238,7 +238,7 @@ def remove_worktree(repo: Path, dest: Path, *, force: bool = False) -> None:
     run_git(repo, *args)
 
 
-def remove_worktrees(repo: Path, paths_root: Path) -> list[str]:
+def remove_worktrees(repo: Path, paths_root: Path, *, protected: set[Path] = frozenset()) -> tuple[list[str], list[dict]]:
     """Remove every worktree of `repo` under `paths_root` (a run's own feature
     dir) and prune. LF-39: a terminal run that keeps its worktrees leaves its
     feature branch checked out somewhere, so a LATER run's `git worktree add` of
@@ -246,13 +246,22 @@ def remove_worktrees(repo: Path, paths_root: Path) -> list[str]:
     itself (a repo that no longer exists or was never a real checkout, a test
     fixture's own stand-in) or on one worktree it cannot remove -- a terminal
     run's result must still get written either way; this is best-effort tidying,
-    never a precondition for it."""
+    never a precondition for it.
+
+    R5: a run's terminal result does not mean every worker process touching one
+    of its worktrees has also terminated. `protected` names paths the caller
+    already knows are unsafe (an open step's cwd, a quarantined one, both
+    derived from state); this function additionally skips -- by actually
+    looking, since the caller has no way to know without running git itself --
+    any worktree that still has uncommitted changes. Returns (removed, skipped),
+    the second a list of `{"path", "reason"}` for the caller's own cleanupBacklog."""
     paths_root = Path(paths_root).resolve()
     removed: list[str] = []
+    skipped: list[dict] = []
     try:
         listing = run_git(repo, "worktree", "list", "--porcelain")
     except LoopSpecError:
-        return removed
+        return removed, skipped
     for line in listing.splitlines():
         if not line.startswith("worktree "):
             continue
@@ -261,10 +270,20 @@ def remove_worktrees(repo: Path, paths_root: Path) -> list[str]:
             wt_path.relative_to(paths_root)
         except ValueError:
             continue
+        if wt_path in protected:
+            skipped.append({"path": str(wt_path), "reason": "open step or quarantined"})
+            continue
+        try:
+            dirty = not is_clean(wt_path)
+        except LoopSpecError:
+            dirty = False  # can't tell (the worktree may already be half-gone); don't block on it
+        if dirty:
+            skipped.append({"path": str(wt_path), "reason": "uncommitted changes"})
+            continue
         if _git(repo, "worktree", "remove", "--force", str(wt_path)).returncode == 0:
             removed.append(str(wt_path))
     _git(repo, "worktree", "prune")
-    return removed
+    return removed, skipped
 
 
 def clean_checkout(repo: Path, sha: str, dest: Path) -> Path:

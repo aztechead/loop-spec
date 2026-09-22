@@ -13,7 +13,7 @@ from . import VERSION
 from .events import marker_result
 from .ids import now_iso
 from .jsonio import atomic_write_json
-from .postconditions import review_evidence, verified_head
+from .postconditions import bound_ok, review_evidence, verified_head
 from .schema import validate_or_raise
 
 _STATUS = {
@@ -46,6 +46,18 @@ def _accepted_tasks(execute_entry: dict | None) -> list[str]:
     return [t["id"] for t in execute_entry["product"]["tasks"] if t["disposition"] in ("done", "adopted")]
 
 
+def _verification_status(store) -> str:
+    # R7: independent of the run's classification -- VERIFY can pass on a run that
+    # later escalates in ITERATE, and a converged run's VERIFY entry can be stale
+    # relative to what actually got delivered after a rewind.
+    verify_entry = store.state["products"].get("verify")
+    if verify_entry is None:
+        return "not-run"
+    if verify_entry["exit"] == "passed" and bound_ok(verify_entry["product"], store, "verify") is None:
+        return "passed"
+    return "failed"
+
+
 def _outstanding(store) -> list[str]:
     # Same computation as render.py's pr_body "Outstanding" section: every open
     # ledger finding plus every gap ITERATE never closed.
@@ -63,8 +75,10 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
     execute_entry = store.state["products"].get("execute")
     deliver_entry = store.state["products"].get("deliver")
 
-    converged = classification in ("converged", "converged-with-caveats", "no-change")
-    work_delivered = converged and classification != "no-change"
+    # R7: `converged` is true only for a result 6.9 would also have called
+    # converged -- a draft left for human sign-off (converged-with-caveats) is not
+    # that, whatever its own workDelivered value.
+    converged = classification in ("converged", "no-change")
 
     pr_url, prs, delivery = None, [], None
     if deliver_entry is not None:
@@ -74,6 +88,10 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
                 prs.append({"repo": entry["repo"], "number": entry["pr"]["number"], "url": entry["pr"]["url"]})
                 if entry.get("state") == "delivered":
                     pr_url = pr_url or entry["pr"]["url"]
+
+    # workDelivered is a delivery fact, not a label: true whenever any target
+    # actually reached "delivered", including a partial draft on an escalated run.
+    work_delivered = any(entry.get("state") == "delivered" for entry in delivery["targets"]) if delivery else False
 
     warnings = [f.get("cause") or f.get("id", "") for f in store.state["ledger"]["findings"] if f.get("disposition") in ("deferred", "open")]
 
@@ -109,7 +127,7 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         "createdAt": run.get("createdAt"),
         "finishedAt": now_iso(),
         "verification": {
-            "status": "passed" if converged else "not-run",
+            "status": _verification_status(store),
             "command": None,
         },
         "implementationConverged": converged,
@@ -128,7 +146,7 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         "blocked": [],
         "partiallyDelivered": partially_delivered,
         "weakenedAssurance": store.state.get("weakenedAssurance", []) + store.state.get("attestationWaivers", []),
-        "cleanupBacklog": store.state["steps"]["quarantined"],
+        "cleanupBacklog": store.state["steps"]["quarantined"] + store.state.get("cleanupBacklog", []),
         "implementations": store.state["implementations"],
         "policyAnsweredQuestions": store.state["questions"]["policyAnswered"],
         "hostVersions": _host_versions(),

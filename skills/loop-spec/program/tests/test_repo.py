@@ -145,8 +145,9 @@ class WorktreeTests(unittest.TestCase):
             outside = Path(other_dir, "wt")
             add_worktree(Path(tmp), outside, branch="feat/y")
 
-            removed = remove_worktrees(Path(tmp), Path(run_dir))
+            removed, skipped = remove_worktrees(Path(tmp), Path(run_dir))
             self.assertEqual(removed, [str(in_run.resolve())])
+            self.assertEqual(skipped, [])
             self.assertFalse(in_run.exists())
             self.assertTrue(outside.is_dir())
 
@@ -156,7 +157,50 @@ class WorktreeTests(unittest.TestCase):
 
     def test_remove_worktrees_on_a_non_repo_returns_empty_instead_of_raising(self):
         with tempfile.TemporaryDirectory() as not_a_repo, tempfile.TemporaryDirectory() as run_dir:
-            self.assertEqual(remove_worktrees(Path(not_a_repo), Path(run_dir)), [])
+            self.assertEqual(remove_worktrees(Path(not_a_repo), Path(run_dir)), ([], []))
+
+    def test_a_protected_worktree_is_skipped_and_reported_not_removed(self):
+        # R5: an open step's (or a quarantined one's) own worktree must never be
+        # force-removed just because the run reached a terminal result
+        # elsewhere -- the caller passes it in `protected`, derived from state.
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as run_dir:
+            _init_repo(tmp)
+            _commit(tmp, "a.txt", "first")
+            sha = head_sha(Path(tmp))
+            create_feature_branch(Path(tmp), "feat/x", sha)
+            create_feature_branch(Path(tmp), "feat/y", sha)
+
+            protected_wt = Path(run_dir, "worktrees", "task-1")
+            add_worktree(Path(tmp), protected_wt, branch="feat/x")
+            Path(protected_wt, "scratch.txt").write_text("uncommitted\n")
+
+            finished_wt = Path(run_dir, "worktrees", "task-2")
+            add_worktree(Path(tmp), finished_wt, branch="feat/y")
+
+            removed, skipped = remove_worktrees(Path(tmp), Path(run_dir), protected={protected_wt.resolve()})
+            self.assertEqual(removed, [str(finished_wt.resolve())])
+            self.assertFalse(finished_wt.exists())
+            self.assertTrue(protected_wt.is_dir())
+            self.assertEqual(skipped, [{"path": str(protected_wt.resolve()), "reason": "open step or quarantined"}])
+
+    def test_an_uncommitted_worktree_is_skipped_even_without_a_protection_record(self):
+        # R5: uncommitted changes alone are enough to skip a worktree, even
+        # with no open-step/quarantine record naming it -- discovered by
+        # actually looking, since the caller cannot know this from state alone.
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as run_dir:
+            _init_repo(tmp)
+            _commit(tmp, "a.txt", "first")
+            sha = head_sha(Path(tmp))
+            create_feature_branch(Path(tmp), "feat/x", sha)
+
+            dirty_wt = Path(run_dir, "worktrees", "task-1")
+            add_worktree(Path(tmp), dirty_wt, branch="feat/x")
+            Path(dirty_wt, "scratch.txt").write_text("uncommitted\n")
+
+            removed, skipped = remove_worktrees(Path(tmp), Path(run_dir))
+            self.assertEqual(removed, [])
+            self.assertTrue(dirty_wt.is_dir())
+            self.assertEqual(skipped, [{"path": str(dirty_wt.resolve()), "reason": "uncommitted changes"}])
 
 
 class ExcludePathTests(unittest.TestCase):

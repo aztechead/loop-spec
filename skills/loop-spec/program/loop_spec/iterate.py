@@ -8,6 +8,7 @@ keeps accumulating.
 """
 from pathlib import Path
 
+from . import ledger as ledger_module
 from . import repo as repo_module
 from .budget import has_room
 from .contract import resolve_role, validate_request
@@ -95,33 +96,55 @@ def _final_product(store, paths, ctx, iterate_state: dict) -> dict:
     # before the four rules below ever see it, rather than left as a fifth rule of
     # its own. I4 only accepts "escalated" for a refused rewind (unmet, no budget
     # room) or an unclosable gap (unmet, no gap at all) -- routing a met-but-open
-    # verdict to "unmet" with a synthesized gap per open finding keeps it on one of
-    # those two paths instead of needing a justification of its own.
+    # verdict to "unmet" with a synthesized gap keeps it on one of those two paths
+    # instead of needing a justification of its own.
+    #
+    # LF-46: nobody dispositions a non-Critical open finding, so it used to force
+    # "unmet" forever -- EXECUTE has nothing to do with a Minor finding, VERIFY
+    # just re-runs, and the run never converges. The program now dispositions each
+    # one itself: Critical always forces a gap (unchanged); Important forces a
+    # PLAN gap while the rewind budget has room; Minor, and Important once the
+    # budget is out of room, are deferred by policy and counted as a caveat.
     if judge["verdict"] == "met" and open_findings:
-        verdict = "unmet"
-        gaps = judge["gaps"] + [
-            {"target": "execute", "text": f"open finding {f['id']} ({f['severity']}): {f['cause']}"}
-            for f in open_findings
-        ]
-        emit(paths, "iterate_verdict_reconciled",
-             {"judgeVerdict": "met", "openFindings": [f["id"] for f in open_findings]},
-             phase="iterate", attempt_id=ctx["attempt"]["id"])
+        forced_gaps = []
+        acted_on = []
+        for f in open_findings:
+            if f["severity"] == "Critical":
+                forced_gaps.append({"target": "execute", "text": f"open finding {f['id']} ({f['severity']}): {f['cause']}"})
+                acted_on.append(f["id"])
+            elif f["severity"] == "Important" and has_room(store):
+                forced_gaps.append({"target": "plan", "text": f"open finding {f['id']} (Important) at {f['location']}: {f['cause']}"})
+                acted_on.append(f["id"])
+            else:
+                ledger_module.disposition(store, f["id"], "deferred", "left open at ITERATE; deferred by policy")
+                emit(paths, "finding_deferred", {"id": f["id"], "severity": f["severity"]},
+                     phase="iterate", attempt_id=ctx["attempt"]["id"])
+                accepted_non_critical.append(f["id"])
+        verdict = "unmet" if forced_gaps else "met"
+        gaps = judge["gaps"] + forced_gaps
+        if acted_on:
+            emit(paths, "iterate_verdict_reconciled",
+                 {"judgeVerdict": "met", "openFindings": acted_on},
+                 phase="iterate", attempt_id=ctx["attempt"]["id"])
     else:
         verdict, gaps = judge["verdict"], judge["gaps"]
 
     # Order matters: "at least one accepted finding" must be checked before the
-    # plain "no open finding" rule, or a met verdict with only closed findings would
-    # never reach "converged with caveats".
-    if verdict == "met" and not open_findings and accepted_non_critical:
+    # plain "met" rule, or a met verdict with only closed (or now, deferred)
+    # findings would never reach "converged with caveats". A "met" verdict past
+    # the reconciliation above already means no Critical or budget-backed
+    # Important finding is left unresolved, so this no longer re-checks
+    # open_findings itself.
+    if verdict == "met" and accepted_non_critical:
         exit_, caveats = "converged with caveats", accepted_non_critical
-    elif verdict == "met" and not open_findings:
+    elif verdict == "met":
         exit_, caveats = "converged", []
     elif verdict == "unmet" and gaps and has_room(store):
         exit_, caveats = "rewind", []
     else:
-        # The reconciliation above means "met" only ever reaches here with no open
-        # findings left to explain, so this now only ever covers "unmet": no gap at
-        # all, or a gap but no budget room left to rewind into.
+        # The reconciliation above means "met" only ever reaches here with no
+        # unresolved finding left to explain, so this now only ever covers
+        # "unmet": no gap at all, or a gap but no budget room left to rewind into.
         exit_, caveats = "escalated", []
 
     return {

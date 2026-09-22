@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import baseline as baseline_module
 from . import budget as budget_module
 from . import repo as repo_module
 from .contract import load_config
@@ -91,8 +92,8 @@ ROUTES: dict[str, dict[str, dict]] = {
         "escalated": {"requires": ["I1", "I4"], "next": (None, "terminal"), "backward": False},
     },
     "deliver": {
-        "delivered": {"requires": ["D1", "D2", "D3", "D4", "D7"], "next": (None, "terminal"), "backward": False},
-        "partially delivered": {"requires": ["D4", "D5", "D7"], "next": (None, "terminal"), "backward": False},
+        "delivered": {"requires": ["D1", "D2", "D3", "D4", "D7", "D8"], "next": (None, "terminal"), "backward": False},
+        "partially delivered": {"requires": ["D1", "D2", "D4", "D5", "D7", "D8"], "next": (None, "terminal"), "backward": False},
         "delivery blocked": {"requires": ["D4"], "next": ("deliver", "remediation"), "backward": False, "pause": True},
     },
     "debug": {
@@ -160,6 +161,19 @@ def review_evidence(store, task_id: str) -> tuple[str, str | None]:
     step_id = review_steps[-1]
     level = store.state["steps"]["submissions"].get(step_id, {}).get("evidenceLevel", "unattested")
     return level, step_id
+
+
+def resolved_exceptions(store) -> set[str]:
+    """The criteria VERIFY may skip re-running and re-checking, from PLAN's own
+    declared exceptions plus any the operator approved this attempt. Shared by
+    Boundary._exceptions (V4/V5) and controller._run_verify_reruns: R10 needs this
+    resolved and consulted BEFORE a re-run is ever scheduled, not just checked
+    afterward at Boundary time -- an approved non-repeatable command must never
+    execute a second time to find out it was exempt."""
+    plan_product = store.state["products"]["plan"]["product"]
+    declared = {e["criterion"] for e in plan_product.get("evidenceExceptions", [])}
+    operator = {e["criterion"] for e in (store.state.get("verifyExceptionsThisAttempt") or [])}
+    return declared | operator
 
 
 def _check_supersedes(findings: list[dict], ledger: dict, repos: dict[str, Path]) -> str | None:
@@ -290,8 +304,13 @@ class Boundary:
         return f"criteria not covered by any task: {', '.join(missing)}" if missing else None
 
     def _p3(self) -> str | None:
-        entries = (self.store.state.get("baseline") or {}).get("entries", {})
+        # R3: each task's own repo has its own baseline entries -- a task's verify
+        # command is only ever looked up against the repo it actually names.
+        baseline_state = self.store.state.get("baseline")
+        repos = self._repo_entries()
         for task in self.product["tasks"]:
+            repo_dict = baseline_module.repo_baseline_dict(baseline_state, task["repo"], repos)
+            entries = (repo_dict or {}).get("entries", {})
             entry = entries.get(task["verify"])
             if task.get("featureAdded"):
                 if entry is None or entry.get("status") != "no-baseline":
@@ -305,25 +324,34 @@ class Boundary:
         return None
 
     def _p4(self) -> str | None:
-        baseline = self.store.state.get("baseline")
-        if baseline is None:
+        # R3: every repo the plan's own tasks touch needs its own baseline, at
+        # its own base SHA, with its own prepare/environment-health facts -- not
+        # only the workspace's first repo.
+        baseline_state = self.store.state.get("baseline")
+        if baseline_state is None:
             return "no baseline captured"
-        repo_path = self._first_repo_path()
-        repo_info = next(iter(self._repo_entries().values()), None)
-        if repo_path is None or repo_info is None:
-            return "no repo resolved to capture a baseline against"
-        if baseline.get("baseSha") != repo_info.get("baseSha"):
-            return "baseline was captured at a different base SHA"
-        if baseline.get("prepare") != self.product.get("prepare"):
-            return "baseline's prepare command does not match the plan's"
-        prepare_run = baseline.get("prepareRun")
-        if prepare_run is not None and prepare_run.get("exitStatus") != 0:
-            return "baseline's prepare command failed"
+        repos = self._repo_entries()
         health = self.store.state.get("environmentHealth") or {}
-        for entry in baseline.get("entries", {}).values():
-            run = entry.get("run")
-            if run and run.get("errorClass") is not None and entry["command"] not in health:
-                return f"baseline command {entry['command']!r} failed with no recorded environment health"
+        touched_repos = {t["repo"] for t in self.product["tasks"]}
+        for repo_name in touched_repos:
+            repo_info = repos.get(repo_name)
+            if repo_info is None:
+                return f"no repo resolved to capture a baseline against for {repo_name!r}"
+            repo_dict = baseline_module.repo_baseline_dict(baseline_state, repo_name, repos)
+            if repo_dict is None:
+                return f"no baseline captured for repo {repo_name!r}"
+            if repo_dict.get("baseSha") != repo_info.get("baseSha"):
+                return f"baseline for repo {repo_name!r} was captured at a different base SHA"
+            if repo_dict.get("prepare") != self.product.get("prepare"):
+                return f"baseline for repo {repo_name!r}: prepare command does not match the plan's"
+            prepare_run = repo_dict.get("prepareRun")
+            if prepare_run is not None and prepare_run.get("exitStatus") != 0:
+                return f"baseline for repo {repo_name!r}: prepare command failed"
+            repo_health = health.get(repo_name, {})
+            for entry in repo_dict.get("entries", {}).values():
+                run = entry.get("run")
+                if run and run.get("errorClass") is not None and entry["command"] not in repo_health:
+                    return f"repo {repo_name!r} baseline command {entry['command']!r} failed with no recorded environment health"
         return None
 
     def _p5(self) -> str | None:
@@ -592,10 +620,7 @@ class Boundary:
         return None
 
     def _exceptions(self) -> set[str]:
-        plan_product = self.store.state["products"]["plan"]["product"]
-        declared = {e["criterion"] for e in plan_product.get("evidenceExceptions", [])}
-        operator = set(self.store.state.get("verifyExceptionsThisAttempt") or [])
-        return declared | operator
+        return resolved_exceptions(self.store)
 
     def _v4(self) -> str | None:
         exceptions = self._exceptions()
@@ -642,13 +667,13 @@ class Boundary:
         return None
 
     def _v6(self) -> str | None:
-        baseline = self.store.state.get("baseline") or {}
+        entries = baseline_module.all_baseline_entries(self.store.state.get("baseline"))
         runs = self.store.state.get("verifyRuns") or {}
         for verdict in self.product["verdicts"]:
             if verdict["verdict"] != "blocked":
                 continue
             cause = verdict.get("cause") or ""
-            observed = any(e.get("run", {}).get("errorClass") for e in baseline.get("entries", {}).values()) or \
+            observed = any((e.get("run") or {}).get("errorClass") for e in entries) or \
                 any(r.get("errorClass") for r in runs.values())
             if not cause or not observed:
                 return f"criterion {verdict['criterion']}: blocked cause is not observed in a recorded run"
@@ -668,7 +693,13 @@ class Boundary:
                 if not reviewed_range.get("full"):
                     return f"repo {repo}: first VERIFY pass must review the full diff"
             elif reviewed_range["from"] != prior[-1]["to"]:
-                return f"repo {repo}: reviewed range does not continue from the last reviewed SHA"
+                # LF-47: a final pass reviews base..head in full, same as a first
+                # pass -- its own "from" is the repo's base SHA, not the prior
+                # entry's "to", and that is not a failure to continue from it.
+                repo_info = self._repo_entries().get(repo, {})
+                is_full_from_base = bool(reviewed_range.get("full")) and reviewed_range["from"] == repo_info.get("baseSha")
+                if not is_full_from_base:
+                    return f"repo {repo}: reviewed range does not continue from the last reviewed SHA"
         findings = self.product.get("findings", []) + self.store.state["ledger"]["findings"]
         if any(f["severity"] == "Critical" and f["disposition"] == "open" for f in findings):
             return "a Critical finding is open"
@@ -824,6 +855,38 @@ class Boundary:
             check = checks.get(entry["repo"])
             if check is None or not (check.get("git_ok") and check.get("gh_ok")):
                 return f"repo {entry['repo']}: credentials were not checked and ok before the remote write"
+        return None
+
+    def _d8(self) -> str | None:
+        # R6: D1/D2/D3/D7 all silently skip a row that is not "state: delivered"
+        # (D2 further skips a delivered row with no PR) -- a product can report a
+        # touched, committed repo as "skipped" with a null PR and every other D
+        # check falls quiet. This is the one check that looks at what EXECUTE
+        # actually touched and refuses a DELIVER product that hides or duplicates
+        # any of it.
+        plan_repo = {t["id"]: t["repo"] for t in self.store.state["products"]["plan"]["product"]["tasks"]}
+        execute_tasks = self.store.state["products"]["execute"]["product"]["tasks"]
+        required = {
+            plan_repo[t["id"]] for t in execute_tasks
+            if t["disposition"] in ("done", "adopted") and t["commits"] and t["id"] in plan_repo
+        }
+        seen: dict[str, dict] = {}
+        for entry in self.product["repos"]:
+            if entry["repo"] in seen:
+                return f"repo {entry['repo']}: appears more than once in DELIVER's repos"
+            seen[entry["repo"]] = entry
+        missing = required - seen.keys()
+        if missing:
+            return f"repo {sorted(missing)[0]}: touched by EXECUTE but missing from DELIVER's repos"
+        for name, entry in seen.items():
+            if name in required and entry["state"] == "skipped":
+                return f"repo {name}: touched by EXECUTE but reported skipped"
+            if entry["state"] == "delivered" and entry.get("pr") is None:
+                return f"repo {name}: delivered with no PR"
+        if self.exit == "delivered":
+            for name in required:
+                if seen[name]["state"] != "delivered":
+                    return f"repo {name}: touched by EXECUTE but not delivered"
         return None
 
     # -- B: debug (checks implemented now; the entry lands at M4) ------------

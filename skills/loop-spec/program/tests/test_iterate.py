@@ -116,6 +116,41 @@ class IterateTests(unittest.TestCase):
         self.assertEqual(action.product["verdict"], "unmet")
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
+    def test_met_with_minor_open_finding_converges_with_caveats_and_defers_it(self):
+        # LF-46: nobody used to disposition a non-Critical open finding, so it
+        # forced "unmet" forever. The program now defers a Minor one itself.
+        self.store.state["ledger"]["findings"] = [_finding("F-1", "Minor", "open")]
+        action = self._judge_result("met", [])
+        self.assertEqual(action.product["exit"], "converged with caveats")
+        self.assertEqual(action.product["caveats"], ["F-1"])
+        finding = self.store.state["ledger"]["findings"][0]
+        self.assertEqual(finding["disposition"], "deferred")
+        self.assertEqual(finding["reason"], "left open at ITERATE; deferred by policy")
+        assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
+
+    def test_met_with_important_open_finding_and_budget_room_rewinds_to_plan(self):
+        self.store.state["ledger"]["findings"] = [_finding("F-1", "Important", "open")]
+        action = self._judge_result("met", [])
+        self.assertEqual(action.product["exit"], "rewind")
+        self.assertEqual(action.product["verdict"], "unmet")
+        self.assertEqual(action.product["gaps"], [{"target": "plan", "text": "open finding F-1 (Important) at a.py:1: x"}])
+        # A gap that routes it, not a disposition -- Important-with-room is not
+        # deferred; it stays open until PLAN's remediation closes it.
+        self.assertEqual(self.store.state["ledger"]["findings"][0]["disposition"], "open")
+        assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
+
+    def test_met_with_important_open_finding_and_no_budget_room_defers_and_converges_with_caveats(self):
+        self.store.state["ledger"]["findings"] = [_finding("F-1", "Important", "open")]
+        self.store.state["budget"]["spent"] = self.store.state["budget"]["limit"]
+        self.store.save()
+        action = self._judge_result("met", [])
+        self.assertEqual(action.product["exit"], "converged with caveats")
+        self.assertEqual(action.product["caveats"], ["F-1"])
+        finding = self.store.state["ledger"]["findings"][0]
+        self.assertEqual(finding["disposition"], "deferred")
+        self.assertEqual(finding["reason"], "left open at ITERATE; deferred by policy")
+        assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
+
     def test_unmet_with_no_gaps_escalates_and_holds_i4(self):
         action = self._judge_result("unmet", [])
         self.assertEqual(action.product["exit"], "escalated")

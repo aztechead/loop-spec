@@ -455,6 +455,16 @@ class PostconditionsTests(unittest.TestCase):
             "command was not found in the clean checkout)",
         )
 
+    def test_v4_skips_an_operator_approved_exception_without_raising(self):
+        # R10: verifyExceptionsThisAttempt is a list of {"criterion", "reason"}
+        # objects (the same shape V5 already reads); building a set straight
+        # from that list used to raise TypeError: unhashable type: 'dict'.
+        # AC-1's own verifyRuns entry is removed too, since an exempt criterion
+        # must never need one to pass.
+        self.store.state["verifyExceptionsThisAttempt"] = [{"criterion": "AC-1", "reason": "operator approved"}]
+        del self.store.state["verifyRuns"]["AC-1"]
+        self.assertIsNone(self._boundary("verify", self.verify_product, "passed")._v4())
+
     def test_v5(self):
         # No failing branch exists: _v5 only records exceptions, it never rejects.
         boundary = self._boundary("verify", self.verify_product, "passed")
@@ -487,6 +497,23 @@ class PostconditionsTests(unittest.TestCase):
         bad = copy.deepcopy(self.verify_product)
         bad["findings"] = [{"id": "f-1", "location": "a.txt:1", "cause": "c", "severity": "Critical", "disposition": "open", "reason": None, "supersedes": None}]
         self.assertIsNotNone(self._boundary("verify", bad, "passed")._v7())
+
+    def test_v7_accepts_a_final_passs_full_range_after_a_prior_delta(self):
+        # LF-47: a final pass reviews base..head in full, same as a first pass --
+        # its own "from" is the repo's base SHA, not a continuation of whatever
+        # delta the last pass reviewed.
+        self.store.state["ledger"]["reviewedRanges"] = [
+            {"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.sha_a, "full": True},
+        ]
+        full_pass = copy.deepcopy(self.verify_product)
+        full_pass["reviewedRanges"] = [{"repo": "repo", "from": self.base_sha, "to": self.sha_b, "full": True}]
+        self.assertIsNone(self._boundary("verify", full_pass, "passed")._v7())
+
+        # A range restarting from base without declaring itself full is still
+        # rejected: "full" is what excuses a "from" other than the last "to".
+        not_full = copy.deepcopy(full_pass)
+        not_full["reviewedRanges"] = [{"repo": "repo", "from": self.base_sha, "to": self.sha_b, "full": False}]
+        self.assertIsNotNone(self._boundary("verify", not_full, "passed")._v7())
 
     def test_v8(self):
         self.store.state["ledger"]["reviewedRanges"] = [{"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.sha_a, "full": False}]
