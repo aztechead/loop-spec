@@ -49,11 +49,13 @@ def effective_findings(store, product_findings: list[dict], repos: dict) -> list
     return [overlay.get(e["id"], e) for e in store.state["ledger"]["findings"]] + extra
 
 
-def record_range(store, *, repo: str, from_sha: str, to_sha: str, full: bool, sha: str, by_step: str) -> str:
+def record_range(store, *, repo: str, from_sha: str, to_sha: str, full: bool, sha: str, by_step: str | None,
+                 reused_from: str | None = None) -> str:
     range_id = new_id("range")
-    store.state["ledger"]["reviewedRanges"].append({
-        "id": range_id, "repo": repo, "from": from_sha, "to": to_sha, "full": full, "sha": sha, "byStep": by_step,
-    })
+    entry = {"id": range_id, "repo": repo, "from": from_sha, "to": to_sha, "full": full, "sha": sha, "byStep": by_step}
+    if reused_from is not None:
+        entry["reusedFrom"] = reused_from
+    store.state["ledger"]["reviewedRanges"].append(entry)
     store.save()
     return range_id
 

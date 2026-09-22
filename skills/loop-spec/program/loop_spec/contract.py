@@ -33,11 +33,31 @@ class PhaseOutcome:
     stderr: str
 
 
+# LF-60: which config key lets an unattested submission of each judgment role count.
+# One key per role family, so opting reviews in never weakens the critic or judge.
+_UNATTESTED_POLICY = {"code-reviewer": "review", "plan-critic": "judgment", "iterate-judge": "judgment"}
+
+
 def load_config(project_root: Path) -> dict:
     path = Path(project_root) / ".loop-spec" / "config.json"
     if not path.is_file():
         return {}
-    return read_json(path)
+    config = read_json(path)
+    for family in ("review", "judgment"):
+        value = (config.get("evidence") or {}).get(family, {}).get("accept")
+        if value is not None and value != "unattested":
+            raise LoopSpecError(f"{path}: evidence.{family}.accept is {value!r}; the only value is \"unattested\"",
+                                repair=f"set evidence.{family}.accept to \"unattested\" or remove it")
+    return config
+
+
+def unattested_policy(project_root: Path | None, role: str) -> str | None:
+    """The config key that lets `role`'s unattested evidence count, when it is set."""
+    family = _UNATTESTED_POLICY.get(role)
+    if project_root is None or family is None:
+        return None
+    accept = (load_config(project_root).get("evidence") or {}).get(family, {}).get("accept")
+    return f"evidence.{family}.accept" if accept == "unattested" else None
 
 
 def resolve_implementation(project_root: Path, phase: str) -> str:

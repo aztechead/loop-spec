@@ -1137,6 +1137,7 @@ class DebugAndReviseEntryTests(_QuietStdout):
                     "verdict": "pass", "findings": [], "securityDispositions": [],
                 }
                 atomic_write_json(Path(review_step["resultPath"]), review_result)
+                _write_sdk_receipt(_open(paths), paths, review_step)
                 next_ = _submit_and_continue(paths, repo_dir, markers, review_step["stepAttemptId"])
 
                 store = _open(paths)
@@ -1972,13 +1973,15 @@ class CriticFactsAndDefaultTests(unittest.TestCase):
             step_dir = paths.steps_dir / "step-1"
             step_dir.mkdir(parents=True)
             atomic_write_json(step_dir / "step.json", {"resultPath": str(result_path)})
-            store.state["steps"]["submissions"]["step-1"] = {"at": "now"}
+            store.state["steps"]["submissions"]["step-1"] = {"at": "now", "evidenceLevel": "host-attested"}
             store.state["phase"].update(criticStepId="step-1", criticStepRevision="rev-1", criticStepIdentity="id-old")
-            self.assertIsNone(controller._critic_submission(store, paths, "rev-1", "id-new"))
+            self.assertIsNone(controller._critic_submission(store, paths, Path(tmp), "rev-1", "id-new"))
             del store.state["phase"]["criticStepIdentity"]  # an older run's step: no identity recorded
-            self.assertIsNone(controller._critic_submission(store, paths, "rev-1", "id-new"))
+            self.assertIsNone(controller._critic_submission(store, paths, Path(tmp), "rev-1", "id-new"))
             store.state["phase"]["criticStepIdentity"] = "id-new"
-            self.assertEqual(controller._critic_submission(store, paths, "rev-1", "id-new"), {"findings": []})
+            self.assertEqual(controller._critic_submission(store, paths, Path(tmp), "rev-1", "id-new"), {"findings": []})
+            store.state["steps"]["submissions"]["step-1"]["evidenceLevel"] = "unattested"  # LF-60: an old auto-waiver
+            self.assertIsNone(controller._critic_submission(store, paths, Path(tmp), "rev-1", "id-new"))
 
     def test_default_from_recommendations(self):
         reject = lambda fid, reason: {"id": fid, "recommendation": {"action": "reject", "reason": reason}}
@@ -2079,6 +2082,108 @@ class FindDeliveringRunProductsTests(unittest.TestCase):
 
             found = controller._find_delivering_run_products(home, rid, pr_url, project_root)
             self.assertEqual(found, {"slug": "revise-3", "spec": spec, "plan": plan})
+
+
+class RefusedEvidenceTests(unittest.TestCase):
+    """LF-60: a judgment step refused for want of evidence accepts nothing, raises one
+    blocked question, and leaves no owner holding the dead step, across crashes."""
+
+    def _store(self, tmp: Path):
+        paths = FeaturePaths(root=tmp / "feature")
+        store = StateStore.create(
+            paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x", "createdAt": "2026-01-01T00:00:00+00:00"}, "do it",
+        )
+        store.state["phase"]["current"] = "plan"
+        return paths, store
+
+    def _refuse_critic(self, tmp: Path):
+        paths, store = self._store(tmp)
+        record = steps.issue(store, paths, phase="plan", attempt_id="attempt-1", kind="role", role="plan-critic",
+                             cwd=tmp, prompt="judge", schema={"type": "object"}, postconditions=["P7"],
+                             inputs_digest="sha256:" + "a" * 64, result_path=tmp / "critic.json")
+        store.state["phase"].update(criticStepId=record["stepAttemptId"], criticStepRevision="rev-1",
+                                    criticStepIdentity="id-1", pending="critic")
+        store.save()
+        atomic_write_json(tmp / "critic.json", {"findings": [{"id": "F-1", "severity": "Critical"}]})
+        submission = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name=None, host=None, project_root=tmp)
+        self.assertEqual(submission.refused, "no host attestor")
+        return paths, record["stepAttemptId"]
+
+    def test_a_refusal_resets_its_owner_and_asks_one_question_across_resumes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, step_id = self._refuse_critic(Path(tmp))
+            for _ in range(2):  # a crash after submit's one write, then a repeated resume
+                store = StateStore.open(paths)
+                controller._finish_refusals(store, paths)
+            store = StateStore.open(paths)
+            refused = store.state["steps"]["refused"][step_id]
+            self.assertTrue(refused["ownerReset"])
+            self.assertEqual(store.state["questions"]["open"]["questionId"], refused["questionId"])
+            self.assertEqual(store.state["phase"]["blockedQuestionId"], refused["questionId"])
+            self.assertEqual(store.state["questions"]["retired"], [])
+            self.assertIsNone(store.state["phase"]["criticStepId"])
+            self.assertIsNone(store.state.get("critic"))  # no handler consumed the refused findings
+            question = read_json(Path(store.state["questions"]["open"]["path"]))
+            self.assertEqual((question["defaultValue"], question["payload"]["refusedStep"]), (None, step_id))
+
+    def test_a_crash_between_the_owner_reset_and_the_question_asks_exactly_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, step_id = self._refuse_critic(Path(tmp))
+            store = StateStore.open(paths)
+            with patch.object(controller.questions, "ask", side_effect=RuntimeError("crash")):
+                with self.assertRaises(RuntimeError):
+                    controller._finish_refusals(store, paths)
+            store = StateStore.open(paths)
+            self.assertEqual((store.state["steps"]["refused"][step_id]["ownerReset"], store.state["questions"]["open"]),
+                             (True, None))
+            controller._finish_refusals(store, paths)
+            self.assertIsNotNone(StateStore.open(paths).state["questions"]["open"])
+
+    def test_an_unrelated_open_question_defers_the_refusal_question(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, step_id = self._refuse_critic(Path(tmp))
+            store = StateStore.open(paths)
+            other = questions.ask(store, paths, phase="plan", attempt_id="attempt-1", text="other?", kind="choice",
+                                  options=[{"value": "a", "label": "A"}], default_value=None, payload=None)
+            controller._finish_refusals(store, paths)
+            self.assertEqual(store.state["questions"]["open"]["questionId"], other["questionId"])
+            self.assertIsNone(store.state["steps"]["refused"][step_id]["questionId"])
+
+    def test_stop_escalates_naming_the_refused_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, step_id = self._refuse_critic(Path(tmp))
+            store = StateStore.open(paths)
+            controller._finish_refusals(store, paths)
+            questions.answer(store, paths, question_id=store.state["questions"]["open"]["questionId"], value="stop")
+            finished = []
+            def finish(store_, paths_, classification, **kw):
+                finished.append((classification, kw["reason"]))
+                store_.state["result"] = {"status": "escalated"}
+            with patch.object(controller, "_finish_run", side_effect=finish):
+                controller.continue_run(store, paths, project_root=Path(tmp))
+            self.assertEqual(finished[0][0], "escalated")
+            self.assertIn(f"step {step_id} (plan-critic) has no accepted evidence", finished[0][1])
+
+    def test_each_owner_drops_the_refused_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, store = self._store(Path(tmp))
+            store.state["phase"]["adoptedReviewStepId"] = "s-adopt"
+            controller._reset_refused_owner(store, paths, "s-adopt", {"role": "code-reviewer", "phase": "execute", "cwd": "/c"})
+            self.assertIsNone(store.state["phase"]["adoptedReviewStepId"])
+            store.state["iterate"] = {"judge": {"verdict": "met"}, "judgeStep": "s-old"}
+            controller._reset_refused_owner(store, paths, "s-judge", {"role": "iterate-judge", "phase": "iterate", "cwd": "/c"})
+            self.assertEqual((store.state["iterate"]["judge"], store.state["iterate"]["judgeStep"]), (None, None))
+
+    def test_an_accepted_critic_counts_only_with_accepted_step_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, store = self._store(Path(tmp))
+            store.state["critic"] = {"passes": 1, "findings": [], "planRevision": "rev-1", "inputsIdentity": "id-1"}
+            self.assertFalse(controller._accepted_critic_current(store, Path(tmp), "rev-1", "id-1"))  # no stepId
+            store.state["critic"]["stepId"] = "s-1"
+            store.state["steps"]["submissions"]["s-1"] = {"evidenceLevel": "unattested"}
+            self.assertFalse(controller._accepted_critic_current(store, Path(tmp), "rev-1", "id-1"))
+            atomic_write_json(Path(tmp) / ".loop-spec" / "config.json", {"evidence": {"judgment": {"accept": "unattested"}}})
+            self.assertTrue(controller._accepted_critic_current(store, Path(tmp), "rev-1", "id-1"))
 
 
 if __name__ == "__main__":

@@ -28,7 +28,10 @@ implementation:
 
 Only `controller-observed` and `host-attested` are accepted for a review by
 default; `unattested` blocks `integrated` unless `evidence.review.accept:
-"unattested"` is set, listing the task in `weakenedAssurance` (section 5). No
+"unattested"` is set, listing the task in `weakenedAssurance` (section 5). A
+review, PLAN critic, or ITERATE judge step with no accepted evidence after its
+re-dispatches is refused and stops the run at a blocked question, unless
+`evidence.review.accept` or `evidence.judgment.accept` opts that role in. No
 level says the review was thorough — that stays judgment (section 6).
 
 ## What the program re-runs itself

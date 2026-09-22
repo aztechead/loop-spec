@@ -7,7 +7,7 @@ from pathlib import Path
 from loop_spec import repo as repo_module
 from loop_spec.baseline import BaselineEntry, run_command
 from loop_spec.errors import LoopSpecError
-from loop_spec.execute import _final_product, IssueStep, IssueSteps, Pause, Product, dag_waves, on_submit, step
+from loop_spec.execute import _final_product, IssueStep, IssueSteps, Pause, Product, dag_waves, on_step_refused, on_submit, step
 from loop_spec.jsonio import atomic_write_json
 from loop_spec.paths import FeaturePaths
 from loop_spec.postconditions import retry_limit
@@ -127,6 +127,38 @@ class ExecuteLifecycleTests(unittest.TestCase):
     def _pass_review(self, sha, from_sha, to_sha):
         return {"sha": sha, "reviewedRange": {"from": from_sha, "to": to_sha}, "verdict": "pass",
                 "findings": [], "securityDispositions": []}
+
+    def _refuse_first_review(self):
+        action = step(self.store, self.paths, self.ctx)
+        worktree = action.request["cwd"]
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-1"},
+                  self._implementer_result("T-1", worktree, "a.txt"))
+        action = step(self.store, self.paths, self.ctx)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        on_step_refused(self.store, self.paths, "rev-1", {"role": "code-reviewer", "cwd": worktree, "reason": "no transcript"})
+        return worktree, self.store.state["execute"]["tasks"]["T-1"]
+
+    def test_a_refused_review_is_reissued_in_a_fresh_checkout_of_the_same_candidate(self):
+        # LF-60: the quarantined worktree is never reused; one retry is spent.
+        worktree, task = self._refuse_first_review()
+        candidate = _head(worktree)
+        self.assertEqual((task["status"], task["retries"], task["reviewCandidate"], task["review"]),
+                         ("probing", 1, candidate, None))
+        self.assertNotEqual(task["reviewCheckout"], worktree)
+        self.assertEqual(_head(task["reviewCheckout"]), candidate)
+        action = step(self.store, self.paths, self.ctx)
+        self.assertEqual((action.request["role"], action.request["cwd"]), ("code-reviewer", task["reviewCheckout"]))
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-2"},
+                  self._pass_review(candidate, self.base_sha, candidate))
+        self.assertEqual(task["status"], "done")
+        self.assertNotIn("reviewCheckout", task)
+
+    def test_a_branch_moved_after_a_refused_review_blocks_the_task(self):
+        worktree, task = self._refuse_first_review()
+        _commit(worktree, "late.txt", "a write after the refusal")
+        self.assertIsInstance(step(self.store, self.paths, self.ctx), Product)
+        self.assertEqual(task["status"], "blocked")
+        self.assertIn("moved after its review was refused", self.store.state["execute"]["issues"][-1]["text"])
 
     def _implement_and_review(self, task_id, filename):
         """One implement step, then one passing review step, for a task with no

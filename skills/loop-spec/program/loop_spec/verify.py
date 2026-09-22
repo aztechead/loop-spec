@@ -16,6 +16,7 @@ from . import baseline as baseline_module
 from . import ledger as ledger_module
 from . import probes as probes_module
 from . import repo as repo_module
+from . import steps as steps_module
 from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
 from .events import emit
@@ -109,8 +110,8 @@ def _handle_rejection(store, paths, ctx, verify_state: dict) -> None:
     store.save()
 
 
-def _verify_checkout(repo_path: Path, head: str, prepare: str | None, checkouts_dir: Path) -> Path:
-    dest = Path(checkouts_dir) / f"verify-{head[:12]}"
+def _verify_checkout(repo_path: Path, head: str, prepare: str | None, checkouts_dir: Path, suffix: str = "") -> Path:
+    dest = Path(checkouts_dir) / f"verify-{head[:12]}{suffix}"
     if dest.is_dir():
         return dest
     repo_module.clean_checkout(repo_path, head, dest)
@@ -159,6 +160,7 @@ def _init(store, paths, ctx) -> dict:
 
     checkouts, ranges, range_probes = {}, {}, {}
     reused_reviewers: dict[str, dict] = {}
+    reused_links: dict[str, dict] = {}
     pending_reviews: list[str] = []
     for name in touched:
         repo_info = repos[name]
@@ -168,6 +170,14 @@ def _init(store, paths, ctx) -> dict:
         # this repo was never reviewed before) reviews the whole range, same as a
         # genuinely first pass -- never silently skips content nothing has seen.
         prior = next((e for e in reversed(reviewed_ranges) if e.get("repo") == name), None)
+        if prior is not None and not steps_module.evidence_accepted(
+                store, ctx["paths"]["projectRoot"], prior.get("byStep"), "code-reviewer"):
+            # LF-60: a range whose review has no accepted evidence (or no recorded
+            # step at all) is untrusted: never reused and never a delta base; the
+            # repo is reviewed over base..head in full.
+            emit(paths, "review_untrusted", {"repo": name, "rangeId": prior["id"], "byStep": prior.get("byStep")},
+                 phase="verify", attempt_id=ctx["attempt"]["id"])
+            prior = None
         repo_full = final_pass or prior is None
         # LF-47: an empty delta (nothing changed since the last reviewed SHA)
         # needs no reviewer step at all; a final pass reuses the same prior
@@ -177,6 +187,7 @@ def _init(store, paths, ctx) -> dict:
         if reused:
             ranges[name] = {"repo": prior["repo"], "from": prior["from"], "to": prior["to"], "full": prior["full"]}
             reused_reviewers[name] = {"findings": []}
+            reused_links[name] = {"rangeId": prior["id"], "byStep": prior.get("byStep")}
             emit(paths, "review_reused", {"repo": name, "rangeId": prior["id"]}, phase="verify", attempt_id=ctx["attempt"]["id"])
         else:
             range_from = repo_info["baseSha"] if repo_full else prior["to"]
@@ -191,7 +202,7 @@ def _init(store, paths, ctx) -> dict:
         "planRevision": store.state["revisions"]["plan"], "heads": heads,
         "checkouts": checkouts, "ranges": ranges, "rangeProbes": range_probes,
         "phase": "verifying", "verifierStep": None, "reviewerSteps": {}, "verifier": None, "reason": None,
-        "reviewers": reused_reviewers, "reviewerReasons": {}, "pendingReviews": pending_reviews,
+        "reviewers": reused_reviewers, "reviewerReasons": {}, "pendingReviews": pending_reviews, "reused": reused_links,
         "handledRejections": [], "pass": len(reviewed_ranges) + 1,
         "inputs": copy.deepcopy({
             "requirements": store.state["revisions"]["requirements"],
@@ -371,6 +382,38 @@ def _final_product(store, paths, ctx, verify_state: dict) -> dict:
     }
 
 
+def _requeue_review(store, verify_state: dict, repo_name: str, reason: str) -> None:
+    """Send one repo back to review over base..head in full (LF-60): its earlier
+    review is not accepted evidence, so no delta from it can be trusted either."""
+    verify_state["reviewers"].pop(repo_name, None)
+    verify_state["reviewerSteps"].pop(repo_name, None)
+    verify_state.setdefault("reused", {}).pop(repo_name, None)
+    head = verify_state["heads"][repo_name]
+    verify_state["ranges"][repo_name] = {"repo": repo_name, "from": store.state["repos"][repo_name]["baseSha"],
+                                         "to": head, "full": True}
+    verify_state.setdefault("reviewerReasons", {})[repo_name] = reason
+    if repo_name not in verify_state["pendingReviews"]:
+        verify_state["pendingReviews"].append(repo_name)
+    if verify_state["phase"] != "verifying":  # a pending verifier routes to review on submit
+        verify_state["phase"] = "reviewing"
+
+
+def _drop_untrusted_reviews(store, paths, ctx, verify_state: dict) -> None:
+    """LF-60: state rebuilt for the same inputs still holds each repo's review; one
+    whose step has no accepted evidence (accepted by an older auto-waiver, say) is
+    reviewed again rather than consumed. Ledger findings stay until a fully
+    accepted replacement review dispositions them."""
+    project_root = ctx["paths"]["projectRoot"]
+    untrusted = [name for name, step_id in verify_state["reviewerSteps"].items()
+                 if not steps_module.evidence_accepted(store, project_root, step_id, "code-reviewer")]
+    for name in untrusted:
+        emit(paths, "review_untrusted", {"repo": name, "byStep": verify_state["reviewerSteps"][name]},
+             phase="verify", attempt_id=ctx["attempt"]["id"])
+        _requeue_review(store, verify_state, name, "the earlier review of this repo has no accepted evidence")
+    if untrusted:
+        store.save()
+
+
 def step(store, paths, ctx):
     verify_state = store.state.get("verify")
     if verify_state is not None and "reviewers" not in verify_state:
@@ -391,6 +434,7 @@ def step(store, paths, ctx):
         verify_state = _init(store, paths, ctx)
     else:
         _handle_rejection(store, paths, ctx, verify_state)
+        _drop_untrusted_reviews(store, paths, ctx, verify_state)
 
     if verify_state["phase"] == "verifying":
         return IssueStep(_verifier_request(store, paths, ctx, verify_state))
@@ -416,3 +460,22 @@ def on_submit(store, paths, step, result: dict) -> None:
         raise LoopSpecError(f"verify got a submission for an unknown role {step['role']!r}",
                              repair="check the submitted step's role field")
     store.save()
+
+
+def on_step_refused(store, paths, step_id: str, refused: dict) -> None:
+    """LF-60: a VERIFY review refused for want of evidence. The repo is found by the
+    refused step's checkout (reviewerSteps is written only on an accepted submit),
+    goes back to review in full, and gets a fresh checkout; the quarantined one is
+    kept. Mutates state only; the controller saves it with the ownerReset flag."""
+    verify_state = store.state.get("verify")
+    if verify_state is None or refused["role"] != "code-reviewer":
+        return
+    repo_name = next((name for name, path in verify_state["checkouts"].items() if path == refused["cwd"]), None)
+    if repo_name is None:
+        return
+    head = verify_state["heads"][repo_name]
+    plan_product = store.state["products"]["plan"]["product"]
+    verify_state["checkouts"][repo_name] = str(_verify_checkout(
+        Path(store.state["repos"][repo_name]["path"]), head, plan_product.get("prepare"), paths.checkouts_dir,
+        suffix=f"-{step_id}"))
+    _requeue_review(store, verify_state, repo_name, f"review step {step_id} refused: {refused['reason']}")

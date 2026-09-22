@@ -11,6 +11,7 @@ from pathlib import Path
 
 from . import ledger as ledger_module
 from . import repo as repo_module
+from . import steps as steps_module
 from .budget import has_room
 from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
@@ -208,6 +209,16 @@ def step(store, paths, ctx):
              phase="iterate", attempt_id=ctx["attempt"]["id"])
         store.save()
 
+    if iterate_state["judge"] is not None and not steps_module.evidence_accepted(
+            store, ctx["paths"]["projectRoot"], iterate_state["judgeStep"], "iterate-judge"):
+        # LF-60: a cached judgment with no accepted evidence (an older auto-waiver)
+        # is never consumed; a fresh judge is issued.
+        emit(paths, "judgment_untrusted", {"judgeStep": iterate_state["judgeStep"],
+                                           "summary": "cached ITERATE judgment has no accepted evidence; re-judging"},
+             phase="iterate", attempt_id=ctx["attempt"]["id"])
+        iterate_state["judge"] = None
+        iterate_state["judgeStep"] = None
+        store.save()
     if iterate_state["judge"] is None:
         return IssueStep(_judge_request(store, paths, ctx, heads))
     return Product(_final_product(store, paths, ctx, iterate_state))
@@ -219,3 +230,12 @@ def on_submit(store, paths, step, result: dict) -> None:
     iterate_state["judgeStep"] = step["stepAttemptId"]
     iterate_state["priorGaps"] = iterate_state["priorGaps"] + result["gaps"]
     store.save()
+
+
+def on_step_refused(store, paths, step_id: str, refused: dict) -> None:
+    """LF-60: a refused judge step never reached on_submit; drop any judgment so the
+    next step() issues a fresh judge. Mutates state only."""
+    iterate_state = store.state.get("iterate")
+    if iterate_state is not None and refused["role"] == "iterate-judge":
+        iterate_state["judge"] = None
+        iterate_state["judgeStep"] = None

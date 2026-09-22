@@ -14,7 +14,9 @@ from .schema import validate_or_raise
 
 
 def ask(store, paths, *, phase: str, attempt_id: str, text: str, kind: str,
-        options: list[dict], default_value: str | None, payload: dict | None) -> dict:
+        options: list[dict], default_value: str | None, payload: dict | None, save: bool = True) -> dict:
+    # save=False: the caller links the question id into its own state and saves both
+    # at once (LF-60), so a crash never leaves an open question nothing points at.
     open_question = store.state["questions"]["open"]
     if open_question is not None:
         raise LoopSpecError(
@@ -39,7 +41,8 @@ def ask(store, paths, *, phase: str, attempt_id: str, text: str, kind: str,
     }
     emit(paths, "question", {"questionId": question_id, "summary": text}, phase=phase, attempt_id=attempt_id, source="program")
     marker_question(paths, question_id)
-    store.save()
+    if save:
+        store.save()
     return record
 
 

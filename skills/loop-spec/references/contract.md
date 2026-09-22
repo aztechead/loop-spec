@@ -157,8 +157,24 @@ unattested submission for one of these leaves the step open, bumps its
 `attestationAttempts`, emits `step_redispatch`, and `submit` returns a `redispatch`
 name (`<stepId>-<n+1>`) for a fresh worker dispatched under that exact name with
 the same prompt, up to `retry_limit()` (`LOOP_SPEC_STEP_RETRIES`, default 3)
-attempts; past the bound it is accepted `unattested` as usual and an entry lands in
-`attestationWaivers`, surfaced in the result's `weakenedAssurance`.
+attempts. Past the bound, or at once when no host can attest (no
+`CLAUDE_CODE_SESSION_ID`) or an SDK receipt names another digest, the submission is
+accepted only when config opts the role in (`evidence.review.accept` for
+`code-reviewer`, `evidence.judgment.accept` for `plan-critic` and `iterate-judge`);
+an `attestationWaivers` entry then records it, surfaced in the result's
+`weakenedAssurance`. Otherwise it is refused (LF-60): `submit` accepts nothing (no
+`submissions` entry, no `steps/<id>/result.json`; the bytes stay at
+`steps/<id>/refused-result.json` as a diagnostic), retires the step (a worktree or
+checkout it ran in is quarantined), and records `steps.refused[<id>]` in the same
+state write. The controller then drops the owning phase's reference to the step
+(PLAN's critic step, the adopted-range review, an EXECUTE task review, a VERIFY
+repo review, the ITERATE judge) and asks one blocked question per refused step,
+`fix-and-re-enter` or `stop`, with no default: `--answer-policy default` stops
+there. `fix-and-re-enter` issues a fresh step (a re-issued review reads a fresh
+checkout of the same candidate; a task whose branch moved meanwhile is blocked);
+`stop` finishes `escalated`, naming the step. A cached critic, VERIFY review, or
+ITERATE judgment is consumed only while its own step's evidence is accepted or the
+role is opted in; a reviewed range with no accepted step is re-reviewed in full.
 
 ## Questions
 
@@ -210,7 +226,9 @@ Key fields: `status` (`completed`, `paused`, `escalated`, `failed`), `outcome`,
 `weakenedAssurance[]`, `rewinds`, `hostVersions`. Every `weakenedAssurance` entry is
 an object carrying its own `kind`: E6's `evidence.review.accept` entries are
 `{kind, value, task}`; V5's `evidence.exception` entries are `{kind, criterion,
-source: "plan" | "answer", reason}`.
+source: "plan" | "answer", reason}`; an opted-in unattested judgment step is
+`{kind: "evidence.unattested-step", step, role, attempts, policy, source: "config"}`,
+once per step.
 
 ## State home layout
 
@@ -259,7 +277,8 @@ optional:
 | `deliver.base` | overrides the branch DELIVER's PR targets, instead of the repo's detected default branch |
 | `deliver.readiness` | `"checks"` makes D3 wait on `gh pr checks`; default `"none"` skips that wait |
 | `deliver.escalatedPartialDraft` | `true` routes an escalated ITERATE forward into DELIVER for a draft PR instead of terminating |
-| `evidence.review.accept` | `"unattested"` lets an `unattested` review count toward EXECUTE's E6, instead of blocking the task; every task accepted this way is listed in the result's `weakenedAssurance` |
+| `evidence.review.accept` | `"unattested"` lets an `unattested` review count toward EXECUTE's E6, instead of blocking the task, and lets a `code-reviewer` step with no accepted evidence be accepted instead of refused; every task and step accepted this way is listed in the result's `weakenedAssurance` |
+| `evidence.judgment.accept` | `"unattested"` lets a `plan-critic` or `iterate-judge` step with no accepted evidence be accepted instead of refused, listed in `weakenedAssurance`. Either key with any other value is a config error |
 
 Environment variables, precedence over config where both apply:
 

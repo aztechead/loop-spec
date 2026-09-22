@@ -324,6 +324,7 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
     while True:
         if store.state.get("result") is not None:
             return Next(kind="result", path=paths.result_json, slug=slug)
+        _finish_refusals(store, paths)
         open_question = store.state["questions"]["open"]
         if open_question is not None:
             return Next(kind="question", path=Path(open_question["path"]), slug=slug)
@@ -341,9 +342,12 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
                 store.state["phase"]["blockedQuestionId"] = None
                 if answered["value"] in ("stop", "reject with reason"):
                     store.save()
+                    refused = next((f"step {sid} ({r['role']}) has no accepted evidence: {r['reason']}; "
+                                    for sid, r in (store.state["steps"].get("refused") or {}).items()
+                                    if r.get("questionId") == blocked_question_id), "")
                     _finish_run(
                         store, paths, "escalated",
-                        reason=f"{store.state['phase']['current']} paused; operator chose {answered['value']!r}",
+                        reason=f"{refused}{store.state['phase']['current']} paused; operator chose {answered['value']!r}",
                     )
                     continue
                 store.save()  # fix-and-re-enter / spec gap: phase.entry is already "remediation"
@@ -808,7 +812,7 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
     store.save()
 
 
-def _critic_submission(store: StateStore, paths: FeaturePaths, revision: str, identity: str) -> dict | None:
+def _critic_submission(store: StateStore, paths: FeaturePaths, project_root: Path, revision: str, identity: str) -> dict | None:
     step_id = store.state["phase"].get("criticStepId")
     if step_id is None or store.state["phase"].get("criticStepRevision") != revision:
         return None
@@ -816,10 +820,18 @@ def _critic_submission(store: StateStore, paths: FeaturePaths, revision: str, id
     # run's step, judged without baseline facts): issue a fresh one.
     if store.state["phase"].get("criticStepIdentity") != identity:
         return None
-    if store.state["steps"]["submissions"].get(step_id) is None:
-        return None
+    if not steps.evidence_accepted(store, project_root, step_id, "plan-critic"):
+        return None  # LF-60: never submitted, or submitted without accepted evidence
     step = read_json(paths.steps_dir / step_id / "step.json")
     return read_json(Path(step["resultPath"]))
+
+
+def _accepted_critic_current(store: StateStore, project_root: Path, revision: str, identity: str) -> bool:
+    """The accepted critic judged these inputs AND its step's evidence is accepted
+    (LF-60): a legacy critic with no stepId has none, so a fresh step is issued."""
+    critic = store.state.get("critic")
+    return (critic is not None and critic.get("planRevision") == revision and critic.get("inputsIdentity") == identity
+            and steps.evidence_accepted(store, project_root, critic.get("stepId"), "plan-critic"))
 
 
 def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, project_root: Path, attempt_id: str, product: dict) -> str:
@@ -838,10 +850,10 @@ def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, pro
     facts = _critic_baseline_facts(store, product)
     identity = _critic_identity(store, revision, facts)
     critic = store.state.get("critic")
-    if critic is not None and critic.get("planRevision") == revision and critic.get("inputsIdentity") == identity:
+    if _accepted_critic_current(store, project_root, revision, identity):
         return "ready"
 
-    submission = _critic_submission(store, paths, revision, identity)
+    submission = _critic_submission(store, paths, project_root, revision, identity)
     if submission is None:
         store.state["phase"]["provisional"] = product
         store.state["phase"]["pending"] = "critic"
@@ -859,7 +871,8 @@ def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, pro
     passes = (critic or {}).get("passes", 0) + 1
     # A pass is one judgment on one set of inputs; a fresh identity re-issues the
     # critic and that judgment counts toward the two-pass limit like any other.
-    store.state["critic"] = {"passes": passes, "findings": findings, "planRevision": revision, "inputsIdentity": identity}
+    store.state["critic"] = {"passes": passes, "findings": findings, "planRevision": revision, "inputsIdentity": identity,
+                             "stepId": store.state["phase"]["criticStepId"]}
     store.state["phase"]["pending"] = None
     store.state["phase"]["provisional"] = None
     store.save()
@@ -1212,15 +1225,20 @@ def _record_accepted_product(store: StateStore, phase: str, attempt_id: str, pro
         # product carries one reviewed range per touched repo, so each is its own
         # ledger entry; findings are attributed to their own repo's entry rather
         # than stamped with whichever range happened to be recorded last.
-        by_step = (store.state.get("verify") or {}).get("reviewerStep")
+        # LF-60: each range's own review step (a reused range keeps the step that
+        # originally reviewed it), so a later pass can check that evidence.
+        verify_state = store.state.get("verify") or {}
         findings = product.get("findings", [])
         reviewed_ranges = product["reviewedRanges"]
         multi_repo = len(reviewed_ranges) > 1
         for reviewed_range in reviewed_ranges:
             repo = reviewed_range["repo"]
+            reused = (verify_state.get("reused") or {}).get(repo)
+            by_step = reused["byStep"] if reused else (verify_state.get("reviewerSteps") or {}).get(repo)
             range_id = ledger_module.record_range(
                 store, repo=repo, from_sha=reviewed_range["from"], to_sha=reviewed_range["to"],
                 full=reviewed_range["full"], sha=reviewed_range["to"], by_step=by_step,
+                reused_from=reused["rangeId"] if reused else None,
             )
             repo_findings = [f for f in findings if f.get("repo") == repo] if multi_repo else findings
             ledger_module.record_findings(store, repo_findings, sha=reviewed_range["to"], range_id=range_id)
@@ -1366,14 +1384,17 @@ def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: 
     adoption = store.state["adoption"]
     repo_info = store.state["repos"][adoption["repo"]]
     repo_path = Path(repo_info["path"])
+    attempt_id = new_id("attempt")
     checkout = paths.checkouts_dir / f"adopted-{adoption['headSha'][:12]}"
+    if checkout.exists():
+        # LF-60: a refused adopted review's checkout is quarantined, never reused.
+        checkout = paths.checkouts_dir / f"adopted-{adoption['headSha'][:12]}-{attempt_id}"
     repo_module.clean_checkout(repo_path, adoption["headSha"], checkout)
     diff = repo_module.run_git(repo_path, "diff", f"{adoption['baseSha']}..{adoption['headSha']}")
     if len(diff) > _ADOPTED_REVIEW_DIFF_CAP:
         diff = diff[:_ADOPTED_REVIEW_DIFF_CAP] + "\n...(truncated)"
 
     role = load_role("code-reviewer", project_root, contract.resolve_role(project_root, "code-reviewer"))
-    attempt_id = new_id("attempt")
     # LF-27: a model-written result goes under the project's results dir, never
     # the state home (checkout is under state home; a live model's default
     # permission mode refuses writes there).
@@ -1418,3 +1439,48 @@ def route_submission(store: StateStore, paths: FeaturePaths, step: dict, result:
     module = _SUBMIT_ROLE_MODULES.get((step["phase"], step["role"]))
     if module is not None:
         module.on_submit(store, paths, step, result)
+
+
+# ---------------------------------------------------------------------------
+# Refused evidence (LF-60)
+# ---------------------------------------------------------------------------
+
+_REFUSAL_OWNERS = {"execute": execute_module, "verify": verify_module, "iterate": iterate_module}
+
+
+def _reset_refused_owner(store: StateStore, paths: FeaturePaths, step_id: str, refused: dict) -> None:
+    """Drop every reference the owning phase holds to the refused step, so its next
+    step() issues a fresh one. Mutates state only; the caller saves."""
+    phase_state = store.state["phase"]
+    if step_id == phase_state.get("criticStepId"):
+        phase_state.update({"criticStepId": None, "criticStepRevision": None, "criticStepIdentity": None})
+    elif step_id == phase_state.get("adoptedReviewStepId"):
+        phase_state["adoptedReviewStepId"] = None
+        store.state["adoptedReview"] = None
+    elif refused["phase"] in _REFUSAL_OWNERS:
+        _REFUSAL_OWNERS[refused["phase"]].on_step_refused(store, paths, step_id, refused)
+
+
+def _finish_refusals(store: StateStore, paths: FeaturePaths) -> None:
+    """Complete every refusal steps.submit recorded: the owner reset, then one blocked
+    question per refused step. Each is saved together with its own flag, so a crash
+    between them is finished here on the next resume, exactly once. A question waits
+    while another question is open or an answered one is still unprocessed."""
+    for step_id, refused in (store.state["steps"].get("refused") or {}).items():
+        if not refused["ownerReset"]:
+            _reset_refused_owner(store, paths, step_id, refused)
+            refused["ownerReset"] = True
+            store.save()
+        if refused["questionId"] is None:
+            if store.state["questions"]["open"] is not None or store.state["phase"].get("blockedQuestionId") is not None:
+                return
+            attempt_id = read_json(paths.steps_dir / step_id / "step.json")["attempt"]
+            record = questions.ask(
+                store, paths, phase=refused["phase"], attempt_id=attempt_id,
+                text=f"step {step_id} ({refused['role']}) has no accepted evidence: {refused['reason']}",
+                kind="blocked", options=[{"value": "fix-and-re-enter", "label": "Fix and re-enter"}, {"value": "stop", "label": "Stop"}],
+                default_value=None, payload={"phase": refused["phase"], "refusedStep": step_id}, save=False,
+            )
+            refused["questionId"] = record["questionId"]
+            store.state["phase"]["blockedQuestionId"] = record["questionId"]
+            store.save()

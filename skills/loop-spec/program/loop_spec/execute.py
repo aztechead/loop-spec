@@ -441,6 +441,9 @@ def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, tas
 
 def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dict:
     worktree = Path(task_state["worktree"])
+    # LF-60: after a refused review the old worktree is quarantined (its worker may
+    # still run); the re-issued review reads a fresh checkout of the same candidate.
+    review_cwd = Path(task_state.get("reviewCheckout") or worktree)
     project_root = Path(ctx["paths"]["projectRoot"])
     role = load_role("code-reviewer", project_root, resolve_role(project_root, "code-reviewer"))
     execute_state = store.state["execute"]
@@ -477,10 +480,10 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
             "This task closes out an ITERATE gap (closeOut.text). Pass only if that gap is closed at "
             "range.to. An empty range means the implementer found it already true there; check that claim."
         )
-    prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=worktree, phase="execute")
+    prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=review_cwd, phase="execute")
 
     request = {
-        "kind": "role", "role": "code-reviewer", "phase": "execute", "cwd": str(worktree),
+        "kind": "role", "role": "code-reviewer", "phase": "execute", "cwd": str(review_cwd),
         "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
         # LF-16: normally None/None -- a task only ever reaches "probing" fresh,
@@ -603,7 +606,8 @@ def _open_step_id(store, task_state: dict) -> str | None:
     # common case Wait exists for -- has nothing in either list yet. The step
     # actually open for it lives in store.state["steps"]["open"], keyed by the
     # same worktree cwd on_submit itself uses to find a task.
-    return next((s["stepAttemptId"] for s in store.state["steps"]["open"] if s["cwd"] == task_state["worktree"]), None)
+    cwds = {task_state["worktree"], task_state.get("reviewCheckout")}
+    return next((s["stepAttemptId"] for s in store.state["steps"]["open"] if s["cwd"] in cwds), None)
 
 
 def _rejection_task_ids(message: str, execute_state: dict) -> list[str]:
@@ -1106,6 +1110,13 @@ def step(store, paths, ctx):
                     return outcome
                 requests.append(outcome)
             elif task_state["status"] == "probing":
+                if _moved_after_refusal(task_state):
+                    task_state["status"] = "blocked"
+                    execute_state["issues"].append({"task": task_id, "text": (
+                        f"the task branch moved after its review was refused (reviewed candidate "
+                        f"{task_state['reviewCandidate'][:12]}); a worker whose termination is unknown may have written to it")})
+                    store.save()
+                    return step(store, paths, ctx)
                 requests.append(_review_request(store, paths, ctx, _task_spec(store, task_id), task_state))
             elif task_state["status"] in ("implementing", "reviewing"):
                 open_id = _open_step_id(store, task_state)
@@ -1182,6 +1193,8 @@ def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record:
     task_state["reviewSteps"].append(step_record["stepAttemptId"])
     execute_state = store.state["execute"]
     worktree = Path(task_state["worktree"])
+    run_cwd = Path(task_state.pop("reviewCheckout", None) or worktree)
+    task_state.pop("reviewCandidate", None)
     # The reviewed range is base..task from the head this task's own worktree
     # FORKED from, matching what _review_request actually showed the reviewer
     # -- never the feature branch's current head, which a same-wave sibling can
@@ -1214,7 +1227,7 @@ def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record:
         # never stand in for it.
         repo_baseline_dict = baseline_module.repo_baseline_dict(store.state.get("baseline"), plan_task["repo"], store.state["repos"])
         baseline_entry = baseline_module.BaselineEntry.from_dict(repo_baseline_dict["entries"][plan_task["verify"]])
-        candidate = baseline_module.run_command(plan_task["verify"], worktree, task_head)
+        candidate = baseline_module.run_command(plan_task["verify"], run_cwd, task_head)
         comparison = baseline_module.compare_to_baseline(
             baseline_entry, candidate,
             feature_added=bool(plan_task["featureAdded"]), must_flip=bool(plan_task["mustFlip"]),
@@ -1285,7 +1298,8 @@ def on_submit(store, paths, step, result: dict) -> None:
         # exactly where it was and let the next step() call raise the pause
         # instead (never reset the drift out from under the operator here).
         return
-    found = next(((tid, t) for tid, t in execute_state["tasks"].items() if t["worktree"] == step["cwd"]), None)
+    found = next(((tid, t) for tid, t in execute_state["tasks"].items()
+                  if step["cwd"] in (t["worktree"], t.get("reviewCheckout"))), None)
     if found is None:
         raise LoopSpecError(f"execute has no task with worktree {step['cwd']}", repair="check the submitted step's cwd")
     task_id, task_state = found
@@ -1298,3 +1312,32 @@ def on_submit(store, paths, step, result: dict) -> None:
         raise LoopSpecError(f"execute got a submission for an unknown role {step['role']!r}",
                              repair="check the submitted step's role field")
     store.save()
+
+
+def _moved_after_refusal(task_state: dict) -> bool:
+    """LF-60: the task branch is no longer the candidate whose review was refused."""
+    candidate = task_state.get("reviewCandidate")
+    return candidate is not None and repo_module.branch_sha(Path(task_state["worktree"]), task_state["branch"]) != candidate
+
+
+def on_step_refused(store, paths, step_id: str, refused: dict) -> None:
+    """LF-60: a task review refused for want of evidence. The task keeps no reference
+    to the dead step: it returns to review (one retry spent, as E6's rejection does)
+    in a fresh checkout of the candidate that was under review; the quarantined
+    worktree is never reused while its worker's termination is unknown. Mutates
+    state only; the controller saves it with the ownerReset flag."""
+    execute_state = store.state.get("execute") or {}
+    found = next(((tid, t) for tid, t in execute_state.get("tasks", {}).items()
+                  if refused["cwd"] in (t["worktree"], t.get("reviewCheckout"))), None)
+    if found is None or refused["role"] != "code-reviewer":
+        return
+    task_id, task_state = found
+    if task_state["status"] != "reviewing":
+        return
+    candidate = task_state.get("reviewCandidate") or repo_module.branch_sha(Path(task_state["worktree"]), task_state["branch"])
+    checkout = paths.checkouts_dir / f"review-{task_id}-{step_id}"
+    if not checkout.exists():
+        repo_module.clean_checkout(Path(store.state["repos"][task_state["repo"]]["path"]), candidate, checkout)
+    task_state.update({"review": None, "reviewCheckout": str(checkout), "reviewCandidate": candidate})
+    _retry_or_block(execute_state, task_id, task_state, f"review step {step_id} refused: {refused['reason']}",
+                    retry_status="probing")

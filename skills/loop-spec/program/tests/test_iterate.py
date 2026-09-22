@@ -5,7 +5,13 @@ import unittest
 from pathlib import Path
 
 from loop_spec.execute import IssueStep, Product
-from loop_spec.iterate import on_submit, step
+from loop_spec.iterate import on_submit as _on_submit, step
+
+
+def on_submit(store, paths, step_record, result):
+    # steps.submit records an accepted submission before routing it (LF-60 checks it).
+    store.state["steps"]["submissions"][step_record["stepAttemptId"]] = {"evidenceLevel": "host-attested"}
+    _on_submit(store, paths, step_record, result)
 from loop_spec.paths import FeaturePaths
 from loop_spec.state import StateStore
 

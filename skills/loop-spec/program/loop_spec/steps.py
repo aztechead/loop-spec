@@ -10,6 +10,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from .contract import unattested_policy
 from .errors import LoopSpecError
 from .events import emit
 from .ids import digest_bytes, new_id, now_iso
@@ -24,6 +25,7 @@ from .schema import validate, validate_or_raise
 # with nothing behind them but the transcript, so an unattested submission for
 # one of them is refused rather than silently accepted.
 ATTESTATION_REQUIRED_ROLES = frozenset({"plan-critic", "code-reviewer", "iterate-judge"})
+ACCEPTED_LEVELS = frozenset({"host-attested", "controller-observed", "human-attested"})
 
 # LF-59: the whole Agent prompt for a role step. attest.check_file_receipt requires the
 # worker's opening to equal it and the worker's first actions to be Reads covering
@@ -108,14 +110,39 @@ class Submission:
     result_digest: str
     evidence_level: str
     redispatch: str | None = None
+    refused: str | None = None  # LF-60: no accepted evidence and no opt-in; nothing was accepted
 
 
 def _open_step_record(store, step_id: str) -> dict:
     return next((s for s in store.state["steps"]["open"] if s["stepAttemptId"] == step_id), None)
 
 
+def record_waiver(store, step_id: str, role: str, policy: str, attempts: int | None = None) -> None:
+    """LF-60: one weakened-assurance entry per step accepted unattested under `policy`."""
+    waivers = store.state.setdefault("attestationWaivers", [])
+    if not any(w.get("step") == step_id and w.get("policy") == policy for w in waivers):
+        waivers.append({"kind": "evidence.unattested-step", "step": step_id, "role": role,
+                        "attempts": attempts, "policy": policy, "source": "config"})
+
+
+def evidence_accepted(store, project_root, step_id: str | None, role: str) -> bool:
+    """LF-60: whether a judgment recorded from `step_id` may still be consumed: its
+    submission's level is accepted, or config opts `role` in (recorded as a waiver).
+    Missing provenance (no step id, no submission) is never accepted evidence."""
+    submission = store.state["steps"]["submissions"].get(step_id) if step_id else None
+    if submission is None:
+        return False
+    if submission["evidenceLevel"] in ACCEPTED_LEVELS:
+        return True
+    policy = unattested_policy(project_root, role)
+    if policy is None:
+        return False
+    record_waiver(store, step_id, role, policy)
+    return True
+
+
 def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
-           result_file: str | Path | None = None) -> Submission:
+           result_file: str | Path | None = None, project_root: Path | None = None) -> Submission:
     step_path = paths.steps_dir / step_id / "step.json"
     if not step_path.is_file():
         raise LoopSpecError(f"no open step {step_id}", repair="check `loop-spec status` for the open step id")
@@ -169,12 +196,6 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
 
     result_bytes = result_path.read_bytes()
     result_digest = digest_bytes(result_bytes)
-    # LF-27: results_dir (or --result-file) holds the model's own copy; the state
-    # home keeps its own beside step.json as the durable record, from the exact
-    # bytes just read and digested, not a second read of a path that could move.
-    record_path = paths.steps_dir / step_id / "result.json"
-    record_path.parent.mkdir(parents=True, exist_ok=True)
-    record_path.write_bytes(result_bytes)
     # R2: under the state home (never beside result_path, which a worker/result
     # author can write to), and only trusted when this run's own state says an
     # SDK session actually launched it -- a receipt's mere presence, in the old
@@ -205,9 +226,8 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
         evidence_level = "host-attested" if ok else "unattested"
         attestation = {"ok": ok, "reason": reason_text}
 
-    if (step["kind"] == "role" and step["role"] in ATTESTATION_REQUIRED_ROLES
-            and host is not None and evidence_level == "unattested" and not receipt_path.is_file()):
-        reason_text = attestation["reason"] if attestation else "no dispatch name given"
+    if step["kind"] == "role" and step["role"] in ATTESTATION_REQUIRED_ROLES and evidence_level == "unattested":
+        reason_text = attestation["reason"] if attestation else ("no dispatch name given" if host is not None else "no host attestor")
         attempts = open_record.get("attestationAttempts", 0) + 1
         open_record["attestationAttempts"] = attempts
         open_record["reason"] = reason_text
@@ -215,7 +235,9 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
         step["reason"] = reason_text
         atomic_write_json(step_path, step)
         limit = retry_limit()
-        if attempts <= limit:
+        # Only a host can attest a fresh dispatch; an SDK receipt mismatch or no host
+        # at all goes straight to the policy below.
+        if host is not None and not receipt_path.is_file() and attempts <= limit:
             redispatch = f"{step_id}-{attempts + 1}"
             emit(paths, "step_redispatch", {
                 "stepAttemptId": step_id, "attempt": attempts, "dispatch": redispatch, "reason": reason_text,
@@ -224,10 +246,32 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
             store.save()
             return Submission(step=step, result=result, result_digest=result_digest,
                                evidence_level=evidence_level, redispatch=redispatch)
-        store.state.setdefault("attestationWaivers", []).append(
-            {"kind": "evidence.unattested-step", "step": step_id, "role": step["role"], "attempts": attempts}
-        )
+        policy = unattested_policy(project_root, step["role"])
+        if policy is None:
+            # LF-60: missing evidence is never itself a reason to accept. The result is
+            # kept only as a diagnostic; retiring the step and recording the refusal is
+            # one state write, so a resume always finds both or neither.
+            diagnostic = paths.steps_dir / step_id / "refused-result.json"
+            diagnostic.write_bytes(result_bytes)
+            retire(store, paths, step_id=step_id, reason=f"refused: {reason_text}", save=False)
+            store.state["steps"].setdefault("refused", {})[step_id] = {
+                "role": step["role"], "phase": step["phase"], "cwd": step["cwd"], "reason": reason_text,
+                "attempts": attempts, "at": now_iso(), "questionId": None, "ownerReset": False,
+            }
+            emit(paths, "step_refused", {"stepAttemptId": step_id, "reason": reason_text,
+                                         "summary": f"{step_id} ({step['role']}) refused: {reason_text}"},
+                 phase=step["phase"], attempt_id=step["attempt"], source="program")
+            store.save()
+            return Submission(step=step, result=result, result_digest=result_digest,
+                               evidence_level=evidence_level, refused=reason_text)
+        record_waiver(store, step_id, step["role"], policy, attempts)
 
+    # LF-27: results_dir (or --result-file) holds the model's own copy; the state
+    # home keeps its own beside step.json as the durable record, from the exact
+    # bytes just read and digested, not a second read of a path that could move.
+    record_path = paths.steps_dir / step_id / "result.json"
+    record_path.parent.mkdir(parents=True, exist_ok=True)
+    record_path.write_bytes(result_bytes)
     store.state["steps"]["submissions"][step_id] = {
         "digest": result_digest, "evidenceLevel": evidence_level, "attestation": attestation,
         "submittedAt": now_iso(), "dispatch": dispatch_name,
@@ -240,7 +284,7 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
     return Submission(step=step, result=result, result_digest=result_digest, evidence_level=evidence_level)
 
 
-def retire(store, paths, *, step_id: str, reason: str) -> None:
+def retire(store, paths, *, step_id: str, reason: str, save: bool = True) -> None:
     record = _open_step_record(store, step_id)
     if record is None:
         raise LoopSpecError(f"no open step {step_id}", repair="check `loop-spec status` for the open step id")
@@ -249,13 +293,15 @@ def retire(store, paths, *, step_id: str, reason: str) -> None:
     store.state["steps"]["retired"].append(step_id)
 
     cwd = Path(record["cwd"])
-    if cwd.is_relative_to(paths.worktrees_dir):
-        # Roadmap 5: expiry never deletes on its own; the worktree waits here until
-        # the host confirms the dispatch actually ended (confirm_terminated).
+    if cwd.is_relative_to(paths.worktrees_dir) or cwd.is_relative_to(paths.checkouts_dir):
+        # Roadmap 5: expiry never deletes on its own; the worktree (or a review
+        # checkout, LF-60) waits here until the host confirms the dispatch actually
+        # ended (confirm_terminated). A re-issued step gets a fresh path instead.
         store.state["steps"]["quarantined"].append({
             "stepAttemptId": step_id, "path": str(cwd), "reason": reason, "at": now_iso(),
         })
-    store.save()
+    if save:
+        store.save()
 
 
 def confirm_terminated(store, paths, *, step_id: str, repo: Path) -> None:

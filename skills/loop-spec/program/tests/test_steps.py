@@ -302,24 +302,89 @@ class AttestationRequiredRoleTests(StepsTestCase):
             open_record = next(s for s in store.state["steps"]["open"] if s["stepAttemptId"] == record["stepAttemptId"])
             self.assertEqual(open_record["attestationAttempts"], 1)
 
-    def test_past_the_retry_limit_the_step_is_retired_unattested_with_one_waiver(self):
+    def test_past_the_retry_limit_without_an_opt_in_the_step_is_refused(self):
+        # LF-60: exhaustion is never an implicit waiver; nothing is accepted.
         with tempfile.TemporaryDirectory() as tmp:
             store, paths = self._store(tmp)
             record = self._issue(store, paths, role="code-reviewer")
+            step_id = record["stepAttemptId"]
             atomic_write_json(Path(record["resultPath"]), {"ok": True})
             host = _FakeAttestor(False, "opening does not contain the composed prompt")
 
             with patch.dict("os.environ", {"LOOP_SPEC_STEP_RETRIES": "1"}):
-                first = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name="worker-1", host=host)
+                first = steps.submit(store, paths, step_id=step_id, dispatch_name="worker-1", host=host, project_root=Path(tmp))
                 self.assertIsNotNone(first.redispatch)
-                second = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name="worker-1", host=host)
+                second = steps.submit(store, paths, step_id=step_id, dispatch_name="worker-2", host=host, project_root=Path(tmp))
 
-            self.assertIsNone(second.redispatch)
-            self.assertEqual(second.evidence_level, "unattested")
-            self.assertIn(record["stepAttemptId"], store.state["steps"]["retired"])
-            self.assertEqual(store.state.get("attestationWaivers"), [
-                {"kind": "evidence.unattested-step", "step": record["stepAttemptId"], "role": "code-reviewer", "attempts": 2},
-            ])
+            self.assertEqual((second.redispatch, second.refused), (None, "opening does not contain the composed prompt"))
+            reopened = StateStore.open(paths)  # retire and the refusal were saved together
+            self.assertIn(step_id, reopened.state["steps"]["retired"])
+            self.assertNotIn(step_id, reopened.state["steps"]["submissions"])
+            self.assertEqual({k: v for k, v in reopened.state["steps"]["refused"][step_id].items() if k != "at"},
+                             {"role": "code-reviewer", "phase": "execute", "cwd": "/repo", "attempts": 2,
+                              "reason": "opening does not contain the composed prompt", "questionId": None, "ownerReset": False})
+            self.assertIsNone(reopened.state.get("attestationWaivers"))
+            self.assertFalse((paths.steps_dir / step_id / "result.json").exists())
+            self.assertTrue((paths.steps_dir / step_id / "refused-result.json").is_file())
+            with self.assertRaisesRegex(LoopSpecError, "retired"):  # a late result for it
+                steps.submit(store, paths, step_id=step_id, dispatch_name="worker-3", host=host, project_root=Path(tmp))
+
+    def test_each_opt_in_key_covers_its_own_roles_only(self):
+        # LF-60 R1: four configs x three roles, with no host (a refusal path of its own).
+        configs = {"neither": {}, "review": {"review": {"accept": "unattested"}},
+                   "judgment": {"judgment": {"accept": "unattested"}},
+                   "both": {"review": {"accept": "unattested"}, "judgment": {"accept": "unattested"}}}
+        for name, evidence in configs.items():
+            for role in ("code-reviewer", "plan-critic", "iterate-judge"):
+                with self.subTest(config=name, role=role), tempfile.TemporaryDirectory() as tmp:
+                    atomic_write_json(Path(tmp) / ".loop-spec" / "config.json", {"evidence": evidence})
+                    store, paths = self._store(tmp)
+                    record = self._issue(store, paths, role=role)
+                    atomic_write_json(Path(record["resultPath"]), {"ok": True})
+                    submission = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name=None,
+                                              host=None, project_root=Path(tmp))
+                    family = "review" if role == "code-reviewer" else "judgment"
+                    if family in evidence:
+                        self.assertIsNone(submission.refused)
+                        self.assertEqual(store.state["attestationWaivers"], [
+                            {"kind": "evidence.unattested-step", "step": record["stepAttemptId"], "role": role,
+                             "attempts": 1, "policy": f"evidence.{family}.accept", "source": "config"}])
+                    else:
+                        self.assertEqual(submission.refused, "no host attestor")
+                        self.assertNotIn(record["stepAttemptId"], store.state["steps"]["submissions"])
+
+    def test_an_sdk_receipt_for_another_digest_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            store.state["run"]["runner"] = "sdk"
+            record = self._issue(store, paths, role="iterate-judge")
+            atomic_write_json(Path(record["resultPath"]), {"ok": True})
+            atomic_write_json(paths.steps_dir / record["stepAttemptId"] / "receipt.json",
+                              {"stepAttemptId": record["stepAttemptId"], "resultDigest": "sha256:" + "0" * 64})
+            submission = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name=None,
+                                      host=_FakeAttestor(True, "ok"), project_root=Path(tmp))
+            self.assertEqual(submission.refused, "sdk receipt digest mismatch")
+
+    def test_a_cached_judgment_counts_only_with_accepted_evidence_or_an_opt_in(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            store.state["steps"]["submissions"].update({"s-ok": {"evidenceLevel": "host-attested"},
+                                                        "s-weak": {"evidenceLevel": "unattested"}})
+            self.assertTrue(steps.evidence_accepted(store, Path(tmp), "s-ok", "plan-critic"))
+            self.assertFalse(steps.evidence_accepted(store, Path(tmp), "s-weak", "plan-critic"))
+            self.assertFalse(steps.evidence_accepted(store, Path(tmp), None, "plan-critic"))  # no provenance
+            atomic_write_json(Path(tmp) / ".loop-spec" / "config.json", {"evidence": {"judgment": {"accept": "unattested"}}})
+            self.assertTrue(steps.evidence_accepted(store, Path(tmp), "s-weak", "plan-critic"))
+            self.assertTrue(steps.evidence_accepted(store, Path(tmp), "s-weak", "plan-critic"))
+            self.assertFalse(steps.evidence_accepted(store, Path(tmp), "s-weak", "code-reviewer"))
+            self.assertEqual([w["step"] for w in store.state["attestationWaivers"]], ["s-weak"])  # once, on replay too
+
+    def test_an_opt_in_other_than_unattested_is_a_config_error(self):
+        from loop_spec.contract import load_config
+        with tempfile.TemporaryDirectory() as tmp:
+            atomic_write_json(Path(tmp) / ".loop-spec" / "config.json", {"evidence": {"judgment": {"accept": "yes"}}})
+            with self.assertRaisesRegex(LoopSpecError, "evidence.judgment.accept"):
+                load_config(Path(tmp))
 
     def test_implementer_role_is_accepted_unattested_on_the_first_submit(self):
         # implementer is not in ATTESTATION_REQUIRED_ROLES: its own evidence is the

@@ -212,7 +212,13 @@ def main(argv: list[str] | None = None) -> int:
             store, paths = _open_store(args)
             host = attest.ClaudeCodeAttestor() if os.environ.get("CLAUDE_CODE_SESSION_ID") else None
             submission = steps.submit(store, paths, step_id=args.step, dispatch_name=args.dispatch, host=host,
-                                       result_file=args.result_file)
+                                       result_file=args.result_file, project_root=Path(args.project_root))
+            if submission.refused is not None:
+                # LF-60: nothing was accepted; continue_run raises the blocked question.
+                print(f"[{submission.step['phase'].upper()}] step {args.step} refused: {submission.refused}; "
+                      "nothing was accepted from it", file=sys.stderr)
+                _print_next(paths, controller.continue_run(store, paths, project_root=Path(args.project_root)))
+                return 0
             if submission.redispatch is not None:
                 step_path = paths.steps_dir / submission.step["stepAttemptId"] / "step.json"
                 tag = submission.step["phase"].upper()

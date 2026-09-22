@@ -7,7 +7,13 @@ from pathlib import Path
 from loop_spec.execute import IssueStep, Product
 from loop_spec.paths import FeaturePaths
 from loop_spec.state import StateStore
-from loop_spec.verify import on_submit, step
+from loop_spec.verify import on_step_refused, on_submit as _on_submit, step
+
+
+def on_submit(store, paths, step_record, result):
+    # steps.submit records an accepted submission before routing it (LF-60 checks it).
+    store.state["steps"]["submissions"][step_record["stepAttemptId"]] = {"evidenceLevel": "host-attested"}
+    _on_submit(store, paths, step_record, result)
 
 from tests._product_checks import assert_product_holds
 
@@ -120,8 +126,9 @@ class VerifyTests(unittest.TestCase):
 
     def test_delta_pass_reviews_from_the_last_reviewed_to(self):
         self.store.state["ledger"]["reviewedRanges"] = [
-            {"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.base_sha, "full": True},
+            {"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.base_sha, "full": True, "byStep": "r-prior"},
         ]
+        self.store.state["steps"]["submissions"]["r-prior"] = {"evidenceLevel": "host-attested"}
         self.store.save()
         product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]))
         range_ = product["reviewedRanges"][0]
@@ -139,14 +146,60 @@ class VerifyTests(unittest.TestCase):
         self.assertTrue(product["reviewedRanges"][0]["full"])
         assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
 
+    def test_an_untrusted_range_at_the_same_head_is_reviewed_again_in_full(self):
+        # LF-60: no byStep (a pre-LF-60 range) or an unattested one is never reused
+        # and never a delta base: base..head in full, not an empty delta.
+        for by_step, level in ((None, None), ("r-old", "unattested")):
+            with self.subTest(by_step=by_step):
+                self.store.state.pop("verify", None)
+                self.store.state["ledger"]["reviewedRanges"] = [
+                    {"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.head_sha, "full": True, "byStep": by_step},
+                ]
+                if level:
+                    self.store.state["steps"]["submissions"][by_step] = {"evidenceLevel": level}
+                self.store.save()
+                product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]))
+                self.assertEqual(product["reviewedRanges"][0],
+                                 {"repo": "repo", "from": self.base_sha, "to": self.head_sha, "full": True})
+
+    def test_a_refused_review_is_found_by_its_checkout_and_reissued_in_a_fresh_one(self):
+        # LF-60: reviewerSteps is written only on an accepted submit, so the refused
+        # step's checkout names its repo; the quarantined checkout is not reused.
+        verifier_result = _verifier_result([_verdict("AC-1", "pass")])
+        verifier_result["verdicts"][0]["evidence"]["sha"] = self.head_sha
+        self.store.state.setdefault("verifyRuns", {})["AC-1"] = {"matched": True}
+        action = step(self.store, self.paths, self.ctx)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "v-step"}, verifier_result)
+        refused_cwd = step(self.store, self.paths, self.ctx).request["cwd"]
+        on_step_refused(self.store, self.paths, "r-x", {"role": "code-reviewer", "cwd": refused_cwd, "reason": "no transcript"})
+        verify_state = self.store.state["verify"]
+        self.assertNotEqual(verify_state["checkouts"]["repo"], refused_cwd)
+        self.assertTrue(Path(verify_state["checkouts"]["repo"]).is_dir())
+        action = step(self.store, self.paths, self.ctx)
+        self.assertEqual((action.request["role"], action.request["cwd"]), ("code-reviewer", verify_state["checkouts"]["repo"]))
+        self.assertEqual((verify_state["pendingReviews"], verify_state["ranges"]["repo"]["full"]), (["repo"], True))
+
+    def test_same_inputs_state_re_reviews_a_repo_whose_review_is_not_accepted(self):
+        # LF-60 audit 3.4: VERIFY state kept for the same inputs, phase done, with a
+        # reviewer accepted under the old auto-waiver: the repo goes back to review.
+        product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]))
+        self.store.state["steps"]["submissions"]["r-step-repo"] = {"evidenceLevel": "unattested"}
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        verify_state = self.store.state["verify"]
+        self.assertEqual((verify_state["phase"], verify_state["pendingReviews"]), ("reviewing", ["repo"]))
+        self.assertTrue(verify_state["ranges"]["repo"]["full"])
+
     def test_final_pass_on_an_unchanged_head_reuses_the_prior_range_with_no_reviewer_step(self):
         # LF-47: ITERATE rewound to EXECUTE with nothing to do, then VERIFY
         # re-entered as a final pass on the SAME head an earlier pass already
         # reviewed in full -- the verifier still runs, but no reviewer step is
         # issued a second time for a range nothing has changed since.
         self.store.state["ledger"]["reviewedRanges"] = [
-            {"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.head_sha, "full": True},
+            {"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.head_sha, "full": True, "byStep": "r-prior"},
         ]
+        self.store.state["steps"]["submissions"]["r-prior"] = {"evidenceLevel": "host-attested"}
         self.store.save()
         self.ctx["entry"]["payload"] = {"finalPass": True}
 
