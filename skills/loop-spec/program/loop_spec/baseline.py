@@ -10,6 +10,7 @@ for `postconditions.py` to check.
 """
 import hashlib
 import re
+import pathlib
 import shlex
 import subprocess
 import time
@@ -106,19 +107,24 @@ def detect_runner(command: str) -> str | None:
         return None
     if not tokens:
         return None
-    first = tokens[0]
-    if first == "pytest":
-        return "pytest"
-    if first in ("python", "python3") and tokens[1:3] == ["-m", "pytest"]:
-        return "pytest"
-    if first == "vitest":
-        return "vitest"
-    if first == "jest":
-        return "jest"
-    if first == "go" and tokens[1:2] == ["test"]:
-        return "go"
-    if first == "cargo" and tokens[1:2] == ["test"]:
-        return "cargo"
+    # Runners are usually invoked through a path (a venv's python, node_modules/.bin/jest,
+    # npx), so match on the basename and let `python -m pytest` appear anywhere after
+    # `npx`/`uv run`-style prefixes: a baseline that misses its parser falls back to
+    # fingerprints and loses test identities (live finding LF-02).
+    names = [pathlib.PurePath(t).name for t in tokens]
+    for i, name in enumerate(names):
+        if name == "pytest":
+            return "pytest"
+        if re.fullmatch(r"python[0-9.]*", name) and names[i + 1:i + 3] == ["-m", "pytest"]:
+            return "pytest"
+        if name == "vitest":
+            return "vitest"
+        if name == "jest":
+            return "jest"
+        if name == "go" and names[i + 1:i + 2] == ["test"]:
+            return "go"
+        if name == "cargo" and names[i + 1:i + 2] == ["test"]:
+            return "cargo"
     return None
 
 

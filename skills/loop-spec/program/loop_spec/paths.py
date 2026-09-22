@@ -26,19 +26,20 @@ def state_home(explicit: str | None = None) -> Path:
 
 def repo_id(project_root: Path) -> str:
     project_root = Path(project_root)
+    # Identity comes from the repository's first root commit, never from a remote URL:
+    # a live run that added `origin` mid-cycle changed its state key and lost its run
+    # (finding LF-04). A root commit is stable across remotes, renames, and clones. A
+    # directory without a git history (a workspace root, an empty dir before
+    # init-in-place) keys on its realpath.
     try:
         result = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
+            ["git", "rev-list", "--max-parents=0", "HEAD"],
             cwd=project_root, capture_output=True, text=True, check=True,
         )
-        origin = result.stdout.strip()
+        roots = result.stdout.split()
     except (subprocess.CalledProcessError, FileNotFoundError):
-        origin = ""  # no origin, or no git at all: fall back to the realpath below
-    if origin:
-        canonical = origin[:-len(".git")] if origin.endswith(".git") else origin
-        canonical = canonical.rstrip("/")
-    else:
-        canonical = str(project_root.resolve())
+        roots = []
+    canonical = sorted(roots)[0] if roots else str(project_root.resolve())
     full = digest_bytes(canonical.encode())  # "sha256:<64 hex>"
     return full.split(":", 1)[1][:16]
 

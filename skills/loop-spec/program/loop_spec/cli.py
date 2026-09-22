@@ -27,7 +27,7 @@ def _add_common(parser: argparse.ArgumentParser, require_root: bool = True) -> N
     parser.add_argument("--project-root", required=require_root)
     parser.add_argument("--state-home")
     parser.add_argument("--slug")
-    parser.add_argument("--answer-policy", default="default")
+    parser.add_argument("--answer-policy", choices=["default"], default=None)
 
 
 def _build_parser() -> argparse.ArgumentParser:

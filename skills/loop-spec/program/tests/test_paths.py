@@ -38,13 +38,20 @@ class RepoIdTests(unittest.TestCase):
             self.assertRegex(value, r"^[0-9a-f]{16}$")
             self.assertEqual(value, repo_id(Path(tmp)))
 
-    def test_origin_changes_the_id_from_the_no_origin_case(self):
+    def test_adding_origin_keeps_the_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             _git(tmp, "init", "-q")
-            without_origin = repo_id(Path(tmp))
+            _git(tmp, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "root")
+            before = repo_id(Path(tmp))
             _git(tmp, "remote", "add", "origin", "https://example.com/org/repo.git")
-            with_origin = repo_id(Path(tmp))
-            self.assertNotEqual(without_origin, with_origin)
+            self.assertEqual(before, repo_id(Path(tmp)))
+
+    def test_two_histories_differ(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            for tmp, msg in ((a, "one"), (b, "two")):
+                _git(tmp, "init", "-q")
+                _git(tmp, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", msg)
+            self.assertNotEqual(repo_id(Path(a)), repo_id(Path(b)))
 
 
 class SlugFromRequestTests(unittest.TestCase):
