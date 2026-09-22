@@ -199,6 +199,7 @@ optional:
 | `deliver.readiness` | `"checks"` makes D3 wait on `gh pr checks`; default `"none"` skips that wait |
 | `deliver.escalatedPartialDraft` | `true` routes an escalated ITERATE forward into DELIVER for a draft PR instead of terminating |
 | `commitArtifacts` | `true` renders `spec.md`/`plan.md`/`verification.md` under `docs/loop-spec/<slug>/` and commits them |
+| `evidence.review.accept` | `"unattested"` lets an `unattested` review count toward EXECUTE's E6, instead of blocking the task; every task accepted this way is listed in the result's `weakenedAssurance` |
 
 Environment variables, precedence over config where both apply:
 

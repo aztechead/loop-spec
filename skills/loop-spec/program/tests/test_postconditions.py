@@ -254,6 +254,19 @@ class PostconditionsTests(unittest.TestCase):
         self.store.state["implementations"]["phases"]["execute"] = "default"
         self.assertIsNotNone(self._boundary("execute", self.execute_product, "integrated")._e6())
 
+        # evidence.review.accept: "unattested" (roadmap 5) accepts what the default
+        # branch above just refused, and records it as weakened assurance per task.
+        config_dir = self.repo_dir / ".loop-spec"
+        config_dir.mkdir()
+        atomic_write_json(config_dir / "config.json", {"evidence": {"review": {"accept": "unattested"}}})
+        boundary = self._boundary("execute", self.execute_product, "integrated")
+        self.assertIsNone(boundary._e6())
+        accepted_tasks = [t["id"] for t in self.execute_product["tasks"] if t["disposition"] in ("done", "adopted")]
+        self.assertEqual(
+            boundary.weakened_assurance,
+            [{"kind": "evidence.review.accept", "value": "unattested", "task": t} for t in accepted_tasks],
+        )
+
     def test_e7(self):
         self.assertIsNone(self._boundary("execute", self.execute_product, "integrated")._e7())
         self.store.state["executeRuns"]["T-1"]["comparison"]["verdict"] = "regression"

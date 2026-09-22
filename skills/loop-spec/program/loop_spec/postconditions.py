@@ -441,7 +441,7 @@ class Boundary:
             if level in ACCEPTED_REVIEW_LEVELS or (level == "human-attested" and is_external):
                 continue
             if level == "unattested" and accept_unattested:
-                self.weakened_assurance.append(task["id"])
+                self.weakened_assurance.append({"kind": "evidence.review.accept", "value": "unattested", "task": task["id"]})
                 continue
             self.unreviewed.append(task["id"])
         if self.unreviewed:

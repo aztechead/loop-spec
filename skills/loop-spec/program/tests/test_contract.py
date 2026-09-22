@@ -142,8 +142,12 @@ class InvokeTests(unittest.TestCase):
     def test_invoke_bound_skill_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             paths = FeaturePaths(root=Path(tmp) / "feature")
-            with self.assertRaises(LoopSpecError):
+            with self.assertRaises(LoopSpecError) as ctx:
                 contract.invoke(paths, phase="spec", attempt_id="attempt-1", implementation="a-bound-skill", program_launcher=Path("/bin/true"))
+            # roadmap 5: a bound implementation is a ROLE binding, not a third phase
+            # kind -- the message points at "roles", not at some future M5 support.
+            self.assertIn("must be default or external", ctx.exception.message)
+            self.assertIn("roles.<role>", ctx.exception.message)
 
 
 class ValidateRequestTests(unittest.TestCase):

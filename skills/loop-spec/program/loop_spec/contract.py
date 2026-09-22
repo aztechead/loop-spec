@@ -78,12 +78,6 @@ def run_phase(phase: str, context_path: Path, product_path: Path) -> int:
 def _accept_product(phase: str, product_path: Path) -> PhaseOutcome:
     if not product_path.is_file():
         return PhaseOutcome(code=0, kind="error", path=None, stderr=f"exit 0 but no product at {product_path}")
-    if phase == "revise":
-        # "revise" is not one of the seven ROUTES phases and has no schemas/revise.json
-        # of its own (revise.py's docstring): steps.submit already validated this
-        # result against the reviser role's own schema when its lead step was
-        # submitted, so there is nothing further to check against here.
-        return PhaseOutcome(code=0, kind="product", path=product_path, stderr="")
     errors = validate(read_json(product_path), load_schema(phase))
     if errors:
         return PhaseOutcome(code=0, kind="error", path=None, stderr="; ".join(errors))
@@ -172,7 +166,14 @@ def invoke(paths, *, phase: str, attempt_id: str, implementation: str, program_l
     elif implementation == "external":
         code = run_phase(phase, attempt_dir / "context.json", product_path)
     else:
-        raise LoopSpecError("bound implementations land at M5", repair='bind "external" in .loop-spec/config.json until M5')
+        # roadmap 5: a bound implementation is the default with its roles resolved to
+        # other skills, not a third phase kind -- resolve_implementation only ever
+        # reads "phases".<phase> from config, so any other value there is a mistake,
+        # not a real binding, and the fix is in "roles", not "phases".
+        raise LoopSpecError(
+            f"phase {phase} implementation must be default or external; bind a method with roles.<role>",
+            repair='set "phases".<phase> to "default" or "external" in .loop-spec/config.json, then bind a method under "roles"',
+        )
 
     if code == 0:
         return _accept_product(phase, product_path)
