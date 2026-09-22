@@ -105,7 +105,24 @@ def run(store, paths, ctx):
         execute_repos = (store.state.get("execute") or {}).get("repos") or {}
         execute_repo = execute_repos.get(repo_name)
         worktree = Path(execute_repo["worktree"]) if execute_repo else Path(repo_info["path"])
-        push = repo_module._git(worktree, "push", "-u", "origin", repo_info["featureBranch"])
+
+        # R8: a commit added to the feature branch after VERIFY passed must never
+        # get published just because DELIVER pushes whatever the branch currently
+        # points at. Caught here, before any push, so a moved branch is this
+        # repo's own row instead of an out-of-band commit only D1 notices after
+        # it is already live.
+        verified_sha = touched[repo_name]
+        local_sha = repo_module.branch_sha(worktree, repo_info["featureBranch"])
+        if local_sha != verified_sha:
+            reason = (f"feature branch moved after VERIFY: local {(local_sha or 'missing')[:12]} "
+                      f"vs verified {verified_sha[:12]}")
+            repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"})
+            continue
+
+        # Push the immutable, verified SHA to the ref by value, not the mutable
+        # branch name -- nothing else in this program reads the upstream tracking
+        # config `-u` used to set, so dropping it costs no other caller anything.
+        push = repo_module._git(worktree, "push", "origin", f"{verified_sha}:refs/heads/{repo_info['featureBranch']}")
         if push.returncode != 0:
             reason = (f"push rejected: {push.stderr.strip()}; repair: fetch, resolve the "
                       "out-of-band change, and resume (never force)")

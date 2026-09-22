@@ -186,6 +186,31 @@ class DeliverTests(unittest.TestCase):
         self.assertEqual(action.product["repos"][0]["state"], "failed")
         self.assertIn("push rejected", action.product["repos"][0]["caveats"][0])
 
+    def test_a_locally_moved_feature_branch_is_not_pushed_and_the_row_is_failed(self):
+        # R8: a commit landed on the feature branch after VERIFY's accepted head
+        # must never get pushed just because it is what the branch currently
+        # points at -- caught before the push, not by D1 noticing afterward.
+        _git(self.repo, "checkout", "-q", "feature")
+        _commit(self.repo, "c.py", "sneaked in after verify")
+        _git(self.repo, "checkout", "-q", "main")
+
+        with self._run_gh_reconcile():
+            action = deliver.run(self.store, self.paths, self.ctx)
+
+        entry = action.product["repos"][0]
+        self.assertEqual(entry["state"], "failed")
+        self.assertIsNone(entry["pr"])
+        self.assertIn("feature branch moved after VERIFY", entry["caveats"][0])
+        self.assertEqual(action.product["exit"], "partially delivered")
+        self.assertIsNone(repo_module.branch_sha(self.remote, "feature"))  # never pushed at all
+
+    def test_normal_delivery_pushes_exactly_the_verified_sha_by_value(self):
+        with self._run_gh_reconcile():
+            action = deliver.run(self.store, self.paths, self.ctx)
+        self.assertEqual(action.product["repos"][0]["state"], "delivered")
+        self.assertEqual(action.product["repos"][0]["deliveredSha"], self.head_sha)
+        self.assertEqual(_head(self.remote, "feature"), self.head_sha)
+
     def test_draft_flag_set_when_iterate_converged_with_caveats(self):
         self.store.state["products"]["iterate"]["exit"] = "converged with caveats"
         self.store.save()
