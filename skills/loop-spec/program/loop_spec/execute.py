@@ -516,10 +516,17 @@ def _final_product(store, ctx, execute_state: dict) -> dict:
             # task still exits `integrated`, not `no change`.
             any_done = True
             # LF-42: the adopted-range review is this task's review; E5 reads it
-            # off the task like any other.
+            # off the task like any other. Projected to the product's review shape
+            # (the reviewer's result also carries `sha`, which the product schema
+            # refuses -- LF-43).
+            adopted = store.state.get("adoptedReview")
             tasks_out.append({
                 "id": task_id, "disposition": "adopted", "evidence": None,
-                "commits": task_state["commits"], "review": store.state.get("adoptedReview"),
+                "commits": task_state["commits"],
+                "review": None if adopted is None else {
+                    "reviewedRange": adopted["reviewedRange"], "verdict": adopted["verdict"],
+                    "findings": adopted["findings"], "securityDispositions": adopted["securityDispositions"],
+                },
             })
 
     if any(t["status"] == "planGap" for t in execute_state["tasks"].values()):

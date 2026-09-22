@@ -7,6 +7,7 @@ from pathlib import Path
 from loop_spec import repo as repo_module
 from loop_spec.baseline import BaselineEntry, run_command
 from loop_spec.errors import LoopSpecError
+from loop_spec.schema import load_schema, validate
 from loop_spec.execute import _final_product, IssueStep, Pause, Product, dag_waves, on_submit, step
 from loop_spec.paths import FeaturePaths
 from loop_spec.postconditions import retry_limit
@@ -577,7 +578,10 @@ class AdoptedTaskTests(unittest.TestCase):
         self.store.state["adoptedReview"] = {"verdict": "pass", "reviewedRange": {"from": self.base_sha, "to": self.pr_head_sha},
                                              "findings": [], "securityDispositions": [], "sha": self.pr_head_sha}
         product = _final_product(self.store, self.ctx, self.store.state["execute"])
-        self.assertEqual({t["id"]: t["review"] for t in product["tasks"]}["T-1"], self.store.state["adoptedReview"])
+        t1_review = {t["id"]: t["review"] for t in product["tasks"]}["T-1"]
+        self.assertEqual(t1_review["reviewedRange"], {"from": self.base_sha, "to": self.pr_head_sha})
+        self.assertNotIn("sha", t1_review)  # LF-43: the product schema refuses the reviewer's sha field
+        self.assertEqual(validate(product, load_schema("execute")), [])
 
     def test_a_changed_prior_task_is_not_adopted(self):
         # The delivering run's T-1 ran a different verify command -- the reviser
