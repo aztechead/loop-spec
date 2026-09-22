@@ -51,7 +51,10 @@ the machine-readable `LOOP_SPEC_PHASE_END` and `LOOP_SPEC_HANDOFF` lines.
    rewinds, state, artifacts, markers, delivery. The model never calls a helper to do
    any of these. If the model can skip a step, the step is in the wrong place.
 2. **The model does judgment only**, through a small number of roles, each with a
-   prompt, an input, and an output schema.
+   prompt, an input, and an output schema. The prompt says what the output must
+   contain, never how to produce it. The output arrives through `submit` as JSON the
+   program validates, and every markdown artifact is rendered from that JSON. The
+   model never authors an artifact file, so its shape is guaranteed, not linted.
 3. **One code path for every host.** Claude Code and the Agent SDK are the same
    runtime and the first-class targets. The only difference between them is who
    answers a question: a person or a policy. Other agents get the same skill and
