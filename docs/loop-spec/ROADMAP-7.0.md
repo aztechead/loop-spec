@@ -627,9 +627,10 @@ inside Bash tool calls.
   product files, and the rendered artifacts.
 - Nothing is committed to the consumer repo by default. The PR body carries the
   rendered summary: spec goal and boundaries, the acceptance table with evidence, the
-  finding ledger, outstanding findings, and the rewind count. A consumer that wants
-  the rendered SPEC and VERIFICATION docs in-tree sets `commitArtifacts` in the repo
-  config, and they land in one commit the review package excludes by pathspec.
+  finding ledger, outstanding findings, and the rewind count. The rendered SPEC and
+  VERIFICATION docs are never committed to the consumer's repository: a docs commit
+  after VERIFY would deliver a head VERIFY never saw (the `commitArtifacts` option
+  that did this was removed on the 7.0 audit's finding R8).
 - Resumption across clones is a seam: `loop-spec state push|pull` onto
   `refs/loop-spec/state/<slug>` for a harness whose clone does not outlive the run. The
   report's harness keeps its clone for the whole job, so this is not built until a

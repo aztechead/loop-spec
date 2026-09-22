@@ -83,9 +83,9 @@ a gap. DELIVER pushes the verified SHA and opens or updates one PR.
 Run state is durable outside your repository, under `~/.loop-spec/` by default
 (`LOOP_SPEC_HOME` to move it, or the plugin's own data directory on Claude Code) —
 a killed or restarted session resumes from there instead of starting over.
-Nothing is committed to your repository unless `commitArtifacts` is configured
-(see below); the SPEC/PLAN/VERIFICATION documents a 6.x run committed are, by
-default, rendered into the pull request body instead.
+Nothing is committed to your repository: the SPEC/PLAN/VERIFICATION documents a
+6.x run committed are rendered into the pull request body instead, and the
+delivered head is always the SHA VERIFY passed.
 
 A worker's result file is the one exception: it is written to
 `<project root>/.loop-spec/results/<slug>/`, not the state home, because Claude
@@ -105,7 +105,6 @@ environment variables take precedence over it.
 | `phases.<phase>` (config) | bind a phase to `"external"` instead of its default implementation |
 | `roles.<role>` (config), `LOOP_SPEC_ROLE_<ROLE>` | bind a role to a skill other than the bundled default |
 | `deliver.readiness` (config) | `"checks"` waits on required PR checks before DELIVER finishes |
-| `commitArtifacts` (config) | `true` commits rendered SPEC/PLAN/VERIFICATION docs alongside the PR |
 | `LOOP_SPEC_HOME` | state home root; default `~/.loop-spec` |
 | `LOOP_SPEC_MODEL_<ROLE>` | model for a SPEC or PLAN lead step |
 | `LOOP_SPEC_REWIND_BUDGET` | how many backward transitions one run may spend; default 2 |

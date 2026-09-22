@@ -51,7 +51,6 @@ consumer repository for what remains:
 
 ```json
 {
-  "commitArtifacts": false,
   "phases": {},
   "roles": {}
 }
@@ -65,7 +64,7 @@ re-verification.
 |---|---|
 | `LOOP_SPEC_MODEL_<ROLE>` | narrower: sets the model on a SPEC or PLAN lead step only (`defaults.py`); other role dispatches do not read it yet |
 | `LOOP_SPEC_CMD_PREPARE`, `LOOP_SPEC_CMD_TEST`, `_LINT`, `_TYPECHECK` | removed; PLAN's own product names each task's `verify` command and the plan's `prepare` command directly, nothing is detected from manifests |
-| `LOOP_SPEC_ARTIFACTS_IN_PR` | `commitArtifacts` in config |
+| `LOOP_SPEC_ARTIFACTS_IN_PR` | nothing; the rendered documents go into the PR body and the state home, never into a commit (a docs commit after VERIFY would deliver a head VERIFY never saw) |
 | `LOOP_SPEC_NON_INTERACTIVE` | nothing; your harness receives every question as `question.json` on exit 3 and re-invokes with the answer |
 | `LOOP_SPEC_AUTONOMOUS` | `--answer-policy default` at entry, or a `run`-scoped answer to any question |
 | `LOOP_SPEC_ITERATE_MAX_ITERATIONS` | `LOOP_SPEC_REWIND_BUDGET` (the shared T1 budget's limit; default 2) |
@@ -89,7 +88,7 @@ list, grounded in the program's own source, is
 | 6.9 location | 7.x location |
 |---|---|
 | `docs/loop-spec/features/<slug>/feature.json` | `<state home>/<repo id>/<slug>/state.json`, program-written only |
-| `docs/loop-spec/features/<slug>/*.md` | rendered into the PR body; in the state home; in the repo only under `commitArtifacts: true` |
+| `docs/loop-spec/features/<slug>/*.md` | rendered into the PR body and kept in the state home; never committed to the repository |
 | `.loop-spec/last-result.json` | `<state home>/<repo id>/last-result.json`, one level above `state.json`, shared across every slug for that repository |
 | `.loop-spec/events.jsonl` | `<state home>/.../events.jsonl` |
 | `refs/loop-spec/state/<slug>` | not available at 7.0; `loop-spec state push|pull` is a seam the roadmap builds only when a harness needs it |
@@ -152,5 +151,5 @@ Reinstall the 6.9 plugin from the `6.x` branch. That changes the installed tool 
 6.9 ignores the 7.x state home, so leave it in place if a run may resume later. Work
 7.x delivered is ordinary git history: source commits on feature branches, pushed
 branches, and PRs stay where they are, so inspect `git branch`, the remote, and open
-PRs separately before deciding what to keep. `commitArtifacts` controls only the
-rendered SPEC and VERIFICATION documents.
+PRs separately before deciding what to keep. The rendered SPEC and VERIFICATION
+documents are not in the repository; read them from the PR body or the state home.

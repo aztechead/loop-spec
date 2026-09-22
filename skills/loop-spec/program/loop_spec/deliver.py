@@ -28,18 +28,6 @@ def _touched_repos(store) -> dict:
     return touched
 
 
-def _commit_artifacts(store, worktree: Path, slug: str) -> None:
-    docs_dir = Path(worktree) / "docs" / "loop-spec" / slug
-    docs_dir.mkdir(parents=True, exist_ok=True)
-    (docs_dir / "spec.md").write_text(render.spec_md(store))
-    (docs_dir / "plan.md").write_text(render.plan_md(store))
-    (docs_dir / "verification.md").write_text(render.verification_md(store))
-    repo_module.run_git(worktree, "add", str(docs_dir))
-    if repo_module.is_clean(worktree):
-        return  # a resumed attempt already committed these; nothing new to commit
-    repo_module.run_git(worktree, "commit", "-m", "docs: loop-spec artifacts")
-
-
 def pr_title(title: str, limit: int = 70) -> str:
     # GitHub shows about 70 characters of a title; a cut mid-word read as a typo
     # in the live debug run (LF-36), so cut at the last word boundary that fits.
@@ -114,9 +102,6 @@ def run(store, paths, ctx):
         execute_repos = (store.state.get("execute") or {}).get("repos") or {}
         execute_repo = execute_repos.get(repo_name)
         worktree = Path(execute_repo["worktree"]) if execute_repo else Path(repo_info["path"])
-        if config.get("commitArtifacts"):
-            _commit_artifacts(store, worktree, slug)
-
         push = repo_module._git(worktree, "push", "-u", "origin", repo_info["featureBranch"])
         if push.returncode != 0:
             reason = (f"push rejected: {push.stderr.strip()}; repair: fetch, resolve the "

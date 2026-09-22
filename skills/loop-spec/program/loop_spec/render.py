@@ -1,8 +1,9 @@
-"""Markdown rendering for DELIVER: the PR body and the three committed artifacts.
+"""Markdown rendering for DELIVER: the PR body and the three rendered documents.
 
 Use `pr_body` for the PR description GFM text, and `spec_md`/`plan_md`/
-`verification_md` for the files `deliver.py` commits under `docs/loop-spec/<slug>/`
-when `.loop-spec/config.json` sets `commitArtifacts: true`. Every function reads
+`verification_md` for the documents the state home keeps under the run; nothing
+here is committed to the consumer's repository (the audit's R8: a docs commit after
+VERIFY would push a head that is not the verified SHA). Every function reads
 `store.state["products"]` and the ledger; none of them mutate anything.
 """
 from . import VERSION
