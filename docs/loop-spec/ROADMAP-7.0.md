@@ -794,7 +794,7 @@ behavior.
 
 | M | Deliverable | Done when |
 |---|---|---|
-| M0 | this document, the migration inventory, and the route matrix merged on `v7` | maintainer sign-off; the re-audit records every finding closed or explicitly accepted |
+| M0 | this document, the migration inventory, and the route matrix merged on `v7` | DONE 2026-09-22: the re-audit recorded closure at `17707d4` and recommended sign-off (`m0-critique-7.0.md`, committed as `146c1c2`); the maintainer's sign-off is the merge of `v7` work continuing into M1 |
 | M1 | state, repo, baseline, events, the implementation contract, the step seam, the external placeholder implementation, host probes | a live empty cycle crosses all seven boundaries; native dispatch, worktree, and receipt probes recorded (the attestation probe is done, see `native-attestation-probe-7.0.md`) |
 | M2 | SPEC and PLAN defaults in the lead, `submit`, intent guard, re-approval as a question | a spec change after approval yields exit 3 and an answer re-approves |
 | M3 | EXECUTE default: dag, worktrees, implement and review roles, integration against baseline | a live happy path integrates; an unreviewed commit cannot cross the EXECUTE boundary; an external EXECUTE passes its postconditions |
