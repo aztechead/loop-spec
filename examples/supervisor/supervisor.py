@@ -9,19 +9,20 @@ same output_format/structured_output contract but a `can_use_tool` that answers
 policy (this run's default option, never a person).
 
 **This is a reference supervisor, not a supported product surface.** Nothing here
-is imported by loop-spec itself. It has NOT been run live: no SDK credentials are
-available in this repository. Grounded from the installed package
-(claude-agent-sdk 0.2.157, bundled CLI 2.1.277) and
-docs.claude.com/en/agent-sdk/user-input ("Handle approvals and user input");
-where the two disagree, the installed package wins, noted inline.
+is imported by loop-spec itself. Run live on 7.0.2 with claude-agent-sdk 0.2.157
+(bundled CLI 2.1.277) and a Claude subscription login: one cycle converged and
+delivered PR live-7#8 (docs/loop-spec/live-runs-7.0.md). Limits: a question with no
+default and no options raises; an `external` step stops the run; role-step thinking
+is not shown.
 
 Usage:
-    ANTHROPIC_API_KEY=... python3 supervisor.py --project-root DIR --request "<text>"
+    python3 supervisor.py --project-root DIR --request "<text>"
         [--slug SLUG] [--state-home DIR] [--model haiku]
 
 Prerequisites: Python >= 3.10, `pip install claude-agent-sdk==0.2.157` (bundles the
-Claude Code CLI), and provider auth in the environment. DELIVER additionally needs
-`gh auth status` and an `origin` remote.
+Claude Code CLI), and the SDK's own auth (a subscription login, CLAUDE_CODE_OAUTH_TOKEN,
+ANTHROPIC_API_KEY, or a cloud provider). DELIVER additionally needs `gh auth status`
+and an `origin` remote.
 
 Exit codes: 0 when the terminal result's status is "completed", 1 otherwise.
 """

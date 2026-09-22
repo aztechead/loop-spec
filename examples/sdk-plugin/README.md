@@ -22,7 +22,7 @@ launcher, dispatches each worker with the Agent tool, and asks questions with
 |---|---|
 | `plugins=[{"type": "local", "path": ...}]` | loads this repository as the `loop-spec` plugin |
 | init `SystemMessage` | checks `slash_commands` lists `loop-spec:<entry>` before going on |
-| `can_use_tool` | answers `AskUserQuestion` from the terminal, or with the first option under `--auto`; allows and logs every other tool |
+| `can_use_tool` | answers `AskUserQuestion` from stdin (a terminal or piped input), or with the first option under `--auto`; denies and interrupts when neither yields an answer; allows and logs every other tool |
 | `permission_mode="acceptEdits"` | file edits in the project run without prompts |
 | `setting_sources=["project"]` | loads the project's settings and `CLAUDE.md`, and keeps your personal `~/.claude` settings and hooks out of the run |
 | `thinking={"type": "adaptive", "display": "summarized"}` | the lead's reasoning arrives as `ThinkingBlock`s |
@@ -40,9 +40,10 @@ The terminal result is found from the lead's own tool output: the launcher print
   where the result is. Its interface is `observe(message) -> done`, `idle`, and
   `result_path`. [`test_run_loop_spec.py`](test_run_loop_spec.py) tests it through
   that interface, one case per message order a live session produced.
-- Question answering is a seam with two adapters, `answer_from_terminal` and
-  `answer_first_option`. A service that answers from a queue, chat, or policy
-  engine adds a third adapter and passes it to `make_can_use_tool`.
+- Question answering is a seam with two adapters, `answer_from_stdin` and
+  `answer_first_option`, chosen by `choose_answerer(--auto)`. An adapter returns
+  the answer text, or None when it has none. A service that answers from a queue,
+  chat, or policy engine adds a third adapter and passes it to `make_can_use_tool`.
 - `render` is the one output adapter and stays a plain function. Replace it to send
   output elsewhere.
 
@@ -75,8 +76,11 @@ python3 examples/sdk-plugin/run_loop_spec.py --project-root ~/src/my-app --entry
 python3 examples/sdk-plugin/run_loop_spec.py --project-root ~/src/my-app --entry revise 42
 ```
 
-Unattended, add `--auto`. Every question is then answered with its first option;
-for the requirements approval that is `approve`. Read a question's options before
+Without `--auto`, each question is answered from stdin: type a number or a free
+answer at the terminal, or pipe answer lines in. A number outside the options is
+asked again. When stdin ends, the question is denied and the session stops; resume
+it after arranging an answer. Only `--auto` answers for you: every question is then
+answered with its first option, which for the requirements approval is `approve`. Read a question's options before
 relying on `--auto` for it: a blocked PLAN critic, for example, offers only
 `spec gap`. Set loop-spec's
 environment variables (`LOOP_SPEC_MODEL_CODE_REVIEWER=haiku`, ...) in the calling
@@ -92,7 +96,9 @@ in tool results. The last stderr lines are the session id, turn count, cost, and
 terminal result's `status`, `result`, `reason`, `prUrl`, and `phaseReached`.
 
 Exit code 0 means the result's `status` was `completed`, and 1 means another terminal
-status. Exit code 2 means the session ended without a terminal result. Resume it:
+status. Exit code 2 means the session ended without a terminal result: an SDK error
+(its reason is printed), a question with no answer, or no follow-up turn within 60
+seconds. Resume it:
 
 ```bash
 python3 examples/sdk-plugin/run_loop_spec.py --project-root ~/src/my-app --resume <session id>

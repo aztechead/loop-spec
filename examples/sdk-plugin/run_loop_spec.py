@@ -14,8 +14,9 @@ Three modules:
 - RunWatch decides when the session is finished and where loop-spec's terminal
   result is. It is the only stateful logic here, and its interface
   (`observe`, `idle`, `result_path`) is what test_run_loop_spec.py exercises.
-- An Answerer answers one AskUserQuestion question. Two adapters sit at that
-  seam: `answer_from_terminal` and `answer_first_option` (--auto).
+- An Answerer answers one AskUserQuestion question, or returns None when it
+  cannot. Two adapters sit at that seam: `answer_from_stdin` (the default; a
+  terminal or piped input) and `answer_first_option` (only with --auto).
 - `render` prints a message: the lead's text to stdout; thinking, tool calls,
   worker output, and the program's progress lines to stderr, prefixed.
 
@@ -31,7 +32,8 @@ cloud provider's variables. Requires Python >= 3.10 and
 for DELIVER an authenticated `gh` with an `origin` remote.
 
 Exit code: 0 when loop-spec's terminal result has status "completed", 1 otherwise,
-2 when the session ended without a terminal result (resume it with --resume).
+2 when the session ended without a terminal result: an SDK error (its reason is
+printed), a question stdin could not answer, or a quiet stop (resume it with --resume).
 """
 from __future__ import annotations
 
@@ -49,6 +51,7 @@ from claude_agent_sdk import (
     ClaudeSDKClient,
     Message,
     PermissionResultAllow,
+    PermissionResultDeny,
     ResultMessage,
     SystemMessage,
     TaskNotificationMessage,
@@ -86,11 +89,13 @@ class RunWatch:
     The lead runs workers as background tasks, so a turn can end (ResultMessage)
     while they still run, and the CLI starts a new turn (a fresh init message)
     when one finishes. A resumed session also replays its stopped tasks and
-    reports a zero-turn result before it takes the new prompt. Feed every message
-    to `observe`; it returns True once a turn has ended with no task active and
-    the terminal result already printed. `idle` is True while a turn has ended
-    with no task active and no result: the caller waits IDLE_SECONDS for a
-    follow-up turn, and stops if none comes.
+    reports a successful zero-turn result before it takes the new prompt. Feed
+    every message to `observe`; it returns True once a turn has ended with no task
+    active and the terminal result already printed, or at once when a result
+    reports an SDK error (`error` keeps its reason; running tasks do not keep a
+    failed session open). `idle` is True while a turn has ended with no task active
+    and no result: the caller waits IDLE_SECONDS for a follow-up turn, and stops if
+    none comes.
     """
 
     def __init__(self) -> None:
@@ -98,6 +103,7 @@ class RunWatch:
         self.turn_ended = False
         self.result_path: str | None = None
         self.last_result: ResultMessage | None = None
+        self.error: str | None = None
 
     @property
     def idle(self) -> bool:
@@ -121,24 +127,47 @@ class RunWatch:
                                 self.result_path = next_["path"]
         elif isinstance(message, ResultMessage):
             self.last_result = message
-            if message.num_turns > 0:  # a zero-turn result is a resume replay, not a turn's end
+            if message.is_error:
+                self.error = "; ".join([message.subtype, *(message.errors or [])])
+                return True
+            if message.num_turns > 0:  # a successful zero-turn result is a resume replay
                 self.turn_ended = True
         return self.idle and self.result_path is not None
 
 
-# The question seam: one AskUserQuestion question in, the answer's text out.
-Answerer = Callable[[dict], Awaitable[str]]
+# The question seam: one AskUserQuestion question in, the answer's text out, or
+# None when this adapter cannot answer it.
+Answerer = Callable[[dict], Awaitable["str | None"]]
 
 
-async def answer_first_option(question: dict) -> str:
+async def answer_first_option(question: dict) -> str | None:
     options = question.get("options") or []
-    return options[0]["label"] if options else ""
+    return options[0]["label"] if options else None
 
 
-async def answer_from_terminal(question: dict) -> str:
+async def answer_from_stdin(question: dict) -> str | None:
+    """One line of stdin per attempt, a terminal or piped input. A number picks
+    that option (1-based) and is re-asked when out of range; other text is a free
+    answer; end of input returns None."""
     options = question.get("options") or []
-    raw = await asyncio.to_thread(input, "  choose a number, or type an answer: ")
-    return options[int(raw) - 1]["label"] if raw.strip().isdigit() and options else raw
+    while True:
+        err(f"  choose 1-{len(options)}, or type an answer:" if options else "  type an answer:")
+        line = await asyncio.to_thread(sys.stdin.readline)
+        if not line:
+            return None
+        raw = line.strip()
+        if raw.isdigit() and options:
+            if 1 <= int(raw) <= len(options):
+                return options[int(raw) - 1]["label"]
+            err(f"  {raw} is not an option")
+        elif raw:
+            return raw
+
+
+def choose_answerer(auto: bool) -> Answerer:
+    # Only an explicit --auto answers for the operator; stdin that is not a
+    # terminal still supplies answers, it never turns on a policy.
+    return answer_first_option if auto else answer_from_stdin
 
 
 def make_can_use_tool(answer: Answerer):
@@ -160,8 +189,15 @@ def make_can_use_tool(answer: Answerer):
             err(f"\n[question] {question['question']}")
             for i, option in enumerate(question.get("options") or [], 1):
                 err(f"  {i}. {option['label']}: {option.get('description', '')}")
-            answers[question["question"]] = await answer(question)
-            err(f"  [answer] {answers[question['question']]}")
+            answer_text = await answer(question)
+            if answer_text is None:
+                return PermissionResultDeny(
+                    message="no answer for this question: stdin ended, or --auto found no option to "
+                            "choose. Answer at a terminal or on piped stdin, then resume.",
+                    interrupt=True,
+                )
+            answers[question["question"]] = answer_text
+            err(f"  [answer] {answer_text}")
         return PermissionResultAllow(updated_input={**input_data, "answers": answers})
 
     return can_use_tool
@@ -202,9 +238,7 @@ async def run(args: argparse.Namespace) -> int:
         # ~/.claude settings and hooks stay out of an unattended run.
         setting_sources=["project"],
         permission_mode="acceptEdits",
-        can_use_tool=make_can_use_tool(
-            answer_first_option if args.auto or not sys.stdin.isatty() else answer_from_terminal
-        ),
+        can_use_tool=make_can_use_tool(choose_answerer(args.auto)),
         model=args.model,
         thinking={"type": "adaptive", "display": "summarized"},
         # Workers are Agent-tool subagents; forward their text and thinking too.
@@ -241,6 +275,8 @@ async def run(args: argparse.Namespace) -> int:
 
     session_id = watch.last_result.session_id if watch.last_result else "<session id>"
     if watch.result_path is None:
+        if watch.error:
+            err(f"the SDK session failed: {watch.error}")
         err(f"no terminal loop-spec result in this session; resume it with --resume {session_id}")
         return 2
     result = json.loads(Path(watch.result_path).read_text())
