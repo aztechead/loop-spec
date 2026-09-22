@@ -450,6 +450,81 @@ class EdgeCaseTests(_QuietStdout):
             self.assertEqual(store.state["phase"]["current"], "plan")
             self.assertEqual(store.state["products"]["spec"], first_products_spec)
 
+    def test_forward_transition_clears_a_stale_entry_payload(self):
+        # LF-51: a forward entry must never inherit a rejected/rewind payload left
+        # behind by the phase before it -- start with one already sitting there
+        # (as a real rejected-then-accepted attempt would leave, pre-fix) and
+        # confirm the accepted forward transition clears it.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths = self._minimal_store(tmp)
+            store.state["phase"]["current"] = "spec"
+            store.state["phase"]["attemptId"] = "attempt-1"
+            store.state["phase"]["entryPayload"] = {"rejected": {"exit": "approved", "failures": [{"id": "S1", "message": "stale"}]}}
+            store.save()
+
+            spec_product = {
+                "exit": "approved", "inputsDigest": "sha256:" + "0" * 64,
+                "boundTo": {"requirements": None, "plan": None},
+                "goal": "g", "boundaries": [], "criteria": [{"id": "AC-1", "text": "t"}],
+                "decisions": [], "openQuestions": [],
+            }
+            revision = postconditions.requirements_revision(spec_product)
+            from loop_spec import questions as questions_module
+            record = questions_module.ask(
+                store, paths, phase="spec", attempt_id="attempt-1", text="approve?", kind="approval",
+                options=[{"value": "approve", "label": "Approve"}], default_value="approve", payload={"revision": revision},
+            )
+            questions_module.answer(store, paths, question_id=record["questionId"], value="approve")
+
+            controller._accept_product(store, paths, tmp, "spec", "attempt-1", spec_product)
+            self.assertEqual(store.state["phase"]["current"], "plan")
+            self.assertIsNone(store.state["phase"]["entryPayload"])
+
+    def test_verify_implementation_gap_carries_the_rewind_payload_forward(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths = self._minimal_store(tmp)
+            spec_product = {"goal": "g", "boundaries": [], "criteria": [{"id": "AC-1", "text": "t"}],
+                             "decisions": [], "openQuestions": []}
+            store.state["products"]["spec"] = {
+                "attemptId": "attempt-0", "inputsDigest": "sha256:" + "0" * 64,
+                "boundTo": {"requirements": None, "plan": None}, "exit": "approved", "product": spec_product,
+                "receivedAt": "2026-01-01T00:00:00+00:00", "evidenceLevel": "human-attested",
+            }
+            store.state["revisions"]["requirements"] = postconditions.requirements_revision(spec_product)
+            plan_product = {"tasks": [], "prepare": None, "evidenceExceptions": []}
+            store.state["products"]["plan"] = {
+                "attemptId": "attempt-0", "inputsDigest": "sha256:" + "0" * 64,
+                "boundTo": {"requirements": store.state["revisions"]["requirements"], "plan": None},
+                "exit": "ready", "product": plan_product,
+                "receivedAt": "2026-01-01T00:00:00+00:00", "evidenceLevel": "human-attested",
+            }
+            store.state["revisions"]["plan"] = postconditions.plan_revision(plan_product)
+            store.state["phase"]["current"] = "verify"
+            store.state["phase"]["attemptId"] = "attempt-1"
+            store.save()
+
+            remediation_task = {"id": "T-1", "title": "fix it", "dependsOn": [], "files": ["a.py"],
+                                 "repo": "repo", "verify": "sh verify.sh", "criteria": ["AC-1"],
+                                 "featureAdded": None, "mustFlip": False}
+            verify_product = {
+                "exit": "implementation gap", "inputsDigest": "sha256:" + "0" * 64,
+                "boundTo": {"requirements": store.state["revisions"]["requirements"], "plan": store.state["revisions"]["plan"]},
+                "verdicts": [{"criterion": "AC-1", "verdict": "fail", "evidence": None, "cause": "widget missing"}],
+                "findings": [], "remediationTasks": [remediation_task],
+                "reviewedRanges": [{"repo": "repo", "from": "a" * 40, "to": "b" * 40, "full": True}],
+            }
+            controller._accept_product(store, paths, tmp, "verify", "attempt-1", verify_product)
+
+            self.assertEqual(store.state["phase"]["current"], "execute")
+            rewind = store.state["phase"]["entryPayload"]["rewind"]
+            self.assertEqual(rewind["attemptId"], "attempt-1")
+            self.assertEqual(rewind["from"], "verify")
+            self.assertEqual(rewind["exit"], "implementation gap")
+            self.assertEqual(rewind["remediationTasks"], [remediation_task])
+            self.assertEqual(rewind["verdicts"], verify_product["verdicts"])
+
 
 class PlanCriticTests(_QuietStdout):
     def test_critic_fixed_then_rechecked_reaches_execute(self):

@@ -311,6 +311,113 @@ class ConflictDuringIntegrationTests(unittest.TestCase):
         feature_worktree = Path(self.store.state["execute"]["repos"]["repo"]["worktree"])
         self.assertEqual(_porcelain_status(feature_worktree), "")
 
+    def test_conflict_after_remediation_keeps_integrated_commits_and_review_anchor(self):
+        # Reduced from the full two-sibling fixture above: T-2 never runs here
+        # (its criteria is moved off AC-1 so a rewind can never target it too --
+        # owner mapping would otherwise be ambiguous, both tasks touch shared.txt).
+        # The "conflicting sibling" is a direct commit onto the feature branch's
+        # own worktree (with execute_state's recorded head updated to match, the
+        # same net effect a real second task's integration would have) rather
+        # than driving T-2's whole implement/review lifecycle a second time too.
+        self.store.state["products"]["plan"]["product"]["tasks"][1]["criteria"] = ["AC-2"]
+        self.store.save()
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueSteps)
+        by_task = {}
+        for request in action.requests:
+            wt, tid = self._worktree_and_task(request)
+            by_task[tid] = (wt, request)
+            self.store.state["steps"]["open"].append({"stepAttemptId": f"impl-{tid}-open", "cwd": str(wt)})
+
+        t1_worktree, t1_request = by_task["T-1"]
+        self._edit_shared_line(t1_worktree, "from T-1\n", "T-1: rewrite the shared line")
+        t1_commit1 = _head(t1_worktree)
+        t1_result = {"taskId": "T-1", "commits": [t1_commit1], "summary": "did T-1",
+                     "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []}
+        on_submit(self.store, self.paths, t1_request | {"stepAttemptId": "impl-t1"}, t1_result)
+        self.store.state["steps"]["open"] = [s for s in self.store.state["steps"]["open"]
+                                              if s["stepAttemptId"] != "impl-T-1-open"]
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-t1"},
+                  _pass_review(t1_commit1, self.base_sha, t1_commit1))
+        task_state = self.store.state["execute"]["tasks"]["T-1"]
+        self.assertEqual(task_state["status"], "done")
+        self.assertEqual(task_state["commits"], [t1_commit1])
+        review_from_before = task_state["reviewFrom"]
+
+        # VERIFY's own "implementation gap" rewind re-opens T-1. Its worktree is
+        # clean and nothing has run there through steps.issue/submit in this
+        # test (only on_submit calls, which never touch store.state["steps"]),
+        # so writers_known_terminated sees no writer at all -- reused, not
+        # re-forked, same as ExecuteLifecycleTests.test_rewind_reuses_a_clean_
+        # terminated_worktree.
+        rewind_ctx = self.ctx | {
+            "attempt": {"id": "attempt-2"},
+            "entry": {"mode": "remediation", "payload": {"rewind": {
+                "from": "verify", "attemptId": "v-1", "exit": "implementation gap",
+                "revisions": dict(self.store.state["revisions"]),
+                "remediationTasks": [{"id": "R-1", "title": "fix it", "dependsOn": [], "files": ["shared.txt"],
+                                       "repo": "repo", "verify": "sh verify.sh", "criteria": ["AC-1"],
+                                       "featureAdded": None, "mustFlip": False}],
+                "verdicts": [{"criterion": "AC-1", "verdict": "fail", "cause": "not quite",
+                              "evidence": None, "remediation": None}],
+            }}},
+        }
+        action = step(self.store, self.paths, rewind_ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["cwd"], str(t1_worktree))
+
+        self._edit_shared_line(t1_worktree, "from T-1 remediation\n", "T-1: remediate")
+        t1_commit2 = _head(t1_worktree)
+        t1_result2 = {"taskId": "T-1", "commits": [t1_commit2], "summary": "remediated T-1",
+                      "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []}
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-t1-remediate"}, t1_result2)
+
+        # The "sibling": a conflicting commit landed directly on the feature
+        # branch after T-1's remediation started (see the docstring note above).
+        feature_worktree = Path(self.store.state["execute"]["repos"]["repo"]["worktree"])
+        self._edit_shared_line(feature_worktree, "from a sibling\n", "sibling: rewrite the shared line")
+        sibling_head = _head(feature_worktree)
+        self.store.state["execute"]["repos"]["repo"]["head"] = sibling_head
+
+        action = step(self.store, self.paths, rewind_ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-t1-remediate"},
+                  _pass_review(t1_commit2, review_from_before, t1_commit2))
+
+        self.assertEqual(task_state["status"], "pending")
+        self.assertIn("conflicts with the feature head", task_state["reason"])
+        self.assertEqual(task_state["commits"], [t1_commit1])
+        self.assertEqual(task_state["reviewFrom"], review_from_before)
+        self.assertTrue(task_state["branch"].endswith("-r1"))
+        repaired_worktree = Path(task_state["worktree"])
+        self.assertTrue(repaired_worktree.is_dir())
+
+        action = step(self.store, self.paths, rewind_ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "implementer")
+        self.assertEqual(action.request["cwd"], str(repaired_worktree))
+
+        self._edit_shared_line(repaired_worktree, "from T-1 repair\n", "T-1: repair after the conflict")
+        repair_commit = _head(repaired_worktree)
+        repair_result = {"taskId": "T-1", "commits": [repair_commit], "summary": "repaired T-1",
+                          "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []}
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-t1-repair"}, repair_result)
+
+        action = step(self.store, self.paths, rewind_ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-t1-repair"},
+                  _pass_review(repair_commit, review_from_before, repair_commit))
+
+        self.assertEqual(task_state["status"], "done")
+        self.assertEqual(task_state["commits"], [t1_commit1, repair_commit])
+        self.assertEqual(task_state["reviewFrom"], review_from_before)
+
 
 class ControllerAndCliSurfaceWholeWaveTests(unittest.TestCase):
     """continue_run/cli.py surfacing execute.py's IssueSteps as several

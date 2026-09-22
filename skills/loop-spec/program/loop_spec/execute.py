@@ -16,10 +16,12 @@ from pathlib import Path
 from . import baseline as baseline_module
 from . import probes as probes_module
 from . import repo as repo_module
+from . import steps as steps_module
 from .budget import has_room
 from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
 from .events import emit
+from .ids import now_iso
 from .paths import ensure_results_dir
 from .postconditions import adopted_commits, retry_limit
 from .roles import compose_prompt, load_role, resolve_model
@@ -177,6 +179,10 @@ def _mark_adopted_tasks(store, paths, ctx, tasks: dict, plan_tasks: list[dict]) 
             "status": "adopted", "commits": commits,
             "integratedFrom": repo_info["baseSha"], "integratedTo": adoption["headSha"],
             "evidence": None, "review": None,
+            # LF-51: an adopted task's review anchor is the repo's own base, not a
+            # fork this task never made -- a later remediation's review still
+            # covers the adopted commits plus whatever the repair adds.
+            "reviewFrom": repo_info["baseSha"],
         })
         emit(paths, "task_adopted", {"task": plan_task["id"]}, phase="execute", attempt_id=ctx["attempt"]["id"])
 
@@ -227,12 +233,22 @@ def _init(store, paths, ctx) -> dict:
             # integration happen, so both must diff/compare against the head this
             # task actually started from, never whatever the feature head is now.
             "forkedFrom": None,
+            # LF-51: the task's REVIEW anchor -- set once, at the first fork (or a
+            # repo's baseSha for an adopted task), and kept through any later
+            # remediation re-fork so one review still covers every commit the task
+            # owns. forkedFrom moves on every re-fork; reviewFrom does not.
+            "reviewFrom": None,
+            # Bumped on every re-fork (remediation, plan reconciliation, a merge
+            # conflict); names that generation's branch/worktree so a retained
+            # earlier one is never collided with or silently reused.
+            "generation": 0,
+            "remediations": [],
         }
         for t in plan_tasks
     }
     _mark_adopted_tasks(store, paths, ctx, tasks, plan_tasks)
 
-    execute_state = {"waves": waves, "tasks": tasks, "repos": repos, "issues": [], "handledRejections": []}
+    execute_state = {"waves": waves, "tasks": tasks, "repos": repos, "issues": [], "handledRejections": [], "handledRewinds": []}
     store.state["execute"] = execute_state
     store.save()
     return execute_state
@@ -268,6 +284,8 @@ def _ensure_worktree(store, paths, ctx, task_id: str, task_state: dict, plan_tas
     task_state["branch"] = branch
     task_state["baseLayers"] = probes_module.indirection_scan(worktree, plan_task["files"])["layers"]
     task_state["forkedFrom"] = repo_state["head"]
+    if task_state.get("reviewFrom") is None:
+        task_state["reviewFrom"] = repo_state["head"]
     store.save()
     return None
 
@@ -284,6 +302,15 @@ def _fork_point(paths, execute_state: dict, task_state: dict, task_id: str, atte
              {"summary": f"execute task {task_id} had no forkedFrom; adopted the current feature head", "missingKey": "forkedFrom"},
              phase="execute", attempt_id=attempt_id)
     return task_state["forkedFrom"]
+
+
+def _review_from(task_state: dict) -> str:
+    # LF-51: a task's review always starts from its historical anchor, not
+    # wherever its CURRENT branch happens to have forked from -- a remediation
+    # re-fork moves forkedFrom but must not orphan the review of commits an
+    # earlier, already-accepted pass already covered. Legacy state (written
+    # before reviewFrom existed) falls back to forkedFrom, same as it always used.
+    return task_state.get("reviewFrom") or task_state["forkedFrom"]
 
 
 # --- step requests ---------------------------------------------------------
@@ -345,18 +372,22 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
     # a same-wave sibling can merge first and move that current head, and a
     # two-dot diff against a moved head would show the sibling's own work as
     # removed (a plain wrong diff), not just a stale one.
-    fork = _fork_point(paths, execute_state, task_state, plan_task["id"], ctx["attempt"]["id"])
+    # _fork_point still runs (and backfills a legacy forkedFrom) even though its
+    # own return value is no longer what the reviewer sees below -- reviewFrom
+    # falls back to forkedFrom (_review_from) and needs it populated either way.
+    _fork_point(paths, execute_state, task_state, plan_task["id"], ctx["attempt"]["id"])
+    review_from = _review_from(task_state)
     task_head = repo_module.branch_sha(worktree, task_state["branch"])
     result_path = _result_path(paths, plan_task["id"], "review", len(task_state["reviewSteps"]) + 1)
 
-    diff = repo_module.run_git(worktree, "diff", f"{fork}..{task_head}")
+    diff = repo_module.run_git(worktree, "diff", f"{review_from}..{task_head}")
     if len(diff) > _DIFF_CAP:
         diff = diff[:_DIFF_CAP] + "\n...(truncated)"
 
     signals = (ctx.get("probes") or {}).get("securitySignals") or []
     inputs = {
         "task": plan_task,
-        "range": {"from": fork, "to": task_head},
+        "range": {"from": review_from, "to": task_head},
         "diff": diff,
         "probes": task_state["probes"],
         "ledger": store.state.get("ledger", {}),
@@ -552,6 +583,168 @@ def _handle_rejection(store, paths, ctx, execute_state: dict) -> Pause | None:
     return None
 
 
+# --- remediation (LF-51: a VERIFY "implementation gap" rewind) -------------
+
+def _retire_worktree(store, paths, repo_path: Path, worktree, *, last_step: str | None) -> bool:
+    """Remove an old task worktree only when it is clean AND its writers are
+    known terminated; otherwise keep it and quarantine it so terminal cleanup
+    (controller._protected_worktree_paths) protects it. Returns whether it was
+    actually removed."""
+    if worktree is None or not Path(worktree).exists():
+        return False
+    try:
+        dirty = not repo_module.is_clean(worktree)
+    except LoopSpecError:
+        dirty = True
+    known = steps_module.writers_known_terminated(store, paths, worktree)
+    if not dirty and known:
+        repo_module.remove_worktree(repo_path, Path(worktree), force=False)
+        return True
+    store.state["steps"]["quarantined"].append({
+        "stepAttemptId": last_step, "path": str(worktree),
+        "reason": "uncommitted changes" if dirty else "writer termination unknown",
+        "at": now_iso(),
+    })
+    return False
+
+
+def _refork(store, paths, task_id: str, task_state: dict, plan_task: dict, feature_head: str, reason: str) -> None:
+    """Fork task_id's implementation fresh from feature_head: a new generation's
+    branch and worktree, independent of whatever it had before. The old branch is
+    never deleted; the old worktree is retired (removed if safe, else quarantined)
+    through _retire_worktree."""
+    last_step = (task_state["reviewSteps"] or task_state["implementSteps"] or [None])[-1]
+    repo_path = Path(store.state["repos"][task_state["repo"]]["path"])
+    _retire_worktree(store, paths, repo_path, task_state["worktree"], last_step=last_step)
+
+    slug = store.state["run"]["slug"]
+    generation = task_state.get("generation", 0) + 1
+    while True:
+        branch = f"task/{slug}/{task_id}-r{generation}"
+        worktree = paths.worktrees_dir / f"{task_id}-r{generation}"
+        if repo_module.branch_sha(repo_path, branch) is None and not worktree.exists():
+            break
+        generation += 1
+    task_state["generation"] = generation
+
+    repo_module.create_feature_branch(repo_path, branch, feature_head)
+    repo_module.add_worktree(repo_path, worktree, branch=branch)
+    task_state["worktree"] = str(worktree)
+    task_state["branch"] = branch
+    task_state["forkedFrom"] = feature_head
+    task_state["baseLayers"] = probes_module.indirection_scan(worktree, plan_task["files"])["layers"]
+    task_state["probes"] = None
+    task_state["review"] = None
+    task_state["evidence"] = None
+    task_state["reason"] = reason
+    task_state["status"] = "pending"
+    # A task with no integrated history yet (never merged, or this is its first
+    # fork) resets BOTH anchors to the new head; one that already owns integrated
+    # commits keeps reviewFrom so its next review still covers them.
+    if task_state.get("reviewFrom") is None or not task_state["commits"]:
+        task_state["reviewFrom"] = feature_head
+    store.state.get("executeRuns", {}).pop(task_id, None)
+    store.save()
+
+
+def _handle_rewind(store, paths, ctx, execute_state: dict) -> None:
+    """LF-51: a VERIFY `implementation gap` re-opens the plan task(s) owning each
+    failed criterion against the current feature head. No-op unless the entry
+    payload actually carries such a rewind, and deduplicated by VERIFY attempt id
+    (handledRewinds) so a later step() call in the same remediation round does not
+    re-open an already-reopened task."""
+    rewind = ((ctx.get("entry") or {}).get("payload") or {}).get("rewind")
+    if not rewind or rewind.get("from") != "verify" or rewind.get("exit") != "implementation gap":
+        return
+    attempt_id = ctx["attempt"]["id"]
+    # A run that started before this field existed has no handledRewinds list;
+    # start one rather than fail every older run on resume (same pattern as
+    # _handle_rejection's own handledRejections backfill above).
+    if "handledRewinds" not in execute_state:
+        execute_state["handledRewinds"] = []
+        emit(paths, "module_state_reset",
+             {"summary": "execute state had no handledRewinds; starting one", "missingKey": "handledRewinds"},
+             phase="execute", attempt_id=attempt_id)
+    if rewind["attemptId"] in execute_state["handledRewinds"]:
+        return
+
+    if rewind.get("revisions") != store.state["revisions"]:
+        # Requirements or plan moved since this VERIFY attempt issued the rewind;
+        # acting on it now would reopen tasks against a gap that may no longer
+        # even apply. Never marked handled, so a later attempt with fresh (or the
+        # same, still-stale) payload gets evaluated again rather than silently lost.
+        emit(paths, "rewind_ignored", {
+            "summary": f"VERIFY rewind {rewind['attemptId']} is stale; revisions moved since it was issued",
+            "payloadRevisions": rewind.get("revisions"), "currentRevisions": store.state["revisions"],
+        }, phase="execute", attempt_id=attempt_id)
+        return
+    execute_state["handledRewinds"].append(rewind["attemptId"])
+
+    plan_tasks = _plan_tasks(store)
+    cause_by_criterion = {v["criterion"]: v.get("cause") for v in rewind.get("verdicts", [])}
+    reopened: set[str] = set()  # one re-open per task per rewind, however many criteria it owns
+
+    for rem in rewind["remediationTasks"]:
+        owners = [tid for tid, t in plan_tasks.items()
+                  if t["repo"] == rem.get("repo") and set(t["criteria"]) & set(rem["criteria"])]
+        prefer = [tid for tid in owners if set(plan_tasks[tid]["files"]) & set(rem.get("files") or [])]
+        owners = prefer or owners
+        if not owners:
+            raise LoopSpecError(
+                f"VERIFY remediation {rem.get('id')} for {', '.join(rem['criteria'])} in repo {rem.get('repo')!r} maps to no plan task",
+                repair="a remediation names a repo from this run's repos and criteria a plan task in that repo covers; fix the VERIFY product or the plan",
+            )
+
+        for tid in owners:
+            task_state = execute_state["tasks"][tid]
+            task_state.setdefault("remediations", []).append({
+                "verifyAttempt": rewind["attemptId"], "criteria": rem["criteria"],
+                "priorStatus": task_state["status"], "priorRetries": task_state["retries"],
+                "priorBranch": task_state["branch"], "priorWorktree": task_state["worktree"],
+                "priorReview": task_state["review"], "at": now_iso(),
+            })
+            for issue in [i for i in execute_state["issues"] if i["task"] == tid]:
+                execute_state["issues"].remove(issue)
+                execute_state.setdefault("issueHistory", []).append(issue)
+            store.state.get("executeRuns", {}).pop(tid, None)
+            task_state["retries"] = 0
+
+            cause = next((cause_by_criterion[c] for c in rem["criteria"] if cause_by_criterion.get(c)), "no cause recorded")
+            files_text = ", ".join(rem.get("files") or []) or "(none named)"
+            feature_head = execute_state["repos"][task_state["repo"]]["head"]
+            reason = (f"VERIFY found {', '.join(rem['criteria'])} failing at {feature_head[:12]}: {cause}. "
+                      f"Remediation {rem.get('id')}: {rem.get('title')}; files: {files_text}; "
+                      f"VERIFY ran: {rem.get('verify') or '(no command)'}")
+            if tid in reopened:
+                task_state["reason"] = f"{task_state['reason']}\n{reason}"
+                continue
+            reopened.add(tid)
+
+            repo_path = Path(store.state["repos"][task_state["repo"]]["path"])
+            task_head = repo_module.branch_sha(repo_path, task_state["branch"]) if task_state["branch"] else None
+            reused = bool(
+                task_state["worktree"] and Path(task_state["worktree"]).exists() and task_head
+                and repo_module.is_clean(task_state["worktree"])
+                and steps_module.writers_known_terminated(store, paths, task_state["worktree"])
+                and repo_module.is_ancestor(Path(task_state["worktree"]), feature_head, task_head)
+            )
+            if reused:
+                task_state["review"] = None
+                task_state["probes"] = None
+                task_state["evidence"] = None
+                task_state["status"] = "pending"
+                task_state["reason"] = reason
+            else:
+                _refork(store, paths, tid, task_state, plan_tasks[tid], feature_head, reason)
+
+            emit(paths, "task_reopened", {
+                "task": tid, "reused": reused,
+                "summary": f"{tid} reopened by VERIFY remediation {rem.get('id')} ({'reused' if reused else 're-forked'})",
+            }, phase="execute", attempt_id=attempt_id)
+
+    store.save()
+
+
 # --- the phase product -------------------------------------------------
 
 def _final_product(store, ctx, execute_state: dict) -> dict:
@@ -651,6 +844,8 @@ def step(store, paths, ctx):
     rejection_pause = _handle_rejection(store, paths, ctx, execute_state)
     if rejection_pause is not None:
         return rejection_pause
+
+    _handle_rewind(store, paths, ctx, execute_state)
 
     if any(t["status"] in ("blocked", "planGap") for t in execute_state["tasks"].values()):
         return Product(_final_product(store, ctx, execute_state))
@@ -756,7 +951,7 @@ def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record:
     fork = _fork_point(paths, execute_state, task_state, task_id, step_record.get("attempt"))
     task_head = repo_module.branch_sha(worktree, task_state["branch"])
     task_state["review"] = {
-        "reviewedRange": {"from": fork, "to": task_head},
+        "reviewedRange": {"from": _review_from(task_state), "to": task_head},
         "verdict": result["verdict"], "findings": result["findings"],
         "securityDispositions": result["securityDispositions"],
     }
@@ -803,34 +998,27 @@ def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record:
             repo_module.run_git(feature_worktree, "merge", "--abort")
             # The task's own commits conflict with a sibling's on the new head:
             # nothing here can resolve that but a fresh implementation against
-            # it. Delete and recreate the same worktree/branch this task
-            # started with (the creation half of _ensure_worktree, minus its
-            # stale-branch pause check -- a branch this call just deleted
-            # itself can never trigger it) from the CURRENT feature head, and
-            # spend a retry the same way any other implement-again route does.
-            repo_path = Path(store.state["repos"][task_state["repo"]]["path"])
-            repo_module.remove_worktree(repo_path, worktree, force=True)
-            repo_module.run_git(repo_path, "branch", "-D", task_state["branch"])
+            # it. Re-fork (4.5/4.6): the old worktree/branch are retired through
+            # the same helper a VERIFY remediation uses, never force-deleted
+            # outright, and a retry is spent the same way any other
+            # implement-again route does. `commits` is untouched -- it only
+            # ever holds INTEGRATED commits, so this failed attempt's
+            # attribution was never recorded onto it in the first place.
             new_head = execute_state["repos"][task_state["repo"]]["head"]
-            repo_module.create_feature_branch(repo_path, task_state["branch"], new_head)
-            repo_module.add_worktree(repo_path, worktree, branch=task_state["branch"])
             plan_task = _plan_tasks(store)[task_id]
-            task_state["baseLayers"] = probes_module.indirection_scan(worktree, plan_task["files"])["layers"]
-            task_state["forkedFrom"] = new_head
-            task_state["commits"] = []
-            task_state["review"] = None
-            task_state["probes"] = None
-            _retry_or_block(
-                execute_state, task_id, task_state,
-                f"{task_id} conflicts with the feature head after a sibling merged; re-implement on {new_head[:12]}",
-            )
+            reason = f"{task_id} conflicts with the feature head after a sibling merged; re-implement on {new_head[:12]}"
+            _refork(store, paths, task_id, task_state, plan_task, new_head, reason)
+            _retry_or_block(execute_state, task_id, task_state, reason)
             return
     new_commits = repo_module.commits_between(feature_worktree, fork, task_head)
     if new_commits:
         # LF-17: a re-review of an already-integrated task (an E5/E6/E11 remediation
         # retry -- feature_head == task_head, nothing new to merge) must not wipe the
         # commits its FIRST integration recorded; only a genuine new merge updates them.
-        task_state["commits"] = new_commits
+        # LF-51: a remediated task can already own commits from BEFORE its re-fork
+        # (4.6) -- union them (de-duplicated, order-preserving) instead of
+        # replacing, so an earlier accepted integration is never disowned.
+        task_state["commits"] = list(dict.fromkeys(task_state["commits"] + new_commits))
         task_state["integratedFrom"], task_state["integratedTo"] = fork, task_head
     # HEAD, not task_head: a --no-ff merge just above leaves the feature branch
     # at a NEW merge commit task_head never names.

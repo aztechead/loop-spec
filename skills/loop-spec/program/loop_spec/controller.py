@@ -1011,6 +1011,23 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
         targets = {g["target"] for g in product.get("gaps", [])} or {"spec"}
         next_phase = min(targets, key=lambda t: order.get(t, 99))
         mode = "remediation"
+
+    # LF-51: a forward entry must never inherit a `rejected` or `rewind` payload
+    # left behind by the phase before it -- only a backward route carries one
+    # forward, and only VERIFY's own "implementation gap" rewind (checked by
+    # execute._handle_rewind's "from"/"exit" guard) is ever acted on by anything
+    # downstream. Same-phase re-entries (_reject_product, answers, critic
+    # findings) still set their own payloads after this, later in the call.
+    if route["backward"]:
+        store.state["phase"]["entryPayload"] = {"rewind": {
+            "from": phase, "attemptId": attempt_id, "exit": exit_,
+            "revisions": dict(store.state["revisions"]),
+            "remediationTasks": list(product.get("remediationTasks") or []),
+            "verdicts": [v for v in (product.get("verdicts") or []) if v.get("verdict") == "fail"],
+        }}
+    else:
+        store.state["phase"]["entryPayload"] = None
+
     if phase == "iterate" and exit_ == "escalated" and contract.load_config(project_root).get("deliver", {}).get("escalatedPartialDraft") is True:
         # Roadmap 15: the operator opted into a partial draft delivery for an
         # escalated run. Route forward to DELIVER instead of terminating; the

@@ -121,7 +121,7 @@ earlier phase or re-enters the same one. It appears in each such exit's `Require
 
 | | |
 |---|---|
-| Inputs | PLAN product; baseline; ledger; on `remediation`, the tasks or gaps to close; on `rewind`, the findings |
+| Inputs | PLAN product; baseline; ledger; on `remediation` from a VERIFY `implementation gap`, the transition carries the failing verdicts and the remediation tasks; EXECUTE re-opens the plan task(s) owning each failed criterion against the current feature head (a clean, terminated worktree that already contains the head is reused, anything else gets a new generation branch and worktree and the old one is kept); `remediationTasks` describe the gap and are not tasks of their own; on `rewind`, the findings |
 | Product | per task a `disposition` of `done`, `already-satisfied` with evidence, `removed` by an approved plan amendment, or `adopted` for the one range task a `revise` entry creates; `commits[]` per task; `issues[]` unresolved; per-repo `head` |
 | Preconditions | PLAN bound to the current requirements revision; baseline present |
 | Runs as | program-run: waves of at most three, one worktree per task, implement step, then the diff-mode probes on the task's commits, then the review step with the probe findings as inputs |
@@ -150,6 +150,11 @@ earlier phase or re-enters the same one. It appears in each such exit's `Require
 An out-of-band change to the feature branch pauses the phase for reconciliation; it is
 never reset. `already-integrated` (the commit is already an ancestor of the head) is an
 integration reason code, not an exit.
+
+A task keeps two anchors: `forkedFrom`, where its current branch forked (moves on every
+re-fork, attributes new commits), and `reviewFrom`, its first fork (an adopted task: the
+base), which its review record always starts from so one review covers every commit it
+owns.
 
 ## VERIFY
 

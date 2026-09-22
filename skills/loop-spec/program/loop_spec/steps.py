@@ -241,5 +241,43 @@ def confirm_terminated(store, paths, *, step_id: str, repo: Path) -> None:
         raise LoopSpecError(f"no quarantined step {step_id}", repair="check `loop-spec status`")
 
     store.state["steps"]["quarantined"] = [q for q in quarantined if q["stepAttemptId"] != step_id]
-    remove_worktree(repo, Path(entry["path"]), force=True)
+    # LF-51/8A: the operator's confirmation is the evidence writers_known_terminated
+    # looks for on a step whose submission was never attested; record it regardless
+    # of what happens to the worktree below.
+    store.state["steps"].setdefault("terminated", []).append(step_id)
+    # Termination being known is not the same as "safe to force-delete" -- an
+    # uncommitted edit sitting in the worktree is still real work. Remove without
+    # --force; a dirty tree makes git refuse, and the path goes to cleanupBacklog
+    # (files intact) instead.
+    try:
+        remove_worktree(repo, Path(entry["path"]))
+    except LoopSpecError:
+        store.state.setdefault("cleanupBacklog", []).append({"path": entry["path"], "reason": "uncommitted changes"})
     store.save()
+
+
+def writers_known_terminated(store, paths, path) -> bool:
+    """True only when every step that ever ran in `path` ended with evidence: a
+    host- or human-attested submission, or an operator confirm_terminated. An open
+    step, an unattested submission, or a quarantine entry there means unknown."""
+    resolved = str(Path(path).resolve())
+    if any(Path(s["cwd"]).resolve() == Path(resolved) for s in store.state["steps"]["open"]):
+        return False
+    if any(Path(q["path"]).resolve() == Path(resolved) for q in store.state["steps"]["quarantined"]):
+        return False
+    terminated = store.state["steps"].setdefault("terminated", [])
+    submissions = store.state["steps"]["submissions"]
+    for step_id in store.state["steps"]["retired"]:
+        step_path = paths.steps_dir / step_id / "step.json"
+        if not step_path.is_file():
+            continue
+        record = read_json(step_path)
+        if Path(record["cwd"]).resolve() != Path(resolved):
+            continue
+        submission = submissions.get(step_id, {})
+        if submission.get("evidenceLevel") in ("host-attested", "human-attested"):
+            continue
+        if step_id in terminated:
+            continue
+        return False
+    return True

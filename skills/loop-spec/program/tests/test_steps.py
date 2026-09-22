@@ -356,6 +356,74 @@ class RetireTests(StepsTestCase):
             self.assertFalse(worktree.exists())
             self.assertEqual(store.state["steps"]["quarantined"], [])
 
+    def test_confirm_terminated_keeps_a_dirty_worktree_and_records_the_backlog(self):
+        # LF-51/8A: confirm_terminated no longer force-deletes -- the operator's
+        # confirmation means termination is KNOWN, not that an uncommitted edit
+        # sitting in the worktree is safe to throw away.
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _git(repo, "init", "-q")
+            _git(repo, "config", "user.email", "test@example.com")
+            _git(repo, "config", "user.name", "Test")
+            (repo / "README.md").write_text("hi", encoding="utf-8")
+            _git(repo, "add", "README.md")
+            _git(repo, "commit", "-q", "-m", "init")
+
+            worktree = paths.worktrees_dir / "step-1"
+            add_worktree(repo, worktree, detach_at=head_sha(repo))
+            (worktree / "scratch.txt").write_text("uncommitted", encoding="utf-8")
+            record = self._issue(store, paths, cwd=worktree)
+            step_id = record["stepAttemptId"]
+
+            steps.retire(store, paths, step_id=step_id, reason="worker cancelled")
+            steps.confirm_terminated(store, paths, step_id=step_id, repo=repo)
+
+            self.assertTrue(worktree.exists())
+            self.assertTrue((worktree / "scratch.txt").exists())
+            self.assertEqual(store.state["steps"]["quarantined"], [])
+            self.assertEqual(store.state["cleanupBacklog"], [{"path": str(worktree), "reason": "uncommitted changes"}])
+            self.assertIn(step_id, store.state["steps"]["terminated"])
+
+
+class WritersKnownTerminatedTests(StepsTestCase):
+    def _worktree(self, tmp):
+        repo = Path(tmp) / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q")
+        _git(repo, "config", "user.email", "test@example.com")
+        _git(repo, "config", "user.name", "Test")
+        (repo / "README.md").write_text("hi", encoding="utf-8")
+        _git(repo, "add", "README.md")
+        _git(repo, "commit", "-q", "-m", "init")
+        worktree = Path(tmp) / "wt"
+        add_worktree(repo, worktree, detach_at=head_sha(repo))
+        return worktree
+
+    def test_writers_known_terminated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            worktree = self._worktree(tmp)
+
+            # No step has ever run there: nothing to know, so nothing is unknown.
+            self.assertTrue(steps.writers_known_terminated(store, paths, worktree))
+
+            # An open step: unknown.
+            open_record = self._issue(store, paths, cwd=worktree)
+            self.assertFalse(steps.writers_known_terminated(store, paths, worktree))
+
+            # Retired but unattested: still unknown.
+            step_id = open_record["stepAttemptId"]
+            store.state["steps"]["open"] = [s for s in store.state["steps"]["open"] if s["stepAttemptId"] != step_id]
+            store.state["steps"]["retired"].append(step_id)
+            store.state["steps"]["submissions"][step_id] = {"evidenceLevel": "unattested"}
+            self.assertFalse(steps.writers_known_terminated(store, paths, worktree))
+
+            # Retired and host-attested: known terminated.
+            store.state["steps"]["submissions"][step_id] = {"evidenceLevel": "host-attested"}
+            self.assertTrue(steps.writers_known_terminated(store, paths, worktree))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -8,6 +8,7 @@ from loop_spec import repo as repo_module
 from loop_spec.baseline import BaselineEntry, run_command
 from loop_spec.errors import LoopSpecError
 from loop_spec.execute import _final_product, IssueStep, IssueSteps, Pause, Product, dag_waves, on_submit, step
+from loop_spec.jsonio import atomic_write_json
 from loop_spec.paths import FeaturePaths
 from loop_spec.postconditions import retry_limit
 from loop_spec.state import StateStore
@@ -141,6 +142,213 @@ class ExecuteLifecycleTests(unittest.TestCase):
         review = self._pass_review(task_head, self.base_sha, task_head)
         on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-1"}, review)
         return worktree, task_head
+
+    def _drive_to_integrated(self):
+        """T-1 then T-2 through implement/review to a fully integrated product --
+        the shared starting point every LF-51 rewind test below needs, mirroring
+        test_full_success_lifecycle's own sequence."""
+        action = step(self.store, self.paths, self.ctx)
+        t1_worktree = action.request["cwd"]
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-t1"},
+                  self._implementer_result("T-1", t1_worktree, "T-1.txt"))
+
+        action = step(self.store, self.paths, self.ctx)
+        t1_head = _head(t1_worktree)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-t1"},
+                  self._pass_review(t1_head, self.base_sha, t1_head))
+
+        action = step(self.store, self.paths, self.ctx)
+        t2_worktree = action.request["cwd"]
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-t2"},
+                  self._implementer_result("T-2", t2_worktree, "T-2.txt"))
+
+        action = step(self.store, self.paths, self.ctx)
+        t2_head = _head(t2_worktree)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-t2"},
+                  self._pass_review(t2_head, t1_head, t2_head))
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, Product)
+        self.assertEqual(action.product["exit"], "integrated")
+        return action.product
+
+    def _rewind_ctx(self, attempt_id, remediation_task, cause="widget missing"):
+        return self.ctx | {
+            "attempt": {"id": attempt_id},
+            "entry": {"mode": "remediation", "payload": {"rewind": {
+                "from": "verify", "attemptId": "v-1", "exit": "implementation gap",
+                "revisions": dict(self.store.state["revisions"]),
+                "remediationTasks": [remediation_task],
+                "verdicts": [{"criterion": remediation_task["criteria"][0], "verdict": "fail",
+                              "cause": cause, "evidence": None, "remediation": None}],
+            }}},
+        }
+
+    def test_verify_implementation_gap_reopens_the_owning_task_once(self):
+        self.plan_tasks[1]["criteria"] = ["AC-2"]
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+        self._drive_to_integrated()
+
+        remediation = {"id": "R-1", "title": "fix AC-1", "dependsOn": [], "files": ["T-1.txt"],
+                        "repo": "repo", "verify": "sh verify.sh", "criteria": ["AC-1"],
+                        "featureAdded": None, "mustFlip": False}
+        ctx2 = self._rewind_ctx("attempt-2", remediation)
+        # The real drive-to-integrated flow already recorded T-1's own E7
+        # comparison here; the rewind must drop exactly that cached run.
+        self.assertIn("T-1", self.store.state["executeRuns"])
+
+        action = step(self.store, self.paths, ctx2)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "implementer")
+        t1_state = self.store.state["execute"]["tasks"]["T-1"]
+        self.assertEqual(action.request["cwd"], t1_state["worktree"])
+        self.assertIn("widget missing", action.request["reason"])
+        self.assertEqual(t1_state["retries"], 0)
+        self.assertEqual(len(t1_state["remediations"]), 1)
+        self.assertEqual(t1_state["remediations"][0]["priorStatus"], "done")
+        self.assertNotIn("T-1", self.store.state["executeRuns"])
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-2"]["status"], "done")
+
+        worktree = action.request["cwd"]
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-remediate"},
+                  self._implementer_result("T-1", worktree, "T-1-repair.txt"))
+
+        action = step(self.store, self.paths, ctx2)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        task_head = _head(worktree)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-remediate"},
+                  self._pass_review(task_head, self.base_sha, task_head))
+
+        action = step(self.store, self.paths, ctx2)
+        self.assertIsInstance(action, Product)
+        self.assertEqual(action.product["exit"], "integrated")
+        self.assertEqual(len(self.store.state["execute"]["tasks"]["T-1"]["commits"]), 2)
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product)
+
+        # A second step() call in the same remediation round must not re-open it again.
+        action = step(self.store, self.paths, ctx2)
+        self.assertIsInstance(action, Product)
+        self.assertEqual(len(self.store.state["execute"]["tasks"]["T-1"]["remediations"]), 1)
+
+    def test_rewind_with_stale_revisions_is_ignored(self):
+        self.plan_tasks[1]["criteria"] = ["AC-2"]
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+        self._drive_to_integrated()
+
+        remediation = {"id": "R-1", "title": "fix AC-1", "dependsOn": [], "files": ["T-1.txt"],
+                        "repo": "repo", "verify": "sh verify.sh", "criteria": ["AC-1"],
+                        "featureAdded": None, "mustFlip": False}
+        ctx2 = self._rewind_ctx("attempt-2", remediation)
+        ctx2["entry"]["payload"]["rewind"]["revisions"] = {
+            "requirements": "sha256:" + "f" * 64, "plan": "sha256:" + "f" * 64,
+        }
+
+        action = step(self.store, self.paths, ctx2)
+        self.assertIsInstance(action, Product)
+        self.assertEqual(action.product["exit"], "integrated")
+        self.assertEqual(self.store.state["execute"]["handledRewinds"], [])
+        events_text = self.paths.events_jsonl.read_text()
+        self.assertIn('"rewind_ignored"', events_text)
+
+    def test_rewind_that_maps_to_no_task_raises(self):
+        self.plan_tasks[1]["criteria"] = ["AC-2"]
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+        self._drive_to_integrated()
+
+        remediation = {"id": "R-1", "title": "fix it", "dependsOn": [], "files": ["nope.txt"],
+                        "repo": "other", "verify": "sh verify.sh", "criteria": ["AC-1"],
+                        "featureAdded": None, "mustFlip": False}
+        ctx2 = self._rewind_ctx("attempt-2", remediation)
+        with self.assertRaises(LoopSpecError):
+            step(self.store, self.paths, ctx2)
+
+    def test_rewind_reforks_when_the_old_worktree_is_dirty_and_keeps_it(self):
+        self.plan_tasks[1]["criteria"] = ["AC-2"]
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+        self._drive_to_integrated()
+        old_worktree = self.store.state["execute"]["tasks"]["T-1"]["worktree"]
+        old_branch = self.store.state["execute"]["tasks"]["T-1"]["branch"]
+        Path(old_worktree, "scratch.txt").write_text("uncommitted\n")
+
+        remediation = {"id": "R-1", "title": "fix AC-1", "dependsOn": [], "files": ["T-1.txt"],
+                        "repo": "repo", "verify": "sh verify.sh", "criteria": ["AC-1"],
+                        "featureAdded": None, "mustFlip": False}
+        ctx2 = self._rewind_ctx("attempt-2", remediation)
+
+        action = step(self.store, self.paths, ctx2)
+        self.assertIsInstance(action, IssueStep)
+        self.assertTrue(action.request["cwd"].endswith("T-1-r1"))
+        self.assertTrue(Path(old_worktree).exists())
+        self.assertTrue(Path(old_worktree, "scratch.txt").exists())
+        quarantined = self.store.state["steps"]["quarantined"]
+        self.assertEqual(len(quarantined), 1)
+        self.assertEqual(quarantined[0]["path"], old_worktree)
+        self.assertEqual(quarantined[0]["reason"], "uncommitted changes")
+        self.assertIsNotNone(repo_module.branch_sha(self.repo, old_branch))
+
+    def _retire_t1_step_as(self, evidence_level, *, drive_both=True):
+        if drive_both:
+            self._drive_to_integrated()
+        else:
+            # T-2 never runs: T-1's own branch stays exactly at the feature
+            # head (nothing else has advanced it), which the reuse path's
+            # is_ancestor(feature_head, task_head) check needs to hold.
+            self._implement_and_review("T-1", "T-1.txt")
+        task_state = self.store.state["execute"]["tasks"]["T-1"]
+        step_id = task_state["implementSteps"][-1]
+        worktree = task_state["worktree"]
+        step_dir = self.paths.steps_dir / step_id
+        step_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(step_dir / "step.json", {"cwd": worktree})
+        self.store.state["steps"]["retired"].append(step_id)
+        self.store.state["steps"]["submissions"][step_id] = {"evidenceLevel": evidence_level}
+        return worktree
+
+    def test_rewind_reforks_when_writer_termination_is_unknown(self):
+        from loop_spec import controller as controller_module
+
+        self.plan_tasks[1]["criteria"] = ["AC-2"]
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+        old_worktree = self._retire_t1_step_as("unattested")
+
+        remediation = {"id": "R-1", "title": "fix AC-1", "dependsOn": [], "files": ["T-1.txt"],
+                        "repo": "repo", "verify": "sh verify.sh", "criteria": ["AC-1"],
+                        "featureAdded": None, "mustFlip": False}
+        ctx2 = self._rewind_ctx("attempt-2", remediation)
+
+        action = step(self.store, self.paths, ctx2)
+        self.assertIsInstance(action, IssueStep)
+        self.assertTrue(action.request["cwd"].endswith("T-1-r1"))
+        self.assertTrue(Path(old_worktree).exists())
+        quarantined = self.store.state["steps"]["quarantined"]
+        self.assertEqual(len(quarantined), 1)
+        self.assertEqual(quarantined[0]["path"], old_worktree)
+        self.assertEqual(quarantined[0]["reason"], "writer termination unknown")
+
+        protected = controller_module._protected_worktree_paths(self.store)
+        repo_module.remove_worktrees(self.repo, self.paths.worktrees_dir, protected=protected)
+        self.assertTrue(Path(old_worktree).exists())
+
+    def test_rewind_reuses_a_clean_terminated_worktree(self):
+        self.plan_tasks[1]["criteria"] = ["AC-2"]
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+        old_worktree = self._retire_t1_step_as("host-attested", drive_both=False)
+
+        remediation = {"id": "R-1", "title": "fix AC-1", "dependsOn": [], "files": ["T-1.txt"],
+                        "repo": "repo", "verify": "sh verify.sh", "criteria": ["AC-1"],
+                        "featureAdded": None, "mustFlip": False}
+        ctx2 = self._rewind_ctx("attempt-2", remediation)
+
+        action = step(self.store, self.paths, ctx2)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["cwd"], old_worktree)
 
     def _assert_routed_to_plan_gap(self, task_id):
         """Zero retries spent, then the very next step() call hands back the plan-gap
@@ -679,6 +887,65 @@ class AdoptedTaskTests(unittest.TestCase):
         self.assertEqual(t1_review["reviewedRange"], {"from": self.base_sha, "to": self.pr_head_sha})
         self.assertNotIn("sha", t1_review)  # LF-43: the product schema refuses the reviewer's sha field
         assert_product_holds(self, self.store, self.paths, self.repo, "execute", product)
+
+    def test_rewind_on_an_adopted_task_reforks_from_the_feature_head_and_keeps_adopted_commits(self):
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        r1_worktree = action.request["cwd"]
+        t1_state = self.store.state["execute"]["tasks"]["T-1"]
+        self.assertEqual(t1_state["status"], "adopted")
+        adopted_commits = list(t1_state["commits"])
+
+        # Drive R-1 (the only pending task) to done first, so a later step()
+        # call for T-1's own rewind never has to look for R-1's dangling open
+        # step (these tests submit through on_submit directly, never steps.issue).
+        result = self._implementer_result("R-1", r1_worktree, "R-1.txt")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-r1"}, result)
+        action = step(self.store, self.paths, self.ctx)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        r1_head = _head(r1_worktree)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-r1"},
+                  self._pass_review(r1_head, self.pr_head_sha, r1_head))
+        self.assertEqual(self.store.state["execute"]["tasks"]["R-1"]["status"], "done")
+
+        remediation = {"id": "R-2", "title": "fix the adopted task's gap", "dependsOn": [],
+                        "files": ["T-1.txt"], "repo": "repo", "verify": "sh verify.sh",
+                        "criteria": ["AC-1"], "featureAdded": None, "mustFlip": False}
+        ctx2 = self.ctx | {
+            "attempt": {"id": "attempt-2"},
+            "entry": {"mode": "remediation", "payload": {"rewind": {
+                "from": "verify", "attemptId": "v-1", "exit": "implementation gap",
+                "revisions": dict(self.store.state["revisions"]),
+                "remediationTasks": [remediation],
+                "verdicts": [{"criterion": "AC-1", "verdict": "fail", "cause": "still missing something",
+                              "evidence": None, "remediation": None}],
+            }}},
+        }
+        action = step(self.store, self.paths, ctx2)
+        self.assertIsInstance(action, IssueStep)
+        self.assertTrue(action.request["cwd"].endswith("T-1-r1"))
+        self.assertEqual(len(t1_state["remediations"]), 1)
+        self.assertEqual(t1_state["remediations"][0]["priorStatus"], "adopted")
+
+        worktree = action.request["cwd"]
+        result = self._implementer_result("T-1", worktree, "T-1-repair.txt")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-t1-repair"}, result)
+
+        action = step(self.store, self.paths, ctx2)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        task_head = _head(worktree)
+        # reviewFrom stayed the repo's own baseSha (an adopted task's anchor, set
+        # once in _mark_adopted_tasks) through the re-fork, never the PR head.
+        review = self._pass_review(task_head, self.base_sha, task_head)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-t1-repair"}, review)
+
+        action = step(self.store, self.paths, ctx2)
+        self.assertIsInstance(action, Product)
+        self.assertEqual(action.product["exit"], "integrated")
+        final_t1 = self.store.state["execute"]["tasks"]["T-1"]
+        self.assertEqual(final_t1["status"], "done")
+        self.assertEqual(final_t1["commits"], adopted_commits + [task_head])
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product)
 
     def test_a_changed_prior_task_is_not_adopted(self):
         # The delivering run's T-1 ran a different verify command -- the reviser
