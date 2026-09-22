@@ -25,6 +25,16 @@ from .schema import validate, validate_or_raise
 # one of them is refused rather than silently accepted.
 ATTESTATION_REQUIRED_ROLES = frozenset({"plan-critic", "code-reviewer", "iterate-judge"})
 
+# LF-59: the whole Agent prompt for a role step. attest.check_file_receipt requires the
+# worker's opening to equal it and the worker's first actions to be Reads covering
+# every line of the instruction file.
+_DISPATCH_PROMPT = (
+    "Execute loop-spec step {step_id}.\n"
+    "Before any other action, use the Read tool to read the complete instruction file at {path}; "
+    "if a read stops before the last line, keep reading it with offset and limit until you have every line.\n"
+    "Then follow that file; it names where to write your result."
+)
+
 _STEP_TRAILER = """
 --- loop-spec step ---
 step: {step_id}
@@ -64,6 +74,20 @@ def issue(store, paths, *, phase: str, attempt_id: str, kind: str, role: str | N
         "postconditions": postconditions, "attempt": attempt_id, "inputsDigest": inputs_digest,
         "issuedAt": issued_at, "retryOf": retry_of, "reason": reason, "model": model,
     }
+    if kind == "role":
+        # LF-59: a lead re-typing a long prompt into the Agent call changed it in
+        # transit (LF-56, LF-57). A role worker instead gets a short fixed bootstrap
+        # and reads the prompt from a file the program wrote; step.prompt stays the
+        # authority, ends in exactly one LF (in both copies), and never holds a CR.
+        if "\r" in full_prompt:
+            raise LoopSpecError(f"step {step_id}'s composed prompt contains a carriage return",
+                                repair="compose role prompts with LF line endings only")
+        record["prompt"] = full_prompt = full_prompt + "\n"
+        instruction_path = step_dir / "instructions.md"
+        with open(instruction_path, "w", encoding="utf-8", newline="") as f:
+            f.write(full_prompt)
+        record.update({"transport": "file", "instructionPath": str(instruction_path),
+                       "dispatchPrompt": _DISPATCH_PROMPT.format(step_id=step_id, path=instruction_path)})
     validate_or_raise(record, "step")
     atomic_write_json(step_dir / "step.json", record)
 

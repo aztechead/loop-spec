@@ -17,6 +17,10 @@
     "reason"
   ],
   "additionalProperties": false,
+  "anyOf": [
+    {"required": ["transport", "dispatchPrompt", "instructionPath"], "properties": {"transport": {"const": "file"}}},
+    {"properties": {"transport": {"const": "prompt"}}}
+  ],
   "properties": {
     "stepAttemptId": {
       "type": "string"
@@ -77,6 +81,20 @@
         "string",
         "null"
       ]
+    },
+    "transport": {
+      "description": "How the worker receives the prompt: absent or prompt = the Agent prompt is the whole composed prompt (legacy); file = the Agent prompt is dispatchPrompt and the worker reads instructionPath (LF-59).",
+      "type": "string",
+      "enum": [
+        "prompt",
+        "file"
+      ]
+    },
+    "dispatchPrompt": {
+      "type": "string"
+    },
+    "instructionPath": {
+      "type": "string"
     },
     "model": {
       "type": [

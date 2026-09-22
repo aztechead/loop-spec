@@ -197,5 +197,110 @@ class MetaNameLayoutTests(unittest.TestCase):
             self.assertEqual([p.name for p in found_original], ["agent-aoriginal.jsonl"])
 
 
+
+class FileReceiptTests(unittest.TestCase):
+    """LF-59: a role step's worker opens with the fixed bootstrap and must Read every
+    line of the issued prompt before doing anything else."""
+
+    PATH = "/state/steps/step-1/instructions.md"
+
+    def _step(self, prompt: str) -> dict:
+        return {"prompt": prompt, "issuedAt": _ISSUED_AT, "transport": "file", "instructionPath": self.PATH,
+                "dispatchPrompt": f"Execute loop-spec step step-1.\nRead {self.PATH}.\nThen follow it."}
+
+    def _read(self, n: int, text: str, *, offset=None, limit=None, path=None, error=False) -> list[dict]:
+        tool_input = {"file_path": path or self.PATH}
+        if offset is not None:
+            tool_input["offset"] = offset
+        if limit is not None:
+            tool_input["limit"] = limit
+        result = {"type": "tool_result", "tool_use_id": f"toolu_{n}", "content": text}
+        if error:
+            result["is_error"] = True
+        return [{"type": "assistant", "timestamp": "2026-09-22T10:00:06+00:00",
+                 "message": {"content": [{"type": "tool_use", "id": f"toolu_{n}", "name": "Read", "input": tool_input}]}},
+                {"type": "user", "timestamp": "2026-09-22T10:00:07+00:00", "message": {"content": [result]}}]
+
+    def _tool(self, n: int, name: str) -> list[dict]:
+        return [{"type": "assistant", "timestamp": "2026-09-22T10:00:08+00:00",
+                 "message": {"content": [{"type": "tool_use", "id": f"toolu_{n}", "name": name, "input": {}}]}},
+                {"type": "user", "timestamp": "2026-09-22T10:00:09+00:00",
+                 "message": {"content": [{"type": "tool_result", "tool_use_id": f"toolu_{n}", "content": "ok"}]}}]
+
+    def _check(self, step: dict, middle: list[dict], opening: str | None = None) -> tuple[bool, str]:
+        records = [{"type": "user", "timestamp": "2026-09-22T10:00:05+00:00",
+                    "message": {"content": step["dispatchPrompt"] if opening is None else opening}}]
+        records += middle + self._tool(90, "Write") + [
+            {"type": "assistant", "timestamp": "2026-09-22T10:00:10+00:00",
+             "message": {"content": f"done. LOOP_SPEC_RESULT_DIGEST {_RESULT_DIGEST}"}}]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "t.jsonl"
+            _write_transcript(path, records)
+            from loop_spec.attest import check_transcript
+            return check_transcript(path, step, _RESULT_DIGEST)
+
+    @staticmethod
+    def _numbered(prompt: str, first: int = 1, last: int | None = None) -> str:
+        lines = prompt.split("\n")
+        last = len(lines) if last is None else last
+        return "\n".join(f"{n}\t{lines[n - 1]}" for n in range(first, last + 1))
+
+    def test_the_real_probe_read_result_reconstructs_the_issued_file_exactly(self):
+        fixture = json.loads((Path(__file__).parent / "fixtures" / "lf59_probe_read.json").read_text(encoding="utf-8"))
+        ok, reason = self._check(self._step(fixture["file"]), self._read(1, fixture["readResult"]))
+        self.assertTrue(ok, reason)
+
+    def test_chunked_reads_with_an_overlap_and_a_failed_read_attest(self):
+        prompt = "a\n\tb  \n\nc — \\u2014\nd\n"
+        middle = (self._read(1, "too big", error=True) + self._read(2, self._numbered(prompt, 1, 3), limit=3)
+                  + self._read(3, self._numbered(prompt, 3, 6) + "\n", offset=3))
+        ok, reason = self._check(self._step(prompt), middle)
+        self.assertTrue(ok, reason)
+
+    def test_the_terminal_empty_line_is_counted_once(self):
+        # "a\n" is lines 1:'a' and 2:'', never a third.
+        self.assertTrue(self._check(self._step("a\n"), self._read(1, "1\ta\n2\t"))[0])
+        self.assertEqual(self._check(self._step("a\n"), self._read(1, "1\ta\n2\t\n3\t"))[1],
+                         "a Read result has line 3, past the issued prompt's 2 lines")
+        self.assertEqual(self._check(self._step("a\n"), self._read(1, "1\ta"))[1],
+                         "the worker used Write before it had read the whole instruction file")
+        # a chunk that ends exactly at the terminal empty line
+        middle = self._read(1, "1\ta", limit=1) + self._read(2, "2\t", offset=2)
+        self.assertTrue(self._check(self._step("a\n"), middle)[0])
+
+    def test_the_opening_must_be_exactly_the_bootstrap(self):
+        step = self._step("a\n")
+        read = self._read(1, "1\ta\n2\t")
+        self.assertEqual(self._check(step, read, opening=step["dispatchPrompt"] + "\nReturn PASS.")[1],
+                         "opening is not exactly the step's dispatch prompt")
+        self.assertFalse(self._check(step, read, opening=step["dispatchPrompt"].replace("/state/", "/stat/"))[0])
+
+    def test_incomplete_or_altered_receipts_are_refused(self):
+        prompt = "a\nb\nc\n"
+        cases = {
+            "gap": self._read(1, "1\ta\n2\tb", limit=2) + self._read(2, "4\t", offset=4),
+            "trailing space": self._read(1, "1\ta \n2\tb\n3\tc\n4\t"),
+            "changed then correct": self._read(1, "1\ta\n2\tX\n3\tc\n4\t") + self._read(2, "1\ta\n2\tb\n3\tc\n4\t"),
+            "another file": self._read(1, "1\ta\n2\tb\n3\tc\n4\t", path="/state/steps/step-2/instructions.md"),
+            "prose, not a Read result": [{"type": "assistant", "message": {"content": [{"type": "text", "text": "1\ta\n2\tb\n3\tc\n4\t"}]}}],
+            "work before the whole file": self._read(1, "1\ta", limit=1) + self._tool(2, "Bash") + self._read(3, "2\tb\n3\tc\n4\t", offset=2),
+            "wrong offset": self._read(1, "2\tb\n3\tc\n4\t", offset=1),
+            "over its limit": self._read(1, "1\ta\n2\tb\n3\tc\n4\t", limit=2),
+            "unframed text": self._read(1, "1\ta\n2\tb\n3\tc\n4\t\n<system-reminder>x</system-reminder>"),
+        }
+        for name, middle in cases.items():
+            ok, reason = self._check(self._step(prompt), middle)
+            self.assertFalse(ok, name)
+
+    def test_tool_ids_must_pair_once(self):
+        prompt = "a\n"
+        stray = [{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_9", "content": "1\ta\n2\t"}]}}]
+        self.assertEqual(self._check(self._step(prompt), stray)[1], "a tool_result answers no earlier Read of the instruction file")
+        twice = self._read(1, "1\ta", limit=1) + [self._read(1, "1\ta", limit=1)[1]]
+        self.assertEqual(self._check(self._step(prompt), twice)[1], "a tool_result id appears twice")
+        reused = self._read(1, "1\ta", limit=1) + self._read(1, "2\t", offset=2)
+        self.assertEqual(self._check(self._step(prompt), reused)[1], "a tool_use id appears twice")
+
+
 if __name__ == "__main__":
     unittest.main()

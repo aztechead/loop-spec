@@ -121,6 +121,12 @@ def _print_summary(state: dict, paths: FeaturePaths) -> None:
         step_path = paths.steps_dir / s["stepAttemptId"] / "step.json"
         print(f"open step: {s['stepAttemptId']}: {step_path}")
         print(f"  kind: {s.get('kind')} role: {s.get('role')}")
+        try:
+            dispatch = read_json(step_path).get("dispatchPrompt")
+        except (OSError, ValueError):
+            dispatch = None
+        if dispatch:
+            print(f"  dispatch prompt: {dispatch!r}")
 
     result = state.get("result")
     print(f"result: {result.get('classification') if result else None}")
@@ -213,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
                 attempts = submission.step["attestationAttempts"]
                 print(f"[{tag}] step {args.step} unattested ({attempts}/{retry_limit()}): "
                       f"{submission.step['reason']}; dispatch a fresh worker named {submission.redispatch} "
-                      f"with the same prompt and submit again with --dispatch {submission.redispatch}")
+                      f"with the same dispatchPrompt (or prompt, for a step without one) and submit again with --dispatch {submission.redispatch}")
                 marker_next("step", str(step_path), args.slug)
                 return 0
             controller.route_submission(store, paths, submission.step, submission.result)

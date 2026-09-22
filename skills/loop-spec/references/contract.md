@@ -109,7 +109,13 @@ the step id, inputs digest, phase, and result path), `resultPath`, `schema` (the
 result's own JSON Schema), `postconditions[]`, `attempt`, `inputsDigest`,
 `issuedAt`, `retryOf`, `reason`, and an optional `model` (every role dispatch sets
 this from `roles.resolve_model`, env `LOOP_SPEC_MODEL_<ROLE>` or config
-`roles.<role>.model`). In the composed prompt each input section's trailing
+`roles.<role>.model`). A `role` step also carries `transport: "file"`,
+`instructionPath` (`steps/<step-id>/instructions.md`, written once at issue with
+the exact bytes of `prompt`, which then ends in one LF and holds no CR) and
+`dispatchPrompt`, the fixed text the lead passes as the Agent prompt; a step with
+no `transport` is a legacy step whose Agent prompt is `prompt` itself. An SDK or
+supervisor runner still sends `prompt` directly and is attested by its own receipt,
+not by a Read. In the composed prompt each input section's trailing
 newlines are trimmed, so exactly one blank line separates sections; its interior
 lines are kept exactly, and a JSON input shows a non-ASCII character as itself, never
 as a `\u` escape (`jsonio.render_json`). A step composed before 7.0.3 keeps its old prompt and can
@@ -133,7 +139,7 @@ picks one evidence level:
 |---|---|
 | `human-attested` | `kind: "external"` |
 | `controller-observed` | this run's own `state["run"]["runner"] == "sdk"` (set by `sdk_runner.run_step_sdk` itself, before it launches a session) AND a `receipt.json` under `paths.steps_dir/<stepAttemptId>/` (never beside the worker-writable result) has a matching `stepAttemptId` and `resultDigest` |
-| `host-attested` | `--dispatch <name>` was given and `attest.ClaudeCodeAttestor` (only constructed when `CLAUDE_CODE_SESSION_ID` is set) finds and checks exactly one native subagent transcript, whose opening record contains the step's ENTIRE composed prompt (not just its trailer lines) |
+| `host-attested` | `--dispatch <name>` was given and `attest.ClaudeCodeAttestor` (only constructed when `CLAUDE_CODE_SESSION_ID` is set) finds and checks exactly one native subagent transcript. For a `transport: file` step (every role step from 7.0.3): the opening record is exactly the step's `dispatchPrompt`, and before any other tool call the worker's own `Read` calls of `instructionPath` returned every line of the issued `prompt`, byte for byte (numbered `n<TAB>line`, chunks allowed, the terminal empty line counted once). For a legacy step with no `transport`: the opening record contains the step's ENTIRE composed prompt (not just its trailer lines) |
 | `unattested` | none of the above, or an attestation attempt failed |
 
 A mismatched receipt (wrong id or digest) is recorded as

@@ -8,6 +8,7 @@ host and version, not a promise every host or a future version will match it.
 """
 import json
 import os
+import re
 from pathlib import Path
 from typing import Protocol
 
@@ -65,11 +66,105 @@ def _rstripped(text: str) -> str:
     return "\n".join(line.rstrip() for line in text.splitlines())
 
 
+# One line of a Read result: optional right-aligning spaces, the 1-based line
+# number, one tab, then the file's line exactly (observed on Claude Code 2.1.280, the
+# LF-59 probe). Anything else in a counted result refuses the receipt.
+_NUMBERED_LINE = re.compile(r" *([1-9][0-9]*)\t(.*)", re.S)
+
+
+def _blocks(record: dict, kind: str) -> list[dict]:
+    content = record.get("message", {}).get("content")
+    return [b for b in content if isinstance(b, dict) and b.get("type") == kind] if isinstance(content, list) else []
+
+
+def _result_text(block: dict) -> str | None:
+    content = block.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list) and all(isinstance(b, dict) and b.get("type") == "text" for b in content):
+        return "".join(b["text"] for b in content)
+    return None
+
+
+def _count_read(text: str, offset: int, limit: int | None, expected: list[str], covered: set) -> str | None:
+    lines = text.split("\n")
+    if len(lines) > 1 and lines[-1] == "":
+        lines.pop()  # a separator after the last numbered line, not a line of the file
+    numbers = []
+    for line in lines:
+        match = _NUMBERED_LINE.fullmatch(line)
+        if match is None:
+            return "a Read result has a line outside the numbered form"
+        number = int(match.group(1))
+        if number > len(expected):
+            return f"a Read result has line {number}, past the issued prompt's {len(expected)} lines"
+        if match.group(2) != expected[number - 1]:
+            return f"line {number} of the instruction file as read differs from the issued prompt"
+        numbers.append(number)
+    if not numbers or numbers[0] != offset or numbers != list(range(offset, offset + len(numbers))):
+        return "a Read result's line numbers do not run consecutively from its offset"
+    if limit is not None and len(numbers) > limit:
+        return "a Read result returned more lines than its limit"
+    covered.update(numbers)
+    return None
+
+
+def check_file_receipt(records: list[dict], step: dict) -> str | None:
+    """LF-59: None when the worker's own Read calls delivered every line of the issued
+    prompt before it did anything else; otherwise why not. The issued step.prompt is
+    the authority, never the file as it is on disk now."""
+    expected = step["prompt"].split("\n")  # a prompt ending in LF ends with its empty last line
+    path = step["instructionPath"]
+    reads: dict[str, tuple[int, int | None]] = {}
+    use_ids: set = set()
+    result_ids: set = set()
+    covered: set = set()
+    for record in records[1:]:
+        if len(covered) == len(expected):
+            return None
+        for block in _blocks(record, "tool_use"):
+            if block.get("id") in use_ids:
+                return "a tool_use id appears twice"
+            use_ids.add(block.get("id"))
+            tool_input = block.get("input") or {}
+            if block.get("name") != "Read" or tool_input.get("file_path") != path:
+                return f"the worker used {block.get('name')} before it had read the whole instruction file"
+            reads[block["id"]] = (int(tool_input.get("offset") or 1), tool_input.get("limit"))
+        for block in _blocks(record, "tool_result"):
+            tool_use_id = block.get("tool_use_id")
+            if tool_use_id in result_ids:
+                return "a tool_result id appears twice"
+            result_ids.add(tool_use_id)
+            if tool_use_id not in reads:
+                return "a tool_result answers no earlier Read of the instruction file"
+            if block.get("is_error"):
+                continue
+            text = _result_text(block)
+            if text is None:
+                return "a Read result is not plain text"
+            offset, limit = reads[tool_use_id]
+            failure = _count_read(text, offset, int(limit) if limit is not None else None, expected, covered)
+            if failure:
+                return failure
+    return None if len(covered) == len(expected) else "the instruction file was not read completely"
+
+
 def check_transcript(path: Path, step: dict, result_digest: str) -> tuple[bool, str]:
     lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     records = [json.loads(line) for line in lines]
     if not records:
         return False, "transcript is empty"
+
+    if step.get("transport", "prompt") == "file":
+        # LF-59: the opening is the fixed bootstrap and nothing else; the prompt
+        # itself arrives through the worker's own Reads.
+        first = records[0]
+        if first.get("type") != "user" or _rstripped(_message_text(first)) != _rstripped(step["dispatchPrompt"]):
+            return False, "opening is not exactly the step's dispatch prompt"
+        receipt = check_file_receipt(records, step)
+        if receipt is not None:
+            return False, receipt
+        return _common_checks(records, step, result_digest, "opening was the bootstrap; every line was read before any work")
 
     # R2: the opening record must contain the step's ENTIRE composed prompt,
     # not just its trailer's step/inputs lines -- binding only those two let an
@@ -81,7 +176,11 @@ def check_transcript(path: Path, step: dict, result_digest: str) -> tuple[bool, 
     if first.get("type") != "user" or _rstripped(step["prompt"]) not in _rstripped(opening_text):
         return False, "opening does not contain the composed prompt"
 
-    if first.get("timestamp", "") < step["issuedAt"]:
+    return _common_checks(records, step, result_digest, "opening matched; timestamp after issue; closing record ended with the result digest")
+
+
+def _common_checks(records: list[dict], step: dict, result_digest: str, ok_reason: str) -> tuple[bool, str]:
+    if records[0].get("timestamp", "") < step["issuedAt"]:
         return False, "transcript predates the step"
 
     last = records[-1]
@@ -91,7 +190,7 @@ def check_transcript(path: Path, step: dict, result_digest: str) -> tuple[bool, 
         # command output) does not count; only the closing record's ending does.
         return False, "final message does not end with the result digest"
 
-    return True, "opening matched; timestamp after issue; closing record ended with the result digest"
+    return True, ok_reason
 
 
 class ClaudeCodeAttestor:

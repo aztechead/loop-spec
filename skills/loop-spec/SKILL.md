@@ -48,10 +48,12 @@ require it, and this line is the only place a stub is told the run's slug):
     `"${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" submit --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --slug <slug from LOOP_SPEC_NEXT> --step <stepAttemptId>`
     (no `--dispatch`) and repeat from "read the last stdout line".
   - `role`: dispatch a fresh worker with the `Agent` tool: name = the step attempt id
-    (`stepAttemptId`), prompt = the step's prompt verbatim (the program checks that
-    the worker's transcript opens with this exact prompt and ends with the result
-    digest; any rewording, prefix, or summary makes the step `unattested`, and an
-    unattested review does not count), subagent_type `general-purpose`, model only
+    (`stepAttemptId`), prompt = the step's `dispatchPrompt` verbatim when it has one,
+    else its `prompt` verbatim (the program checks that the worker's transcript opens
+    with exactly that text, that the worker read the whole instruction file it names,
+    and that it ends with the result digest; any rewording, prefix, or summary makes
+    the step `unattested`, and an unattested review does not count), subagent_type
+    `general-purpose`, model only
     when the step carries `model`. The worker's prompt names its own `resultPath`,
     under the project's `.loop-spec/results/`, never under `~/.claude`; if the
     worker's result landed somewhere else, add `--result-file <path>` to the submit
@@ -59,8 +61,8 @@ require it, and this line is the only place a stub is told the run's slug):
     `"${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" submit --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --slug <slug from LOOP_SPEC_NEXT> --step <stepAttemptId> --dispatch <stepAttemptId>`
     (`--dispatch` is the same name you gave the Agent) and repeat from "read the last
     stdout line". If submit answers that the step is unattested and names a new
-    dispatch name, dispatch a fresh worker under that exact name with the same step
-    prompt verbatim and submit again with that `--dispatch`; never edit the result
+    dispatch name, dispatch a fresh worker under that exact name with the same
+    dispatch text verbatim and submit again with that `--dispatch`; never edit the result
     file. Never add your own instructions to a worker; if a step must be redone,
     submit what you have and let the program re-issue it with the reason.
   - `external`: a person or another tool produces the product, not you. Stop, print

@@ -55,6 +55,32 @@ class IssueTests(StepsTestCase):
             self.assertIn(f"step: {record['stepAttemptId']}", on_disk)
             self.assertIn("LOOP_SPEC_RESULT_DIGEST", on_disk)
 
+    def test_a_role_step_gets_a_file_transport_with_one_terminal_lf_in_both_copies(self):
+        # LF-59: the worker reads the prompt from a file; step.prompt stays the authority.
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._issue(store, paths, prompt="do the task — café\n\n\tindented")
+            self.assertEqual(record["transport"], "file")
+            self.assertTrue(record["prompt"].endswith("`.\n") and not record["prompt"].endswith("\n\n"))
+            self.assertEqual(Path(record["instructionPath"]).read_bytes(), record["prompt"].encode("utf-8"))
+            self.assertIn(record["stepAttemptId"], record["dispatchPrompt"])
+            self.assertIn(record["instructionPath"], record["dispatchPrompt"])
+            self.assertIn("Read tool", record["dispatchPrompt"])
+
+    def test_lead_and_external_steps_keep_the_prompt_transport(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            for kind in ("lead", "external"):
+                record = self._issue(store, paths, kind=kind)
+                self.assertNotIn("transport", record)
+                self.assertNotIn("dispatchPrompt", record)
+
+    def test_a_carriage_return_in_a_role_prompt_is_refused_at_issue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            with self.assertRaises(LoopSpecError):
+                self._issue(store, paths, prompt="line one\r\nline two")
+
 
 class SubmitTests(StepsTestCase):
     def test_submit_missing_result(self):
