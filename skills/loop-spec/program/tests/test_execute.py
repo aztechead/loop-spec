@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from loop_spec import repo as repo_module
 from loop_spec.baseline import BaselineEntry, run_command
 from loop_spec.errors import LoopSpecError
 from loop_spec.execute import IssueStep, Pause, Product, dag_waves, on_submit, step
@@ -84,7 +85,7 @@ class ExecuteLifecycleTests(unittest.TestCase):
         _git(self.repo, "branch", "feature", self.base_sha)
 
         self.paths = FeaturePaths(root=self.tmp / "run")
-        self.store = StateStore.create(self.paths, {"id": "run-1"}, "add a widget")
+        self.store = StateStore.create(self.paths, {"id": "run-1", "slug": "add-a-widget"}, "add a widget")
         self.store.state["repos"] = {
             "repo": {"path": str(self.repo), "baseSha": self.base_sha, "featureBranch": "feature",
                      "defaultBranch": "main", "lastKnownHead": self.base_sha},
@@ -304,6 +305,31 @@ class ExecuteLifecycleTests(unittest.TestCase):
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, Pause)
         self.assertEqual(action.question_request["payload"]["repo"], "repo")
+
+    def test_first_step_creates_a_missing_feature_branch_at_base(self):
+        # LF-13: setUp pre-creates "feature" for every other test; this one removes
+        # it to exercise the run that arrives at EXECUTE with no branch minted yet.
+        _git(self.repo, "branch", "-D", "feature")
+        self.assertIsNone(repo_module.branch_sha(self.repo, "feature"))
+
+        action = step(self.store, self.paths, self.ctx)
+
+        self.assertEqual(repo_module.branch_sha(self.repo, "feature"), self.base_sha)
+        self.assertIsInstance(action, IssueStep)
+
+    def test_stale_task_branch_with_a_foreign_commit_pauses(self):
+        # LF-14: a task branch left over from a previous run of this same slug, with
+        # a commit the current feature head never integrated, is out of band -- the
+        # same condition the feature-branch check above already pauses for.
+        _git(self.repo, "branch", "task/add-a-widget/T-1", self.base_sha)
+        _git(self.repo, "checkout", "task/add-a-widget/T-1")
+        _commit(self.repo, "foreign.txt", "leftover from a previous run")
+        _git(self.repo, "checkout", "main")
+
+        action = step(self.store, self.paths, self.ctx)
+
+        self.assertIsInstance(action, Pause)
+        self.assertIn("task/add-a-widget/T-1", action.question_request["text"])
 
 
 if __name__ == "__main__":

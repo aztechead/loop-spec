@@ -118,12 +118,21 @@ def _init(store, paths, ctx) -> dict:
 
     # The feature branch is checked out in its own worktree here, once, so a task's
     # commits ever land in the operator's own checkout only via the fast-forward
-    # merge in on_submit -- never by working directly in repo_info["path"].
+    # merge in on_submit -- never by working directly in repo_info["path"]. LF-13:
+    # nothing else creates this branch, so a repo entering EXECUTE for the first
+    # time needs it minted here, at baseSha. An already-existing branch is recorded
+    # at its EXPECTED head (lastKnownHead), not whatever it actually points at now:
+    # a foreign or stale branch then reads as an out-of-band move to the very next
+    # check below (the same one a mid-run move already pauses for), instead of this
+    # module silently adopting a head it never verified.
     repos = {}
     for name, info in (store.state.get("repos") or {}).items():
+        repo_path = Path(info["path"])
+        if repo_module.branch_sha(repo_path, info["featureBranch"]) is None:
+            repo_module.create_feature_branch(repo_path, info["featureBranch"], info["baseSha"])
         worktree = paths.worktrees_dir / "feature" / name
-        repo_module.add_worktree(Path(info["path"]), worktree, branch=info["featureBranch"])
-        repos[name] = {"worktree": str(worktree), "head": repo_module.head_sha(worktree)}
+        repo_module.add_worktree(repo_path, worktree, branch=info["featureBranch"])
+        repos[name] = {"worktree": str(worktree), "head": info["lastKnownHead"]}
 
     tasks = {
         t["id"]: {
@@ -140,23 +149,37 @@ def _init(store, paths, ctx) -> dict:
     return execute_state
 
 
-def _ensure_worktree(store, paths, task_id: str, task_state: dict, plan_task: dict) -> None:
+def _ensure_worktree(store, paths, ctx, task_id: str, task_state: dict, plan_task: dict) -> Pause | None:
     if task_state["worktree"] is not None:
-        return
+        return None
     # Forked from the feature branch's CURRENT head, not a head captured at
     # init time: a later wave's task must build on top of earlier waves' already
     # -integrated commits, not the run's original base.
     execute_state = store.state["execute"]
     repo_state = execute_state["repos"][task_state["repo"]]
     repo_info = store.state["repos"][task_state["repo"]]
-    branch = f"task/{task_id}"
-    repo_module.create_feature_branch(Path(repo_info["path"]), branch, repo_state["head"])
+    repo_path = Path(repo_info["path"])
+    # LF-14: task/<task-id> alone collided with the same task id from an earlier
+    # run of this repo. Slug-scoping still is not enough on its own -- a LEFTOVER
+    # branch from a PRIOR run of this exact slug is the same out-of-band condition
+    # the feature branch check already pauses for; only an empty one (no commits
+    # past the feature head this task is about to fork from) is safe to reuse.
+    branch = f"task/{store.state['run']['slug']}/{task_id}"
+    existing = repo_module.branch_sha(repo_path, branch)
+    if existing is not None and existing != repo_state["head"]:
+        text = (f"task branch {branch!r} already exists with commits not in the feature "
+                f"head (expected {repo_state['head']}, found {existing}); how should the run proceed?")
+        return Pause(_pause_request(ctx, task_state["repo"], repo_state["head"], existing, text=text))
+    if existing is None:
+        repo_module.create_feature_branch(repo_path, branch, repo_state["head"])
+
     worktree = paths.worktrees_dir / task_id
-    repo_module.add_worktree(Path(repo_info["path"]), worktree, branch=branch)
+    repo_module.add_worktree(repo_path, worktree, branch=branch)
     task_state["worktree"] = str(worktree)
     task_state["branch"] = branch
     task_state["baseLayers"] = probes_module.indirection_scan(worktree, plan_task["files"])["layers"]
     store.save()
+    return None
 
 
 # --- step requests ---------------------------------------------------------
@@ -167,8 +190,10 @@ def _result_path(paths, task_id: str, kind: str, n: int) -> Path:
     return results / f"{task_id}-{kind}-{n}.json"
 
 
-def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, task_id: str) -> dict:
-    _ensure_worktree(store, paths, task_id, task_state, plan_task)
+def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, task_id: str) -> dict | Pause:
+    pause = _ensure_worktree(store, paths, ctx, task_id, task_state, plan_task)
+    if pause is not None:
+        return pause
     worktree = Path(task_state["worktree"])
     project_root = Path(ctx["paths"]["projectRoot"])
     role = load_role("implementer", project_root, resolve_role(project_root, "implementer"))
@@ -243,11 +268,11 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
     return request
 
 
-def _pause_request(ctx, repo_name: str, expected: str, actual: str) -> dict:
+def _pause_request(ctx, repo_name: str, expected: str, actual: str, *, text: str | None = None) -> dict:
     request = {
         "attempt": ctx["attempt"]["id"], "phase": "execute",
-        "text": (f"repo {repo_name}'s feature branch moved out of band "
-                 f"(expected {expected}, found {actual}); how should the run proceed?"),
+        "text": text or (f"repo {repo_name}'s feature branch moved out of band "
+                          f"(expected {expected}, found {actual}); how should the run proceed?"),
         "options": [
             {"value": "resume", "label": "treat the new head as the base and continue"},
             {"value": "abort", "label": "stop the run here"},
@@ -326,7 +351,8 @@ def step(store, paths, ctx):
         for task_id in wave:
             task_state = execute_state["tasks"][task_id]
             if task_state["status"] == "pending":
-                return IssueStep(_implement_request(store, paths, ctx, plan_tasks[task_id], task_state, task_id))
+                outcome = _implement_request(store, paths, ctx, plan_tasks[task_id], task_state, task_id)
+                return outcome if isinstance(outcome, Pause) else IssueStep(outcome)
             if task_state["status"] == "probing":
                 return IssueStep(_review_request(store, paths, ctx, plan_tasks[task_id], task_state))
         raise LoopSpecError(
