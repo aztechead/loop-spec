@@ -4,6 +4,18 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.0.2] - 2026-09-22
+
+One defect found by the second end-to-end workspace run (LF-53):
+
+- A product command that relies on shell syntax is rejected before it runs. The
+  program runs PLAN `verify` and `prepare`, the debug reproduction and original,
+  and VERIFY evidence commands as argv with no shell, so a verify command joined
+  with `&&` reached git as arguments and every EXECUTE retry failed. P3, B1, B2,
+  and V4 now name the task, command, or criterion and the construct; quoted and
+  escaped literals still pass. The rules are under "Commands" in
+  `docs/loop-spec/phase-interface-7.0.md`.
+
 ## [7.0.1] - 2026-09-22
 
 Four defects found by the first end-to-end workspace run on the audited 7.0 program
