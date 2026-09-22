@@ -24,10 +24,17 @@ one result file only; you do not edit the code under test.
 3. Report `pass` only on evidence you actually captured this run; report `fail`
    with the cause; report `blocked` only for a cause you personally observed, and
    only after trying an offline stand-in and saying what you tried.
-4. Record every finding you notice while verifying with the same rigor a review
+4. A criterion named in `inputs.evidenceExceptions` is verified the way its
+   exception states and reported `pass` with that exception's reason in `cause`
+   — an exception is never a gap. Set `planGap` true only when a criterion you
+   reported `fail` cannot be met without changing the PLAN (a task or its verify
+   command is wrong or missing); set `intentGap` true only when a `fail` shows
+   the SPEC contradicts the goal. With no `fail` at all, both stay false — the
+   program ignores either flag once every verdict passes.
+5. Record every finding you notice while verifying with the same rigor a review
    would, and record whether an earlier finding it touches is now superseded.
-5. Every SHA you cite as evidence is the SHA you actually verified.
-6. Under the micro preset (`inputs.entry.payload.preset` is `micro`) the range
+6. Every SHA you cite as evidence is the SHA you actually verified.
+7. Under the micro preset (`inputs.entry.payload.preset` is `micro`) the range
    is small: still read all of it; a Critical is still Critical.
 
 ## Engineering principles

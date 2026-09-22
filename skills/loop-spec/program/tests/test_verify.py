@@ -147,6 +147,27 @@ class VerifyTests(unittest.TestCase):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "fail")], plan_gap=True))
         self.assertEqual(product["exit"], "plan gap")
 
+    def test_gap_flags_need_a_failing_verdict(self):
+        # LF-45: a flag with every verdict passing is a note (often a criterion
+        # an evidenceExceptions entry already covers), never a route.
+        product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")], plan_gap=True))
+        self.assertEqual(product["exit"], "passed")
+        events_text = self.paths.events_jsonl.read_text()
+        self.assertIn('"verify_gap_flag_ignored"', events_text)
+        self.assertIn('"planGap": true', events_text)
+
+    def test_intent_gap_flag_with_a_failing_verdict_routes(self):
+        product = self._run_pass(_verifier_result([_verdict("AC-1", "fail")], intent_gap=True))
+        self.assertEqual(product["exit"], "intent gap")
+
+    def test_verifier_step_carries_evidence_exceptions(self):
+        plan_product = self.store.state["products"]["plan"]["product"]
+        plan_product["evidenceExceptions"] = [{"criterion": "AC-1", "reason": "flaky in CI"}]
+        self.store.save()
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIn("### evidenceExceptions", action.request["prompt"])
+        self.assertIn("AC-1", action.request["prompt"])
+
     def test_reviewer_findings_get_fresh_ids(self):
         finding = {"id": "whatever-the-reviewer-said", "location": "feature.py:1", "cause": "x",
                    "severity": "Minor", "disposition": "open", "reason": None, "supersedes": None}

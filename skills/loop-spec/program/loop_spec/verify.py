@@ -202,6 +202,7 @@ def _verifier_request(store, paths, ctx, verify_state: dict) -> dict:
 
     inputs = {
         "repos": repos_input, "criteria": spec_product["criteria"], "tasks": plan_product["tasks"],
+        "evidenceExceptions": plan_product.get("evidenceExceptions", []),
         "baseline": store.state.get("baseline"), "environmentHealth": store.state.get("environmentHealth"),
     }
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=cwd, phase="verify")
@@ -263,7 +264,7 @@ def _reviewer_request(store, paths, ctx, verify_state: dict, repo_name: str) -> 
     return request
 
 
-def _final_product(store, ctx, verify_state: dict) -> dict:
+def _final_product(store, paths, ctx, verify_state: dict) -> dict:
     verifier_result = verify_state["verifier"]
     plan_product = store.state["products"]["plan"]["product"]
     criterion_repo = _criterion_repo(plan_product)
@@ -294,9 +295,15 @@ def _final_product(store, ctx, verify_state: dict) -> dict:
             "featureAdded": None, "mustFlip": False,
         })
 
-    if verifier_result["intentGap"]:
+    # LF-45: the route is the verdicts', never a bare flag -- a planGap/intentGap
+    # with every verdict passing is a note the verifier made (often a criterion an
+    # evidenceExceptions entry already covers), not a gap the program should act
+    # on. The verifier role never sees PLAN or SPEC directly, so it has nothing
+    # deterministic behind a flag it raises with no failing criterion.
+    any_not_pass = any(v["verdict"] != "pass" for v in verdicts_out)
+    if verifier_result["intentGap"] and any_not_pass:
         exit_ = "intent gap"
-    elif verifier_result["planGap"]:
+    elif verifier_result["planGap"] and any_not_pass:
         exit_ = "plan gap"
     elif any(v["verdict"] == "blocked" for v in verdicts_out):
         exit_ = "blocked"
@@ -304,6 +311,10 @@ def _final_product(store, ctx, verify_state: dict) -> dict:
         exit_ = "implementation gap"
     else:
         exit_ = "passed"
+    if (verifier_result["intentGap"] or verifier_result["planGap"]) and not any_not_pass:
+        emit(paths, "verify_gap_flag_ignored",
+             {"planGap": verifier_result["planGap"], "intentGap": verifier_result["intentGap"]},
+             phase="verify", attempt_id=ctx["attempt"]["id"])
 
     return {
         "exit": exit_, "inputsDigest": ctx["inputs"]["digest"],
@@ -332,7 +343,7 @@ def step(store, paths, ctx):
         return IssueStep(_verifier_request(store, paths, ctx, verify_state))
     if verify_state["phase"] == "reviewing":
         return IssueStep(_reviewer_request(store, paths, ctx, verify_state, verify_state["pendingReviews"][0]))
-    return Product(_final_product(store, ctx, verify_state))
+    return Product(_final_product(store, paths, ctx, verify_state))
 
 
 def on_submit(store, paths, step, result: dict) -> None:
