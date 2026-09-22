@@ -50,6 +50,10 @@ instead of the 6.x bash/jq implementation.
   follow the schema-1 table; a reused verify execution is re-matched against the
   current claim; exempt criteria are never re-executed; timeout output is decoded.
   `commitArtifacts` is removed (R8): the delivered head is always the verified SHA.
+  The round-2 audit's residuals are fixed too: a candidate run that did not
+  complete is never `no-regression`; a partial delivery ends the run `escalated`;
+  DELIVER refuses a feature branch that moved after VERIFY and pushes the verified
+  SHA by value.
 
 ### Changed
 
