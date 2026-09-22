@@ -176,3 +176,80 @@ those names was absent. This is a limited name-coverage check, not proof of ever
 inventory row's behavioral equivalence. No paid model calls, host probes, network
 writes, or runtime acceptance tests were performed. The favored-plan documents were
 left unchanged; this critique and the fixture specification are teammate deliverables.
+
+
+## Sign-off check at revision 727b2b8
+
+Recommendation: do not sign off either milestone as completed yet. M0 is close at
+the design level; M1 has a fixture specification, not an implementation or passing
+acceptance evidence. The worktree was clean when this check began.
+
+### Prior finding disposition
+
+| Finding | Evidence in this revision | Disposition |
+|---|---|---|
+| M0-01 | V10 now bounds VERIFY gap exits and evidence-incomplete re-entry, sharing I3's persistent budget. | Original VERIFY/EXECUTE counterexample addressed; other backward routes still lack budget admission. |
+| M0-02 | Both ITERATE convergence outcomes now require I5, including VERIFY passed and no original-goal gap. | Closed in the written contract. |
+| M0-03 | P7 rejects deferred Critical findings and allows a bounded corrected-plan recheck or reasoned rejection. | Closed in the written contract. |
+| M0-04 | Debug/revise now establish compact SPEC and PLAN. | Partial: revisions are established, but accepted EXECUTE evidence and adopted-commit coverage remain undefined. |
+
+The V4/V5 exception predicate and D7 partial-delivery requirement are corrected.
+The migration guide corrects rollback, retained variables, the invented default
+evidence setting, and deferred state transport. Those corrections are accepted.
+
+### Remaining M0 contract issues
+
+1. **Backward-budget coverage is incomplete.** PLAN's `spec gap` exit at route-matrix
+   line 104 requires only P1; EXECUTE's `plan gap` at line 134 requires only E1.
+   A PLAN→EXECUTE→PLAN loop can repeat without V10 or I3 executing. Apply budget
+   admission centrally to every backward transition, including these two, and give
+   exhaustion an explicit route. Test this cycle alongside the report-shaped one.
+2. **Debug still cannot satisfy VERIFY entry.** Its `repaired` exit at line 253
+   checks B1/B2 and goes directly to VERIFY. VERIFY at line 146 requires an accepted
+   EXECUTE product. Compact SPEC/PLAN alone supplies neither task review nor accepted
+   execution. Route repair through normal EXECUTE or explicitly require equivalent
+   execution admission before `repaired` can advance.
+3. **Revise lacks adopted-history coverage.** It starts at the PR's base and creates
+   tasks from comments, while E4 requires every commit in `base..head` to belong to a
+   done task and E5/E6 require corresponding accepted reviews. On an external PR,
+   pre-existing commits are not those comment-remediation tasks. Define adoption
+   evidence/tasks for the existing range, or a distinct reviewed starting snapshot
+   and verification scope; do not silently exempt those commits from E4/E5/E6.
+
+There are also two consistency fixes for the teammate:
+
+- The terminal table still classifies bare EXECUTE `blocked` as escalated, while its
+  updated phase route and another terminal row classify it as paused until a stop
+  answer. Remove the unconditional escalated mapping.
+- Fixture descriptions still call resolved decisions open and say the old matrix
+  admits the caveats counterexample. The appended decision record is useful, but
+  update each case's expected outcome to the accepted rule so implementers do not
+  have to reconcile contradictory instructions.
+
+### M0 evidence still missing
+
+The roadmap's final pending list still names supported host versions. No named
+host-version or attestation-result artifact was found in the inspected documentation
+and test trees. Native attestation is still described as a future probe. Complete
+those records, or explicitly approve a scoped deferral with the native release gate
+intact, before representing M0 as finished. This audit cannot approve that deferral
+on the maintainer's behalf.
+
+### M1 evidence still missing
+
+All six changed paths since c8b6d72 are documentation. The planned
+`skills/loop-spec/program` directory is absent, and the fixtures document explicitly
+says it is not implemented tests or evidence of M1 passing. There is no new M1
+empty-cycle run, executable fixture manifest, or native/worktree/receipt probe record
+in these changes. Existing 6.9 tests would not establish the new milestone.
+
+To sign off M1, inspect its actual state/repo/baseline/events modules and phase/step
+contract implementation, run the fake-runner empty-cycle and required rejection/
+compatibility cases, and attach the pinned probe records. A passing documentation
+lint is not a substitute. Approval to begin that implementation and milestone
+completion are different decisions.
+
+Validation: the five changed/current planning documents passed `lib/doc-tells.py`.
+Reviewed the current route predicates and decision deltas; checked changed-file
+scope and planned program/evidence locations. No live host or 7.0 runtime tests were
+run. Only this review record was amended.
