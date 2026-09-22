@@ -10,6 +10,7 @@ pure Kahn-layering the plan's `dependsOn` graph needs before any task can start;
 nothing else here is reusable outside this one phase's loop.
 """
 import os
+import re
 from pathlib import Path
 
 from . import baseline as baseline_module
@@ -23,6 +24,19 @@ from .roles import compose_prompt, load_role
 
 _TERMINAL = {"done", "already-satisfied", "removed", "blocked", "planGap"}
 _DIFF_CAP = 200_000  # ponytail: a flat cap, raise it if a real diff gets truncated in practice
+# LF-16: a rejected EXECUTE product's failures route to the task-state change that
+# gives the NEXT attempt a chance to actually differ, instead of resubmitting the
+# same already-"done" tasks and getting rejected again. E5/E6/E11 are all evidence-
+# about-the-review defects a fresh review step can re-settle without redoing the
+# implementation; E7 is the verify re-run itself, which only a new implement step
+# can change.
+_REVIEW_RETRY_FAILURE_IDS = {"E5", "E6", "E11"}
+_IMPLEMENT_RETRY_FAILURE_ID = "E7"
+_BLOCKED_OPTIONS = [
+    {"value": "fix-and-re-enter", "label": "Fix and re-enter"},
+    {"value": "stop", "label": "Stop"},
+]
+_TASK_ID_RE = re.compile(r"T-\d+")
 # LF-11: a verify re-run that could never have passed no matter what the implementer
 # does is a defect in PLAN's own verify/featureAdded/mustFlip fields, not something a
 # retry fixes. "reproduction still fails at the candidate commit" (the OTHER
@@ -132,7 +146,14 @@ def _init(store, paths, ctx) -> dict:
             repo_module.create_feature_branch(repo_path, info["featureBranch"], info["baseSha"])
         worktree = paths.worktrees_dir / "feature" / name
         repo_module.add_worktree(repo_path, worktree, branch=info["featureBranch"])
-        repos[name] = {"worktree": str(worktree), "head": info["lastKnownHead"]}
+        # LF-15: defaultHead is the checkout's OWN branch (main, say) at entry --
+        # a worker that commits there by mistake, instead of into its task
+        # worktree, moves it out from under the run the same way a moved feature
+        # branch already did above.
+        repos[name] = {
+            "worktree": str(worktree), "head": info["lastKnownHead"],
+            "defaultHead": repo_module.branch_sha(repo_path, info["defaultBranch"]),
+        }
 
     tasks = {
         t["id"]: {
@@ -143,7 +164,7 @@ def _init(store, paths, ctx) -> dict:
         for t in plan_tasks
     }
 
-    execute_state = {"waves": waves, "tasks": tasks, "repos": repos, "issues": []}
+    execute_state = {"waves": waves, "tasks": tasks, "repos": repos, "issues": [], "handledRejections": []}
     store.state["execute"] = execute_state
     store.save()
     return execute_state
@@ -257,7 +278,12 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
         "kind": "role", "role": "code-reviewer", "phase": "execute", "cwd": str(worktree),
         "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
-        "retryOf": None, "reason": None,
+        # LF-16: normally None/None -- a task only ever reaches "probing" fresh,
+        # straight from a passing implement step. A rejection re-routed back to
+        # review (see _handle_rejection) is the one case with a reason already
+        # set and a prior review step to retry.
+        "retryOf": task_state["reviewSteps"][-1] if task_state["reviewSteps"] else None,
+        "reason": task_state["reason"],
     }
     errors = validate_request("step", request)
     if errors:
@@ -285,6 +311,127 @@ def _pause_request(ctx, repo_name: str, expected: str, actual: str, *, text: str
         raise LoopSpecError("execute built an invalid pause question: " + "; ".join(errors),
                              repair="fix _pause_request in execute.py")
     return request
+
+
+def _blocked_pause_request(ctx, text: str, payload: dict) -> dict:
+    """The shared shape for a pause that needs a human to reconcile something
+    outside any retry's reach (LF-15's default-branch drift, LF-16's E4 unmapped
+    commits) -- "fix-and-re-enter" or "stop", the same options the controller's
+    own blocked questions already use, never an automatic resume."""
+    request = {
+        "attempt": ctx["attempt"]["id"], "phase": "execute", "text": text,
+        "options": _BLOCKED_OPTIONS, "defaultValue": None, "kind": "blocked", "payload": payload,
+    }
+    errors = validate_request("question", request)
+    if errors:
+        raise LoopSpecError("execute built an invalid blocked pause question: " + "; ".join(errors),
+                             repair="fix _blocked_pause_request in execute.py")
+    return request
+
+
+def _drifted_repo(store, execute_state: dict) -> dict | None:
+    """The first repo whose feature or default branch no longer points where
+    execute.py last recorded it -- an out-of-band commit, most often a worker
+    committing into the wrong checkout (LF-13's feature-branch case, LF-15's
+    default-branch one). None means every repo still matches. Shared by step()
+    (which turns this into the actual pause) and on_submit() (which uses it only
+    to refuse folding a possibly-compromised submission into task state)."""
+    for name, repo_state in execute_state["repos"].items():
+        repo_info = store.state["repos"][name]
+        repo_path = Path(repo_info["path"])
+        actual = repo_module.branch_sha(repo_path, repo_info["featureBranch"])
+        if actual is not None and actual != repo_state["head"]:
+            return {"repo": name, "branch": repo_info["featureBranch"], "isDefault": False,
+                     "expected": repo_state["head"], "actual": actual}
+        default_actual = repo_module.branch_sha(repo_path, repo_info["defaultBranch"])
+        if default_actual is not None and default_actual != repo_state["defaultHead"]:
+            return {"repo": name, "branch": repo_info["defaultBranch"], "isDefault": True,
+                     "expected": repo_state["defaultHead"], "actual": default_actual}
+    return None
+
+
+def _drift_pause(ctx, drift: dict) -> Pause:
+    if not drift["isDefault"]:
+        return Pause(_pause_request(ctx, drift["repo"], drift["expected"], drift["actual"]))
+    text = (f"the checkout's {drift['branch']} moved from {drift['expected']} to {drift['actual']} during "
+            f"EXECUTE (a worker may have committed outside its worktree); reconcile it yourself, then "
+            f"fix-and-re-enter, or stop")
+    payload = {"repo": drift["repo"], "branch": drift["branch"], "expected": drift["expected"], "actual": drift["actual"]}
+    return Pause(_blocked_pause_request(ctx, text, payload))
+
+
+def _unmapped_commits_pause(store, ctx, execute_state: dict) -> Pause | None:
+    """LF-16's E4: recomputes the postcondition's own check (every done task's
+    commits must exactly cover base..head) instead of parsing its repo-only
+    message, so the pause can name the actual mismatched commits."""
+    for name, repo_state in execute_state["repos"].items():
+        repo_info = store.state["repos"][name]
+        repo_path = Path(repo_info["path"])
+        task_commits = {
+            repo_module.head_sha(repo_path, c)
+            for task_state in execute_state["tasks"].values()
+            if task_state["repo"] == name and task_state["status"] == "done"
+            for c in task_state["commits"]
+        }
+        actual = set(repo_module.commits_between(repo_path, repo_info["baseSha"], repo_state["head"]))
+        mismatched = sorted(task_commits ^ actual)
+        if mismatched:
+            text = (f"repo {name}: commits {', '.join(mismatched)} are not exactly covered by any task's "
+                     f"recorded commits; reconcile them, then fix-and-re-enter, or stop")
+            return Pause(_blocked_pause_request(ctx, text, {"repo": name, "commits": mismatched}))
+    return None
+
+
+def _rejection_task_ids(message: str, execute_state: dict) -> list[str]:
+    """The task ids a rejection's message names ("T-n" tokens); with none, every
+    currently-done task. E6's own message already lists every id it means (it
+    aggregates), so this only widens scope for a message that names none."""
+    parsed = [tid for tid in _TASK_ID_RE.findall(message) if execute_state["tasks"].get(tid, {}).get("status") == "done"]
+    if parsed:
+        return parsed
+    return [tid for tid, t in execute_state["tasks"].items() if t["status"] == "done"]
+
+
+def _handle_rejection(store, ctx, execute_state: dict) -> Pause | None:
+    """LF-16: a rejected EXECUTE product re-enters remediation with the SAME
+    already-"done" task state that got rejected -- left alone, the next attempt
+    reproduces the identical product and gets rejected again. Undo just enough of
+    the named tasks' progress that a fresh review or implement step can actually
+    change something, and only once per attempt (handledRejections) so a later
+    step() call in the same remediation round does not re-clear a review this
+    same handling just re-issued."""
+    entry = ctx["entry"]
+    if entry.get("mode") != "remediation":
+        return None
+    rejected = (entry.get("payload") or {}).get("rejected")
+    if not rejected or not rejected.get("failures"):
+        return None
+    attempt_id = ctx["attempt"]["id"]
+    if attempt_id in execute_state["handledRejections"]:
+        return None
+    execute_state["handledRejections"].append(attempt_id)
+
+    failures = rejected["failures"]
+    if any(f["id"] == "E4" for f in failures):
+        pause = _unmapped_commits_pause(store, ctx, execute_state)
+        if pause is not None:
+            store.save()
+            return pause
+
+    for failure in failures:
+        if failure["id"] in _REVIEW_RETRY_FAILURE_IDS:
+            for task_id in _rejection_task_ids(failure["message"], execute_state):
+                task_state = execute_state["tasks"][task_id]
+                task_state["status"] = "probing"
+                task_state["review"] = None
+                task_state["reason"] = failure["message"]
+        elif failure["id"] == _IMPLEMENT_RETRY_FAILURE_ID:
+            for task_id in _rejection_task_ids(failure["message"], execute_state):
+                task_state = execute_state["tasks"][task_id]
+                task_state["status"] = "pending"
+                task_state["reason"] = failure["message"]
+    store.save()
+    return None
 
 
 # --- the phase product -------------------------------------------------
@@ -334,11 +481,13 @@ def step(store, paths, ctx):
     if execute_state is None:
         execute_state = _init(store, paths, ctx)
 
-    for name, repo_state in execute_state["repos"].items():
-        repo_info = store.state["repos"][name]
-        actual = repo_module.branch_sha(Path(repo_info["path"]), repo_info["featureBranch"])
-        if actual is not None and actual != repo_state["head"]:
-            return Pause(_pause_request(ctx, name, repo_state["head"], actual))
+    drift = _drifted_repo(store, execute_state)
+    if drift is not None:
+        return _drift_pause(ctx, drift)
+
+    rejection_pause = _handle_rejection(store, ctx, execute_state)
+    if rejection_pause is not None:
+        return rejection_pause
 
     if any(t["status"] in ("blocked", "planGap") for t in execute_state["tasks"].values()):
         return Product(_final_product(store, ctx, execute_state))
@@ -432,6 +581,12 @@ def on_submit(store, paths, step, result: dict) -> None:
     # this implementation has no need for it yet. `step` is the registered step
     # record (has cwd/role/stepAttemptId), not this module's own step() function.
     execute_state = store.state["execute"]
+    if _drifted_repo(store, execute_state) is not None:
+        # LF-15: a repo drifted underneath this submission. Folding it into task
+        # state would trust a possibly-compromised worktree; leave the task
+        # exactly where it was and let the next step() call raise the pause
+        # instead (never reset the drift out from under the operator here).
+        return
     found = next(((tid, t) for tid, t in execute_state["tasks"].items() if t["worktree"] == step["cwd"]), None)
     if found is None:
         raise LoopSpecError(f"execute has no task with worktree {step['cwd']}", repair="check the submitted step's cwd")

@@ -104,7 +104,8 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.store.save()
 
         self.ctx = {"attempt": {"id": "attempt-1"}, "inputs": {"digest": "sha256:" + "a" * 64},
-                    "paths": {"projectRoot": str(self.repo)}, "probes": {}}
+                    "paths": {"projectRoot": str(self.repo)}, "probes": {},
+                    "entry": {"mode": "fresh", "payload": None}}
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -330,6 +331,56 @@ class ExecuteLifecycleTests(unittest.TestCase):
 
         self.assertIsInstance(action, Pause)
         self.assertIn("task/add-a-widget/T-1", action.question_request["text"])
+
+    def test_default_branch_drift_between_step_calls_pauses(self):
+        # LF-15: the implementer's mistake was committing into the project root
+        # (the "main" checkout) instead of its own task worktree -- self.repo IS
+        # that checkout, still on "main" after setUp (branch creation never
+        # switches it), so committing there directly reproduces it.
+        step(self.store, self.paths, self.ctx)  # initializes; records repos.repo.defaultHead
+        _commit(self.repo, "oops.txt", "committed straight into the checkout")
+
+        action = step(self.store, self.paths, self.ctx)
+
+        self.assertIsInstance(action, Pause)
+        self.assertEqual(action.question_request["kind"], "blocked")
+        self.assertEqual(action.question_request["payload"]["branch"], "main")
+        self.assertIn("main", action.question_request["text"])
+
+    def test_e6_rejection_reissues_review_and_does_not_reclear_within_the_same_attempt(self):
+        # LF-16: EXECUTE's own product got rejected with E6 (an unaccepted review
+        # evidence level) after T-1 was already "done" -- left alone, the next
+        # attempt would resubmit the identical product and get rejected again.
+        worktree, task_head = self._implement_and_review("T-1", "T-1.txt")
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "done")
+        last_review_step = self.store.state["execute"]["tasks"]["T-1"]["reviewSteps"][-1]
+
+        rejection_ctx = self.ctx | {
+            "attempt": {"id": "attempt-2"},
+            "entry": {"mode": "remediation", "payload": {"rejected": {
+                "exit": "integrated",
+                "failures": [{"id": "E6", "message": "tasks with an unaccepted review evidence level: T-1"}],
+            }}},
+        }
+
+        action = step(self.store, self.paths, rejection_ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        self.assertEqual(action.request["retryOf"], last_review_step)
+        self.assertIn("T-1", action.request["reason"])
+        task_state = self.store.state["execute"]["tasks"]["T-1"]
+        self.assertEqual(task_state["status"], "reviewing")
+        self.assertIsNone(task_state["review"])
+
+        # A later step() call in this same attempt must not re-clear: put T-1
+        # back where a re-dispatch would find it, with a sentinel review, and
+        # confirm handledRejections' guard leaves it alone.
+        task_state["status"] = "probing"
+        task_state["review"] = {"sentinel": True}
+        action = step(self.store, self.paths, rejection_ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(task_state["review"], {"sentinel": True})
+        self.assertEqual(self.store.state["execute"]["handledRejections"], ["attempt-2"])
 
 
 if __name__ == "__main__":
