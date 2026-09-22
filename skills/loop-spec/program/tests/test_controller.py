@@ -919,6 +919,7 @@ class DebugAndReviseEntryTests(_QuietStdout):
                     )
                 paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "revise-42"))
                 store = _open(paths)
+                self.assertEqual(store.state["run"]["cycleType"], "revise")  # LF-41
                 repo_name = next(iter(store.state["repos"]))
                 self.assertEqual(store.state["phase"]["current"], "revise")
                 self.assertEqual(store.state["adoption"]["number"], 42)

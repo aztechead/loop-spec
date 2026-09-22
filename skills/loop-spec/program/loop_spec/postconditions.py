@@ -520,7 +520,15 @@ class Boundary:
         if not issues:
             return "no issues recorded for the blocked exit"
         has_permission_denied = any(_PERMISSION_DENIED_MARKER in i["text"] for i in issues)
-        if self.store.state["phase"].get("retries", 0) < retry_limit() and not has_permission_denied:
+        # A task that exhausted its own per-step retries is what E10 means by "up to
+        # the per-step retry limit"; counting only the phase's product rejections made
+        # a correctly blocked product re-run three empty attempts first (LF-40).
+        task_states = (self.store.state.get("execute") or {}).get("tasks") or {}
+        step_retries_exhausted = any(
+            task_states.get(i.get("task"), {}).get("retries", 0) > retry_limit() for i in issues
+        )
+        if (self.store.state["phase"].get("retries", 0) < retry_limit() and not has_permission_denied
+                and not step_retries_exhausted):
             return f"blocked claimed before the retry limit ({retry_limit()}) or a permission-denied issue"
         return None
 

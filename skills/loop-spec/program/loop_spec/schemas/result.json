@@ -18,6 +18,7 @@
         "full",
         "micro",
         "debug",
+        "revise",
         "diagnostic"
       ]
     },

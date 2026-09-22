@@ -347,6 +347,16 @@ class PostconditionsTests(unittest.TestCase):
         self.store.state["phase"]["retries"] = postconditions.retry_limit()
         self.assertIsNone(self._boundary("execute", blocked, "blocked")._e10())
 
+    def test_e10_accepts_a_task_that_exhausted_its_own_retries(self):
+        # LF-40: the task's per-step retries count, not only the phase's rejections.
+        blocked = copy.deepcopy(self.execute_product)
+        blocked["issues"] = [{"task": "T-1", "text": "no commit was made on the task branch"}]
+        self.store.state["phase"]["retries"] = 0
+        self.store.state["execute"] = {"tasks": {"T-1": {"retries": postconditions.retry_limit() + 1}}}
+        self.assertIsNone(self._boundary("execute", blocked, "blocked")._e10())
+        self.store.state["execute"]["tasks"]["T-1"]["retries"] = 1
+        self.assertIsNotNone(self._boundary("execute", blocked, "blocked")._e10())
+
     def test_e11(self):
         # M1: probes.securitySignals is empty, so E11 always holds until a signal exists.
         self.assertIsNone(self._boundary("execute", self.execute_product, "integrated")._e11())
