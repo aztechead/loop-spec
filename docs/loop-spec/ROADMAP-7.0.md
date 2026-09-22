@@ -60,7 +60,8 @@ interfaces. How a phase is satisfied inside is up to its implementation. The
 interface between phases is owned by loop-spec, and the program checks it against the
 repository before the next phase opens.
 
-This is the answer to "why not just use BMAD, or Matt Pocock's skills, or spec-kit".
+This is the answer to "why not just use one of the published spec-driven skill sets, or
+Matt Pocock's skills, or spec-kit".
 Those are instruction sets, and several of them describe how to do a phase better than
 loop-spec's own prose does. None of them can hold a finding ledger across sessions,
 refuse to mark a task done without a review, or tell a harness whether a run converged.
@@ -463,7 +464,8 @@ review. Loop-spec supplies what to look at and what shape to answer in.
 Three rules govern what can be bound where, learned from looking at the candidates:
 
 - The schema decides fit. A skill fits a role when its natural product is close to
-  the role's schema. Pocock's grill-with-docs and BMAD's brainstorming end in a domain
+  the role's schema. Pocock's grill-with-docs and the brainstorming skills of the
+  published method sets end in a domain
   model or ideas, so they fit SPEC. Bound to PLAN they would run and then improvise
   tasks at the contract's finishing step, and quality would drop silently there.
   Pairings that fit today: grill-with-docs or grill-me for SPEC, to-tickets for PLAN,
@@ -604,7 +606,8 @@ ahead of the source files, and the harness had to strip it at delivery. 6.9 has 
 `refs/loop-spec/state/<slug>` convention and still commits `docs/loop-spec/features/`,
 so both happen.
 
-What comparable tools do, checked 2026-09-21: spec-kit, OpenSpec, BMAD, and ccpm all
+What comparable tools do, checked 2026-09-21: spec-kit, OpenSpec, ccpm, and the
+published method skill sets all
 commit specs and plans as markdown in a tool-named directory of the user's repo. None
 has a consistent home for run state. Claude Code documents a per-plugin data
 directory, `${CLAUDE_PLUGIN_DATA}`, resolving to `~/.claude/plugins/data/<id>/`,
@@ -742,13 +745,28 @@ directories into any of that tool's supported agents, symlinked to one canonical
 by default. The Claude Code plugin adds what only Claude Code has: the manifest and
 the data directory placeholder. 7.x ships no hook (decided 2026-09-22).
 
-- The program ships inside the skill tree so a skills install carries it. The entry
-  skills share the program by a relative path. Whether that path survives a per-skill
-  symlink install on each agent is a verify item (section 19); if it does not, the
-  fallback is one skill `loop-spec` with the entry as its argument.
-- A skill body references the program relative to its own directory, never through a
+- The program ships inside the skill tree so a skills install carries it, in one hub
+  skill, `skills/loop-spec/`: `SKILL.md` for orientation and status, `program/` with
+  the Python package and a `loop-spec` launcher, `roles/` (section 8), `references/`,
+  and `manifest.toml` (decided 2026-09-22).
+- Every entry (`cycle`, the six phases, `debug`, `micro`, `revise`) is a thin sibling
+  skill: frontmatter plus one command, run once without changing directory:
+  `"{skill-root}/../loop-spec/program/loop-spec <entry> --project-root "{project-root}"`.
+  The program prints the one file to act on next: a step, a question, or a result. A
+  stub never runs phase content directly. If the program is missing, the stub says to
+  read the sibling hub's `SKILL.md`; on any other failure it reports the output and
+  halts.
+- Two placeholders the host or the model fills: `{skill-root}`, this skill's absolute
+  directory (`${LOOP_SPEC_SKILL_DIR}` in Claude Code), and `{project-root}`. Never a
   host variable, since `${CLAUDE_PLUGIN_ROOT}` is empty in Bash tool calls and other
   agents have no equivalent.
+- Each skill folder carries `manifest.toml`: `module = "loop-spec"`, `version`, and a
+  `knowledge` pointer into the hub's `references/`. The hub's `SKILL.md` discovers
+  installed siblings by scanning for manifests and routes only from the knowledge
+  documents they name, never from folder names.
+- The sibling path holds under a per-skill symlink install because `..` of a symlinked
+  skill directory is the agent's skills root, where the hub's symlink also lives. This
+  answers the section 19 item; the single-skill fallback is retired.
 - Hooks, agents, output styles, and MCP config are Claude Code plugin surfaces and do
   not travel with a skills install. 7.x depends on none of them for correctness.
 
@@ -795,7 +813,7 @@ behavior.
 | M | Deliverable | Done when |
 |---|---|---|
 | M0 | this document, the migration inventory, and the route matrix merged on `v7` | DONE 2026-09-22: the re-audit recorded closure at `17707d4` and recommended sign-off (`m0-critique-7.0.md`, committed as `146c1c2`); the maintainer's sign-off is the merge of `v7` work continuing into M1 |
-| M1 | state, repo, baseline, events, the implementation contract, the step seam, the external placeholder implementation, host probes | a live empty cycle crosses all seven boundaries; native dispatch, worktree, and receipt probes recorded (the attestation probe is done, see `native-attestation-probe-7.0.md`) |
+| M1 | first commit deletes `hooks/` and its tests so no 6.9 hook fires in a 7.x live run; then state, repo, baseline, events, the implementation contract, the step seam, the external placeholder implementation, host probes | a live empty cycle crosses all seven boundaries; native dispatch, worktree, and receipt probes recorded (the attestation probe is done, see `native-attestation-probe-7.0.md`) |
 | M2 | SPEC and PLAN defaults in the lead, `submit`, intent guard, re-approval as a question | a spec change after approval yields exit 3 and an answer re-approves |
 | M3 | EXECUTE default: dag, worktrees, implement and review roles, integration against baseline | a live happy path integrates; an unreviewed commit cannot cross the EXECUTE boundary; an external EXECUTE passes its postconditions |
 | M4 | VERIFY and ITERATE defaults: acceptance, ledger, delta review, full evidence re-run in a clean checkout, goal judgment, bounded rewinds | the report's four-pass sequence terminates `converged-with-caveats` after two rewinds; a green checklist with an unmet goal rewinds |
@@ -817,8 +835,9 @@ Recorded so the plan does not lean on memory:
   told a working directory and honors it, and whether `isolation: "worktree"` exists
   in the SDK's `AgentDefinition`. It does not appear in the documentation; the program
   creates the worktree itself either way, and `submit` checks where the commit landed.
-- Whether a skill directory installed by `npx skills` on each target agent can reach a
-  sibling skill's program by relative path, or whether one skill must carry it.
+- Answered by design 2026-09-22 (section 16): entry skills reach the hub as a sibling
+  of their own directory, which a per-skill symlink install preserves. Confirm on the
+  first skills install at M6.
 - Whether `${CLAUDE_PLUGIN_DATA}` resolves inside skill content when the plugin is
   loaded through the SDK's `plugins` option, and not only from a marketplace install.
 - `ResultMessage.structured_output` on the SDK version the live run records, including missing output on
@@ -879,7 +898,10 @@ limited to accepted non-Critical review findings; a Critical critic finding clos
 only fixed-and-rechecked or rejected-with-reason; every `blocked` exit pauses and
 only a stop answer escalates; D7 is required per repo whose remote write was
 attempted; debug and `revise` establish their revisions through a compact SPEC and
-PLAN. After the re-audit at `727b2b8`: the budget postcondition (T1) covers PLAN to
+PLAN. Layout, decided 2026-09-22: one hub skill `skills/loop-spec/` with the program,
+roles, references, and manifest; thin sibling stubs per entry that run one command and
+follow the file it prints; a manifest per skill folder. `hooks/` is deleted in M1's first
+commit rather than at M7. After the re-audit at `727b2b8`: the budget postcondition (T1) covers PLAN to
 SPEC and EXECUTE to PLAN as well; debug's repair runs through EXECUTE with a
 `mustFlip` reproduction; `revise` reviews the adopted range as an `adopted` task.
 

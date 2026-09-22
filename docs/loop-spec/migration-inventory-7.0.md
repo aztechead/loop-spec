@@ -332,7 +332,8 @@ lands.
 
 `hooks/` holds 45 hook scripts, `hooks.json`, `codex-hooks.json`, `pre-tool-guard.py`,
 and 27 test files. R§16: 7.x ships no hook and depends on none for correctness
-(decided 2026-09-22).
+(decided 2026-09-22). The whole directory is deleted in M1's first commit, not at M7,
+so no 6.9 hook fires during a 7.x live run (R§18).
 
 | 6.9 hook | Event | Disposition | 7.x home |
 |---|---|---|---|
