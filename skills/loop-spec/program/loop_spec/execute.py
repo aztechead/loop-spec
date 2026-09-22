@@ -412,7 +412,7 @@ def _handle_rejection(store, ctx, execute_state: dict) -> Pause | None:
     if not rejected or not rejected.get("failures"):
         return None
     attempt_id = ctx["attempt"]["id"]
-    if attempt_id in execute_state["handledRejections"]:
+    if attempt_id in execute_state.setdefault("handledRejections", []):
         return None
     execute_state["handledRejections"].append(attempt_id)
 
