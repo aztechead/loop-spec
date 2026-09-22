@@ -382,6 +382,56 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertEqual(task_state["review"], {"sentinel": True})
         self.assertEqual(self.store.state["execute"]["handledRejections"], ["attempt-2"])
 
+    def test_review_retry_after_rejection_does_not_wipe_commits(self):
+        # LF-17: an E6 rejection resets a DONE task straight to "probing" (no new
+        # implementation), so the fresh review's task_head equals the already
+        # -integrated feature_head -- that re-review must not wipe the commits
+        # the FIRST integration recorded.
+        worktree, task_head = self._implement_and_review("T-1", "T-1.txt")
+        task_state = self.store.state["execute"]["tasks"]["T-1"]
+        self.assertEqual(task_state["commits"], [task_head])
+        self.assertEqual(task_state["integratedFrom"], self.base_sha)
+        self.assertEqual(task_state["integratedTo"], task_head)
+
+        rejection_ctx = self.ctx | {
+            "attempt": {"id": "attempt-e6-retry"},
+            "entry": {"mode": "remediation", "payload": {"rejected": {
+                "exit": "integrated",
+                "failures": [{"id": "E6", "message": "tasks with an unaccepted review evidence level: T-1"}],
+            }}},
+        }
+        action = step(self.store, self.paths, rejection_ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "code-reviewer")
+
+        review = self._pass_review(task_head, task_head, task_head)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-2"}, review)
+
+        self.assertEqual(task_state["status"], "done")
+        self.assertEqual(task_state["commits"], [task_head])
+
+    def test_e4_rejection_pauses_on_every_fresh_attempt(self):
+        # LF-18: a genuine, self-heal-resistant mismatch (commits is non-empty but
+        # wrong, so _self_heal_commits -- which only fires on an EMPTY list --
+        # leaves it alone) must pause every time a fresh attempt sees it, not just
+        # once, and never silently fall through to a product.
+        worktree, task_head = self._implement_and_review("T-1", "T-1.txt")
+        self.store.state["execute"]["tasks"]["T-1"]["commits"] = [self.base_sha]
+
+        rejection_ctx = self.ctx | {
+            "attempt": {"id": "attempt-e4-1"},
+            "entry": {"mode": "remediation", "payload": {"rejected": {
+                "exit": "integrated",
+                "failures": [{"id": "E4", "message": "repo repo: task commits do not exactly cover base..head"}],
+            }}},
+        }
+        action = step(self.store, self.paths, rejection_ctx)
+        self.assertIsInstance(action, Pause)
+        self.assertIn(task_head, action.question_request["text"])
+
+        action = step(self.store, self.paths, rejection_ctx | {"attempt": {"id": "attempt-e4-2"}})
+        self.assertIsInstance(action, Pause)
+
 
 if __name__ == "__main__":
     unittest.main()

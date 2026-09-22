@@ -160,6 +160,11 @@ def _init(store, paths, ctx) -> dict:
             "status": "pending", "repo": t["repo"], "worktree": None, "branch": None,
             "baseLayers": None, "implementSteps": [], "reviewSteps": [], "commits": [],
             "review": None, "probes": None, "evidence": None, "retries": 0, "reason": None,
+            # LF-17: the range a task's commits were actually computed from, set once
+            # at its first real merge -- a later re-review of the same integration
+            # (feature_head == task_head, nothing new to merge) has no range of its
+            # own to overwrite these with.
+            "integratedFrom": None, "integratedTo": None,
         }
         for t in plan_tasks
     }
@@ -479,12 +484,39 @@ def _final_product(store, ctx, execute_state: dict) -> dict:
     }
 
 
+def _self_heal_commits(store, execute_state: dict) -> bool:
+    """LF-17/18: a done task can carry an empty commits list -- state written
+    before this fix recorded no integratedFrom/integratedTo at all, and existing
+    state from the bug this fix closes has the same shape. Recompute instead of
+    letting E4's own check (or a delivered product) keep reporting a mismatch
+    nothing else will ever resolve. Returns whether anything changed."""
+    healed = False
+    for task_id, task_state in execute_state["tasks"].items():
+        if task_state["status"] != "done" or task_state["commits"]:
+            continue
+        repo_info = store.state["repos"][task_state["repo"]]
+        repo_path = Path(repo_info["path"])
+        if task_state.get("integratedFrom") and task_state.get("integratedTo"):
+            from_sha, to_sha = task_state["integratedFrom"], task_state["integratedTo"]
+        else:
+            from_sha = repo_info["baseSha"]
+            to_sha = repo_module.branch_sha(repo_path, task_state["branch"])
+        if to_sha is None:
+            continue
+        task_state["commits"] = repo_module.commits_between(repo_path, from_sha, to_sha)
+        healed = True
+    return healed
+
+
 # --- the two entry points ---------------------------------------------
 
 def step(store, paths, ctx):
     execute_state = store.state.get("execute")
     if execute_state is None:
         execute_state = _init(store, paths, ctx)
+
+    if _self_heal_commits(store, execute_state):
+        store.save()
 
     drift = _drifted_repo(store, execute_state)
     if drift is not None:
@@ -575,7 +607,13 @@ def _on_review_submit(store, task_id: str, task_state: dict, step_record: dict, 
 
     feature_worktree = Path(execute_state["repos"][task_state["repo"]]["worktree"])
     repo_module.run_git(feature_worktree, "merge", "--ff-only", task_head)
-    task_state["commits"] = repo_module.commits_between(feature_worktree, feature_head, task_head)
+    new_commits = repo_module.commits_between(feature_worktree, feature_head, task_head)
+    if new_commits:
+        # LF-17: a re-review of an already-integrated task (an E5/E6/E11 remediation
+        # retry -- feature_head == task_head, nothing new to merge) must not wipe the
+        # commits its FIRST integration recorded; only a genuine new merge updates them.
+        task_state["commits"] = new_commits
+        task_state["integratedFrom"], task_state["integratedTo"] = feature_head, task_head
     execute_state["repos"][task_state["repo"]]["head"] = task_head
     task_state["status"] = "done"
     task_state["reason"] = None
