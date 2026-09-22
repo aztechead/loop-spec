@@ -1,0 +1,465 @@
+"""Failure-identity parsing, output normalization, and baseline capture/comparison.
+
+Use the `parse_*`/`detect_runner` functions to turn a test runner's raw output into
+stable failure identities, `run_command` to execute one command and record everything
+a later comparison needs, `capture_baseline` to run a plan's commands once at the base
+commit, and `compare_to_baseline`/`evidence_matches` to decide whether a later run at
+a candidate commit regressed, satisfies a featureAdded/mustFlip task, or matches a
+claimed VERIFY result. None of these functions choose a phase route; they report facts
+for `postconditions.py` to check.
+"""
+import hashlib
+import re
+import shlex
+import subprocess
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal
+
+from . import repo as repo_module
+from .errors import LoopSpecError
+from .ids import digest_bytes, now_iso
+
+# ---------------------------------------------------------------------------
+# Failure identity parsers
+# ---------------------------------------------------------------------------
+
+_PYTEST_LINE = re.compile(r"^(?:FAILED|ERROR)\s+(\S+)")
+
+
+def parse_pytest(text: str) -> list[str]:
+    identities = {m.group(1) for line in text.splitlines() if (m := _PYTEST_LINE.match(line.strip()))}
+    return sorted(identities)
+
+
+# simplicity: parse_vitest_jest and parse_go_test share a "header line sets context,
+# match line emits an identity" shape (duplication-scan flags ~11 similar lines). A
+# shared scanner would need callbacks for the bullet/checkmark split and the "."-vs-"
+# >"-join that make them behave differently, trading two readable 10-line parsers for
+# one generic one; upgrade to a shared helper only once a third parser needs the same
+# shape.
+_JS_FAIL_HEADER = re.compile(r"^\s*FAIL\s+(\S+)")
+_JS_CHECK_MARK = re.compile(r"^\s*[✕×]\s+(.+?)(?:\s+\(\d+(?:\.\d+)?\s*m?s\))?\s*$")
+_JS_BULLET = re.compile(r"^\s*●\s+(.+?)\s*$")
+
+
+def parse_vitest_jest(text: str) -> list[str]:
+    identities = []
+    current_fail_path = None
+    for line in text.splitlines():
+        header = _JS_FAIL_HEADER.match(line)
+        if header:
+            current_fail_path = header.group(1)
+            continue
+        bullet = _JS_BULLET.match(line)
+        if bullet:
+            name = bullet.group(1).replace(" › ", " > ")
+            identities.append(f"{current_fail_path} > {name}" if current_fail_path else name)
+            continue
+        mark = _JS_CHECK_MARK.match(line)
+        if mark:
+            identities.append(mark.group(1))
+    return sorted(set(identities))
+
+
+_GO_PKG_SUMMARY = re.compile(r"^FAIL\t(\S+)")
+_GO_FAIL = re.compile(r"^--- FAIL: (\S+)")
+
+
+def parse_go_test(text: str) -> list[str]:
+    identities = []
+    current_pkg = None
+    for line in text.splitlines():
+        pkg = _GO_PKG_SUMMARY.match(line)
+        if pkg:
+            current_pkg = pkg.group(1)
+            continue
+        fail = _GO_FAIL.match(line)
+        if fail:
+            name = fail.group(1)
+            identities.append(f"{current_pkg}.{name}" if current_pkg else name)
+    return sorted(set(identities))
+
+
+_CARGO_LINE = re.compile(r"^test\s+(\S+)\s+\.\.\.\s+FAILED\s*$")
+
+
+def parse_cargo_test(text: str) -> list[str]:
+    identities = {m.group(1) for line in text.splitlines() if (m := _CARGO_LINE.match(line.strip()))}
+    return sorted(identities)
+
+
+PARSERS = {
+    "pytest": parse_pytest,
+    "vitest": parse_vitest_jest,
+    "jest": parse_vitest_jest,
+    "go": parse_go_test,
+    "cargo": parse_cargo_test,
+}
+
+
+def detect_runner(command: str) -> str | None:
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return None
+    if not tokens:
+        return None
+    first = tokens[0]
+    if first == "pytest":
+        return "pytest"
+    if first in ("python", "python3") and tokens[1:3] == ["-m", "pytest"]:
+        return "pytest"
+    if first == "vitest":
+        return "vitest"
+    if first == "jest":
+        return "jest"
+    if first == "go" and tokens[1:2] == ["test"]:
+        return "go"
+    if first == "cargo" and tokens[1:2] == ["test"]:
+        return "cargo"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Output normalization (port of lib/verification-baseline.sh's normalize(), same
+# regexes and order, so a fingerprint computed by the shell tooling and one computed
+# here agree on the same raw output).
+# ---------------------------------------------------------------------------
+
+NORMALIZATION_VERSION = 1
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_HEX = re.compile(r"\b0x[0-9a-f]+\b", re.IGNORECASE)
+_LINE_NO = re.compile(r"(?<=:)[0-9]+(?::[0-9]+)?\b")
+_TIME = re.compile(r"\b[0-9]+(?:\.[0-9]+)?(?:ms|s)\b")
+_LABELED_NUM = re.compile(r"\b(pid|process|port)([:=# ]+)[0-9]+\b", re.IGNORECASE)
+_BIG_INT = re.compile(r"\b[0-9]{5,}\b")
+_FAILURE_MARKER = re.compile(
+    r"(?:\bfail(?:ed|ure)?\b|\berror\b|\bexception\b|\bpanic\b|\bfatal\b|\bassert(?:ion)?\b|\bnot ok\b)",
+    re.IGNORECASE,
+)
+
+
+def _normalize_line(line: str, root: str) -> str:
+    line = _ANSI.sub("", line).replace(root, "<ROOT>")
+    line = _HEX.sub("<HEX>", line)
+    line = _LINE_NO.sub("<LINE>", line)
+    line = _TIME.sub("<TIME>", line)
+    line = _LABELED_NUM.sub(r"\1\2<N>", line)
+    line = _BIG_INT.sub("<N>", line)
+    return " ".join(line.split())
+
+
+def normalize_output(text: str, root: Path) -> str:
+    root_str = str(root)
+    return "\n".join(_normalize_line(line, root_str) for line in text.splitlines())
+
+
+def fingerprints(text: str, root: Path) -> list[str]:
+    root_str = str(root)
+    lines = text.splitlines()
+    # The marker check runs on the RAW line, before normalization, matching the 6.9
+    # shell/python tool exactly; normalizing first would let a scrubbed number or
+    # path swallow the word that made the line worth fingerprinting.
+    candidates = [_normalize_line(line, root_str) for line in lines if _FAILURE_MARKER.search(line)]
+    candidates = [c for c in candidates if c]
+    if not candidates:
+        nonempty = [_normalize_line(line, root_str) for line in lines if line.strip()]
+        candidates = nonempty[-1:] or ["<no failure output>"]
+    return sorted({hashlib.sha256(c.encode()).hexdigest()[:16] for c in candidates})
+
+
+# ---------------------------------------------------------------------------
+# Running a command
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class CommandRun:
+    command: str
+    cwd: str
+    sha: str
+    exit_status: int
+    runner: str | None
+    failure_identities: list[str]
+    fingerprints: list[str]
+    output_digest: str
+    normalized_digest: str
+    normalization_version: int
+    started_at: str
+    elapsed_seconds: float
+    error_class: str | None
+    tests_ran: int
+    log_path: str | None
+
+    def to_dict(self) -> dict:
+        return {
+            "command": self.command,
+            "cwd": self.cwd,
+            "sha": self.sha,
+            "exitStatus": self.exit_status,
+            "runner": self.runner,
+            "failureIdentities": list(self.failure_identities),
+            "fingerprints": list(self.fingerprints),
+            "outputDigest": self.output_digest,
+            "normalizedDigest": self.normalized_digest,
+            "normalizationVersion": self.normalization_version,
+            "startedAt": self.started_at,
+            "elapsedSeconds": self.elapsed_seconds,
+            "errorClass": self.error_class,
+            "testsRan": self.tests_ran,
+            "logPath": self.log_path,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CommandRun":
+        return cls(
+            command=data["command"], cwd=data["cwd"], sha=data["sha"], exit_status=data["exitStatus"],
+            runner=data["runner"], failure_identities=list(data["failureIdentities"]),
+            fingerprints=list(data["fingerprints"]), output_digest=data["outputDigest"],
+            normalized_digest=data["normalizedDigest"], normalization_version=data["normalizationVersion"],
+            started_at=data["startedAt"], elapsed_seconds=data["elapsedSeconds"], error_class=data["errorClass"],
+            tests_ran=data["testsRan"], log_path=data["logPath"],
+        )
+
+
+_TESTS_RAN_PATTERNS = {
+    "pytest": re.compile(r"\bpassed\b|PASSED"),
+    "vitest": re.compile(r"✓|√|Tests:\s+\d+ passed"),
+    "jest": re.compile(r"✓|√|Tests:\s+\d+ passed"),
+    "go": re.compile(r"^--- PASS|^ok\s"),
+    "cargo": re.compile(r"^test result:.*\bok\b|\.\.\. ok$"),
+}
+
+
+def _count_tests_ran(output: str, runner: str | None) -> int:
+    if runner is None:
+        return 0
+    pattern = _TESTS_RAN_PATTERNS[runner]
+    return sum(1 for line in output.splitlines() if pattern.search(line))
+
+
+def run_command(
+    command: str, cwd: Path, sha: str, *, timeout: int = 1800, env: dict | None = None, log_path: Path | None = None
+) -> CommandRun:
+    started_at = now_iso()
+    start = time.monotonic()
+    output = ""
+    exit_status = 1
+    error_class: str | None = None
+    try:
+        args = shlex.split(command)
+        proc = subprocess.run(
+            args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            timeout=timeout, env=env, check=False,
+        )
+        output = proc.stdout or ""
+        exit_status = proc.returncode
+    except FileNotFoundError as exc:
+        output = str(exc)
+        exit_status = 127
+        error_class = "command-not-found"
+    except subprocess.TimeoutExpired as exc:
+        output = exc.stdout or ""
+        exit_status = 124
+        error_class = "timeout"
+    except (ValueError, OSError) as exc:
+        # A malformed command string (shlex.split) or an OS-level spawn failure (cwd
+        # missing, not executable) is data for the caller too: a failing command is
+        # never raised, only a genuinely bad input to run_command's own arguments is.
+        output = str(exc)
+        exit_status = 127
+        error_class = "spawn-error"
+
+    elapsed = time.monotonic() - start
+    root = Path(cwd)
+    runner = detect_runner(command)
+    if log_path is not None:
+        # Written so an operator can read a failing baseline's raw output; the digest
+        # below still comes from the bytes, not the file, so it is correct even if the
+        # write fails or the file is later moved.
+        Path(log_path).write_text(output)
+    return CommandRun(
+        command=command, cwd=str(cwd), sha=sha, exit_status=exit_status, runner=runner,
+        failure_identities=PARSERS[runner](output) if runner else [],
+        fingerprints=fingerprints(output, root),
+        output_digest=digest_bytes(output.encode()),
+        normalized_digest=digest_bytes(normalize_output(output, root).encode()),
+        normalization_version=NORMALIZATION_VERSION,
+        started_at=started_at, elapsed_seconds=elapsed, error_class=error_class,
+        tests_ran=_count_tests_ran(output, runner), log_path=str(log_path) if log_path is not None else None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Baseline capture
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BaselineEntry:
+    command: str
+    task: str | None
+    status: Literal["ran", "no-baseline"]
+    run: CommandRun | None
+
+    def to_dict(self) -> dict:
+        return {"command": self.command, "task": self.task, "status": self.status, "run": self.run.to_dict() if self.run else None}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "BaselineEntry":
+        run = CommandRun.from_dict(data["run"]) if data.get("run") is not None else None
+        return cls(command=data["command"], task=data["task"], status=data["status"], run=run)
+
+
+@dataclass
+class Baseline:
+    base_sha: str
+    repo: str
+    prepare: str | None
+    prepare_run: CommandRun | None
+    entries: dict[str, BaselineEntry]
+    captured_at: str
+    normalization_version: int
+
+    def to_dict(self) -> dict:
+        return {
+            "baseSha": self.base_sha,
+            "repo": self.repo,
+            "prepare": self.prepare,
+            "prepareRun": self.prepare_run.to_dict() if self.prepare_run else None,
+            "entries": {name: entry.to_dict() for name, entry in self.entries.items()},
+            "capturedAt": self.captured_at,
+            "normalizationVersion": self.normalization_version,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Baseline":
+        prepare_run = CommandRun.from_dict(data["prepareRun"]) if data.get("prepareRun") is not None else None
+        entries = {name: BaselineEntry.from_dict(entry) for name, entry in data["entries"].items()}
+        return cls(
+            base_sha=data["baseSha"], repo=data["repo"], prepare=data["prepare"], prepare_run=prepare_run,
+            entries=entries, captured_at=data["capturedAt"], normalization_version=data["normalizationVersion"],
+        )
+
+
+def capture_baseline(
+    repo: Path,
+    base_sha: str,
+    commands: list[tuple[str, str | None, str | None]],
+    prepare: str | None,
+    checkouts_dir: Path,
+    repo_name: str,
+) -> Baseline:
+    checkout_dest = Path(checkouts_dir) / f"baseline-{base_sha[:12]}"
+    repo_module.clean_checkout(repo, base_sha, checkout_dest)
+    try:
+        prepare_run = None
+        if prepare:
+            prepare_run = run_command(prepare, checkout_dest, base_sha)
+            if prepare_run.exit_status != 0:
+                raise LoopSpecError(
+                    f"prepare command failed at base: {prepare}",
+                    repair=f"run `{prepare}` by hand in {checkout_dest} against {base_sha} and fix it",
+                )
+
+        entries: dict[str, BaselineEntry] = {}
+        for command, task_id, feature_added_path in commands:
+            if command in entries:
+                continue  # identical command strings run once; the dict is keyed by command
+            if feature_added_path is not None:
+                target = checkout_dest / feature_added_path
+                if target.exists():
+                    raise LoopSpecError(
+                        f"featureAdded target {feature_added_path} already exists at base",
+                        repair=f"pick a path for task {task_id} that does not exist at {base_sha}",
+                    )
+                entries[command] = BaselineEntry(command=command, task=task_id, status="no-baseline", run=None)
+                continue
+            entries[command] = BaselineEntry(
+                command=command, task=task_id, status="ran", run=run_command(command, checkout_dest, base_sha)
+            )
+
+        return Baseline(
+            base_sha=base_sha, repo=repo_name, prepare=prepare, prepare_run=prepare_run,
+            entries=entries, captured_at=now_iso(), normalization_version=NORMALIZATION_VERSION,
+        )
+    finally:
+        repo_module.remove_worktree(repo, checkout_dest, force=True)
+
+
+# ---------------------------------------------------------------------------
+# Comparison
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Comparison:
+    verdict: Literal[
+        "no-regression", "regression", "featureAdded-ok", "featureAdded-failed",
+        "mustFlip-ok", "mustFlip-failed", "baseline-error",
+    ]
+    new_identities: list[str]
+    detail: str
+
+    def to_dict(self) -> dict:
+        return {"verdict": self.verdict, "newIdentities": list(self.new_identities), "detail": self.detail}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Comparison":
+        return cls(verdict=data["verdict"], new_identities=list(data["newIdentities"]), detail=data["detail"])
+
+
+def compare_to_baseline(entry: BaselineEntry, candidate: CommandRun, *, feature_added: bool = False, must_flip: bool = False) -> Comparison:
+    baseline_run = entry.run
+
+    if baseline_run is not None and baseline_run.error_class is not None:
+        return Comparison("baseline-error", [], "baseline run hit an environment error; E7 cannot be decided")
+    if baseline_run is None and not feature_added:
+        return Comparison("baseline-error", [], "no baseline run was recorded for this command")
+
+    if must_flip:
+        if baseline_run is None or baseline_run.exit_status == 0:
+            return Comparison("mustFlip-failed", [], "reproduction did not fail at base")
+        if candidate.exit_status == 0:
+            return Comparison("mustFlip-ok", [], "reproduction no longer fails")
+        return Comparison("mustFlip-failed", [], "reproduction still fails at the candidate commit")
+
+    if feature_added:
+        if candidate.exit_status != 0:
+            return Comparison("featureAdded-failed", [], "feature-added command did not exit 0")
+        if candidate.runner is not None and candidate.failure_identities:
+            return Comparison("featureAdded-failed", list(candidate.failure_identities), "feature-added command reported failures")
+        if candidate.runner is not None and candidate.tests_ran == 0:
+            # Exit 0 with zero parsed failures also happens when zero tests were
+            # collected; tests_ran (counted from the raw output at capture time,
+            # since CommandRun keeps only digests) is what tells the two apart.
+            return Comparison("featureAdded-failed", [], "no test ran")
+        return Comparison("featureAdded-ok", [], "feature-added command passed")
+
+    if candidate.runner is not None and baseline_run.runner is not None:
+        new_identities = sorted(set(candidate.failure_identities) - set(baseline_run.failure_identities))
+    else:
+        new_identities = sorted(set(candidate.fingerprints) - set(baseline_run.fingerprints))
+
+    if new_identities:
+        return Comparison("regression", new_identities, "new failure identity not present at base")
+    return Comparison("no-regression", [], "no new failure identity versus base; exit status alone never decides")
+
+
+def evidence_matches(claimed: dict, rerun: CommandRun) -> tuple[bool, str]:
+    claimed_command = " ".join(shlex.split(claimed.get("command", "")))
+    rerun_command = " ".join(shlex.split(rerun.command))
+    if claimed_command != rerun_command:
+        return False, "command differs"
+    if claimed.get("sha") != rerun.sha:
+        return False, "sha differs"
+    if claimed.get("exitStatus") != rerun.exit_status:
+        return False, "exitStatus differs"
+    if sorted(claimed.get("failureIdentities") or []) != sorted(rerun.failure_identities):
+        return False, "failureIdentities differ"
+    if "normalizedDigest" in claimed and claimed["normalizedDigest"] != rerun.normalized_digest:
+        return False, "normalizedDigest differs"
+    return True, ""
