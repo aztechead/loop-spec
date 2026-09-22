@@ -495,6 +495,81 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertIn("defaultHead", events_text)
         self.assertIn("handledRejections", events_text)
 
+    def test_already_satisfied_at_the_fork_with_a_clean_tree_is_accepted(self):
+        action = step(self.store, self.paths, self.ctx)
+        result = {"taskId": "T-1", "commits": [], "summary": "already satisfied: base has it",
+                  "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []}
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "step-1"}, result)
+        task_state = self.store.state["execute"]["tasks"]["T-1"]
+        self.assertEqual(task_state["status"], "already-satisfied")
+
+    def test_already_satisfied_with_commits_past_the_fork_takes_the_commit_path(self):
+        action = step(self.store, self.paths, self.ctx)
+        worktree = action.request["cwd"]
+        _commit(worktree, "T-1.txt", "work")
+        result = {"taskId": "T-1", "commits": [], "summary": "already satisfied: base has it",
+                  "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []}
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "step-1"}, result)
+        task_state = self.store.state["execute"]["tasks"]["T-1"]
+        self.assertEqual(task_state["status"], "probing")
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "code-reviewer")
+
+        events_text = self.paths.events_jsonl.read_text()
+        self.assertIn('"already_satisfied_contradicted"', events_text)
+
+    def test_already_satisfied_with_a_dirty_tree_at_the_fork_retries(self):
+        action = step(self.store, self.paths, self.ctx)
+        worktree = action.request["cwd"]
+        Path(worktree, "scratch.txt").write_text("x\n")
+        result = {"taskId": "T-1", "commits": [], "summary": "already satisfied: base has it",
+                  "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []}
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "step-1"}, result)
+        task_state = self.store.state["execute"]["tasks"]["T-1"]
+        self.assertEqual(task_state["status"], "pending")
+        self.assertIn("uncommitted changes", task_state["reason"])
+
+    def test_already_satisfied_with_no_recorded_fork_is_not_accepted(self):
+        action = step(self.store, self.paths, self.ctx)
+        self.store.state["execute"]["tasks"]["T-1"]["forkedFrom"] = None
+        self.store.save()
+        result = {"taskId": "T-1", "commits": [], "summary": "already satisfied: base has it",
+                  "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []}
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "step-1"}, result)
+        task_state = self.store.state["execute"]["tasks"]["T-1"]
+        self.assertNotEqual(task_state["status"], "already-satisfied")
+        self.assertIn("no commit was made", task_state["reason"])
+
+    def test_already_satisfied_after_a_sibling_moved_the_feature_head_keeps_the_commit(self):
+        self.plan_tasks[1]["dependsOn"] = []
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueSteps)
+        tasks = self.store.state["execute"]["tasks"]
+        wt1, wt2 = tasks["T-1"]["worktree"], tasks["T-2"]["worktree"]
+        req1 = next(r for r in action.requests if r["cwd"] == wt1)
+        req2 = next(r for r in action.requests if r["cwd"] == wt2)
+
+        result2 = self._implementer_result("T-2", wt2, "T-2.txt")
+        on_submit(self.store, self.paths, req2 | {"stepAttemptId": "impl-2"}, result2)
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        t2_head = _head(wt2)
+        review2 = self._pass_review(t2_head, self.base_sha, t2_head)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-2"}, review2)
+        self.assertEqual(tasks["T-2"]["status"], "done")
+
+        _commit(wt1, "T-1.txt", "work")
+        result1 = {"taskId": "T-1", "commits": [], "summary": "already satisfied: base has it",
+                   "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []}
+        on_submit(self.store, self.paths, req1 | {"stepAttemptId": "impl-1"}, result1)
+        self.assertEqual(tasks["T-1"]["status"], "probing")
+
 
 class AdoptedTaskTests(unittest.TestCase):
     """LF-38: a revise run's reviser carries an unchanged prior task forward

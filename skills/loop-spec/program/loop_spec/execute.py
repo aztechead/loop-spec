@@ -708,16 +708,27 @@ def step(store, paths, ctx):
     return Product(_final_product(store, ctx, execute_state))
 
 
-def _on_implement_submit(store, task_id: str, task_state: dict, step_record: dict, result: dict) -> None:
+def _on_implement_submit(store, paths, task_id: str, task_state: dict, step_record: dict, result: dict) -> None:
     task_state["implementSteps"].append(step_record["stepAttemptId"])
     execute_state = store.state["execute"]
     worktree = Path(task_state["worktree"])
 
+    # LF-49: "already satisfied" means nothing to integrate; Git, not the summary, decides that.
     if not result["commits"] and result["summary"].startswith("already satisfied:"):
-        task_state["status"] = "already-satisfied"
-        task_state["evidence"] = result["summary"]
-        task_state["reason"] = None
-        return
+        forked_from = task_state.get("forkedFrom")
+        task_head = repo_module.branch_sha(worktree, task_state["branch"])
+        if forked_from is not None and task_head == forked_from and repo_module.is_clean(worktree):
+            task_state["status"] = "already-satisfied"
+            task_state["evidence"] = result["summary"]
+            task_state["reason"] = None
+            return
+        if task_head is not None and task_head != forked_from:
+            emit(paths, "already_satisfied_contradicted",
+                 {"task": task_id, "forkedFrom": forked_from, "taskHead": task_head,
+                  "summary": f"{task_id} claimed already satisfied but "
+                             + ("its fork is unrecorded" if forked_from is None else "its branch moved past its fork")
+                             + "; taking the commit path"},
+                 phase="execute", attempt_id=step_record.get("attempt"))
 
     if not repo_module.is_clean(worktree):
         _retry_or_block(execute_state, task_id, task_state, "the worktree has uncommitted changes after the implement step")
@@ -845,7 +856,7 @@ def on_submit(store, paths, step, result: dict) -> None:
     task_id, task_state = found
 
     if step["role"] == "implementer":
-        _on_implement_submit(store, task_id, task_state, step, result)
+        _on_implement_submit(store, paths, task_id, task_state, step, result)
     elif step["role"] == "code-reviewer":
         _on_review_submit(store, paths, task_id, task_state, step, result)
     else:
