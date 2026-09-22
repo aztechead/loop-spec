@@ -311,7 +311,21 @@ class Boundary:
         missing = [c["id"] for c in spec_product["criteria"] if c["id"] not in covered]
         return f"criteria not covered by any task: {', '.join(missing)}" if missing else None
 
+    def _p3_form(self) -> str | None:
+        # LF-53: commands run as argv with no shell; checked before any baseline run
+        # (the controller's pre-capture gate calls this) and for featureAdded tasks,
+        # whose verify command the baseline never runs.
+        prepare = self.product.get("prepare")
+        if prepare is not None and (why := baseline_module.shell_syntax(prepare)):
+            return f"prepare command {why}; commands run as argv with no shell"
+        for task in self.product["tasks"]:
+            if why := baseline_module.shell_syntax(task["verify"]):
+                return f"task {task['id']}: verify command {why}; commands run as argv with no shell"
+        return None
+
     def _p3(self) -> str | None:
+        if (form := self._p3_form()) is not None:
+            return form
         # R3: each task's own repo has its own baseline entries -- a task's verify
         # command is only ever looked up against the repo it actually names.
         baseline_state = self.store.state.get("baseline")
@@ -634,7 +648,14 @@ class Boundary:
         exceptions = self._exceptions()
         runs = self.store.state.get("verifyRuns") or {}
         for verdict in self.product["verdicts"]:
-            if verdict["verdict"] not in ("pass", "fail") or verdict["criterion"] in exceptions:
+            if verdict["verdict"] not in ("pass", "fail"):
+                continue
+            # LF-53: checked before the exception skip, so an evidence exception never
+            # admits a command the no-shell runner would split wrongly.
+            command = (verdict.get("evidence") or {}).get("command")
+            if command is not None and (why := baseline_module.shell_syntax(command)):
+                return f"criterion {verdict['criterion']}: evidence command {why}; commands run as argv with no shell"
+            if verdict["criterion"] in exceptions:
                 continue
             record = runs.get(verdict["criterion"])
             if record is None:
@@ -919,12 +940,26 @@ class Boundary:
             return "the reproduction failed at base but recorded no parsed failure identity or fingerprint"
         return None
 
+    def _b1_form(self) -> str | None:
+        reproduction = self.product.get("reproduction")
+        why = reproduction is not None and baseline_module.shell_syntax(reproduction["command"])
+        return f"reproduction command {why}; commands run as argv with no shell" if why else None
+
+    def _b2_form(self) -> str | None:
+        original = self.product.get("original")
+        why = original is not None and baseline_module.shell_syntax(original["command"])
+        return f"original command {why}; commands run as argv with no shell" if why else None
+
     def _b1(self) -> str | None:
+        if (form := self._b1_form()) is not None:
+            return form
         return self._reproduction_run_holds((self.store.state.get("debug") or {}).get("baseRun"))
 
     def _b2(self) -> str | None:
         if self.product.get("original") is None:
             return None
+        if (form := self._b2_form()) is not None:
+            return form
         if not self.product["reproduction"].get("reason"):
             return "a changed reproduction needs a stated reason"
         return self._reproduction_run_holds((self.store.state.get("debug") or {}).get("originalRun"))

@@ -73,6 +73,30 @@ earlier phase or re-enters the same one. It appears in each such exit's `Require
 |---|---|---|
 | T1 | the shared feature-level budget has room and this transition was counted once against it; default two, operator override, persisted across sessions, never reset by a fresh attempt. When the budget is spent the program refuses the backward exit and escalates directly from the controller: it writes the terminal `escalated` result itself, naming the refused exit, the gap, and the budget record, without entering any phase. ITERATE is not involved, because its inputs may not exist yet | PLAN `spec gap`; EXECUTE `plan gap`; VERIFY `implementation gap`, `plan gap`, `intent gap`, `evidence incomplete`; ITERATE `rewind` |
 
+### Commands
+
+The program runs every command a product names (PLAN `verify` and `prepare`, the debug
+reproduction and original, VERIFY evidence) as argv split by POSIX `shlex` with
+comments disabled, never through a shell. P3, B1, B2, and V4 reject a command that
+relies on shell syntax, before it runs; `run_command` refuses one without spawning
+(exit 127, `errorClass` `invalid-command`). The format check reads quotes and escapes
+the way the split does: single-quoted text is literal, double quotes still expand `$`
+and backticks, a backslash escapes one character.
+
+| Rejected when unquoted | Allowed |
+|---|---|
+| operators `; & \| < > ( )` and any run of them (`&&`, `2>&1`) | the same characters quoted or escaped (`'&&'`, `\&`) |
+| a newline or a backslash-newline continuation | empty arguments after the executable (`pytest -k ""`) |
+| backticks; `$` before `(`, `{`, `_`, a letter or digit, or `?#@*!$-` (also inside double quotes) | a `$` with nothing expandable after it (`a$`); anything in single quotes (`rg 'a$'`) |
+| `#` or `~` starting a word | `#` inside a word (`a#b`) |
+| `*`, `?`, `[` | quoted patterns the program reads itself (`rg '*.py'`, `'t.py::t[1]'`) |
+| `NAME=value` as the first word | `env NAME=value cmd`; `key=value` arguments |
+| a string that fails to split, is empty, or has an empty executable | |
+
+This is a format check, not a sandbox or shell emulator: `sh -c '...'` is plain argv
+and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double quotes
+(a shell passes `$`, the split passes `\$`).
+
 ## SPEC
 
 | | |
@@ -106,7 +130,7 @@ earlier phase or re-enters the same one. It appears in each such exit's `Require
 |---|---|---|
 | P1 | product validates; bound to the current requirements revision | every exit |
 | P2 | every criterion id in the requirements revision is covered by at least one task | `ready` |
-| P3 | every verify command either ran at the base SHA from a bare worktree root during baseline capture, or is declared `featureAdded` with a target path that does not exist at base | `ready` |
+| P3 | every verify command and the prepare command pass the plain-argv format check (Commands, above), checked before any baseline command runs; and every verify command either ran at the base SHA from a bare worktree root during baseline capture, or is declared `featureAdded` with a target path that does not exist at base | `ready` |
 | P4 | the baseline is captured (section 11) with the prepare command applied; environment health recorded once per failing command | `ready` |
 | P5 | the task graph is acyclic and every `dependsOn` names a task in the plan | `ready` |
 | P6 | workspace resolved once and the repo list stored in state; every task names a repo in it | `ready` |
@@ -177,7 +201,7 @@ on such a task refuses the run.
 | V1 | product validates; bound to both revisions | every exit |
 | V2 | every criterion id in the requirements revision has exactly one verdict | every exit except `evidence incomplete` |
 | V3 | every evidence SHA equals the verified head of its repo | `passed` |
-| V4 | for every criterion without a V5 exception, its cited command was run by the program in a clean checkout of that SHA it created, with prepare fixtures applied (that execution may be reused across submissions naming the same repo, SHA, and command, but is re-matched against each submission's own claim, never a fact an earlier claim left recorded), and command identity, exit status, parsed failure identities, and normalized output digest matched | `passed` |
+| V4 | every cited evidence command, an exempt criterion's included, passes the plain-argv format check and is never run otherwise; for every criterion without a V5 exception, its cited command was run by the program in a clean checkout of that SHA it created, with prepare fixtures applied (that execution may be reused across submissions naming the same repo, SHA, and command, but is re-matched against each submission's own claim, never a fact an earlier claim left recorded), and command identity, exit status, parsed failure identities, and normalized output digest matched | `passed` |
 | V5 | a criterion skipped V4 only under an exception declared in the PLAN product and approved with it, or granted by an operator answer at VERIFY; its verdict is recorded at assurance `claimed` and listed under `weakenedAssurance` | `passed` |
 | V6 | a `blocked` verdict cites a cause the program observed, in the baseline record or in its own re-run | `blocked` |
 | V7 | every verdict is `pass` and the review policy holds per repo: first and final passes saw that repo's full diff, other passes the delta since its last reviewed SHA, no Critical finding open; evaluated over the ledger with the product's valid same-finding closures applied | `passed` |
@@ -272,8 +296,8 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 
 | Id | Postcondition | Gates |
 |---|---|---|
-| B1 | the program ran the recorded reproduction at base in a clean checkout and it failed with at least one parsed identity or fingerprint; the failure digest it recorded is the `mustFlip` baseline | `reproduced` |
-| B2 | a changed reproduction states a reason and the original was run too, with both results recorded | `reproduced` |
+| B1 | the reproduction command passes the plain-argv format check before it runs; the program ran the recorded reproduction at base in a clean checkout and it failed with at least one parsed identity or fingerprint; the failure digest it recorded is the `mustFlip` baseline | `reproduced` |
+| B2 | a changed reproduction states a reason and the original was run too, with both results recorded; the original command passes the plain-argv format check before it runs | `reproduced` |
 | B3 | no reproduction exists | `blocked reproduction`; forbids `reproduced` |
 
 | Exit | Requires | Route |

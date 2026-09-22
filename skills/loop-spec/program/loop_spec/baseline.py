@@ -247,6 +247,110 @@ def _count_tests_ran(output: str, runner: str | None) -> int:
     return sum(1 for line in output.splitlines() if pattern.search(line))
 
 
+# ---------------------------------------------------------------------------
+# Command format (LF-53)
+# ---------------------------------------------------------------------------
+
+_OPERATOR_CHARS = set(";&|<>()")
+_GLOB_CHARS = set("*?[")
+_SPECIAL_PARAMS = set("?#@*!$-")
+_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+
+
+class _InvalidCommand(Exception):
+    pass
+
+
+def shell_syntax(command: str) -> str | None:
+    """LF-53: run_command execs a command as argv with no shell, so shell syntax in it
+    reaches the program as literal arguments (`&&` became a git pathspec, exit 128).
+    Name the first construct the supported plain-argv format rejects, or None.
+
+    A quote/escape-aware scan that reads the string the way run_command's
+    `shlex.split` does (POSIX, comments disabled): quoted and escaped text is literal,
+    single quotes make everything literal, double quotes still expand `$` and
+    backticks. A format validator, not a sandbox or a shell emulator: `sh -c '...'` is
+    plain argv and passes.
+    """
+    # ponytail: brace expansion ({a,b}) and "\$" inside double quotes (the shell passes
+    # `$`, shlex passes `\$`) are not flagged; add them if a live command needs it.
+    try:
+        tokens = shlex.split(command)
+    except ValueError as exc:
+        return f"does not split as argv ({exc})"
+    if not tokens:
+        return "is empty"
+    if tokens[0] == "":
+        return "has an empty executable"
+    quote = None
+    word_start = True
+    first_word = True
+    i, n = 0, len(command)
+    while i < n:
+        c = command[i]
+        if quote == "'":
+            if c == "'":
+                quote = None
+            i += 1
+            continue
+        if quote == '"':
+            if c == "\\":
+                i += 2
+                continue
+            if c == '"':
+                quote = None
+            elif c == "`":
+                return "uses command substitution (`)"
+            elif c == "$" and (why := _expansion(command, i)):
+                return why
+            i += 1
+            continue
+        if c == "\\":
+            if i + 1 < n and command[i + 1] in "\r\n":
+                return "uses a line continuation"
+            i += 2
+            word_start = False
+            continue
+        if c in " \t":
+            if not word_start:
+                first_word = False
+            word_start = True
+            i += 1
+            continue
+        if c in "\r\n":
+            return "separates commands with a newline"
+        if c in _OPERATOR_CHARS:
+            j = i
+            while j < n and command[j] in _OPERATOR_CHARS:
+                j += 1
+            return f"uses the shell operator {command[i:j]!r}"
+        if c == "`":
+            return "uses command substitution (`)"
+        if c == "$" and (why := _expansion(command, i)):
+            return why
+        if word_start:
+            if c == "#":
+                return "starts a shell comment (#)"
+            if c == "~":
+                return "uses tilde expansion (~)"
+            if first_word and (m := _ASSIGNMENT.match(command, i)):
+                return f"sets an environment variable ({m.group(0)})"
+        if c in _GLOB_CHARS:
+            return f"uses an unquoted glob character ({c!r}); quote a pattern the program reads itself"
+        if c in "'\"":
+            quote = c
+        word_start = False
+        i += 1
+    return None
+
+
+def _expansion(command: str, i: int) -> str | None:
+    nxt = command[i + 1] if i + 1 < len(command) else ""
+    if nxt in ("(", "{", "_") or nxt.isalnum() or nxt in _SPECIAL_PARAMS:
+        return f"uses shell expansion (${nxt})"
+    return None
+
+
 def run_command(
     command: str, cwd: Path, sha: str, *, timeout: int = 1800, env: dict | None = None, log_path: Path | None = None
 ) -> CommandRun:
@@ -256,6 +360,8 @@ def run_command(
     exit_status = 1
     error_class: str | None = None
     try:
+        if (why := shell_syntax(command)) is not None:
+            raise _InvalidCommand(f"command {why}; commands run as argv with no shell")
         args = shlex.split(command)
         proc = subprocess.run(
             args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -278,6 +384,11 @@ def run_command(
             output = output.decode("utf-8", errors="replace")
         exit_status = 124
         error_class = "timeout"
+    except _InvalidCommand as exc:
+        # LF-53: refused before spawning; 127 is synthetic here, the errorClass says why.
+        output = str(exc)
+        exit_status = 127
+        error_class = "invalid-command"
     except (ValueError, OSError) as exc:
         # A malformed command string (shlex.split) or an OS-level spawn failure (cwd
         # missing, not executable) is data for the caller too: a failing command is
@@ -539,8 +650,11 @@ def compare_to_baseline(entry: BaselineEntry, candidate: CommandRun, *, feature_
 
 
 def evidence_matches(claimed: dict, rerun: CommandRun) -> tuple[bool, str]:
-    claimed_command = " ".join(shlex.split(claimed.get("command", "")))
-    rerun_command = " ".join(shlex.split(rerun.command))
+    try:
+        claimed_command = " ".join(shlex.split(claimed.get("command", "")))
+        rerun_command = " ".join(shlex.split(rerun.command))
+    except ValueError:
+        return False, "command does not split as argv"
     if claimed_command != rerun_command:
         return False, "command differs"
     if claimed.get("sha") != rerun.sha:

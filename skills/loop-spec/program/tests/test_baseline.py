@@ -2,6 +2,7 @@
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from loop_spec.baseline import (
@@ -18,6 +19,7 @@ from loop_spec.baseline import (
     parse_go_test,
     parse_pytest,
     parse_vitest_jest,
+    shell_syntax,
     run_command,
 )
 
@@ -178,6 +180,52 @@ class RunCommandTests(unittest.TestCase):
             self.assertEqual(run.exit_status, 124)
             self.assertEqual(run.error_class, "timeout")
 
+    def test_invalid_command_is_refused_without_spawning(self):
+        # LF-53: a command relying on shell syntax never reaches subprocess.
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch("loop_spec.baseline.subprocess.run", side_effect=AssertionError("spawned")):
+            log_path = Path(tmp, "run.log")
+            run = _run("git diff --quiet abc -- t.py && pytest -q", tmp, log_path=log_path)
+            self.assertEqual(run.exit_status, 127)
+            self.assertEqual(run.error_class, "invalid-command")
+            self.assertIn("'&&'", log_path.read_text())
+
+
+class ShellSyntaxTests(unittest.TestCase):
+    """LF-53: the plain-argv format check, read the way run_command's shlex.split
+    reads a command (POSIX, comments disabled)."""
+
+    REJECTED = [
+        "git diff --quiet abc -- tests/test_calc.py && .venv/bin/python -m pytest -q tests/test_clamp.py",
+        "a;b", "a ; b", "pytest > out.txt", "pytest 2>&1", "a|b", "a || b", "a & b", "(pytest)",
+        "echo $(x)", "echo `x`", 'echo "$HOME"', 'echo "`x`"', "echo $HOME", "echo ${X}", "echo $1", "echo $?",
+        "echo ok # note && false", "pytest\nfalse", "pytest \\\nfalse", "echo #x",
+        "pytest tests/*.py", "ls ?", "pytest t[1]", "cat ~/x", "PYTHONPATH=. pytest",
+        'bad "quote', "", "   ", '"" pytest',
+    ]
+    ACCEPTED = [
+        "pytest -q tests/test_clamp.py", 'pytest -k ""', 'pytest -k "a or b"', "rg 'a$' file.txt",
+        "python -c 'print(\"$HOME\")'", "echo \\&", "echo '&&'", 'echo "a|b"', "echo 'a`b`'",
+        "echo a$", "echo a#b", "pytest 'tests/x.py::t[1]'", "rg '*.py'", "pytest tests/x.py::t\\[1\\]",
+        "python3 -m unittest discover -s tests -p test_reverse.py", "echo 'a b' c", "env X=1 pytest", "pytest a=b",
+        '.venv/bin/python -m pytest -q "tests/test x.py"', 'echo "\\$HOME"',
+    ]
+
+    def test_rejects_shell_syntax(self):
+        for command in self.REJECTED:
+            with self.subTest(command=command):
+                self.assertIsNotNone(shell_syntax(command))
+
+    def test_accepts_plain_argv(self):
+        for command in self.ACCEPTED:
+            with self.subTest(command=command):
+                self.assertIsNone(shell_syntax(command))
+
+    def test_names_the_construct(self):
+        self.assertEqual(shell_syntax("a && b"), "uses the shell operator '&&'")
+        self.assertEqual(shell_syntax("echo ok # note && false"), "starts a shell comment (#)")
+        self.assertEqual(shell_syntax("pytest\nfalse"), "separates commands with a newline")
+
 
 class CompareToBaselineTests(unittest.TestCase):
     def _cr(self, exit_status=0, runner=None, failure_identities=None, fingerprints_=None, error_class=None, tests_ran=1):
@@ -293,6 +341,16 @@ class CompareToBaselineTests(unittest.TestCase):
 
 
 class EvidenceMatchesTests(unittest.TestCase):
+    def test_malformed_claimed_command_does_not_raise(self):
+        rerun = CommandRun(
+            command="pytest", cwd="/x", sha="deadbeef", exit_status=0, runner="pytest",
+            failure_identities=[], fingerprints=[], output_digest="sha256:" + "1" * 64,
+            normalized_digest="sha256:" + "2" * 64, normalization_version=1,
+            started_at="2026-01-01T00:00:00+00:00", elapsed_seconds=0.1, error_class=None,
+            tests_ran=0, log_path=None,
+        )
+        self.assertEqual(evidence_matches({"command": 'pytest "x'}, rerun), (False, "command does not split as argv"))
+
     def test_matches_ignoring_output_digest(self):
         rerun = CommandRun(
             command="pytest  -k   foo", cwd="/x", sha="deadbeef", exit_status=0, runner="pytest",

@@ -218,6 +218,22 @@ class PostconditionsTests(unittest.TestCase):
         self.store.state["baseline"] = None
         self.assertIsNotNone(self._boundary("plan", self.plan_product, "ready")._p3())
 
+    def test_p3_rejects_a_shell_command_before_consulting_the_baseline(self):
+        # LF-53: the live shape -- a featureAdded task, which the baseline never runs.
+        bad = copy.deepcopy(self.plan_product)
+        bad["tasks"][0]["featureAdded"] = "tests/test_clamp.py"
+        bad["tasks"][0]["verify"] = "git diff --quiet abc -- tests/test_calc.py && python -m pytest -q tests/test_clamp.py"
+        message = self._boundary("plan", bad, "ready")._p3()
+        self.assertIn(f"task {bad['tasks'][0]['id']}: verify command uses the shell operator '&&'", message)
+
+        bad = copy.deepcopy(self.plan_product)
+        bad["tasks"][0]["verify"] = "pytest -q | tee out"
+        self.assertIn("'|'", self._boundary("plan", bad, "ready")._p3())
+
+        bad = copy.deepcopy(self.plan_product)
+        bad["prepare"] = "cd x && make"
+        self.assertIn("prepare command uses the shell operator '&&'", self._boundary("plan", bad, "ready")._p3())
+
     def test_p4(self):
         self.assertIsNone(self._boundary("plan", self.plan_product, "ready")._p4())
         self.store.state["baseline"]["baseSha"] = "z" * 40
@@ -441,6 +457,19 @@ class PostconditionsTests(unittest.TestCase):
         del self.store.state["verifyRuns"]["AC-1"]
         message = self._boundary("verify", self.verify_product, "passed")._v4()
         self.assertEqual(message, "criterion AC-1: no matching re-run recorded")
+
+    def test_v4_rejects_a_shell_evidence_command_even_when_exempt(self):
+        # LF-53: command form is checked before the exception skip.
+        product = copy.deepcopy(self.verify_product)
+        product["verdicts"][0]["evidence"]["command"] = "pytest -q && echo ok"
+        message = self._boundary("verify", product, "passed")._v4()
+        self.assertEqual(
+            message,
+            f"criterion {product['verdicts'][0]['criterion']}: evidence command uses the shell operator '&&'; "
+            "commands run as argv with no shell",
+        )
+        self.store.state["verifyExceptionsThisAttempt"] = [{"criterion": product["verdicts"][0]["criterion"], "reason": "operator approved"}]
+        self.assertIsNotNone(self._boundary("verify", product, "passed")._v4())
 
     def test_v4_mismatch_message_names_the_cause(self):
         self.store.state["verifyRuns"]["AC-1"] = {
@@ -704,9 +733,9 @@ class PostconditionsTests(unittest.TestCase):
         # LF-23: B1 holds on the program's own clean-checkout run, never on comparing
         # the worker's failureDigest against it (the checkouts differ, so a digest
         # comparison could never match).
-        self.assertIsNotNone(self._boundary("debug", {"reproduction": {"failureDigest": "sha256:" + "d" * 64}}, "reproduced")._b1())
+        self.assertIsNotNone(self._boundary("debug", {"reproduction": {"command": "pytest -q", "failureDigest": "sha256:" + "d" * 64}}, "reproduced")._b1())
         self.store.state["debug"] = {"baseRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": ["boom"], "fingerprints": []}}
-        self.assertIsNone(self._boundary("debug", {"reproduction": {"failureDigest": "sha256:" + "d" * 64}}, "reproduced")._b1())
+        self.assertIsNone(self._boundary("debug", {"reproduction": {"command": "pytest -q", "failureDigest": "sha256:" + "d" * 64}}, "reproduced")._b1())
 
         self.store.state["debug"] = {"baseRun": {"exitStatus": 127, "errorClass": "command-not-found"}}
         self.assertIn("could not run at base", self._boundary("debug", {}, "reproduced")._b1())
@@ -717,8 +746,13 @@ class PostconditionsTests(unittest.TestCase):
         self.store.state["debug"] = {"baseRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": [], "fingerprints": []}}
         self.assertIsNotNone(self._boundary("debug", {}, "reproduced")._b1())
 
+        # LF-53: a shell reproduction is rejected on its form, whatever the base run says.
+        self.store.state["debug"] = {"baseRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": ["boom"], "fingerprints": []}}
+        product = {"reproduction": {"command": "cd pkg && pytest -q", "failureDigest": "sha256:" + "d" * 64}}
+        self.assertIn("reproduction command uses the shell operator '&&'", self._boundary("debug", product, "reproduced")._b1())
+
     def test_b2(self):
-        changed = {"original": "orig text", "reproduction": {"reason": None}}
+        changed = {"original": {"command": "pytest -q"}, "reproduction": {"reason": None}}
         self.assertIsNotNone(self._boundary("debug", changed, "reproduced")._b2())
         changed["reproduction"]["reason"] = "the failure moved files"
         self.store.state["debug"] = {"originalRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": ["x"], "fingerprints": []}}
@@ -726,6 +760,9 @@ class PostconditionsTests(unittest.TestCase):
         # Same normalization as B1: an original run that passed at base does not hold.
         self.store.state["debug"] = {"originalRun": {"exitStatus": 0, "errorClass": None}}
         self.assertIsNotNone(self._boundary("debug", changed, "reproduced")._b2())
+        # LF-53: the original command is checked on its form too.
+        changed["original"]["command"] = "pytest -q; true"
+        self.assertIn("original command uses the shell operator ';'", self._boundary("debug", changed, "reproduced")._b2())
 
     def test_b3(self):
         self.assertIsNotNone(self._boundary("debug", {"reproduction": {"anything": True}}, "blocked reproduction")._b3())

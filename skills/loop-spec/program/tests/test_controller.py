@@ -1757,6 +1757,59 @@ class VerifyRerunsTests(unittest.TestCase):
             self.assertFalse(marker.exists())
             self.assertNotIn("AC-1", store.state["verifyRuns"])
 
+    def test_run_verify_reruns_never_runs_a_shell_evidence_command_and_drops_its_record(self):
+        # LF-53: a malformed claimed command is never run, exempt or not, and a
+        # matched record an earlier submission left must not stand in for it.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo = _init_repo(tmp)
+            head = repo_module.head_sha(repo)
+            paths, store = self._single_repo_store(tmp, repo, head)
+            for exempt in (False, True):
+                with self.subTest(exempt=exempt):
+                    store.state["verifyExceptionsThisAttempt"] = (
+                        [{"criterion": "AC-1", "reason": "not repeatable"}] if exempt else []
+                    )
+                    store.state["verifyRuns"] = {"AC-1": {"rerun": {"command": "pytest -q"}, "matched": True, "reason": "", "repo": "repo"}}
+                    store.save()
+                    verify_product = {"verdicts": [{
+                        "criterion": "AC-1", "verdict": "pass", "cause": None,
+                        "evidence": {"command": "pytest -q && true", "repo": "repo", "sha": head, "exitStatus": 0,
+                                     "failureIdentities": [], "outputDigest": "sha256:" + "0" * 64},
+                    }]}
+                    with patch.object(controller.baseline_module, "run_command", side_effect=AssertionError("ran")):
+                        controller._run_verify_reruns(store, paths, verify_product)
+                    self.assertNotIn("AC-1", store.state["verifyRuns"])
+
+    def test_plan_with_a_shell_command_skips_baseline_capture(self):
+        # LF-53: no checkout, prepare, or verify command runs for a malformed plan.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo = _init_repo(tmp)
+            head = repo_module.head_sha(repo)
+            paths, store = self._single_repo_store(tmp, repo, head)
+            product = {"exit": "ready", "prepare": None, "tasks": [
+                {"id": "T-1", "verify": "pytest -q && true", "repo": "repo", "featureAdded": None},
+            ]}
+            with patch.object(postconditions.Boundary, "check", return_value=[]), \
+                    patch.object(controller, "_capture_plan_baseline", side_effect=AssertionError("captured")):
+                self.assertEqual(controller._handle_plan_baseline_and_critic(store, paths, repo, "a-1", product), "ready")
+
+    def test_debug_with_a_shell_reproduction_is_rejected_before_its_base_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo = _init_repo(tmp)
+            head = repo_module.head_sha(repo)
+            paths, store = self._single_repo_store(tmp, repo, head)
+            store.save()
+            product = {"reproduction": {"command": "cd pkg && pytest", "failureDigest": "sha256:" + "d" * 64, "reason": None},
+                       "original": None}
+            with patch.object(controller.debug_module, "record_base_runs", side_effect=AssertionError("ran")):
+                controller._accept_debug_product(store, paths, repo, "a-1", product, "reproduced")
+            failures = store.state["phase"]["entryPayload"]["rejected"]["failures"]
+            self.assertEqual([f["id"] for f in failures], ["B1"])
+            self.assertIn("'&&'", failures[0]["message"])
+
 
 class FindDeliveringRunProductsTests(unittest.TestCase):
     """LF-37: the reviser needs the SPEC/PLAN products of whatever prior run

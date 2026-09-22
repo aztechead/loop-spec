@@ -612,6 +612,12 @@ def _accept_debug_product(store: StateStore, paths: FeaturePaths, project_root: 
     # normal ROUTES-driven check() (which would also try S1-S3/P1-P7 against the
     # whole debug product instead of the SPEC/PLAN halves those ids actually name --
     # those run separately, below, once the compacted SPEC and PLAN are recorded).
+    # LF-53: a malformed reproduction or original command is rejected before it runs.
+    form = [postconditions.Failure(req_id, message) for req_id, message in
+            (("B1", boundary._b1_form()), ("B2", boundary._b2_form())) if message is not None]
+    if form:
+        _reject_product(store, paths, "debug", attempt_id, exit_, form)
+        return
     _, repo_info = next(iter(store.state["repos"].items()))
     debug_module.record_base_runs(store, paths, product, Path(repo_info["path"]), repo_info["baseSha"])
     failures = [postconditions.Failure(req_id, message) for req_id in ("B1", "B2")
@@ -761,7 +767,8 @@ def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, pro
     boundary = postconditions.Boundary(store, paths, phase="plan", product=product, exit=product["exit"], project_root=project_root)
     # Only the structural ids need to hold before a baseline capture makes sense;
     # the rest (P3, P4, P7) depend on the baseline/critic this function produces.
-    if any(f.id in ("P1", "P2", "P5", "P6") for f in boundary.check()):
+    # LF-53: a malformed prepare/verify command is rejected before any of them runs.
+    if any(f.id in ("P1", "P2", "P5", "P6") for f in boundary.check()) or boundary._p3_form() is not None:
         return "ready"  # let the normal full-check rejection path in _finalize report these
 
     revision = postconditions.plan_revision(product)
@@ -936,9 +943,16 @@ def _run_verify_reruns(store: StateStore, paths: FeaturePaths, verify_product: d
     exceptions = postconditions.resolved_exceptions(store)
     verify_runs = store.state.setdefault("verifyRuns", {})
     for verdict in verify_product["verdicts"]:
-        if verdict["verdict"] not in ("pass", "fail") or verdict["criterion"] in exceptions:
+        if verdict["verdict"] not in ("pass", "fail"):
             continue
         evidence = verdict.get("evidence") or {}
+        # LF-53: a malformed claimed command is never run or matched, exempt or not;
+        # an earlier submission's record for the criterion must not stand in for it.
+        if baseline_module.shell_syntax(evidence.get("command", "")) is not None:
+            verify_runs.pop(verdict["criterion"], None)
+            continue
+        if verdict["criterion"] in exceptions:
+            continue
         # R9: the EXECUTION may be reused when it was against the same repo, SHA,
         # and command (nothing about running the command again would differ), but
         # "matched" is a property of THIS claim against that execution, never a

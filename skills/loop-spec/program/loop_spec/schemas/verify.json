@@ -127,6 +127,7 @@
           "type": "string"
         },
         "verify": {
+          "description": "One argv command, run with no shell: no &&, ||, |, ;, redirection, newlines, $ expansion, backticks, leading ~ or #, unquoted * ? [, or NAME=value prefix. Quote literals and patterns the program reads itself; call a venv's python by its path.",
           "type": "string"
         },
         "criteria": {
@@ -229,6 +230,7 @@
                 "additionalProperties": false,
                 "properties": {
                   "command": {
+                    "description": "One argv command, run with no shell: no &&, ||, |, ;, redirection, newlines, $ expansion, backticks, leading ~ or #, unquoted * ? [, or NAME=value prefix. Quote literals and patterns the program reads itself; call a venv's python by its path.",
                     "type": "string"
                   },
                   "repo": {
