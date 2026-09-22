@@ -1,0 +1,1 @@
+Plugin checkout this run read: 311d67f (LF-59); the operator's external ITERATE submits and the inline DELIVER ran on the same checkout
