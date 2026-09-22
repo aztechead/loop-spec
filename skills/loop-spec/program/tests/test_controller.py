@@ -12,6 +12,7 @@ from unittest.mock import patch
 from loop_spec import budget as budget_module
 from loop_spec import controller
 from loop_spec import postconditions
+from loop_spec import questions
 from loop_spec import repo as repo_module
 from loop_spec import revise as revise_module
 from loop_spec import steps
@@ -1809,6 +1810,124 @@ class VerifyRerunsTests(unittest.TestCase):
             failures = store.state["phase"]["entryPayload"]["rejected"]["failures"]
             self.assertEqual([f["id"] for f in failures], ["B1"])
             self.assertIn("'&&'", failures[0]["message"])
+
+
+class CriticFactsAndDefaultTests(unittest.TestCase):
+    """LF-54: the PLAN critic judges each verify command on the facts the comparator
+    uses, a changed input re-issues it, and its own recommendation becomes the
+    blocked question's default."""
+
+    def _store(self, tmp: Path):
+        paths = FeaturePaths(root=tmp / "feature")
+        store = StateStore.create(
+            paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x", "createdAt": "2026-01-01T00:00:00+00:00"}, "do it",
+        )
+        store.state["repos"] = {"repo": {"path": str(tmp), "baseSha": "b" * 40, "featureBranch": "feat/x",
+                                         "defaultBranch": "main", "lastKnownHead": "b" * 40}}
+        return paths, store
+
+    @staticmethod
+    def _run(command, **overrides):
+        run = {"command": command, "cwd": "/x", "sha": "b" * 40, "exitStatus": 1, "runner": "pytest",
+               "failureIdentities": [], "fingerprints": [], "outputDigest": "sha256:" + "0" * 64,
+               "normalizedDigest": "sha256:" + "0" * 64, "normalizationVersion": 1,
+               "startedAt": "2026-01-01T00:00:00+00:00", "elapsedSeconds": 0.1, "errorClass": None,
+               "testsRan": 2, "logPath": None}
+        return {**run, **overrides}
+
+    def _plan_and_baseline(self, store):
+        tasks = [
+            {"id": "T-1", "repo": "repo", "verify": "pytest -q tests/test_calc.py", "featureAdded": None, "mustFlip": False},
+            {"id": "T-2", "repo": "repo", "verify": "make check", "featureAdded": None, "mustFlip": False},
+            {"id": "T-3", "repo": "repo", "verify": "pytest -q tests/test_new.py", "featureAdded": "tests/test_new.py", "mustFlip": False},
+            {"id": "T-4", "repo": "repo", "verify": "pytest -q tests/test_broken.py", "featureAdded": None, "mustFlip": False},
+            {"id": "T-5", "repo": "repo", "verify": "pytest -q tests/test_repro.py", "featureAdded": None, "mustFlip": True},
+            {"id": "T-6", "repo": "repo", "verify": "pytest -q tests/test_absent.py", "featureAdded": None, "mustFlip": False},
+        ]
+        entries = {
+            "pytest -q tests/test_calc.py": {"command": "pytest -q tests/test_calc.py", "task": "T-1", "status": "ran",
+                                             "run": self._run("pytest -q tests/test_calc.py", failureIdentities=["tests/test_calc.py::test_preexisting_failure"])},
+            "make check": {"command": "make check", "task": "T-2", "status": "ran",
+                           "run": self._run("make check", runner=None, fingerprints=["fp-1"], testsRan=0)},
+            "pytest -q tests/test_new.py": {"command": "pytest -q tests/test_new.py", "task": "T-3", "status": "no-baseline", "run": None},
+            "pytest -q tests/test_broken.py": {"command": "pytest -q tests/test_broken.py", "task": "T-4", "status": "ran",
+                                               "run": self._run("pytest -q tests/test_broken.py", exitStatus=2, testsRan=0)},
+            "pytest -q tests/test_repro.py": {"command": "pytest -q tests/test_repro.py", "task": "T-5", "status": "ran",
+                                              "run": self._run("pytest -q tests/test_repro.py", failureIdentities=["tests/test_repro.py::test_bug"])},
+        }
+        store.state["baseline"] = {"planRevision": "rev-1", "repos": {"repo": {"baseSha": "b" * 40, "entries": entries}}}
+        return {"tasks": tasks}
+
+    def test_baseline_facts_carry_what_the_comparator_uses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, store = self._store(Path(tmp))
+            facts = {f["task"]: f for f in controller._critic_baseline_facts(store, self._plan_and_baseline(store))}
+            self.assertEqual((facts["T-1"]["status"], facts["T-1"]["mode"]), ("ran", "regression"))
+            self.assertEqual(facts["T-1"]["failureIdentities"], ["tests/test_calc.py::test_preexisting_failure"])
+            self.assertEqual(facts["T-2"]["fingerprints"], ["fp-1"])  # no parser: fingerprints decide
+            self.assertEqual((facts["T-3"]["status"], facts["T-3"]["mode"]), ("no-baseline", "featureAdded"))
+            self.assertEqual(facts["T-4"]["status"], "incomplete")  # nonzero, nothing parsed
+            self.assertEqual(facts["T-5"]["mode"], "mustFlip")
+            self.assertEqual(facts["T-6"]["status"], "missing")
+            self.assertEqual(facts["T-1"]["baseSha"], "b" * 40)
+
+    def test_a_changed_baseline_or_requirements_revision_is_a_new_critic_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, store = self._store(Path(tmp))
+            plan = self._plan_and_baseline(store)
+            store.state["revisions"]["requirements"] = "req-1"
+            before = controller._critic_identity(store, "rev-1", controller._critic_baseline_facts(store, plan))
+            self.assertEqual(before, controller._critic_identity(store, "rev-1", controller._critic_baseline_facts(store, plan)))
+            store.state["baseline"]["repos"]["repo"]["entries"]["make check"]["run"]["fingerprints"] = ["fp-2"]
+            changed_baseline = controller._critic_identity(store, "rev-1", controller._critic_baseline_facts(store, plan))
+            self.assertNotEqual(before, changed_baseline)
+            store.state["revisions"]["requirements"] = "req-2"
+            self.assertNotEqual(changed_baseline, controller._critic_identity(store, "rev-1", controller._critic_baseline_facts(store, plan)))
+
+    def test_a_submitted_step_for_other_inputs_is_not_reused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, store = self._store(Path(tmp))
+            result_path = Path(tmp) / "critic.json"
+            atomic_write_json(result_path, {"findings": []})
+            step_dir = paths.steps_dir / "step-1"
+            step_dir.mkdir(parents=True)
+            atomic_write_json(step_dir / "step.json", {"resultPath": str(result_path)})
+            store.state["steps"]["submissions"]["step-1"] = {"at": "now"}
+            store.state["phase"].update(criticStepId="step-1", criticStepRevision="rev-1", criticStepIdentity="id-old")
+            self.assertIsNone(controller._critic_submission(store, paths, "rev-1", "id-new"))
+            del store.state["phase"]["criticStepIdentity"]  # an older run's step: no identity recorded
+            self.assertIsNone(controller._critic_submission(store, paths, "rev-1", "id-new"))
+            store.state["phase"]["criticStepIdentity"] = "id-new"
+            self.assertEqual(controller._critic_submission(store, paths, "rev-1", "id-new"), {"findings": []})
+
+    def test_default_from_recommendations(self):
+        reject = lambda fid, reason: {"id": fid, "recommendation": {"action": "reject", "reason": reason}}
+        spec_gap = {"id": "F-2", "recommendation": {"action": "spec gap", "reason": "the criterion is untestable"}}
+        self.assertEqual(controller._critic_default([reject("F-1", "fine"), spec_gap]), "spec gap")
+        self.assertEqual(controller._critic_default([reject("F-1", "a"), reject("F-3", "b ")]), "F-1: a; F-3: b")
+        # An older or bound critic that writes no recommendation: a person decides.
+        self.assertIsNone(controller._critic_default([reject("F-1", "a"), {"id": "F-4"}]))
+        self.assertIsNone(controller._critic_default([reject("F-1", "  ")]))
+
+    def test_policy_answer_closes_the_finding_with_the_recommended_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, store = self._store(Path(tmp))
+            finding = {"id": "F-1", "location": "T-2.verify", "cause": "exits non-zero at base", "severity": "Critical",
+                       "disposition": "open", "reason": None, "supersedes": None,
+                       "recommendation": {"action": "reject", "reason": "failure identities are compared with base"}}
+            store.state["critic"] = {"passes": 2, "findings": [finding], "planRevision": "rev-1"}
+            store.state["questions"]["policy"] = "default"
+            record = questions.ask(store, paths, phase="plan", attempt_id="a-1", text="blocked", kind="text",
+                                   options=[{"value": "spec gap", "label": "Spec gap"}],
+                                   default_value=controller._critic_default([finding]), payload=None)
+            answered = questions.resolve_policy_answer(store, paths, record)
+            self.assertEqual((answered["by"], answered["value"]), ("policy", "F-1: failure identities are compared with base"))
+            self.assertIn(record["questionId"], store.state["questions"]["policyAnswered"])
+            controller._close_critic_rejections(store, answered["value"])
+            closed = store.state["critic"]["findings"][0]
+            self.assertEqual((closed["disposition"], closed["reason"]), ("rejected", answered["value"]))
+            boundary = postconditions.Boundary(store, paths, phase="plan", product={}, exit="ready", project_root=Path(tmp))
+            self.assertIsNone(boundary._p7())
 
 
 class FindDeliveringRunProductsTests(unittest.TestCase):

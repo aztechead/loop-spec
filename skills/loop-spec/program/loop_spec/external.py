@@ -44,7 +44,7 @@ POSTCONDITION_TEXT: dict[str, str] = {
     "P4": "the baseline is captured (section 11) with the prepare command applied; environment health recorded once per failing command",
     "P5": "the task graph is acyclic and every dependsOn names a task in the plan",
     "P6": "workspace resolved once and the repo list stored in state; every task names a repo in it",
-    "P7": "the critic pass ran and every Critical finding is closed as fixed with the critic re-run once on the corrected product, or rejected with a stated reason recorded in state; deferred is not a disposition for Critical; a Critical finding still open after the one re-run exits spec gap or asks a question",
+    "P7": "the critic pass ran and every Critical finding is closed as fixed with the critic re-run once on the corrected product, or rejected with a stated reason recorded in state; deferred is not a disposition for Critical; a Critical finding still open after the one re-run exits spec gap or asks a question, whose default is the critic's own recommendation (spec gap if any open Critical recommends it, else every finding's stated reject reason; no default when any finding carries no recommendation), so an answer policy can close it. The critic judges on the plan, the requirements, and each task's baseline facts; a change to any of them re-issues it",
     "E1": "product validates; bound to the plan and requirements revisions per repo",
     "E2": "every required task has an accepted disposition",
     "E3": "for every task, its dependencies completed before it was dispatched",

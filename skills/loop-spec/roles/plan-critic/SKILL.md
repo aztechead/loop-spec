@@ -20,11 +20,37 @@ Read-only over the codebase; Write is for your one result file only.
    no stated boundary or rollback.
 3. Check the task graph: a real missing dependency, a same-file collision two
    tasks both own, or a task that cannot ship independently.
-4. Report each finding once, in this pass — the program allows exactly one
+4. For each finding, add a `recommendation`: how it should close if the planner
+   cannot fix it. `{"action": "spec gap", ...}` when the requirements themselves must
+   change; `{"action": "reject", "reason": ...}` with the reason a reviewer could
+   accept for proceeding anyway. It is advisory: it becomes the default answer of the
+   question the program asks if the finding is still open after the re-pass.
+5. Report each finding once, in this pass — the program allows exactly one
    corrected re-submission, and a finding you held back now will not be raised
    again.
-5. Output `{"findings": []}` when nothing here is Critical. A finding you cannot
+6. Output `{"findings": []}` when nothing here is Critical. A finding you cannot
    justify as Critical does not belong in the output at all.
+
+## How a verify command is judged
+
+`inputs.baseline` lists, per task, what the program recorded for its verify command
+at the base commit (`status`: `ran`, `incomplete`, `no-baseline`, or `missing`; exit
+status, parsed failure identities, output fingerprints, tests run) and the task's
+`mode`:
+
+- `regression` (an ordinary task): EXECUTE runs the command again at the task's
+  commit and compares failure identities (fingerprints when no parser applies) with
+  the base run. A test that already fails at base and still fails is no regression; a
+  new failing identity is. Exit status alone never decides this mode, so a command
+  that exits non-zero at base because of a pre-existing failure is valid evidence.
+  An `incomplete` base run (an environment or collection error) cannot be compared.
+- `featureAdded`: no base run; the command must exit 0 at the task's commit with at
+  least one test run and no failures.
+- `mustFlip` (a debug repair): the command must fail at base and exit 0 after.
+
+Judge what the command proves, not only whether it tolerates known failures: an
+unchanged failure set shows nothing regressed, but it does not by itself prove the
+task's specific claim (for example that a particular file was left untouched).
 
 ## What counts as Critical
 
@@ -43,6 +69,8 @@ Read-only over the codebase; Write is for your one result file only.
 
 ## What NOT to do
 
+- Do not raise a verify command as Critical because it exits non-zero at base;
+  read `inputs.baseline` for what already fails there and judge by the mode above.
 - Do not raise a style, naming, or taste finding — that is VERIFY's job, not
   yours.
 - Do not invent a debate partner; you are the only reviewer.

@@ -8,7 +8,7 @@ from loop_spec import contract
 from loop_spec.errors import LoopSpecError
 from loop_spec.jsonio import atomic_write_json
 from loop_spec.roles import CONTRACTS, ROLE_NAMES, Role, compose_prompt, load_role, resolve_model
-from loop_spec.schema import load_schema
+from loop_spec.schema import load_schema, validate
 
 
 class LoadDefaultRoleTests(unittest.TestCase):
@@ -115,6 +115,21 @@ class RoleSchemaDriftGuardTests(unittest.TestCase):
             for role_name, product_name in pairs:
                 role = load_role(role_name, Path(tmp))
                 self.assertEqual(role.schema, load_schema(product_name), role_name)
+
+
+class PlanCriticSchemaTests(unittest.TestCase):
+    """LF-54: `recommendation` is optional in the schema (older and bound critics stay
+    valid in 7.0.x) and well-formed when present."""
+
+    def test_recommendation_is_optional_and_checked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            schema = load_role("plan-critic", Path(tmp)).schema
+        finding = {"id": "F-1", "location": "T-1.verify", "cause": "c", "severity": "Critical"}
+        self.assertEqual(validate({"findings": [finding]}, schema), [])
+        ok = dict(finding, recommendation={"action": "reject", "reason": "compared by identity"})
+        self.assertEqual(validate({"findings": [ok]}, schema), [])
+        bad = dict(finding, recommendation={"action": "close", "reason": "x"})
+        self.assertNotEqual(validate({"findings": [bad]}, schema), [])
 
 
 class ResolveModelTests(unittest.TestCase):

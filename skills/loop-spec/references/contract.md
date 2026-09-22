@@ -156,7 +156,9 @@ Answer with `loop-spec answer --question <id> --answer <value> --slug <slug>
 `answeredAt`, `by`: `human` or `policy`). `--scope run` also sets the run's answer
 policy to `default`, so `questions.resolve_policy_answer` answers every later
 question that carries a `defaultValue` without asking again; the result's
-`policyAnsweredQuestions` lists every question a policy, not a person, answered.
+`policyAnsweredQuestions` lists every question a policy, not a person, answered. A PLAN critic question asked after the second pass carries the critic's own
+recommendation as its default (P7), so a policy can answer it; with no recommendation
+it has no default and waits for a person.
 
 ## Markers and console lines
 

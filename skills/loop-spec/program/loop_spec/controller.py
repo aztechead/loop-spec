@@ -721,7 +721,57 @@ def _handle_spec_approval(store: StateStore, paths: FeaturePaths, attempt_id: st
     return "remediation"
 
 
-def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Path, attempt_id: str, plan_product: dict, is_external: bool, revision: str) -> None:
+def _critic_baseline_facts(store: StateStore, plan_product: dict) -> list[dict]:
+    """LF-54: what the comparator will actually see for each task's verify command,
+    so the critic judges a command by the program's rule, not by its exit status."""
+    baseline_state = store.state.get("baseline")
+    repos = store.state.get("repos") or {}
+    facts = []
+    for task in plan_product["tasks"]:
+        repo_dict = baseline_module.repo_baseline_dict(baseline_state, task["repo"], repos) or {}
+        entry = (repo_dict.get("entries") or {}).get(task["verify"])
+        mode = "mustFlip" if task.get("mustFlip") else ("featureAdded" if task.get("featureAdded") else "regression")
+        fact = {"task": task["id"], "repo": task["repo"], "baseSha": repo_dict.get("baseSha"),
+                "verify": task["verify"], "mode": mode}
+        if entry is None:
+            fact["status"] = "missing"
+        elif entry.get("status") != "ran" or entry.get("run") is None:
+            fact["status"] = "no-baseline"
+        else:
+            run = entry["run"]
+            incomplete = baseline_module._incomplete(baseline_module.CommandRun.from_dict(run))
+            fact.update({
+                "status": "incomplete" if incomplete else "ran",
+                "exitStatus": run.get("exitStatus"), "errorClass": run.get("errorClass"),
+                "runner": run.get("runner"), "testsRan": run.get("testsRan"),
+                "failureIdentities": run.get("failureIdentities") or [],
+                "fingerprints": run.get("fingerprints") or [],
+            })
+        facts.append(fact)
+    return facts
+
+
+def _critic_identity(store: StateStore, revision: str, facts: list[dict]) -> str:
+    # LF-54: a critic judgment answers these inputs; a change to any of them (not
+    # just the plan revision) means the old judgment no longer applies.
+    return digest({"plan": revision, "requirements": store.state["revisions"]["requirements"], "baseline": facts})
+
+
+def _critic_default(open_critical: list[dict]) -> str | None:
+    """LF-54: the blocked question's default, from the critic's own per-finding
+    recommendations. One `spec gap` recommendation wins (one route, one answer);
+    otherwise every open Critical must recommend `reject` with a reason, joined as
+    the stated reason P7 records. A finding with no recommendation (an older run, or
+    a bound critic that does not write one) leaves no default: a person decides."""
+    recommendations = [f.get("recommendation") or {} for f in open_critical]
+    if any(r.get("action") == "spec gap" for r in recommendations):
+        return "spec gap"
+    if open_critical and all(r.get("action") == "reject" and (r.get("reason") or "").strip() for r in recommendations):
+        return "; ".join(f"{f['id']}: {f['recommendation']['reason'].strip()}" for f in open_critical)
+    return None
+
+
+def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Path, attempt_id: str, plan_product: dict, is_external: bool, revision: str, facts: list[dict], identity: str) -> None:
     # LF-32: this used to hand-write a prompt and an inline schema that contradicted
     # the role's own schema.json; every other role step goes through
     # roles.compose_prompt/load_role (see _issue_adopted_review), and the critic
@@ -729,8 +779,8 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
     from .roles import compose_prompt, load_role, resolve_model
     repo_path = next(iter(store.state["repos"].values()))["path"]
     spec_product = store.state["products"]["spec"]["product"]
-    inputs = {"specCriteria": spec_product["criteria"], "planTasks": plan_product["tasks"]}
-    inputs_digest = digest({"plan": plan_product, "spec": spec_product})
+    inputs = {"specCriteria": spec_product["criteria"], "planTasks": plan_product["tasks"], "baseline": facts}
+    inputs_digest = digest({"plan": plan_product, "spec": spec_product, "baseline": facts})
 
     role = load_role("plan-critic", project_root, contract.resolve_role(project_root, "plan-critic"))
     ensure_results_dir(paths)
@@ -750,12 +800,17 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
     # a fresh critic step instead of replaying the stale result (the "re-issue the
     # critic step once on the corrected product" part of P7).
     store.state["phase"]["criticStepRevision"] = revision
+    store.state["phase"]["criticStepIdentity"] = identity
     store.save()
 
 
-def _critic_submission(store: StateStore, paths: FeaturePaths, revision: str) -> dict | None:
+def _critic_submission(store: StateStore, paths: FeaturePaths, revision: str, identity: str) -> dict | None:
     step_id = store.state["phase"].get("criticStepId")
     if step_id is None or store.state["phase"].get("criticStepRevision") != revision:
+        return None
+    # LF-54: a submitted step judged other inputs (a missing identity is an older
+    # run's step, judged without baseline facts): issue a fresh one.
+    if store.state["phase"].get("criticStepIdentity") != identity:
         return None
     if store.state["steps"]["submissions"].get(step_id) is None:
         return None
@@ -776,26 +831,31 @@ def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, pro
     if baseline is None or baseline.get("planRevision") != revision:
         _capture_plan_baseline(store, paths, product, revision)
 
+    facts = _critic_baseline_facts(store, product)
+    identity = _critic_identity(store, revision, facts)
     critic = store.state.get("critic")
-    if critic is not None and critic.get("planRevision") == revision:
+    if critic is not None and critic.get("planRevision") == revision and critic.get("inputsIdentity") == identity:
         return "ready"
 
-    submission = _critic_submission(store, paths, revision)
+    submission = _critic_submission(store, paths, revision, identity)
     if submission is None:
         store.state["phase"]["provisional"] = product
         store.state["phase"]["pending"] = "critic"
         store.save()
         is_external = store.state["implementations"]["phases"].get("plan") == "external"
-        _issue_critic_step(store, paths, project_root, attempt_id, product, is_external, revision)
+        _issue_critic_step(store, paths, project_root, attempt_id, product, is_external, revision, facts, identity)
         return "pending"
 
     # LF-32: the role schema has no disposition/reason/supersedes -- the critic
-    # reports facts (id/location/cause/severity), the program owns disposition.
+    # reports facts (id/location/cause/severity, and LF-54's advisory
+    # recommendation), the program owns disposition.
     findings = [{**f, "disposition": f.get("disposition", "open"), "reason": f.get("reason"),
                  "supersedes": f.get("supersedes")} for f in submission["findings"]]
 
     passes = (critic or {}).get("passes", 0) + 1
-    store.state["critic"] = {"passes": passes, "findings": findings, "planRevision": revision}
+    # A pass is one judgment on one set of inputs; a fresh identity re-issues the
+    # critic and that judgment counts toward the two-pass limit like any other.
+    store.state["critic"] = {"passes": passes, "findings": findings, "planRevision": revision, "inputsIdentity": identity}
     store.state["phase"]["pending"] = None
     store.state["phase"]["provisional"] = None
     store.save()
@@ -810,13 +870,15 @@ def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, pro
         # rejecting the finding(s) and closing without a further re-run (handled
         # in continue_run's criticQuestionId branch, once answered).
         store.state["phase"]["provisional"] = product
+        recommended = _critic_default(open_critical)
         record = questions.ask(
             store, paths, phase="plan", attempt_id=attempt_id,
             text=(f"PLAN critic still finds Critical issues after {passes} passes: "
-                  f"{', '.join(f['id'] for f in open_critical)}. Answer with your reason to reject "
-                  "and close, or 'spec gap' to send this back to SPEC."),
+                  f"{', '.join(f['id'] for f in open_critical)}. "
+                  + (f"Recommended: {recommended}. " if recommended else "")
+                  + "Answer with your reason to reject and close, or 'spec gap' to send this back to SPEC."),
             kind="text", options=[{"value": "spec gap", "label": "Spec gap"}],
-            default_value=None, payload={"findings": open_critical},
+            default_value=recommended, payload={"findings": open_critical},
         )
         store.state["phase"]["criticQuestionId"] = record["questionId"]
         store.save()

@@ -134,7 +134,7 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 | P4 | the baseline is captured (section 11) with the prepare command applied; environment health recorded once per failing command | `ready` |
 | P5 | the task graph is acyclic and every `dependsOn` names a task in the plan | `ready` |
 | P6 | workspace resolved once and the repo list stored in state; every task names a repo in it | `ready` |
-| P7 | the critic pass ran and every Critical finding is closed as `fixed` with the critic re-run once on the corrected product, or `rejected` with a stated reason recorded in state; `deferred` is not a disposition for Critical; a Critical finding still open after the one re-run exits `spec gap` or asks a question | `ready` |
+| P7 | the critic pass ran and every Critical finding is closed as `fixed` with the critic re-run once on the corrected product, or `rejected` with a stated reason recorded in state; `deferred` is not a disposition for Critical; a Critical finding still open after the one re-run exits `spec gap` or asks a question, whose default is the critic's own recommendation (`spec gap` if any open Critical recommends it, else every finding's stated `reject` reason; no default when any finding carries no recommendation), so an answer policy can close it. The critic judges on the plan, the requirements, and each task's baseline facts; a change to any of them re-issues it | `ready` |
 
 | Exit | Requires | Route |
 |---|---|---|
