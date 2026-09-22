@@ -88,13 +88,23 @@ def _published(store, repo_name: str, row: dict) -> dict:
     earlier = (store.state.get("deliverPublished") or {}).get(repo_name)
     if earlier is None or row["state"] == "delivered":
         return row
-    pr_note = f" and PR #{earlier['pr']['number']}" if earlier.get("pr") else ""
-    return {**row, "publishedSha": earlier["sha"], "pr": row["pr"] or earlier.get("pr"),
-            "caveats": row["caveats"] + [f"published earlier: {earlier['sha'][:12]}{pr_note} (attempt {earlier['attemptId']})"]}
+    pr = earlier.get("pr")
+    # The PR is as its own attempt last saw it, not re-verified against the newer push.
+    pr_note = (f"; PR #{pr['number']} last seen at head {(pr.get('headSha') or '?')[:12]} "
+               f"(attempt {earlier.get('prAttemptId', earlier['attemptId'])})") if pr else ""
+    return {**row, "publishedSha": earlier["sha"], "pr": row["pr"] or pr,
+            "caveats": row["caveats"] + [f"published: {earlier['sha'][:12]} (attempt {earlier['attemptId']}){pr_note}"]}
 
 
 def _record_published(store, repo_name: str, sha: str, pr: dict | None, attempt_id: str) -> None:
-    store.state.setdefault("deliverPublished", {})[repo_name] = {"sha": sha, "pr": pr, "attemptId": attempt_id, "at": now_iso()}
+    # Cumulative: a push with no PR yet (pr=None) keeps the PR an earlier attempt recorded.
+    published = store.state.setdefault("deliverPublished", {})
+    earlier = published.get(repo_name) or {}
+    record = {"sha": sha, "attemptId": attempt_id, "at": now_iso(),
+              "pr": earlier.get("pr"), "prAttemptId": earlier.get("prAttemptId", earlier.get("attemptId"))}
+    if pr is not None:
+        record.update(pr=pr, prAttemptId=attempt_id)
+    published[repo_name] = record
     store.save()
 
 
@@ -172,8 +182,8 @@ def run(store, paths, ctx):
         if error:
             # The branch IS on the remote: record what was published and where it stopped.
             reason = f"pushed {verified_sha[:12]} to {repo_info['featureBranch']}; the PR step failed: {error}"
-            repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "publishedSha": verified_sha,
-                              "caveats": [reason], "state": "failed"})
+            repos_out.append(_published(store, repo_name, {"repo": repo_name, "pr": None, "deliveredSha": None,
+                                                            "caveats": [reason], "state": "failed"}))
             continue
         _record_published(store, repo_name, verified_sha, pr, ctx["attempt"]["id"])
         repos_out.append({"repo": repo_name, "pr": pr, "deliveredSha": touched[repo_name], "caveats": [], "state": "delivered"})

@@ -330,7 +330,7 @@ class DeliverTests(unittest.TestCase):
         product, rows = self._deliver()
         self.assertEqual(product["exit"], "delivery blocked")
         self.assertEqual(rows["repo"]["publishedSha"], self.head_sha)
-        self.assertTrue(any(c.startswith("published earlier: ") for c in rows["repo"]["caveats"]))
+        self.assertTrue(any(c.startswith("published: ") for c in rows["repo"]["caveats"]))
         self.assertEqual(_head(self.remote, "feature"), self.head_sha)  # the remote still has it
 
 
@@ -341,6 +341,21 @@ class DeliverTests(unittest.TestCase):
         _, rows = self._deliver()
         self.assertEqual((rows["repo"]["state"], rows["repo"]["pr"]["number"], rows["repo"]["publishedSha"]),
                          ("failed", 42, self.head_sha))
+
+    def test_an_earlier_pr_survives_a_retried_push_whose_pr_lookup_fails(self):
+        # LF-58 review: prior PR -> successful push retry -> PR lookup failure -> stop.
+        with self._run_gh_reconcile():
+            deliver.run(self.store, self.paths, self.ctx)
+        self.ctx["attempt"] = {"id": "attempt-retry"}
+        with patch("loop_spec.deliver.repo_module.run_gh", return_value=(1, "", "HTTP 502")):
+            product = deliver.run(self.store, self.paths, self.ctx).product
+        self.assertEqual(validate(product, load_schema("deliver")), [])
+        row = product["repos"][0]
+        self.assertEqual((row["state"], row["pr"]["number"], row["publishedSha"]), ("failed", 42, self.head_sha))
+        self.assertIn("HTTP 502", row["caveats"][0])
+        record = self.store.state["deliverPublished"]["repo"]
+        self.assertEqual((record["pr"]["number"], record["attemptId"]), (42, "attempt-retry"))
+        self.assertNotEqual(record["prAttemptId"], "attempt-retry")  # the PR was not re-seen this attempt
 
     def test_push_repair_names_divergence_only_when_git_says_so(self):
         self.assertIn("fetch, reconcile", deliver._push_repair("! [rejected] feature -> feature (non-fast-forward)"))
