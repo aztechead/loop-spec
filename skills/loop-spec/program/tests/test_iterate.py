@@ -1,0 +1,115 @@
+"""Unit tests for loop_spec.iterate: the exit-choice table."""
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+from loop_spec.execute import IssueStep, Product
+from loop_spec.iterate import on_submit, step
+from loop_spec.paths import FeaturePaths
+from loop_spec.state import StateStore
+
+
+# simplicity: _git/_init_repo repeat test_repo.py's, test_baseline.py's, and
+# test_execute.py's own copies verbatim; there is no shared test-fixture module
+# in this tree yet, and adding one is a cross-file change outside this file's
+# own scope.
+def _git(cwd, *args):
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
+
+
+def _finding(finding_id, severity, disposition):
+    return {"id": finding_id, "location": "a.py:1", "cause": "x", "severity": severity,
+            "disposition": disposition, "reason": "because", "supersedes": None}
+
+
+class IterateTests(unittest.TestCase):
+    # simplicity: setUp/tearDown are unittest's fixed method names, not a
+    # naming choice; house-style.sh's camelCase deviation here is the same
+    # pre-existing false positive test_execute.py, test_result.py, and
+    # test_postconditions.py already hit.
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.repo = self.tmp / "repo"
+        self.repo.mkdir()
+        _git(self.repo, "init", "-q", "-b", "main")
+        _git(self.repo, "config", "user.name", "Test")
+        _git(self.repo, "config", "user.email", "test@example.com")
+        Path(self.repo, "a.py").write_text("x = 1\n")
+        _git(self.repo, "add", "a.py")
+        _git(self.repo, "commit", "-q", "-m", "init")
+        self.base_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.repo, capture_output=True, text=True).stdout.strip()
+
+        self.paths = FeaturePaths(root=self.tmp / "run")
+        self.store = StateStore.create(self.paths, {"id": "run-1"}, "add a widget")
+        # simplicity: this single-repo state.repos entry repeats test_verify.py's
+        # fixture; no shared test-fixture module exists in this tree yet.
+        self.store.state["repos"] = {"repo": {"path": str(self.repo), "baseSha": self.base_sha,
+                                               "featureBranch": "feature", "defaultBranch": "main",
+                                               "lastKnownHead": self.base_sha}}
+        self.store.state["products"]["execute"] = {"exit": "integrated", "product": {"heads": {"repo": self.base_sha}}}
+        self.store.state["products"]["spec"] = {"exit": "approved", "product": {"criteria": [{"id": "AC-1", "text": "it works"}]}}
+        self.store.state["products"]["verify"] = {"exit": "passed", "product": {"verdicts": []}}
+        self.checkout = self.paths.checkouts_dir / f"verify-{self.base_sha[:12]}"
+        self.checkout.mkdir(parents=True)
+        self.store.save()
+
+        self.ctx = {"attempt": {"id": "attempt-1"}, "inputs": {"digest": "sha256:" + "a" * 64},
+                    "paths": {"projectRoot": str(self.repo)}, "entry": {"mode": "fresh", "payload": None},
+                    "probes": {}}
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _judge_result(self, verdict, gaps):
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        result = {"verdict": verdict, "gaps": gaps, "caveats": []}
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "step-1"}, result)
+        return step(self.store, self.paths, self.ctx)
+
+    def test_met_with_no_open_finding_converges(self):
+        action = self._judge_result("met", [])
+        self.assertIsInstance(action, Product)
+        self.assertEqual(action.product["exit"], "converged")
+
+    def test_met_with_accepted_finding_converges_with_caveats(self):
+        self.store.state["ledger"]["findings"] = [_finding("F-1", "Minor", "deferred")]
+        action = self._judge_result("met", [])
+        self.assertEqual(action.product["exit"], "converged with caveats")
+        self.assertEqual(action.product["caveats"], ["F-1"])
+
+    def test_met_with_critical_open_finding_escalates(self):
+        self.store.state["ledger"]["findings"] = [_finding("F-1", "Critical", "open")]
+        action = self._judge_result("met", [])
+        self.assertEqual(action.product["exit"], "escalated")
+
+    def test_unmet_with_gaps_and_budget_room_rewinds(self):
+        action = self._judge_result("unmet", [{"target": "plan", "text": "missing a case"}])
+        self.assertEqual(action.product["exit"], "rewind")
+
+    def test_unmet_without_budget_room_escalates(self):
+        self.store.state["budget"]["spent"] = self.store.state["budget"]["limit"]
+        self.store.save()
+        action = self._judge_result("unmet", [{"target": "plan", "text": "missing a case"}])
+        self.assertEqual(action.product["exit"], "escalated")
+
+    def test_prior_gaps_accumulate_across_a_rewind_and_a_new_head(self):
+        self._judge_result("unmet", [{"target": "plan", "text": "first gap"}])
+        self.assertEqual(self.store.state["iterate"]["priorGaps"], [{"target": "plan", "text": "first gap"}])
+
+        # A rewind moves the run elsewhere and back; VERIFY produces a new head, and
+        # ITERATE must issue a fresh judge call rather than replaying the old result.
+        Path(self.repo, "b.py").write_text("y = 2\n")
+        _git(self.repo, "add", "b.py")
+        _git(self.repo, "commit", "-q", "-m", "second")
+        new_head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.repo, capture_output=True, text=True).stdout.strip()
+        self.store.state["products"]["execute"]["product"]["heads"]["repo"] = new_head
+        (self.paths.checkouts_dir / f"verify-{new_head[:12]}").mkdir(parents=True, exist_ok=True)
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+
+
+if __name__ == "__main__":
+    unittest.main()

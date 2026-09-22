@@ -15,7 +15,10 @@ from .ids import digest_bytes
 
 
 def state_home(explicit: str | None = None) -> Path:
-    if explicit:
+    # A stub passes the host's data-directory placeholder verbatim; on a host that does
+    # not substitute it (a skills install, a headless run without the plugin) the value
+    # still contains "${", and a literal directory of that name would scatter state.
+    if explicit and "${" not in explicit:
         home = Path(explicit)
     else:
         env = os.environ.get("LOOP_SPEC_HOME")
