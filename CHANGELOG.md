@@ -4,6 +4,39 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.0.3] - 2026-09-22
+
+Seven defects found by the 7.0.2 live runs (LF-54 to LF-60), each fixed at its root
+with module tests and, except LF-60, shown live in `docs/loop-spec/live-runs-7.0.md`:
+
+- LF-54: the PLAN critic gets each task's baseline facts (ran or not, failing
+  identities at base) and learns that the program compares failure identities, not
+  exit status. Each finding carries a `recommendation`; the blocked critic question
+  takes its default from them, so a headless run no longer stops on it.
+- LF-55: an ITERATE rewind with free-text `execute` gaps registers close-out tasks
+  (`closeOuts`, `C-n`) that EXECUTE must implement or prove already true under
+  review, so the rewind changes something before VERIFY runs again.
+- LF-56: a string input's trailing newlines are trimmed at the section boundary, so
+  a review prompt survives transit unchanged and attests.
+- LF-57: JSON inputs render non-ASCII text as itself, not as `\u` escapes a lead
+  would retype differently.
+- LF-58: one repo's rejected push is that repo's failed row; the other repos still
+  deliver (`partially delivered`, `partiallyDelivered: true`). Publication history
+  (a pushed SHA, a PR) survives a later failed or retried attempt. The repair text
+  names divergence only when git reports it.
+- LF-59: a role worker gets a fixed bootstrap and reads its prompt from
+  `steps/<id>/instructions.md`. Attestation requires the worker's own Read calls to
+  return every line of the issued prompt before any other tool call. The calls must
+  sit in assistant records and their results in user records.
+- LF-60: a `plan-critic`, `code-reviewer` or `iterate-judge` step with no accepted
+  evidence after its re-dispatches is refused, never waived. Nothing it produced is
+  accepted; the phase asks a blocked question (`fix-and-re-enter` or `stop`, no
+  default) unless `evidence.review.accept` or the new `evidence.judgment.accept`
+  opts the role in. Cached judgments and reviewed ranges are consumed only with
+  accepted evidence.
+
+Each role skill also carries one brief, schema-valid result example.
+
 ## [7.0.2] - 2026-09-22
 
 One defect found by the second end-to-end workspace run (LF-53):
