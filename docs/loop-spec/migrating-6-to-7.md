@@ -54,7 +54,6 @@ consumer repository for what remains:
 {
   "prepare": "npm ci",
   "commitArtifacts": false,
-  "evidence": { "review": { "accept": "attested" } },
   "phases": {},
   "roles": {}
 }
@@ -76,7 +75,8 @@ consumer repository for what remains:
 
 Anything not listed here is in the inventory's environment table, each with its fate.
 
-Check: `grep -r LOOP_SPEC_ your-harness/` lists only `LOOP_SPEC_MODEL_`, the stdout
+Check: `grep -r LOOP_SPEC_ your-harness/` lists only `LOOP_SPEC_MODEL_<ROLE>`,
+`LOOP_SPEC_HOME`, `LOOP_SPEC_PHASE_<NAME>`, `LOOP_SPEC_ROLE_<ROLE>`, the stdout
 markers, and `LOOP_SPEC_CONSOLE_*`.
 
 ## 4. Move the state you read
@@ -87,7 +87,7 @@ markers, and `LOOP_SPEC_CONSOLE_*`.
 | `docs/loop-spec/features/<slug>/*.md` | rendered into the PR body; in the state home; in the repo only under `commitArtifacts: true` |
 | `.loop-spec/last-result.json` | `<state home>/.../last-result.json`, beside `state.json` |
 | `.loop-spec/events.jsonl` | `<state home>/.../events.jsonl` |
-| `refs/loop-spec/state/<slug>` | `loop-spec state push|pull`, when a harness asks for it |
+| `refs/loop-spec/state/<slug>` | not available at 7.0; `loop-spec state push|pull` is a seam the roadmap builds only when a harness needs it |
 
 The state home is `${CLAUDE_PLUGIN_DATA}` under a Claude Code plugin install, else
 `$LOOP_SPEC_HOME`, else `~/.loop-spec/`. `loop-spec status` prints the resolved path.
@@ -130,5 +130,9 @@ Check: the SDK gate scenario in roadmap section 17 passes in your environment.
 
 ## Roll back
 
-Reinstall the 6.9 plugin from the `6.x` branch. 6.9 ignores the 7.x state home, and
-7.x wrote nothing to your repository unless you set `commitArtifacts`.
+Reinstall the 6.9 plugin from the `6.x` branch. That changes the installed tool only.
+6.9 ignores the 7.x state home, so leave it in place if a run may resume later. Work
+7.x delivered is ordinary git history: source commits on feature branches, pushed
+branches, and PRs stay where they are, so inspect `git branch`, the remote, and open
+PRs separately before deciding what to keep. `commitArtifacts` controls only the
+rendered SPEC and VERIFICATION documents.

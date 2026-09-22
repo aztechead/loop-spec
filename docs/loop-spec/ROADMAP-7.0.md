@@ -349,7 +349,10 @@ their current documentation (`doc-deps`, `docs-probe`). After the PLAN product i
 drafted and before it is submitted, a light critic role reads it once for Critical
 misses only: a criterion no task covers, a task whose verify command cannot test what
 it claims, a destructive change with no boundary. It raises Critical findings or
-nothing; it does not restyle the plan (decided 2026-09-22). The spec role interviews with
+nothing; it does not restyle the plan (decided 2026-09-22). A Critical finding closes
+only as fixed, with the critic re-run once on the corrected plan, or rejected with a
+stated reason; it cannot be deferred, and one still open after the re-run exits
+`spec gap` or asks a question. The spec role interviews with
 `AskUserQuestion` natively, exactly as 6.9 does. In Claude Code that reaches the
 person. Under the SDK the supervisor's `can_use_tool` answers it by policy, which
 `examples/supervisor` already does. The lead submits each product; the program records
@@ -414,7 +417,12 @@ closed, or its head is a fork (decided 2026-09-22).
 
 debug keeps the 6.9 loop-debug principles as role input flags: a failing
 reproduction before any repair, bounded retries, and a blocker recorded when no
-reproduction is available rather than a false pass.
+reproduction is available rather than a false pass. debug and `revise` both open with
+a compact SPEC and PLAN in the lead so that VERIFY onward see ordinary revisions:
+debug's criteria are the reproduction failing before and passing after; `revise`'s
+are the PR comments mapped to gaps, with the PR's base as the base SHA. Every
+`blocked` exit in any phase pauses with a question, resumes into the same phase on a
+fix, and exits `escalated` on a stop answer (decided 2026-09-22).
 
 ## 8. Roles as bound skills
 
@@ -531,15 +539,24 @@ integrator on either side.
   never stand in for a new SHA. Both VERIFY gates are evaluated at the same SHA, and
   convergence also requires an ITERATE verdict for that SHA and the current spec
   digest.
-- Rewinds are counted in state, with a budget of two by default and an operator
-  override. When a previously passing criterion fails and `git log --diff-filter=A`
+- One budget bounds every backward transition: ITERATE rewinds, VERIFY's routes back
+  to EXECUTE, PLAN, or SPEC, and evidence-incomplete re-entry. Default two, operator
+  override, counted once per accepted transition, persisted across sessions, never
+  reset by a fresh attempt (decided 2026-09-22 from the M1 fixtures review, which
+  found the September report's loop intact under a remediation route the budget did
+  not count). The review and verify contracts tell the roles what the budget is for:
+  show-stoppers and outright incorrect implementations; the PR review catches the
+  rest. When a previously passing criterion fails and `git log --diff-filter=A`
   shows the failing test file was added by a remediation commit, the route first
   decides whether the test or the implementation violates the approved behavior.
   Provenance identifies the case and never authorizes weakening an assertion on its
   own. Past the budget, remediation is restricted to minimal diffs and new broad
   assertions are forbidden by the implement role's input flags.
 - Four terminal results. `converged`. `converged-with-caveats`: acceptance and ITERATE
-  passed, non-Critical findings remain, delivered as a draft PR that lists them.
+  passed, non-Critical findings remain, delivered as a draft PR that lists them. Both
+  converged outcomes share one predicate, VERIFY passed and no open goal gap; a
+  caveat is only an accepted non-Critical review finding, never a blocked criterion or
+  a goal gap (decided 2026-09-22).
   `escalated`: the budget is spent with a criterion or a goal gap still open; the
   verified partial state is delivered as a draft PR and the result names what is
   outstanding, with a reason code for the July report's converged-but-undeliverable
@@ -846,6 +863,15 @@ moves to the state home; PR adoption stays in the repo module; greenfield keeps 
 init-in-place; issue intake is removed; a security signal is a required review input
 with a disposition per signal; `inbox/` is deleted; every proposed removal in the
 inventory is accepted.
+
+Decided 2026-09-22 from the M1 fixtures review (`m1-fixtures-7.0.md` DEC-01 to
+DEC-06, `m0-critique-7.0.md` M0-01 to M0-04): one shared budget for every backward
+transition; one convergence predicate for both converged outcomes with caveats
+limited to accepted non-Critical review findings; a Critical critic finding closes
+only fixed-and-rechecked or rejected-with-reason; every `blocked` exit pauses and
+only a stop answer escalates; D7 is required per repo whose remote write was
+attempted; debug and `revise` establish their revisions through a compact SPEC and
+PLAN.
 
 Pending for M0: supported host versions.
 

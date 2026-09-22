@@ -172,8 +172,17 @@ recommendations, not silently adopted route changes.
 | DEC-05 | D7 says it gates partially delivered, but that exit lists only D4 and D5. | Add D7 to the exit requirements for repos whose remote writes were attempted; assert pre-write credential order via fake service log. | DE-03 |
 | DEC-06 | debug goes straight to VERIFY whose prerequisites require EXECUTE; revise can adopt a PR without recorded current PLAN/SPEC. | Define how these entries establish equivalent current requirements, plan, head and approvals before shared gates, including an external PR with no prior loop-spec state. | DB-01, RV-01 |
 
-The other-agent handoff is to resolve these in the route matrix while implementing
-M1 schemas. The fixtures should expose a pending decision explicitly rather than
+Resolved by the maintainer on 2026-09-22 and carried into the route matrix: DEC-01,
+one shared persistent budget for every backward transition (V10, I3), with the review
+and verify contracts told the goal is show-stoppers and incorrect implementations;
+DEC-02, the shared convergence predicate (I5) with caveats limited to accepted
+non-Critical review findings (I6); DEC-03, fixed-and-rechecked or rejected-with-reason
+(P7); DEC-04, every `blocked` exit pauses with a question and only a stop answer
+escalates; DEC-05, D7 required per repo whose remote write was attempted; DEC-06,
+debug and `revise` open with a compact SPEC and PLAN. The fixtures named in the last
+column now have their expected outcomes.
+
+The other-agent handoff is to implement those resolutions in the M1 schemas. The fixtures should expose a pending decision explicitly rather than
 choose an arbitrary outcome or mark the case green.
 
 ## Native feasibility and live evidence handoff

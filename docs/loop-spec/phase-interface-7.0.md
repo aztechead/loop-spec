@@ -6,7 +6,8 @@ preconditions, the numbered postconditions the program checks, the exits, and wh
 postconditions gate each exit. Where [ROADMAP-7.0.md](ROADMAP-7.0.md) leaves a route
 unspecified, the row says so instead of choosing.
 
-Derived from the roadmap at `98e3288`: section 4 (phase table), section 5
+Derived from the roadmap at `98e3288` and revised at `7273b9f` with the decisions of
+2026-09-22 (migration inventory, then the M1 fixtures review): section 4 (phase table), section 5
 (implementation contract), section 10 (convergence), section 11 (baseline), section 14
 (entry points), and section 15 (result). Field lists and JSON schemas land with the
 code at M1; this page fixes the shape they must have.
@@ -95,7 +96,7 @@ unattested` in config, and the result then carries `weakenedAssurance`.
 | P4 | the baseline is captured (section 11) with the prepare command applied; environment health recorded once per failing command | `ready` |
 | P5 | the task graph is acyclic and every `dependsOn` names a task in the plan | `ready` |
 | P6 | workspace resolved once and the repo list stored in state; every task names a repo in it | `ready` |
-| P7 | the critic pass ran and recorded either no Critical finding or a disposition for each | `ready` |
+| P7 | the critic pass ran and every Critical finding is closed as `fixed` with the critic re-run once on the corrected product, or `rejected` with a stated reason recorded in state; `deferred` is not a disposition for Critical; a Critical finding still open after the one re-run exits `spec gap` or asks a question | `ready` |
 
 | Exit | Requires | Route |
 |---|---|---|
@@ -129,7 +130,7 @@ unattested` in config, and the result then carries `weakenedAssurance`.
 |---|---|---|
 | `integrated` | E1 to E8, E11; E9 false | VERIFY at the integrated head |
 | `no change` | E1, E2, E8, E9 | VERIFY at base |
-| `blocked` | E1, E10 | terminal `escalated` unless an operator answer re-enters EXECUTE; unspecified, settle at M1 |
+| `blocked` | E1, E10 | pause: a question to the operator naming the cause, with the answers fix-and-re-enter EXECUTE or stop; `status: paused` until answered; a stop answer, or a `run`-scoped default policy, exits terminal `escalated` with the cause |
 | `plan gap` | E1 | PLAN, `remediation` |
 
 An out-of-band change to the feature branch pauses the phase for reconciliation; it is
@@ -150,25 +151,31 @@ integration reason code, not an exit.
 | V1 | product validates; bound to both revisions | every exit |
 | V2 | every criterion id in the requirements revision has exactly one verdict | every exit except `evidence incomplete` |
 | V3 | every evidence SHA equals the verified head | `passed` |
-| V4 | the program re-ran every cited command in a clean checkout of that SHA that it created, with prepare fixtures applied, and command identity, exit status, parsed failure identities, and normalized output digest matched | `passed` |
+| V4 | for every criterion without a V5 exception, the program re-ran its cited command in a clean checkout of that SHA that it created, with prepare fixtures applied, and command identity, exit status, parsed failure identities, and normalized output digest matched | `passed` |
 | V5 | a criterion skipped V4 only under an exception declared in the PLAN product and approved with it, or granted by an operator answer at VERIFY; its verdict is recorded at assurance `claimed` and listed under `weakenedAssurance` | `passed` |
 | V6 | a `blocked` verdict cites a cause the program observed, in the baseline record or in its own re-run | `blocked` |
 | V7 | every verdict is `pass` and the review policy holds: first and final passes saw the full diff, other passes the delta since the last reviewed SHA, no Critical finding open | `passed` |
 | V8 | a finding on cleared code carries a typed `supersedes` naming a finding id or a reviewed-range id | every exit |
 | V9 | `blocked` for an offline-unavailable dependency was claimed only after a stand-in was tried | `blocked` |
+| V10 | the shared backward-transition budget has room and this transition was counted once against it | every gap exit and `evidence incomplete` |
 
 | Exit | Requires | Route |
 |---|---|---|
 | `passed` | V1 to V5, V7, V8 | ITERATE |
-| `implementation gap` | V1, V2, V8; at least one `fail` with remediation tasks | EXECUTE, `remediation` |
-| `plan gap` | V1, V2, V8 | PLAN, `remediation` |
-| `intent gap` | V1, V2, V8 | SPEC, `remediation` |
-| `evidence incomplete` | V1 | VERIFY re-entry, new attempt |
-| `blocked` | V1, V2, V6, V8, V9 | ITERATE, which may escalate; unspecified whether an operator answer can re-enter VERIFY, settle at M1 |
+| `implementation gap` | V1, V2, V8, V10; at least one `fail` with remediation tasks | EXECUTE, `remediation` |
+| `plan gap` | V1, V2, V8, V10 | PLAN, `remediation` |
+| `intent gap` | V1, V2, V8, V10 | SPEC, `remediation` |
+| `evidence incomplete` | V1, V10 | VERIFY re-entry, new attempt |
+| `blocked` | V1, V2, V6, V8, V9 | pause: a question naming the observed cause, with the answers fix-and-re-enter VERIFY or stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` |
 
-Remediation entries do not advance the rewind counter; only ITERATE's `rewind` does
-(section 10). Whether the VERIFY to EXECUTE remediation loop has its own bound is
-unspecified; settle at M1.
+One budget bounds every backward transition (decided 2026-09-22): VERIFY to EXECUTE,
+PLAN, or SPEC, `evidence incomplete` re-entry, and ITERATE `rewind` all spend the same
+persistent feature-level budget, default two with an operator override. It is counted
+once per accepted transition, survives sessions, and is never reset by a fresh attempt.
+When it is spent, the program accepts no gap exit from VERIFY; it enters ITERATE with
+the gaps, and I4 exits `escalated`. The review and verify contract sections say what
+the budget is for: find show-stoppers and outright incorrect implementations; the PR
+review catches the rest.
 
 ## ITERATE
 
@@ -176,27 +183,30 @@ unspecified; settle at M1.
 |---|---|
 | Inputs | the immutable original request; approved SPEC; integrated diff; VERIFY product; prior gaps; rewind count and budget |
 | Product | `verdict` against the original request; `gaps[]`; `route` |
-| Preconditions | VERIFY `passed` at the current revisions, including the `no change` head; or VERIFY `blocked` |
+| Preconditions | VERIFY `passed` at the current revisions, including the `no change` head; or entered by the program with VERIFY's gaps when the budget is spent |
 | Runs as | a fresh goal-judgment role |
 
 | Id | Postcondition | Gates |
 |---|---|---|
 | I1 | product validates; the verdict binds the integrated SHA, the requirements revision, and the plan revision | every exit |
 | I2 | every gap names a target of SPEC, PLAN, EXECUTE, or VERIFY | `rewind` |
-| I3 | the rewind counter advanced and is within budget | `rewind` |
+| I3 | the shared budget advanced and is within its bound | `rewind` |
 | I4 | the budget is spent, or a criterion or goal gap is open that no route can close | `escalated` |
-| I5 | no gap open; VERIFY `passed` | `converged` |
-| I6 | no Critical finding open; non-Critical findings remain with recorded dispositions | `converged with caveats` |
+| I5 | VERIFY `passed` at this SHA and no open gap against the original goal; the shared convergence predicate | `converged`, `converged with caveats` |
+| I6 | no Critical finding open; the caveats list contains only accepted non-Critical review findings, each with a recorded disposition, and nothing else | `converged with caveats` |
 
 | Exit | Requires | Route |
 |---|---|---|
-| `converged` | I1, I5 | DELIVER |
-| `converged with caveats` | I1, I6 | DELIVER as draft |
+| `converged` | I1, I5; no finding open | DELIVER |
+| `converged with caveats` | I1, I5, I6 | DELIVER as draft |
 | `rewind` | I1, I2, I3 | the named phase, `rewind`, with the findings |
 | `escalated` | I1, I4 | DELIVER as partial draft when operator policy allows; otherwise terminal `escalated` |
 
 Past the budget, remediation is restricted to minimal diffs and the implement role's
-input flags forbid new broad assertions.
+input flags forbid new broad assertions. A blocked criterion or an open goal gap can
+never leave as a caveat: incomplete acceptance reaches a draft PR only through the
+explicit escalated partial-delivery policy and keeps the `escalated` classification
+(decided 2026-09-22).
 
 ## DELIVER
 
@@ -220,8 +230,8 @@ input flags forbid new broad assertions.
 | Exit | Requires | Route |
 |---|---|---|
 | `delivered` | D1 to D4, D7 for every repo | terminal `converged` or `converged-with-caveats` |
-| `partially delivered` | D4, D5 | terminal; result carries `partiallyDelivered` and per-repo state |
-| `delivery blocked` | D4 | terminal; result mapping is an M1 fixture (section 15) |
+| `partially delivered` | D4, D5, and D7 for every repo whose remote write was attempted | terminal; result carries `partiallyDelivered` and per-repo state |
+| `delivery blocked` | D4 | pause: a question naming the failed command and repair, with the answers fix-and-re-enter DELIVER or stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` with `result: escalated` and per-repo state |
 
 ## debug
 
@@ -230,6 +240,7 @@ input flags forbid new broad assertions.
 | Inputs | error report |
 | Product | `reproduction` as command plus digest; `diagnosis`; `repair` commits; post-fix evidence |
 | Preconditions | error report present |
+| Establishes | a compact SPEC and PLAN in the lead before the repair: the criteria are the reproduction failing before and passing after, the plan is the repair task with the reproduction as its verify command; approval is a question like any other, so VERIFY onward see ordinary revisions (decided 2026-09-22) |
 
 | Id | Postcondition | Gates |
 |---|---|---|
@@ -240,7 +251,7 @@ input flags forbid new broad assertions.
 | Exit | Requires | Route |
 |---|---|---|
 | `repaired` | B1, B2 | VERIFY, then ITERATE and DELIVER as above |
-| `blocked reproduction` | B3 | terminal; result mapping unspecified, settle at M1 |
+| `blocked reproduction` | B3 | pause: a question asking for a reproduction or a stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` |
 
 ## Entry points and the order
 
@@ -251,7 +262,7 @@ input flags forbid new broad assertions.
 | `debug` | debug, then VERIFY onward | error report |
 | `micro` | the full order with compact presets | cannot drop a required phase |
 | `status` | nothing; read-only | none |
-| `revise` | EXECUTE in `remediation` on the adopted PR branch, with PR comments as gaps; then VERIFY onward | an open PR the repo module can adopt |
+| `revise` | a compact SPEC and PLAN in the lead whose criteria are the PR comments mapped to gaps, with the PR's base as base SHA; then EXECUTE in `remediation` on the adopted PR branch, and VERIFY onward | an open PR the repo module can adopt; a PR with no prior loop-spec state gets a fresh run id bound to the PR identity |
 
 A standalone `deliver` cannot bypass VERIFY or ITERATE: its preconditions require an
 ITERATE exit at the current revisions.
@@ -265,19 +276,26 @@ ITERATE exit at the current revisions.
 | ITERATE `converged` on a `no change` head | `no-change` | `outcome: no-change-needed`, `noChangeReason: already-satisfied`, `converged: true`, `workDelivered: false` |
 | ITERATE `escalated`; EXECUTE `blocked` | `escalated` | `status: escalated`, `converged: false` |
 | process exit 1; environment cannot run the plan | `failed` | `status: failed`, `converged: false` |
-| process exit 3 outstanding | question pending | `status: paused`, `reason` names the question id |
+| process exit 3 outstanding, including every `blocked` exit | question pending | `status: paused`, `reason` names the question id and, for a blocked exit, the cause |
+| a `blocked` exit answered stop | `escalated` | `status: escalated`, `converged: false`, the cause in `reason` |
 
 The `last-result.json` pointer is written in the state home beside `state.json`.
 
-## Unspecified routes to settle at M1
+## Routes settled 2026-09-22
 
-Collected from the rows above so none is chosen silently.
+The four routes the first version left for M1, answered from the M1 fixtures review
+(`m1-fixtures-7.0.md`, DEC-01 to DEC-06). No route is unspecified.
 
-- EXECUTE `blocked`: terminal, or re-enterable by operator answer.
-- VERIFY `blocked`: whether an operator answer can re-enter VERIFY before ITERATE.
-- A bound on the VERIFY to EXECUTE remediation loop, separate from the rewind budget.
-- DELIVER `delivery blocked` and debug `blocked reproduction`: their `result` and
-  schema-1 mapping, as fixtures in the M1 compatibility matrix.
+- Every `blocked` exit pauses with a question and resumes into the same phase or, on a
+  stop answer, exits terminal `escalated`. One rule for EXECUTE, VERIFY, debug, and
+  DELIVER.
+- One shared budget bounds every backward transition (V10, I3).
+- Both converged outcomes share one predicate (I5); caveats hold only accepted
+  non-Critical review findings (I6).
+- A Critical critic finding closes only as fixed-and-rechecked or rejected-with-reason
+  (P7).
+- D7 is required for every repo whose remote write was attempted.
+- debug and `revise` establish their revisions through a compact SPEC and PLAN.
 
 ## Related
 

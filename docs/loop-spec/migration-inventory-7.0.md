@@ -135,7 +135,8 @@ bodies. R§16: nothing per harness travels.
 
 ## Library scripts
 
-`lib/*.sh` (149), `lib/*.py` (18), `lib/graph/`, `lib/supervisor/`, `lib/workflows/`.
+`lib/*.sh` (153, of which 2 are test files), `lib/*.py` (19), `lib/graph/`,
+`lib/supervisor/`, `lib/workflows/`.
 R§17 deletes every `lib/*.sh` and the graph driver; the rows say where each behavior
 lands.
 
