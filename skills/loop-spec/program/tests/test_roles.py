@@ -78,6 +78,7 @@ class RoleSchemaDriftGuardTests(unittest.TestCase):
                 ("spec-writer", "spec"),
                 ("planner", "plan"),
                 ("debugger", "debug"),
+                ("reviser", "revise"),
             ]
             for role_name, product_name in pairs:
                 role = load_role(role_name, Path(tmp))

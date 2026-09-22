@@ -552,12 +552,13 @@ def _accept_debug_product(store: StateStore, paths: FeaturePaths, project_root: 
 
 def _accept_revise_product(store: StateStore, paths: FeaturePaths, project_root: Path, attempt_id: str, product: dict) -> None:
     # revise.py's own docstring: "revise" is not one of the seven ROUTES phases, so
-    # there is no schema/boundary check on the raw {spec, plan} product itself here
-    # (the reviser role's own schema already shaped it), and it is not recorded
-    # under store.state["products"] (that namespace's shape -- exit/boundTo/product
-    # -- is build_envelope's contract for the seven ROUTES phases; revise.py already
-    # owns store.state["revise"]["product"] as its own record). It re-enters through
-    # SPEC's own approval flow, same as debug's compacted product below.
+    # there is no ROUTES/Boundary postcondition check on the raw {spec, plan} product
+    # here (contract.py already validated it against schemas/revise.json before this
+    # was ever called), and it is not recorded under store.state["products"] (that
+    # namespace's shape -- exit/boundTo/product -- is build_envelope's contract for
+    # the seven ROUTES phases; revise.py already owns store.state["revise"]["product"]
+    # as its own record). It re-enters through SPEC's own approval flow, same as
+    # debug's compacted product below.
     store.state.setdefault("revise", {})["acceptedAttempt"] = attempt_id
     inputs_digest = digest(product)
     spec_product = {**product["spec"], "exit": "approved", "inputsDigest": inputs_digest, "boundTo": {"requirements": None, "plan": None}}

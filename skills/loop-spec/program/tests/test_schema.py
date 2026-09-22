@@ -6,7 +6,7 @@ from loop_spec.schema import load_schema, validate
 
 _SCHEMA_NAMES = [
     "context", "spec", "plan", "execute", "verify", "iterate",
-    "deliver", "debug", "step", "question", "result", "answer",
+    "deliver", "debug", "revise", "step", "question", "result", "answer",
 ]
 
 _BOUND_TO = {"requirements": None, "plan": None}

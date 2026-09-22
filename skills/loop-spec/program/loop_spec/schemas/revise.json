@@ -1,49 +1,11 @@
 {
   "type": "object",
-  "required": [
-    "exit",
-    "inputsDigest",
-    "boundTo",
-    "reproduction",
-    "original",
-    "diagnosis",
-    "spec",
-    "plan"
-  ],
+  "required": ["spec", "plan"],
   "additionalProperties": false,
   "$defs": {
-    "reproduction": {
-      "type": "object",
-      "required": [
-        "command",
-        "failureDigest",
-        "reason"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "command": {
-          "type": "string"
-        },
-        "failureDigest": {
-          "type": "string"
-        },
-        "reason": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      }
-    },
     "spec": {
       "type": "object",
-      "required": [
-        "goal",
-        "boundaries",
-        "criteria",
-        "decisions",
-        "openQuestions"
-      ],
+      "required": ["goal", "boundaries", "criteria", "decisions", "openQuestions"],
       "additionalProperties": false,
       "properties": {
         "goal": {
@@ -61,10 +23,7 @@
           "minItems": 1,
           "items": {
             "type": "object",
-            "required": [
-              "id",
-              "text"
-            ],
+            "required": ["id", "text"],
             "additionalProperties": false,
             "properties": {
               "id": {
@@ -81,10 +40,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": [
-              "id",
-              "text"
-            ],
+            "required": ["id", "text"],
             "additionalProperties": false,
             "properties": {
               "id": {
@@ -100,10 +56,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": [
-              "id",
-              "text"
-            ],
+            "required": ["id", "text"],
             "additionalProperties": false,
             "properties": {
               "id": {
@@ -119,28 +72,14 @@
     },
     "plan": {
       "type": "object",
-      "required": [
-        "tasks",
-        "prepare",
-        "evidenceExceptions"
-      ],
+      "required": ["tasks", "prepare", "evidenceExceptions"],
       "additionalProperties": false,
       "properties": {
         "tasks": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": [
-              "id",
-              "title",
-              "dependsOn",
-              "files",
-              "repo",
-              "verify",
-              "criteria",
-              "featureAdded",
-              "mustFlip"
-            ],
+            "required": ["id", "title", "dependsOn", "files", "repo", "verify", "criteria", "featureAdded", "mustFlip"],
             "additionalProperties": false,
             "properties": {
               "id": {
@@ -176,10 +115,7 @@
                 }
               },
               "featureAdded": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "mustFlip": {
                 "type": "boolean"
@@ -188,19 +124,13 @@
           }
         },
         "prepare": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "evidenceExceptions": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": [
-              "criterion",
-              "reason"
-            ],
+            "required": ["criterion", "reason"],
             "additionalProperties": false,
             "properties": {
               "criterion": {
@@ -216,11 +146,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": [
-              "findingId",
-              "disposition",
-              "reason"
-            ],
+            "required": ["findingId", "disposition", "reason"],
             "additionalProperties": false,
             "properties": {
               "findingId": {
@@ -228,16 +154,10 @@
               },
               "disposition": {
                 "type": "string",
-                "enum": [
-                  "fixed",
-                  "rejected"
-                ]
+                "enum": ["fixed", "rejected"]
               },
               "reason": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               }
             }
           }
@@ -246,62 +166,6 @@
     }
   },
   "properties": {
-    "exit": {
-      "type": "string",
-      "enum": [
-        "reproduced",
-        "blocked reproduction"
-      ]
-    },
-    "inputsDigest": {
-      "type": "string",
-      "pattern": "^sha256:[0-9a-f]{64}$"
-    },
-    "boundTo": {
-      "type": "object",
-      "required": [
-        "requirements",
-        "plan"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "requirements": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "plan": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      }
-    },
-    "reproduction": {
-      "anyOf": [
-        {
-          "type": "null"
-        },
-        {
-          "$ref": "#/$defs/reproduction"
-        }
-      ]
-    },
-    "original": {
-      "anyOf": [
-        {
-          "type": "null"
-        },
-        {
-          "$ref": "#/$defs/reproduction"
-        }
-      ]
-    },
-    "diagnosis": {
-      "type": "string"
-    },
     "spec": {
       "$ref": "#/$defs/spec"
     },

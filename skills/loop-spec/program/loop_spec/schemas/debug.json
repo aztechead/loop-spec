@@ -280,7 +280,14 @@
       }
     },
     "reproduction": {
-      "$ref": "#/$defs/reproduction"
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/reproduction"
+        }
+      ]
     },
     "original": {
       "anyOf": [

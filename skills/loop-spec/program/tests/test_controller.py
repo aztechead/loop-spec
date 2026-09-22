@@ -620,6 +620,20 @@ def _minimal_spec_and_plan(repo_name: str, goal: str, criterion_text: str, task_
     return spec, plan
 
 
+def _start_debug_run(repo_dir, home, markers, request_text: str, slug: str):
+    """Start a "debug" entry run; return (next_ for the debug lead step, paths,
+    store, repo_name). Shared by DEBUG's happy-path and blocked-reproduction tests."""
+    with contextlib.redirect_stdout(markers):
+        next_ = controller.run_entry(
+            "debug", project_root=repo_dir, request_text=request_text,
+            slug=slug, state_home=str(home), answer_policy=None, pr=None,
+        )
+    paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), slug))
+    store = _open(paths)
+    repo_name = next(iter(store.state["repos"]))
+    return next_, paths, store, repo_name
+
+
 class DebugAndReviseEntryTests(_QuietStdout):
     """DEBUG and REVISE both land a compact {spec, plan} pair that re-enters through
     SPEC's own approval flow and PLAN's own baseline+critic pass, then routes to
@@ -636,14 +650,9 @@ class DebugAndReviseEntryTests(_QuietStdout):
             repro_command = "python3 -c \"import sys; print('boom'); sys.exit(1)\""
 
             with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
-                with contextlib.redirect_stdout(markers):
-                    next_ = controller.run_entry(
-                        "debug", project_root=repo_dir, request_text="the greeting script crashes",
-                        slug="debugtest", state_home=str(home), answer_policy=None, pr=None,
-                    )
-                paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "debugtest"))
-                store = _open(paths)
-                repo_name = next(iter(store.state["repos"]))
+                next_, paths, store, repo_name = _start_debug_run(
+                    repo_dir, home, markers, "the greeting script crashes", "debugtest",
+                )
                 self.assertEqual(store.state["run"]["cycleType"], "debug")
                 self.assertEqual(next_.kind, "step")
 
@@ -673,6 +682,39 @@ class DebugAndReviseEntryTests(_QuietStdout):
                 self.assertEqual(next_.kind, "step")  # EXECUTE's own external step
                 self.assertIsNotNone(store.state["revisions"]["requirements"])
                 self.assertIsNotNone(store.state["revisions"]["plan"])
+
+    def test_debug_blocked_reproduction_pauses(self):
+        # B3 (a blocked-reproduction product carries no reproduction) needs
+        # debug.json's own "reproduction" nullable; this pins the pause path it gates.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            markers = io.StringIO()
+
+            with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+                next_, paths, store, repo_name = _start_debug_run(
+                    repo_dir, home, markers, "cannot reproduce the crash", "debugblocked",
+                )
+                debug_step = read_json(next_.path)
+                spec, plan = _minimal_spec_and_plan(repo_name, "Investigate the crash", "the crash is understood", "investigate")
+                debug_product = {
+                    "exit": "blocked reproduction", "inputsDigest": "sha256:" + "0" * 64,
+                    "boundTo": {"requirements": None, "plan": None},
+                    "reproduction": None, "original": None,
+                    "diagnosis": "cannot reproduce with the given steps",
+                    "spec": spec, "plan": plan,
+                }
+                atomic_write_json(Path(debug_step["resultPath"]), debug_product)
+                next_ = _submit_and_continue(paths, repo_dir, markers, debug_step["stepAttemptId"])
+
+                store = _open(paths)
+                self.assertEqual(store.state["products"]["debug"]["exit"], "blocked reproduction")
+                self.assertEqual(next_.kind, "question")
+                question = read_json(next_.path)
+                self.assertEqual(question["kind"], "blocked")
+                self.assertEqual(store.state["phase"]["current"], "debug")
+                self.assertEqual(store.state["phase"]["entry"], "remediation")
 
     def test_revise_entry_adopts_pr_and_reaches_execute(self):
         with tempfile.TemporaryDirectory() as tmp:
