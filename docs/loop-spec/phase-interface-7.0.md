@@ -264,7 +264,7 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | | |
 |---|---|
 | Inputs | ITERATE product; per-repo verified SHA; rendered summary; delivery configuration and readiness policy; existing remote state |
-| Product | per repo `pr` identity, `deliveredSha`, `caveats[]`, `state` (`delivered`, `failed`, `skipped`); a `failed` row whose push landed before a later step failed carries `publishedSha` |
+| Product | per repo `pr` identity, `deliveredSha`, `caveats[]`, `state` (`delivered`, `failed`, `skipped`); a `failed` row carries `publishedSha` (and the PR, if one was opened) when this or an earlier DELIVER attempt put the branch on the remote, so a re-entry never erases what was published |
 | Preconditions | ITERATE `converged` or `converged with caveats`; or `escalated` with an operator policy allowing partial delivery as a draft |
 | Runs as | program code: every touched repo's credentials are checked before the first remote write; then each repo is pushed and its PR reconciled, and a rejected push or failed PR step is that repo's `failed` row while the other repos are still attempted |
 

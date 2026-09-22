@@ -314,6 +314,39 @@ class DeliverTests(unittest.TestCase):
         self.assertIn("rate limited", row["caveats"][0])
         self.assertEqual(_head(self.remote, "feature"), self.head_sha)
 
+    def _refuse_credentials(self):
+        self.store.state["credentialChecks"]["repo"].update({"gh_ok": False, "failedCommand": "gh auth status", "repair": "run: gh auth login"})
+        self.store.save()
+
+    def test_a_published_branch_survives_a_reentry_refused_by_credentials(self):
+        # LF-58 review: push -> PR failure -> re-enter -> credential refusal -> stop.
+        def failing_create(repo, *args):
+            if args[:2] == ("pr", "list"):
+                return 0, "[]", ""
+            return 1, "", "GraphQL: rate limited"
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=failing_create):
+            deliver.run(self.store, self.paths, self.ctx)
+        self._refuse_credentials()
+        product, rows = self._deliver()
+        self.assertEqual(product["exit"], "delivery blocked")
+        self.assertEqual(rows["repo"]["publishedSha"], self.head_sha)
+        self.assertTrue(any(c.startswith("published earlier: ") for c in rows["repo"]["caveats"]))
+        self.assertEqual(_head(self.remote, "feature"), self.head_sha)  # the remote still has it
+
+
+    def test_an_earlier_pr_survives_a_reentry_refused_by_credentials(self):
+        with self._run_gh_reconcile():
+            deliver.run(self.store, self.paths, self.ctx)
+        self._refuse_credentials()
+        _, rows = self._deliver()
+        self.assertEqual((rows["repo"]["state"], rows["repo"]["pr"]["number"], rows["repo"]["publishedSha"]),
+                         ("failed", 42, self.head_sha))
+
+    def test_push_repair_names_divergence_only_when_git_says_so(self):
+        self.assertIn("fetch, reconcile", deliver._push_repair("! [rejected] feature -> feature (non-fast-forward)"))
+        self.assertIn("fetch, reconcile", deliver._push_repair("! [rejected] feature -> feature (fetch first)"))
+        self.assertIn("check origin's push URL", deliver._push_repair("! [rejected] v1 -> v1 (already exists)"))
+
 
 if __name__ == "__main__":
     unittest.main()

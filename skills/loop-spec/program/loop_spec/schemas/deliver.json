@@ -94,7 +94,7 @@
             ]
           },
           "publishedSha": {
-            "description": "Set on a failed row whose push succeeded before a later step failed: the SHA now on the remote branch.",
+            "description": "Set on a failed row whose branch this or an earlier DELIVER attempt pushed: the SHA on the remote branch.",
             "type": [
               "string",
               "null"

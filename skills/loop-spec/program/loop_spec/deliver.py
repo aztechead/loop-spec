@@ -77,9 +77,25 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
 def _push_repair(stderr: str) -> str:
     # A non-zero push is not always a non-fast-forward (LF-58: an unreachable remote
     # read as "resolve the out-of-band change"); name the repair only when git says so.
-    if re.search(r"non-fast-forward|\[rejected\]|fetch first", stderr):
+    if re.search(r"non-fast-forward|fetch first", stderr):
         return "the remote branch has commits the verified SHA lacks; fetch, reconcile, and re-enter (never force)"
     return "check origin's push URL, network, and access, then re-enter (never force)"
+
+
+def _published(store, repo_name: str, row: dict) -> dict:
+    """LF-58: what earlier DELIVER attempts already put on the remote (a pushed SHA, a
+    PR) survives a later failed attempt, so a re-entry never erases that history."""
+    earlier = (store.state.get("deliverPublished") or {}).get(repo_name)
+    if earlier is None or row["state"] == "delivered":
+        return row
+    pr_note = f" and PR #{earlier['pr']['number']}" if earlier.get("pr") else ""
+    return {**row, "publishedSha": earlier["sha"], "pr": row["pr"] or earlier.get("pr"),
+            "caveats": row["caveats"] + [f"published earlier: {earlier['sha'][:12]}{pr_note} (attempt {earlier['attemptId']})"]}
+
+
+def _record_published(store, repo_name: str, sha: str, pr: dict | None, attempt_id: str) -> None:
+    store.state.setdefault("deliverPublished", {})[repo_name] = {"sha": sha, "pr": pr, "attemptId": attempt_id, "at": now_iso()}
+    store.save()
 
 
 def run(store, paths, ctx):
@@ -110,8 +126,8 @@ def run(store, paths, ctx):
                 repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [], "state": "skipped"})
                 continue
             reason = refused.get(repo_name) or (f"not attempted: the credential check failed for "
-                                                f"{', '.join(sorted(refused))}, so DELIVER wrote to no remote")
-            repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"})
+                                                f"{', '.join(sorted(refused))}, so this attempt wrote to no remote")
+            repos_out.append(_published(store, repo_name, {"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"}))
         return Product({"exit": "delivery blocked", "inputsDigest": ctx["inputs"]["digest"], "boundTo": bound_to, "repos": repos_out})
 
     for repo_name, repo_info in store.state["repos"].items():
@@ -135,7 +151,7 @@ def run(store, paths, ctx):
         if local_sha != verified_sha:
             reason = (f"feature branch moved after VERIFY: local {(local_sha or 'missing')[:12]} "
                       f"vs verified {verified_sha[:12]}")
-            repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"})
+            repos_out.append(_published(store, repo_name, {"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"}))
             continue
 
         # Push the immutable, verified SHA to the ref by value, not the mutable
@@ -147,8 +163,9 @@ def run(store, paths, ctx):
             # are still attempted, so a workspace can deliver partially.
             stderr = push.stderr.strip()
             reason = f"push rejected: {stderr}; repair: {_push_repair(stderr)}"
-            repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"})
+            repos_out.append(_published(store, repo_name, {"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"}))
             continue
+        _record_published(store, repo_name, verified_sha, None, ctx["attempt"]["id"])
 
         pr, error = _reconcile_pr(store, repo_name, worktree, repo_info, repo_info["defaultBranch"], draft,
                                    spec_product["goal"], render.pr_body(store))
@@ -158,6 +175,7 @@ def run(store, paths, ctx):
             repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "publishedSha": verified_sha,
                               "caveats": [reason], "state": "failed"})
             continue
+        _record_published(store, repo_name, verified_sha, pr, ctx["attempt"]["id"])
         repos_out.append({"repo": repo_name, "pr": pr, "deliveredSha": touched[repo_name], "caveats": [], "state": "delivered"})
 
     # Mixed is partial; nothing delivered is blocked (the rows name why); an

@@ -88,8 +88,8 @@ shape, including nested item schemas):
   adds for an open Critical finding), `caveats[]`, `boundShas` (repo name to SHA; LF-28
   replaced the single-repo `boundSha`).
 - **deliver**: `repos[]` (`repo`, `pr`, `deliveredSha`, `caveats[]`, `state`:
-  `delivered`/`failed`/`skipped`; `publishedSha` on a `failed` row whose push landed
-  before its PR step failed).
+  `delivered`/`failed`/`skipped`; `publishedSha` on a `failed` row whose branch this or
+  an earlier DELIVER attempt put on the remote).
 - **debug**: `reproduction` (`command`, `failureDigest`, `reason`), `original`,
   `diagnosis`, a compact `spec` and `plan` (the same shapes as SPEC's and PLAN's
   own products, folded into SPEC and PLAN once accepted).
