@@ -126,7 +126,7 @@ earlier phase or re-enters the same one. It appears in each such exit's `Require
 | E1 | product validates; bound to the plan and requirements revisions per repo | every exit |
 | E2 | every required task has an accepted disposition | `integrated`, `no change` |
 | E3 | for every task, its dependencies completed before it was dispatched | `integrated` |
-| E4 | every commit in `base..head` maps to exactly one `done` or `adopted` task | `integrated` |
+| E4 | every commit in `base..head` maps to exactly one `done` or `adopted` task; in a revise run the adopted PR's own commits count as mapped by the adoption | `integrated` |
 | E5 | every `done` or `adopted` task has a review record whose reviewed range covers all of that task's commits; for an `adopted` task the record comes from a full review step the program ran over the adopted range at entry, never from the PR's own history | `integrated` |
 | E6 | every such review record's evidence level meets the accepted class for review steps; otherwise the task is listed in `unreviewed` | `integrated` |
 | E7 | each task's verify command produced no new failure identity against its baseline; a `featureAdded` command had a meaningful first success (exit zero, at least one parsed identity where a parser exists) that became its task-local baseline; a `mustFlip` command failed at baseline with the recorded digest and passes at integration | `integrated` |

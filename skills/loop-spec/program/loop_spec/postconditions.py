@@ -128,6 +128,16 @@ def verified_heads(store) -> dict[str, str]:
     return store.state["products"]["execute"]["product"]["heads"]
 
 
+def adopted_commits(store, repo_name: str, repo_path: Path) -> set[str]:
+    """The adopted PR's commits (adoption.baseSha..headSha) when this run adopted one
+    in `repo_name`; empty otherwise. E4 and EXECUTE's unmapped-commits pause both
+    treat them as already accounted for (LF-44)."""
+    adoption = store.state.get("adoption")
+    if not adoption or adoption.get("repo") != repo_name:
+        return set()
+    return set(repo_module.commits_between(repo_path, adoption["baseSha"], adoption["headSha"]))
+
+
 def review_evidence(store, task_id: str) -> tuple[str, str | None]:
     """The evidence level and step id for one EXECUTE task's review: E6 and
     result.py's `reviewed` field both need this. An external EXECUTE's whole
@@ -442,7 +452,11 @@ class Boundary:
                 for c in t["commits"]
             }
             actual = set(repo_module.commits_between(repo_path, info["baseSha"], head))
-            if task_commits != actual:
+            # LF-44: in a revise run the adopted PR's own commits are covered by the
+            # adoption (and its full-range review, E5), whether or not the reviser
+            # carried the delivering plan's tasks forward to claim them.
+            adopted = adopted_commits(self.store, name, repo_path)
+            if task_commits - adopted != actual - adopted:
                 return f"repo {name}: task commits do not exactly cover base..head"
         return None
 

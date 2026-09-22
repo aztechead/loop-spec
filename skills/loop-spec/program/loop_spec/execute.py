@@ -21,7 +21,7 @@ from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
 from .events import emit
 from .paths import ensure_results_dir
-from .postconditions import retry_limit
+from .postconditions import adopted_commits, retry_limit
 from .roles import compose_prompt, load_role
 
 _TERMINAL = {"done", "already-satisfied", "removed", "blocked", "planGap", "adopted"}
@@ -424,7 +424,8 @@ def _unmapped_commits_pause(store, ctx, execute_state: dict) -> Pause | None:
             for c in task_state["commits"]
         }
         actual = set(repo_module.commits_between(repo_path, repo_info["baseSha"], repo_state["head"]))
-        mismatched = sorted(task_commits ^ actual)
+        adopted = adopted_commits(store, name, repo_path)  # LF-44, same rule as E4
+        mismatched = sorted((task_commits - adopted) ^ (actual - adopted))
         if mismatched:
             text = (f"repo {name}: commits {', '.join(mismatched)} are not exactly covered by any task's "
                      f"recorded commits; reconcile them, then fix-and-re-enter, or stop")

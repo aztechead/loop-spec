@@ -266,6 +266,17 @@ class PostconditionsTests(unittest.TestCase):
         bad["tasks"][1]["commits"] = []  # sha_b no longer claimed by any task
         self.assertIsNotNone(self._boundary("execute", bad, "integrated")._e4())
 
+    def test_e4_counts_an_adopted_prs_commits_as_mapped(self):
+        # LF-44: a revise run whose reviser did not carry the delivering plan's tasks
+        # forward still passes E4 for the adopted PR's own commits.
+        product = copy.deepcopy(self.execute_product)
+        product["tasks"] = [product["tasks"][1]]  # only the new work (sha_b) is claimed
+        self.assertIsNotNone(self._boundary("execute", product, "integrated")._e4())
+        self.store.state["adoption"] = {"repo": "repo", "baseSha": self.base_sha, "headSha": self.sha_a}
+        self.assertIsNone(self._boundary("execute", product, "integrated")._e4())
+        self.store.state["adoption"]["repo"] = "other"
+        self.assertIsNotNone(self._boundary("execute", product, "integrated")._e4())
+
     def test_e4_workspace_filters_tasks_by_repo(self):
         # LF-24: a second repo whose task commit is unknown to the first must not be
         # unioned into the first repo's coverage check.

@@ -26,6 +26,9 @@ the codebase; Write is for your one result file only.
    command. Every task's `repo` is one of the repository names listed under `inputs.repos` (the envelope's repo map), never a path, `.`, or a guess; a single-repository run has exactly one name.
 4. Keep both products minimal: carry forward everything the comments did not
    touch unchanged, and do not re-litigate a decision no comment raised.
+   A prior task keeps its id and its fields verbatim; a task the comments add takes
+   the next free id (`T-<n+1>` after the highest prior id, or `R-<n>`), never a prior
+   task's id.
 5. A comment you cannot resolve into a concrete criterion or task is a question,
    not a silent guess — name it rather than inventing an answer.
 

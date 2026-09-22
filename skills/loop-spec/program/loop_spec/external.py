@@ -48,7 +48,7 @@ POSTCONDITION_TEXT: dict[str, str] = {
     "E1": "product validates; bound to the plan and requirements revisions per repo",
     "E2": "every required task has an accepted disposition",
     "E3": "for every task, its dependencies completed before it was dispatched",
-    "E4": "every commit in base..head maps to exactly one done or adopted task",
+    "E4": "every commit in base..head maps to exactly one done or adopted task (an adopted PR's own commits count as mapped)",
     "E5": "every done or adopted task has a review record whose reviewed range covers all of that task's commits; for an adopted task the record comes from a full review step the program ran over the adopted range at entry, never from the PR's own history",
     "E6": "every such review record's evidence level meets the accepted class for review steps; otherwise the task is listed in unreviewed",
     "E7": "each task's verify command produced no new failure identity against its baseline; a featureAdded command had a meaningful first success (exit zero, at least one parsed identity where a parser exists) that became its task-local baseline; a mustFlip command failed at baseline with the recorded digest and passes at integration",
