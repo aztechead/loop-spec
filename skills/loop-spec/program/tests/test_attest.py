@@ -103,8 +103,27 @@ class AttestorTests(unittest.TestCase):
         self.assertEqual(reason, "final message does not end with the result digest")
 
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_composed_review_prompt_with_a_diff_before_probes_attests_and_an_altered_input_does_not(self):
+        # LF-56: the e2e-t2 shape, a diff input followed by a probes input.
+        from loop_spec.roles import Role, compose_prompt
+        role = Role(name="code-reviewer", body="Review.", schema={"type": "object"}, source="default", version="sha256:" + "0" * 64)
+        prompt = compose_prompt(role, inputs={"diff": "+assert lerp(0, 10, 0.5) == 5\n", "probes": {"a": 1}},
+                                result_path=Path("/tmp/out/product.json"), cwd=Path("/tmp/out"), phase="execute")
+        step = {**_STEP, "prompt": prompt + "\n--- loop-spec step ---\nstep: step-1\n"}
+        records = _valid_records()
+        records[0] = {**records[0], "message": {"content": step["prompt"]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            claude_home = Path(tmp)
+            subagents = self._subagents_dir(claude_home)
+            _write_transcript(subagents / "agent-aworker-1-0123456789abcdef.jsonl", records)
+            ok, reason = self._attestor(claude_home).attest(step, _RESULT_DIGEST, "worker-1")
+            self.assertTrue(ok, reason)
+            altered = step["prompt"].replace("lerp(0, 10, 0.5) == 5", "lerp(0, 10, 0.5) == 6")
+            records[0] = {**records[0], "message": {"content": altered}}
+            _write_transcript(subagents / "agent-aworker-1-0123456789abcdef.jsonl", records)
+            ok, reason = self._attestor(claude_home).attest(step, _RESULT_DIGEST, "worker-1")
+            self.assertFalse(ok)
+            self.assertEqual(reason, "opening does not contain the composed prompt")
 
 
 class MetaNameLayoutTests(unittest.TestCase):
@@ -156,3 +175,7 @@ class MetaNameLayoutTests(unittest.TestCase):
             self.assertEqual([p.name for p in found], ["agent-aretry.jsonl"])
             found_original = find_transcripts(home, Path("/repo"), "sess", "step-x")
             self.assertEqual([p.name for p in found_original], ["agent-aoriginal.jsonl"])
+
+
+if __name__ == "__main__":
+    unittest.main()

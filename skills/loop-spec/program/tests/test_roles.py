@@ -63,6 +63,16 @@ class ComposePromptTests(unittest.TestCase):
         self.assertIn("hello", prompt)
         self.assertIn(str(Path("/tmp/out/product.json")), prompt)
 
+    def test_string_input_ending_in_newline_leaves_one_blank_line_before_the_next_section(self):
+        role = Role(name="code-reviewer", body="Review.", schema={"type": "object"}, source="default", version="sha256:" + "0" * 64)
+        diff = "diff --git a/x.py b/x.py\n@@ -1,3 +1,3 @@\n context\n \n-old\n+new\n"
+        literal = "expected:\n\n\nthree blank-line gap"
+        prompt = compose_prompt(role, inputs={"diff": diff, "literal": literal, "probes": {}},
+                                result_path=Path("/tmp/out/product.json"), cwd=Path("/tmp/out"), phase="execute")
+        self.assertIn("### diff\n" + diff.rstrip("\n") + "\n\n### literal\n", prompt)
+        self.assertIn(" context\n \n-old\n+new", prompt)  # whitespace-only context line kept
+        self.assertIn("### literal\n" + literal + "\n\n### probes", prompt)  # interior blank run kept
+
     def test_debugger_contract_forbids_repair(self):
         # LF-22: the debugger lead step fixed a failing test in the user's own
         # checkout; the contract text reaching its prompt must say plainly it

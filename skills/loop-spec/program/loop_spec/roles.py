@@ -212,7 +212,11 @@ def compose_prompt(role: Role, *, inputs: dict, result_path: Path, cwd: Path, ph
         elif value is None or isinstance(value, bool):
             body = json.dumps(value)  # the worker reads JSON, not Python's None/True
         else:
-            body = str(value)
+            # A diff ends with its own newline; kept, it made three newlines before the
+            # next header, a run every observed dispatch collapsed in transit, so no
+            # review step with a later input could attest (LF-56). Only the section's
+            # trailing framing is trimmed; its interior lines stay exact.
+            body = str(value).rstrip("\n")
         input_sections.append(f"### {key}\n{body}")
     sections.append("## Inputs\n\n" + "\n\n".join(input_sections))
 

@@ -105,7 +105,10 @@ the step id, inputs digest, phase, and result path), `resultPath`, `schema` (the
 result's own JSON Schema), `postconditions[]`, `attempt`, `inputsDigest`,
 `issuedAt`, `retryOf`, `reason`, and an optional `model` (every role dispatch sets
 this from `roles.resolve_model`, env `LOOP_SPEC_MODEL_<ROLE>` or config
-`roles.<role>.model`).
+`roles.<role>.model`). In the composed prompt each input section's trailing
+newlines are trimmed, so exactly one blank line separates sections; its interior
+lines are kept exactly. A step composed before 7.0.3 keeps its old prompt and can
+fail attestation on every dispatch; recover with a fresh run.
 
 A worker writes its result to `resultPath` (write to a temp file in the same
 directory and rename) and, for a transcript-attested dispatch, ends its final
