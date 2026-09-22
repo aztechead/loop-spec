@@ -46,21 +46,60 @@ from loop_spec.sdk_runner import run_step_sdk  # noqa: E402
 
 
 def run_cli(*args: str) -> str:
-    """One `loop-spec` subprocess call; echoes its stdout as it goes and raises
-    on a non-zero exit, matching how a human running the same command would see it."""
-    proc = subprocess.run([str(LAUNCHER), *args], capture_output=True, text=True)
+    """One `loop-spec` subprocess call. stderr (the `[PHASE] summary` progress lines
+    and any error with its repair hint) passes straight through as it is written;
+    stdout (the markers) is captured for parsing and echoed. Raises on a non-zero
+    exit, matching how a human running the same command would see it."""
+    proc = subprocess.run([str(LAUNCHER), *args], stdout=subprocess.PIPE, text=True)
     print(proc.stdout, end="")
     if proc.returncode != 0:
-        print(proc.stderr, file=sys.stderr)
         raise SystemExit(proc.returncode)
     return proc.stdout
 
 
-def parse_next(stdout: str) -> dict:
-    for line in reversed(stdout.splitlines()):
-        if line.startswith("LOOP_SPEC_NEXT "):
-            return json.loads(line[len("LOOP_SPEC_NEXT "):])
-    raise RuntimeError("no LOOP_SPEC_NEXT line in loop-spec's output")
+def parse_next(stdout: str) -> list[dict]:
+    """Every `LOOP_SPEC_NEXT` line in one call's output, in order. A
+    `LOOP_SPEC_WAIT` line prints no `LOOP_SPEC_NEXT` at all."""
+    prefix = "LOOP_SPEC_NEXT "
+    return [json.loads(line[len(prefix):]) for line in stdout.splitlines() if line.startswith(prefix)]
+
+
+class StepQueue:
+    """Which `LOOP_SPEC_NEXT` to act on next, across calls.
+
+    Feed each launcher call's stdout to `add`; `take` returns the next line to act
+    on, in order. A wave's steps arrive together, and every call re-announces each
+    step still open, including steps already taken; those re-announcements are
+    dropped here, so each step is dispatched and submitted once.
+    """
+
+    def __init__(self) -> None:
+        self._pending: list[dict] = []
+        self._taken: set[str] = set()
+
+    def add(self, output: str) -> None:
+        for n in parse_next(output):
+            if n["kind"] == "step" and (n["path"] in self._taken or n in self._pending):
+                continue
+            self._pending.append(n)
+
+    def take(self) -> dict:
+        if not self._pending:
+            raise RuntimeError("loop-spec printed no LOOP_SPEC_NEXT line and no step is left to dispatch")
+        n = self._pending.pop(0)
+        if n["kind"] == "step":
+            self._taken.add(n["path"])
+        return n
+
+
+def log_worker_events(role: str | None, events: list[dict]) -> None:
+    """A role step's own transcript, as run_step_sdk recorded it: its text and the
+    tools it called, on stderr after the step ends."""
+    for event in events:
+        if event["kind"] == "worker_text":
+            print(f"  [{role}] {event['text']}", file=sys.stderr)
+        elif event["kind"] == "worker_tool_use":
+            print(f"  [{role}] tool: {event['name']}", file=sys.stderr)
 
 
 def answer_by_policy(question: dict) -> str:
@@ -114,6 +153,12 @@ async def run_lead_step(step: dict, *, plugin_path: Path, model: str | None) -> 
 
     result_msg = None
     async for msg in query(prompt=prompt_stream(), options=options):
+        if type(msg).__name__ == "AssistantMessage":
+            # Stream the lead's own reasoning and text to stderr as it arrives.
+            for block in msg.content:
+                text = getattr(block, "thinking", None) or getattr(block, "text", None)
+                if text:
+                    print(f"  [lead] {text}", file=sys.stderr)
         if type(msg).__name__ == "ResultMessage":
             result_msg = msg
 
@@ -127,10 +172,13 @@ def drive(project_root: Path, state_home: str | None, slug: str | None, request:
     home_args = ["--state-home", state_home] if state_home else []
     args = ["cycle", "--project-root", str(project_root), *home_args]
     args += ["--slug", slug] if slug else ["--request", request]
-    stdout = run_cli(*args)
-    next_ = parse_next(stdout)
+    queue = StepQueue()
+    queue.add(run_cli(*args))
 
-    while next_["kind"] != "result":
+    while True:
+        next_ = queue.take()
+        if next_["kind"] == "result":
+            break
         # LOOP_SPEC_NEXT is the only place a stub is told the run's slug (SKILL.md);
         # every submit/answer call after the first needs it.
         run_slug = next_["slug"]
@@ -148,6 +196,7 @@ def drive(project_root: Path, state_home: str | None, slug: str | None, request:
                 if not run.ok:
                     print(f"role step ({step.get('role')}) failed: {run.reason}", file=sys.stderr)
                     return 1
+                log_worker_events(step.get("role"), run.events)
                 # steps.submit reads the receipt run_step_sdk wrote and grants
                 # "controller-observed" evidence with no host needed. --dispatch
                 # is passed anyway for protocol fidelity with the role-dispatch
@@ -166,7 +215,9 @@ def drive(project_root: Path, state_home: str | None, slug: str | None, request:
             stdout = run_cli("answer", *common, "--question", question["questionId"], "--answer", answer, "--scope", "run")
         else:
             raise RuntimeError(f"unknown LOOP_SPEC_NEXT kind: {next_['kind']}")
-        next_ = parse_next(stdout)
+        # An SDK-run step is controller-observed, so the unattested re-dispatch a
+        # Claude Code host can trigger does not arise here.
+        queue.add(stdout)
 
     result = json.loads(Path(next_["path"]).read_text())
     print(json.dumps({k: result.get(k) for k in ("status", "outcome", "reason", "phaseReached")}, indent=2))
