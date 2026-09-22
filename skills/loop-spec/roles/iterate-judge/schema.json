@@ -35,6 +35,9 @@
           },
           "text": {
             "type": "string"
+          },
+          "repo": {
+            "type": "string"
           }
         }
       }

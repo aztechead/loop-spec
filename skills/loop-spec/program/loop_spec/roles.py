@@ -148,7 +148,10 @@ CONTRACTS: dict[str, str] = {
         "messages naming the task id, and run the task's verify command before finishing. "
         "Never weaken an existing assertion; when `inputs.flags.minimalDiff` is true, "
         "add no new broad assertions and keep the smallest diff. Report unresolved "
-        "issues instead of guessing."
+        "issues instead of guessing. A close-out task (`inputs.closeOut`) has no verify "
+        "command: make the change its text describes, run the relevant tests yourself, "
+        "and commit; if its text is already true at the head, commit nothing and start "
+        "your summary with `already satisfied:`, and a reviewer confirms it."
     ),
     "code-reviewer": (
         "Read the named range only. The verdict names the SHA reviewed. A finding on "
@@ -172,7 +175,8 @@ CONTRACTS: dict[str, str] = {
     ),
     "iterate-judge": (
         "Judge the delivered behavior against the ORIGINAL request text, not the "
-        "checklist. Every gap names a target phase. `met` only with no gap."
+        "checklist. Every gap names a target phase. `met` only with no gap. In a "
+        "workspace an `execute` gap names its `repo`."
     ),
     "debugger": (
         "You do not repair anything. You modify no file. Your product is the "

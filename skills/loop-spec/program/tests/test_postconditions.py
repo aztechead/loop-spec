@@ -8,6 +8,7 @@ remote). V5 has no failing branch at all: it only records exceptions as weakened
 assurance, so its test covers both its no-exception and its exception shape instead.
 """
 import copy
+import json
 import subprocess
 import tempfile
 import unittest
@@ -775,6 +776,111 @@ class PostconditionsTests(unittest.TestCase):
         budget_module.spend(self.store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-1", reason="gap")
         budget_module.spend(self.store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-2", reason="gap")
         self.assertIsNotNone(self._boundary("iterate", self.iterate_product, "converged")._t1())
+
+    # --- LF-55: close-outs --------------------------------------------------
+
+    def _close_out(self, cid="C-1", repo="repo", closure=None):
+        entry = {"id": cid, "source": {"phase": "iterate", "attemptId": "it-1", "gapIndex": 0, "findingId": None},
+                 "text": "rename the helper", "repo": repo, "registeredRevisions": {}, "status": "active",
+                 "closure": closure, "history": []}
+        self.store.state.setdefault("closeOuts", []).append(entry)
+        return entry
+
+    def _with_close_out_commit(self):
+        (self.repo_dir / "c.txt").write_text("c\n", encoding="utf-8")
+        _git(self.repo_dir, "add", "c.txt")
+        _git(self.repo_dir, "commit", "-q", "-m", "C-1")
+        sha_c = _rev_parse(self.repo_dir)
+        product = copy.deepcopy(self.execute_product)
+        product["heads"] = {"repo": sha_c}
+        review = {"reviewedRange": {"from": self.sha_b, "to": sha_c}, "verdict": "pass", "findings": [], "securityDispositions": []}
+        product["tasks"].append({"id": "C-1", "disposition": "done", "evidence": None, "commits": [sha_c], "review": review})
+        return product, sha_c
+
+    def test_e2_requires_every_registered_close_out_once(self):
+        self._close_out()
+        failure = self._boundary("execute", self.execute_product, "integrated")._e2()
+        self.assertEqual(failure, "close-out C-1 (from ITERATE it-1 gap 0) has no disposition in the EXECUTE product")
+        product, _ = self._with_close_out_commit()
+        self.assertIsNone(self._boundary("execute", product, "integrated")._e2())
+        product["tasks"].append(copy.deepcopy(product["tasks"][-1]))
+        self.assertEqual(self._boundary("execute", product, "integrated")._e2(), "task C-1 appears more than once in the EXECUTE product")
+        product["tasks"][-1]["id"] = "C-9"
+        self.assertEqual(self._boundary("execute", product, "integrated")._e2(), "task C-9 is not a registered close-out")
+
+    def test_e2_keeps_a_closed_close_out_in_later_products(self):
+        product, sha_c = self._with_close_out_commit()
+        c1 = product["tasks"][-1]
+        self._close_out(closure={"disposition": "done", "repo": "repo", "commits": [sha_c],
+                                  "reviewedRange": c1["review"]["reviewedRange"], "verdict": "pass",
+                                  "reviewStep": None, "attemptId": "attempt-e1"})
+        self.assertIsNone(self._boundary("execute", product, "integrated")._e2())
+        dropped = copy.deepcopy(product)
+        dropped["tasks"].pop()  # an external product that omits the closed close-out
+        self.assertIn("C-1", self._boundary("execute", dropped, "integrated")._e2())
+        self.assertIsNotNone(self._boundary("execute", dropped, "integrated")._e4())
+        changed = copy.deepcopy(product)
+        changed["tasks"][-1]["commits"] = [self.sha_b]
+        self.assertIn("same disposition and commits", self._boundary("execute", changed, "integrated")._e2())
+
+    def test_e4_maps_close_out_commits_by_the_registry_repo(self):
+        self._close_out()
+        product, _ = self._with_close_out_commit()
+        self.assertIsNone(self._boundary("execute", product, "integrated")._e4())
+        self.assertIsNone(self._boundary("execute", product, "integrated")._e5())
+
+    def test_e7_needs_no_verify_run_for_a_registered_close_out(self):
+        product, _ = self._with_close_out_commit()
+        self.assertIsNotNone(self._boundary("execute", product, "integrated")._e7())  # unregistered: no re-run
+        self._close_out()
+        self.assertIsNone(self._boundary("execute", product, "integrated")._e7())
+
+    def test_e6_binds_a_no_change_close_out_review_to_the_obligation_and_head(self):
+        entry = self._close_out()
+        self.store.state["implementations"]["phases"]["execute"] = "default"
+        self.store.state["execute"] = {"tasks": {
+            "T-1": {"status": "done", "reviewSteps": ["step-t1"]}, "T-2": {"status": "done", "reviewSteps": ["step-t2"]},
+            "C-1": {"status": "already-satisfied", "reviewSteps": ["step-c1"], "closeOut": "C-1"}}}
+        for sid in ("step-t1", "step-t2", "step-c1"):
+            self.store.state["steps"]["submissions"][sid] = {"evidenceLevel": "host-attested"}
+        step_dir = self.paths.steps_dir / "step-c1"
+        step_dir.mkdir(parents=True)
+
+        def write_prompt(view):
+            atomic_write_json(step_dir / "step.json", {"prompt": "### closeOut\n```json\n" + json.dumps(view, indent=2, sort_keys=True) + "\n```"})
+
+        write_prompt(postconditions.close_out_view(entry))
+        product = copy.deepcopy(self.execute_product)
+        at_head = {"reviewedRange": {"from": self.sha_b, "to": self.sha_b}, "verdict": "pass", "findings": [], "securityDispositions": []}
+        product["tasks"].append({"id": "C-1", "disposition": "already-satisfied", "evidence": "already satisfied: yes", "commits": [], "review": at_head})
+        self.assertIsNone(self._boundary("execute", product, "integrated")._e6())
+
+        stale = copy.deepcopy(product)  # attested and passing, but reviewed at an older head
+        stale["tasks"][-1]["review"]["reviewedRange"] = {"from": self.sha_a, "to": self.sha_a}
+        self.assertIn("not the empty range at head", self._boundary("execute", stale, "integrated")._e6())
+
+        write_prompt(postconditions.close_out_view(entry) | {"id": "C-2"})
+        self.assertEqual(self._boundary("execute", product, "integrated")._e6(), "close-out C-1: its review step was not issued for this close-out")
+
+        write_prompt(postconditions.close_out_view(entry))
+        product["tasks"][-1]["review"] = None
+        self.assertEqual(self._boundary("execute", product, "integrated")._e6(), "close-out C-1 is already-satisfied with no passing review")
+
+    def test_i2_resolves_an_execute_gap_to_a_known_repo(self):
+        gaps = copy.deepcopy(self.iterate_product)
+        gaps["gaps"] = [{"target": "execute", "text": "x"}]
+        self.assertIsNone(self._boundary("iterate", gaps, "rewind")._i2())  # one repo: defaults
+        gaps["gaps"][0]["repo"] = "nope"
+        self.assertEqual(self._boundary("iterate", gaps, "rewind")._i2(), "gap 0 names an unknown repo 'nope'; name one of repo")
+        self.store.state["repos"]["other"] = dict(self.store.state["repos"]["repo"])
+        del gaps["gaps"][0]["repo"]
+        self.assertEqual(self._boundary("iterate", gaps, "rewind")._i2(), "gap 0 targets EXECUTE with no repo; name one of other, repo")
+
+    def test_d8_requires_a_repo_whose_only_commits_are_a_close_outs(self):
+        self._close_out(repo="other")
+        self.execute_product["tasks"].append({"id": "C-1", "disposition": "done", "evidence": None, "commits": ["abcdef1"], "review": None})
+        self.assertEqual(self._boundary("deliver", self.deliver_product, "delivered")._d8(),
+                         "repo other: touched by EXECUTE but missing from DELIVER's repos")
 
 
 if __name__ == "__main__":

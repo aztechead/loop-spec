@@ -719,6 +719,86 @@ class EscalatedPartialDraftTests(_QuietStdout):
             self.assertIsNotNone(result["delivery"])
 
 
+class CloseOutTransitionTests(_QuietStdout):
+    """LF-55: an accepted ITERATE rewind registers its execute gaps as close-outs in
+    the same save as its budget spend and route; EXECUTE acceptance closes them."""
+
+    def _store(self, tmp: Path) -> tuple[StateStore, FeaturePaths]:
+        return EscalatedPartialDraftTests._minimal_store(self, tmp)
+
+    def _rewind(self) -> dict:
+        return {
+            "exit": "rewind", "inputsDigest": "sha256:" + "0" * 64,
+            "boundTo": {"requirements": None, "plan": None}, "verdict": "unmet",
+            "gaps": [{"target": "plan", "text": "split T-2"}, {"target": "execute", "text": "rename the helper"}],
+            "caveats": [], "boundShas": {"repo": "c" * 40},
+        }
+
+    def test_mixed_rewind_registers_the_execute_gap_once_and_routes_to_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths = self._store(tmp)
+            with patch.object(store, "save", wraps=store.save) as save:
+                controller._accept_product(store, paths, tmp, "iterate", "attempt-1", self._rewind())
+            self.assertEqual(save.call_count, 1)  # product, spend, close-outs and route in one write
+            on_disk = StateStore.open(paths).state
+            self.assertEqual(on_disk["phase"]["current"], "plan")
+            self.assertEqual(on_disk["budget"]["spent"], 1)
+            self.assertEqual([(e["id"], e["repo"], e["source"]["gapIndex"], e["status"]) for e in on_disk["closeOuts"]],
+                             [("C-1", "repo", 1, "active")])
+
+            controller._accept_product(store, paths, tmp, "iterate", "attempt-1", self._rewind())  # replay
+            self.assertEqual(store.state["budget"]["spent"], 1)
+            self.assertEqual(len(store.state["closeOuts"]), 1)
+
+    def test_crash_before_the_transition_save_persists_nothing_and_the_last_rewind_replays(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths = self._store(tmp)
+            budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-1", reason="gap")
+            store.save()  # one rewind left: this one is the last allowed
+            with patch.object(store, "save", side_effect=RuntimeError("killed")):
+                with self.assertRaises(RuntimeError):
+                    controller._accept_product(store, paths, tmp, "iterate", "attempt-1", self._rewind())
+            store = StateStore.open(paths)
+            self.assertEqual(store.state["budget"]["spent"], 1)
+            self.assertIsNone(store.state["products"]["iterate"])
+            self.assertFalse(store.state.get("closeOuts"))
+
+            controller._accept_product(store, paths, tmp, "iterate", "attempt-1", self._rewind())
+            store = StateStore.open(paths)
+            self.assertEqual(store.state["budget"]["spent"], 2)
+            self.assertEqual(store.state["phase"]["current"], "plan")
+            self.assertEqual([e["id"] for e in store.state["closeOuts"]], ["C-1"])
+
+    def test_refused_rewind_registers_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths = self._store(tmp)
+            EscalatedPartialDraftTests._exhaust_budget(self, store)
+            controller._accept_product(store, paths, tmp, "iterate", "attempt-1", self._rewind())
+            self.assertFalse(store.state.get("closeOuts"))
+            self.assertEqual(store.state["budget"]["spent"], 2)
+
+    def test_execute_acceptance_closes_and_a_refreshed_closure_keeps_its_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths = self._store(tmp)
+            controller._register_close_outs(store, "it-1", {"gaps": [{"target": "execute", "text": "x"}]})
+
+            def product(head):
+                review = {"reviewedRange": {"from": head, "to": head}, "verdict": "pass", "findings": [], "securityDispositions": []}
+                return {"tasks": [{"id": "C-1", "disposition": "already-satisfied", "evidence": "e", "commits": [], "review": review}]}
+
+            controller._close_close_outs(store, "attempt-e1", product("a" * 40))
+            controller._close_close_outs(store, "attempt-e2", product("a" * 40))  # same closure: no churn
+            entry = store.state["closeOuts"][0]
+            self.assertEqual((entry["status"], entry["closure"]["attemptId"], entry["history"]), ("closed", "attempt-e1", []))
+            controller._close_close_outs(store, "attempt-e3", product("b" * 40))
+            self.assertEqual(entry["closure"]["reviewedRange"]["to"], "b" * 40)
+            self.assertEqual([h["attemptId"] for h in entry["history"]], ["attempt-e1"])
+
+
 class PauseCauseTests(unittest.TestCase):
     """LF-21: a blocked-style product names its own cause (EXECUTE's issues, VERIFY's
     blocked verdicts, DELIVER's per-repo caveats); falling through to the exit name

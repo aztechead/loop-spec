@@ -97,6 +97,10 @@ def _print_summary(state: dict, paths: FeaturePaths) -> None:
     print(f"phase: {phase['current']} attempt: {phase['attemptId']}")
     print(f"revisions: requirements={state['revisions']['requirements']} plan={state['revisions']['plan']}")
     print(f"budget: {budget['spent']}/{budget['limit']}")
+    for entry in state.get("closeOuts") or []:
+        if entry["status"] == "active":
+            source = entry["source"]
+            print(f"close-out: {entry['id']} {entry['repo']} (iterate {source['attemptId']} gap {source['gapIndex']})")
 
     open_question = state["questions"]["open"]
     if open_question is None:

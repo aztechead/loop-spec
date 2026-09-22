@@ -41,7 +41,8 @@
         "planRevision": {"type": ["string", "integer", "null"]},
         "baseline": {"type": ["object", "null"]},
         "ledger": {"type": "object"},
-        "budget": {"type": "object"}
+        "budget": {"type": "object"},
+        "closeOuts": {"type": "array"}
       }
     },
     "entry": {

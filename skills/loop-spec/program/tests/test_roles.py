@@ -23,6 +23,26 @@ class LoadDefaultRoleTests(unittest.TestCase):
                 self.assertTrue(role.version.startswith("sha256:"))
 
 
+class CloseOutSchemaTests(unittest.TestCase):
+    # LF-55: a close-out is task C-n; an ITERATE execute gap may name its repo.
+    def test_implementer_result_accepts_plan_remediation_and_close_out_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            schema = load_role("implementer", Path(tmp)).schema
+        for task_id in ("T-1", "R-2", "C-3"):
+            result = {"taskId": task_id, "commits": [], "summary": "s", "verifyRun": {"command": "c", "exitStatus": 0}, "issues": []}
+            self.assertEqual(validate(result, schema), [], task_id)
+
+    def test_gap_repo_in_both_iterate_schemas_and_finding_id_only_in_the_product(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            judge = load_role("iterate-judge", Path(tmp)).schema
+        gap = {"target": "execute", "text": "x", "repo": "calc"}
+        self.assertEqual(validate({"verdict": "unmet", "gaps": [gap], "caveats": []}, judge), [])
+        self.assertNotEqual(validate({"verdict": "unmet", "gaps": [gap | {"findingId": "F-1"}], "caveats": []}, judge), [])
+        product = {"exit": "rewind", "inputsDigest": "sha256:" + "0" * 64, "boundTo": {"requirements": None, "plan": None},
+                   "verdict": "unmet", "gaps": [gap | {"findingId": "F-1"}], "caveats": [], "boundShas": {}}
+        self.assertEqual(validate(product, load_schema("iterate")), [])
+
+
 class LoadBoundRoleTests(unittest.TestCase):
     def test_bound_skill_found_under_home_keeps_default_schema(self):
         with tempfile.TemporaryDirectory() as fake_home, tempfile.TemporaryDirectory() as project_root:

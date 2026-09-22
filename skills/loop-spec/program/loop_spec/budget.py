@@ -51,5 +51,6 @@ def spend(store, *, from_phase: str, exit: str, to_phase: str, attempt_id: str, 
     }
     store.state["budget"]["transitions"].append(record)
     store.state["budget"]["spent"] += 1
-    store.save()
+    # No save here: the caller persists the spend together with the transition it
+    # pays for, so a crash can never leave a spent budget with no route (LF-55).
     return record

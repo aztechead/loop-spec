@@ -902,6 +902,178 @@ class ExecuteLifecycleTests(unittest.TestCase):
         with self.assertRaises(LoopSpecError):
             step(self.store, self.paths, self.ctx)
 
+    # --- LF-55: close-outs from an accepted ITERATE rewind --------------------
+
+    def _close_out_ctx(self, attempt_id="attempt-2"):
+        self.store.state["phase"]["current"] = "execute"
+        return self.ctx | {"attempt": {"id": attempt_id}, "entry": {"mode": "remediation", "payload": {"rewind": {
+            "from": "iterate", "attemptId": "it-1", "exit": "rewind", "revisions": dict(self.store.state["revisions"]),
+            "remediationTasks": [], "verdicts": []}}}}
+
+    def _register(self, text, attempt="it-1"):
+        from loop_spec.controller import _register_close_outs
+        _register_close_outs(self.store, attempt, {"gaps": [{"target": "execute", "text": text}]})
+        self.store.save()
+
+    def _implement_close_out_no_change(self, ctx, step_id="impl-c1"):
+        action = step(self.store, self.paths, ctx)
+        self.assertEqual(action.request["role"], "implementer")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": step_id},
+                  {"taskId": "C-1", "commits": [], "summary": "already satisfied: the text is true at the head",
+                   "verifyRun": None, "issues": []})
+        return action.request["cwd"]
+
+    def test_close_out_with_a_commit_integrates_as_done_without_a_verify_run(self):
+        self._drive_to_integrated()
+        self._register("rename the helper")
+        ctx = self._close_out_ctx()
+
+        action = step(self.store, self.paths, ctx)
+        self.assertEqual(action.request["role"], "implementer")
+        self.assertIn('"id": "C-1"', action.request["prompt"])
+        worktree = action.request["cwd"]
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-c1"},
+                  self._implementer_result("C-1", worktree, "C-1.txt"))
+        task = self.store.state["execute"]["tasks"]["C-1"]
+        # A real commit is a candidate delta, never read as no-change before integration.
+        self.assertEqual((task["status"], task["commits"], task["files"]), ("probing", [], ["C-1.txt"]))
+
+        action = step(self.store, self.paths, ctx)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        self.assertIn("### obligation", action.request["prompt"])
+        head = _head(worktree)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-c1"},
+                  self._pass_review(head, task["reviewFrom"], head))
+        self.assertEqual(task["status"], "done")
+        self.assertEqual(len(task["commits"]), 1)
+        self.assertNotIn("C-1", self.store.state["executeRuns"])
+
+        action = step(self.store, self.paths, ctx)
+        self.assertIsInstance(action, Product)
+        c1 = next(t for t in action.product["tasks"] if t["id"] == "C-1")
+        self.assertEqual(c1["disposition"], "done")
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product)
+
+    def test_close_out_no_change_claim_is_reviewed_before_it_closes(self):
+        self._drive_to_integrated()
+        head = self.store.state["execute"]["repos"]["repo"]["head"]
+        self._register("the helper is already named well")
+        ctx = self._close_out_ctx()
+        worktree = self._implement_close_out_no_change(ctx)
+        task = self.store.state["execute"]["tasks"]["C-1"]
+        self.assertEqual(task["status"], "probing")  # the claim alone never closes it
+
+        action = step(self.store, self.paths, ctx)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        self.assertIn('"from": "%s"' % head, action.request["prompt"])
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-c1"}, self._pass_review(head, head, head))
+        self.assertEqual(task["status"], "already-satisfied")
+
+        action = step(self.store, self.paths, ctx)
+        c1 = next(t for t in action.product["tasks"] if t["id"] == "C-1")
+        self.assertEqual((c1["disposition"], c1["commits"]), ("already-satisfied", []))
+        self.assertEqual(c1["review"]["reviewedRange"], {"from": head, "to": head})
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product)
+        self.assertEqual(_head(worktree), head)
+
+    def test_failed_no_change_review_sends_the_close_out_back_to_implement(self):
+        self._drive_to_integrated()
+        head = self.store.state["execute"]["repos"]["repo"]["head"]
+        self._register("the helper is already named well")
+        ctx = self._close_out_ctx()
+        self._implement_close_out_no_change(ctx)
+        action = step(self.store, self.paths, ctx)
+        fail = self._pass_review(head, head, head) | {"verdict": "fail", "findings": [
+            {"id": "F-1", "location": "a.py:1", "cause": "still misnamed", "severity": "Important", "disposition": "open"}]}
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-c1"}, fail)
+        task = self.store.state["execute"]["tasks"]["C-1"]
+        self.assertEqual((task["status"], task["retries"]), ("pending", 1))
+        self.assertEqual(step(self.store, self.paths, ctx).request["role"], "implementer")
+
+    def test_stale_no_change_close_out_is_reviewed_again_at_the_new_head(self):
+        self._drive_to_integrated()
+        self._register("the helper is already named well")
+        ctx = self._close_out_ctx()
+        self._implement_close_out_no_change(ctx)
+        old_head = self.store.state["execute"]["repos"]["repo"]["head"]
+        action = step(self.store, self.paths, ctx)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-c1"}, self._pass_review(old_head, old_head, old_head))
+
+        self._register("add a docstring", attempt="it-2")  # C-2 commits and moves the head
+        action = step(self.store, self.paths, ctx)
+        worktree = action.request["cwd"]
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-c2"},
+                  self._implementer_result("C-2", worktree, "C-2.txt"))
+        action = step(self.store, self.paths, ctx)
+        c2_head = _head(worktree)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-c2"},
+                  self._pass_review(c2_head, old_head, c2_head))
+        new_head = self.store.state["execute"]["repos"]["repo"]["head"]
+        self.assertNotEqual(new_head, old_head)
+
+        action = step(self.store, self.paths, ctx)  # C-1's proof covers old_head only
+        self.assertEqual(action.request["role"], "code-reviewer")
+        c1 = self.store.state["execute"]["tasks"]["C-1"]
+        self.assertEqual((c1["forkedFrom"], c1["reviewFrom"]), (new_head, new_head))
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-c1b"}, self._pass_review(new_head, new_head, new_head))
+
+        action = step(self.store, self.paths, ctx)
+        self.assertIsInstance(action, Product)
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product)
+
+    def test_close_out_conflicting_with_the_feature_head_is_reforked(self):
+        self._drive_to_integrated()
+        self._register("rewrite T-1.txt")
+        ctx = self._close_out_ctx()
+        action = step(self.store, self.paths, ctx)
+        worktree = action.request["cwd"]
+        Path(worktree, "T-1.txt").write_text("close-out\n")
+        _git(worktree, "commit", "-qam", "C-1")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-c1"},
+                  {"taskId": "C-1", "commits": [_head(worktree)], "summary": "did", "verifyRun": None, "issues": []})
+        # A conflicting commit lands on the feature branch the program itself tracks.
+        feature = Path(self.store.state["execute"]["repos"]["repo"]["worktree"])
+        Path(feature, "T-1.txt").write_text("sibling\n")
+        _git(feature, "commit", "-qam", "sibling")
+        self.store.state["execute"]["repos"]["repo"]["head"] = _head(feature)
+        self.store.save()
+
+        action = step(self.store, self.paths, ctx)
+        head = _head(worktree)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-c1"},
+                  self._pass_review(head, self.store.state["execute"]["tasks"]["C-1"]["reviewFrom"], head))
+        task = self.store.state["execute"]["tasks"]["C-1"]
+        self.assertEqual((task["status"], task["retries"], task["generation"]), ("pending", 1, 1))
+        self.assertEqual(task["forkedFrom"], _head(feature))
+
+    def test_plan_reconciliation_keeps_a_close_out_and_its_trailing_wave(self):
+        self._drive_to_integrated()
+        self._register("the helper is already named well")
+        ctx = self._close_out_ctx()
+        step(self.store, self.paths, ctx)
+        self.plan_tasks.append(_plan_task("T-3"))
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+        step(self.store, self.paths, ctx)
+        execute_state = self.store.state["execute"]
+        self.assertIn("C-1", execute_state["tasks"])
+        self.assertEqual(execute_state["waves"][-1], ["C-1"])
+        self.assertIn("T-3", [tid for wave in execute_state["waves"] for tid in wave])
+
+    def test_rejection_naming_a_close_out_resets_only_that_task(self):
+        self._drive_to_integrated()
+        head = self.store.state["execute"]["repos"]["repo"]["head"]
+        self._register("the helper is already named well")
+        ctx = self._close_out_ctx()
+        self._implement_close_out_no_change(ctx)
+        action = step(self.store, self.paths, ctx)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-c1"}, self._pass_review(head, head, head))
+        rejected_ctx = ctx | {"attempt": {"id": "attempt-3"}, "entry": {"mode": "remediation", "payload": {"rejected": {
+            "failures": [{"id": "E6", "message": "tasks with an unaccepted review evidence level: C-1"}]}}}}
+        action = step(self.store, self.paths, rejected_ctx)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "done")
+
 
 class AdoptedTaskTests(unittest.TestCase):
     """LF-38: a revise run's reviser carries an unchanged prior task forward

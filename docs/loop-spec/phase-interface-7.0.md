@@ -145,24 +145,24 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 
 | | |
 |---|---|
-| Inputs | PLAN product; baseline; ledger; on `remediation` from a VERIFY `implementation gap`, the transition carries the failing verdicts and the remediation tasks; EXECUTE re-opens the plan task(s) owning each failed criterion against the current feature head (a clean, terminated worktree that already contains the head is reused, anything else gets a new generation branch and worktree and the old one is kept); `remediationTasks` describe the gap and are not tasks of their own; on `rewind`, the findings |
-| Product | per task a `disposition` of `done`, `already-satisfied` with evidence, `removed` by an approved plan amendment, or `adopted` for the one range task a `revise` entry creates; `commits[]` per task; `issues[]` unresolved; per-repo `head` |
+| Inputs | PLAN product; baseline; ledger; on `remediation` from a VERIFY `implementation gap`, the transition carries the failing verdicts and the remediation tasks; EXECUTE re-opens the plan task(s) owning each failed criterion against the current feature head (a clean, terminated worktree that already contains the head is reused, anything else gets a new generation branch and worktree and the old one is kept); `remediationTasks` describe the gap and are not tasks of their own; on `rewind`, the findings; always, the close-out registry (`state.closeOuts` in the envelope): every `execute` gap of an accepted ITERATE rewind, `C-n`, with its text, repo and source |
+| Product | per task a `disposition` of `done`, `already-satisfied` with evidence, `removed` by an approved plan amendment, or `adopted` for the one range task a `revise` entry creates; one entry per registered close-out (`C-n`), `done` or `already-satisfied`; `commits[]` per task; `issues[]` unresolved; per-repo `head` |
 | Preconditions | PLAN bound to the current requirements revision; baseline present |
-| Runs as | program-run: waves of at most three, one worktree per task, implement step, then the diff-mode probes on the task's commits, then the review step with the probe findings as inputs |
+| Runs as | program-run: waves of at most three, one worktree per task, implement step, then the diff-mode probes on the task's commits, then the review step with the probe findings as inputs; each close-out after the plan's waves, one per wave, with no verify command: its review is its proof, and a no-change claim is reviewed over the empty range at the head (re-reviewed if a later commit moves that head) |
 
 | Id | Postcondition | Gates |
 |---|---|---|
 | E1 | product validates; bound to the plan and requirements revisions per repo | every exit |
-| E2 | every required task has an accepted disposition | `integrated`, `no change` |
+| E2 | every required task has an accepted disposition; every registered close-out appears exactly once as `done` (with commits) or `already-satisfied` (with none), a closed one with the same disposition and commits as its closure and, if `done`, the review its closure accepted; no id appears twice and no `C-n` id is unregistered | `integrated`, `no change` |
 | E3 | for every task, its dependencies completed before it was dispatched | `integrated` |
 | E4 | every commit in `base..head` maps to exactly one `done` or `adopted` task; in a revise run the adopted PR's own commits count as mapped by the adoption; merge commits the program records during integration are not task commits and are excluded from `base..head` on both sides | `integrated` |
 | E5 | every `done` or `adopted` task has a review record whose reviewed range covers all of that task's commits; for an `adopted` task the record comes from a full review step the program ran over the adopted range at entry, never from the PR's own history | `integrated` |
-| E6 | every such review record's evidence level meets the accepted class for review steps; otherwise the task is listed in `unreviewed` | `integrated` |
-| E7 | each task's verify command produced no new failure identity against its baseline; a `featureAdded` command had a meaningful first success (exit zero, at least one parsed identity where a parser exists) that became its task-local baseline; a `mustFlip` command failed at baseline with the recorded digest and passes at integration | `integrated` |
+| E6 | every such review record's evidence level meets the accepted class for review steps; otherwise the task is listed in `unreviewed`. An `already-satisfied` close-out needs the same, plus a passing review of the empty range at the head the product exits on, whose attested prompt carries this close-out as its `closeOut` input | `integrated` |
+| E7 | each task's verify command produced no new failure identity against its baseline; a `featureAdded` command had a meaningful first success (exit zero, at least one parsed identity where a parser exists) that became its task-local baseline; a `mustFlip` command failed at baseline with the recorded digest and passes at integration; a registered close-out has no verify command and is exempt | `integrated` |
 | E8 | the feature head is reachable from base and was not moved out of band | `integrated`, `no change` |
 | E9 | `base..head` is empty and every task is `already-satisfied` or `removed` | `no change`; forbids `integrated` |
 | E10 | a rejected step was re-issued with its reason up to the per-step retry limit before `blocked` is claimed | `blocked` |
-| E11 | for a task touching a file with a security signal, the review record carries a disposition per signal | `integrated` |
+| E11 | for a task touching a file with a security signal, the review record carries a disposition per signal; a close-out's files are the paths its commits changed | `integrated` |
 
 | Exit | Requires | Route |
 |---|---|---|
@@ -228,7 +228,7 @@ outright incorrect implementations; the PR review catches the rest.
 | | |
 |---|---|
 | Inputs | the immutable original request; approved SPEC; integrated diff; VERIFY product; prior gaps; rewind count and budget |
-| Product | `verdict` against the original request; `gaps[]`; `route` |
+| Product | `verdict` against the original request; `gaps[]`, each `{target, text}` with an optional `repo` (and `findingId` on a gap the program adds for an open Critical finding); `route` |
 | Preconditions | VERIFY `passed` at the current revisions, including the `no change` head; the judgment is re-issued when the requirements revision, plan revision, heads or the accepted VERIFY attempt changed |
 | Runs as | a fresh goal-judgment role |
 
@@ -240,7 +240,7 @@ never deferred (decided 2026-09-22, LF-46).
 | Id | Postcondition | Gates |
 |---|---|---|
 | I1 | product validates; the verdict binds every repo's integrated SHA (`boundShas`), the requirements revision, and the plan revision | every exit |
-| I2 | every gap names a target of SPEC, PLAN, EXECUTE, or VERIFY | `rewind` |
+| I2 | every gap names a target of SPEC, PLAN, EXECUTE, or VERIFY; an EXECUTE gap names a repo of this run, or omits it only when the run has one repo | `rewind` |
 | I3 | T1 holds for this rewind | `rewind` |
 | I4 | a rewind is needed and T1 refuses it, or the verdict is unmet and the judge names no gap any route can close | `escalated` |
 | I5 | VERIFY `passed` at this SHA and no open gap against the original goal; the shared convergence predicate | `converged`, `converged with caveats` |
@@ -250,7 +250,7 @@ never deferred (decided 2026-09-22, LF-46).
 |---|---|---|
 | `converged` | I1, I5; no finding open | DELIVER |
 | `converged with caveats` | I1, I5, I6 | DELIVER as draft |
-| `rewind` | I1, I2, I3 | the named phase, `rewind`, with the findings |
+| `rewind` | I1, I2, I3 | the named phase, `rewind`, with the findings; each `execute` gap is registered as a close-out in the same write as the budget spend and the route, and only EXECUTE's acceptance closes it |
 | `escalated` | I1, I4 | DELIVER as partial draft when operator policy allows; otherwise terminal `escalated` |
 
 Past the budget, remediation is restricted to minimal diffs and the implement role's

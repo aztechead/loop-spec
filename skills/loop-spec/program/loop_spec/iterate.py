@@ -69,6 +69,9 @@ def _judge_request(store, paths, ctx, heads: dict[str, str]) -> dict:
         "priorGaps": store.state["iterate"]["priorGaps"],
         "budget": {"spent": budget_state["spent"], "limit": budget_state["limit"], "hasRoom": has_room(store)},
     }
+    if store.state.get("closeOuts"):
+        # LF-55: what earlier rewinds asked EXECUTE to close out, and how each closed.
+        inputs["closeOuts"] = store.state["closeOuts"]
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=cwd, phase="iterate")
     # simplicity: this build-validate-raise shape repeats verify.py's own request
     # builders and execute.py's (Wave G, out of this wave's file list); a shared
@@ -111,7 +114,10 @@ def _final_product(store, paths, ctx, iterate_state: dict) -> dict:
         acted_on = []
         for f in open_findings:
             if f["severity"] == "Critical":
-                forced_gaps.append({"target": "execute", "text": f"open finding {f['id']} ({f['severity']}): {f['cause']}"})
+                gap = {"target": "execute", "text": f"open finding {f['id']} ({f['severity']}): {f['cause']}", "findingId": f["id"]}
+                if f.get("repo"):
+                    gap["repo"] = f["repo"]
+                forced_gaps.append(gap)
                 acted_on.append(f["id"])
             elif f["severity"] == "Important" and has_room(store):
                 forced_gaps.append({"target": "plan", "text": f"open finding {f['id']} (Important) at {f['location']}: {f['cause']}"})
@@ -184,6 +190,10 @@ def step(store, paths, ctx):
         "heads": heads,
         "verifyAttempt": (store.state["products"].get("verify") or {}).get("attemptId"),
     })
+    if store.state.get("closeOuts"):
+        # LF-55: a no-change close-out moves no head and VERIFY reuses its product, so
+        # without this the cached judgment would rewind on the same gap again.
+        inputs["closeOuts"] = copy.deepcopy(store.state["closeOuts"])
     if iterate_state.get("inputs") != inputs:
         old_inputs = iterate_state.get("inputs")
         iterate_state["judge"] = None

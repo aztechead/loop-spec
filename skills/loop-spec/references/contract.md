@@ -44,7 +44,9 @@ Every attempt gets one `context.json`, built by `controller.build_envelope` and
 validated against `schemas/context.json`. Top-level fields: `run.id`, `attempt.id`,
 `inputs.digest` (a `sha256:` digest of the run's own inputs), `request` (the
 original text and its digest), `products` (every accepted phase's `exit`/`boundTo`/
-`product`), `state` (revisions, approval, baseline, ledger, budget), `entry.mode`
+`product`), `state` (revisions, approval, baseline, ledger, budget, and `closeOuts`: the
+registry of `execute` gaps accepted from ITERATE, each `C-n` with its text, repo,
+source, status and closure), `entry.mode`
 (`fresh`, `remediation`, or `rewind`) and `entry.payload`, `repos`, `paths`
 (`stateDir`, `writable`, `projectRoot`), `answers` (`byQuestion` plus the run's
 answer `policy`), and `probes` (reserved; empty in this release).
@@ -75,14 +77,15 @@ shape, including nested item schemas):
   `verify`, `criteria[]`, `featureAdded`, `mustFlip`), `prepare`,
   `evidenceExceptions[]`, `criticResponses[]`.
 - **execute**: `tasks[]` (`id`, `disposition`: `done`/`already-satisfied`/`removed`/
-  `adopted`, `evidence`, `commits[]`, `review`), `issues[]`, `heads` (repo name to
-  head SHA).
+  `adopted`, `evidence`, `commits[]`, `review`; one entry per registered close-out
+  `C-n`, `done` or `already-satisfied`), `issues[]`, `heads` (repo name to head SHA).
 - **verify**: `verdicts[]` (`criterion`, `verdict`: `pass`/`fail`/`blocked`,
   `evidence` with a required `repo`, `cause`), `findings[]` (`repo` optional),
   `remediationTasks[]`, `reviewedRanges[]` (`repo`, `from`, `to`, `full`; one per
   touched repo — LF-28: a workspace run has no single reviewed range).
 - **iterate**: `verdict` (`met`/`unmet`), `gaps[]` (`target`: `spec`/`plan`/
-  `execute`/`verify`, `text`), `caveats[]`, `boundShas` (repo name to SHA; LF-28
+  `execute`/`verify`, `text`, optional `repo`; `findingId` on a gap the program
+  adds for an open Critical finding), `caveats[]`, `boundShas` (repo name to SHA; LF-28
   replaced the single-repo `boundSha`).
 - **deliver**: `repos[]` (`repo`, `pr`, `deliveredSha`, `caveats[]`, `state`:
   `delivered`/`failed`/`skipped`).

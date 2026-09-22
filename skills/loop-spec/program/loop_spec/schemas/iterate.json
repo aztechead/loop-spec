@@ -74,6 +74,12 @@
           },
           "text": {
             "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "findingId": {
+            "type": "string"
           }
         }
       }

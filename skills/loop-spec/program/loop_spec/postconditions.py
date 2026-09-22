@@ -9,6 +9,7 @@ answers whether the postconditions for a claimed exit hold. controller.py reads
 `ROUTES[phase][exit]["next"]` to decide where to go, and reads `Boundary.unreviewed`/
 `Boundary.weakened_assurance` after a passing check to fold into state and the result.
 """
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -162,6 +163,38 @@ def review_evidence(store, task_id: str) -> tuple[str, str | None]:
     step_id = review_steps[-1]
     level = store.state["steps"]["submissions"].get(step_id, {}).get("evidenceLevel", "unattested")
     return level, step_id
+
+
+_CLOSE_OUT_ID = re.compile(r"C-\d+")
+
+
+def close_outs(store) -> dict[str, dict]:
+    """LF-55: the close-out registry, by id in registration order. The controller
+    registers one entry per `execute` gap of each accepted ITERATE rewind and is the
+    only writer of an entry's status; an EXECUTE product must disposition every one."""
+    return {e["id"]: e for e in store.state.get("closeOuts") or []}
+
+
+def close_out_view(entry: dict) -> dict:
+    """The obligation a close-out's review is bound to. The default EXECUTE passes
+    this as the review's `closeOut` input, and E6 finds its exact rendering in the
+    attested prompt, so a review issued for another obligation never closes this one."""
+    return {"id": entry["id"], "text": entry["text"], "repo": entry["repo"], "source": entry["source"]}
+
+
+def task_repos(store) -> dict[str, str]:
+    """Each EXECUTE task id's repo: a plan task's from PLAN, a close-out's from the registry."""
+    repos = {t["id"]: t["repo"] for t in store.state["products"]["plan"]["product"]["tasks"]}
+    repos.update({cid: e["repo"] for cid, e in close_outs(store).items()})
+    return repos
+
+
+def commit_files(repo_path: Path, commits: list[str]) -> set[str]:
+    """The paths `commits` changed; a close-out has no PLAN file list to stand in for them."""
+    if not commits:
+        return set()
+    out = repo_module.run_git(repo_path, "show", "--name-only", "--format=", *commits)
+    return {line for line in out.splitlines() if line.strip()}
 
 
 def resolved_exceptions(store) -> set[str]:
@@ -447,6 +480,34 @@ class Boundary:
                 return f"task {task['id']} is already-satisfied with no evidence"
             if task["disposition"] == "removed" and task["id"] not in amendments:
                 return f"task {task['id']} is removed with no approved amendment"
+        ids = [t["id"] for t in self.product["tasks"]]
+        duplicate = next((tid for tid in ids if ids.count(tid) > 1), None)
+        if duplicate:
+            return f"task {duplicate} appears more than once in the EXECUTE product"
+        registry = close_outs(self.store)
+        unknown = next((tid for tid in ids if _CLOSE_OUT_ID.fullmatch(tid) and tid not in registry), None)
+        if unknown:
+            return f"task {unknown} is not a registered close-out"
+        for cid, entry in registry.items():
+            source = f"ITERATE {entry['source']['attemptId']} gap {entry['source']['gapIndex']}"
+            task = by_id.get(cid)
+            if task is None:
+                return f"close-out {cid} (from {source}) has no disposition in the EXECUTE product"
+            if task["disposition"] not in ("done", "already-satisfied"):
+                return f"close-out {cid} (from {source}) is {task['disposition']}; only done or already-satisfied closes it"
+            if (task["disposition"] == "done") != bool(task["commits"]):
+                return f"close-out {cid} (from {source}): done needs commits and already-satisfied has none"
+            closure = entry.get("closure")
+            if closure is None:
+                continue
+            # A closure stays in every later product. A done one keeps its commits and
+            # accepted review; a no-change one may carry a fresh review at a new head
+            # (E6 binds it), since its old proof covered only the old head.
+            if task["disposition"] != closure["disposition"] or task["commits"] != closure["commits"]:
+                return f"close-out {cid} was closed as {closure['disposition']}; a later product must carry the same disposition and commits"
+            review = task.get("review") or {}
+            if closure["disposition"] == "done" and (review.get("reviewedRange"), review.get("verdict")) != (closure["reviewedRange"], closure["verdict"]):
+                return f"close-out {cid}: its review is not the one its closure accepted"
         return None
 
     def _step_issued_at(self, step_id: str) -> str | None:
@@ -490,7 +551,7 @@ class Boundary:
     def _e4(self) -> str | None:
         # A task's repo lives on the PLAN task; in a workspace, unioning every task's
         # commits against each repo's range rejected a correct two-repo product (LF-24).
-        plan_repo = {t["id"]: t["repo"] for t in self.store.state["products"]["plan"]["product"]["tasks"]}
+        plan_repo = task_repos(self.store)
         for name, info in self._repo_entries().items():
             repo_path = Path(info["path"])
             head, error = self._repo_head_or_error(name)
@@ -514,14 +575,14 @@ class Boundary:
         repos = self._repo_entries()
         # The EXECUTE task schema carries no "repo" field (only PLAN's does), so
         # the repo name for each task comes from the matching PLAN task, same as _e3.
-        plan_tasks = {t["id"]: t for t in self.store.state["products"]["plan"]["product"]["tasks"]}
+        repo_of = task_repos(self.store)
         for task in self.product["tasks"]:
             if task["disposition"] not in ("done", "adopted"):
                 continue
             review = task.get("review")
             if review is None or review.get("verdict") != "pass":
                 return f"task {task['id']} has no passing review"
-            repo_path = Path(repos[plan_tasks[task["id"]]["repo"]]["path"])
+            repo_path = Path(repos[repo_of[task["id"]]]["path"])
             reviewed_from, reviewed_to = review["reviewedRange"]["from"], review["reviewedRange"]["to"]
             for commit in task["commits"]:
                 sha = repo_module.head_sha(repo_path, commit)
@@ -534,9 +595,15 @@ class Boundary:
     def _e6(self) -> str | None:
         is_external = self.store.state["implementations"]["phases"].get("execute") == "external"
         accept_unattested = load_config(self.project_root).get("evidence", {}).get("review", {}).get("accept") == "unattested"
+        registry = close_outs(self.store)
         for task in self.product["tasks"]:
-            if task["disposition"] not in ("done", "adopted"):
+            no_change_close_out = task["id"] in registry and task["disposition"] == "already-satisfied"
+            if task["disposition"] not in ("done", "adopted") and not no_change_close_out:
                 continue
+            if no_change_close_out:
+                failure = self._no_change_proof(registry[task["id"]], task, is_external)
+                if failure:
+                    return failure
             level, _ = review_evidence(self.store, task["id"])
             if level in ACCEPTED_REVIEW_LEVELS or (level == "human-attested" and is_external):
                 continue
@@ -548,10 +615,35 @@ class Boundary:
             return f"tasks with an unaccepted review evidence level: {', '.join(self.unreviewed)}"
         return None
 
+    def _no_change_proof(self, entry: dict, task: dict, is_external: bool) -> str | None:
+        # LF-55: an implementer's claim never closes a close-out. Its proof is a
+        # passing review of the empty range at the head this product exits on,
+        # issued for this obligation; a proof at an older head is stale.
+        cid = entry["id"]
+        review = task.get("review")
+        if review is None or review.get("verdict") != "pass":
+            return f"close-out {cid} is already-satisfied with no passing review"
+        repo_path = Path(self._repo_entries()[entry["repo"]]["path"])
+        head = self.product["heads"].get(entry["repo"])
+        reviewed = review["reviewedRange"]
+        shas = {repo_module.head_sha(repo_path, sha) for sha in (reviewed["from"], reviewed["to"], head) if sha}
+        if head is None or len(shas) != 1:
+            return f"close-out {cid}: its no-change review covers {reviewed['from'][:12]}..{reviewed['to'][:12]}, not the empty range at head {str(head)[:12]}"
+        if is_external:
+            return None
+        _, step_id = review_evidence(self.store, cid)
+        step_path = self.paths.steps_dir / str(step_id) / "step.json"
+        prompt = read_json(step_path).get("prompt", "") if step_id and step_path.is_file() else ""
+        if json.dumps(close_out_view(entry), indent=2, sort_keys=True) not in prompt:
+            return f"close-out {cid}: its review step was not issued for this close-out"
+        return None
+
     def _e7(self) -> str | None:
         runs = self.store.state.get("executeRuns") or {}
+        registry = close_outs(self.store)
         for task in self.product["tasks"]:
-            if task["disposition"] not in ("done", "adopted"):
+            # A close-out has no verify command; its review is its proof (LF-55).
+            if task["disposition"] not in ("done", "adopted") or task["id"] in registry:
                 continue
             record = runs.get(task["id"])
             if record is None:
@@ -610,8 +702,14 @@ class Boundary:
             return None  # M2+: probes.securitySignals is empty at M1, so this always holds.
         # "files" lives on the PLAN task, not the EXECUTE task, same as _e5's repo lookup.
         plan_tasks = {t["id"]: t for t in self.store.state["products"]["plan"]["product"]["tasks"]}
+        registry = close_outs(self.store)
         for task in self.product["tasks"]:
-            touched = set(plan_tasks.get(task["id"], {}).get("files", [])) & set(signals)
+            if task["id"] in registry:
+                repo_path = Path(self._repo_entries()[registry[task["id"]]["repo"]]["path"])
+                files = commit_files(repo_path, task["commits"])
+            else:
+                files = set(plan_tasks.get(task["id"], {}).get("files", []))
+            touched = files & set(signals)
             if not touched:
                 continue
             covered = {d["signal"] for d in (task.get("review") or {}).get("securityDispositions", [])}
@@ -762,9 +860,17 @@ class Boundary:
         return None
 
     def _i2(self) -> str | None:
-        for gap in self.product.get("gaps", []):
+        repos = sorted(self.store.state.get("repos") or {})
+        for i, gap in enumerate(self.product.get("gaps", [])):
             if gap["target"] not in ("spec", "plan", "execute", "verify"):
                 return f"gap names an unknown target {gap['target']!r}"
+            # LF-55: an execute gap becomes a close-out in one repo; never a guessed one.
+            if gap["target"] == "execute":
+                repo = gap.get("repo")
+                if repo is not None and repo not in repos:
+                    return f"gap {i} names an unknown repo {repo!r}; name one of {', '.join(repos)}"
+                if repo is None and len(repos) != 1:
+                    return f"gap {i} targets EXECUTE with no repo; name one of {', '.join(repos)}"
         return None
 
     def _i3(self) -> str | None:
@@ -893,7 +999,7 @@ class Boundary:
         # check falls quiet. This is the one check that looks at what EXECUTE
         # actually touched and refuses a DELIVER product that hides or duplicates
         # any of it.
-        plan_repo = {t["id"]: t["repo"] for t in self.store.state["products"]["plan"]["product"]["tasks"]}
+        plan_repo = task_repos(self.store)
         execute_tasks = self.store.state["products"]["execute"]["product"]["tasks"]
         required = {
             plan_repo[t["id"]] for t in execute_tasks

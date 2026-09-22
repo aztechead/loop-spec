@@ -104,7 +104,7 @@ class IterateTests(unittest.TestCase):
         action = self._judge_result("met", [])
         self.assertEqual(action.product["exit"], "rewind")
         self.assertEqual(action.product["verdict"], "unmet")
-        self.assertEqual(action.product["gaps"], [{"target": "execute", "text": "open finding F-1 (Critical): x"}])
+        self.assertEqual(action.product["gaps"], [{"target": "execute", "text": "open finding F-1 (Critical): x", "findingId": "F-1"}])
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
     def test_met_with_critical_open_finding_and_no_budget_room_escalates(self):

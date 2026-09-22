@@ -402,6 +402,9 @@ def build_envelope(store: StateStore, paths: FeaturePaths, phase: str, attempt_i
         "budget": state["budget"], "entry": state["phase"]["entry"], "repos": state["repos"],
         "projectRoot": str(project_root),
     }
+    if state.get("closeOuts"):
+        # Only when present, so a run without close-outs keeps its inputs digest.
+        inputs_source["closeOuts"] = state["closeOuts"]
     entry_payload = state["phase"].get("entryPayload")
     if state["run"].get("cycleType") == "micro":
         # Every phase of a micro run carries entry.payload.preset = "micro" so a role
@@ -418,6 +421,7 @@ def build_envelope(store: StateStore, paths: FeaturePaths, phase: str, attempt_i
             "requirementsRevision": state["revisions"]["requirements"], "approval": state["approval"],
             "planRevision": state["revisions"]["plan"], "baseline": state["baseline"],
             "ledger": state["ledger"], "budget": state["budget"],
+            "closeOuts": state.get("closeOuts") or [],
         },
         "entry": {"mode": state["phase"]["entry"], "payload": entry_payload},
         "repos": state["repos"],
@@ -1079,7 +1083,10 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
         _reject_product(store, paths, phase, attempt_id, exit_, failures)
         return
 
-    _record_accepted_product(store, phase, attempt_id, product, exit_, boundary)
+    # No save yet: every route below ends in exactly one (the pause question, the
+    # terminal result, or the transition at the end), so the accepted product never
+    # reaches disk without its route (LF-55).
+    _record_accepted_product(store, phase, attempt_id, product, exit_, boundary, save=False)
 
     next_phase, mode = route["next"]
     if mode == "rewind":
@@ -1127,6 +1134,12 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
         except budget_module.BudgetExhausted as exc:
             _finish_run(store, paths, "escalated", reason=str(exc))
             return
+        # LF-55: registered after the spend and before the one save below, so the
+        # accepted product, spend, close-outs and route reach disk together. A replay
+        # of this attempt stops at _accept_product's already-recorded check, before
+        # any budget-dependent check.
+        if phase == "iterate":
+            _register_close_outs(store, attempt_id, product)
 
     if mode == "terminal":
         _write_terminal_result(store, paths, phase, exit_)
@@ -1140,7 +1153,46 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
     store.save()
 
 
-def _record_accepted_product(store: StateStore, phase: str, attempt_id: str, product: dict, exit_: str, boundary: "postconditions.Boundary") -> None:
+def _register_close_outs(store: StateStore, attempt_id: str, product: dict) -> None:
+    """One close-out per `execute` gap of an accepted ITERATE rewind, whatever phase
+    the rewind enters first; idempotent per (ITERATE attempt, gap index)."""
+    entries = store.state.setdefault("closeOuts", [])
+    known = {(e["source"]["attemptId"], e["source"]["gapIndex"]) for e in entries}
+    only_repo = next(iter(store.state["repos"])) if len(store.state["repos"]) == 1 else None
+    for i, gap in enumerate(product.get("gaps", [])):
+        if gap["target"] != "execute" or (attempt_id, i) in known:
+            continue
+        entries.append({
+            "id": f"C-{len(entries) + 1}",
+            "source": {"phase": "iterate", "attemptId": attempt_id, "gapIndex": i, "findingId": gap.get("findingId")},
+            "text": gap["text"], "repo": gap.get("repo") or only_repo,  # I2 already refused a guess
+            "registeredRevisions": dict(store.state["revisions"]),
+            "status": "active", "closure": None, "history": [],
+        })
+
+
+def _close_close_outs(store: StateStore, attempt_id: str, product: dict) -> None:
+    """Record each close-out's closure from an accepted EXECUTE product (E2 made sure
+    every one is there). A changed closure keeps the one it replaces in history."""
+    by_id = {t["id"]: t for t in product["tasks"]}
+    for entry in store.state.get("closeOuts") or []:
+        task = by_id[entry["id"]]
+        review = task.get("review") or {}
+        _, step_id = postconditions.review_evidence(store, entry["id"])
+        closure = {
+            "disposition": task["disposition"], "repo": entry["repo"], "commits": list(task["commits"]),
+            "reviewedRange": review.get("reviewedRange"), "verdict": review.get("verdict"),
+            "reviewStep": step_id, "attemptId": attempt_id,
+        }
+        prior = entry.get("closure")
+        if prior is not None and {**prior, "attemptId": None} == {**closure, "attemptId": None}:
+            continue
+        if prior is not None:
+            entry["history"].append(prior)
+        entry["status"], entry["closure"] = "closed", closure
+
+
+def _record_accepted_product(store: StateStore, phase: str, attempt_id: str, product: dict, exit_: str, boundary: "postconditions.Boundary", *, save: bool = True) -> None:
     is_external = store.state["implementations"]["phases"].get(phase) == "external"
     store.state["products"][phase] = {
         "attemptId": attempt_id, "inputsDigest": product["inputsDigest"], "boundTo": product["boundTo"],
@@ -1151,6 +1203,8 @@ def _record_accepted_product(store: StateStore, phase: str, attempt_id: str, pro
         store.state["revisions"]["requirements"] = postconditions.requirements_revision(product)
     if phase == "plan":
         store.state["revisions"]["plan"] = postconditions.plan_revision(product)
+    if phase == "execute" and exit_ in ("integrated", "no change"):
+        _close_close_outs(store, attempt_id, product)
     if phase == "verify":
         # V7/V8 read this history on the NEXT VERIFY pass to decide whether that
         # pass may review only the delta since here, and whether a finding on
@@ -1175,7 +1229,8 @@ def _record_accepted_product(store: StateStore, phase: str, attempt_id: str, pro
         store.state["unreviewed"] = boundary.unreviewed
     if boundary.weakened_assurance:
         store.state.setdefault("weakenedAssurance", []).extend(boundary.weakened_assurance)
-    store.save()
+    if save:
+        store.save()
 
 
 def _reject_product(store: StateStore, paths: FeaturePaths, phase: str, attempt_id: str, exit_: str, failures: list) -> None:

@@ -24,7 +24,7 @@ from .errors import LoopSpecError
 from .events import emit
 from .ids import now_iso
 from .paths import ensure_results_dir
-from .postconditions import adopted_commits, retry_limit
+from .postconditions import adopted_commits, close_out_view, close_outs, retry_limit
 from .roles import compose_prompt, load_role, resolve_model
 
 _TERMINAL = {"done", "already-satisfied", "removed", "blocked", "planGap", "adopted"}
@@ -41,7 +41,7 @@ _BLOCKED_OPTIONS = [
     {"value": "fix-and-re-enter", "label": "Fix and re-enter"},
     {"value": "stop", "label": "Stop"},
 ]
-_TASK_ID_RE = re.compile(r"T-\d+")
+_TASK_ID_RE = re.compile(r"[TRC]-\d+")  # plan T-n/R-n, close-out C-n (LF-55)
 # LF-11: a verify re-run that could never have passed no matter what the implementer
 # does is a defect in PLAN's own verify/featureAdded/mustFlip fields, not something a
 # retry fixes. "reproduction still fails at the candidate commit" (the OTHER
@@ -122,6 +122,53 @@ def dag_waves(tasks: list[dict], width: int = 3) -> list[list[str]]:
 
 def _plan_tasks(store) -> dict:
     return {t["id"]: t for t in store.state["products"]["plan"]["product"]["tasks"]}
+
+
+def _task_spec(store, task_id: str) -> dict:
+    """A plan task, or for an LF-55 close-out a stand-in with the plan task's fields:
+    its text as the title, the files its commits changed, and no verify command."""
+    plan_task = _plan_tasks(store).get(task_id)
+    if plan_task is not None:
+        return plan_task
+    entry = close_outs(store)[task_id]
+    task_state = (store.state.get("execute") or {}).get("tasks", {}).get(task_id) or {}
+    return {"id": task_id, "repo": entry["repo"], "title": entry["text"], "files": task_state.get("files") or [],
+            "criteria": [], "dependsOn": [], "verify": None, "featureAdded": None, "mustFlip": False}
+
+
+def _schedule_close_outs(store, execute_state: dict) -> bool:
+    """LF-55: each registered close-out gets a task state and its own trailing wave,
+    once, in registry order. Execute state is never reset, so a closed close-out
+    keeps the state it closed with. Returns whether anything was added."""
+    added = False
+    for cid in close_outs(store):
+        if cid in execute_state["tasks"]:
+            continue
+        task_state = _fresh_task_state(_task_spec(store, cid))
+        task_state.update({"closeOut": cid, "plan": None, "files": []})
+        execute_state["tasks"][cid] = task_state
+        execute_state["waves"].append([cid])
+        added = True
+    return added
+
+
+def _refresh_stale_close_outs(store, paths, execute_state: dict) -> bool:
+    """LF-55: a no-change close-out's proof holds only at the head it reviewed. When a
+    later commit moved that head, re-review the empty range at the new head (a fresh
+    fork and step; the registry keeps the old closure until a product is accepted)."""
+    refreshed = False
+    for tid, task_state in execute_state["tasks"].items():
+        if not task_state.get("closeOut") or task_state["status"] != "already-satisfied":
+            continue
+        head = execute_state["repos"][task_state["repo"]]["head"]
+        if ((task_state.get("review") or {}).get("reviewedRange") or {}).get("to") == head:
+            continue
+        evidence = task_state["evidence"]
+        _refork(store, paths, tid, task_state, _task_spec(store, tid), head,
+                f"the head moved to {head[:12]} after {tid}'s no-change review; review it again there")
+        task_state.update({"evidence": evidence, "noChange": True, "status": "probing"})
+        refreshed = True
+    return refreshed
 
 
 def _retry_or_block(execute_state: dict, task_id: str, task_state: dict, reason_text: str, *, retry_status: str = "pending") -> None:
@@ -370,6 +417,8 @@ def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, tas
         "probes": ctx.get("probes", {}),
         "minimalDiff": not has_room(store),
     }
+    if task_state.get("closeOut"):
+        inputs["closeOut"] = close_out_view(close_outs(store)[task_id])
     if task_state["reason"]:
         inputs["retryReason"] = task_state["reason"]
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=worktree, phase="execute")
@@ -421,6 +470,13 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
         "ledger": store.state.get("ledger", {}),
         "securitySignals": [s for s in signals if s.get("file") in plan_task["files"]],
     }
+    if task_state.get("closeOut"):
+        # E6 finds this exact input in the attested prompt: the review is for this obligation.
+        inputs["closeOut"] = close_out_view(close_outs(store)[plan_task["id"]])
+        inputs["obligation"] = (
+            "This task closes out an ITERATE gap (closeOut.text). Pass only if that gap is closed at "
+            "range.to. An empty range means the implementer found it already true there; check that claim."
+        )
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=worktree, phase="execute")
 
     request = {
@@ -554,7 +610,9 @@ def _rejection_task_ids(message: str, execute_state: dict) -> list[str]:
     """The task ids a rejection's message names ("T-n" tokens); with none, every
     currently-done task. E6's own message already lists every id it means (it
     aggregates), so this only widens scope for a message that names none."""
-    parsed = [tid for tid in _TASK_ID_RE.findall(message) if execute_state["tasks"].get(tid, {}).get("status") == "done"]
+    def _reviewed(t: dict) -> bool:  # a no-change close-out's review is its proof too (LF-55)
+        return t.get("status") == "done" or (bool(t.get("closeOut")) and t.get("status") == "already-satisfied")
+    parsed = [tid for tid in _TASK_ID_RE.findall(message) if _reviewed(execute_state["tasks"].get(tid, {}))]
     if parsed:
         return parsed
     return [tid for tid, t in execute_state["tasks"].items() if t["status"] == "done"]
@@ -801,7 +859,9 @@ def _reconcile_plan(store, paths, ctx, execute_state: dict) -> None:
     owning integrated commits, fails closed -- those commits would be
     unownable."""
     plan_tasks = _plan_tasks(store)
-    tasks = execute_state["tasks"]
+    # LF-55: close-outs are not plan tasks; reconciliation keeps them and their history.
+    close_out_ids = [tid for tid, t in execute_state["tasks"].items() if t.get("closeOut")]
+    tasks = {tid: t for tid, t in execute_state["tasks"].items() if not t.get("closeOut")}
 
     if any("plan" not in task_state for task_state in tasks.values()):
         raise LoopSpecError(
@@ -836,11 +896,12 @@ def _reconcile_plan(store, paths, ctx, execute_state: dict) -> None:
             )
         _retire(tid, task_state, task_state["plan"]["repo"])
         del tasks[tid]
+        del execute_state["tasks"][tid]
         dropped.append(tid)
 
     for tid, plan_task in plan_tasks.items():
         if tid not in tasks:
-            tasks[tid] = _fresh_task_state(plan_task)
+            tasks[tid] = execute_state["tasks"][tid] = _fresh_task_state(plan_task)
             added.append(tid)
             continue
 
@@ -884,7 +945,7 @@ def _reconcile_plan(store, paths, ctx, execute_state: dict) -> None:
             _retire(tid, old, old["plan"]["repo"])
             fresh = _fresh_task_state(plan_task)
             fresh["generation"] = generation
-            tasks[tid] = fresh
+            tasks[tid] = execute_state["tasks"][tid] = fresh
             if had_fork:
                 # The plain task/<slug>/<id> name is already spent on the
                 # discarded attempt's (possibly still-retained) branch -- fork
@@ -895,7 +956,7 @@ def _reconcile_plan(store, paths, ctx, execute_state: dict) -> None:
                 _refork(store, paths, tid, fresh, plan_task, feature_head, reason)
             reset.append(tid)
 
-    execute_state["waves"] = dag_waves(list(plan_tasks.values()), width=_execute_width())
+    execute_state["waves"] = dag_waves(list(plan_tasks.values()), width=_execute_width()) + [[cid] for cid in close_out_ids]
 
     emit(paths, "execute_plan_reconciled", {
         "kept": kept, "reopened": reopened, "reset": reset, "added": added, "dropped": dropped,
@@ -919,7 +980,9 @@ def _final_product(store, ctx, execute_state: dict) -> dict:
         elif task_state["status"] == "already-satisfied":
             tasks_out.append({
                 "id": task_id, "disposition": "already-satisfied",
-                "evidence": task_state["evidence"], "commits": [], "review": None,
+                "evidence": task_state["evidence"], "commits": [],
+                # LF-55: a close-out's no-change claim is closed by its review, which E6 reads.
+                "review": task_state["review"] if task_state.get("closeOut") else None,
             })
         elif task_state["status"] == "adopted":
             # LF-38: delivered by the adopted PR, not this run -- counts as done
@@ -1006,11 +1069,12 @@ def step(store, paths, ctx):
         return rejection_pause
 
     _handle_rewind(store, paths, ctx, execute_state)
+    if _schedule_close_outs(store, execute_state):
+        store.save()
 
     if any(t["status"] in ("blocked", "planGap") for t in execute_state["tasks"].values()):
         return Product(_final_product(store, ctx, execute_state))
 
-    plan_tasks = _plan_tasks(store)
     for wave in execute_state["waves"]:
         wave_states = [execute_state["tasks"][tid] for tid in wave]
         if all(t["status"] in _TERMINAL for t in wave_states):
@@ -1026,7 +1090,7 @@ def step(store, paths, ctx):
         for task_id in wave:
             task_state = execute_state["tasks"][task_id]
             if task_state["status"] == "pending":
-                pause = _ensure_worktree(store, paths, ctx, task_id, task_state, plan_tasks[task_id])
+                pause = _ensure_worktree(store, paths, ctx, task_id, task_state, _task_spec(store, task_id))
                 if pause is not None:
                     return pause
 
@@ -1035,14 +1099,14 @@ def step(store, paths, ctx):
         for task_id in wave:
             task_state = execute_state["tasks"][task_id]
             if task_state["status"] == "pending":
-                outcome = _implement_request(store, paths, ctx, plan_tasks[task_id], task_state, task_id)
+                outcome = _implement_request(store, paths, ctx, _task_spec(store, task_id), task_state, task_id)
                 if isinstance(outcome, Pause):
                     # Defensive: the pre-scan above already settled every worktree,
                     # so this should not fire, but a Pause still wins immediately.
                     return outcome
                 requests.append(outcome)
             elif task_state["status"] == "probing":
-                requests.append(_review_request(store, paths, ctx, plan_tasks[task_id], task_state))
+                requests.append(_review_request(store, paths, ctx, _task_spec(store, task_id), task_state))
             elif task_state["status"] in ("implementing", "reviewing"):
                 open_id = _open_step_id(store, task_state)
                 if open_id is not None:
@@ -1060,6 +1124,9 @@ def step(store, paths, ctx):
             "execute.step() was called with an outstanding submission still open",
             repair="submit the open step (on_submit) before calling step() again",
         )
+    if _refresh_stale_close_outs(store, paths, execute_state):
+        store.save()
+        return step(store, paths, ctx)
     return Product(_final_product(store, ctx, execute_state))
 
 
@@ -1067,15 +1134,22 @@ def _on_implement_submit(store, paths, task_id: str, task_state: dict, step_reco
     task_state["implementSteps"].append(step_record["stepAttemptId"])
     execute_state = store.state["execute"]
     worktree = Path(task_state["worktree"])
+    task_state.pop("noChange", None)
 
     # LF-49: "already satisfied" means nothing to integrate; Git, not the summary, decides that.
     if not result["commits"] and result["summary"].startswith("already satisfied:"):
         forked_from = task_state.get("forkedFrom")
         task_head = repo_module.branch_sha(worktree, task_state["branch"])
         if forked_from is not None and task_head == forked_from and repo_module.is_clean(worktree):
-            task_state["status"] = "already-satisfied"
             task_state["evidence"] = result["summary"]
             task_state["reason"] = None
+            if task_state.get("closeOut"):
+                # LF-55: a close-out's no-change claim goes to review; the claim alone never closes it.
+                task_state["noChange"] = True
+                task_state["probes"] = None
+                task_state["status"] = "probing"
+                return
+            task_state["status"] = "already-satisfied"
             return
         if task_head is not None and task_head != forked_from:
             emit(paths, "already_satisfied_contradicted",
@@ -1096,6 +1170,10 @@ def _on_implement_submit(store, paths, task_id: str, task_state: dict, step_reco
         return
 
     task_state["probes"] = probes_module.diff_probes(worktree, feature_head, task_head, task_state["baseLayers"])
+    if task_state.get("closeOut"):
+        # A close-out has no PLAN file list; the files it changed feed review, E11 and VERIFY.
+        changed = repo_module.run_git(worktree, "diff", "--name-only", f"{feature_head}..{task_head}")
+        task_state["files"] = sorted(line for line in changed.splitlines() if line.strip())
     task_state["reason"] = None
     task_state["status"] = "probing"
 
@@ -1122,21 +1200,30 @@ def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record:
         _retry_or_block(execute_state, task_id, task_state, f"the reviewer found: {causes}")
         return
 
-    plan_task = _plan_tasks(store)[task_id]
-    # R3: this task's own repo has its own baseline; a workspace's other repos
-    # never stand in for it.
-    repo_baseline_dict = baseline_module.repo_baseline_dict(store.state.get("baseline"), plan_task["repo"], store.state["repos"])
-    baseline_entry = baseline_module.BaselineEntry.from_dict(repo_baseline_dict["entries"][plan_task["verify"]])
-    candidate = baseline_module.run_command(plan_task["verify"], worktree, task_head)
-    comparison = baseline_module.compare_to_baseline(
-        baseline_entry, candidate,
-        feature_added=bool(plan_task["featureAdded"]), must_flip=bool(plan_task["mustFlip"]),
-    )
-    store.state.setdefault("executeRuns", {})[task_id] = {"run": candidate.to_dict(), "comparison": comparison.to_dict()}
+    if task_state.get("closeOut"):
+        # LF-55: a close-out has no verify command; the passing review is its proof.
+        # No-change is decided from the reviewed candidate (LF-49's confirmed empty
+        # fork, still unmoved), never from an empty integrated-commits list.
+        if task_state.get("noChange") and task_head == task_state["forkedFrom"]:
+            task_state["status"] = "already-satisfied"
+            task_state["reason"] = None
+            return
+    else:
+        plan_task = _plan_tasks(store)[task_id]
+        # R3: this task's own repo has its own baseline; a workspace's other repos
+        # never stand in for it.
+        repo_baseline_dict = baseline_module.repo_baseline_dict(store.state.get("baseline"), plan_task["repo"], store.state["repos"])
+        baseline_entry = baseline_module.BaselineEntry.from_dict(repo_baseline_dict["entries"][plan_task["verify"]])
+        candidate = baseline_module.run_command(plan_task["verify"], worktree, task_head)
+        comparison = baseline_module.compare_to_baseline(
+            baseline_entry, candidate,
+            feature_added=bool(plan_task["featureAdded"]), must_flip=bool(plan_task["mustFlip"]),
+        )
+        store.state.setdefault("executeRuns", {})[task_id] = {"run": candidate.to_dict(), "comparison": comparison.to_dict()}
 
-    if comparison.verdict not in ("no-regression", "featureAdded-ok", "mustFlip-ok"):
-        _route_verify_comparison(execute_state, task_id, task_state, comparison)
-        return
+        if comparison.verdict not in ("no-regression", "featureAdded-ok", "mustFlip-ok"):
+            _route_verify_comparison(execute_state, task_id, task_state, comparison)
+            return
 
     feature_worktree = Path(execute_state["repos"][task_state["repo"]]["worktree"])
     feature_head = execute_state["repos"][task_state["repo"]]["head"]
@@ -1165,7 +1252,7 @@ def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record:
             # ever holds INTEGRATED commits, so this failed attempt's
             # attribution was never recorded onto it in the first place.
             new_head = execute_state["repos"][task_state["repo"]]["head"]
-            plan_task = _plan_tasks(store)[task_id]
+            plan_task = _task_spec(store, task_id)
             reason = f"{task_id} conflicts with the feature head after a sibling merged; re-implement on {new_head[:12]}"
             _refork(store, paths, task_id, task_state, plan_task, new_head, reason)
             _retry_or_block(execute_state, task_id, task_state, reason)
