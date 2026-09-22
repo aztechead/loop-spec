@@ -453,28 +453,6 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
 # Product acceptance
 # ---------------------------------------------------------------------------
 
-_FINDING_SCHEMA = {
-    "type": "object",
-    "required": ["id", "location", "cause", "severity", "disposition", "reason", "supersedes"],
-    "additionalProperties": False,
-    "properties": {
-        "id": {"type": "string"}, "location": {"type": "string"}, "cause": {"type": "string"},
-        "severity": {"type": "string", "enum": ["Critical", "Important", "Minor"]},
-        "disposition": {"type": "string", "enum": ["fixed", "rejected", "deferred", "open"]},
-        "reason": {"type": ["string", "null"]},
-        "supersedes": {"anyOf": [
-            {"type": "null"},
-            {"type": "object", "required": ["kind", "id"], "additionalProperties": False,
-             "properties": {"kind": {"type": "string", "enum": ["finding", "range"]}, "id": {"type": "string"}}},
-        ]},
-    },
-}
-_CRITIC_SCHEMA = {
-    "type": "object", "required": ["findings"], "additionalProperties": False,
-    "properties": {"findings": {"type": "array", "items": _FINDING_SCHEMA}},
-}
-
-
 def _answered_question_for_attempt(store: StateStore, attempt_id: str):
     for question_id, record in store.state["questions"]["answered"].items():
         if record.get("attempt") == attempt_id:
@@ -656,21 +634,27 @@ def _handle_spec_approval(store: StateStore, paths: FeaturePaths, attempt_id: st
     return "remediation"
 
 
-def _issue_critic_step(store: StateStore, paths: FeaturePaths, attempt_id: str, plan_product: dict, is_external: bool, revision: str) -> None:
+def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Path, attempt_id: str, plan_product: dict, is_external: bool, revision: str) -> None:
+    # LF-32: this used to hand-write a prompt and an inline schema that contradicted
+    # the role's own schema.json; every other role step goes through
+    # roles.compose_prompt/load_role (see _issue_adopted_review), and the critic
+    # step now does too.
+    from .roles import compose_prompt, load_role
     repo_path = next(iter(store.state["repos"].values()))["path"]
     spec_product = store.state["products"]["spec"]["product"]
+    inputs = {"specCriteria": spec_product["criteria"], "planTasks": plan_product["tasks"]}
     inputs_digest = digest({"plan": plan_product, "spec": spec_product})
-    prompt = (
-        "Review this PLAN product for Critical-only issues: a criterion no task covers, "
-        "a verify command that cannot test what it claims, or a destructive change with "
-        'no boundary. Output {"findings": []} when nothing is Critical.\n\n'
-        f"SPEC criteria: {spec_product['criteria']}\n\nPLAN tasks: {plan_product['tasks']}"
-    )
+
+    role = load_role("plan-critic", project_root, contract.resolve_role(project_root, "plan-critic"))
+    ensure_results_dir(paths)
+    result_path = paths.results_dir / f"plan-critic-{attempt_id}.json"
+    prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=Path(repo_path), phase="plan")
+
     record = steps.issue(
         store, paths, phase="plan", attempt_id=attempt_id,
         kind="external" if is_external else "role", role=None if is_external else "plan-critic",
-        cwd=Path(repo_path), prompt=prompt, schema=_CRITIC_SCHEMA, postconditions=["P7"],
-        inputs_digest=inputs_digest,
+        cwd=Path(repo_path), prompt=prompt, schema=role.schema, postconditions=["P7"],
+        inputs_digest=inputs_digest, result_path=result_path,
     )
     store.state["phase"]["criticStepId"] = record["stepAttemptId"]
     # Recorded so a later call for a DIFFERENT (corrected) revision recognizes this
@@ -713,16 +697,21 @@ def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, pro
         store.state["phase"]["pending"] = "critic"
         store.save()
         is_external = store.state["implementations"]["phases"].get("plan") == "external"
-        _issue_critic_step(store, paths, attempt_id, product, is_external, revision)
+        _issue_critic_step(store, paths, project_root, attempt_id, product, is_external, revision)
         return "pending"
 
+    # LF-32: the role schema has no disposition/reason/supersedes -- the critic
+    # reports facts (id/location/cause/severity), the program owns disposition.
+    findings = [{**f, "disposition": f.get("disposition", "open"), "reason": f.get("reason"),
+                 "supersedes": f.get("supersedes")} for f in submission["findings"]]
+
     passes = (critic or {}).get("passes", 0) + 1
-    store.state["critic"] = {"passes": passes, "findings": submission["findings"], "planRevision": revision}
+    store.state["critic"] = {"passes": passes, "findings": findings, "planRevision": revision}
     store.state["phase"]["pending"] = None
     store.state["phase"]["provisional"] = None
     store.save()
 
-    open_critical = [f for f in submission["findings"] if f.get("severity") == "Critical" and f.get("disposition") == "open"]
+    open_critical = [f for f in findings if f.get("severity") == "Critical" and f.get("disposition") == "open"]
     if not open_critical:
         return "ready"
     if passes >= 2:

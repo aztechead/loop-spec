@@ -439,9 +439,12 @@ class PlanCriticTests(_QuietStdout):
                 self.assertEqual(next_.kind, "step")  # critic pass 1
 
                 critic_step = read_json(next_.path)
+                # LF-32: the role schema (additionalProperties false) has no
+                # disposition/reason/supersedes -- the critic reports id/location/
+                # cause/severity only; the program defaults disposition to "open".
                 open_finding = {
                     "id": "F-1", "location": "greet.py:1", "cause": "no boundary on the destructive rm",
-                    "severity": "Critical", "disposition": "open", "reason": None, "supersedes": None,
+                    "severity": "Critical",
                 }
                 atomic_write_json(Path(critic_step["resultPath"]), {"findings": [open_finding]})
                 store = _open(paths)
@@ -456,6 +459,7 @@ class PlanCriticTests(_QuietStdout):
                 self.assertEqual(store.state["phase"]["entry"], "remediation")
                 self.assertIsNotNone(store.state["phase"]["attemptId"])
                 self.assertEqual(store.state["critic"]["passes"], 1)
+                self.assertEqual(store.state["critic"]["findings"][0]["disposition"], "open")
 
                 # --- PLAN pass 2: the corrected product marks F-1 fixed ---
                 step = read_json(next_.path)
@@ -480,6 +484,58 @@ class PlanCriticTests(_QuietStdout):
                 store = _open(paths)
                 self.assertEqual(store.state["phase"]["current"], "execute")
                 self.assertEqual(store.state["critic"]["passes"], 2)
+
+    def test_critic_step_prompt_carries_role_body_and_schema(self):
+        # LF-32: the critic step goes through roles.compose_prompt/load_role like
+        # every other role step, instead of a hand-written prompt and inline schema.
+        roles_dir = Path(controller.__file__).resolve().parent.parent.parent / "roles"
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            markers = io.StringIO()
+
+            with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+                next_, spec_product, paths, repo_name = _start_greeting_run(repo_dir, home, markers)
+                step = read_json(next_.path)
+                next_, plan_product = _submit_greeting_plan(paths, repo_dir, markers, step, repo_name, spec_product)
+                self.assertEqual(next_.kind, "step")  # the critic step
+
+                critic_step = read_json(next_.path)
+                store = _open(paths)
+                self.assertEqual(critic_step["schema"], json.loads((roles_dir / "plan-critic" / "schema.json").read_text()))
+                self.assertIn("## Output", critic_step["prompt"])
+                self.assertIn('"severity"', critic_step["prompt"])
+                self.assertIn("Critical-only", critic_step["prompt"])
+                self.assertTrue(critic_step["resultPath"].startswith(str(paths.results_dir)))
+                attempt = store.state["phase"]["attemptId"]
+                self.assertEqual(Path(critic_step["resultPath"]).name, f"plan-critic-{attempt}.json")
+
+    def test_critic_result_in_review_tool_shape_is_rejected(self):
+        # LF-32: the plan-critic worker wrote a review-tool-shaped result (the bug
+        # this finding is about); submit must reject it naming what the schema wants.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            markers = io.StringIO()
+
+            with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+                next_, spec_product, paths, repo_name = _start_greeting_run(repo_dir, home, markers)
+                step = read_json(next_.path)
+                next_, plan_product = _submit_greeting_plan(paths, repo_dir, markers, step, repo_name, spec_product)
+                critic_step = read_json(next_.path)
+
+                wrong_shape = {"findings": [{
+                    "file": "x", "line": None, "category": "verify-gap",
+                    "summary": "s", "failure_scenario": "f",
+                }]}
+                atomic_write_json(Path(critic_step["resultPath"]), wrong_shape)
+                store = _open(paths)
+                with self.assertRaises(LoopSpecError) as ctx:
+                    steps.submit(store, paths, step_id=critic_step["stepAttemptId"], dispatch_name=None, host=None)
+                self.assertIn("id", ctx.exception.message)
+                self.assertIn("severity", ctx.exception.message)
 
 
 class EscalatedPartialDraftTests(_QuietStdout):
