@@ -784,7 +784,13 @@ EXECUTE, a bound role, invalid execution receipts, and each terminal result. A c
 ticked when a live run has shown it and the run's result and events are recorded.
 
 The live gates run separately in interactive Claude Code and in the Python Agent SDK
-supervisor. Each runs the report's own scenario: a repo with pre-existing failures, a
+supervisor. The SDK gate is deferred: the maintainer has no SDK credentials, and
+accepted on 2026-09-22 that 7.0 merges on the native gate alone. The SDK runner is
+still built, grounded against the installed package's source and the current SDK
+documentation, unit-tested in its deterministic parts, and documented in the README
+with the exact code a credentialed user would run and the SDK version it was written
+against; the result and the docs say it has not been run live. Each gate runs the
+report's own scenario: a repo with pre-existing failures, a
 feature that adds passing tests, one real defect caught at VERIFY, one remediation
 round, a PR. The maintainer launches them. A headless pass cannot substitute for the
 interactive pass. Both hosts must also install and invoke the skills, resolve the
@@ -818,7 +824,7 @@ behavior.
 | M3 | EXECUTE default: dag, worktrees, implement and review roles, integration against baseline | a live happy path integrates; an unreviewed commit cannot cross the EXECUTE boundary; an external EXECUTE passes its postconditions |
 | M4 | VERIFY and ITERATE defaults: acceptance, ledger, delta review, full evidence re-run in a clean checkout, goal judgment, bounded rewinds | the report's four-pass sequence terminates `converged-with-caveats` after two rewinds; a green checklist with an unmet goal rewinds |
 | M5 | DELIVER, workspace, result contract, role binding, supervisor example | a two-repo workspace delivers two PRs live; a bound review role runs |
-| M6 | live gates | section 17 passes in interactive Claude Code and in the SDK; evidence recorded |
+| M6 | live gates | section 17 passes in interactive Claude Code on sonnet, evidence recorded with versions; the SDK gate is deferred by the maintainer's accepted decision of 2026-09-22 and the PR body says so |
 | M7 | cutover | `main` is 7.0.0, `6.x` branch cut, marketplace follows, CHANGELOG written; the README carries exemplar Claude Code use cases, an exemplar Agent SDK implementation, and the one-off Claude Code commands each entry supports; [migrating-6-to-7.md](migrating-6-to-7.md) (a how-to for consumers, first version at M0) is updated with the M1 names |
 
 ## 19. To verify before M1
@@ -913,6 +919,11 @@ records the Claude Code and SDK versions it ran on, starting with Claude Code 2.
 from the attestation probe. The native attestation probe ran the same day and passed.
 
 Nothing is pending for M0.
+
+Decided 2026-09-22 for the release: no SDK credentials are available, so a live SDK
+run is not a merge criterion for 7.0. The SDK runner ships grounded and documented,
+not live-verified, and the README's exemplar SDK section says which version it was
+written against and that it has not been run.
 
 Audit notes from the review round: the raw report was read after the first
 comparison; the report is one observed run and demonstrates failure modes without
