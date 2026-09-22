@@ -301,6 +301,19 @@ class FileReceiptTests(unittest.TestCase):
         reused = self._read(1, "1\ta", limit=1) + self._read(1, "2\t", offset=2)
         self.assertEqual(self._check(self._step(prompt), reused)[1], "a tool_use id appears twice")
 
+    def test_calls_and_results_must_sit_in_their_own_roles(self):
+        step = self._step("a\n")
+        call, result = self._read(1, "1\ta\n2\t")
+        reversed_roles = [dict(call, type="user"), dict(result, type="assistant")]
+        self.assertEqual(self._check(step, reversed_roles)[1], "a tool_use appears outside an assistant record")
+        same_record = [{"type": "assistant", "message": {"content": call["message"]["content"] + result["message"]["content"]}}]
+        self.assertEqual(self._check(step, same_record)[1], "a tool_result appears outside a user record")
+        no_id = self._read(1, "1\ta\n2\t")
+        del no_id[0]["message"]["content"][0]["id"]
+        self.assertEqual(self._check(step, no_id)[1], "a tool_use has no id")
+        mislabelled = [call, dict(result, message=dict(result["message"], role="assistant"))]
+        self.assertEqual(self._check(step, mislabelled)[1], "a record's type and message role disagree")
+
 
 if __name__ == "__main__":
     unittest.main()

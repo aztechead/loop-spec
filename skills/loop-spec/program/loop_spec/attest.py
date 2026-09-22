@@ -122,16 +122,30 @@ def check_file_receipt(records: list[dict], step: dict) -> str | None:
     for record in records[1:]:
         if len(covered) == len(expected):
             return None
-        for block in _blocks(record, "tool_use"):
-            if block.get("id") in use_ids:
+        uses, results = _blocks(record, "tool_use"), _blocks(record, "tool_result")
+        # The binding is the worker's own calls answered by the host: a call only in an
+        # assistant record, a result only in a later user record, never one record both.
+        role = record.get("type")
+        if role != record.get("message", {}).get("role", role):
+            return "a record's type and message role disagree"
+        if uses and role != "assistant":
+            return "a tool_use appears outside an assistant record"
+        if results and role != "user":
+            return "a tool_result appears outside a user record"
+        for block in uses:
+            if not isinstance(block.get("id"), str) or not block["id"]:
+                return "a tool_use has no id"
+            if block["id"] in use_ids:
                 return "a tool_use id appears twice"
             use_ids.add(block.get("id"))
             tool_input = block.get("input") or {}
             if block.get("name") != "Read" or tool_input.get("file_path") != path:
                 return f"the worker used {block.get('name')} before it had read the whole instruction file"
             reads[block["id"]] = (int(tool_input.get("offset") or 1), tool_input.get("limit"))
-        for block in _blocks(record, "tool_result"):
+        for block in results:
             tool_use_id = block.get("tool_use_id")
+            if not isinstance(tool_use_id, str) or not tool_use_id:
+                return "a tool_result has no tool_use_id"
             if tool_use_id in result_ids:
                 return "a tool_result id appears twice"
             result_ids.add(tool_use_id)
