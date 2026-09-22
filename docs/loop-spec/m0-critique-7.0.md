@@ -253,3 +253,76 @@ Validation: the five changed/current planning documents passed `lib/doc-tells.py
 Reviewed the current route predicates and decision deltas; checked changed-file
 scope and planned program/evidence locations. No live host or 7.0 runtime tests were
 run. Only this review record was amended.
+
+
+## Re-audit at revision 8d45bbb
+
+The prior debug and adopted-history findings are addressed in the route matrix.
+Debug now records a failing reproduction and sends its repair through ordinary
+EXECUTE with a `mustFlip` check. Revise creates an adopted-range task with a fresh
+full review and subjects it to E4–E7. T1 now covers PLAN→SPEC and EXECUTE→PLAN as well
+as the previously bounded transitions. The unconditional blocked-to-escalated
+terminal mapping is removed.
+
+The native attestation record reports a positive result and negative controls on
+Claude Code 2.1.278, macOS, with bypassPermissions. Accept it as a recorded single-host
+feasibility observation. It explicitly does not demonstrate permission denial, SDK
+execution, or task-worktree behavior. The raw prompts/results/check script are said
+to be session scratchpad files, without exact locators in the record. This re-audit
+read the report but did not independently replay those checks; a limited search for
+probe-labelled metadata in the repository-specific transcript directory did not
+locate their source records. That absence does not contradict the reported run.
+
+The roadmap now records a maintainer decision to use live validation without a test
+suite and to record observed versions rather than make version pins an M0 gate.
+Those replace the earlier test-suite/version-pin requirements for this review. Do
+not restore them implicitly. Live case results and event records remain required
+under the new policy; deleting a test requirement is not evidence a case passed.
+
+### Remaining findings
+
+1. **P1 — early budget exhaustion routes to a phase that cannot accept it.** T1 at
+   route-matrix line 70 sends exhausted PLAN/EXECUTE gaps to ITERATE. ITERATE at
+   lines 187–191 still requires a VERIFY product and permits special entry only with
+   VERIFY's gaps. I1 additionally binds an integrated SHA and plan revision. A
+   repeated PLAN→SPEC cycle can exhaust the budget before an accepted PLAN or any
+   verification exists. The budget is now counted, but its terminal route is not
+   executable under the stated preconditions. Prefer controller-owned escalation
+   directly from the exhausted phase, recording available state without claiming a
+   verified deliverable. Alternatively define an explicit early-failure entry with
+   suitable optional inputs and forbid convergence or partial delivery without
+   eligible verified targets. This is the last substantive route issue found in
+   this revision.
+2. **P2 — adopted-task acceptance disagrees between the two contract tables.** The
+   roadmap's EXECUTE product permits `adopted`, but its postconditions at line 146
+   still require every commit to map to a `done` task and require review only for
+   `done` tasks. The route matrix's E4/E5 correctly say `done` or `adopted`. Mirror
+   those predicates in the roadmap, or make the detailed matrix authoritative and
+   remove the duplicate normative table. The revise fix is otherwise accepted.
+3. **P2 — the live-only validation decision is only partially applied.** The
+   checklist header now says no automated tests, but its staging/mechanics still
+   require an offline suite, fake model/PR execution, a 157-second ceiling and pinned
+   versions. The inventory still promises a replacement offline suite, and the
+   migration how-to points consumers to compatibility tests under `tests/`. M1's
+   deliverable still includes a fake runner while its acceptance requires a live
+   empty cycle. Rewrite the active validation instructions consistently, explaining
+   any retained simulation tool separately from an automated suite. Specify the
+   case-to-run/result/events record that proves a manual case passed. Also replace
+   the roadmap's claim that the native runner already “shipped” with its actual
+   status: feasibility observed, implementation/release still pending.
+
+### Sign-off recommendation
+
+M0: not unconditional sign-off yet. Resolve the early-exhaustion route and reconcile
+the two active contract/validation descriptions. The recorded change in validation
+policy and the single-host feasibility result need not be relitigated by this audit.
+
+M1: not complete under either the former or revised criteria. The changes since
+727b2b8 are documentation and the probe record. There is no new 7.0 program or live
+empty-cycle result crossing the seven boundaries. Native attestation is one useful
+probe, not the M1 cycle or the M6 compatibility gates.
+
+Validation performed: current diffs and affected source sections reviewed; roadmap,
+route matrix, native probe record and checklist pass the shipped documentation lint.
+No paid runs, transcript replay, worktree probe or 7.0 execution was performed. Only
+this review record was amended.
