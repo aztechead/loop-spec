@@ -46,12 +46,11 @@ person. Binding a phase to `external` lets a team do the phase with its own skil
 and the boundary check still runs, so it is a changed boundary compared with the
 format-only option this document described, and the roadmap records it as such.
 
-The one recommendation still open for the maintainer is the runner count before
-cutover: the native runner alone on both hosts, with the SDK runner added on a
-measured failure, or both runners with separate live gates as this document
-recommends. The roadmap records both positions in its section 9. The authentication
-finding below stands under either: the SDK runner can never be the interactive
-default.
+The runner count was decided on 2026-09-22 in this document's favor: both runners
+ship, with native Claude Code as an independent release gate and direct SDK
+execution for unattended deployments. The roadmap records the decision in its
+section 9. The authentication finding below stands: the SDK runner is never the
+interactive default and is never selected for an interactive user by the program.
 
 ## Goal and decision
 

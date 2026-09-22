@@ -159,3 +159,85 @@ Native Claude Code support remains explicit: existing login, lead interviews,
 settings/permissions, output style, and a separate live gate. The new attestation
 mechanism must be proven there without silently downgrading acceptance or requiring
 SDK authentication. No paid model calls or live compatibility tests were run.
+
+
+## Follow-up at revision 88569d7
+
+The main corrections are present in the files. R1's default acceptance hole is
+closed in the written contract: unattested review is rejected by default, exceptions
+are explicit, and host evidence binds the dispatch opening and result. Native
+transcript access remains a live feasibility gate, not a demonstrated capability.
+R2's raw-hash comparison is replaced by normalized evidence. R3's re-run checkout is
+controller-owned and retired workspaces are not reused. R5's no-change and
+feature-added paths are reconciled. R6's identified contradictions are removed.
+
+Three issues prevent full closure:
+
+### Follow-up A — P1: the caveats mapping still changes schema-1 semantics
+
+Roadmap section 15, line 636, maps `converged-with-caveats` “as converged,” which
+inherits `outcome: delivered` and `converged: true`, then sets the draft flag.
+The existing `agent-output-contract.md`, lines 150–157, treats draft delivery as
+`outcome: delivered-draft`, `converged: false`, and `workDelivered: true`; unresolved
+iteration warnings can instead classify it as `completed-with-gaps`.
+`lib/cycle-result.sh`, particularly its outcome selection around line 968, also
+makes these distinctions.
+
+Adding the new `result` field is compatible. Reusing the old ready-delivery flags
+for a draft with outstanding findings is not. Derive every legacy field from the
+existing 6.9 classification rules, then add `result: converged-with-caveats` without
+changing those legacy meanings. Include both a clean draft and a draft with
+outstanding iteration gaps in the M1 fixtures. R4/F7 remain open as the plan now
+acknowledges. Also distinguish M0 contract closure from M1 fixture validation:
+M0 currently requires F7 closed while section 15 holds it open until M1.
+
+### Follow-up B — P1: non-repeatable evidence is a self-selected exemption
+
+The VERIFY row at line 147 accepts `repeatable: false` with a reason, skips the
+controller re-run, and records assurance `claimed`. The same row accepts `passed`
+when all verdicts are pass and review policy holds. It does not require permission
+to take the exemption, an accepted assurance class for verification, or a visible
+result-level downgrade comparable to the review exception.
+
+An implementation can therefore label unsupported passing evidence non-repeatable
+and avoid the independent observation that resolved F2. Legitimately non-repeatable
+checks need support, but exception authority must live outside the implementation:
+for example, an approved criterion policy or correlated operator decision. Specify
+which independent or human attestation suffices, the default route when it is absent,
+and how weaker evidence affects classification and `weakenedAssurance`. A reason
+explains a claim; it does not authorize accepting it.
+
+The normalization correction itself is accepted. This is a new gap introduced by
+its non-repeatable exception, not a request to restore raw-digest equality.
+
+### Follow-up C — P2: elapsed grace time does not establish worker termination
+
+Roadmap section 5, lines 217–224, permits deletion after either host-confirmed
+completion or an operator-set grace period. The latter permits removing a directory
+under a still-running native worker, potentially losing its remaining edits or
+invalidating its tool working directory. Retiring a step prevents acceptance of its
+result, but does not stop filesystem writes.
+
+Use grace expiry to request cancellation, report a cleanup backlog, or quarantine
+the workspace. Delete only after confirmed dispatch termination or verified cleanup
+of a controller-owned process. If the host cannot establish termination, retain the
+retired worktree and expose it for cleanup. The clean-checkout verification fix and
+non-reuse rule are accepted; only this cleanup clause remains unresolved from R3.
+
+### Runner decision
+
+Recommend shipping both runners: native execution for interactive Claude Code, and
+direct SDK execution for unattended deployments using supported authentication.
+The shared phase contract and validators remain the same. This recommendation does
+not authorize silently switching an interactive user to SDK credentials.
+
+Make the native attestation probe an early implementation feasibility gate and native
+Claude Code an independent cutover gate. A successful SDK run cannot compensate for
+failure there. If native attestation is unavailable, the documented human-attested
+or explicitly weakened paths are choices, but the maintainer must decide whether
+they meet the promised native workflow before release. Do not call SDK availability
+proof that Claude Code compatibility has been preserved.
+
+Validation for this follow-up: reviewed the revision diff, the changed contract rows,
+the evidence policy, and the current 6.9 result documentation and implementation.
+No live model/host tests were run, and the favored-plan documents were not modified.
