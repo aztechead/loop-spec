@@ -7,8 +7,11 @@ that the decision has to be checkable against. It is not a user guide.
 
 Status: favored plan, 2026-09-22, after two external review rounds. The second,
 [phase-interface-review-7.0.md](phase-interface-review-7.0.md), found nine holes in
-the first version of the contract below; each is closed in the section it names, and
-the review's counterexamples become rejection fixtures in M1. 6.9 stays on
+the first version of the contract below. A re-audit,
+[phase-interface-reaudit-7.0.md](phase-interface-reaudit-7.0.md), confirmed three
+closed and left six open; this revision addresses those six in the sections they
+name. Closure is the re-audit's call, not this document's. The counterexamples from
+both reviews become rejection fixtures in M1. 6.9 stays on
 `main` and keeps receiving fixes until 7.0 passes its live gates (M6). Then `main`
 becomes 7, a `6.x` branch is cut for maintenance, and the marketplace entry follows
 `main`. The runner comparison that fed this plan is in
@@ -140,11 +143,18 @@ postconditions for it hold.
 |---|---|---|---|---|
 | SPEC | goal, boundaries, acceptance criteria with ids, decisions, open questions | request text | an approval record exists that was produced from a human or policy answer to a question naming the proposed requirements revision; the record references the question id; the product's own fields cannot create it | approved, needs answer |
 | PLAN | tasks with id, dependencies, files, repo, verify command, criteria covered; prepare command | approved requirements revision | every criterion id is covered by at least one task; every verify command either runs at the base SHA from a bare worktree root, or is declared `feature-added` with a target path that does not exist at base and is validated at that task's first integration; baseline captured (section 11); plan bound to the requirements revision | ready, spec gap |
-| EXECUTE | per-task disposition of `done`, `already-satisfied` with evidence, or `removed` by an approved plan amendment; commits per task; unresolved issues | PLAN at the current requirements revision; baseline | every required task has an accepted disposition, and dependencies are complete before dependents; every commit in `base..head` maps to a `done` task; every `done` task has a review record whose reviewed range covers all of that task's commits, and whose execution evidence level is recorded; each task's verify command produced no new failure identity against the baseline; feature head is reachable from base; the product binds to the plan and requirements revisions per repo; an empty range exits `no-change` and can never exit `integrated` | integrated, no change, blocked, plan gap |
-| VERIFY | per-criterion verdict of `pass`, `fail`, or `blocked`, each with evidence of command, working directory, SHA, exit status, and output digest; findings with dispositions; remediation tasks; reviewed range | integrated head at the current revisions | every criterion id in the requirements revision has exactly one verdict; every evidence SHA equals the integrated head; the program re-runs every cited command in its recorded working directory and requires exit status and output digest to agree; a `blocked` verdict cites a cause the program itself observed, either in the baseline record or in that re-run; `passed` requires every verdict `pass` and the review policy in section 10 satisfied; a finding on cleared code carries a typed `supersedes` reference | passed, implementation gap, plan gap, intent gap, evidence incomplete, blocked |
-| ITERATE | goal verdict against the original request; gaps; route | VERIFY passed at the current revisions | the verdict binds the integrated SHA, the requirements revision, and the plan revision; a gap routes to SPEC, PLAN, EXECUTE, or VERIFY for missing evidence, and the rewind counter advances | converged, converged with caveats, rewind, escalated |
-| DELIVER | per-repo PR identity, delivered SHA, caveats | ITERATE `converged` or `converged with caveats`; or `escalated` when the operator policy allows partial delivery as a draft | per touched repo: the remote head ref's SHA equals the verified SHA; the PR is open, its head ref and SHA match, and its base target matches configuration; required checks satisfy the configured readiness policy, carrying 6.9's exact-SHA and required-check behavior; a retried creation is reconciled by identity, never duplicated; partial publication is recorded per repo and never reported as all delivered; a `no-change` result opens no PR and says so | delivered, partially delivered, delivery blocked |
+| EXECUTE | per-task disposition of `done`, `already-satisfied` with evidence, or `removed` by an approved plan amendment; commits per task; unresolved issues | PLAN at the current requirements revision; baseline | every required task has an accepted disposition, and dependencies are complete before dependents; every commit in `base..head` maps to a `done` task; every `done` task has a review record whose reviewed range covers all of that task's commits and whose execution evidence level meets the accepted class for review steps (section 5); each task's verify command produced no new failure identity against its baseline, or, for a `feature-added` command, a meaningful first success as defined in section 11; feature head is reachable from base; the product binds to the plan and requirements revisions per repo; an empty range exits `no-change` and can never exit `integrated` | integrated, no change, blocked, plan gap |
+| VERIFY | per-criterion verdict of `pass`, `fail`, or `blocked`, each with evidence of command, SHA, exit status, parsed failure identities, and raw output digest; findings with dispositions; remediation tasks; reviewed range | an EXECUTE exit of `integrated` or `no-change`, at the current revisions; the verified head is the integrated head, or base for `no-change` | every criterion id in the requirements revision has exactly one verdict; every evidence SHA equals the verified head; the program re-runs every cited command in a clean checkout of that SHA that it creates itself, with the prepare fixtures applied, and compares command identity, exit status, parsed failure identities, and the output digest after the versioned normalization of section 11, keeping the raw digest for provenance only; a criterion declared `repeatable: false` with a reason is not re-run and its verdict is recorded at assurance `claimed`; a `blocked` verdict cites a cause the program itself observed, in the baseline record or in that re-run; `passed` requires every verdict `pass` and the review policy in section 10 satisfied; a finding on cleared code carries a typed `supersedes` reference | passed, implementation gap, plan gap, intent gap, evidence incomplete, blocked |
+| ITERATE | goal verdict against the original request; gaps; route | VERIFY passed at the current revisions, including the `no-change` head | the verdict binds the integrated SHA, the requirements revision, and the plan revision; a gap routes to SPEC, PLAN, EXECUTE, or VERIFY for missing evidence, and the rewind counter advances | converged, converged with caveats, rewind, escalated |
+| DELIVER | per-repo PR identity, delivered SHA, caveats | ITERATE `converged` or `converged with caveats`; or `escalated` when the operator policy allows partial delivery as a draft; a `no-change` head that ITERATE converged terminates here without a PR | per touched repo: the remote head ref's SHA equals the verified SHA; the PR is open, its head ref and SHA match, and its base target matches configuration; required checks satisfy the configured readiness policy, carrying 6.9's exact-SHA and required-check behavior; a retried creation is reconciled by identity, never duplicated; partial publication is recorded per repo and never reported as all delivered; a `no-change` result opens no PR and says so | delivered, partially delivered, delivery blocked |
 | debug | reproduction as command plus digest; diagnosis; repair; post-fix evidence | error report | the program re-runs the recorded reproduction and finds it failed before the repair and passes after; a changed reproduction needs a stated reason and the original is re-run too; no reproduction exits `blocked reproduction`; then the VERIFY, ITERATE, and DELIVER postconditions | repaired, blocked reproduction, then as VERIFY onward |
+
+The no-change path, made explicit. When the plan's tasks are all `already-satisfied`
+with evidence, EXECUTE exits `no-change` with head equal to base. VERIFY still runs,
+at base, and every criterion must be proven there rather than assumed; ITERATE still
+judges the goal; DELIVER opens no PR and the terminal result carries the existing
+`no-change-needed` outcome (section 15). Nothing about an unchanged head bypasses
+verification or the goal check.
 
 Routes the first version left implicit, now named. A `blocked` VERIFY verdict may
 cite a failure the program observed for the first time at VERIFY, such as an expired
@@ -207,7 +217,17 @@ Identity and lifecycle, which the first version asserted and did not specify:
   second, different result for the same attempt.
 - Cancelling an attempt retires it, and the program cleans up the children it
   started. A worker the lead started is retired the same way; whether its process is
-  stopped depends on the host, and the program does not claim to stop it.
+  stopped depends on the host, and the program does not claim to stop it. Because a
+  retired native worker may still be writing, its worktree is never reused: a new
+  attempt gets a new worktree, a retired worktree is never integrated, and it is
+  deleted only after the host reports the dispatch ended or a grace period the
+  operator sets has passed.
+- Evidence is bound to a checkout the program resolves, never one the implementation
+  supplies. The program's re-runs happen in a clean checkout of the target SHA that
+  it creates for the purpose, with the prepare fixtures applied, and the evidence
+  record names that worktree. A worker's own run in its working tree is recorded as
+  the worker's claim; the program's run in the clean checkout is what the boundary
+  compares.
 - The program is the single writer of `state.json`. It keeps a digest of the last
   state it wrote and refuses to continue over a file whose digest differs, which is
   how an out-of-band edit is detected.
@@ -227,10 +247,31 @@ and never by the implementation:
 - `human-attested`: an external implementation, attested by a named answer to a
   question, recorded against the question id.
 
+Accepted classes are defined per role and are defaults, not options a policy has to
+remember to set. For a review step, `controller-observed` and `host-attested` are
+accepted; `unattested` is never accepted by default, so a task whose only review is
+unattested is listed in `unreviewed` and EXECUTE cannot exit `integrated`. An operator
+may accept `unattested` reviews only by writing `evidence.review.accept: unattested`
+in the repo config, and every result produced under that setting carries a
+`weakenedAssurance` entry naming it. For an implement step the level is recorded and
+nothing gates on it, because the review is the gate. For an external phase,
+`human-attested` is accepted.
+
+Host attestation binds more than a timestamp. The program composes every worker
+prompt, so it embeds the step attempt id, the input digest, the role and method
+digest, the repository, and the reviewed range in the prompt it hands out; the host's
+transcript for the submitted dispatch id must contain that opening and must end with
+the result digest. A transcript that contains the digest without the matching
+opening is an implementer's session and is rejected. Whether native Claude Code
+exposes a transcript the program can read this way is a probe in section 19, and the
+native path does not ship as the default review runner until it passes. Where the
+host exposes no transcript, a native review is `unattested`, and the operator has
+three visible choices: the SDK runner, an external human-attested review, or the
+weakened-assurance setting. The program never selects the SDK runner on its own.
+
 The level is stored per step in the ledger, rolled up per task, and carried into the
-terminal result's `reviewed` list. A harness policy can require a minimum level for
-`integrated`, and an unattended deployment that requires `controller-observed`
-needs the SDK runner. No level proves the review was good.
+terminal result's `reviewed` and `unreviewed` lists. No level proves the review was
+good.
 
 The three kinds map onto this contract as follows. The default is a Python entry in
 the program's own tree, invoked in-process for speed and exposed through the same
@@ -385,9 +426,12 @@ Three rules govern what can be bound where, learned from looking at the candidat
   events ledger records which skill at which commit produced each product, since a
   skills update can change a method underneath a repo.
 
-A borrowed skill cannot change the schema, skip the contract, or reach the state. If
-it never writes the result file, the retry limit ends the phase as blocked. The damage
-a bad method can do is a bad judgment, which is the same risk as a bad default.
+A borrowed skill cannot change the schema or skip the contract. It can touch the
+filesystem, including the state directory, because workers are not sandboxed
+(section 6); the program detects an altered state file by digest and stops. If the
+skill never writes the result file, the retry limit ends the phase as blocked. The
+damage a bad method can do is a bad judgment or a wasted phase, which is the same
+risk as a bad default.
 
 ## 9. How a worker runs
 
@@ -464,14 +508,22 @@ review's first finding weighs on this decision: only the SDK runner yields
 ## 11. Baseline and environment
 
 - The baseline is captured once, after PLAN and before EXECUTE, at the base SHA, in a
-  throwaway worktree: every verify command the plan declares plus detected repo checks
-  from the manifests present. This also proves each plan command runs from a bare
+  throwaway worktree: every verify command the plan declares, except those marked
+  `feature-added`, plus detected repo checks from the manifests present. This also proves each plan command runs from a bare
   worktree root, which retires the report's item 9.
 - Failures are keyed on test identity. Per-runner parsers for pytest, vitest and jest,
   go test, and cargo test extract file plus test name. A normalized fingerprint, with
-  paths, durations, counts, PIDs, and timestamps stripped, is the fallback for unknown
-  output. A summary banner that changes because a passing test was added cannot
-  register as a regression.
+  paths, durations, counts, PIDs, and timestamps stripped under a versioned
+  normalization rule, is the fallback for unknown output. A summary banner that
+  changes because a passing test was added cannot register as a regression. The same
+  parsers and the same normalization rule are what VERIFY's evidence comparison uses
+  (section 4), so an elapsed time or a temporary path can never reject a valid
+  verification; the raw output digest is kept for provenance and is not compared.
+- A command the plan declares `feature-added` has no run at base. The baseline records
+  it as `no-baseline`. At the owning task's first integration the command must run and
+  succeed meaningfully: exit zero, and at least one parsed test identity where a parser
+  exists. That first run becomes the command's task-local baseline for every later
+  comparison. Absence at base is neither failure evidence nor automatic tolerance.
 - Environment health is part of the baseline. A command that cannot collect at all is
   recorded once with its error class. The verifier and the integrator read the same
   record, so a pre-existing failure is litigated zero times instead of eight.
@@ -568,13 +620,29 @@ Kept as in 6.9:
   stdout when Cloud Run's `CLOUD_RUN_JOB` or `K_SERVICE` is present, because Cloud
   Logging grades stderr as errors; otherwise stderr. `LOOP_SPEC_CONSOLE_EVENTS=0`
   silences the console lines without touching the ledger.
-- The terminal result's schema 1 shape: `schema`, `loopSpecVersion`, `slug`,
-  `status` in `completed`, `paused`, `escalated`, `terminal`, `failed`, `outcome`,
-  `reason`, `summary`, plus the atomic `.loop-spec/last-result.json` pointer and its
-  stale-result clearing. The four 7.x results map onto it additively: `converged`
-  and `converged-with-caveats` are `status: completed` with that `outcome`;
-  `no-change` is `completed` with `outcome: no-change`; `escalated` is `escalated`;
-  `failed` is `failed`; a pending question is `paused` with the question id.
+- The terminal result's schema 1 shape and every existing field's meaning: `schema`,
+  `loopSpecVersion`, `cycleType`, `slug`, `status` in `completed`, `paused`,
+  `escalated`, `terminal`, `failed`, `outcome` with its existing values including
+  `delivered` and `no-change-needed`, `reason`, `summary`, `noChangeReason`,
+  `converged`, `workDelivered`, `verification`, `delivery`, `prUrl`,
+  `checkpointPrUrl`, `verifiedSha`, `iterations`, `warnings`, plus the atomic
+  `.loop-spec/last-result.json` pointer and its stale-result clearing. No existing
+  value is renamed and no existing field changes meaning. The 7.x classification is
+  a new field, `result`, added beside them:
+
+  | 7.x `result` | existing fields it is written with |
+  |---|---|
+  | `converged` | `status: completed`, `outcome: delivered`, `converged: true`, `workDelivered: true`, `verification.status: passed`, `delivery` filled |
+  | `converged-with-caveats` | as `converged`, with the draft flag set inside `delivery`, and each outstanding finding listed in `warnings` |
+  | `no-change` | `status: completed`, `outcome: no-change-needed`, `noChangeReason: already-satisfied`, `converged: true`, `workDelivered: false`, `verification.status: passed` |
+  | `escalated` | `status: escalated`, `converged: false`, `verification` as observed, `delivery` filled only for a partial draft |
+  | `failed` | `status: failed`, `converged: false` |
+  | question pending | `status: paused`, `reason` names the question id |
+
+  Fixtures at M1 cover each row plus partial workspace publication, interruption
+  during delivery, delivery blocked, and a retried creation. The second review's F7
+  stays open until that matrix exists and every fixture round-trips through a 6.9
+  consumer unchanged.
 - The chat shape, bound by `output-styles/loop-spec.md`, which is kept and not deleted
   at cutover, because it is the only place that shape binds in Claude Code. Other
   hosts follow the shared report-style contract as today.
@@ -656,7 +724,7 @@ behavior.
 | M1 | state, repo, baseline, events, the implementation contract, the step seam, the fake runner, host probes | offline suite drives an empty cycle through all seven boundaries; native dispatch, worktree, and receipt probes recorded |
 | M2 | SPEC and PLAN defaults in the lead, `submit`, intent guard, re-approval as a question | a spec change after approval yields exit 3 and an answer re-approves |
 | M3 | EXECUTE default: dag, worktrees, implement and review roles, integration against baseline | offline suite passes the happy path; an unreviewed commit cannot cross the EXECUTE boundary; an external EXECUTE passes its postconditions |
-| M4 | VERIFY and ITERATE defaults: acceptance, ledger, delta review, spot check, goal judgment, bounded rewinds | the report's four-pass sequence terminates `converged-with-caveats` after two rewinds; a green checklist with an unmet goal rewinds |
+| M4 | VERIFY and ITERATE defaults: acceptance, ledger, delta review, full evidence re-run in a clean checkout, goal judgment, bounded rewinds | the report's four-pass sequence terminates `converged-with-caveats` after two rewinds; a green checklist with an unmet goal rewinds |
 | M5 | DELIVER, workspace, result contract, role binding, supervisor example | a two-repo workspace delivers two PRs offline against a local remote; a bound review role runs |
 | M6 | live gates | section 17 passes in interactive Claude Code and in the SDK; evidence recorded |
 | M7 | cutover | `main` is 7.0.0, `6.x` branch cut, marketplace follows, CHANGELOG written |
@@ -665,6 +733,11 @@ behavior.
 
 Recorded so the plan does not lean on memory:
 
+- Whether native Claude Code exposes a per-dispatch transcript the program can read,
+  keyed by an id the lead can submit, whose opening contains the prompt the program
+  composed and whose end contains the worker's result digest. Host attestation for
+  native review depends on it, and the native path is not the default review runner
+  until this passes.
 - Whether the Agent tool in Claude Code and in the SDK starts a subagent that can be
   told a working directory and honors it, and whether `isolation: "worktree"` exists
   in the SDK's `AgentDefinition`. It does not appear in the documentation; the program
@@ -699,6 +772,12 @@ criteria and decisions, not only goal and boundaries; EXECUTE checks both direct
 VERIFY re-runs every cited command; DELIVER binds PR identity and carries 6.9's
 readiness checks; execution evidence is a recorded level and never a file property;
 `external` is a changed boundary rather than format-only; the output style is kept.
+From the re-audit: unattested review never satisfies the review gate by default;
+evidence is compared on parsed identities and normalized output, never raw digests;
+re-runs happen in a program-owned clean checkout; retired worktrees are never reused;
+the schema 1 result keeps every field and value and gains a `result` field; the
+no-change head goes through VERIFY and ITERATE and ends without a PR; feature-added
+commands get a task-local baseline at first integration.
 
 Pending: the runner count (section 9), which the evidence-level finding tips toward
 shipping both. Pending for M0: supported host versions, the migration inventory, and

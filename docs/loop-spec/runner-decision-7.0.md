@@ -7,7 +7,7 @@ sits. The section below states that position. Everything after it is the reviewe
 comparison and report analysis, kept as written, and is the evidence the position
 rests on.
 Audience: maintainers and reviewers of [ROADMAP-7.0.md](ROADMAP-7.0.md), sections 5,
-6, and 8.
+6, and 9.
 
 ## Where this sits after the phase-interface decision
 
@@ -39,14 +39,17 @@ Option I is superseded rather than rejected. The roadmap keeps what it was after
 one small product interface per phase, instructions that own the method, and no
 helper vocabulary for the model to learn. It adds the piece this document found
 missing after reading the report: postconditions the program verifies on the
-repository, so a valid product cannot describe a false completion. A team that wants
-the pure instruction-led shape gets it by binding a phase to `external` and doing
-the phase with its own skills; the boundary check still runs.
+repository, so a valid product cannot cross a boundary whose postconditions do not
+hold. The boundary proves the execution and evidence protocol and nothing about
+semantics; the roadmap's section 6 says which judgments stay with a model or a
+person. Binding a phase to `external` lets a team do the phase with its own skills,
+and the boundary check still runs, so it is a changed boundary compared with the
+format-only option this document described, and the roadmap records it as such.
 
 The one recommendation still open for the maintainer is the runner count before
 cutover: the native runner alone on both hosts, with the SDK runner added on a
 measured failure, or both runners with separate live gates as this document
-recommends. The roadmap records both positions in its section 8. The authentication
+recommends. The roadmap records both positions in its section 9. The authentication
 finding below stands under either: the SDK runner can never be the interactive
 default.
 
