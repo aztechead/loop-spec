@@ -145,7 +145,17 @@ CONTRACTS: dict[str, str] = {
 
 
 def compose_prompt(role: Role, *, inputs: dict, result_path: Path, cwd: Path, phase: str) -> str:
-    sections = [f"## Method\n{role.body}".rstrip()]
+    # The Agent tool has no working-directory parameter, so a worker starts in the
+    # lead's checkout; three live workers edited, reset, or checked out there before
+    # reading the cwd line at the bottom of the prompt (LF-08, LF-15, LF-20). It is the
+    # first thing they read now.
+    sections = [
+        f"WORKING DIRECTORY: {cwd}\n"
+        f"Every command you run starts with `cd {cwd} &&` (or uses `git -C {cwd}`). "
+        "Never run git checkout, reset, clean, or commit in any other directory; the "
+        "directory you were started in belongs to the user.",
+        f"## Method\n{role.body}".rstrip(),
+    ]
 
     contract = CONTRACTS.get(role.name)
     if contract:
