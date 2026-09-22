@@ -1,0 +1,76 @@
+{
+  "autonomous": false,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "feat/add-a-divide-a-b-function-to-the-calc-pa",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": false,
+  "createdAt": "2026-09-22T10:26:15+00:00",
+  "cycleType": "revise",
+  "delivery": null,
+  "eligibleTargets": [
+    {
+      "branch": "feat/add-a-divide-a-b-function-to-the-calc-pa",
+      "targetSha": "233a439315ab5111386957fb33deb088e388feb2"
+    }
+  ],
+  "feature_title": "revise PR #2: https://github.com/aztechead/loop-spec-live-7/pull/2",
+  "finishedAt": "2026-09-22T10:45:02+00:00",
+  "hostVersions": {
+    "claude": "2.1.278 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": false,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 2
+  },
+  "loopSpecVersion": "7.0.0",
+  "noChangeReason": null,
+  "outcome": "escalated",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "plan",
+  "policyAnsweredQuestions": [],
+  "prUrl": null,
+  "prs": [],
+  "reason": "the rewind budget has no room for plan spec gap",
+  "result": "escalated",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-949f424a5863"
+    }
+  },
+  "rewinds": 2,
+  "schema": 1,
+  "slug": "revise-2",
+  "status": "escalated",
+  "summary": "revise escalated at plan",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "not-run"
+  },
+  "verifiedSha": "233a439315ab5111386957fb33deb088e388feb2",
+  "warnings": [],
+  "weakenedAssurance": [],
+  "workDelivered": false
+}
