@@ -326,3 +326,38 @@ Validation performed: current diffs and affected source sections reviewed; roadm
 route matrix, native probe record and checklist pass the shipped documentation lint.
 No paid runs, transcript replay, worktree probe or 7.0 execution was performed. Only
 this review record was amended.
+
+
+## Closure and M0 recommendation at revision 17707d4
+
+**Recommend M0 sign-off.** The three findings from the 8d45bbb review are closed
+at the written-contract level. No new blocking finding was identified in this change.
+
+| Finding | Current evidence | Disposition |
+|---|---|---|
+| Early exhaustion entered ITERATE without its inputs | T1 now writes a controller-owned terminal escalation naming the refused exit, gap and budget. ITERATE requires VERIFY passed; I4 handles its own refused rewind or uncloseable gap. The terminal table includes controller escalation from PLAN/EXECUTE/VERIFY. | Closed. |
+| Adopted commits rejected by the roadmap's coverage rule | Section 4 now maps commits to done or adopted tasks. The detailed E5/E6 predicates and roadmap section 7 require a fresh full review of the adopted range with accepted execution evidence. | Closed. |
+| Conflicting validation policies | Roadmap, checklist staging/mechanics/completion, inventory and migration how-to now use deterministic-Python unit tests plus recorded live cycle cases. M1 uses the external placeholder, not a fake runner; old offline-cycle and version-pin requirements are retired. | Closed. |
+
+One non-blocking summary wording cleanup remains: the roadmap's EXECUTE row says
+“every done task” in its review clause, whereas E5 and section 7 expressly include
+adopted tasks. Read the summary with those explicit requirements; it is not an
+exemption from adopted-range review. Align that phrase when next editing the table.
+
+The accepted validation rule is: unit tests for deterministic Python modules on
+their own inputs and outputs; cycle-level behavior demonstrated by recorded live
+runs. No offline cycle suite, fake runner, or pinned host-version gate is required.
+Each live case records its run ID, result, events, plugin revision and observed host
+versions. This audit does not reintroduce the retired testing policy.
+
+M0 sign-off approves the documented architecture and recorded decisions. It does
+not certify a working 7.0 release. The native attestation record remains one-host
+feasibility evidence with its stated exclusions. F7's result compatibility evidence,
+the M1 live empty-cycle and worktree checks, and independent native/SDK release gates
+remain implementation-stage obligations. M1 is not complete on the evidence in this
+revision.
+
+Validation: reviewed the 17707d4 diff and affected route, task-coverage, validation,
+and milestone sections. The five affected planning documents passed the shipped
+markdown lint. No live run or runtime compatibility claim was added. The worktree
+was clean before this closure record was appended; only the review record was edited.
