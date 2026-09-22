@@ -122,6 +122,27 @@ class IterateTests(unittest.TestCase):
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, IssueStep)
 
+    def test_legacy_iterate_state_reinitializes_and_emits_module_state_reset(self):
+        # A run whose state.iterate predates the per-repo shape (LF-28) has
+        # "boundSha" (singular) instead of "boundShas"; a hand-built dict in that
+        # old shape stands in for one such old run and must not KeyError on
+        # resume, and priorGaps (unaffected by the rename) survives the reset.
+        self.store.state["iterate"] = {
+            "priorGaps": [{"target": "plan", "text": "an earlier gap"}],
+            "judgeStep": "step-old", "judge": {"verdict": "met", "gaps": [], "caveats": []},
+            "boundSha": self.head_sha,
+        }
+        self.store.save()
+
+        action = step(self.store, self.paths, self.ctx)
+
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(self.store.state["iterate"]["priorGaps"], [{"target": "plan", "text": "an earlier gap"}])
+        self.assertIn("boundShas", self.store.state["iterate"])
+        events_text = self.paths.events_jsonl.read_text()
+        self.assertIn('"module_state_reset"', events_text)
+        self.assertIn("boundShas", events_text)
+
 
 if __name__ == "__main__":
     unittest.main()

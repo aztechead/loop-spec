@@ -432,6 +432,31 @@ class ExecuteLifecycleTests(unittest.TestCase):
         action = step(self.store, self.paths, rejection_ctx | {"attempt": {"id": "attempt-e4-2"}})
         self.assertIsInstance(action, Pause)
 
+    def test_legacy_execute_state_backfills_and_emits_module_state_reset(self):
+        # A run whose state.execute predates handledRejections (LF-16) or a
+        # repo's defaultHead (LF-15) must not KeyError on resume; a hand-built
+        # legacy dict, missing both, stands in for one such old run.
+        self._implement_and_review("T-1", "T-1.txt")
+        execute_state = self.store.state["execute"]
+        del execute_state["handledRejections"]
+        del execute_state["repos"]["repo"]["defaultHead"]
+        self.store.save()
+
+        rejection_ctx = self.ctx | {
+            "attempt": {"id": "attempt-legacy"},
+            "entry": {"mode": "remediation", "payload": {"rejected": {
+                "exit": "integrated",
+                "failures": [{"id": "E6", "message": "tasks with an unaccepted review evidence level: T-1"}],
+            }}},
+        }
+        action = step(self.store, self.paths, rejection_ctx)
+        self.assertIsInstance(action, IssueStep)
+
+        events_text = self.paths.events_jsonl.read_text()
+        self.assertIn('"module_state_reset"', events_text)
+        self.assertIn("defaultHead", events_text)
+        self.assertIn("handledRejections", events_text)
+
 
 if __name__ == "__main__":
     unittest.main()

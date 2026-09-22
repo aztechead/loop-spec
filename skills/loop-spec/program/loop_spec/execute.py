@@ -19,6 +19,7 @@ from . import repo as repo_module
 from .budget import has_room
 from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
+from .events import emit
 from .paths import ensure_results_dir
 from .postconditions import retry_limit
 from .roles import compose_prompt, load_role
@@ -337,7 +338,7 @@ def _blocked_pause_request(ctx, text: str, payload: dict) -> dict:
     return request
 
 
-def _drifted_repo(store, execute_state: dict) -> dict | None:
+def _drifted_repo(store, paths, execute_state: dict, attempt_id: str | None = None) -> dict | None:
     """The first repo whose feature or default branch no longer points where
     execute.py last recorded it -- an out-of-band commit, most often a worker
     committing into the wrong checkout (LF-13's feature-branch case, LF-15's
@@ -357,6 +358,9 @@ def _drifted_repo(store, execute_state: dict) -> dict | None:
         if "defaultHead" not in repo_state:
             repo_state["defaultHead"] = default_actual
             store.save()
+            emit(paths, "module_state_reset",
+                 {"summary": f"execute repo {name!r} had no defaultHead; adopted the current one", "missingKey": "defaultHead"},
+                 phase="execute", attempt_id=attempt_id)
         if default_actual is not None and default_actual != repo_state["defaultHead"]:
             return {"repo": name, "branch": repo_info["defaultBranch"], "isDefault": True,
                      "expected": repo_state["defaultHead"], "actual": default_actual}
@@ -405,7 +409,7 @@ def _rejection_task_ids(message: str, execute_state: dict) -> list[str]:
     return [tid for tid, t in execute_state["tasks"].items() if t["status"] == "done"]
 
 
-def _handle_rejection(store, ctx, execute_state: dict) -> Pause | None:
+def _handle_rejection(store, paths, ctx, execute_state: dict) -> Pause | None:
     """LF-16: a rejected EXECUTE product re-enters remediation with the SAME
     already-"done" task state that got rejected -- left alone, the next attempt
     reproduces the identical product and gets rejected again. Undo just enough of
@@ -420,7 +424,14 @@ def _handle_rejection(store, ctx, execute_state: dict) -> Pause | None:
     if not rejected or not rejected.get("failures"):
         return None
     attempt_id = ctx["attempt"]["id"]
-    if attempt_id in execute_state.setdefault("handledRejections", []):
+    # A run that started before this field existed has no handledRejections list;
+    # start one rather than fail every older run on resume.
+    if "handledRejections" not in execute_state:
+        execute_state["handledRejections"] = []
+        emit(paths, "module_state_reset",
+             {"summary": "execute state had no handledRejections; starting one", "missingKey": "handledRejections"},
+             phase="execute", attempt_id=attempt_id)
+    if attempt_id in execute_state["handledRejections"]:
         return None
     execute_state["handledRejections"].append(attempt_id)
 
@@ -521,11 +532,11 @@ def step(store, paths, ctx):
     if _self_heal_commits(store, execute_state):
         store.save()
 
-    drift = _drifted_repo(store, execute_state)
+    drift = _drifted_repo(store, paths, execute_state, ctx["attempt"]["id"])
     if drift is not None:
         return _drift_pause(ctx, drift)
 
-    rejection_pause = _handle_rejection(store, ctx, execute_state)
+    rejection_pause = _handle_rejection(store, paths, ctx, execute_state)
     if rejection_pause is not None:
         return rejection_pause
 
@@ -627,7 +638,7 @@ def on_submit(store, paths, step, result: dict) -> None:
     # this implementation has no need for it yet. `step` is the registered step
     # record (has cwd/role/stepAttemptId), not this module's own step() function.
     execute_state = store.state["execute"]
-    if _drifted_repo(store, execute_state) is not None:
+    if _drifted_repo(store, paths, execute_state, step.get("attempt")) is not None:
         # LF-15: a repo drifted underneath this submission. Folding it into task
         # state would trust a possibly-compromised worktree; leave the task
         # exactly where it was and let the next step() call raise the pause

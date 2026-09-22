@@ -156,6 +156,27 @@ class VerifyTests(unittest.TestCase):
         self.assertTrue(product["findings"][0]["id"].startswith("finding-"))
         self.assertEqual(product["findings"][0]["repo"], "repo")
 
+    def test_legacy_verify_state_reinitializes_and_emits_module_state_reset(self):
+        # A run whose state.verify predates the per-repo shape (LF-28) has no
+        # "reviewers" key at all; a hand-built dict in that old shape stands in
+        # for one such old run and must not KeyError on resume.
+        self.store.state["verify"] = {
+            "head": self.base_sha, "range": {"from": self.base_sha, "to": self.head_sha, "full": True},
+            "rangeProbes": {}, "phase": "verifying",
+            "verifierStep": None, "reviewerStep": None, "verifier": None, "reviewer": None,
+            "pass": 1,
+        }
+        self.store.save()
+
+        action = step(self.store, self.paths, self.ctx)
+
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "verifier")
+        self.assertIn("reviewers", self.store.state["verify"])
+        events_text = self.paths.events_jsonl.read_text()
+        self.assertIn('"module_state_reset"', events_text)
+        self.assertIn("reviewers", events_text)
+
 
 class WorkspaceVerifyTests(unittest.TestCase):
     """LF-28: a workspace run with two touched repos -- one clean checkout and one

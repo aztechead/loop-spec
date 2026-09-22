@@ -15,6 +15,7 @@ from . import probes as probes_module
 from . import repo as repo_module
 from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
+from .events import emit
 from .execute import IssueStep, Product
 from .ids import new_id
 from .paths import ensure_results_dir
@@ -243,6 +244,14 @@ def _final_product(store, ctx, verify_state: dict) -> dict:
 
 def step(store, paths, ctx):
     verify_state = store.state.get("verify")
+    if verify_state is not None and "reviewers" not in verify_state:
+        # A run whose state.verify predates the per-repo shape (LF-28) has none
+        # of its keys; re-initialize for this attempt rather than KeyError on
+        # every field below.
+        emit(paths, "module_state_reset",
+             {"summary": "verify state predates the per-repo shape; re-initializing", "missingKey": "reviewers"},
+             phase="verify", attempt_id=ctx["attempt"]["id"])
+        verify_state = None
     if verify_state is None:
         verify_state = _init(store, paths, ctx)
 

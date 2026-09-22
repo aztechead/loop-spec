@@ -12,6 +12,7 @@ from . import repo as repo_module
 from .budget import has_room
 from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
+from .events import emit
 from .execute import IssueStep, Product
 from .paths import ensure_results_dir
 from .roles import compose_prompt, load_role
@@ -114,6 +115,17 @@ def _final_product(store, ctx, iterate_state: dict) -> dict:
 def step(store, paths, ctx):
     heads = _heads(store)
     iterate_state = store.state.get("iterate")
+    if iterate_state is not None and "boundShas" not in iterate_state:
+        # A run whose state.iterate predates the per-repo shape has "boundSha"
+        # (singular) instead; re-initialize for this attempt, keeping priorGaps
+        # (unaffected by the rename) rather than KeyError on the field below.
+        emit(paths, "module_state_reset",
+             {"summary": "iterate state predates the per-repo shape; re-initializing", "missingKey": "boundShas"},
+             phase="iterate", attempt_id=ctx["attempt"]["id"])
+        iterate_state = {"priorGaps": iterate_state.get("priorGaps", []), "judgeStep": None,
+                          "judge": None, "boundShas": None}
+        store.state["iterate"] = iterate_state
+        store.save()
     if iterate_state is None:
         iterate_state = {"priorGaps": [], "judgeStep": None, "judge": None, "boundShas": None}
         store.state["iterate"] = iterate_state
