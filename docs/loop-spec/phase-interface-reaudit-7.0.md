@@ -241,3 +241,35 @@ proof that Claude Code compatibility has been preserved.
 Validation for this follow-up: reviewed the revision diff, the changed contract rows,
 the evidence policy, and the current 6.9 result documentation and implementation.
 No live model/host tests were run, and the favored-plan documents were not modified.
+
+
+## Closure check at revision 808985d
+
+The three follow-up counterexamples are closed at the written-contract level.
+This does not close implementation testing or the separately tracked F7 consumer
+compatibility gate.
+
+| Follow-up | Resolution verified in the current files | Status |
+|---|---|---|
+| A: draft incorrectly inherits ready-delivery convergence | The caveats row now uses `delivered-draft`, `workDelivered: true`, and `converged: false`. The rule retains legacy convergence semantics and places the new classification only in `result`. | Contract correction accepted; F7 remains open for the M1 compatibility fixtures. |
+| B: self-selected evidence exemption | VERIFY requires approval outside the implementation, through approved PLAN policy or a correlated operator answer. Claimed evidence is reported under `weakenedAssurance`. | Closed in the contract. |
+| C: cleanup deletes an active worker's directory after a timeout | Grace expiry cancels where possible, quarantines, and reports a cleanup backlog. Deletion requires confirmed termination; expiry alone cannot trigger it. | Closed in the contract. |
+
+The both-runner decision is consistent in the roadmap and the runner document.
+The auditor continues to recommend it. Native Claude Code remains an independent
+release gate, and the program does not silently move an interactive user to SDK
+authentication. Native attestation is explicitly an early feasibility gate. If the
+probe fails, accepting human attestation or weaker assurance is a maintainer release
+decision, not an automatic fallback or an audit claim of native parity.
+
+Outstanding work remains explicit: the migration inventory, standalone route
+matrix, supported host versions, native attestation probe, M1 compatibility fixtures,
+and the separate live gates. The legacy mapping fixtures must include the existing
+`completed-with-gaps` rules for blocking feedback or iteration-budget warnings,
+as well as `delivered-draft`, `delivered-unready`, and partial delivery. The corrected
+convergence boolean alone is not proof that every legacy classification round-trips.
+
+This check reviewed the commit diff, the phase and approval requirements, cleanup
+lifecycle, both runner-position sections, and the existing result writer around
+`lib/cycle-result.sh` lines 932–968. No new plan-level blocking finding was identified
+in those changes. No 7.0 runtime or live-host validation was performed.
