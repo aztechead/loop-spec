@@ -2,10 +2,10 @@
 
 Reference for the agent implementing the 7.0 contract, and the live checklist the
 maintainer ticks while using the plugin. Prepared from `c8b6d72`, including the
-thirteen accepted migration decisions. Decided 2026-09-22: 7.x ships no test suite,
-so no case below becomes an automated test; a case is done when a live run has shown
-its expected outcome and that run's result and events are recorded next to the case
-id. This is a specification, not evidence that any case has passed.
+thirteen accepted migration decisions. Decided 2026-09-22: 7.x unit-tests only its
+deterministic Python modules; no case below becomes an automated test, because every
+case here is cycle-level behavior. A case is done when a live run has shown its
+expected outcome and that run's result and events are recorded next to the case id. This is a specification, not evidence that any case has passed.
 
 Sources: [roadmap](ROADMAP-7.0.md), [route matrix](phase-interface-7.0.md),
 [migration inventory](migration-inventory-7.0.md), and the two
@@ -15,24 +15,25 @@ must supply those names and update the [migration how-to](migrating-6-to-7.md).
 
 ## Ownership and staging
 
-This specification is an independent contribution for the implementing agent.
-The roadmap, route matrix, migration decisions, and runner choice are unchanged.
-The other workstream can pin supported versions and conduct the native attestation
-probe with the maintainer. Do not infer host support from these offline cases.
+This specification is an independent contribution for the implementing agent and
+the maintainer. The roadmap, route matrix, migration decisions, and runner choice are
+unchanged. The native attestation probe is done (`native-attestation-probe-7.0.md`);
+host versions are recorded per live run, not pinned. Do not infer host support from a
+case shown on one host.
 
-At M1, implement the shared protocol, fake runner, real Git fixtures, result-consumer
-fixtures, and rejection tests supported by the boundary code then present. Register
-later-phase cases with their target milestone. A registered or skipped case is not
-a passing case, and M1 completion does not imply M3–M6 behavior exists.
+At M1, implement the shared protocol, the external placeholder implementation, and
+the boundary code, then show the M1 cases live. Later-phase cases are shown at their
+target milestone. A case that has not been run live is not a passing case, and M1
+completion does not imply M3–M6 behavior exists.
 
 | Target | Required evidence |
 |---|---|
-| M1 | shared identity/lifecycle checks; schema and route fixtures; compatibility fixtures; fake-runner empty-cycle traversal; versioned host-probe record |
+| M1 | shared identity/lifecycle checks; schema and route cases; compatibility cases; a live empty-cycle traversal with every phase external; the host-probe record with its versions |
 | M2 | real SPEC/PLAN boundary behavior, answer scopes, approvals and critic admission |
 | M3 | real worktree/dispatch/integration behavior, probe placement and external EXECUTE |
 | M4 | real verification, intent judgment, baseline comparison and bounded remediation |
-| M5 | real delivery orchestration against local Git and a fake PR service; workspace and revise cases |
-| M6 | independent live native-Claude-Code and direct-SDK records on pinned versions |
+| M5 | real delivery orchestration against a local remote or a throwaway GitHub repository; workspace and revise cases |
+| M6 | independent live native-Claude-Code and direct-SDK records, each naming the versions it ran on |
 
 ## Fixture mechanics
 
@@ -42,16 +43,17 @@ workspace cases. Use real Git operations and small local test commands for check
 that purport to observe the world. A canned PASS result must not supply the oracle
 for whether a Git ref moved, a command ran, or a checkout is clean.
 
-Replace model execution with a fake runner. Its dispatch log records attempt, role,
-method/input digests, repository, range, lifecycle, and output. Native transcript
-fixtures are synthetic and version-labelled; passing their parser tests does not
-prove Claude Code exposes that transcript. Use a fake PR service with an operation
-log and independently inspectable remote state. No live `gh`, provider, fetched
-dependency docs, or paid model calls belong in the offline suite.
+Model execution is real: the case is shown by running the plugin. For M1 cases
+every phase is the external placeholder, so no model is dispatched and the boundary
+machinery is what is observed. The program's events ledger is the dispatch log:
+attempt, role, method and input digests, repository, range, lifecycle, and output.
+Delivery cases use a local bare remote or a throwaway GitHub repository the
+maintainer owns; the PR service is real.
 
-Every case declares: stable fixture ID, source predicate, target milestone, setup,
+Every case declares: stable case ID, source predicate, target milestone, setup,
 stimulus, observable assertions, and whether a decision below blocks its expected
-outcome. Error-code spelling remains M1 work. Assert semantic failure class and state
+outcome. A shown case records the run id, the result file, and the events ledger
+next to its ID. Error-code spelling remains M1 work. Assert semantic failure class and state
 until the public codes exist, then freeze those codes in the reference.
 
 For every rejected submission assert that the next phase did not open, the feature
@@ -60,9 +62,8 @@ accepted state was not overwritten. Diagnostic events and bounded retry bookkeep
 may legitimately change. For accepted submissions assert the expected transition,
 artifact, event, and repository result rather than just an exit code.
 
-Reuse deterministic clocks and recorded dependency-doc excerpts. Keep ordinary
-fixtures offline and within the roadmap's 157-second suite ceiling. Timeouts and
-missing host handles must never be interpreted as proof of successful termination.
+Timeouts and missing host handles must never be interpreted as proof of successful
+termination.
 
 ## Shared protocol and host boundary cases
 
@@ -206,14 +207,14 @@ unavailable transcript. Observe question handling, denial and cancellation using
 the host's actual behavior. This establishes feasibility only; M6 still runs the
 full defect/remediation/PR scenario independently on native Claude Code and SDK.
 
-Pin supported versions from those records. A documented version or an installed
-binary alone is not a supported-version result. A failed native probe must not be
-converted into an automatic SDK fallback or called a passed native gate.
+Each record names the versions it ran on; a documented version or an installed
+binary alone says nothing about behavior. A failed native probe must not be
+converted into an automatic SDK fallback or called a passed native gate. The first
+record exists: `native-attestation-probe-7.0.md`, Claude Code 2.1.278.
 
 ## Completion evidence for this specification
 
-The implementing agent should attach a manifest that maps each ID to its test name,
-implementation milestone, result, and last tested commit. Include the exact pinned
-consumer and host-probe revisions. M1's report separates passed, failed, pending
-implementation, blocked decision, and live-only cases. The suite may not count a
-missing test or fake transcript as runtime compatibility evidence.
+The implementing agent should attach a manifest that maps each ID to the live run
+that showed it: run id, result file, events ledger, plugin commit, and the host
+versions recorded. M1's report separates shown, failed, pending implementation, and
+blocked decision. A case with no recorded run is not evidence of anything.

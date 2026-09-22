@@ -66,7 +66,7 @@ earlier phase or re-enters the same one. It appears in each such exit's `Require
 
 | Id | Postcondition | Gates |
 |---|---|---|
-| T1 | the shared feature-level budget has room and this transition was counted once against it; default two, operator override, persisted across sessions, never reset by a fresh attempt. When the budget is spent the program refuses the backward exit and enters ITERATE with the gap, and I4 exits `escalated` | PLAN `spec gap`; EXECUTE `plan gap`; VERIFY `implementation gap`, `plan gap`, `intent gap`, `evidence incomplete`; ITERATE `rewind` |
+| T1 | the shared feature-level budget has room and this transition was counted once against it; default two, operator override, persisted across sessions, never reset by a fresh attempt. When the budget is spent the program refuses the backward exit and escalates directly from the controller: it writes the terminal `escalated` result itself, naming the refused exit, the gap, and the budget record, without entering any phase. ITERATE is not involved, because its inputs may not exist yet | PLAN `spec gap`; EXECUTE `plan gap`; VERIFY `implementation gap`, `plan gap`, `intent gap`, `evidence incomplete`; ITERATE `rewind` |
 
 ## SPEC
 
@@ -188,7 +188,7 @@ outright incorrect implementations; the PR review catches the rest.
 |---|---|
 | Inputs | the immutable original request; approved SPEC; integrated diff; VERIFY product; prior gaps; rewind count and budget |
 | Product | `verdict` against the original request; `gaps[]`; `route` |
-| Preconditions | VERIFY `passed` at the current revisions, including the `no change` head; or entered by the program with VERIFY's gaps when the budget is spent |
+| Preconditions | VERIFY `passed` at the current revisions, including the `no change` head |
 | Runs as | a fresh goal-judgment role |
 
 | Id | Postcondition | Gates |
@@ -196,7 +196,7 @@ outright incorrect implementations; the PR review catches the rest.
 | I1 | product validates; the verdict binds the integrated SHA, the requirements revision, and the plan revision | every exit |
 | I2 | every gap names a target of SPEC, PLAN, EXECUTE, or VERIFY | `rewind` |
 | I3 | T1 holds for this rewind | `rewind` |
-| I4 | the budget is spent, or a criterion or goal gap is open that no route can close | `escalated` |
+| I4 | a rewind is needed and T1 refuses it, or a criterion or goal gap is open that no route can close | `escalated` |
 | I5 | VERIFY `passed` at this SHA and no open gap against the original goal; the shared convergence predicate | `converged`, `converged with caveats` |
 | I6 | no Critical finding open; the caveats list contains only accepted non-Critical review findings, each with a recorded disposition, and nothing else | `converged with caveats` |
 
@@ -279,7 +279,7 @@ ITERATE exit at the current revisions.
 | DELIVER `delivered` after ITERATE `converged` | `converged` | `status: completed`, `outcome: delivered`, `converged: true`, `workDelivered: true` |
 | DELIVER `delivered` after `converged with caveats` | `converged-with-caveats` | `outcome: delivered-draft`, `converged: false`, findings in `warnings` |
 | ITERATE `converged` on a `no change` head | `no-change` | `outcome: no-change-needed`, `noChangeReason: already-satisfied`, `converged: true`, `workDelivered: false` |
-| ITERATE `escalated` | `escalated` | `status: escalated`, `converged: false` |
+| ITERATE `escalated`; T1 refused at PLAN, EXECUTE, or VERIFY, written by the controller | `escalated` | `status: escalated`, `converged: false` |
 | process exit 1; environment cannot run the plan | `failed` | `status: failed`, `converged: false` |
 | process exit 3 outstanding, including every `blocked` exit | question pending | `status: paused`, `reason` names the question id and, for a blocked exit, the cause |
 | a `blocked` exit answered stop | `escalated` | `status: escalated`, `converged: false`, the cause in `reason` |
@@ -294,7 +294,9 @@ The four routes the first version left for M1, answered from the M1 fixtures rev
 - Every `blocked` exit pauses with a question and resumes into the same phase or, on a
   stop answer, exits terminal `escalated`. One rule for EXECUTE, VERIFY, debug, and
   DELIVER.
-- One shared budget bounds every backward transition (T1, referenced by I3).
+- One shared budget bounds every backward transition (T1, referenced by I3). Exhaustion
+  at any exit escalates directly from the controller; only ITERATE's own refused rewind
+  goes through I4 (after the re-audit at `8d45bbb`).
 - Both converged outcomes share one predicate (I5); caveats hold only accepted
   non-Critical review findings (I6).
 - A Critical critic finding closes only as fixed-and-rechecked or rejected-with-reason

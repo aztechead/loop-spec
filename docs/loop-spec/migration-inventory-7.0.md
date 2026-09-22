@@ -169,7 +169,7 @@ lands.
 | `cycle-launch.sh` | replaced | program `cycle` entry |
 | `cycle-preflight.sh` | replaced | program entry preflight |
 | `cycle-profile.sh` | replaced | `micro` preset |
-| `cycle-reconcile.sh` | replaced | result publication on interruption; M1 fixtures (R§15) |
+| `cycle-reconcile.sh` | replaced | result publication on interruption; live checklist case at M1 (R§15) |
 | `cycle-result.sh` | replaced | result module, schema 1 plus `result` (R§15) |
 | `dag-width.sh` | replaced | dag module, waves of at most three (R§7) |
 | `debug-init.sh` | replaced | debug default (R§4) |
@@ -370,7 +370,7 @@ and 27 test files. R§16: 7.x ships no hook and depends on none for correctness
 | `codex-session-start.sh`, `codex-shell-env.sh`, `codex-user-prompt.sh`, `codex-hooks.json` | Codex | removed | R§20 |
 | `install-bundled-workflows.sh` | manual | removed | Workflow rung |
 | `pre-cycle-permission-check.sh` | manual | removed | Workflow rung |
-| `team/inject-test-lib.sh`, `*.test.sh` (27) | tests | removed | with the hooks; the 7.x offline suite is R§17 |
+| `team/inject-test-lib.sh`, `*.test.sh` (27) | tests | removed | with the hooks; 7.x unit-tests deterministic Python only (R§17) |
 | `hooks.json` | manifest | removed | no hook ships (R§16) |
 | `.gitkeep` (2) | none | removed | |
 
@@ -392,7 +392,7 @@ once. Names ending in `_` are prefixes.
 | `SKILL_DIR`, `PROJECT_DIR`, `DIR`, `PWD`, `FEATURE_DIR`, `ARTIFACT_DIR`, `RESULT_ROOT`, `EVENTS`, `EVENT_SINK`, `STORE`, `STORE_DIR`, `PORT`, `PORT_ROOT`, `FOOTPRINT_ROOT`, `WORKTREES`, `WORKTREE_DIR` | replaced | state home (R§12); skills reach the program by relative path (R§16) |
 | `LAST_RESULT_FILE` | removed | the pointer has one location, the state home (R§12) |
 | `STATE_REPORT`, `STATE_FLAGS`, `STATE_FINGERPRINT`, `STATE_CURSOR`, `BASE_CURSOR`, `FEATURE_WRITE`, `GATE_WRITE`, `IDENTITY_INPUT`, `SESSION_ID`, `SAME_SESSION`, `INTEGRATION_CANDIDATE`, `INVOCATION_STAMP`, `STAMP_INPUT`, `STAMP_MAX_AGE_MIN`, `HOOK_INPUT`, `GUARD_INPUT`, `FOREIGN_CLAIMANTS`, `COMMIT_TELEMETRY`, `SHARE_DEPENDENCIES`, `VERSION` | replaced | internal program state and ids (R§5); not environment |
-| `CYCLE_RESULT_BIN`, `ACTIVE_CYCLE_BIN`, `PR_DELIVERY_BIN`, `PR_COMMENTS_BIN`, `FINALIZE_CANDIDATE_BIN`, `DEFERRAL_LINT_BIN`, `PR_DELIVERY_CWD`, `BOUNDED_RUN_CWD`, `BOUNDED_RUN_STDIN` | removed | test seams for shell scripts; the offline suite fakes the runner instead (R§17) |
+| `CYCLE_RESULT_BIN`, `ACTIVE_CYCLE_BIN`, `PR_DELIVERY_BIN`, `PR_COMMENTS_BIN`, `FINALIZE_CANDIDATE_BIN`, `DEFERRAL_LINT_BIN`, `PR_DELIVERY_CWD`, `BOUNDED_RUN_CWD`, `BOUNDED_RUN_STDIN` | removed | test seams for shell scripts; 7.x has no cycle-level suite to seam (R§17) |
 | `NON_INTERACTIVE`, `AUTONOMOUS`, `PAUSE` | replaced | answer scope `question` or `run` and `--answer-policy default` at entry (R§5). `NON_INTERACTIVE` needs no successor: exit 3 hands the question to whoever runs the program. `AUTONOMOUS` is a `run`-scoped answer. `PAUSE` is a pending question, `status: paused` |
 | `ORACLE`, `ORACLE_WRITE`, `ORACLE_RECORD`, `ANSWER_`, `ANSWER_TITLE`, `ANSWER_REPOS`, `ANSWER_STYLE`, `ANSWER_SPEC_CONFIRM`, `ANSWER_ITERATE_SPEC` | replaced | supervisor question policy answering `question.json` by id (R§5, R§7) |
 | `CMD_`, `CMD_TEST`, `CMD_LINT`, `CMD_TYPECHECK`, `CMD_PREPARE`, `PROJ_VERIFY_CMD`, `STARTUP_BASELINE`, `EXTENSIONS` | replaced | config `prepare` and baseline detection (R§11) |
@@ -408,7 +408,7 @@ once. Names ending in `_` are prefixes.
 | `CREDENTIAL_REFRESH_CMD`, `CREDENTIAL_REFRESH_TIMEOUT_SECONDS`, `CREDENTIAL_REFRESH_STAGE`, `CREDENTIAL_REFRESH_REPO`, `CREDENTIAL_REFRESH_REASON`, `CREDENTIAL_REFRESH_HOST`, `CREDENTIAL_PREPARED_STAGES`, `AUTH_ERROR_CODE`, `AUTH_ERROR_MESSAGE` | removed | with `credential-refresh.sh`; DELIVER's own check replaces them (R§7) |
 | `TASK_GUARD`, `PATH_GUARD`, `PATH_GUARD_FORCE`, `ROUTE_GUARD`, `ROUTE_GUARD_MAX_AGE_MIN`, `ROUTE_GUARD_TRACE_LOG`, `MICRO_GUARD`, `MICRO_GUARD_MAX_DENIALS`, `MICRO_GUARD_TRACE_LOG`, `MICRO_GUARD_STATE_DIR`, `USERGATE_GUARD`, `USERGATE_STOP_GUARD`, `USERGATE_TRACE_LOG`, `FORGERY_GUARD`, `DEFERRAL_GUARD`, `DEFERRAL_LINT`, `DEFERRAL_TRACE_LOG`, `DEFERRAL_STATE_DIR`, `DISPATCH_PROMPT_GUARD`, `NESTED_SESSION_GUARD`, `PLACEHOLDER_QUESTION_GUARD`, `BLOCKEDBY_GUARD`, `BLOCKEDBY_TRACE_LOG`, `EGRESS_GUARD`, `DONE_CRITERIA`, `ARTIFACT_LINT_FEEDBACK` | removed | hook toggles; the hooks go and the program enforces the invariants (see Hooks) |
 | `DISCIPLINE`, `GRILL`, `SIMPLICITY`, `HUMAN_CODE`, `MICRO`, `RULES`, `RULES_FILE`, `GLOBAL_RULES_FILE`, `LEARNINGS`, `LEARNINGS_FILE`, `RETRO_AUTO_APPLY`, `RETRO_DIGEST_DIR`, `TUNING`, `TUNING_AUTO_APPLY`, `ASSESS_TOP_N`, `ASSESS_SINCE`, `ADHOC_LEDGER`, `QL_STATE`, `QUALITY_LOOP_MAX_ROUNDS`, `REGRESSION_SCAN`, `BACKLOG_FILE`, `SPEC_FILE`, `GROUNDING_SPEC`, `VGAP_MAX_FILES` | removed | with the skills and hooks they configure |
-| `DOC_DEPS`, `DOCS_FIXTURES`, `DOCS_CACHE_TTL_SECS`, `DOCS_CACHE_DIR` | replaced | dependency-docs probe settings in config; fixtures for the offline suite |
+| `DOC_DEPS`, `DOCS_FIXTURES`, `DOCS_CACHE_TTL_SECS`, `DOCS_CACHE_DIR` | replaced | dependency-docs probe settings in config; the fixtures variable goes |
 | `INDIRECTION_MAX_BODY`, `DUP_MIN_LINES` | replaced | probe thresholds in config |
 
 New in 7.x, for completeness: `LOOP_SPEC_HOME` (R§12), `LOOP_SPEC_PHASE_<NAME>` and
@@ -441,7 +441,7 @@ New in 7.x, for completeness: `LOOP_SPEC_HOME` (R§12), `LOOP_SPEC_PHASE_<NAME>`
 
 | 6.9 document | Disposition | 7.x home |
 |---|---|---|
-| `docs/loop-spec/agent-output-contract.md` | replaced | R§15, then the M1 compatibility matrix |
+| `docs/loop-spec/agent-output-contract.md` | replaced | R§15, then the M1 live compatibility checklist |
 | `docs/loop-spec/architecture.md` | replaced | rewritten from the roadmap at M7 |
 | `docs/loop-spec/claude-invocation-contract.md` | replaced | host probes and the runner decision |
 | `docs/loop-spec/cloud-run-autonomous.md` | replaced | SDK runner deployment doc |
@@ -455,7 +455,7 @@ New in 7.x, for completeness: `LOOP_SPEC_HOME` (R§12), `LOOP_SPEC_PHASE_<NAME>`
 | `docs/loop-spec/supervisor-interface.md` | replaced | supervisor example README |
 | `docs/loop-spec/features/*` | removed | 6.9 feature directories in this repo; the 7.x state home is off-branch (R§12) |
 | `docs/adopting.md`, `docs/tier-guide.md`, `docs/determinism-audit.md`, `docs/examples/` | replaced | rewritten or dropped at M7; tier guide goes with the tier matrix; the issue-to-PR action example goes with `issue-intake.sh` |
-| `tests/` (62 top-level, 173 under `tests/lib/`) | removed | the 7.x offline suite (R§17) |
+| `tests/` (62 top-level, 173 under `tests/lib/`) | removed | replaced by unit tests for 7.x's deterministic Python modules plus the live checklist `m1-fixtures-7.0.md` (R§17) |
 
 ## Decisions recorded 2026-09-22
 

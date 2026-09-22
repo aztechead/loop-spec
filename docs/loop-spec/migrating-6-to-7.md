@@ -104,8 +104,9 @@ reading `converged` for what 6.9 meant by it. The stdout markers
 `LOOP_SPEC_PHASE_START`, `LOOP_SPEC_PHASE_END`, `LOOP_SPEC_HANDOFF`, and
 `LOOP_SPEC_RESULT` are unchanged; `LOOP_SPEC_QUESTION` is added on exit 3.
 
-Check: your consumer accepts a result with an unknown extra field. The M1
-compatibility fixtures under `tests/` round-trip each result row.
+Check: your consumer accepts a result with an unknown extra field. Each result row is
+produced by a recorded live run on the M1 checklist; 7.x has unit tests for its
+deterministic Python modules only.
 
 ## 6. If your harness federates questions
 

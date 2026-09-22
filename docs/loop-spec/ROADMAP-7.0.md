@@ -11,7 +11,7 @@ the first version of the contract below. A re-audit,
 [phase-interface-reaudit-7.0.md](phase-interface-reaudit-7.0.md), confirmed three
 closed and left six open; this revision addresses those six in the sections they
 name. Closure is the re-audit's call, not this document's. The counterexamples from
-both reviews become rejection fixtures in M1. 6.9 stays on
+both reviews are rejection cases on the live checklist. 6.9 stays on
 `main` and keeps receiving fixes until 7.0 passes its live gates (M6). Then `main`
 becomes 7, a `6.x` branch is cut for maintenance, and the marketplace entry follows
 `main`. The runner comparison that fed this plan is in
@@ -143,7 +143,7 @@ postconditions for it hold.
 |---|---|---|---|---|
 | SPEC | goal, boundaries, acceptance criteria with ids, decisions, open questions | request text | an approval record exists that was produced from a human or policy answer to a question naming the proposed requirements revision; the record references the question id; the product's own fields cannot create it | approved, needs answer |
 | PLAN | tasks with id, dependencies, files, repo, verify command, criteria covered; prepare command | approved requirements revision | every criterion id is covered by at least one task; every verify command either runs at the base SHA from a bare worktree root, or is declared `feature-added` with a target path that does not exist at base and is validated at that task's first integration; baseline captured (section 11); plan bound to the requirements revision | ready, spec gap |
-| EXECUTE | per-task disposition of `done`, `already-satisfied` with evidence, `removed` by an approved plan amendment, or `adopted` for the one range task a `revise` entry creates; commits per task; unresolved issues | PLAN at the current requirements revision; baseline | every required task has an accepted disposition, and dependencies are complete before dependents; every commit in `base..head` maps to a `done` task; every `done` task has a review record whose reviewed range covers all of that task's commits and whose execution evidence level meets the accepted class for review steps (section 5); each task's verify command produced no new failure identity against its baseline, or, for a `feature-added` command, a meaningful first success as defined in section 11; feature head is reachable from base; the product binds to the plan and requirements revisions per repo; an empty range exits `no-change` and can never exit `integrated` | integrated, no change, blocked, plan gap |
+| EXECUTE | per-task disposition of `done`, `already-satisfied` with evidence, `removed` by an approved plan amendment, or `adopted` for the one range task a `revise` entry creates; commits per task; unresolved issues | PLAN at the current requirements revision; baseline | every required task has an accepted disposition, and dependencies are complete before dependents; every commit in `base..head` maps to a `done` or `adopted` task; every `done` task has a review record whose reviewed range covers all of that task's commits and whose execution evidence level meets the accepted class for review steps (section 5); each task's verify command produced no new failure identity against its baseline, or, for a `feature-added` command, a meaningful first success as defined in section 11; feature head is reachable from base; the product binds to the plan and requirements revisions per repo; an empty range exits `no-change` and can never exit `integrated` | integrated, no change, blocked, plan gap |
 | VERIFY | per-criterion verdict of `pass`, `fail`, or `blocked`, each with evidence of command, SHA, exit status, parsed failure identities, and raw output digest; findings with dispositions; remediation tasks; reviewed range | an EXECUTE exit of `integrated` or `no-change`, at the current revisions; the verified head is the integrated head, or base for `no-change` | every criterion id in the requirements revision has exactly one verdict; every evidence SHA equals the verified head; the program re-runs every cited command in a clean checkout of that SHA that it creates itself, with the prepare fixtures applied, and compares command identity, exit status, parsed failure identities, and the output digest after the versioned normalization of section 11, keeping the raw digest for provenance only; a criterion may skip the re-run only under an exception approved outside the implementation, either declared in the PLAN product and approved with it or granted by an operator answer to a question at VERIFY time, and never by a flag the implementation sets on its own; its verdict is then recorded at assurance `claimed` and the result lists it under `weakenedAssurance`; a `blocked` verdict cites a cause the program itself observed, in the baseline record or in that re-run; `passed` requires every verdict `pass` and the review policy in section 10 satisfied; a finding on cleared code carries a typed `supersedes` reference | passed, implementation gap, plan gap, intent gap, evidence incomplete, blocked |
 | ITERATE | goal verdict against the original request; gaps; route | VERIFY passed at the current revisions, including the `no-change` head | the verdict binds the integrated SHA, the requirements revision, and the plan revision; a gap routes to SPEC, PLAN, EXECUTE, or VERIFY for missing evidence, and the rewind counter advances | converged, converged with caveats, rewind, escalated |
 | DELIVER | per-repo PR identity, delivered SHA, caveats | ITERATE `converged` or `converged with caveats`; or `escalated` when the operator policy allows partial delivery as a draft; a `no-change` head that ITERATE converged terminates here without a PR | per touched repo: the remote head ref's SHA equals the verified SHA; the PR is open, its head ref and SHA match, and its base target matches configuration; required checks satisfy the configured readiness policy, carrying 6.9's exact-SHA and required-check behavior; a retried creation is reconciled by identity, never duplicated; partial publication is recorded per repo and never reported as all delivered; a `no-change` result opens no PR and says so | delivered, partially delivered, delivery blocked |
@@ -617,7 +617,7 @@ inside Bash tool calls.
   Code and the skill passes the resolved path to the program, else `$LOOP_SPEC_HOME`,
   else `~/.loop-spec/`. Keyed by repository identity and slug. The
   `last-result.json` pointer lives here too, beside `state.json`, not in the consumer
-  repo (decided 2026-09-22; 6.9 consumers change one path, pinned by an M1 fixture).
+  repo (decided 2026-09-22; 6.9 consumers change one path, shown by a live checklist case at M1).
   An empty directory is initialized in place by the repo module, with 6.9's refusals
   to nest a repository or to init inside a workspace. One `state.json` per
   feature with one writer, plus `events.jsonl`, worktrees, per-phase context and
@@ -671,7 +671,7 @@ styles is subject to the migration inventory in section 17.
 
 The first version called this a verbatim carryover from 6.9, and the second review
 found four places where that was inaccurate. This section now says what 7.x keeps,
-what it changes, and what a compatibility matrix with fixtures has to settle at M1.
+what it changes, and what the live compatibility checklist has to settle at M1.
 The current contract is `docs/loop-spec/agent-output-contract.md` with the phase-line
 rules in `skills/shared/report-style.md`.
 
@@ -711,11 +711,11 @@ Kept as in 6.9:
 
   The rule for the whole table: `converged` is true only for a result 6.9 would also
   have called converged, and the new `result` field carries the 7.x classification
-  on its own. Fixtures at M1 cover each row plus partial workspace publication,
-  `delivered-unready`, interruption during delivery, delivery blocked, and a retried
-  creation. The second review's F7
-  stays open until that matrix exists and every fixture round-trips through a 6.9
-  consumer unchanged.
+  on its own. The live checklist at M1 covers each row plus partial workspace
+  publication, `delivered-unready`, interruption during delivery, delivery blocked,
+  and a retried creation, each shown by a recorded live run. The second review's F7
+  stays open until every row has been produced live and read back by a 6.9 consumer
+  unchanged.
 - The chat shape, bound by `output-styles/loop-spec.md`, which is kept and not deleted
   at cutover, because it is the only place that shape binds in Claude Code. Other
   hosts follow the shared report-style contract as today.
@@ -728,10 +728,10 @@ Added:
   `blocked`, `partiallyDelivered`, and the resolved implementation and skill per
   phase and role.
 
-Settled at M1 by a compatibility matrix and fixtures: exact stream placement per
+Settled at M1 by the live compatibility checklist: exact stream placement per
 line under every environment combination, terminal field meanings for every result
 and for interruption, pointer behavior on resume, and the version bump policy for
-the schema. Until that matrix exists, no line in this section is a promise of
+the schema. Until those runs are recorded, no line in this section is a promise of
 byte-for-byte compatibility.
 
 ## 16. Packaging
@@ -754,10 +754,10 @@ the data directory placeholder. 7.x ships no hook (decided 2026-09-22).
 
 ## 17. Testing, live gates, and cutover
 
-The implementation contract and the worker runner are the two seams. 7.x ships no test
-suite (decided 2026-09-22): the maintainer confirms behavior by using the plugin live
-and iterating, and the 6.9 tests and their 157 s ceiling go with the 6.9 tree. The
-cases the offline suite would have held are the live checklist instead, kept in
+The implementation contract and the worker runner are the two seams. 7.x tests only its deterministic Python modules, with plain unit tests on the module's own inputs and outputs (parsers, digests, the state writer, the route checks); every cycle-level behavior is shown by live runs. There is no
+offline cycle suite, no fake runner, and no pinned host version (decided 2026-09-22).
+The 6.9 tests and their 157 s ceiling go with the 6.9 tree. The cycle-level cases are
+the live checklist, kept in
 `m1-fixtures-7.0.md`: the happy path, a real defect at VERIFY, a review-only rewind,
 the self-inflicted regression route, the shared budget, a blocked criterion, a
 workspace with two repos, every phase entry and debug, a green checklist with an unmet
@@ -776,8 +776,8 @@ and MCP access in task worktrees, execute a fresh worker in its assigned worktre
 reject a wrong SHA or an out-of-band branch change, survive an interruption during a
 worker, a question, and delivery without duplicate integration or PR creation, and
 turn permission denial, malformed output, and budget exhaustion into truthful results
-rather than widened permissions or false completion. The `claude -p` entry gets a
-smoke test for question policy, background execution, markers, and resumption.
+rather than widened permissions or false completion. The `claude -p` entry is checked
+live for question policy, background execution, markers, and resumption.
 
 Cutover deletes `extensions/`, `hooks/`, every `lib/*.sh` and the
 graph driver, the 6.9 skills, agents, and the 6.9 tests, and rewrites `CLAUDE.md`. The
@@ -795,7 +795,7 @@ behavior.
 | M | Deliverable | Done when |
 |---|---|---|
 | M0 | this document, the migration inventory, and the route matrix merged on `v7` | maintainer sign-off; the re-audit records every finding closed or explicitly accepted |
-| M1 | state, repo, baseline, events, the implementation contract, the step seam, the fake runner, host probes | a live empty cycle crosses all seven boundaries; native dispatch, worktree, and receipt probes recorded (the attestation probe is done, see `native-attestation-probe-7.0.md`) |
+| M1 | state, repo, baseline, events, the implementation contract, the step seam, the external placeholder implementation, host probes | a live empty cycle crosses all seven boundaries; native dispatch, worktree, and receipt probes recorded (the attestation probe is done, see `native-attestation-probe-7.0.md`) |
 | M2 | SPEC and PLAN defaults in the lead, `submit`, intent guard, re-approval as a question | a spec change after approval yields exit 3 and an answer re-approves |
 | M3 | EXECUTE default: dag, worktrees, implement and review roles, integration against baseline | a live happy path integrates; an unreviewed commit cannot cross the EXECUTE boundary; an external EXECUTE passes its postconditions |
 | M4 | VERIFY and ITERATE defaults: acceptance, ledger, delta review, full evidence re-run in a clean checkout, goal judgment, bounded rewinds | the report's four-pass sequence terminates `converged-with-caveats` after two rewinds; a green checklist with an unmet goal rewinds |
@@ -821,7 +821,7 @@ Recorded so the plan does not lean on memory:
   sibling skill's program by relative path, or whether one skill must carry it.
 - Whether `${CLAUDE_PLUGIN_DATA}` resolves inside skill content when the plugin is
   loaded through the SDK's `plugins` option, and not only from a marketplace install.
-- `ResultMessage.structured_output` on the pinned SDK, including missing output on
+- `ResultMessage.structured_output` on the SDK version the live run records, including missing output on
   success and `error_max_structured_output_retries`; both must fail closed, for the
   SDK runner if it is built.
 - Whether `can_use_tool` fires for `AskUserQuestion` inside a session started with
@@ -883,9 +883,10 @@ PLAN. After the re-audit at `727b2b8`: the budget postcondition (T1) covers PLAN
 SPEC and EXECUTE to PLAN as well; debug's repair runs through EXECUTE with a
 `mustFlip` reproduction; `revise` reviews the adopted range as an `adopted` task.
 
-Decided 2026-09-22 on M0's last two items: 7.x ships no test suite; the maintainer
-confirms behavior by live use and iteration, and the fixtures specification is the live
-checklist. Supported host versions are therefore not pinned as a gate; each live run
+Decided 2026-09-22 on M0's last two items: 7.x tests only its deterministic Python
+modules with unit tests; there is no offline cycle suite, no fake runner, and no pinned
+host version; the maintainer confirms every cycle-level behavior by live use and
+iteration, and the fixtures specification is the live checklist. Supported host versions are therefore not pinned as a gate; each live run
 records the Claude Code and SDK versions it ran on, starting with Claude Code 2.1.278
 from the attestation probe. The native attestation probe ran the same day and passed.
 
@@ -894,4 +895,4 @@ Nothing is pending for M0.
 Audit notes from the review round: the raw report was read after the first
 comparison; the report is one observed run and demonstrates failure modes without
 measuring competing 7.0 architectures; no live runs were performed in producing this
-plan. The proposed host gates establish actual behavior on pinned releases.
+plan. The live gates establish actual behavior on the host versions each run records.
