@@ -315,6 +315,28 @@ class PostconditionsTests(unittest.TestCase):
             [{"kind": "evidence.review.accept", "value": "unattested", "task": t} for t in accepted_tasks],
         )
 
+    def test_e5_and_e6_accept_an_adopted_task_through_the_adopted_range_review(self):
+        # LF-42: an adopted task has no review step of its own; its review is the
+        # adopted-range review and its evidence is that step's submission.
+        adopted_review = {"reviewedRange": {"from": self.base_sha, "to": self.sha_b}, "verdict": "pass",
+                          "findings": [], "securityDispositions": [], "sha": self.sha_b}
+        product = copy.deepcopy(self.execute_product)
+        product["tasks"][0].update({"disposition": "adopted", "review": copy.deepcopy(adopted_review)})
+        self.store.state["implementations"]["phases"]["execute"] = "default"
+        self.store.state["adoptedReview"] = adopted_review
+        self.store.state["phase"]["adoptedReviewStepId"] = "step-adopted"
+        self.store.state["steps"]["submissions"]["step-adopted"] = {"evidenceLevel": "host-attested"}
+        self.store.state.setdefault("execute", {})["tasks"] = {
+            "T-1": {"status": "adopted", "reviewSteps": []},
+            "T-2": {"status": "done", "reviewSteps": ["step-t2"]},
+        }
+        self.store.state["steps"]["submissions"]["step-t2"] = {"evidenceLevel": "host-attested"}
+        boundary = self._boundary("execute", product, "integrated")
+        self.assertIsNone(boundary._e5())
+        self.assertIsNone(boundary._e6())
+        product["tasks"][0]["review"] = None
+        self.assertEqual(self._boundary("execute", product, "integrated")._e5(), "task T-1 has no passing review")
+
     def test_e7(self):
         self.assertIsNone(self._boundary("execute", self.execute_product, "integrated")._e7())
         self.store.state["executeRuns"]["T-1"]["comparison"]["verdict"] = "regression"

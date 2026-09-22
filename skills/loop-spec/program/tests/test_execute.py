@@ -7,7 +7,7 @@ from pathlib import Path
 from loop_spec import repo as repo_module
 from loop_spec.baseline import BaselineEntry, run_command
 from loop_spec.errors import LoopSpecError
-from loop_spec.execute import IssueStep, Pause, Product, dag_waves, on_submit, step
+from loop_spec.execute import _final_product, IssueStep, Pause, Product, dag_waves, on_submit, step
 from loop_spec.paths import FeaturePaths
 from loop_spec.postconditions import retry_limit
 from loop_spec.state import StateStore
@@ -573,6 +573,11 @@ class AdoptedTaskTests(unittest.TestCase):
         self.assertEqual(by_id["T-1"]["disposition"], "adopted")
         self.assertEqual(by_id["T-1"]["commits"], repo_module.commits_between(self.repo, self.base_sha, self.pr_head_sha))
         self.assertEqual(by_id["R-1"]["disposition"], "done")
+        # LF-42: the adopted task carries the adopted-range review, or E5 rejects it.
+        self.store.state["adoptedReview"] = {"verdict": "pass", "reviewedRange": {"from": self.base_sha, "to": self.pr_head_sha},
+                                             "findings": [], "securityDispositions": [], "sha": self.pr_head_sha}
+        product = _final_product(self.store, self.ctx, self.store.state["execute"])
+        self.assertEqual({t["id"]: t["review"] for t in product["tasks"]}["T-1"], self.store.state["adoptedReview"])
 
     def test_a_changed_prior_task_is_not_adopted(self):
         # The delivering run's T-1 ran a different verify command -- the reviser

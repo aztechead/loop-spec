@@ -136,7 +136,15 @@ def review_evidence(store, task_id: str) -> tuple[str, str | None]:
     evidence-level judgment) is the real evidence, and its id names it."""
     if store.state["implementations"]["phases"].get("execute") == "external":
         return "human-attested", None
-    review_steps = (store.state.get("execute") or {}).get("tasks", {}).get(task_id, {}).get("reviewSteps") or []
+    task_state = (store.state.get("execute") or {}).get("tasks", {}).get(task_id, {})
+    if task_state.get("status") == "adopted":
+        # LF-42: an adopted task never had a review step of its own; the adopted
+        # range review (issued before EXECUTE's first attempt) is its evidence.
+        step_id = store.state["phase"].get("adoptedReviewStepId")
+        if step_id is None:
+            return "unattested", None
+        return store.state["steps"]["submissions"].get(step_id, {}).get("evidenceLevel", "unattested"), step_id
+    review_steps = task_state.get("reviewSteps") or []
     if not review_steps:
         return "unattested", None
     step_id = review_steps[-1]

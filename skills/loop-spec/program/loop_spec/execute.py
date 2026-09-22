@@ -515,9 +515,11 @@ def _final_product(store, ctx, execute_state: dict) -> dict:
             # for the exit decision so a run whose only new work is a remediation
             # task still exits `integrated`, not `no change`.
             any_done = True
+            # LF-42: the adopted-range review is this task's review; E5 reads it
+            # off the task like any other.
             tasks_out.append({
                 "id": task_id, "disposition": "adopted", "evidence": None,
-                "commits": task_state["commits"], "review": None,
+                "commits": task_state["commits"], "review": store.state.get("adoptedReview"),
             })
 
     if any(t["status"] == "planGap" for t in execute_state["tasks"].values()):
