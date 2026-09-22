@@ -59,6 +59,15 @@ Set by the program per worker step, never by the implementation: `controller-obs
 `host-attested`; `unattested` is accepted only under `evidence.review.accept:
 unattested` in config, and the result then carries `weakenedAssurance`.
 
+### Backward-transition budget
+
+One postcondition, checked centrally by the program on every exit that routes to an
+earlier phase or re-enters the same one. It appears in each such exit's `Requires`.
+
+| Id | Postcondition | Gates |
+|---|---|---|
+| T1 | the shared feature-level budget has room and this transition was counted once against it; default two, operator override, persisted across sessions, never reset by a fresh attempt. When the budget is spent the program refuses the backward exit and enters ITERATE with the gap, and I4 exits `escalated` | PLAN `spec gap`; EXECUTE `plan gap`; VERIFY `implementation gap`, `plan gap`, `intent gap`, `evidence incomplete`; ITERATE `rewind` |
+
 ## SPEC
 
 | | |
@@ -101,14 +110,14 @@ unattested` in config, and the result then carries `weakenedAssurance`.
 | Exit | Requires | Route |
 |---|---|---|
 | `ready` | P1 to P7 | EXECUTE, `fresh` |
-| `spec gap` | P1 | SPEC, `remediation`, with the gap named |
+| `spec gap` | P1, T1 | SPEC, `remediation`, with the gap named |
 
 ## EXECUTE
 
 | | |
 |---|---|
 | Inputs | PLAN product; baseline; ledger; on `remediation`, the tasks or gaps to close; on `rewind`, the findings |
-| Product | per task a `disposition` of `done`, `already-satisfied` with evidence, or `removed` by an approved plan amendment; `commits[]` per task; `issues[]` unresolved; per-repo `head` |
+| Product | per task a `disposition` of `done`, `already-satisfied` with evidence, `removed` by an approved plan amendment, or `adopted` for the one range task a `revise` entry creates; `commits[]` per task; `issues[]` unresolved; per-repo `head` |
 | Preconditions | PLAN bound to the current requirements revision; baseline present |
 | Runs as | program-run: waves of at most three, one worktree per task, implement step, then the diff-mode probes on the task's commits, then the review step with the probe findings as inputs |
 
@@ -117,10 +126,10 @@ unattested` in config, and the result then carries `weakenedAssurance`.
 | E1 | product validates; bound to the plan and requirements revisions per repo | every exit |
 | E2 | every required task has an accepted disposition | `integrated`, `no change` |
 | E3 | for every task, its dependencies completed before it was dispatched | `integrated` |
-| E4 | every commit in `base..head` maps to exactly one `done` task | `integrated` |
-| E5 | every `done` task has a review record whose reviewed range covers all of that task's commits | `integrated` |
+| E4 | every commit in `base..head` maps to exactly one `done` or `adopted` task | `integrated` |
+| E5 | every `done` or `adopted` task has a review record whose reviewed range covers all of that task's commits; for an `adopted` task the record comes from a full review step the program ran over the adopted range at entry, never from the PR's own history | `integrated` |
 | E6 | every such review record's evidence level meets the accepted class for review steps; otherwise the task is listed in `unreviewed` | `integrated` |
-| E7 | each task's verify command produced no new failure identity against its baseline; a `featureAdded` command had a meaningful first success (exit zero, at least one parsed identity where a parser exists) that became its task-local baseline | `integrated` |
+| E7 | each task's verify command produced no new failure identity against its baseline; a `featureAdded` command had a meaningful first success (exit zero, at least one parsed identity where a parser exists) that became its task-local baseline; a `mustFlip` command failed at baseline with the recorded digest and passes at integration | `integrated` |
 | E8 | the feature head is reachable from base and was not moved out of band | `integrated`, `no change` |
 | E9 | `base..head` is empty and every task is `already-satisfied` or `removed` | `no change`; forbids `integrated` |
 | E10 | a rejected step was re-issued with its reason up to the per-step retry limit before `blocked` is claimed | `blocked` |
@@ -131,7 +140,7 @@ unattested` in config, and the result then carries `weakenedAssurance`.
 | `integrated` | E1 to E8, E11; E9 false | VERIFY at the integrated head |
 | `no change` | E1, E2, E8, E9 | VERIFY at base |
 | `blocked` | E1, E10 | pause: a question to the operator naming the cause, with the answers fix-and-re-enter EXECUTE or stop; `status: paused` until answered; a stop answer, or a `run`-scoped default policy, exits terminal `escalated` with the cause |
-| `plan gap` | E1 | PLAN, `remediation` |
+| `plan gap` | E1, T1 | PLAN, `remediation` |
 
 An out-of-band change to the feature branch pauses the phase for reconciliation; it is
 never reset. `already-integrated` (the commit is already an ancestor of the head) is an
@@ -157,25 +166,21 @@ integration reason code, not an exit.
 | V7 | every verdict is `pass` and the review policy holds: first and final passes saw the full diff, other passes the delta since the last reviewed SHA, no Critical finding open | `passed` |
 | V8 | a finding on cleared code carries a typed `supersedes` naming a finding id or a reviewed-range id | every exit |
 | V9 | `blocked` for an offline-unavailable dependency was claimed only after a stand-in was tried | `blocked` |
-| V10 | the shared backward-transition budget has room and this transition was counted once against it | every gap exit and `evidence incomplete` |
 
 | Exit | Requires | Route |
 |---|---|---|
 | `passed` | V1 to V5, V7, V8 | ITERATE |
-| `implementation gap` | V1, V2, V8, V10; at least one `fail` with remediation tasks | EXECUTE, `remediation` |
-| `plan gap` | V1, V2, V8, V10 | PLAN, `remediation` |
-| `intent gap` | V1, V2, V8, V10 | SPEC, `remediation` |
-| `evidence incomplete` | V1, V10 | VERIFY re-entry, new attempt |
+| `implementation gap` | V1, V2, V8, T1; at least one `fail` with remediation tasks | EXECUTE, `remediation` |
+| `plan gap` | V1, V2, V8, T1 | PLAN, `remediation` |
+| `intent gap` | V1, V2, V8, T1 | SPEC, `remediation` |
+| `evidence incomplete` | V1, T1 | VERIFY re-entry, new attempt |
 | `blocked` | V1, V2, V6, V8, V9 | pause: a question naming the observed cause, with the answers fix-and-re-enter VERIFY or stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` |
 
-One budget bounds every backward transition (decided 2026-09-22): VERIFY to EXECUTE,
-PLAN, or SPEC, `evidence incomplete` re-entry, and ITERATE `rewind` all spend the same
-persistent feature-level budget, default two with an operator override. It is counted
-once per accepted transition, survives sessions, and is never reset by a fresh attempt.
-When it is spent, the program accepts no gap exit from VERIFY; it enters ITERATE with
-the gaps, and I4 exits `escalated`. The review and verify contract sections say what
-the budget is for: find show-stoppers and outright incorrect implementations; the PR
-review catches the rest.
+T1 bounds every backward transition, including PLAN to SPEC and EXECUTE to PLAN, so a
+PLAN, EXECUTE, PLAN loop spends the same budget as the report's VERIFY, EXECUTE loop
+(decided 2026-09-22, coverage completed after the re-audit at `727b2b8`). The review
+and verify contract sections say what the budget is for: find show-stoppers and
+outright incorrect implementations; the PR review catches the rest.
 
 ## ITERATE
 
@@ -190,7 +195,7 @@ review catches the rest.
 |---|---|---|
 | I1 | product validates; the verdict binds the integrated SHA, the requirements revision, and the plan revision | every exit |
 | I2 | every gap names a target of SPEC, PLAN, EXECUTE, or VERIFY | `rewind` |
-| I3 | the shared budget advanced and is within its bound | `rewind` |
+| I3 | T1 holds for this rewind | `rewind` |
 | I4 | the budget is spent, or a criterion or goal gap is open that no route can close | `escalated` |
 | I5 | VERIFY `passed` at this SHA and no open gap against the original goal; the shared convergence predicate | `converged`, `converged with caveats` |
 | I6 | no Critical finding open; the caveats list contains only accepted non-Critical review findings, each with a recorded disposition, and nothing else | `converged with caveats` |
@@ -238,19 +243,19 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | | |
 |---|---|
 | Inputs | error report |
-| Product | `reproduction` as command plus digest; `diagnosis`; `repair` commits; post-fix evidence |
+| Product | `reproduction` as command plus failure digest; `diagnosis`; the compact SPEC and PLAN products |
 | Preconditions | error report present |
-| Establishes | a compact SPEC and PLAN in the lead before the repair: the criteria are the reproduction failing before and passing after, the plan is the repair task with the reproduction as its verify command; approval is a question like any other, so VERIFY onward see ordinary revisions (decided 2026-09-22) |
+| Establishes | a compact SPEC whose criterion is the reproduction passing, and a compact PLAN with one repair task whose verify command is the reproduction marked `mustFlip`; approval is a question like any other. The repair itself is done by EXECUTE, so it gets an implement step, a review step, and E1 to E11 like any task, and VERIFY receives an ordinary EXECUTE product (decided after the re-audit at `727b2b8`) |
 
 | Id | Postcondition | Gates |
 |---|---|---|
-| B1 | the program re-ran the recorded reproduction and it failed before the repair and passes after | `repaired` |
-| B2 | a changed reproduction states a reason and the original was re-run too | `repaired` |
-| B3 | no reproduction exists | `blocked reproduction`; forbids `repaired` |
+| B1 | the program ran the recorded reproduction at base in a clean checkout and it failed; the failure digest and parsed identities are recorded as the `mustFlip` baseline | `reproduced` |
+| B2 | a changed reproduction states a reason and the original was run too, with both results recorded | `reproduced` |
+| B3 | no reproduction exists | `blocked reproduction`; forbids `reproduced` |
 
 | Exit | Requires | Route |
 |---|---|---|
-| `repaired` | B1, B2 | VERIFY, then ITERATE and DELIVER as above |
+| `reproduced` | B1, B2, S1 to S3, P1 to P7 for the compact products | EXECUTE, `fresh`, with the repair task; then VERIFY, ITERATE, and DELIVER as above. The reproduction passing after the repair is E7's `mustFlip` check, not a debug-local claim |
 | `blocked reproduction` | B3 | pause: a question asking for a reproduction or a stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` |
 
 ## Entry points and the order
@@ -259,10 +264,10 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 |---|---|---|
 | `cycle` | SPEC, then each phase in order | none beyond request text |
 | `spec`, `plan`, `execute`, `verify`, `iterate`, `deliver` | the named phase against durable state | that phase's preconditions above |
-| `debug` | debug, then VERIFY onward | error report |
+| `debug` | debug, then EXECUTE with the repair task, then VERIFY onward | error report |
 | `micro` | the full order with compact presets | cannot drop a required phase |
 | `status` | nothing; read-only | none |
-| `revise` | a compact SPEC and PLAN in the lead whose criteria are the PR comments mapped to gaps, with the PR's base as base SHA; then EXECUTE in `remediation` on the adopted PR branch, and VERIFY onward | an open PR the repo module can adopt; a PR with no prior loop-spec state gets a fresh run id bound to the PR identity |
+| `revise` | a compact SPEC and PLAN in the lead whose criteria are the PR comments mapped to gaps, with the PR's base as base SHA. The PLAN carries one `adopted` range task for the existing `base..head` commits plus one task per gap. At EXECUTE entry the program runs a full review step over the adopted range, which becomes that task's review record (E5, E6); findings on the adopted code join the gaps. Then EXECUTE on the adopted PR branch, and VERIFY onward over the whole PR | an open PR the repo module can adopt; a PR with no prior loop-spec state gets a fresh run id bound to the PR identity; nothing in the adopted range is exempt from E4 to E7 |
 
 A standalone `deliver` cannot bypass VERIFY or ITERATE: its preconditions require an
 ITERATE exit at the current revisions.
@@ -274,7 +279,7 @@ ITERATE exit at the current revisions.
 | DELIVER `delivered` after ITERATE `converged` | `converged` | `status: completed`, `outcome: delivered`, `converged: true`, `workDelivered: true` |
 | DELIVER `delivered` after `converged with caveats` | `converged-with-caveats` | `outcome: delivered-draft`, `converged: false`, findings in `warnings` |
 | ITERATE `converged` on a `no change` head | `no-change` | `outcome: no-change-needed`, `noChangeReason: already-satisfied`, `converged: true`, `workDelivered: false` |
-| ITERATE `escalated`; EXECUTE `blocked` | `escalated` | `status: escalated`, `converged: false` |
+| ITERATE `escalated` | `escalated` | `status: escalated`, `converged: false` |
 | process exit 1; environment cannot run the plan | `failed` | `status: failed`, `converged: false` |
 | process exit 3 outstanding, including every `blocked` exit | question pending | `status: paused`, `reason` names the question id and, for a blocked exit, the cause |
 | a `blocked` exit answered stop | `escalated` | `status: escalated`, `converged: false`, the cause in `reason` |
@@ -289,13 +294,16 @@ The four routes the first version left for M1, answered from the M1 fixtures rev
 - Every `blocked` exit pauses with a question and resumes into the same phase or, on a
   stop answer, exits terminal `escalated`. One rule for EXECUTE, VERIFY, debug, and
   DELIVER.
-- One shared budget bounds every backward transition (V10, I3).
+- One shared budget bounds every backward transition (T1, referenced by I3).
 - Both converged outcomes share one predicate (I5); caveats hold only accepted
   non-Critical review findings (I6).
 - A Critical critic finding closes only as fixed-and-rechecked or rejected-with-reason
   (P7).
 - D7 is required for every repo whose remote write was attempted.
-- debug and `revise` establish their revisions through a compact SPEC and PLAN.
+- debug and `revise` establish their revisions through a compact SPEC and PLAN; debug's
+  repair runs through EXECUTE with a `mustFlip` reproduction, and `revise` reviews the
+  adopted range as an `adopted` task before remediation (after the re-audit at
+  `727b2b8`).
 
 ## Related
 

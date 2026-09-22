@@ -418,9 +418,14 @@ closed, or its head is a fork (decided 2026-09-22).
 debug keeps the 6.9 loop-debug principles as role input flags: a failing
 reproduction before any repair, bounded retries, and a blocker recorded when no
 reproduction is available rather than a false pass. debug and `revise` both open with
-a compact SPEC and PLAN in the lead so that VERIFY onward see ordinary revisions:
-debug's criteria are the reproduction failing before and passing after; `revise`'s
-are the PR comments mapped to gaps, with the PR's base as the base SHA. Every
+a compact SPEC and PLAN in the lead so that every later phase sees ordinary revisions
+and ordinary products. debug records the reproduction failing at base as a `mustFlip`
+baseline and hands the repair to EXECUTE as one task whose verify command is that
+reproduction; the repair is implemented, reviewed, and integrated like any task, and
+E7 proves the flip. `revise` maps the PR comments to gap tasks and adds one `adopted`
+task for the PR's existing `base..head` commits; the program runs a full review step
+over that range at EXECUTE entry so the adopted commits carry a real review record
+and nothing in the range is exempt from the coverage rules. Every
 `blocked` exit in any phase pauses with a question, resumes into the same phase on a
 fix, and exits `escalated` on a stop answer (decided 2026-09-22).
 
@@ -871,7 +876,9 @@ limited to accepted non-Critical review findings; a Critical critic finding clos
 only fixed-and-rechecked or rejected-with-reason; every `blocked` exit pauses and
 only a stop answer escalates; D7 is required per repo whose remote write was
 attempted; debug and `revise` establish their revisions through a compact SPEC and
-PLAN.
+PLAN. After the re-audit at `727b2b8`: the budget postcondition (T1) covers PLAN to
+SPEC and EXECUTE to PLAN as well; debug's repair runs through EXECUTE with a
+`mustFlip` reproduction; `revise` reviews the adopted range as an `adopted` task.
 
 Pending for M0: supported host versions.
 

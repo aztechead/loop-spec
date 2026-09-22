@@ -87,7 +87,7 @@ missing host handles must never be interpreted as proof of successful terminatio
 | PL-01 | P1, P2, P5, P6 | M2 | Valid two-task DAG; remove criterion coverage, add cycle/dangling dependency, or name an unresolved workspace repo. | Valid plan accepted; each malformed graph or coverage/repo case rejected. |
 | PL-02 | P3, P4 | M2 | Verify command fails from a bare task root due to a wrong path; baseline suite has a known test failure. | Path error is distinct from observed pre-existing failure; prepare precedes base capture and its environment is recorded. |
 | PL-03 | P3, P4, E7 | M3 | Feature-added test path absent at base; first candidate run succeeds, collects nothing, or fails. | Base record is no-baseline; only meaningful success establishes task-local baseline. |
-| PL-04 | P7 | M2 | Critic has no Critical finding, then an open Critical finding with a disposition such as deferred. | No-finding control passes; admission with unresolved Critical findings needs DEC-03 below. Mere presence of a disposition cannot stand in for resolution. |
+| PL-04 | P7 | M2 | Critic has no Critical finding, then an open Critical finding with a disposition such as deferred. | No-finding control passes; a Critical marked `deferred` fails P7; `fixed` passes only after the critic re-ran once on the corrected plan; `rejected` passes only with a stated reason; a Critical still open after the re-run exits `spec gap` or asks a question (DEC-03 resolved). |
 | PL-05 | P7 | M2 | Skip critic, forge its completion, or return non-Critical style advice. | Missing execution is not a critic pass; Critical-only review contract is retained; style advice does not create a new blocking gate. |
 | PL-06 | envelope probes | M2 | Consumer files contain known conventions, helper duplication, layer count, security signal, and imports. | PLAN receives program probe facts and recorded dependency excerpts for those files, not plugin-source lint results. |
 
@@ -100,7 +100,7 @@ missing host handles must never be interpreted as proof of successful terminatio
 | EX-03 | E7 | M3 | Base and candidate have the same failing test identities but different pass counts/timing; then introduce one new failure. | First case is baselined; second is a regression. Shared baseline is used by integration and verification. |
 | EX-04 | E8 | M3 | Missing task worktree before dispatch; worker writes on the feature branch; feature head moves out of band. | Missing root prevents launch; other cases pause/reject without resetting user changes. |
 | EX-05 | E2, E8, E9 | M3 | Empty range with all tasks already satisfied, then with a required task missing; nonempty range incorrectly claims no change. | Only evidenced no-change reaches VERIFY at base; no case bypasses VERIFY/ITERATE. |
-| EX-06 | E10 | M3 | Repeated invalid step results reach the configured limit; repeat after a permission denial. | Bounded re-issue; no success; blocked terminal/resume policy is DEC-04. |
+| EX-06 | E10 | M3 | Repeated invalid step results reach the configured limit; repeat after a permission denial. | Bounded re-issue; no success; `blocked` pauses with a question naming the cause and `status: paused`; a fix answer re-enters EXECUTE, a stop answer or `run`-scoped policy yields `status: escalated` (DEC-04 resolved). |
 | EX-07 | E11 | M3 | Security signal on task files lacks a disposition; then include a valid disposition. | Missing disposition prevents integration; signal and disposition bind the correct task/range. |
 | EX-08 | probe placement | M3 | Implementer commits; record probe calls, reviewer inputs and review dispatch order. | Diff probes run after commit and before review; other probe findings are inputs, not newly invented automatic blockers. |
 | EX-09 | E1 to E8, E11 | M3 | External EXECUTE returns correct-shaped output with missing tasks/review, then legitimate human-attested evidence. | External binding uses the same boundary checks and cannot bypass them. |
@@ -115,11 +115,11 @@ missing host handles must never be interpreted as proof of successful terminatio
 | VE-04 | V4, V5 | M4 | Non-repeatable flag without approval; then approved PLAN exception or current operator answer; then stale approval. | Only correlated approved exceptions skip the re-run and appear in weakenedAssurance. V4 applies to the remaining commands. |
 | VE-05 | V6, V9 | M4 | Cloud check becomes unavailable after baseline; offline stand-in proves the behavior and rejects a mutation; alternatively it cannot establish it. | New environment observation retained; genuine substitute can support evidence; unavailable proof stays blocked. |
 | VE-06 | V7, V8 | M4 | First/final full review and intermediate delta review; raise a finding on a clean prior range with/without a typed supersedes reference. | Correct ranges/ledger supplied; missing required reference rejected; open Critical cannot pass. |
-| VE-07 | V7, I5, I6 | M4 | VERIFY blocked, no Critical finding, an Important finding with a disposition, and ITERATE claims caveats. | Must not classify as converged-with-caveats; current matrix permits it without I5. DEC-02 must fix admission. |
-| VE-08 | V1, V2, V8, I3 | M4 | Replay report-shaped alternating acceptance/review failures via VERIFY→EXECUTE remediation without ITERATE. | Must terminate within an explicit bound; DEC-01 defines accounting. Fresh phase/step attempts cannot reset it. |
+| VE-07 | V7, I5, I6 | M4 | VERIFY blocked, no Critical finding, an Important finding with a disposition, and ITERATE claims caveats. | Must not classify as converged-with-caveats: I5 requires VERIFY `passed`, so VERIFY `blocked` pauses instead and never reaches ITERATE's convergence exits (DEC-02 resolved). |
+| VE-08 | V1, V2, V8, I3 | M4 | Replay report-shaped alternating acceptance/review failures via VERIFY→EXECUTE remediation without ITERATE. | Must terminate within the shared budget T1 (default two backward transitions across VERIFY, PLAN, EXECUTE, and ITERATE routes); the third backward exit is refused and ITERATE exits `escalated`. Fresh phase/step attempts cannot reset it. Add the PLAN, EXECUTE, PLAN loop as a second shape (DEC-01 resolved). |
 | VE-09 | whole-range probes | M4 | Two tasks introduce a cross-task issue visible only on the integrated diff. | VERIFY receives whole-range probe findings in addition to task reviews. |
 | IT-01 | I1, I2, I3 | M4 | Green checklist but original goal unmet; route gap to SPEC, PLAN, EXECUTE, or VERIFY; stale goal verdict. | Correct rewind and evidence invalidation; stale verdict rejected; counter advances once. |
-| IT-02 | I4, I5, I6 | M4 | Goal met with no caveats; goal met with accepted non-Critical caveats; goal unmet at budget exhaustion; open Critical. | Correct full/draft/escalated outcome; no false convergence. Use DEC-02 guard when formalized. |
+| IT-02 | I4, I5, I6 | M4 | Goal met with no caveats; goal met with accepted non-Critical caveats; goal unmet at budget exhaustion; open Critical. | Correct full/draft/escalated outcome; no false convergence. Both converged exits require I5; caveats contain only accepted non-Critical review findings (DEC-02 resolved). |
 | IT-03 | I3, I4 | M4 | Replay the same rewind submission; restart the program; attempt another rewind after exhaustion. | Idempotent counter, durable budget, and no unbounded new attempt. Minimal repair policy must not reset the budget. |
 
 ## DELIVER, debug, revise, and workspace
@@ -132,8 +132,8 @@ missing host handles must never be interpreted as proof of successful terminatio
 | DE-04 | D6 | M5 | Already-satisfied request passes VERIFY at base and ITERATE. | No push/PR creation; no-change-needed and already-satisfied fields preserved; new result classification is additive. |
 | DE-05 | D7 | M5 | Expired credentials at DELIVER; host refresh succeeds/fails. | Check/refresh before any write; failure names repair and blocks; removed refresh-command env var is never executed. |
 | DE-06 | D1 to D7 | M5 | Resume delivered/partially delivered workspace with matching or newly changed remote refs. | Idempotent reconciliation on unchanged targets; changed target revalidated rather than trusted from old output. |
-| DB-01 | B1, B2, B3 | M4 | Same reproduction fails before repair and passes after; altered reproduction only; no reproduction. | Actual red/green accepted; original is re-run when changed; unavailable repro cannot claim repaired. Final blocked mapping is DEC-04. |
-| RV-01 | revise entry | M5 | Same-repo open PR with new comments; run remediation through VERIFY/ITERATE/DELIVER. | Adopt branch, map comments to gaps, revalidate current evidence, update same PR identity. Initial current requirements/plan prerequisites are DEC-06. |
+| DB-01 | B1, B2, B3 | M4 | Same reproduction fails before repair and passes after; altered reproduction only; no reproduction. | Reproduction fails at base and is recorded as the `mustFlip` baseline (B1); the repair runs through EXECUTE and E7 proves the flip; a changed reproduction records both runs (B2); no reproduction pauses with a question and a stop answer escalates (B3, DEC-04 resolved). |
+| RV-01 | revise entry | M5 | Same-repo open PR with new comments; run remediation through VERIFY/ITERATE/DELIVER. | Adopt branch, compact SPEC and PLAN with one `adopted` range task plus gap tasks, full review step over the adopted range becomes its review record, remediation, VERIFY over the whole PR, same PR identity updated. Assert every adopted commit maps to the `adopted` task (E4) and that task has a review record (E5, E6) (DEC-06 resolved). |
 | RV-02 | PR adoption | M5 | SPEC names an open PR; repeat with missing gh, closed PR, or fork head. | Supported PR adopted; documented fallback creates a new execution branch without mutating the unsupported PR. Keep SPEC fallback separate from revise's open-PR precondition. |
 
 ## Compatibility and migration fixtures
@@ -148,7 +148,7 @@ else about its legacy interpretation.
 | ID | Cases | Observable result |
 |---|---|---|
 | CO-01 | Ready delivery; clean draft; draft with blocking iteration warnings; delivered-unready; delivery-blocked. | Preserve legacy status/outcome/converged/workDelivered/retry meanings; new result field cannot overwrite them. |
-| CO-02 | No-change, failed run, escalated partial draft, outstanding question, interrupted delivery before/after remote creation. | Truthful legacy fields, per-target state, current run identity, and no stale success. Final undecided mappings are DEC-04. |
+| CO-02 | No-change, failed run, escalated partial draft, outstanding question, interrupted delivery before/after remote creation. | Truthful legacy fields, per-target state, current run identity, and no stale success. A blocked delivery is `status: paused` with the cause in `reason`; a stop answer yields `status: escalated`, `result: escalated`, per-repo state (DEC-04 resolved). |
 | CO-03 | Console stream unset/stdout/stderr/invalid; console events on/off; Cloud Run job/service/neither. | Versioned precedence matches retained behavior; ledger independent of console suppression; accepted 7.x markers-on-stdout change explicit. |
 | CO-04 | Start, handoff, re-enter, rewind, question, terminal and duplicate submit. | Paired attempt IDs, stable marker JSON, correct phase/next projection, and no duplicate transition on retry. |
 | CO-05 | State home resolved through plugin data, LOOP_SPEC_HOME, or fallback; previous successful pointer exists; start another run. | New state-home pointer is atomic and stale success unavailable; consumer repo gets no loop-spec state by default. |
@@ -173,7 +173,7 @@ recommendations, not silently adopted route changes.
 | DEC-06 | debug goes straight to VERIFY whose prerequisites require EXECUTE; revise can adopt a PR without recorded current PLAN/SPEC. | Define how these entries establish equivalent current requirements, plan, head and approvals before shared gates, including an external PR with no prior loop-spec state. | DB-01, RV-01 |
 
 Resolved by the maintainer on 2026-09-22 and carried into the route matrix: DEC-01,
-one shared persistent budget for every backward transition (V10, I3), with the review
+one shared persistent budget for every backward transition (T1, referenced by I3), with the review
 and verify contracts told the goal is show-stoppers and incorrect implementations;
 DEC-02, the shared convergence predicate (I5) with caveats limited to accepted
 non-Critical review findings (I6); DEC-03, fixed-and-rechecked or rejected-with-reason
@@ -182,8 +182,10 @@ escalates; DEC-05, D7 required per repo whose remote write was attempted; DEC-06
 debug and `revise` open with a compact SPEC and PLAN. The fixtures named in the last
 column now have their expected outcomes.
 
-The other-agent handoff is to implement those resolutions in the M1 schemas. The fixtures should expose a pending decision explicitly rather than
-choose an arbitrary outcome or mark the case green.
+The other-agent handoff is to implement those resolutions in the M1 schemas. Every
+case row above now states its expected outcome under the accepted rule. A fixture that
+meets a rule this document does not state exposes the gap explicitly rather than
+choosing an outcome or marking the case green.
 
 ## Native feasibility and live evidence handoff
 
