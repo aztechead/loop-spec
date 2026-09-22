@@ -184,9 +184,7 @@ def main(argv: list[str] | None = None) -> int:
             store, paths = _open_store(args)
             host = attest.ClaudeCodeAttestor() if os.environ.get("CLAUDE_CODE_SESSION_ID") else None
             submission = steps.submit(store, paths, step_id=args.step, dispatch_name=args.dispatch, host=host)
-            if submission.step["phase"] == "execute" and submission.step["role"] in ("implementer", "code-reviewer"):
-                from . import execute as execute_module  # local: only default EXECUTE dispatches these roles
-                execute_module.on_submit(store, paths, submission.step, submission.result)
+            controller.route_submission(store, paths, submission.step, submission.result)
             next_ = controller.continue_run(store, paths, project_root=Path(args.project_root))
             marker_next(next_.kind, str(next_.path), next_.slug)
             return 0

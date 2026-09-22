@@ -13,11 +13,17 @@ from typing import Literal
 from . import baseline as baseline_module
 from . import budget as budget_module
 from . import contract
+from . import debug as debug_module
+from . import execute as execute_module
+from . import iterate as iterate_module
+from . import ledger as ledger_module
 from . import postconditions
 from . import questions
 from . import repo as repo_module
 from . import result as result_module
+from . import revise as revise_module
 from . import steps
+from . import verify as verify_module
 from .errors import LoopSpecError
 from .ids import digest, new_id, now_iso
 from .jsonio import atomic_write_json, read_json
@@ -49,44 +55,20 @@ def run_entry(entry: str, *, project_root: Path, request_text: str | None, slug:
     home = resolve_state_home(state_home)
     rid = repo_id(project_root)
 
-    if entry == "debug":
-        raise LoopSpecError("debug lands at M4", repair="use cycle or micro, or wait for M4")
-    if entry == "revise":
-        raise LoopSpecError("revise lands at M5", repair="use cycle or micro, or wait for M5")
-
     if entry in ("cycle", "micro"):
-        if not request_text:
-            # --slug with no request resumes that run instead of starting a new one;
-            # the digest check below only applies when a request text is given.
-            if not slug:
-                raise LoopSpecError(f"{entry} requires --request, --request-file, or --slug to resume",
-                                     repair="pass --request/--request-file for a new run, or --slug to resume one")
-            paths = FeaturePaths(root=feature_dir(home, rid, slug))
-            if not paths.state_json.exists():
-                raise LoopSpecError(f"no run for slug {slug!r}", repair="check `loop-spec status` for known slugs, or pass --request to start one")
-            return continue_run(StateStore.open(paths), paths, project_root=project_root)
+        return _run_request_entry(
+            entry, project_root=project_root, request_text=request_text, slug=slug, home=home, rid=rid,
+            answer_policy=answer_policy, cycle_type="full" if entry == "cycle" else "micro", initial_phase="spec",
+        )
 
-        slug = slug or slug_from_request(request_text)
-        paths = FeaturePaths(root=feature_dir(home, rid, slug))
-        _clear_stale_last_result(paths, slug)
+    if entry == "debug":
+        return _run_request_entry(
+            entry, project_root=project_root, request_text=request_text, slug=slug, home=home, rid=rid,
+            answer_policy=answer_policy, cycle_type="debug", initial_phase="debug",
+        )
 
-        if paths.state_json.exists():
-            store = StateStore.open(paths)
-            if store.state["request"]["digest"] != digest(request_text):
-                raise LoopSpecError(f"slug {slug} is in use by another request", repair="pass --slug to choose a different slug")
-        else:
-            run_fields = {
-                "id": new_id("run"), "entry": entry, "createdAt": now_iso(),
-                "slug": slug, "repoId": rid, "cycleType": "full" if entry == "cycle" else "micro",
-            }
-            store = StateStore.create(paths, run_fields, request_text)
-            store.state["phase"]["current"] = "spec"
-            _resolve_repos(store, project_root, slug, request_text)
-            _resolve_implementations(store, project_root)
-            if answer_policy == "default":
-                store.state["questions"]["policy"] = "default"
-            store.save()
-        return continue_run(store, paths, project_root=project_root)
+    if entry == "revise":
+        return _run_revise_entry(project_root=project_root, pr=pr, slug=slug, home=home, rid=rid, answer_policy=answer_policy)
 
     if entry in _RESUMABLE_PHASES:
         if not slug:
@@ -102,6 +84,110 @@ def run_entry(entry: str, *, project_root: Path, request_text: str | None, slug:
         return continue_run(store, paths, project_root=project_root)
 
     raise LoopSpecError(f"unknown entry {entry}", repair="use cycle, micro, debug, revise, spec, plan, execute, verify, iterate, or deliver")
+
+
+def _run_request_entry(entry: str, *, project_root: Path, request_text: str | None, slug: str | None,
+                        home: Path, rid: str, answer_policy: str | None, cycle_type: str, initial_phase: str) -> Next:
+    # cycle, micro, and debug all start from free-text request and differ only in
+    # their run's cycleType and first phase; revise starts from a PR instead, so it
+    # builds its own run in _run_revise_entry rather than sharing this helper.
+    if not request_text:
+        # --slug with no request resumes that run instead of starting a new one;
+        # the digest check below only applies when a request text is given.
+        if not slug:
+            raise LoopSpecError(f"{entry} requires --request, --request-file, or --slug to resume",
+                                 repair="pass --request/--request-file for a new run, or --slug to resume one")
+        paths = FeaturePaths(root=feature_dir(home, rid, slug))
+        if not paths.state_json.exists():
+            raise LoopSpecError(f"no run for slug {slug!r}", repair="check `loop-spec status` for known slugs, or pass --request to start one")
+        return continue_run(StateStore.open(paths), paths, project_root=project_root)
+
+    slug = slug or slug_from_request(request_text)
+    paths = FeaturePaths(root=feature_dir(home, rid, slug))
+    _clear_stale_last_result(paths, slug)
+
+    if paths.state_json.exists():
+        store = StateStore.open(paths)
+        if store.state["request"]["digest"] != digest(request_text):
+            raise LoopSpecError(f"slug {slug} is in use by another request", repair="pass --slug to choose a different slug")
+    else:
+        run_fields = {
+            "id": new_id("run"), "entry": entry, "createdAt": now_iso(),
+            "slug": slug, "repoId": rid, "cycleType": cycle_type,
+        }
+        store = StateStore.create(paths, run_fields, request_text)
+        store.state["phase"]["current"] = initial_phase
+        _resolve_repos(store, project_root, slug, request_text)
+        _resolve_implementations(store, project_root)
+        if answer_policy == "default":
+            store.state["questions"]["policy"] = "default"
+        store.save()
+    return continue_run(store, paths, project_root=project_root)
+
+
+def _find_run_by_adoption_number(home: Path, rid: str, number: int) -> str | None:
+    repo_home = home / rid
+    if not repo_home.exists():
+        return None
+    for slug_dir in sorted(repo_home.iterdir()):
+        candidate = FeaturePaths(root=slug_dir)
+        if not candidate.state_json.exists():
+            continue
+        adoption = StateStore.open(candidate).state.get("adoption")
+        if adoption is not None and adoption.get("number") == number:
+            return slug_dir.name
+    return None
+
+
+def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, home: Path, rid: str,
+                       answer_policy: str | None) -> Next:
+    if not pr:
+        if not slug:
+            raise LoopSpecError("revise requires --pr, or --slug to resume", repair="pass --pr <number-or-url>, or --slug to resume one")
+        paths = FeaturePaths(root=feature_dir(home, rid, slug))
+        if not paths.state_json.exists():
+            raise LoopSpecError(f"no run for slug {slug!r}", repair="check `loop-spec status` for known slugs, or pass --pr to start one")
+        return continue_run(StateStore.open(paths), paths, project_root=project_root)
+
+    workspace = repo_module.detect_workspace(project_root)
+    if workspace.mode == "none":
+        workspace.repos = [repo_module.init_in_place(project_root)]
+    adoption, repo_name, repo_path = None, None, None
+    for entry in workspace.repos:
+        candidate = repo_module.adopt_pr(entry.path, pr)
+        if candidate.adopt:
+            adoption, repo_name, repo_path = candidate, entry.name, entry.path
+            break
+    if adoption is None:
+        raise LoopSpecError(f"revise cannot adopt PR {pr!r}: {candidate.reason}", repair="check gh auth and that the PR is open and same-repo")
+
+    existing_slug = _find_run_by_adoption_number(home, rid, adoption.number)
+    slug = slug or existing_slug or f"revise-{adoption.number}"
+    paths = FeaturePaths(root=feature_dir(home, rid, slug))
+    _clear_stale_last_result(paths, slug)
+
+    if paths.state_json.exists():
+        return continue_run(StateStore.open(paths), paths, project_root=project_root)
+
+    base_sha = repo_module.run_git(repo_path, "merge-base", adoption.base_branch, adoption.head_sha).strip()
+    request_text = f"revise PR #{adoption.number}: {adoption.url}"
+    run_fields = {"id": new_id("run"), "entry": "revise", "createdAt": now_iso(), "slug": slug, "repoId": rid, "cycleType": "full"}
+    store = StateStore.create(paths, run_fields, request_text)
+    store.state["repos"] = {repo_name: {
+        "path": str(repo_path), "baseSha": base_sha, "featureBranch": adoption.branch,
+        "defaultBranch": adoption.base_branch, "lastKnownHead": adoption.head_sha,
+    }}
+    store.state["adoption"] = {
+        "repo": repo_name, "number": adoption.number, "url": adoption.url, "headRef": adoption.branch,
+        "baseBranch": adoption.base_branch, "baseSha": base_sha, "headSha": adoption.head_sha,
+    }
+    store.state["revise"] = {"gaps": revise_module.gaps_from_pr(repo_path, adoption.number), "product": None}
+    store.state["phase"]["current"] = "revise"
+    _resolve_implementations(store, project_root)
+    if answer_policy == "default":
+        store.state["questions"]["policy"] = "default"
+    store.save()
+    return continue_run(store, paths, project_root=project_root)
 
 
 def _clear_stale_last_result(paths: FeaturePaths, slug: str) -> None:
@@ -232,6 +318,14 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
                     _finalize(store, paths, project_root, "plan", attempt_id, product, product["exit"])
                 continue
 
+        compaction = store.state["phase"].get("compaction")
+        if compaction is not None and store.state["phase"]["current"] == "plan" and store.state["phase"].get("pending") is None:
+            # SPEC's own _finalize just advanced phase.current to "plan" (a debug/
+            # revise compaction's SPEC half was approved); feed the held PLAN half
+            # in directly instead of letting _drive_phase ask a PLAN implementation.
+            _resume_compaction(store, paths, project_root)
+            continue
+
         pending = store.state["phase"].get("pending")
         if pending in ("approval", "critic"):
             phase = store.state["phase"]["current"]
@@ -258,6 +352,12 @@ def build_envelope(store: StateStore, paths: FeaturePaths, phase: str, attempt_i
         "budget": state["budget"], "entry": state["phase"]["entry"], "repos": state["repos"],
         "projectRoot": str(project_root),
     }
+    entry_payload = state["phase"].get("entryPayload")
+    if state["run"].get("cycleType") == "micro":
+        # Every phase of a micro run carries entry.payload.preset = "micro" so a role
+        # reads it without threading a separate "is this micro" field through state;
+        # no phase's own remediation/rejection payload is dropped to make room for it.
+        entry_payload = {**(entry_payload or {}), "preset": "micro"}
     return {
         "run": {"id": state["run"]["id"]},
         "attempt": {"id": attempt_id},
@@ -269,7 +369,7 @@ def build_envelope(store: StateStore, paths: FeaturePaths, phase: str, attempt_i
             "planRevision": state["revisions"]["plan"], "baseline": state["baseline"],
             "ledger": state["ledger"], "budget": state["budget"],
         },
-        "entry": {"mode": state["phase"]["entry"], "payload": state["phase"].get("entryPayload")},
+        "entry": {"mode": state["phase"]["entry"], "payload": entry_payload},
         "repos": state["repos"],
         "paths": {
             "stateDir": str(paths.root),
@@ -288,6 +388,11 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
     # issued is submitted) re-invokes contract.invoke so it can see the file that
     # step wrote (e.g. an external phase's product.json) instead of starting over.
     phase = store.state["phase"]["current"]
+    if (phase == "execute" and store.state.get("adoption") is not None and store.state.get("adoptedReview") is None
+            and store.state["phase"].get("adoptedReviewStepId") is None):
+        _issue_adopted_review(store, paths, project_root)
+        return
+
     attempt_id = store.state["phase"].get("attemptId")
     if attempt_id is None:
         attempt_id = new_id("attempt")
@@ -378,7 +483,17 @@ def _accept_product(store: StateStore, paths: FeaturePaths, project_root: Path, 
     if existing is not None and existing.get("attemptId") == attempt_id:
         return  # already recorded for this attempt: never transition twice (IT-03).
 
+    if phase == "revise":
+        # revise.py's product is {spec, plan} only -- unlike every other phase, it
+        # carries no "exit" at all (it is not one of the seven ROUTES phases).
+        _accept_revise_product(store, paths, project_root, attempt_id, product)
+        return
+
     exit_ = product["exit"]
+
+    if phase == "debug":
+        _accept_debug_product(store, paths, project_root, attempt_id, product, exit_)
+        return
 
     if phase == "spec" and exit_ == "approved":
         if _handle_spec_approval(store, paths, attempt_id, product) != "approved":
@@ -401,6 +516,88 @@ def _accept_product(store: StateStore, paths: FeaturePaths, project_root: Path, 
         return
 
     _finalize(store, paths, project_root, phase, attempt_id, product, exit_)
+
+
+def _accept_debug_product(store: StateStore, paths: FeaturePaths, project_root: Path, attempt_id: str, product: dict, exit_: str) -> None:
+    boundary = postconditions.Boundary(store, paths, phase="debug", product=product, exit=exit_, project_root=project_root)
+    if exit_ == "blocked reproduction":
+        message = boundary._b3()
+        if message is not None:
+            _reject_product(store, paths, "debug", attempt_id, exit_, [postconditions.Failure("B3", message)])
+            return
+        _record_accepted_product(store, "debug", attempt_id, product, exit_, boundary)
+        _ask_pause_question(store, paths, "debug", exit_, product)
+        return
+
+    # "reproduced": B1/B2 need the base run debug.record_base_runs is about to
+    # capture, so they run against THIS boundary object after it, not through the
+    # normal ROUTES-driven check() (which would also try S1-S3/P1-P7 against the
+    # whole debug product instead of the SPEC/PLAN halves those ids actually name --
+    # those run separately, below, once the compacted SPEC and PLAN are recorded).
+    _, repo_info = next(iter(store.state["repos"].items()))
+    debug_module.record_base_runs(store, paths, product, Path(repo_info["path"]), repo_info["baseSha"])
+    failures = [postconditions.Failure(req_id, message) for req_id in ("B1", "B2")
+                for message in [getattr(boundary, f"_{req_id.lower()}")()] if message is not None]
+    if failures:
+        _reject_product(store, paths, "debug", attempt_id, exit_, failures)
+        return
+    _record_accepted_product(store, "debug", attempt_id, product, exit_, boundary)
+
+    spec_product, plan_product = debug_module.compact_products(product)
+    spec_product = {**spec_product, "exit": "approved", "inputsDigest": product["inputsDigest"],
+                     "boundTo": {"requirements": None, "plan": None}}
+    plan_product = {**plan_product, "exit": "ready", "inputsDigest": product["inputsDigest"]}
+    _begin_compaction(store, paths, project_root, spec_product, plan_product)
+
+
+def _accept_revise_product(store: StateStore, paths: FeaturePaths, project_root: Path, attempt_id: str, product: dict) -> None:
+    # revise.py's own docstring: "revise" is not one of the seven ROUTES phases, so
+    # there is no schema/boundary check on the raw {spec, plan} product itself here
+    # (the reviser role's own schema already shaped it), and it is not recorded
+    # under store.state["products"] (that namespace's shape -- exit/boundTo/product
+    # -- is build_envelope's contract for the seven ROUTES phases; revise.py already
+    # owns store.state["revise"]["product"] as its own record). It re-enters through
+    # SPEC's own approval flow, same as debug's compacted product below.
+    store.state.setdefault("revise", {})["acceptedAttempt"] = attempt_id
+    inputs_digest = digest(product)
+    spec_product = {**product["spec"], "exit": "approved", "inputsDigest": inputs_digest, "boundTo": {"requirements": None, "plan": None}}
+    plan_product = {**product["plan"], "exit": "ready", "inputsDigest": inputs_digest}
+    _begin_compaction(store, paths, project_root, spec_product, plan_product)
+
+
+def _begin_compaction(store: StateStore, paths: FeaturePaths, project_root: Path, spec_product: dict, plan_product: dict) -> None:
+    # DEBUG and REVISE both land a compact {spec, plan} pair instead of driving
+    # SPEC's or PLAN's own implementation. Recording them reuses the exact same
+    # approval/baseline/critic machinery a real SPEC or PLAN product goes through
+    # (S1-S3, P1-P7): _accept_product below is the same function every other phase
+    # calls, just fed this pair instead of a spec-writer's or planner's own output.
+    # The PLAN half waits in store.state["phase"]["compaction"] until SPEC's own
+    # acceptance advances phase.current to "plan" -- continue_run's compaction check
+    # feeds it in then, instead of letting _drive_phase ask a PLAN implementation.
+    store.state["phase"]["compaction"] = {"plan": plan_product}
+    spec_attempt_id = new_id("attempt")
+    store.state["phase"]["current"] = "spec"
+    store.state["phase"]["attemptId"] = spec_attempt_id
+    store.state["phase"]["entry"] = "fresh"
+    store.state["phase"]["entryPayload"] = None
+    store.state["phase"]["pending"] = None
+    store.state["phase"]["provisional"] = None
+    store.save()
+    _accept_product(store, paths, project_root, "spec", spec_attempt_id, spec_product)
+
+
+def _resume_compaction(store: StateStore, paths: FeaturePaths, project_root: Path) -> None:
+    plan_product = dict(store.state["phase"]["compaction"]["plan"])
+    store.state["phase"]["compaction"] = None
+    plan_product["boundTo"] = {"requirements": store.state["revisions"]["requirements"], "plan": None}
+    plan_attempt_id = new_id("attempt")
+    store.state["phase"]["attemptId"] = plan_attempt_id
+    store.state["phase"]["entry"] = "fresh"
+    store.state["phase"]["entryPayload"] = None
+    store.state["phase"]["pending"] = None
+    store.state["phase"]["provisional"] = None
+    store.save()
+    _accept_product(store, paths, project_root, "plan", plan_attempt_id, plan_product)
 
 
 def _handle_spec_approval(store: StateStore, paths: FeaturePaths, attempt_id: str, product: dict) -> str:
@@ -714,8 +911,13 @@ def _record_accepted_product(store: StateStore, phase: str, attempt_id: str, pro
         # V7/V8 read this history on the NEXT VERIFY pass to decide whether that
         # pass may review only the delta since here, and whether a finding on
         # already-cleared code names what it supersedes.
-        store.state["ledger"]["reviewedRanges"].append(dict(product["reviewedRange"], id=new_id("range")))
-        store.state["ledger"]["findings"].extend(product.get("findings", []))
+        reviewed_range = product["reviewedRange"]
+        by_step = (store.state.get("verify") or {}).get("reviewerStep")
+        range_id = ledger_module.record_range(
+            store, from_sha=reviewed_range["from"], to_sha=reviewed_range["to"], full=reviewed_range["full"],
+            sha=reviewed_range["to"], by_step=by_step,
+        )
+        ledger_module.record_findings(store, product.get("findings", []), sha=reviewed_range["to"], range_id=range_id)
     store.state["phase"]["retries"] = 0
     if boundary.unreviewed:
         store.state["unreviewed"] = boundary.unreviewed
@@ -777,3 +979,69 @@ def _write_terminal_result(store: StateStore, paths: FeaturePaths, phase: str, e
     else:
         classification = "converged"
     result_module.write(store, paths, classification, partially_delivered=(exit_ == "partially delivered"))
+
+
+# ---------------------------------------------------------------------------
+# Adopted-PR review (revise's one full pass before EXECUTE starts its own work)
+# ---------------------------------------------------------------------------
+
+_ADOPTED_REVIEW_DIFF_CAP = 200_000  # ponytail: same flat cap verify.py/revise.py use
+
+
+def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: Path) -> None:
+    # A revise run adopts an existing PR's commits rather than having EXECUTE write
+    # them; E5/E6 refuse to call any of its tasks "adopted" until one full
+    # code-reviewer pass over the whole adopted range is on record. Issued once,
+    # before EXECUTE's own attempt starts, so that record exists before any task
+    # can claim it.
+    from .roles import compose_prompt, load_role
+    adoption = store.state["adoption"]
+    repo_info = store.state["repos"][adoption["repo"]]
+    repo_path = Path(repo_info["path"])
+    checkout = paths.checkouts_dir / f"adopted-{adoption['headSha'][:12]}"
+    repo_module.clean_checkout(repo_path, adoption["headSha"], checkout)
+    diff = repo_module.run_git(repo_path, "diff", f"{adoption['baseSha']}..{adoption['headSha']}")
+    if len(diff) > _ADOPTED_REVIEW_DIFF_CAP:
+        diff = diff[:_ADOPTED_REVIEW_DIFF_CAP] + "\n...(truncated)"
+
+    role = load_role("code-reviewer", project_root, contract.resolve_role(project_root, "code-reviewer"))
+    result_path = checkout / "loop-spec-adopted-review-result.json"
+    inputs = {
+        "range": {"from": adoption["baseSha"], "to": adoption["headSha"], "full": True}, "diff": diff,
+        "ledger": {"reviewedRanges": [], "openFindings": []}, "rangeProbes": {}, "securitySignals": [], "full": True,
+    }
+    prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=checkout, phase="execute")
+    record = steps.issue(
+        store, paths, phase="execute", attempt_id=new_id("attempt"), kind="role", role="code-reviewer",
+        cwd=checkout, prompt=prompt, schema=role.schema, postconditions=[], inputs_digest=digest(inputs),
+        result_path=result_path,
+    )
+    store.state["phase"]["adoptedReviewStepId"] = record["stepAttemptId"]
+    store.save()
+
+
+# ---------------------------------------------------------------------------
+# Step submission routing
+# ---------------------------------------------------------------------------
+
+_SUBMIT_ROLE_MODULES = {
+    ("execute", "implementer"): execute_module, ("execute", "code-reviewer"): execute_module,
+    ("verify", "verifier"): verify_module, ("verify", "code-reviewer"): verify_module,
+    ("iterate", "iterate-judge"): iterate_module,
+    ("debug", "debugger"): debug_module,
+    ("revise", "reviser"): revise_module,
+}
+
+
+def route_submission(store: StateStore, paths: FeaturePaths, step: dict, result: dict) -> None:
+    """Hand a submitted step's result to the module that owns its phase's default
+    implementation. The one exception is the adopted-PR review _issue_adopted_review
+    issues before EXECUTE's own attempt starts: same phase and role as an ordinary
+    EXECUTE review step, so its step id (not phase/role) is what tells them apart."""
+    if step["stepAttemptId"] == store.state["phase"].get("adoptedReviewStepId"):
+        store.state["adoptedReview"] = result
+        store.save()
+        return
+    module = _SUBMIT_ROLE_MODULES.get((step["phase"], step["role"]))
+    if module is not None:
+        module.on_submit(store, paths, step, result)

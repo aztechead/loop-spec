@@ -13,8 +13,10 @@ from loop_spec import budget as budget_module
 from loop_spec import controller
 from loop_spec import postconditions
 from loop_spec import repo as repo_module
+from loop_spec import revise as revise_module
 from loop_spec import steps
 from loop_spec.errors import LoopSpecError
+from loop_spec.ids import digest_bytes
 from loop_spec.jsonio import atomic_write_json, read_json
 from loop_spec.paths import FeaturePaths, feature_dir, repo_id
 from loop_spec.state import StateStore
@@ -43,6 +45,18 @@ def _open(paths: FeaturePaths) -> StateStore:
     return StateStore.open(paths)
 
 
+def _answer_approve_and_continue(paths, repo_dir, markers, next_):
+    """Answer an open approval question with "approve" and continue. Shared by
+    _drive_through_spec_approval (a real SPEC) and
+    _approve_compacted_spec_and_submit_critic (DEBUG/REVISE's compacted SPEC)."""
+    question = read_json(next_.path)
+    store = _open(paths)
+    from loop_spec import questions as questions_module
+    questions_module.answer(store, paths, question_id=question["questionId"], value="approve")
+    with contextlib.redirect_stdout(markers):
+        return controller.continue_run(store, paths, project_root=repo_dir)
+
+
 def _drive_through_spec_approval(store, paths, repo_dir, markers):
     """Write, submit, and approve a fixed SPEC product; return (next_ for PLAN's own
     step, the spec product) so a test can compute the requirements revision it binds
@@ -60,12 +74,7 @@ def _drive_through_spec_approval(store, paths, repo_dir, markers):
     steps.submit(store, paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
     with contextlib.redirect_stdout(markers):
         next_ = controller.continue_run(store, paths, project_root=repo_dir)
-    question = read_json(next_.path)
-    store = _open(paths)
-    from loop_spec import questions as questions_module
-    questions_module.answer(store, paths, question_id=question["questionId"], value="approve")
-    with contextlib.redirect_stdout(markers):
-        next_ = controller.continue_run(store, paths, project_root=repo_dir)
+    next_ = _answer_approve_and_continue(paths, repo_dir, markers, next_)
     return next_, spec_product
 
 
@@ -110,6 +119,29 @@ def _submit_greeting_plan(paths, repo_dir, markers, step, repo_name: str, spec_p
     with contextlib.redirect_stdout(markers):
         next_ = controller.continue_run(store, paths, project_root=repo_dir)
     return next_, plan_product
+
+
+def _approve_compacted_spec_and_submit_critic(paths, repo_dir, markers, next_):
+    """Answer the compacted SPEC's own approval question with "approve", then submit
+    an empty-findings PLAN critic step (PLAN forced external) and continue. Shared by
+    DEBUG's and REVISE's entry tests, whose compacted SPEC/PLAN pass through the same
+    approval+baseline+critic machinery a real SPEC/PLAN product would."""
+    next_ = _answer_approve_and_continue(paths, repo_dir, markers, next_)
+    critic_step = read_json(next_.path)
+    atomic_write_json(Path(critic_step["resultPath"]), {"findings": []})
+    return _submit_and_continue(paths, repo_dir, markers, critic_step["stepAttemptId"])
+
+
+def _submit_and_continue(paths, repo_dir, markers, step_id: str):
+    """submit + route_submission (cli.py's own submit-command sequence) + continue,
+    for a step whose role may need an on_submit dispatch (debug/revise/verify/
+    iterate's own roles, unlike the plain-external steps _submit_greeting_plan's
+    helpers above never route)."""
+    store = _open(paths)
+    submission = steps.submit(store, paths, step_id=step_id, dispatch_name=None, host=None)
+    controller.route_submission(store, paths, submission.step, submission.result)
+    with contextlib.redirect_stdout(markers):
+        return controller.continue_run(store, paths, project_root=repo_dir)
 
 
 class _QuietStdout(unittest.TestCase):
@@ -567,6 +599,145 @@ class RejectedStepReissueTests(_QuietStdout):
                 self.assertIn("P6:", reissued["reason"])
                 self.assertIn("bogus", reissued["reason"])
                 self.assertEqual(reissued["retryOf"], first_plan_step["stepAttemptId"])
+
+
+def _minimal_spec_and_plan(repo_name: str, goal: str, criterion_text: str, task_title: str) -> tuple[dict, dict]:
+    """A minimal one-criterion SPEC and one-task PLAN, shared by DEBUG's and REVISE's
+    entry tests below: both need a compact {spec, plan} pair and neither cares about
+    its content beyond satisfying S1-S3/P1-P7 (debug's own compact_products overrides
+    "verify"/"mustFlip" on every task regardless of what is set here)."""
+    spec = {
+        "goal": goal, "boundaries": [], "criteria": [{"id": "AC-1", "text": criterion_text}],
+        "decisions": [], "openQuestions": [],
+    }
+    plan = {
+        "tasks": [{
+            "id": "T-1", "title": task_title, "dependsOn": [], "files": ["greet.py"],
+            "repo": repo_name, "verify": "true", "criteria": ["AC-1"], "featureAdded": None, "mustFlip": False,
+        }],
+        "prepare": None, "evidenceExceptions": [],
+    }
+    return spec, plan
+
+
+class DebugAndReviseEntryTests(_QuietStdout):
+    """DEBUG and REVISE both land a compact {spec, plan} pair that re-enters through
+    SPEC's own approval flow and PLAN's own baseline+critic pass, then routes to
+    EXECUTE (M4/M5 wiring). Every downstream ROUTES phase is forced external here so
+    each test exercises the controller's own routing/compaction, not any phase
+    module's internal behavior."""
+
+    def test_debug_entry_records_base_run_and_reaches_execute(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            markers = io.StringIO()
+            repro_command = "python3 -c \"import sys; print('boom'); sys.exit(1)\""
+
+            with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+                with contextlib.redirect_stdout(markers):
+                    next_ = controller.run_entry(
+                        "debug", project_root=repo_dir, request_text="the greeting script crashes",
+                        slug="debugtest", state_home=str(home), answer_policy=None, pr=None,
+                    )
+                paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "debugtest"))
+                store = _open(paths)
+                repo_name = next(iter(store.state["repos"]))
+                self.assertEqual(store.state["run"]["cycleType"], "debug")
+                self.assertEqual(next_.kind, "step")
+
+                # --- DEBUG: a real command that actually fails at base ---
+                debug_step = read_json(next_.path)
+                self.assertEqual(debug_step["role"], "debugger")
+                spec, plan = _minimal_spec_and_plan(repo_name, "Fix the crash", "the crash no longer reproduces", "fix the crash")
+                debug_product = {
+                    "exit": "reproduced", "inputsDigest": "sha256:" + "0" * 64,
+                    "boundTo": {"requirements": None, "plan": None},
+                    "reproduction": {"command": repro_command, "failureDigest": digest_bytes(b"boom\n"), "reason": None},
+                    "original": None,
+                    "diagnosis": "the greeting script exits nonzero",
+                    "spec": spec, "plan": plan,
+                }
+                atomic_write_json(Path(debug_step["resultPath"]), debug_product)
+                next_ = _submit_and_continue(paths, repo_dir, markers, debug_step["stepAttemptId"])
+
+                store = _open(paths)
+                self.assertEqual(store.state["products"]["debug"]["exit"], "reproduced")
+                self.assertEqual(store.state["debug"]["baseRun"]["exitStatus"], 1)
+                self.assertEqual(next_.kind, "question")  # the compacted SPEC's own approval question
+                next_ = _approve_compacted_spec_and_submit_critic(paths, repo_dir, markers, next_)
+
+                store = _open(paths)
+                self.assertEqual(store.state["phase"]["current"], "execute")
+                self.assertEqual(next_.kind, "step")  # EXECUTE's own external step
+                self.assertIsNotNone(store.state["revisions"]["requirements"])
+                self.assertIsNotNone(store.state["revisions"]["plan"])
+
+    def test_revise_entry_adopts_pr_and_reaches_execute(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            markers = io.StringIO()
+
+            base_sha = repo_module.head_sha(repo_dir)
+            _git(repo_dir, "checkout", "-q", "-b", "pr-branch")
+            (repo_dir / "greet.py").write_text("print('hi')\n", encoding="utf-8")
+            _git(repo_dir, "add", "greet.py")
+            _git(repo_dir, "commit", "-q", "-m", "add greeting")
+            head_sha = repo_module.head_sha(repo_dir)
+            _git(repo_dir, "checkout", "-q", "main")
+
+            adoption = repo_module.PrAdoption(
+                adopt=True, number=42, url="https://github.com/example/repo/pull/42", branch="pr-branch",
+                base_branch="main", head_sha=head_sha, reason="named open PR #42",
+            )
+            gaps = [{"id": "G-1", "author": "reviewer", "body": "tighten the message", "path": None, "line": None, "url": None}]
+
+            with patch.object(repo_module, "adopt_pr", return_value=adoption), \
+                 patch.object(revise_module, "gaps_from_pr", return_value=gaps), \
+                 patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+                with contextlib.redirect_stdout(markers):
+                    next_ = controller.run_entry(
+                        "revise", project_root=repo_dir, request_text=None, slug=None,
+                        state_home=str(home), answer_policy=None, pr="42",
+                    )
+                paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "revise-42"))
+                store = _open(paths)
+                repo_name = next(iter(store.state["repos"]))
+                self.assertEqual(store.state["phase"]["current"], "revise")
+                self.assertEqual(store.state["adoption"]["number"], 42)
+                self.assertEqual(store.state["adoption"]["baseSha"], base_sha)
+                self.assertEqual(store.state["revise"]["gaps"], gaps)
+                self.assertEqual(next_.kind, "step")
+
+                # --- REVISE's lead step: the reviser's compact {spec, plan} ---
+                reviser_step = read_json(next_.path)
+                self.assertEqual(reviser_step["role"], "reviser")
+                spec, plan = _minimal_spec_and_plan(repo_name, "Tighten the greeting", "the message is tighter", "tighten it")
+                reviser_product = {"spec": spec, "plan": plan}
+                atomic_write_json(Path(reviser_step["resultPath"]), reviser_product)
+                next_ = _submit_and_continue(paths, repo_dir, markers, reviser_step["stepAttemptId"])
+                self.assertEqual(next_.kind, "question")  # the compacted SPEC's own approval question
+                next_ = _approve_compacted_spec_and_submit_critic(paths, repo_dir, markers, next_)
+
+                # --- EXECUTE entry: the one full adopted-range review, before EXECUTE's own step ---
+                store = _open(paths)
+                self.assertEqual(store.state["phase"]["current"], "execute")
+                self.assertEqual(next_.kind, "step")
+                review_step = read_json(next_.path)
+                self.assertEqual(review_step["role"], "code-reviewer")
+                review_result = {
+                    "sha": head_sha, "reviewedRange": {"from": base_sha, "to": head_sha},
+                    "verdict": "pass", "findings": [], "securityDispositions": [],
+                }
+                atomic_write_json(Path(review_step["resultPath"]), review_result)
+                next_ = _submit_and_continue(paths, repo_dir, markers, review_step["stepAttemptId"])
+
+                store = _open(paths)
+                self.assertIsNotNone(store.state.get("adoptedReview"))
+                self.assertEqual(next_.kind, "step")  # EXECUTE's own external step, now that the adopted review is on record
 
 
 if __name__ == "__main__":

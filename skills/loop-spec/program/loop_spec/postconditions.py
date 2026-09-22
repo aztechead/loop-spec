@@ -118,6 +118,22 @@ def verified_head(store) -> str:
     return next(iter(execute["product"]["heads"].values()))
 
 
+def review_evidence(store, task_id: str) -> tuple[str, str | None]:
+    """The evidence level and step id for one EXECUTE task's review: E6 and
+    result.py's `reviewed` field both need this. An external EXECUTE's whole
+    product is one human-attested submission with no per-task review step; the
+    default implementation instead runs one, whose own submission (steps.submit's
+    evidence-level judgment) is the real evidence, and its id names it."""
+    if store.state["implementations"]["phases"].get("execute") == "external":
+        return "human-attested", None
+    review_steps = (store.state.get("execute") or {}).get("tasks", {}).get(task_id, {}).get("reviewSteps") or []
+    if not review_steps:
+        return "unattested", None
+    step_id = review_steps[-1]
+    level = store.state["steps"]["submissions"].get(step_id, {}).get("evidenceLevel", "unattested")
+    return level, step_id
+
+
 def _check_supersedes(findings: list[dict], ledger: dict, repo_path: Path | None) -> str | None:
     reviewed_ranges = ledger.get("reviewedRanges", [])
     if not reviewed_ranges or repo_path is None:
@@ -415,24 +431,13 @@ class Boundary:
                 return f"task {task['id']} is adopted with no full range review recorded"
         return None
 
-    def _review_evidence_level(self, execute_tasks: dict, task_id: str) -> str:
-        # An external EXECUTE phase's whole product is one human-attested submission;
-        # the default implementation instead runs a per-task review step, whose own
-        # submission (steps.submit's evidence-level judgment) is the real evidence.
-        review_steps = execute_tasks.get(task_id, {}).get("reviewSteps") or []
-        if not review_steps:
-            return "unattested"
-        submissions = self.store.state["steps"]["submissions"]
-        return submissions.get(review_steps[-1], {}).get("evidenceLevel", "unattested")
-
     def _e6(self) -> str | None:
         is_external = self.store.state["implementations"]["phases"].get("execute") == "external"
         accept_unattested = load_config(self.project_root).get("evidence", {}).get("review", {}).get("accept") == "unattested"
-        execute_tasks = (self.store.state.get("execute") or {}).get("tasks", {})
         for task in self.product["tasks"]:
             if task["disposition"] not in ("done", "adopted"):
                 continue
-            level = "human-attested" if is_external else self._review_evidence_level(execute_tasks, task["id"])
+            level, _ = review_evidence(self.store, task["id"])
             if level in ACCEPTED_REVIEW_LEVELS or (level == "human-attested" and is_external):
                 continue
             if level == "unattested" and accept_unattested:

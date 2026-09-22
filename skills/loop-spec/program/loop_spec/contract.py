@@ -78,6 +78,12 @@ def run_phase(phase: str, context_path: Path, product_path: Path) -> int:
 def _accept_product(phase: str, product_path: Path) -> PhaseOutcome:
     if not product_path.is_file():
         return PhaseOutcome(code=0, kind="error", path=None, stderr=f"exit 0 but no product at {product_path}")
+    if phase == "revise":
+        # "revise" is not one of the seven ROUTES phases and has no schemas/revise.json
+        # of its own (revise.py's docstring): steps.submit already validated this
+        # result against the reviser role's own schema when its lead step was
+        # submitted, so there is nothing further to check against here.
+        return PhaseOutcome(code=0, kind="product", path=product_path, stderr="")
     errors = validate(read_json(product_path), load_schema(phase))
     if errors:
         return PhaseOutcome(code=0, kind="error", path=None, stderr="; ".join(errors))
@@ -93,19 +99,23 @@ def _accept_request(path: Path, kind: str, code: int) -> PhaseOutcome:
     return PhaseOutcome(code=code, kind=kind, path=path, stderr="")
 
 
-# The only two phases wave E gave a default (lead-run) implementation to; the rest
-# still have none until M3/M4/M5 bind an implementation of their own.
+# The two phases with a default lead-run implementation (spec-writer, planner) and
+# the five with a default step()/on_submit() implementation (execute.py's own
+# pattern, reused by verify/iterate/debug/revise).
 _DEFAULT_ROLE_BY_PHASE = {"spec": "spec-writer", "plan": "planner"}
+_DEFAULT_STEPPED_MODULE_BY_PHASE = {"execute", "verify", "iterate", "debug", "revise"}
 
 
-def _run_default_execute(store, paths, attempt_dir: Path, product_path: Path) -> int:
-    # execute.py's step()/on_submit() need the live StateStore (they carry per-task
-    # progress across calls in store.state["execute"]), unlike run_lead_phase's
-    # context.json/product.json-only contract, so this dispatcher stays here rather
-    # than in execute.py (its own docstring says wiring it in is not its job).
+def _run_default_stepped(module, store, paths, attempt_dir: Path, product_path: Path) -> int:
+    # execute.py/verify.py/iterate.py/debug.py's step()/on_submit() need the live
+    # StateStore (they carry per-task or per-pass progress across calls in
+    # store.state[<phase>]), unlike run_lead_phase's context.json/product.json-only
+    # contract, so this dispatcher stays here rather than in each module (their own
+    # docstrings say wiring them in is not their job). All four import IssueStep/
+    # Product/Pause from execute.py, so one isinstance check covers every module.
     from . import execute as execute_module
     ctx = read_json(attempt_dir / "context.json")
-    outcome = execute_module.step(store, paths, ctx)
+    outcome = module.step(store, paths, ctx)
     if isinstance(outcome, execute_module.Product):
         atomic_write_json(product_path, outcome.product)
         return 0
@@ -116,21 +126,49 @@ def _run_default_execute(store, paths, attempt_dir: Path, product_path: Path) ->
     return 3
 
 
+def _run_default_deliver(store, paths, attempt_dir: Path, product_path: Path) -> int:
+    # deliver.py's run() dispatches no worker step: one pass returns a Product or a
+    # Pause, never an IssueStep (its own docstring: an out-of-band remote move maps
+    # to a "delivery blocked" product exit, not a raw pause -- no scenario uses Pause
+    # today, but the branch stays so a future one need not touch this dispatcher).
+    from . import deliver as deliver_module
+    from . import execute as execute_module
+    ctx = read_json(attempt_dir / "context.json")
+    outcome = deliver_module.run(store, paths, ctx)
+    if isinstance(outcome, execute_module.Product):
+        atomic_write_json(product_path, outcome.product)
+        return 0
+    atomic_write_json(attempt_dir / "question.json", outcome.question_request)
+    return 3
+
+
 def invoke(paths, *, phase: str, attempt_id: str, implementation: str, program_launcher: Path, store=None) -> PhaseOutcome:
     attempt_dir = paths.attempts_dir / attempt_id
     product_path = attempt_dir / "product.json"
 
     if implementation == "default":
-        if phase == "execute":
+        if phase in _DEFAULT_STEPPED_MODULE_BY_PHASE:
             if store is None:
-                raise LoopSpecError("execute's default implementation needs the live state store",
+                raise LoopSpecError(f"{phase}'s default implementation needs the live state store",
                                      repair="call contract.invoke(..., store=store) from the controller")
-            code = _run_default_execute(store, paths, attempt_dir, product_path)
+            from . import debug as debug_module
+            from . import execute as execute_module
+            from . import iterate as iterate_module
+            from . import revise as revise_module
+            from . import verify as verify_module
+            module = {"execute": execute_module, "verify": verify_module, "iterate": iterate_module,
+                      "debug": debug_module, "revise": revise_module}[phase]
+            code = _run_default_stepped(module, store, paths, attempt_dir, product_path)
+        elif phase == "deliver":
+            if store is None:
+                raise LoopSpecError("deliver's default implementation needs the live state store",
+                                     repair="call contract.invoke(..., store=store) from the controller")
+            code = _run_default_deliver(store, paths, attempt_dir, product_path)
         elif phase in _DEFAULT_ROLE_BY_PHASE:
             from . import defaults  # local: defaults.py calls back into resolve_role
             code = defaults.run_lead_phase(phase, _DEFAULT_ROLE_BY_PHASE[phase], attempt_dir / "context.json", product_path)
         else:
-            raise LoopSpecError(f"default implementation for {phase} lands at M4/M5", repair='bind "external" in .loop-spec/config.json until then')
+            raise LoopSpecError(f"no default implementation for {phase}", repair='bind "external" in .loop-spec/config.json')
     elif implementation == "external":
         code = run_phase(phase, attempt_dir / "context.json", product_path)
     else:

@@ -13,6 +13,7 @@ from . import VERSION
 from .events import marker_result
 from .ids import now_iso
 from .jsonio import atomic_write_json
+from .postconditions import review_evidence, verified_head
 from .schema import validate_or_raise
 
 _STATUS = {
@@ -45,6 +46,15 @@ def _accepted_tasks(execute_entry: dict | None) -> list[str]:
     return [t["id"] for t in execute_entry["product"]["tasks"] if t["disposition"] in ("done", "adopted")]
 
 
+def _outstanding(store) -> list[str]:
+    # Same computation as render.py's pr_body "Outstanding" section: every open
+    # ledger finding plus every gap ITERATE never closed.
+    open_findings = [f["id"] for f in store.state["ledger"]["findings"] if f["disposition"] == "open"]
+    iterate_product = (store.state["products"].get("iterate") or {}).get("product") or {}
+    unmet_gaps = [gap["text"] for gap in iterate_product.get("gaps", [])]
+    return open_findings + unmet_gaps
+
+
 def write(store, paths, classification: str, *, reason: str | None = None, summary: str | None = None,
           partially_delivered: bool = False) -> Path:
     run = store.state["run"]
@@ -58,17 +68,19 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
 
     pr_url, prs, delivery = None, [], None
     if deliver_entry is not None:
-        delivery = deliver_entry["product"]
-        for entry in delivery.get("repos", []):
+        delivery = {"targets": deliver_entry["product"].get("repos", [])}
+        for entry in delivery["targets"]:
             if entry.get("pr"):
                 prs.append({"repo": entry["repo"], "number": entry["pr"]["number"], "url": entry["pr"]["url"]})
-                pr_url = pr_url or entry["pr"]["url"]
+                if entry.get("state") == "delivered":
+                    pr_url = pr_url or entry["pr"]["url"]
 
     warnings = [f.get("cause") or f.get("id", "") for f in store.state["ledger"]["findings"] if f.get("disposition") in ("deferred", "open")]
 
+    # A workspace's several repos have no single "the" verified SHA; only a
+    # single-repo run's head means anything as one value.
     verified_sha = None
-    if execute_entry is not None:
-        from .postconditions import verified_head
+    if execute_entry is not None and len(repos) == 1:
         verified_sha = verified_head(store)
 
     request_text = store.state["request"]["text"] or ""
@@ -108,9 +120,11 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         "result": classification,
         "rewinds": len(store.state["budget"]["transitions"]),
         "prs": prs,
-        "reviewed": {t: execute_entry["evidenceLevel"] for t in _accepted_tasks(execute_entry)},
+        "reviewed": {t: {"level": level, "stepId": step_id}
+                     for t in _accepted_tasks(execute_entry)
+                     for level, step_id in [review_evidence(store, t)]},
         "unreviewed": store.state.get("unreviewed", []),
-        "outstanding": [],
+        "outstanding": _outstanding(store),
         "blocked": [],
         "partiallyDelivered": partially_delivered,
         "weakenedAssurance": store.state.get("weakenedAssurance", []),
