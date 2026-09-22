@@ -1,12 +1,47 @@
 # 7.0 runner decision: native Agents and direct SDK workers
 
-Status: architecture comparison, 2026-09-21; updated after reading the original
-Cloud Run report. Option I specifies format-only scripts and an agent-walked JSON
-graph, but does not preserve the report's requested enforcement guarantees.
-Runtime probes remain required; the runner recommendation below is conditional on
-choosing a program-owned execution architecture.
-Audience: maintainers choosing the execution architecture. This explanation supports
-[ROADMAP-7.0.md](ROADMAP-7.0.md), sections 4, 9, and 12.
+Status: evidence document, 2026-09-22. This comparison was written during the
+review round and updated after reading the original Cloud Run report. The roadmap has
+since adopted the phase-interface model, which changes where the runner question
+sits. The section below states that position. Everything after it is the reviewers'
+comparison and report analysis, kept as written, and is the evidence the position
+rests on.
+Audience: maintainers and reviewers of [ROADMAP-7.0.md](ROADMAP-7.0.md), sections 5,
+6, and 8.
+
+## Where this sits after the phase-interface decision
+
+The roadmap now treats each phase as an interface with postconditions the program
+checks against the repository, and lets three kinds of implementation satisfy a
+phase: loop-spec's default, the default with roles bound to other skills, and an
+external implementation done by a person or another tool. Under that model the runner
+is a detail of the default EXECUTE and VERIFY implementations. It decides how a
+worker gets started and how its result reaches the program. It no longer decides
+whether the report's guarantees hold, because those are boundary checks and apply to
+every implementation kind.
+
+Two changes to this document's own analysis follow from the roadmap.
+
+The result-transport concern in the comparison table is answered by the step
+contract rather than by the choice of runner. A worker writes its JSON result to a
+file the step names, and the lead submits only the step id. The lead never holds
+the payload, so it cannot summarize it, and the file's existence, timestamp, and
+step nonce are the execution receipt this document asked for.
+
+Option I is superseded rather than rejected. The roadmap keeps what it was after:
+one small product interface per phase, instructions that own the method, and no
+helper vocabulary for the model to learn. It adds the piece this document found
+missing after reading the report: postconditions the program verifies on the
+repository, so a valid product cannot describe a false completion. A team that wants
+the pure instruction-led shape gets it by binding a phase to `external` and doing
+the phase with its own skills; the boundary check still runs.
+
+The one recommendation still open for the maintainer is the runner count before
+cutover: the native runner alone on both hosts, with the SDK runner added on a
+measured failure, or both runners with separate live gates as this document
+recommends. The roadmap records both positions in its section 8. The authentication
+finding below stands under either: the SDK runner can never be the interactive
+default.
 
 ## Goal and decision
 
