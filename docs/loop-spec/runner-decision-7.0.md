@@ -24,9 +24,16 @@ Two changes to this document's own analysis follow from the roadmap.
 
 The result-transport concern in the comparison table is answered by the step
 contract rather than by the choice of runner. A worker writes its JSON result to a
-file the step names, and the lead submits only the step id. The lead never holds
-the payload, so it cannot summarize it, and the file's existence, timestamp, and
-step nonce are the execution receipt this document asked for.
+file the step names, and the lead submits only the step id, so the lead never holds
+the payload and cannot summarize it. That answers the relay concern only. The
+execution concern this document raised stands, and the
+[second review](phase-interface-review-7.0.md) made the counterexample concrete: a
+lead can write a valid result file itself. The roadmap now records an execution
+evidence level per step, set by the program: controller-observed for a worker the
+program spawned, host-attested when the host's transcript for a submitted agent id
+can be checked, human-attested for an external phase, and unattested otherwise. Only
+the SDK runner gives controller-observed evidence, which is the strongest argument in
+this document's favor on the runner count.
 
 Option I is superseded rather than rejected. The roadmap keeps what it was after:
 one small product interface per phase, instructions that own the method, and no

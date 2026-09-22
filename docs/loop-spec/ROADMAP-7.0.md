@@ -5,7 +5,10 @@ the reviewers asked to break the argument. One job: say what 7.x is, why, and in
 order it gets built. It is a decision document with one reference section (section 4)
 that the decision has to be checkable against. It is not a user guide.
 
-Status: favored plan, 2026-09-22, after one external review round. 6.9 stays on
+Status: favored plan, 2026-09-22, after two external review rounds. The second,
+[phase-interface-review-7.0.md](phase-interface-review-7.0.md), found nine holes in
+the first version of the contract below; each is closed in the section it names, and
+the review's counterexamples become rejection fixtures in M1. 6.9 stays on
 `main` and keeps receiving fixes until 7.0 passes its live gates (M6). Then `main`
 becomes 7, a `6.x` branch is cut for maintenance, and the marketplace entry follows
 `main`. The runner comparison that fed this plan is in
@@ -74,7 +77,7 @@ Three kinds of implementation satisfy a phase, through one pluggable contract
 - The default, which loop-spec ships and which 7.0 builds. It is program-run, with
   judgment done by roles.
 - A bound implementation, which is the default with one or more roles swapped for a
-  skill someone else ships. Binding is described in section 7.
+  skill someone else ships. Binding is described in section 8.
 - An external implementation, where a person or another tool did the phase. The
   program pauses at the boundary, lists the postconditions, and checks them when told
   the phase is done.
@@ -93,14 +96,18 @@ An implementation can change how a phase is satisfied. Nothing can change these:
   the program validates. Markdown artifacts are rendered from the product. No
   implementation authors SPEC.md, PLAN.md, or VERIFICATION.md, so their shape is
   guaranteed rather than linted.
-- The postconditions in section 4 and the checks the program runs for them.
-- The carried state every implementation receives and must honor: the approved spec
-  digest, the baseline, the finding ledger, the rewind count and budget, and the entry
-  mode.
-- The output stream (section 14): the phase markers on stdout, the phase console lines
-  on stderr, the events ledger, the terminal result, and the chat shape. An
-  implementation emits its events through the program, so the lines exist because
-  the mechanism ran and never because prose asked for them.
+- The postconditions in section 4 and the checks the program runs for them, and the
+  route matrix that says which exit a product may claim.
+- The carried state every implementation receives and must honor: the requirements
+  revision and its approval record, the plan revision, the baseline, the finding
+  ledger with its reviewed ranges, the rewind count and budget, and the entry mode.
+- The identity protocol in section 5: run, phase attempt, and step attempt ids;
+  input digests; one-time question ids; atomic result publication; the program as
+  the only writer of transitions and results.
+- The execution evidence level recorded for every worker step and carried into the
+  result (section 5). No implementation can raise its own level.
+- The output stream (section 15): the phase markers, the console lines, the events
+  ledger, the terminal result in its existing schema, and the chat shape.
 - Rewind accounting, the budget, and the terminal results.
 - Never overriding a value the host already exposes to the user. Model, permission
   mode, settings sources, and hooks are the user's. Tool availability and permission
@@ -109,28 +116,50 @@ An implementation can change how a phase is satisfied. Nothing can change these:
 
 ## 4. The phase interface
 
-This section is reference. It is the part a reviewer should try to break. The full
-contract, with field lists and schemas, becomes its own reference page when the code
-lands in M1; this table is the shape it has to have.
+This section is reference. It is the part a reviewer should try to break, and the
+second review did: skipped tasks, an empty range, a weakened criterion under an
+unchanged digest, a wrong PR, and a review nobody ran all passed the first version.
+The rows below are written against those counterexamples. The full contract, with
+field lists and schemas, becomes its own reference page when the code lands in M1;
+this table is the shape it has to have.
+
+Two identities run through every row. The requirements revision is a digest of the
+SPEC product's goal, boundaries, acceptance criteria, and decisions; open questions
+are excluded. Any change to those four parts produces a new revision and reopens
+approval. The plan revision is a digest of the PLAN product. Every later product binds
+to the revisions it was produced against, and a product bound to a stale revision is
+rejected at the boundary without reading further.
 
 Every phase receives the same envelope: the products of prior phases, the carried
 state (section 3), and an entry mode of `fresh`, `remediation` with the gaps to close,
-or `rewind` with the findings that sent it back. Every phase returns a product and one
-named exit outcome from its route list.
+or `rewind` with the findings that sent it back. Every phase returns a product that
+declares one exit from its route list; the program accepts that exit only when the
+postconditions for it hold.
 
 | Phase | Product | Preconditions | Postconditions the program checks | Exits |
 |---|---|---|---|---|
-| SPEC | goal, boundaries, acceptance criteria, decisions, open questions | request text | approval recorded with a digest of goal and boundaries; a later change to either reopens approval as a question to the human | approved, needs answer |
-| PLAN | tasks with dependencies, files, repo, verify command; criterion coverage; prepare command | approved SPEC | every criterion is covered by at least one task; every verify command runs at the base SHA from a bare worktree root; baseline captured (section 10) | ready, spec gap |
-| EXECUTE | per-task commits and evidence; unresolved issues | PLAN, baseline | feature head is reachable from base; every commit in `base..head` belongs to an accepted task whose review verdict names a SHA covering it; each task's verify command produced no new failure identity against the baseline; no unreviewed commit is marked done | integrated, blocked, plan gap |
-| VERIFY | per-criterion verdict with evidence at a SHA; review findings with dispositions; remediation tasks | integrated head | evidence SHA equals the integrated head; every criterion has a verdict; a `blocked` verdict cites a cause the baseline recorded; the program re-runs a sample of cited evidence commands and their status agrees; every finding on cleared code names what it supersedes | passed, implementation gap, plan gap, intent gap, evidence incomplete, blocked |
-| ITERATE | goal verdict against the original request; gaps; proposed route | VERIFY passed | verdict names the current SHA and the current spec digest; a gap routes to SPEC, PLAN, or EXECUTE and the rewind counter advances | converged, converged with caveats, rewind, escalated |
-| DELIVER | PR targets, delivered SHA, caveats | ITERATE converged | remote head of each touched repo equals the verified SHA; one PR exists per touched repo; a caveats result opens a draft | delivered, delivery blocked |
-| debug | failing reproduction, diagnosis, repair, post-fix evidence | error report | the reproduction failed before the repair and passes after; then the VERIFY, ITERATE, and DELIVER postconditions | as VERIFY onward |
+| SPEC | goal, boundaries, acceptance criteria with ids, decisions, open questions | request text | an approval record exists that was produced from a human or policy answer to a question naming the proposed requirements revision; the record references the question id; the product's own fields cannot create it | approved, needs answer |
+| PLAN | tasks with id, dependencies, files, repo, verify command, criteria covered; prepare command | approved requirements revision | every criterion id is covered by at least one task; every verify command either runs at the base SHA from a bare worktree root, or is declared `feature-added` with a target path that does not exist at base and is validated at that task's first integration; baseline captured (section 11); plan bound to the requirements revision | ready, spec gap |
+| EXECUTE | per-task disposition of `done`, `already-satisfied` with evidence, or `removed` by an approved plan amendment; commits per task; unresolved issues | PLAN at the current requirements revision; baseline | every required task has an accepted disposition, and dependencies are complete before dependents; every commit in `base..head` maps to a `done` task; every `done` task has a review record whose reviewed range covers all of that task's commits, and whose execution evidence level is recorded; each task's verify command produced no new failure identity against the baseline; feature head is reachable from base; the product binds to the plan and requirements revisions per repo; an empty range exits `no-change` and can never exit `integrated` | integrated, no change, blocked, plan gap |
+| VERIFY | per-criterion verdict of `pass`, `fail`, or `blocked`, each with evidence of command, working directory, SHA, exit status, and output digest; findings with dispositions; remediation tasks; reviewed range | integrated head at the current revisions | every criterion id in the requirements revision has exactly one verdict; every evidence SHA equals the integrated head; the program re-runs every cited command in its recorded working directory and requires exit status and output digest to agree; a `blocked` verdict cites a cause the program itself observed, either in the baseline record or in that re-run; `passed` requires every verdict `pass` and the review policy in section 10 satisfied; a finding on cleared code carries a typed `supersedes` reference | passed, implementation gap, plan gap, intent gap, evidence incomplete, blocked |
+| ITERATE | goal verdict against the original request; gaps; route | VERIFY passed at the current revisions | the verdict binds the integrated SHA, the requirements revision, and the plan revision; a gap routes to SPEC, PLAN, EXECUTE, or VERIFY for missing evidence, and the rewind counter advances | converged, converged with caveats, rewind, escalated |
+| DELIVER | per-repo PR identity, delivered SHA, caveats | ITERATE `converged` or `converged with caveats`; or `escalated` when the operator policy allows partial delivery as a draft | per touched repo: the remote head ref's SHA equals the verified SHA; the PR is open, its head ref and SHA match, and its base target matches configuration; required checks satisfy the configured readiness policy, carrying 6.9's exact-SHA and required-check behavior; a retried creation is reconciled by identity, never duplicated; partial publication is recorded per repo and never reported as all delivered; a `no-change` result opens no PR and says so | delivered, partially delivered, delivery blocked |
+| debug | reproduction as command plus digest; diagnosis; repair; post-fix evidence | error report | the program re-runs the recorded reproduction and finds it failed before the repair and passes after; a changed reproduction needs a stated reason and the original is re-run too; no reproduction exits `blocked reproduction`; then the VERIFY, ITERATE, and DELIVER postconditions | repaired, blocked reproduction, then as VERIFY onward |
 
-The VERIFY row carries the strongest check available from outside an implementation:
-the program re-executes cited evidence commands and compares. An implementation that
-rubber-stamps gets caught by the spot check, whoever wrote it.
+Routes the first version left implicit, now named. A `blocked` VERIFY verdict may
+cite a failure the program observed for the first time at VERIFY, such as an expired
+credential, and the observation is recorded next to the baseline's. ITERATE may route
+to VERIFY when evidence is incomplete, as 6.9 does. DELIVER accepts an escalated
+partial result only under an explicit operator policy, and the result says
+`partially delivered`. A review coverage reference is typed: `supersedes` names a
+finding id, or a reviewed-range id when the cleared code had no finding; reviewed
+ranges get ids when the ledger records them.
+
+The VERIFY row's re-run is the strongest check available from outside an
+implementation, and it is a full re-run, not a sample. It proves that the cited
+commands produce the cited results at the cited SHA. It does not prove that a command
+tests the criterion it is attached to. That remains a judgment, and section 6 says
+who makes it.
 
 ## 5. The implementation contract
 
@@ -146,21 +175,62 @@ loop-spec phase <name> --context <dir>/context.json --product <dir>/product.json
 ```
 
 - `context.json` holds the envelope from section 4: prior products, carried state,
-  entry mode, the repository or workspace map, the state directory, and the paths the
-  implementation may write to.
+  entry mode, the repository or workspace map, the state directory, the paths the
+  implementation may write to, and the ids below.
 - `product.json` is the phase product. The program validates it against the schema on
-  return and then checks the postconditions.
-- Events go through `loop-spec emit`, which appends to the ledger and prints the
-  console line. That is how an implementation discharges its observability duty.
+  return and then checks the postconditions for the exit it declares.
+- Events go through `loop-spec emit`, which appends a progress event to the ledger and
+  prints the console line. An implementation can record progress this way and
+  nothing else: phase transitions, step acceptance, and results are records only the
+  program writes.
 - A question for the human is a `question.json` in the state directory and exit
-  code 3. The program surfaces it, records the answer, and re-invokes with the answer
-  in context.
-- A request for the lead to execute something is a `step.json` and exit code 2. This
-  is how the default implementation dispatches a worker on hosts where the program
-  cannot spawn one itself (section 8). The step names a role, a working directory, a
-  prompt, an output schema, and a result file the worker writes.
+  code 3. The question carries a one-time id. The program surfaces it, records the
+  answer against that id, and re-invokes with the answer in context. An answer to a
+  retired id, such as one asked before SPEC changed, is rejected.
+- A request for the lead to execute something is a `step.json` and exit code 2. The
+  step names a role, a working directory, a prompt, an output schema, a result path,
+  and a step attempt id. This is how the default implementation dispatches a worker
+  on hosts where the program cannot spawn one itself (section 9).
 - Exit 0 means the product is ready. Exit 1 is a program error with the repair
   named. No other exit code advances anything.
+
+Identity and lifecycle, which the first version asserted and did not specify:
+
+- A run has an id. Each phase entry has an attempt id. Each step has an attempt id.
+  Every context file carries a digest of its inputs, and every product and result
+  carries the ids and digest it was produced against.
+- A worker publishes its result atomically, by writing to a temporary path and
+  renaming to the attempt-scoped result path. The program consumes a result once and
+  retires the attempt. A result arriving for a retired attempt is rejected by id;
+  timestamps are never the discriminator.
+- `submit` is idempotent for the same attempt id and result digest, and rejects a
+  second, different result for the same attempt.
+- Cancelling an attempt retires it, and the program cleans up the children it
+  started. A worker the lead started is retired the same way; whether its process is
+  stopped depends on the host, and the program does not claim to stop it.
+- The program is the single writer of `state.json`. It keeps a digest of the last
+  state it wrote and refuses to continue over a file whose digest differs, which is
+  how an out-of-band edit is detected.
+
+Execution evidence. A result file proves that a result was published for a step. It
+does not prove who produced it. The second review's first finding is the case: a lead
+recovering from a failed dispatch writes a plausible review result itself, and every
+file property holds. So each worker step records an evidence level, set by the program
+and never by the implementation:
+
+- `controller-observed`: the program started the worker itself and consumed its
+  stream. Only the SDK runner provides this.
+- `host-attested`: the lead dispatched the worker through the host and submitted the
+  host's agent or session id; the program checked that the host's transcript for that
+  id exists, postdates the step, and contains the result digest. Where the host
+  exposes no transcript, the level is `unattested`.
+- `human-attested`: an external implementation, attested by a named answer to a
+  question, recorded against the question id.
+
+The level is stored per step in the ledger, rolled up per task, and carried into the
+terminal result's `reviewed` list. A harness policy can require a minimum level for
+`integrated`, and an unattended deployment that requires `controller-observed`
+needs the SDK runner. No level proves the review was good.
 
 The three kinds map onto this contract as follows. The default is a Python entry in
 the program's own tree, invoked in-process for speed and exposed through the same
@@ -168,7 +238,10 @@ command for parity. A bound implementation is the default with the roles named i
 binding config resolved to other skills; the contract is unchanged. An external
 implementation is a placeholder that exits 2 with a step of kind `external`, listing
 the postconditions; `submit` with that step id tells the program the phase is done,
-and the postconditions decide.
+and the postconditions decide. External is a changed boundary compared with the
+earlier format-only idea: the program still verifies and still controls progression.
+That is a decision, recorded in section 20, and not an equivalent way to get
+format-only behavior.
 
 The binding lives in the consumer repo at `.loop-spec/config.json`, next to
 `workspace.json`:
@@ -185,7 +258,31 @@ records the resolved implementation and the resolved skill for every phase and r
 the events ledger at run start, so an audit can say which method produced which
 product.
 
-## 6. The default implementations
+## 6. What is guaranteed and what stays judgment
+
+The postconditions are observable predicates over the repository, the state
+directory, and command re-runs. They guarantee the execution and evidence protocol:
+no skipped task, no unreviewed commit, no stale evidence, no wrong PR, no result for a
+retired attempt, and a recorded answer to who ran each worker. They do not and cannot
+prove semantics. Three judgments stay with a model or a person, and the plan says so
+rather than hiding them behind a hash:
+
+- Whether a review was thorough. The ledger, the delta rule, and the evidence level
+  bound the churn and record the provenance. Quality is the reviewer's.
+- Whether an evidence command actually tests its criterion. The re-run proves the
+  command's result; relevance is the verifier's, and ITERATE is the second opinion.
+- Whether the delivered behavior satisfies the original request. ITERATE's verdict is
+  bound to a SHA and a revision, and it can still be wrong.
+
+Trust model. Workers are cooperative and are not sandboxed. A working directory and
+an appended contract do not restrict a worker's filesystem access, and the plan does
+not promise write isolation. The program detects instead of prevents: an out-of-band
+change to the feature branch pauses for reconciliation, a state file whose digest
+differs from the last write stops the run, and a result for a retired attempt is
+rejected. A hostile implementation can waste a phase. It cannot make the boundary
+report a review that has no evidence record, or a task that has no disposition.
+
+## 7. The default implementations
 
 These are what 7.0 builds. They are the reference implementations of section 4, and
 the parts of 6.9 worth keeping live here.
@@ -195,7 +292,13 @@ SPEC and PLAN run in the lead session, in-context. The spec role interviews with
 person. Under the SDK the supervisor's `can_use_tool` answers it by policy, which
 `examples/supervisor` already does. The lead submits each product; the program records
 the approval digest for SPEC. Both roles may need a human, which is why they run where
-questions are cheap.
+questions are cheap. Context lifecycle, stated per host: in interactive Claude Code
+the lead's session holds SPEC and PLAN and then a list of step ids, and every worker
+is a fresh context. Under the SDK a harness may keep one session per phase, as the
+report's did, because `run` is resumable from state and `LOOP_SPEC_HANDOFF` marks the
+boundary; the next session enters from state and the answered questions travel in it.
+Fresh phase entry is therefore a property of the harness's choice, and fresh worker
+context is a property of the design.
 
 EXECUTE is program-run. The program resolves the task DAG into waves of at most three,
 creates a worktree per task before anything is dispatched, and hands out one step at a
@@ -203,7 +306,11 @@ time: implement, then review, for each task. Each worker runs as a fresh context
 its worktree and writes its JSON result to the file the step names. The lead submits
 only the step id. The program validates the JSON, checks that the commit is on the
 task branch in that worktree and that the feature head has not moved out of band,
-runs the task's verify command against the baseline, and integrates by fast-forward.
+runs the task's verify command against the baseline, records the execution evidence
+level, and integrates by fast-forward. The phase exits `integrated` only when every
+required task has an accepted disposition, so a plan with two tasks and one commit
+cannot exit at all until the second task is done, already satisfied with evidence, or
+removed by an approved amendment.
 A rejected step is handed out again with the reason attached, up to a per-step retry
 limit, after which the phase exits `blocked`. An out-of-band change to the feature
 branch pauses for reconciliation and is never reset automatically.
@@ -212,7 +319,9 @@ VERIFY dispatches a verifier and a reviewer as fresh contexts with the ledger as
 input. The reviewer sees the full diff on the first pass and on an explicit final
 pass, and the delta since the last reviewed SHA otherwise. The verifier is told to try
 an offline stand-in before marking a criterion blocked, and may mark it blocked only
-for a cause the baseline recorded. Section 9 has the convergence rules.
+for a cause the program observed, in the baseline or in its own re-run at VERIFY. The
+program re-runs every cited evidence command before the phase can exit. Section 10
+has the convergence rules.
 
 ITERATE is a fresh goal-judgment role. Its input is the immutable original request,
 the approved spec, the integrated diff, the acceptance evidence, and prior gaps. It
@@ -227,7 +336,7 @@ debug keeps the 6.9 loop-debug principles as role input flags: a failing
 reproduction before any repair, bounded retries, and a blocker recorded when no
 reproduction is available rather than a false pass.
 
-## 7. Roles as bound skills
+## 8. Roles as bound skills
 
 A role is a prompt plus an output schema. The default prompts are ported from the 6.9
 `agents/*.md` charters: spec-writer, planner, implementer, code-reviewer, verifier,
@@ -280,7 +389,7 @@ A borrowed skill cannot change the schema, skip the contract, or reach the state
 it never writes the result file, the retry limit ends the phase as blocked. The damage
 a bad method can do is a bad judgment, which is the same risk as a bad default.
 
-## 8. How a worker runs
+## 9. How a worker runs
 
 This was the headline decision in the first draft. Under the interface model it is a
 detail of the default EXECUTE and VERIFY implementations, and the
@@ -290,8 +399,10 @@ The default hands the worker to the lead as a step, and the lead runs it with it
 host's own mechanism: the Agent tool in Claude Code and under the SDK, the
 equivalent elsewhere. The program owns the worktree, the ordering, the schema, and the
 checks on the repository afterward. The lead never carries the payload, because the
-worker writes its result to a file the step names, and the file's existence,
-timestamp, and step nonce are the execution receipt. This works on every host that
+worker writes its result to a file the step names. That file is transport, and it
+records `host-attested` execution only when the program can check the host's
+transcript for the submitted agent id (section 5). It is not on its own a proof that
+the role ran. This works on every host that
 can run a command, edit files, and spawn a fresh context, and it needs nothing beyond
 the standard library.
 
@@ -305,13 +416,15 @@ unattended SDK deployment that has configured its own credentials.
 Open decision for the maintainer: the reviewers recommend shipping both runners before
 cutover, the native one for interactive Claude Code and the SDK one for unattended
 deployments. The alternative is to ship the native runner on both hosts and add the
-SDK runner only if the native one fails its SDK live gate (section 16), since a lead
+SDK runner only if the native one fails its SDK live gate (section 17), since a lead
 that executes one program-issued step at a time and never carries the payload is not
 the 6.9 lead driving a protocol. Both positions agree the runner sits behind one
-function, `execute_step(step) -> result`, with the same validator, ledger, retry
-limits, and integrator on either side.
+lifecycle contract of start, progress, result, cancellation, and recovery, with the
+same validator, ledger, retry limits, and integrator on either side. The second
+review's first finding weighs on this decision: only the SDK runner yields
+`controller-observed` evidence, so a deployment that requires that level needs it.
 
-## 9. Convergence
+## 10. Convergence
 
 - Every review finding is a ledger record: location, cause, severity, the SHA it was
   raised against, and a disposition of `fixed`, `rejected` with reason, or `deferred`
@@ -320,8 +433,8 @@ limits, and integrator on either side.
   reviews the delta since the last reviewed SHA. A finding on a line a prior pass
   cleared requires a `supersedes` field naming the earlier finding and why it was
   wrong. The schema makes the field required when the location is inside cleared
-  ranges, and the ledger keeps reviewed ranges so a cleared line always has something
-  to point at.
+  ranges. The reference is typed: a finding id, or a reviewed-range id when the
+  cleared code had no finding, and the ledger assigns range ids as it records them.
 - Severity on re-review does not demote every Important finding after the first pass.
   New or changed code and new evidence get substantive review. A repeated finding on
   previously reviewed code needs a reason for reopening. Known Important caveats may
@@ -348,7 +461,7 @@ limits, and integrator on either side.
   case. `failed`: a program error, or an environment that cannot run the plan. A
   harness reads the result and applies its own policy.
 
-## 10. Baseline and environment
+## 11. Baseline and environment
 
 - The baseline is captured once, after PLAN and before EXECUTE, at the base SHA, in a
   throwaway worktree: every verify command the plan declares plus detected repo checks
@@ -368,7 +481,7 @@ limits, and integrator on either side.
   `verify-failed-at-baseline-too`, `already-integrated` (the commit is an ancestor of
   the feature head and is published normally), and `zero-commit`.
 
-## 11. State and artifacts
+## 12. State and artifacts
 
 Run state leaves the branch. The report's reviewer saw a 512-line `feature.json`
 ahead of the source files, and the harness had to strip it at delivery. 6.9 has a
@@ -401,7 +514,7 @@ inside Bash tool calls.
 - No other host directory is written to. The data directory is the one the host offers
   for this.
 
-## 12. Workspace mode
+## 13. Workspace mode
 
 Kept as a capability and rebuilt in the repo module, so nothing else re-detects it.
 
@@ -416,7 +529,7 @@ Kept as a capability and rebuilt in the repo module, so nothing else re-detects 
   cross-links. The terminal result lists all of them.
 - The intent guard and the ledger are per feature.
 
-## 13. Entry points
+## 14. Entry points
 
 The required scope is SPEC, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER, plus debug. The
 full cycle preserves that order. Each phase is individually addressable, with its
@@ -431,33 +544,56 @@ preconditions checked by the program.
 | `status` | read-only state and outstanding decisions |
 
 Removal of other 6.9 entry points, phase modes, the teams rung, hooks, and output
-styles is subject to the migration inventory in section 16.
+styles is subject to the migration inventory in section 17.
 
-## 14. The output stream and the result
+## 15. The output stream and the result
 
-This is carried from 6.9 as it is today and is not negotiable for any implementation.
-The full contract is `docs/loop-spec/agent-output-contract.md` and the phase-line
-rules in `skills/shared/report-style.md`; this section names what 7.x keeps.
+The first version called this a verbatim carryover from 6.9, and the second review
+found four places where that was inaccurate. This section now says what 7.x keeps,
+what it changes, and what a compatibility matrix with fixtures has to settle at M1.
+The current contract is `docs/loop-spec/agent-output-contract.md` with the phase-line
+rules in `skills/shared/report-style.md`.
 
-- stdout carries the machine lines, one JSON object each: `LOOP_SPEC_PHASE_START`,
-  `LOOP_SPEC_PHASE_END` with `phase`, `attempt`, `elapsedSeconds`, `verdict` in
+Kept as in 6.9:
+
+- The machine lines on stdout, one JSON object each: `LOOP_SPEC_PHASE_START` and
+  `LOOP_SPEC_PHASE_END` with `attemptId`, `phase`, `elapsedSeconds`, `verdict` in
   `advanced`, `rewind`, `blocked`, `completed`, `next`, and `headSha`;
-  `LOOP_SPEC_HANDOFF` when `run` yields between phases; `LOOP_SPEC_QUESTION` on exit
-  3; and `LOOP_SPEC_RESULT` on exit 0.
-- stderr carries the human console line for every event, in the `[PHASE] ...` shape.
-  `LOOP_SPEC_CONSOLE_STREAM=stdout` moves them for hosts that grade the streams
-  differently, and `LOOP_SPEC_CONSOLE_EVENTS=0` silences them without touching the
-  ledger. Both switches keep their 6.9 meaning.
-- `events.jsonl` is the durable ledger and the source of every line above.
-- `LOOP_SPEC_RESULT` gains fields: `rewinds`, `elapsedSeconds`, `prs`, `reviewed`,
-  `unreviewed`, `outstanding`, `blocked`, and the resolved implementation and skill
-  per phase and role.
-- The chat shape is the 6.9 output style: name the phase when it changes, one thought
-  per action while working, and an outcome-first close. The implementation contract
-  discharges the phase lines by mechanism, and the lead writes only what the mechanism
-  cannot know.
+  `LOOP_SPEC_HANDOFF` when `run` yields between phases; `LOOP_SPEC_RESULT` on exit 0.
+  6.9's exception, where the graph's `--step` descriptor occupied stdout and pushed
+  the markers to stderr, goes away: in 7.x a step is a file, so stdout carries markers
+  only.
+- The console line per event on stderr in the `[PHASE] ...` shape, with the same
+  precedence as `lib/events.sh` today: `LOOP_SPEC_CONSOLE_STREAM` when set; otherwise
+  stdout when Cloud Run's `CLOUD_RUN_JOB` or `K_SERVICE` is present, because Cloud
+  Logging grades stderr as errors; otherwise stderr. `LOOP_SPEC_CONSOLE_EVENTS=0`
+  silences the console lines without touching the ledger.
+- The terminal result's schema 1 shape: `schema`, `loopSpecVersion`, `slug`,
+  `status` in `completed`, `paused`, `escalated`, `terminal`, `failed`, `outcome`,
+  `reason`, `summary`, plus the atomic `.loop-spec/last-result.json` pointer and its
+  stale-result clearing. The four 7.x results map onto it additively: `converged`
+  and `converged-with-caveats` are `status: completed` with that `outcome`;
+  `no-change` is `completed` with `outcome: no-change`; `escalated` is `escalated`;
+  `failed` is `failed`; a pending question is `paused` with the question id.
+- The chat shape, bound by `output-styles/loop-spec.md`, which is kept and not deleted
+  at cutover, because it is the only place that shape binds in Claude Code. Other
+  hosts follow the shared report-style contract as today.
 
-## 15. Packaging
+Added:
+
+- `LOOP_SPEC_QUESTION` on exit 3, carrying the one-time question id.
+- `LOOP_SPEC_RESULT` fields: `rewinds`, `prs` with per-repo identity and state,
+  `reviewed` with the evidence level per task, `unreviewed`, `outstanding`,
+  `blocked`, `partiallyDelivered`, and the resolved implementation and skill per
+  phase and role.
+
+Settled at M1 by a compatibility matrix and fixtures: exact stream placement per
+line under every environment combination, terminal field meanings for every result
+and for interruption, pointer behavior on resume, and the version bump policy for
+the schema. Until that matrix exists, no line in this section is a promise of
+byte-for-byte compatibility.
+
+## 16. Packaging
 
 The repo is a Claude Code plugin and an Agent Skills repository at once, because both
 read `skills/*/SKILL.md`. `npx skills add <owner>/loop-spec` installs the skill
@@ -467,7 +603,7 @@ hook, and the data directory placeholder.
 
 - The program ships inside the skill tree so a skills install carries it. The entry
   skills share the program by a relative path. Whether that path survives a per-skill
-  symlink install on each agent is a verify item (section 18); if it does not, the
+  symlink install on each agent is a verify item (section 19); if it does not, the
   fallback is one skill `loop-spec` with the entry as its argument.
 - A skill body references the program relative to its own directory, never through a
   host variable, since `${CLAUDE_PLUGIN_ROOT}` is empty in Bash tool calls and other
@@ -475,7 +611,7 @@ hook, and the data directory placeholder.
 - Hooks, agents, output styles, and MCP config are Claude Code plugin surfaces and do
   not travel with a skills install. 7.x depends on none of them for correctness.
 
-## 16. Testing, live gates, and cutover
+## 17. Testing, live gates, and cutover
 
 The implementation contract and the worker runner are the two seams. The offline suite
 replaces the runner with a fake that returns canned role outputs, and drives the whole
@@ -502,26 +638,30 @@ rather than widened permissions or false completion. The `claude -p` entry gets 
 smoke test for question policy, background execution, markers, and resumption.
 
 Cutover deletes `extensions/`, `hooks/` except the one kept, every `lib/*.sh` and the
-graph driver, the 6.9 skills, agents, output styles, and the 6.9 tests, and rewrites
-`CLAUDE.md`. Deletion is conditional on a migration inventory that maps each existing
+graph driver, the 6.9 skills, agents, and the 6.9 tests, and rewrites `CLAUDE.md`. The
+output style stays (section 15). The offline suite adds one rejection fixture per
+counterexample in the second review: a forged review result at the right path, a
+sampled-only verify, a plan with a task nobody implemented, an empty range, a weakened
+criterion under an unchanged goal, a PR on the wrong base, a result for a retired
+attempt, and a stale question answer. Deletion is conditional on a migration inventory that maps each existing
 command, environment override, guard, and harness contract to its replacement or to an
 explicitly accepted removal. M0 settles that inventory; M7 cannot remove unmapped
 behavior.
 
-## 17. Milestones
+## 18. Milestones
 
 | M | Deliverable | Done when |
 |---|---|---|
-| M0 | this document and the migration inventory merged on `v7` | maintainer sign-off; runner count decided |
+| M0 | this document, the migration inventory, and the route matrix merged on `v7` | maintainer sign-off; the second review's F1 to F7 are closed in the contract and F8 and F9 have recorded decisions; runner count decided |
 | M1 | state, repo, baseline, events, the implementation contract, the step seam, the fake runner, host probes | offline suite drives an empty cycle through all seven boundaries; native dispatch, worktree, and receipt probes recorded |
 | M2 | SPEC and PLAN defaults in the lead, `submit`, intent guard, re-approval as a question | a spec change after approval yields exit 3 and an answer re-approves |
 | M3 | EXECUTE default: dag, worktrees, implement and review roles, integration against baseline | offline suite passes the happy path; an unreviewed commit cannot cross the EXECUTE boundary; an external EXECUTE passes its postconditions |
 | M4 | VERIFY and ITERATE defaults: acceptance, ledger, delta review, spot check, goal judgment, bounded rewinds | the report's four-pass sequence terminates `converged-with-caveats` after two rewinds; a green checklist with an unmet goal rewinds |
 | M5 | DELIVER, workspace, result contract, role binding, supervisor example | a two-repo workspace delivers two PRs offline against a local remote; a bound review role runs |
-| M6 | live gates | section 16 passes in interactive Claude Code and in the SDK; evidence recorded |
+| M6 | live gates | section 17 passes in interactive Claude Code and in the SDK; evidence recorded |
 | M7 | cutover | `main` is 7.0.0, `6.x` branch cut, marketplace follows, CHANGELOG written |
 
-## 18. To verify before M1
+## 19. To verify before M1
 
 Recorded so the plan does not lean on memory:
 
@@ -546,7 +686,7 @@ Recorded so the plan does not lean on memory:
   authentication is separately configured; the 6.9 CLI rung does not prove that SDK
   credential reuse is a supported integration.
 
-## 19. Decisions and audit notes
+## 20. Decisions and audit notes
 
 Decided by the maintainer on 2026-09-21 and 2026-09-22: 7.x drops the opencode, ADK,
 and Codex harness trees; the scope is the seven phases above; workspace mode is
@@ -554,8 +694,15 @@ redesigned rather than kept compatible; state is not committed; phases are inter
 with loop-spec owning the boundaries; the default implementation for each phase is
 loop-spec's own, ported from 6.9's charters.
 
-Pending: the runner count (section 8). Pending for M0: supported host versions and the
-migration inventory.
+Decided on 2026-09-22 from the second review: the requirements revision covers
+criteria and decisions, not only goal and boundaries; EXECUTE checks both directions;
+VERIFY re-runs every cited command; DELIVER binds PR identity and carries 6.9's
+readiness checks; execution evidence is a recorded level and never a file property;
+`external` is a changed boundary rather than format-only; the output style is kept.
+
+Pending: the runner count (section 9), which the evidence-level finding tips toward
+shipping both. Pending for M0: supported host versions, the migration inventory, and
+the route matrix as its own reference page.
 
 Audit notes from the review round: the raw report was read after the first
 comparison; the report is one observed run and demonstrates failure modes without
