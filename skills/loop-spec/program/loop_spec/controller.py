@@ -27,6 +27,7 @@ from .paths import state_home as resolve_state_home
 from .state import StateStore
 
 _PHASE_ORDER = ["spec", "plan", "execute", "verify", "iterate", "deliver"]
+_ALL_IMPLEMENTATION_PHASES = _PHASE_ORDER + ["debug", "revise"]
 _RESUMABLE_PHASES = ("spec", "plan", "execute", "verify", "iterate", "deliver")
 
 
@@ -144,7 +145,9 @@ def _resolve_repos(store: StateStore, project_root: Path, slug: str, request_tex
 
 
 def _resolve_implementations(store: StateStore, project_root: Path) -> None:
-    phases = {p: contract.resolve_implementation(project_root, p) for p in _PHASE_ORDER}
+    # Every phase, including debug/revise (each entry's own first phase), gets an
+    # implementation resolved once up front so _drive_phase's lookup never misses.
+    phases = {p: contract.resolve_implementation(project_root, p) for p in _ALL_IMPLEMENTATION_PHASES}
     store.state["implementations"] = {"phases": phases, "roles": {}}
 
 

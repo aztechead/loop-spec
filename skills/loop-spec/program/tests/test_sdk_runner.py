@@ -115,28 +115,24 @@ class PolicyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.behavior, "deny")
         self.assertIn("question.json", result.message)
 
-    async def test_denies_rm_rf(self):
+    async def test_bash_and_other_tool_cases(self):
+        cases = [
+            ("Bash", "rm -rf /tmp/x", "deny"),
+            ("Bash", "git push origin main --force", "deny"),
+            ("Bash", "ls -la", "allow"),
+            ("Read", "n/a", "allow"),
+        ]
         with patch.dict(sys.modules, {"claude_agent_sdk": _fake_sdk_module([])}):
-            result = await policy("Bash", {"command": "rm -rf /tmp/x"}, None)
-        self.assertEqual(result.behavior, "deny")
-
-    async def test_denies_force_push(self):
-        with patch.dict(sys.modules, {"claude_agent_sdk": _fake_sdk_module([])}):
-            result = await policy("Bash", {"command": "git push origin main --force"}, None)
-        self.assertEqual(result.behavior, "deny")
-
-    async def test_allows_a_plain_bash_command(self):
-        with patch.dict(sys.modules, {"claude_agent_sdk": _fake_sdk_module([])}):
-            result = await policy("Bash", {"command": "ls -la"}, None)
-        self.assertEqual(result.behavior, "allow")
-
-    async def test_allows_a_non_bash_tool(self):
-        with patch.dict(sys.modules, {"claude_agent_sdk": _fake_sdk_module([])}):
-            result = await policy("Read", {"file_path": "a.py"}, None)
-        self.assertEqual(result.behavior, "allow")
+            for tool_name, command, expected in cases:
+                with self.subTest(tool_name=tool_name, command=command):
+                    result = await policy(tool_name, {"command": command, "file_path": "a.py"}, None)
+                    self.assertEqual(result.behavior, expected)
 
 
 class RunStepSdkTests(unittest.TestCase):
+    # simplicity: setUp/tearDown are unittest's fixed method names, not a naming
+    # choice; house-style.sh's camelCase deviation here is the same pre-existing
+    # false positive test_execute.py, test_result.py, and test_postconditions.py hit.
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.result_path = Path(self._tmp.name, "result.json")

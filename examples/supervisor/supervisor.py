@@ -1,218 +1,183 @@
 #!/usr/bin/env python3
-"""Reference supervisor for loop-spec on the Claude Agent SDK.
+"""Reference supervisor for loop-spec 7.x on the Claude Agent SDK.
 
-A worked, end-to-end example of the supervisor interface
-(docs/loop-spec/supervisor-interface.md) on the harness's own seams:
+Drives one `loop-spec cycle` run to completion by reading the `LOOP_SPEC_NEXT`
+protocol (skills/loop-spec/SKILL.md) off the CLI's stdout: a `role` step goes
+through `loop_spec.sdk_runner.run_step_sdk`, a `lead` step is driven here with the
+same output_format/structured_output contract but a `can_use_tool` that answers
+`AskUserQuestion` instead of denying it, and a `question` is answered by a fixed
+policy (this run's default option, never a person).
 
-* profile   -> ``ClaudeAgentOptions.env`` carries ``lib/profile.sh resolve``
-* store     -> ``LOOP_SPEC_STORE`` points at ``lib/supervisor/store-mirror.sh``
-* sink      -> ``LOOP_SPEC_EVENT_SINK`` points at ``append-sink.sh``, and a
-               ``PostToolUse`` hook reads the same phase markers natively
-* oracle    -> ``can_use_tool`` answers every ``AskUserQuestion`` the supervised
-               path asks, taking the option labeled ``(Recommended)``
-* lifecycle -> the loop below reissues the cycle after each ``phase-handoff``
-               result and stops on a terminal one
-
-**This is a reference supervisor, not a supported product surface.** It answers
-every question with the recommendation so the example stays readable; a real
-supervisor would put its own policy in ``answer_question``. Nothing here is
-imported by loop-spec itself, and it carries no compatibility guarantee.
+**This is a reference supervisor, not a supported product surface.** Nothing here
+is imported by loop-spec itself. It has NOT been run live: no SDK credentials are
+available in this repository. Grounded from the installed package
+(claude-agent-sdk 0.2.157, bundled CLI 2.1.277) and
+docs.claude.com/en/agent-sdk/user-input ("Handle approvals and user input");
+where the two disagree, the installed package wins, noted inline.
 
 Usage:
-    python3 supervisor.py --project DIR --task "<description>" [--model haiku]
-        [--preset supervised] [--mirror DIR] [--events FILE] [--max-rounds N]
-        [--budget-usd X]
+    ANTHROPIC_API_KEY=... python3 supervisor.py --project-root DIR --request "<text>"
+        [--slug SLUG] [--state-home DIR] [--model haiku]
 
-Prerequisites: ``pip install claude-agent-sdk`` (the SDK bundles the Claude Code
-CLI), a Claude login or ``ANTHROPIC_API_KEY``, and ``git`` initialized in DIR.
-DELIVER additionally needs ``gh auth status`` and an ``origin`` remote; without
-them the run ends at delivery with ``gh_missing`` and everything before it is
-still on disk.
+Prerequisites: Python >= 3.10, `pip install claude-agent-sdk==0.2.157` (bundles the
+Claude Code CLI), and provider auth in the environment. DELIVER additionally needs
+`gh auth status` and an `origin` remote.
 
-Exit codes: 0 when the terminal result is ``completed``, 1 otherwise.
+Exit codes: 0 when the terminal result's status is "completed", 1 otherwise.
 """
-
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ResultMessage,
-    SystemMessage,
-    TextBlock,
-    query,
-)
-from claude_agent_sdk.types import HookMatcher, PermissionResultAllow
+REPO_ROOT = Path(__file__).resolve().parents[2]
+PROGRAM_ROOT = REPO_ROOT / "skills" / "loop-spec" / "program"
+LAUNCHER = PROGRAM_ROOT / "loop-spec"
+sys.path.insert(0, str(PROGRAM_ROOT))
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[2]
-SINK = Path(__file__).resolve().parent / "append-sink.sh"
-MARKERS = ("LOOP_SPEC_PHASE_START", "LOOP_SPEC_PHASE_END", "LOOP_SPEC_RESULT")
+from loop_spec.jsonio import atomic_write_json  # noqa: E402
+from loop_spec.sdk_runner import run_step_sdk  # noqa: E402
 
 
-def bash(*args: str, cwd: Path, env: dict[str, str]) -> str:
-    return subprocess.run(
-        ["bash", *args], cwd=cwd, env=env, capture_output=True, text=True, check=True
-    ).stdout
+def run_cli(*args: str) -> str:
+    """One `loop-spec` subprocess call; echoes its stdout as it goes and raises
+    on a non-zero exit, matching how a human running the same command would see it."""
+    proc = subprocess.run([str(LAUNCHER), *args], capture_output=True, text=True)
+    print(proc.stdout, end="")
+    if proc.returncode != 0:
+        print(proc.stderr, file=sys.stderr)
+        raise SystemExit(proc.returncode)
+    return proc.stdout
 
 
-def write_profile(project: Path, preset: str, mirror: Path) -> None:
-    """Project policy lives in the file, not in this process: a later run from a
-    terminal sees the same store and sink."""
-    profile = {
-        "preset": preset,
-        "env": {
-            "LOOP_SPEC_STORE": str(PLUGIN_ROOT / "lib" / "supervisor" / "store-mirror.sh"),
-            "LOOP_SPEC_STORE_DIR": str(mirror),
-            "LOOP_SPEC_EVENT_SINK": str(SINK),
-        },
-    }
-    (project / ".loop-spec").mkdir(parents=True, exist_ok=True)
-    (project / ".loop-spec" / "profile.json").write_text(json.dumps(profile, indent=2) + "\n")
+def parse_next(stdout: str) -> dict:
+    for line in reversed(stdout.splitlines()):
+        if line.startswith("LOOP_SPEC_NEXT "):
+            return json.loads(line[len("LOOP_SPEC_NEXT "):])
+    raise RuntimeError("no LOOP_SPEC_NEXT line in loop-spec's output")
 
 
-def resolved_env(project: Path, events_file: Path) -> dict[str, str]:
-    base = {**os.environ, "CLAUDE_PROJECT_DIR": str(project)}
-    resolved = json.loads(bash(str(PLUGIN_ROOT / "lib" / "profile.sh"), "resolve", cwd=project, env=base))
-    env = {k: v for k, v in resolved["env"].items() if k not in os.environ}
-    env["LOOP_SPEC_EVENT_SINK_FILE"] = str(events_file)
-    return env
-
-
-def answer_question(question: dict) -> str:
-    """The supervisor's policy. The reference policy is the plugin's recommendation."""
+def answer_by_policy(question: dict) -> str:
+    """This reference supervisor's whole policy: the question's own default, else
+    its first option. A "text"-kind question with neither is not something a fixed
+    policy can answer; a real supervisor puts its own logic here."""
+    if question.get("defaultValue"):
+        return question["defaultValue"]
     options = question.get("options") or []
-    for option in options:
-        if "(Recommended)" in option.get("label", ""):
-            return option["label"]
-    return options[0]["label"] if options else ""
+    if options:
+        return options[0]["value"]
+    raise RuntimeError(f"question {question['questionId']} has no default or options to answer automatically")
 
 
-def make_can_use_tool(decision_log: Path):
-    async def can_use_tool(tool_name: str, input_data: dict, context):
+async def run_lead_step(step: dict, *, plugin_path: Path, model: str | None) -> None:
+    """Drive one lead step through query(): the same output_format/structured_output
+    contract run_step_sdk uses for a role step, but can_use_tool answers
+    AskUserQuestion instead of denying it -- a lead step is meant to interact with
+    a human (here, this file's fixed policy stands in for one)."""
+    from claude_agent_sdk import ClaudeAgentOptions, query
+    from claude_agent_sdk.types import HookMatcher, PermissionResultAllow
+
+    async def can_use_tool(tool_name, input_data, context):
         if tool_name != "AskUserQuestion":
-            return PermissionResultAllow(updated_input=input_data)
+            return PermissionResultAllow()
+        # Shape confirmed against docs.claude.com/en/agent-sdk/user-input ("Handle
+        # approvals and user input"): updated_input carries the original questions
+        # array plus an "answers" dict keyed by each question's own text.
         answers = {}
         for question in input_data.get("questions", []):
-            answers[question["question"]] = answer_question(question)
-            with decision_log.open("a") as fh:
-                fh.write(json.dumps({"question": question["question"],
-                                     "header": question.get("header"),
-                                     "answer": answers[question["question"]]}) + "\n")
-            print(f"[oracle] {question.get('header')}: {answers[question['question']]}", flush=True)
-        return PermissionResultAllow(
-            updated_input={"questions": input_data.get("questions", []), "answers": answers}
-        )
-    return can_use_tool
+            options = question.get("options") or []
+            answers[question["question"]] = options[0]["label"] if options else ""
+        return PermissionResultAllow(updated_input={**input_data, "answers": answers})
 
+    async def keep_stream_open(input_data, tool_use_id, context):
+        # Same docs page: a finite prompt stream can close before can_use_tool
+        # fires unless a PreToolUse hook keeps it open.
+        return {"continue_": True}
 
-async def keep_stream_open(input_data, tool_use_id, context):
-    # The Python SDK closes a finite prompt stream before can_use_tool can fire
-    # unless a hook keeps it open (Agent SDK guide, "Handle approvals and user input").
-    return {"continue_": True}
-
-
-async def phase_markers(input_data, tool_use_id, context):
-    """Native event consumption: the same markers the sink receives, read from the
-    Bash tool's response through PostToolUse."""
-    response = input_data.get("tool_response")
-    text = response if isinstance(response, str) else json.dumps(response)
-    for line in text.splitlines():
-        if line.startswith(MARKERS):
-            print(f"[hook] {line[:160]}", flush=True)
-    return {}
-
-
-def stream(prompt: str):
-    async def gen():
-        yield {"type": "user", "message": {"role": "user", "content": prompt}}
-    return gen()
-
-
-async def run_once(prompt: str, options: ClaudeAgentOptions) -> ResultMessage | None:
-    result = None
-    async for message in query(prompt=stream(prompt), options=options):
-        if isinstance(message, SystemMessage) and message.subtype == "init":
-            print(f"[init] session={message.data.get('session_id')} plugins={message.data.get('plugins')}", flush=True)
-        elif isinstance(message, AssistantMessage):
-            for block in message.content:
-                if isinstance(block, TextBlock) and block.text.strip():
-                    print(f"[agent] {block.text.strip()[:200]}", flush=True)
-        elif isinstance(message, ResultMessage):
-            result = message
-    return result
-
-
-async def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--project", required=True, type=Path)
-    ap.add_argument("--task", required=True)
-    ap.add_argument("--model", default="haiku")
-    ap.add_argument("--preset", default="supervised")
-    ap.add_argument("--mirror", type=Path)
-    ap.add_argument("--events", type=Path)
-    ap.add_argument("--max-rounds", type=int, default=12)
-    ap.add_argument("--budget-usd", type=float, default=None)
-    args = ap.parse_args()
-
-    project = args.project.resolve()
-    mirror = (args.mirror or project.parent / f"{project.name}-mirror").resolve()
-    events = (args.events or project.parent / f"{project.name}-events.jsonl").resolve()
-    decisions = project.parent / f"{project.name}-oracle.jsonl"
-    write_profile(project, args.preset, mirror)
-    env = resolved_env(project, events)
-    print(f"[profile] preset={args.preset} env={sorted(env)}", flush=True)
+    async def prompt_stream():
+        yield {"type": "user", "message": {"role": "user", "content": step["prompt"]}}
 
     options = ClaudeAgentOptions(
-        cwd=str(project),
-        model=args.model,
-        env=env,
-        plugins=[{"type": "local", "path": str(PLUGIN_ROOT)}],
-        permission_mode="acceptEdits",
-        can_use_tool=make_can_use_tool(decisions),
-        hooks={
-            "PreToolUse": [HookMatcher(matcher=None, hooks=[keep_stream_open])],
-            "PostToolUse": [HookMatcher(matcher="Bash", hooks=[phase_markers])],
-        },
-        max_budget_usd=args.budget_usd,
-        stderr=lambda line: None,
+        cwd=step["cwd"], model=model, permission_mode="acceptEdits",
+        plugins=[{"type": "local", "path": str(plugin_path)}],
+        setting_sources=["user", "project", "local"],
+        output_format={"type": "json_schema", "schema": step["schema"]},
+        can_use_tool=can_use_tool,
+        hooks={"PreToolUse": [HookMatcher(matcher=None, hooks=[keep_stream_open])]},
     )
 
-    prompt = f"/loop-spec:auto {args.task}"
-    for round_no in range(1, args.max_rounds + 1):
-        print(f"[round {round_no}] {prompt}", flush=True)
-        message = await run_once(prompt, options)
-        result_path = project / ".loop-spec" / "last-result.json"
-        result = json.loads(result_path.read_text()) if result_path.is_file() else None
-        cost = getattr(message, "total_cost_usd", None)
-        print(f"[round {round_no}] sdk={getattr(message, 'subtype', None)} cost={cost} "
-              f"result={json.dumps({k: result.get(k) for k in ('status', 'outcome', 'reason', 'phaseReached')}) if result else None}",
-              flush=True)
-        if result is None:
-            print("no terminal result was published; run lib/cycle-reconcile.sh in the project", file=sys.stderr)
-            return 1
-        if result.get("status") == "paused" and result.get("reason") == "phase-handoff":
-            # Lifecycle: the plugin returned after one durable phase; a fresh context resumes it.
-            prompt = "/loop-spec:cycle autonomous"
-            continue
-        # "completed" alone is not done: the first live run published status
-        # "completed" from SPEC with outcome "completed-with-gaps". The outcome and
-        # the converged flag are the contract's word on whether work was delivered.
-        done = result.get("outcome") in ("delivered", "no-change-needed") and result.get("converged") is True
-        if not done:
-            print(f"not delivered: outcome={result.get('outcome')} phaseReached={result.get('phaseReached')} "
-                  f"converged={result.get('converged')}", file=sys.stderr)
-        return 0 if done else 1
-    print(f"gave up after {args.max_rounds} rounds", file=sys.stderr)
-    return 1
+    result_msg = None
+    async for msg in query(prompt=prompt_stream(), options=options):
+        if type(msg).__name__ == "ResultMessage":
+            result_msg = msg
+
+    if result_msg is None or result_msg.subtype != "success" or not isinstance(result_msg.structured_output, dict):
+        reason = getattr(result_msg, "subtype", None) or "no result message"
+        raise SystemExit(f"lead step ({step.get('role')}) failed: {reason}")
+    atomic_write_json(Path(step["resultPath"]), result_msg.structured_output)
+
+
+def drive(project_root: Path, state_home: str | None, slug: str | None, request: str | None, model: str | None) -> int:
+    home_args = ["--state-home", state_home] if state_home else []
+    args = ["cycle", "--project-root", str(project_root), *home_args]
+    args += ["--slug", slug] if slug else ["--request", request]
+    stdout = run_cli(*args)
+    next_ = parse_next(stdout)
+
+    while next_["kind"] != "result":
+        # LOOP_SPEC_NEXT is the only place a stub is told the run's slug (SKILL.md);
+        # every submit/answer call after the first needs it.
+        run_slug = next_["slug"]
+        common = ["--project-root", str(project_root), *home_args, "--slug", run_slug]
+
+        if next_["kind"] == "step":
+            step = json.loads(Path(next_["path"]).read_text())
+            if step["kind"] == "role":
+                run = run_step_sdk(step, plugin_path=REPO_ROOT, model=step.get("model") or model)
+                if not run.ok:
+                    print(f"role step ({step.get('role')}) failed: {run.reason}", file=sys.stderr)
+                    return 1
+                # host is None outside a real Claude Code session (no
+                # CLAUDE_CODE_SESSION_ID here), so this still submits "unattested"
+                # regardless of --dispatch; passed anyway for protocol fidelity
+                # with the role-dispatch shape SKILL.md describes.
+                stdout = run_cli("submit", *common, "--step", step["stepAttemptId"], "--dispatch", step["stepAttemptId"])
+            elif step["kind"] == "lead":
+                asyncio.run(run_lead_step(step, plugin_path=REPO_ROOT, model=step.get("model") or model))
+                stdout = run_cli("submit", *common, "--step", step["stepAttemptId"])
+            else:
+                print(f"external step at {next_['path']}: an operator must produce the product and submit it",
+                      file=sys.stderr)
+                return 1
+        elif next_["kind"] == "question":
+            question = json.loads(Path(next_["path"]).read_text())
+            answer = answer_by_policy(question)
+            stdout = run_cli("answer", *common, "--question", question["questionId"], "--answer", answer, "--scope", "run")
+        else:
+            raise RuntimeError(f"unknown LOOP_SPEC_NEXT kind: {next_['kind']}")
+        next_ = parse_next(stdout)
+
+    result = json.loads(Path(next_["path"]).read_text())
+    print(json.dumps({k: result.get(k) for k in ("status", "outcome", "reason", "phaseReached")}, indent=2))
+    return 0 if result.get("status") == "completed" else 1
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Drive one loop-spec cycle run through the Claude Agent SDK.")
+    ap.add_argument("--project-root", required=True, type=Path)
+    ap.add_argument("--request", help="a new run's request text; omit when resuming with --slug")
+    ap.add_argument("--slug", help="resume an existing run instead of starting one")
+    ap.add_argument("--state-home", help="defaults to loop-spec's own default (LOOP_SPEC_HOME, else ~/.loop-spec)")
+    ap.add_argument("--model", help="passed to the SDK when a step names no model of its own")
+    args = ap.parse_args()
+    if not args.slug and not args.request:
+        ap.error("pass --request for a new run, or --slug to resume one")
+    return drive(args.project_root.resolve(), args.state_home, args.slug, args.request, args.model)
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(main())
