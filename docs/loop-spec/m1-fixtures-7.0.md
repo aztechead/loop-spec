@@ -1,8 +1,11 @@
 # 7.0 M1 fixtures specification
 
-Reference for the agent implementing the 7.0 contract and offline suite.
-Prepared from `c8b6d72`, including the thirteen accepted migration decisions.
-This is a test specification, not implemented tests or evidence that M1 has passed.
+Reference for the agent implementing the 7.0 contract, and the live checklist the
+maintainer ticks while using the plugin. Prepared from `c8b6d72`, including the
+thirteen accepted migration decisions. Decided 2026-09-22: 7.x ships no test suite,
+so no case below becomes an automated test; a case is done when a live run has shown
+its expected outcome and that run's result and events are recorded next to the case
+id. This is a specification, not evidence that any case has passed.
 
 Sources: [roadmap](ROADMAP-7.0.md), [route matrix](phase-interface-7.0.md),
 [migration inventory](migration-inventory-7.0.md), and the two
