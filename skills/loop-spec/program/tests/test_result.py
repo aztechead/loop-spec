@@ -1,5 +1,7 @@
 """Unit tests for loop_spec.result: the terminal record's field table per
 classification, the last-result copy rule, and paused's non-terminal state."""
+import contextlib
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,6 +27,11 @@ class ResultTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.tmp = Path(self._tmp.name)
+        # result.write() prints a LOOP_SPEC_RESULT marker line on every call; keep it
+        # out of the real test-runner output.
+        redirect = contextlib.redirect_stdout(io.StringIO())
+        redirect.__enter__()
+        self.addCleanup(redirect.__exit__, None, None, None)
 
     def test_classification_field_table(self):
         table = {

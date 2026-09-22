@@ -2,7 +2,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from loop_spec import contract
 from loop_spec.errors import LoopSpecError
@@ -78,7 +78,66 @@ class InvokeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             paths = FeaturePaths(root=Path(tmp) / "feature")
             with self.assertRaises(LoopSpecError):
+                contract.invoke(paths, phase="verify", attempt_id="attempt-1", implementation="default", program_launcher=Path("/bin/true"))
+
+    def test_invoke_default_execute_needs_a_store(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = FeaturePaths(root=Path(tmp) / "feature")
+            with self.assertRaises(LoopSpecError):
                 contract.invoke(paths, phase="execute", attempt_id="attempt-1", implementation="default", program_launcher=Path("/bin/true"))
+
+    # simplicity: three near-identical dispatch bodies (duplication-scan would flag
+    # them together); each proves a DIFFERENT execute.py return type converts to its
+    # own file+code, and collapsing them into one parametrized test would hide which
+    # conversion broke when only one fails.
+    def test_invoke_default_execute_converts_issue_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = FeaturePaths(root=Path(tmp) / "feature")
+            attempt_id = "attempt-1"
+            contract.write_context(paths, attempt_id, _envelope(attempt_id, tmp, paths))
+            from loop_spec import execute as execute_module
+            request = {
+                "kind": "role", "role": "implementer", "phase": "execute", "cwd": str(tmp),
+                "prompt": "do it", "resultPath": str(Path(tmp) / "result.json"), "schema": {},
+                "postconditions": [], "attempt": attempt_id, "inputsDigest": "sha256:" + "a" * 64,
+                "retryOf": None, "reason": None,
+            }
+            with patch.object(execute_module, "step", return_value=execute_module.IssueStep(request)):
+                outcome = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
+            self.assertEqual(outcome.code, 2)
+            self.assertEqual(outcome.kind, "step")
+            self.assertEqual(read_json(outcome.path)["role"], "implementer")
+
+    def test_invoke_default_execute_converts_product(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = FeaturePaths(root=Path(tmp) / "feature")
+            attempt_id = "attempt-1"
+            contract.write_context(paths, attempt_id, _envelope(attempt_id, tmp, paths))
+            from loop_spec import execute as execute_module
+            product = {
+                "exit": "no change", "inputsDigest": "sha256:" + "a" * 64,
+                "boundTo": {"requirements": None, "plan": None}, "tasks": [], "issues": [], "heads": {},
+            }
+            with patch.object(execute_module, "step", return_value=execute_module.Product(product)):
+                outcome = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
+            self.assertEqual(outcome.code, 0)
+            self.assertEqual(outcome.kind, "product")
+
+    def test_invoke_default_execute_converts_pause(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = FeaturePaths(root=Path(tmp) / "feature")
+            attempt_id = "attempt-1"
+            contract.write_context(paths, attempt_id, _envelope(attempt_id, tmp, paths))
+            from loop_spec import execute as execute_module
+            question = {
+                "attempt": attempt_id, "phase": "execute", "text": "the feature branch moved; how should the run proceed?",
+                "options": [{"value": "resume", "label": "resume"}, {"value": "abort", "label": "abort"}],
+                "defaultValue": None, "kind": "blocked", "payload": {},
+            }
+            with patch.object(execute_module, "step", return_value=execute_module.Pause(question)):
+                outcome = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
+            self.assertEqual(outcome.code, 3)
+            self.assertEqual(outcome.kind, "question")
 
     def test_invoke_bound_skill_raises(self):
         with tempfile.TemporaryDirectory() as tmp:

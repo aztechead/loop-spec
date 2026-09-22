@@ -198,6 +198,26 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
                 store.save()  # fix-and-re-enter / spec gap: phase.entry is already "remediation"
                 continue
 
+        critic_question_id = store.state["phase"].get("criticQuestionId")
+        if critic_question_id is not None:
+            answered = store.state["questions"]["answered"].get(critic_question_id)
+            if answered is not None:
+                store.state["phase"]["criticQuestionId"] = None
+                product = store.state["phase"]["provisional"]
+                store.state["phase"]["provisional"] = None
+                attempt_id = store.state["phase"]["attemptId"]
+                if answered["value"] == "spec gap":
+                    _finalize(store, paths, project_root, "plan", attempt_id, dict(product, exit="spec gap"), "spec gap")
+                else:
+                    # Any other non-empty answer is the operator's reason for rejecting
+                    # the still-open Critical finding(s); P7 accepts "rejected" with a
+                    # stated reason with no further re-run. An empty reason leaves P7
+                    # unsatisfied and _finalize rejects the product through the normal
+                    # retry path, asking again rather than closing silently.
+                    _close_critic_rejections(store, answered["value"].strip())
+                    _finalize(store, paths, project_root, "plan", attempt_id, product, product["exit"])
+                continue
+
         pending = store.state["phase"].get("pending")
         if pending in ("approval", "critic"):
             phase = store.state["phase"]["current"]
@@ -266,7 +286,7 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
         contract.write_context(paths, attempt_id, envelope)
 
     implementation = store.state["implementations"]["phases"][phase]
-    outcome = contract.invoke(paths, phase=phase, attempt_id=attempt_id, implementation=implementation, program_launcher=Path("loop-spec"))
+    outcome = contract.invoke(paths, phase=phase, attempt_id=attempt_id, implementation=implementation, program_launcher=Path("loop-spec"), store=store)
 
     if outcome.kind == "step":
         request = read_json(outcome.path)
@@ -391,7 +411,7 @@ def _handle_spec_approval(store: StateStore, paths: FeaturePaths, attempt_id: st
     return "remediation"
 
 
-def _issue_critic_step(store: StateStore, paths: FeaturePaths, attempt_id: str, plan_product: dict, is_external: bool) -> None:
+def _issue_critic_step(store: StateStore, paths: FeaturePaths, attempt_id: str, plan_product: dict, is_external: bool, revision: str) -> None:
     repo_path = next(iter(store.state["repos"].values()))["path"]
     spec_product = store.state["products"]["spec"]["product"]
     inputs_digest = digest({"plan": plan_product, "spec": spec_product})
@@ -408,12 +428,19 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, attempt_id: str, 
         inputs_digest=inputs_digest,
     )
     store.state["phase"]["criticStepId"] = record["stepAttemptId"]
+    # Recorded so a later call for a DIFFERENT (corrected) revision recognizes this
+    # step's submission as answering the OLD revision, not the new one, and issues
+    # a fresh critic step instead of replaying the stale result (the "re-issue the
+    # critic step once on the corrected product" part of P7).
+    store.state["phase"]["criticStepRevision"] = revision
     store.save()
 
 
-def _critic_submission(store: StateStore, paths: FeaturePaths) -> dict | None:
+def _critic_submission(store: StateStore, paths: FeaturePaths, revision: str) -> dict | None:
     step_id = store.state["phase"].get("criticStepId")
-    if step_id is None or store.state["steps"]["submissions"].get(step_id) is None:
+    if step_id is None or store.state["phase"].get("criticStepRevision") != revision:
+        return None
+    if store.state["steps"]["submissions"].get(step_id) is None:
         return None
     step = read_json(paths.steps_dir / step_id / "step.json")
     return read_json(Path(step["resultPath"]))
@@ -435,13 +462,13 @@ def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, pro
     if critic is not None and critic.get("planRevision") == revision:
         return "ready"
 
-    submission = _critic_submission(store, paths)
+    submission = _critic_submission(store, paths, revision)
     if submission is None:
         store.state["phase"]["provisional"] = product
         store.state["phase"]["pending"] = "critic"
         store.save()
         is_external = store.state["implementations"]["phases"].get("plan") == "external"
-        _issue_critic_step(store, paths, attempt_id, product, is_external)
+        _issue_critic_step(store, paths, attempt_id, product, is_external, revision)
         return "pending"
 
     passes = (critic or {}).get("passes", 0) + 1
@@ -454,22 +481,41 @@ def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, pro
     if not open_critical:
         return "ready"
     if passes >= 2:
-        # Simplified for M1: ask a blocked-style question rather than a further
-        # automatic re-pass; "second pass likewise" is not exercised by this wave.
+        # P7's second branch: a Critical still open after the one re-run asks a
+        # question rather than looping forever. "spec gap" routes PLAN backward
+        # through the normal spec-gap route; any other answer is the reason for
+        # rejecting the finding(s) and closing without a further re-run (handled
+        # in continue_run's criticQuestionId branch, once answered).
         store.state["phase"]["provisional"] = product
         record = questions.ask(
             store, paths, phase="plan", attempt_id=attempt_id,
-            text=f"PLAN critic still finds Critical issues after {passes} passes: {', '.join(f['id'] for f in open_critical)}",
-            kind="choice", options=[{"value": "reject with reason", "label": "Reject with reason"}, {"value": "spec gap", "label": "Spec gap"}],
+            text=(f"PLAN critic still finds Critical issues after {passes} passes: "
+                  f"{', '.join(f['id'] for f in open_critical)}. Answer with your reason to reject "
+                  "and close, or 'spec gap' to send this back to SPEC."),
+            kind="text", options=[{"value": "spec gap", "label": "Spec gap"}],
             default_value=None, payload={"findings": open_critical},
         )
-        store.state["phase"]["blockedQuestionId"] = record["questionId"]
+        store.state["phase"]["criticQuestionId"] = record["questionId"]
         store.save()
         return "pending"
+    # First pass with an open Critical: send PLAN back for one corrected re-pass.
+    # attemptId resets so a genuinely fresh attempt runs (a stale product.json on
+    # disk would otherwise look "already valid" to an external/lead implementation
+    # and get replayed forever) with a new context exposing entryPayload; the
+    # corrected product's own criticResponses changes its plan revision, which is
+    # what forces _handle_plan_baseline_and_critic to re-issue the critic step.
     store.state["phase"]["entry"] = "remediation"
     store.state["phase"]["entryPayload"] = {"criticFindings": open_critical}
+    store.state["phase"]["attemptId"] = None
     store.save()
     return "remediation"
+
+
+def _close_critic_rejections(store: StateStore, reason: str) -> None:
+    for finding in store.state["critic"]["findings"]:
+        if finding.get("severity") == "Critical" and finding.get("disposition") == "open":
+            finding["disposition"] = "rejected"
+            finding["reason"] = reason
 
 
 def _capture_plan_baseline(store: StateStore, paths: FeaturePaths, plan_product: dict, revision: str) -> None:
@@ -589,6 +635,14 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
         targets = {g["target"] for g in product.get("gaps", [])} or {"spec"}
         next_phase = min(targets, key=lambda t: order.get(t, 99))
         mode = "remediation"
+    if phase == "iterate" and exit_ == "escalated" and contract.load_config(project_root).get("deliver", {}).get("escalatedPartialDraft") is True:
+        # Roadmap 15: the operator opted into a partial draft delivery for an
+        # escalated run. Route forward to DELIVER instead of terminating; the
+        # eventual terminal write still classifies "escalated" (_write_terminal_result),
+        # with `delivery` filled in from whatever DELIVER manages to publish.
+        next_phase, mode = "deliver", "fresh"
+        store.state["escalatedDraft"] = True
+        store.state["phase"]["entryPayload"] = {"draft": True}
 
     verdict = "blocked" if route.get("pause") else ("completed" if mode == "terminal" else ("rewind" if route["backward"] else "advanced"))
     marker_phase_end(paths, phase, attempt_id, verdict, next_phase, 0.0, None)
@@ -679,6 +733,12 @@ def _ask_pause_question(store: StateStore, paths: FeaturePaths, phase: str, exit
 def _write_terminal_result(store: StateStore, paths: FeaturePaths, phase: str, exit_: str) -> None:
     if phase == "iterate" and exit_ == "escalated":
         result_module.write(store, paths, "escalated")
+        return
+    if store.state.get("escalatedDraft"):
+        # This run reached DELIVER only because escalatedPartialDraft routed an
+        # escalated ITERATE forward; it still classifies as escalated, DELIVER just
+        # fills in `delivery` with whatever it managed to publish (roadmap 15).
+        result_module.write(store, paths, "escalated", partially_delivered=(exit_ == "partially delivered"))
         return
     execute_exit = store.state["products"]["execute"]["exit"]
     iterate_exit = store.state["products"]["iterate"]["exit"]

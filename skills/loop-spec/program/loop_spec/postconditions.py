@@ -18,6 +18,7 @@ from . import budget as budget_module
 from . import repo as repo_module
 from .contract import load_config
 from .ids import digest
+from .jsonio import read_json
 
 RETRY_LIMIT_DEFAULT = 3
 
@@ -340,12 +341,29 @@ class Boundary:
                 return f"task {task['id']} is removed with no approved amendment"
         return None
 
+    def _step_issued_at(self, step_id: str) -> str | None:
+        path = self.paths.steps_dir / step_id / "step.json"
+        return read_json(path).get("issuedAt") if path.is_file() else None
+
+    def _e3_dispatch_ordering(self, execute_tasks: dict, task_id: str, dep_id: str) -> str | None:
+        # An external EXECUTE product has no per-task dispatch timeline (execute.py
+        # never ran), so there is nothing to order here beyond the disposition check
+        # above; the default implementation's own state.execute.tasks records it.
+        task_steps = execute_tasks.get(task_id, {}).get("implementSteps") or []
+        dep_steps = execute_tasks.get(dep_id, {}).get("reviewSteps") or execute_tasks.get(dep_id, {}).get("implementSteps") or []
+        if not task_steps or not dep_steps:
+            return None
+        submissions = self.store.state["steps"]["submissions"]
+        task_started = self._step_issued_at(task_steps[0])
+        dep_finished = submissions.get(dep_steps[-1], {}).get("submittedAt")
+        if task_started and dep_finished and task_started < dep_finished:
+            return f"task {task_id} was dispatched before its dependency {dep_id} finished"
+        return None
+
     def _e3(self) -> str | None:
-        # M1 EXECUTE runs only as a single external product (no per-task steps
-        # issued), so there is no step-submission timeline to order against yet; the
-        # disposition check below is the whole of E3 until per-task dispatch lands.
         by_id = {t["id"]: t for t in self.product["tasks"]}
         plan_tasks = {t["id"]: t for t in self.store.state["products"]["plan"]["product"]["tasks"]}
+        execute_tasks = (self.store.state.get("execute") or {}).get("tasks", {})
         for task in self.product["tasks"]:
             if task["disposition"] != "done":
                 continue
@@ -356,6 +374,9 @@ class Boundary:
                 dep_task = by_id.get(dep_id)
                 if dep_task is None or dep_task["disposition"] not in ("done", "already-satisfied", "adopted"):
                     return f"task {task['id']} depends on {dep_id}, which has no accepted disposition"
+                ordering_error = self._e3_dispatch_ordering(execute_tasks, task["id"], dep_id)
+                if ordering_error:
+                    return ordering_error
         return None
 
     def _e4(self) -> str | None:
@@ -394,16 +415,24 @@ class Boundary:
                 return f"task {task['id']} is adopted with no full range review recorded"
         return None
 
+    def _review_evidence_level(self, execute_tasks: dict, task_id: str) -> str:
+        # An external EXECUTE phase's whole product is one human-attested submission;
+        # the default implementation instead runs a per-task review step, whose own
+        # submission (steps.submit's evidence-level judgment) is the real evidence.
+        review_steps = execute_tasks.get(task_id, {}).get("reviewSteps") or []
+        if not review_steps:
+            return "unattested"
+        submissions = self.store.state["steps"]["submissions"]
+        return submissions.get(review_steps[-1], {}).get("evidenceLevel", "unattested")
+
     def _e6(self) -> str | None:
         is_external = self.store.state["implementations"]["phases"].get("execute") == "external"
         accept_unattested = load_config(self.project_root).get("evidence", {}).get("review", {}).get("accept") == "unattested"
+        execute_tasks = (self.store.state.get("execute") or {}).get("tasks", {})
         for task in self.product["tasks"]:
             if task["disposition"] not in ("done", "adopted"):
                 continue
-            # M1 has no per-task review-step submission to read a level from outside
-            # the external path; a non-external EXECUTE task is unattested until
-            # per-task dispatch lands (M2+).
-            level = "human-attested" if is_external else "unattested"
+            level = "human-attested" if is_external else self._review_evidence_level(execute_tasks, task["id"])
             if level in ACCEPTED_REVIEW_LEVELS or (level == "human-attested" and is_external):
                 continue
             if level == "unattested" and accept_unattested:

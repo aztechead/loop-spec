@@ -42,7 +42,95 @@ def _open(paths: FeaturePaths) -> StateStore:
     return StateStore.open(paths)
 
 
-class FullExternalCycleTests(unittest.TestCase):
+def _drive_through_spec_approval(store, paths, repo_dir, markers):
+    """Write, submit, and approve a fixed SPEC product; return (next_ for PLAN's own
+    step, the spec product) so a test can compute the requirements revision it binds
+    to. Shared by any test that needs a run past SPEC before its own scenario starts."""
+    step = read_json(paths.steps_dir / store.state["steps"]["open"][0]["stepAttemptId"] / "step.json")
+    spec_product = {
+        "exit": "approved", "inputsDigest": "sha256:" + "0" * 64,
+        "boundTo": {"requirements": None, "plan": None},
+        "goal": "Add a greeting message", "boundaries": [],
+        "criteria": [{"id": "AC-1", "text": "prints a greeting"}],
+        "decisions": [], "openQuestions": [],
+    }
+    atomic_write_json(Path(step["resultPath"]), spec_product)
+    store = _open(paths)
+    steps.submit(store, paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
+    with contextlib.redirect_stdout(markers):
+        next_ = controller.continue_run(store, paths, project_root=repo_dir)
+    question = read_json(next_.path)
+    store = _open(paths)
+    from loop_spec import questions as questions_module
+    questions_module.answer(store, paths, question_id=question["questionId"], value="approve")
+    with contextlib.redirect_stdout(markers):
+        next_ = controller.continue_run(store, paths, project_root=repo_dir)
+    return next_, spec_product
+
+
+def _start_greeting_run(repo_dir: Path, home: Path, markers: io.StringIO):
+    """Start a full "cycle" run for the fixed "Add a greeting message" request and
+    drive it through SPEC approval; return (next_ for PLAN's own step, spec_product,
+    paths, repo_name). Shared by every test that needs this same run past SPEC
+    before its own scenario (a converging cycle, a critic re-pass, ...) starts."""
+    with contextlib.redirect_stdout(markers):
+        controller.run_entry(
+            "cycle", project_root=repo_dir, request_text="Add a greeting message",
+            slug="greeting", state_home=str(home), answer_policy=None, pr=None,
+        )
+    paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "greeting"))
+    store = _open(paths)
+    repo_name = next(iter(store.state["repos"]))
+    next_, spec_product = _drive_through_spec_approval(store, paths, repo_dir, markers)
+    return next_, spec_product, paths, repo_name
+
+
+def _greeting_plan_product(repo_name: str, spec_revision: str) -> dict:
+    return {
+        "exit": "ready", "inputsDigest": "sha256:" + "0" * 64,
+        "boundTo": {"requirements": spec_revision, "plan": None},
+        "tasks": [{
+            "id": "T-1", "title": "add greeting", "dependsOn": [], "files": ["greet.py"],
+            "repo": repo_name, "verify": 'python3 -c "import sys; sys.exit(0)"',
+            "criteria": ["AC-1"], "featureAdded": None, "mustFlip": False,
+        }],
+        "prepare": None, "evidenceExceptions": [],
+    }
+
+
+def _submit_greeting_plan(paths, repo_dir, markers, step, repo_name: str, spec_product: dict):
+    """Build the fixed greeting PLAN product, submit it against `step`, and continue;
+    return (next_, plan_product) so a caller can bind later products to its revision."""
+    spec_revision = postconditions.requirements_revision(spec_product)
+    plan_product = _greeting_plan_product(repo_name, spec_revision)
+    atomic_write_json(Path(step["resultPath"]), plan_product)
+    store = _open(paths)
+    steps.submit(store, paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
+    with contextlib.redirect_stdout(markers):
+        next_ = controller.continue_run(store, paths, project_root=repo_dir)
+    return next_, plan_product
+
+
+class _QuietStdout(unittest.TestCase):
+    """Every phase transition and marker prints via events.py's console/marker
+    writers (progress lines to stderr by default, LOOP_SPEC_* markers to stdout), and
+    a test that drives the controller by hand makes many calls no single
+    `with contextlib.redirect_stdout(...)` wraps. Redirecting both streams for the
+    whole test method here, rather than around each call, keeps that noise out of the
+    real test-runner output without touching what each test asserts; unittest reports
+    a failure's traceback after tearDown/addCleanup restores them."""
+
+    def setUp(self):
+        super().setUp()
+        redirect_out = contextlib.redirect_stdout(io.StringIO())
+        redirect_err = contextlib.redirect_stderr(io.StringIO())
+        redirect_out.__enter__()
+        redirect_err.__enter__()
+        self.addCleanup(redirect_err.__exit__, None, None, None)
+        self.addCleanup(redirect_out.__exit__, None, None, None)
+
+
+class FullExternalCycleTests(_QuietStdout):
     def test_full_external_cycle_converges_and_delivers(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -58,62 +146,16 @@ class FullExternalCycleTests(unittest.TestCase):
 
             with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
                 markers = io.StringIO()
-                with contextlib.redirect_stdout(markers):
-                    next_ = controller.run_entry(
-                        "cycle", project_root=repo_dir, request_text="Add a greeting message",
-                        slug="greeting", state_home=str(home), answer_policy=None, pr=None,
-                    )
-
-                paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "greeting"))
+                next_, spec_product, paths, repo_name = _start_greeting_run(repo_dir, home, markers)
                 store = _open(paths)
-                repo_name = next(iter(store.state["repos"]))
                 base_sha = store.state["repos"][repo_name]["baseSha"]
                 feature_branch = store.state["repos"][repo_name]["featureBranch"]
-                self.assertEqual(next_.kind, "step")
-
-                # --- SPEC: write the product the external actor produces ---
-                step = read_json(next_.path)
-                spec_product = {
-                    "exit": "approved", "inputsDigest": "sha256:" + "0" * 64,
-                    "boundTo": {"requirements": None, "plan": None},
-                    "goal": "Add a greeting message", "boundaries": [],
-                    "criteria": [{"id": "AC-1", "text": "prints a greeting"}],
-                    "decisions": [], "openQuestions": [],
-                }
-                atomic_write_json(Path(step["resultPath"]), spec_product)
-                store = _open(paths)
-                steps.submit(store, paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
-                with contextlib.redirect_stdout(markers):
-                    next_ = controller.continue_run(store, paths, project_root=repo_dir)
-                self.assertEqual(next_.kind, "question")
-
-                # --- answer the SPEC approval question ---
-                question = read_json(next_.path)
-                store = _open(paths)
-                from loop_spec import questions as questions_module
-                questions_module.answer(store, paths, question_id=question["questionId"], value="approve")
-                with contextlib.redirect_stdout(markers):
-                    next_ = controller.continue_run(store, paths, project_root=repo_dir)
                 self.assertEqual(next_.kind, "step")
 
                 # --- PLAN ---
                 step = read_json(next_.path)
                 spec_revision = postconditions.requirements_revision(spec_product)
-                plan_product = {
-                    "exit": "ready", "inputsDigest": "sha256:" + "0" * 64,
-                    "boundTo": {"requirements": spec_revision, "plan": None},
-                    "tasks": [{
-                        "id": "T-1", "title": "add greeting", "dependsOn": [], "files": ["greet.py"],
-                        "repo": repo_name, "verify": 'python3 -c "import sys; sys.exit(0)"',
-                        "criteria": ["AC-1"], "featureAdded": None, "mustFlip": False,
-                    }],
-                    "prepare": None, "evidenceExceptions": [],
-                }
-                atomic_write_json(Path(step["resultPath"]), plan_product)
-                store = _open(paths)
-                steps.submit(store, paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
-                with contextlib.redirect_stdout(markers):
-                    next_ = controller.continue_run(store, paths, project_root=repo_dir)
+                next_, plan_product = _submit_greeting_plan(paths, repo_dir, markers, step, repo_name, spec_product)
                 self.assertEqual(next_.kind, "step")  # the PLAN critic step
 
                 # --- critic: no Critical findings ---
@@ -235,7 +277,7 @@ class FullExternalCycleTests(unittest.TestCase):
                 self.assertIn(marker, printed)
 
 
-class EdgeCaseTests(unittest.TestCase):
+class EdgeCaseTests(_QuietStdout):
     def _minimal_store(self, tmp: Path) -> tuple[StateStore, FeaturePaths]:
         paths = FeaturePaths(root=tmp / "feature")
         store = StateStore.create(paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x", "createdAt": "2026-01-01T00:00:00+00:00"}, "do it")
@@ -329,6 +371,142 @@ class EdgeCaseTests(unittest.TestCase):
             controller._accept_product(store, paths, tmp, "spec", "attempt-1", spec_product)
             self.assertEqual(store.state["phase"]["current"], "plan")
             self.assertEqual(store.state["products"]["spec"], first_products_spec)
+
+
+class PlanCriticTests(_QuietStdout):
+    def test_critic_fixed_then_rechecked_reaches_execute(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            markers = io.StringIO()
+
+            with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+                next_, spec_product, paths, repo_name = _start_greeting_run(repo_dir, home, markers)
+                self.assertEqual(next_.kind, "step")
+
+                # --- PLAN pass 1 ---
+                step = read_json(next_.path)
+                next_, plan_product = _submit_greeting_plan(paths, repo_dir, markers, step, repo_name, spec_product)
+                self.assertEqual(next_.kind, "step")  # critic pass 1
+
+                critic_step = read_json(next_.path)
+                open_finding = {
+                    "id": "F-1", "location": "greet.py:1", "cause": "no boundary on the destructive rm",
+                    "severity": "Critical", "disposition": "open", "reason": None, "supersedes": None,
+                }
+                atomic_write_json(Path(critic_step["resultPath"]), {"findings": [open_finding]})
+                store = _open(paths)
+                steps.submit(store, paths, step_id=critic_step["stepAttemptId"], dispatch_name=None, host=None)
+                with contextlib.redirect_stdout(markers):
+                    next_ = controller.continue_run(store, paths, project_root=repo_dir)
+
+                # An open Critical on pass 1 sends PLAN back for one corrected re-pass,
+                # in a genuinely fresh attempt (not a replay of the rejected one).
+                self.assertEqual(next_.kind, "step")
+                store = _open(paths)
+                self.assertEqual(store.state["phase"]["entry"], "remediation")
+                self.assertIsNotNone(store.state["phase"]["attemptId"])
+                self.assertEqual(store.state["critic"]["passes"], 1)
+
+                # --- PLAN pass 2: the corrected product marks F-1 fixed ---
+                step = read_json(next_.path)
+                corrected_plan_product = dict(plan_product, criticResponses=[
+                    {"findingId": "F-1", "disposition": "fixed", "reason": None},
+                ])
+                atomic_write_json(Path(step["resultPath"]), corrected_plan_product)
+                store = _open(paths)
+                steps.submit(store, paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
+                with contextlib.redirect_stdout(markers):
+                    next_ = controller.continue_run(store, paths, project_root=repo_dir)
+                self.assertEqual(next_.kind, "step")  # the critic is re-issued once, on the corrected product
+
+                critic_step_2 = read_json(next_.path)
+                atomic_write_json(Path(critic_step_2["resultPath"]), {"findings": []})
+                store = _open(paths)
+                steps.submit(store, paths, step_id=critic_step_2["stepAttemptId"], dispatch_name=None, host=None)
+                with contextlib.redirect_stdout(markers):
+                    next_ = controller.continue_run(store, paths, project_root=repo_dir)
+
+                self.assertEqual(next_.kind, "step")  # PLAN went ready; EXECUTE's own step
+                store = _open(paths)
+                self.assertEqual(store.state["phase"]["current"], "execute")
+                self.assertEqual(store.state["critic"]["passes"], 2)
+
+
+class EscalatedPartialDraftTests(_QuietStdout):
+    def _minimal_store(self, tmp: Path, config: dict | None = None) -> tuple[StateStore, FeaturePaths]:
+        paths = FeaturePaths(root=tmp / "feature")
+        store = StateStore.create(paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x", "createdAt": "2026-01-01T00:00:00+00:00"}, "do it")
+        store.state["repos"] = {"repo": {"path": str(tmp), "baseSha": "a" * 40, "featureBranch": "feat/x", "defaultBranch": "main", "lastKnownHead": "a" * 40}}
+        store.state["implementations"] = {"phases": {p: "external" for p in ("spec", "plan", "execute", "verify", "iterate", "deliver")}, "roles": {}}
+        store.state["products"]["execute"] = {
+            "attemptId": "attempt-e", "inputsDigest": "sha256:" + "0" * 64,
+            "boundTo": {"requirements": None, "plan": None}, "exit": "integrated",
+            "product": {"heads": {"repo": "c" * 40}, "tasks": []},
+            "receivedAt": "2026-01-01T00:00:00+00:00", "evidenceLevel": "human-attested",
+        }
+        store.state["phase"]["current"] = "iterate"
+        store.state["phase"]["attemptId"] = "attempt-1"
+        if config is not None:
+            (tmp / ".loop-spec").mkdir()
+            atomic_write_json(tmp / ".loop-spec" / "config.json", config)
+        store.save()
+        return store, paths
+
+    def _exhaust_budget(self, store: StateStore) -> None:
+        budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-1", reason="gap")
+        budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-2", reason="gap")
+
+    def _escalated_iterate_product(self) -> dict:
+        return {
+            "exit": "escalated", "inputsDigest": "sha256:" + "0" * 64,
+            "boundTo": {"requirements": None, "plan": None},
+            "verdict": "unmet", "gaps": [], "caveats": [], "boundSha": "c" * 40,
+        }
+
+    def test_default_config_keeps_terminal_escalation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths = self._minimal_store(tmp)
+            self._exhaust_budget(store)
+
+            controller._finalize(store, paths, tmp, "iterate", "attempt-1", self._escalated_iterate_product(), "escalated")
+
+            self.assertEqual(store.state["result"]["classification"], "escalated")
+            self.assertEqual(store.state["phase"]["current"], "iterate")  # never routed to deliver
+
+    def test_escalated_partial_draft_routes_to_deliver_and_stays_escalated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths = self._minimal_store(tmp, config={"deliver": {"escalatedPartialDraft": True}})
+            self._exhaust_budget(store)
+
+            controller._finalize(store, paths, tmp, "iterate", "attempt-1", self._escalated_iterate_product(), "escalated")
+
+            self.assertIsNone(store.state.get("result"))  # not terminal yet: routed forward
+            self.assertEqual(store.state["phase"]["current"], "deliver")
+            self.assertEqual(store.state["phase"]["entry"], "fresh")
+            self.assertEqual(store.state["phase"]["entryPayload"], {"draft": True})
+            self.assertTrue(store.state["escalatedDraft"])
+
+            # DELIVER finishes normally; the terminal write still classifies escalated,
+            # with `delivery` filled from whatever DELIVER managed to publish.
+            store.state["products"]["deliver"] = {
+                "attemptId": "attempt-d", "inputsDigest": "sha256:" + "0" * 64,
+                "boundTo": {"requirements": None, "plan": None}, "exit": "delivered",
+                "product": {"repos": [{
+                    "repo": "repo", "pr": {"number": 1, "url": "https://example.invalid/pull/1", "headRef": "feat/x", "headSha": "c" * 40, "base": "main"},
+                    "deliveredSha": "c" * 40, "caveats": [], "state": "delivered",
+                }]},
+                "receivedAt": "2026-01-01T00:00:00+00:00", "evidenceLevel": "human-attested",
+            }
+            controller._write_terminal_result(store, paths, "deliver", "delivered")
+
+            self.assertEqual(store.state["result"]["classification"], "escalated")
+            result = read_json(paths.result_json)
+            self.assertEqual(result["result"], "escalated")
+            self.assertIsNotNone(result["delivery"])
 
 
 if __name__ == "__main__":
