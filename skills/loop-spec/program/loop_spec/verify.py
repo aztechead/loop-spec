@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 from . import baseline as baseline_module
+from . import ledger as ledger_module
 from . import probes as probes_module
 from . import repo as repo_module
 from .contract import resolve_role, validate_request
@@ -291,12 +292,29 @@ def _final_product(store, paths, ctx, verify_state: dict) -> dict:
     ]
     # LF-28: a finding's repo is which per-repo reviewer produced it -- never a
     # lookup, since two repos could otherwise report the same file location.
-    findings_out = [
-        {"id": new_id("finding"), "repo": repo_name, "location": f["location"], "cause": f["cause"],
-         "severity": f["severity"], "disposition": f["disposition"], "reason": f["reason"], "supersedes": f["supersedes"]}
-        for repo_name, reviewer_result in verify_state["reviewers"].items()
-        for f in reviewer_result["findings"]
-    ]
+    # LF-50: a reviewer finding that names an open ledger finding (same id, repo,
+    # location file) is carried forward under its own id; one that names a closed
+    # ledger finding with the same disposition is an echo, dropped rather than
+    # minted as new; anything else gets a fresh id.
+    findings_out = []
+    for repo_name, reviewer_result in verify_state["reviewers"].items():
+        for f in reviewer_result["findings"]:
+            entry = ledger_module.carried_forward(store, f, repo_name)
+            if entry is not None and ledger_module.valid_update(entry, f):
+                finding_id = f["id"]
+            else:
+                closed_echo = ledger_module.closed_echo(store, f, repo_name)
+                if closed_echo is not None:
+                    emit(paths, "finding_echo_ignored",
+                         {"id": f["id"], "disposition": closed_echo["disposition"],
+                          "summary": f"reviewer repeated closed finding {f['id']}; ignored"},
+                         phase="verify", attempt_id=ctx["attempt"]["id"])
+                    continue
+                finding_id = new_id("finding")
+            findings_out.append({
+                "id": finding_id, "repo": repo_name, "location": f["location"], "cause": f["cause"],
+                "severity": f["severity"], "disposition": f["disposition"], "reason": f["reason"], "supersedes": f["supersedes"],
+            })
 
     remediation_tasks = []
     for n, v in enumerate(verifier_result["verdicts"], start=1):

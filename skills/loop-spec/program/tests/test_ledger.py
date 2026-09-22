@@ -91,6 +91,42 @@ class LedgerTests(unittest.TestCase):
         with self.assertRaises(LoopSpecError):
             disposition(self.store, "F-missing", "fixed", "done")
 
+    def test_carried_forward_open_finding_appends_an_observation_and_keeps_the_first_sha(self):
+        record_findings(self.store, [_finding("F-1")], sha="sha-A", range_id="range-1")
+        record_findings(self.store, [_finding("F-1")], sha="sha-B", range_id="range-2")
+        findings = self.store.state["ledger"]["findings"]
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["sha"], "sha-A")
+        self.assertEqual(findings[0]["rangeId"], "range-1")
+        self.assertEqual(len(findings[0]["observations"]), 1)
+        self.assertEqual(findings[0]["observations"][0]["sha"], "sha-B")
+
+    def test_fixed_re_report_with_reason_closes_it(self):
+        record_findings(self.store, [_finding("F-1")], sha="sha-A", range_id="range-1")
+        fixed = {**_finding("F-1", "fixed"), "reason": "patched"}
+        record_findings(self.store, [fixed], sha="sha-B", range_id="range-2")
+        stored = self.store.state["ledger"]["findings"][0]
+        self.assertEqual(stored["disposition"], "fixed")
+        self.assertEqual(stored["reason"], "patched")
+
+    def test_closed_entry_echoed_again_is_unchanged_and_not_duplicated(self):
+        record_findings(self.store, [_finding("F-1")], sha="sha-A", range_id="range-1")
+        fixed = {**_finding("F-1", "fixed"), "reason": "patched"}
+        record_findings(self.store, [fixed], sha="sha-B", range_id="range-2")
+        record_findings(self.store, [fixed], sha="sha-C", range_id="range-3")
+        findings = self.store.state["ledger"]["findings"]
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["disposition"], "fixed")
+        self.assertEqual(findings[0]["reason"], "patched")
+
+    def test_closure_with_no_reason_stays_open_but_still_observes(self):
+        record_findings(self.store, [_finding("F-1")], sha="sha-A", range_id="range-1")
+        unreasoned = {**_finding("F-1", "fixed"), "reason": ""}
+        record_findings(self.store, [unreasoned], sha="sha-B", range_id="range-2")
+        stored = self.store.state["ledger"]["findings"][0]
+        self.assertEqual(stored["disposition"], "open")
+        self.assertEqual(len(stored["observations"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

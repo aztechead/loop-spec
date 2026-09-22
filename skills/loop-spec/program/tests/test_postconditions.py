@@ -523,6 +523,66 @@ class PostconditionsTests(unittest.TestCase):
         finding["supersedes"] = {"kind": "range", "id": "range-1"}
         self.assertIsNone(self._boundary("verify", product, "passed")._v8())
 
+    def test_v8_carried_forward_open_finding_needs_no_supersedes(self):
+        self.store.state["ledger"]["reviewedRanges"] = [{"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.sha_a, "full": False}]
+        self.store.state["ledger"]["findings"] = [
+            {"id": "f-1", "repo": "repo", "location": "a.txt:1", "cause": "c", "severity": "Minor", "disposition": "open", "reason": None, "supersedes": None},
+        ]
+        finding = {"id": "f-1", "repo": "repo", "location": "a.txt:1", "cause": "c", "severity": "Minor", "disposition": "open", "reason": None, "supersedes": None}
+        product = dict(self.verify_product, findings=[finding])
+        self.assertIsNone(self._boundary("verify", product, "passed")._v8())
+
+    def test_v8_same_id_from_another_repo_is_not_carried_forward(self):
+        other_base, other_head = self._second_repo()
+        self.store.state["ledger"]["reviewedRanges"] = [{"id": "range-other", "repo": "other", "from": other_base, "to": other_head, "full": True}]
+        self.store.state["ledger"]["findings"] = [
+            {"id": "f-1", "repo": "repo", "location": "a.txt:1", "cause": "c", "severity": "Minor", "disposition": "open", "reason": None, "supersedes": None},
+        ]
+        finding = {"id": "f-1", "repo": "other", "location": "b.txt:1", "cause": "c", "severity": "Minor", "disposition": "open", "reason": None, "supersedes": None}
+        product = dict(self.verify_product, findings=[finding])
+        self.assertIsNotNone(self._boundary("verify", product, "passed")._v8())
+
+    def test_v8_a_range_id_used_as_a_finding_id_is_not_carried_forward(self):
+        self.store.state["ledger"]["reviewedRanges"] = [{"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.sha_a, "full": False}]
+        finding = {"id": "range-1", "repo": "repo", "location": "a.txt:1", "cause": "c", "severity": "Minor", "disposition": "open", "reason": None, "supersedes": None}
+        product = dict(self.verify_product, findings=[finding])
+        self.assertIsNotNone(self._boundary("verify", product, "passed")._v8())
+
+    def test_v8_a_fresh_finding_supersedes_a_closed_finding(self):
+        self.store.state["ledger"]["reviewedRanges"] = [{"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.sha_a, "full": False}]
+        self.store.state["ledger"]["findings"] = [
+            {"id": "f-old", "repo": "repo", "location": "a.txt:1", "cause": "c", "severity": "Minor", "disposition": "fixed", "reason": "patched", "supersedes": None},
+        ]
+        finding = {"id": "f-new", "repo": "repo", "location": "a.txt:1", "cause": "c", "severity": "Minor",
+                   "disposition": "open", "reason": None, "supersedes": {"kind": "finding", "id": "f-old"}}
+        product = dict(self.verify_product, findings=[finding])
+        self.assertIsNone(self._boundary("verify", product, "passed")._v8())
+
+    def test_v7_a_valid_closure_of_an_open_critical_passes(self):
+        self.store.state["ledger"]["findings"] = [
+            {"id": "f-1", "repo": "repo", "location": "a.txt:1", "cause": "c", "severity": "Critical", "disposition": "open", "reason": None, "supersedes": None},
+        ]
+        closing = {"id": "f-1", "repo": "repo", "location": "a.txt:1", "cause": "c", "severity": "Critical", "disposition": "fixed", "reason": "patched", "supersedes": None}
+        product = dict(self.verify_product, findings=[closing])
+        self.assertIsNone(self._boundary("verify", product, "passed")._v7())
+        self.assertEqual(self.store.state["ledger"]["findings"][0]["disposition"], "open")  # V7 wrote nothing
+
+    def test_v7_a_closure_on_a_different_location_still_blocks(self):
+        self.store.state["ledger"]["findings"] = [
+            {"id": "f-1", "repo": "repo", "location": "a.txt:1", "cause": "c", "severity": "Critical", "disposition": "open", "reason": None, "supersedes": None},
+        ]
+        closing = {"id": "f-1", "repo": "repo", "location": "b.txt:1", "cause": "c", "severity": "Critical", "disposition": "fixed", "reason": "patched", "supersedes": None}
+        product = dict(self.verify_product, findings=[closing])
+        self.assertIsNotNone(self._boundary("verify", product, "passed")._v7())
+
+    def test_v7_a_closure_with_no_reason_still_blocks(self):
+        self.store.state["ledger"]["findings"] = [
+            {"id": "f-1", "repo": "repo", "location": "a.txt:1", "cause": "c", "severity": "Critical", "disposition": "open", "reason": None, "supersedes": None},
+        ]
+        closing = {"id": "f-1", "repo": "repo", "location": "a.txt:1", "cause": "c", "severity": "Critical", "disposition": "fixed", "reason": "", "supersedes": None}
+        product = dict(self.verify_product, findings=[closing])
+        self.assertIsNotNone(self._boundary("verify", product, "passed")._v7())
+
     def test_v9(self):
         blocked = copy.deepcopy(self.verify_product)
         blocked["verdicts"][0]["verdict"] = "blocked"

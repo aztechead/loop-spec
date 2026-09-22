@@ -168,8 +168,8 @@ integration reason code, not an exit.
 | V4 | for every criterion without a V5 exception, its cited command was run by the program in a clean checkout of that SHA it created, with prepare fixtures applied (that execution may be reused across submissions naming the same repo, SHA, and command, but is re-matched against each submission's own claim, never a fact an earlier claim left recorded), and command identity, exit status, parsed failure identities, and normalized output digest matched | `passed` |
 | V5 | a criterion skipped V4 only under an exception declared in the PLAN product and approved with it, or granted by an operator answer at VERIFY; its verdict is recorded at assurance `claimed` and listed under `weakenedAssurance` | `passed` |
 | V6 | a `blocked` verdict cites a cause the program observed, in the baseline record or in its own re-run | `blocked` |
-| V7 | every verdict is `pass` and the review policy holds per repo: first and final passes saw that repo's full diff, other passes the delta since its last reviewed SHA, no Critical finding open | `passed` |
-| V8 | a finding on cleared code carries a typed `supersedes` naming a finding id or a reviewed-range id | every exit |
+| V7 | every verdict is `pass` and the review policy holds per repo: first and final passes saw that repo's full diff, other passes the delta since its last reviewed SHA, no Critical finding open; evaluated over the ledger with the product's valid same-finding closures applied | `passed` |
+| V8 | a finding on cleared code carries a typed `supersedes` naming a finding id or a reviewed-range id; a finding that repeats an open ledger finding by its id, in the same repo and file, is carried forward and needs no `supersedes`; repeating a closed finding is an echo the product drops; reopening one is a new finding with an explicit `supersedes` | every exit |
 | V9 | `blocked` for an offline-unavailable dependency was claimed only after a stand-in was tried | `blocked` |
 
 | Exit | Requires | Route |

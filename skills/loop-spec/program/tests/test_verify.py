@@ -230,6 +230,48 @@ class VerifyTests(unittest.TestCase):
         self.assertEqual(product["findings"][0]["repo"], "repo")
         assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
 
+    def test_reviewer_repeats_an_open_ledger_finding_and_keeps_its_id(self):
+        self.store.state["ledger"]["findings"] = [{
+            "id": "finding-known", "repo": "repo", "location": "feature.py:1", "cause": "x",
+            "severity": "Minor", "disposition": "open", "reason": None, "supersedes": None,
+            "sha": self.head_sha, "rangeId": "range-0",
+        }]
+        self.store.save()
+        finding = {"id": "finding-known", "location": "feature.py:1", "cause": "x",
+                   "severity": "Minor", "disposition": "open", "reason": None, "supersedes": None}
+        product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]), reviewer_findings=[finding])
+        self.assertEqual(len(product["findings"]), 1)
+        self.assertEqual(product["findings"][0]["id"], "finding-known")
+
+    def test_reviewer_echoes_a_closed_ledger_finding_and_it_is_dropped(self):
+        self.store.state["ledger"]["findings"] = [{
+            "id": "finding-known", "repo": "repo", "location": "feature.py:1", "cause": "x",
+            "severity": "Minor", "disposition": "fixed", "reason": "patched",
+            "supersedes": None, "sha": self.head_sha, "rangeId": "range-0",
+        }]
+        self.store.save()
+        finding = {"id": "finding-known", "location": "feature.py:1", "cause": "x",
+                   "severity": "Minor", "disposition": "fixed", "reason": "patched", "supersedes": None}
+        product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]), reviewer_findings=[finding])
+        self.assertEqual(product["findings"], [])
+        events_text = self.paths.events_jsonl.read_text()
+        self.assertIn('"finding_echo_ignored"', events_text)
+
+    def test_reviewer_reopens_a_closed_ledger_finding_with_a_fresh_id(self):
+        self.store.state["ledger"]["findings"] = [{
+            "id": "finding-known", "repo": "repo", "location": "feature.py:1", "cause": "x",
+            "severity": "Minor", "disposition": "fixed", "reason": "patched",
+            "supersedes": None, "sha": self.head_sha, "rangeId": "range-0",
+        }]
+        self.store.save()
+        finding = {"id": "finding-known", "location": "feature.py:1", "cause": "x",
+                   "severity": "Minor", "disposition": "open", "reason": None,
+                   "supersedes": {"kind": "finding", "id": "finding-known"}}
+        product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]), reviewer_findings=[finding])
+        self.assertEqual(len(product["findings"]), 1)
+        self.assertNotEqual(product["findings"][0]["id"], "finding-known")
+        self.assertTrue(product["findings"][0]["id"].startswith("finding-"))
+
     def test_legacy_verify_state_reinitializes_and_emits_module_state_reset(self):
         # A run whose state.verify predates the per-repo shape (LF-28) has no
         # "reviewers" key at all; a hand-built dict in that old shape stands in

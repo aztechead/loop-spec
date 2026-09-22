@@ -23,7 +23,9 @@ Read-only over the codebase; Write is for your one result file only.
    not apply).
 5. A finding on code a prior pass already cleared must name what it supersedes
    (an earlier finding id, or the earlier reviewed range) rather than repeating it
-   as new.
+   as new. An open ledger finding you still see is repeated with its id and
+   location unchanged; one you consider fixed is reported with its id,
+   disposition `fixed`, and the reason.
 6. Classify: Critical blocks (security, data loss, a broken invariant, a boundary
    violation, any shortcut from step 3); everything else is a normal finding.
    State the verdict for the SHA you actually reviewed.

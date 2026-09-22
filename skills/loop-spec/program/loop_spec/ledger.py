@@ -11,7 +11,42 @@ from pathlib import Path
 
 from . import repo as repo_module
 from .errors import LoopSpecError
-from .ids import new_id
+from .ids import new_id, now_iso
+
+_CLOSING = {"fixed", "rejected"}
+
+
+def carried_forward(store, finding: dict, repo: str | None) -> dict | None:
+    """The open ledger finding this reviewer finding repeats: same id, same repo, same
+    location file path. Range ids never match (they never appear in `findings`)."""
+    path = (finding.get("location") or "").split(":", 1)[0]
+    for entry in store.state["ledger"]["findings"]:
+        if entry["id"] == finding.get("id") and entry["disposition"] == "open" and entry.get("repo") == repo \
+                and (entry.get("location") or "").split(":", 1)[0] == path:
+            return entry
+    return None
+
+
+def valid_update(entry: dict, finding: dict) -> bool:
+    """A carried-forward finding may stay open or close as fixed/rejected with a
+    non-empty reason. Anything else is not a valid update."""
+    d = finding.get("disposition")
+    return d == "open" or (d in _CLOSING and bool((finding.get("reason") or "").strip()))
+
+
+def effective_findings(store, product_findings: list[dict], repos: dict) -> list[dict]:
+    """The ledger with the product's valid same-finding updates overlaid (virtually),
+    plus the product's other findings. V7 reads this; nothing is written here."""
+    single = next(iter(repos)) if len(repos) == 1 else None
+    overlay: dict[str, dict] = {}
+    extra: list[dict] = []
+    for finding in product_findings:
+        entry = carried_forward(store, finding, finding.get("repo") or single)
+        if entry is not None and valid_update(entry, finding):
+            overlay[entry["id"]] = {**entry, "disposition": finding["disposition"], "reason": finding.get("reason")}
+        elif entry is None:
+            extra.append(finding)
+    return [overlay.get(e["id"], e) for e in store.state["ledger"]["findings"]] + extra
 
 
 def record_range(store, *, repo: str, from_sha: str, to_sha: str, full: bool, sha: str, by_step: str) -> str:
@@ -23,8 +58,32 @@ def record_range(store, *, repo: str, from_sha: str, to_sha: str, full: bool, sh
     return range_id
 
 
+def closed_echo(store, finding: dict, repo: str | None) -> dict | None:
+    """A finding that repeats an already-closed ledger entry (same id, repo, location
+    file, disposition) -- e.g. a caller that bypasses verify.py's own echo drop and
+    reports a closed finding again. Not carried forward (carried_forward is open-only);
+    recording it again would duplicate a settled entry rather than observe it."""
+    path = (finding.get("location") or "").split(":", 1)[0]
+    return next(
+        (e for e in store.state["ledger"]["findings"]
+         if e["id"] == finding.get("id") and e["disposition"] != "open" and e["disposition"] == finding.get("disposition")
+         and e.get("repo") == repo and (e.get("location") or "").split(":", 1)[0] == path),
+        None,
+    )
+
+
 def record_findings(store, findings: list[dict], *, sha: str, range_id: str) -> None:
     for finding in findings:
+        entry = carried_forward(store, finding, finding.get("repo"))
+        if entry is not None:
+            entry.setdefault("observations", []).append(
+                {"sha": sha, "rangeId": range_id, "at": now_iso(), "cause": finding.get("cause")})
+            if valid_update(entry, finding) and finding.get("disposition") in _CLOSING:
+                entry["disposition"] = finding["disposition"]
+                entry["reason"] = finding.get("reason")
+            continue
+        if closed_echo(store, finding, finding.get("repo")) is not None:
+            continue
         store.state["ledger"]["findings"].append({**finding, "sha": sha, "rangeId": range_id})
     store.save()
 

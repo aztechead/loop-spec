@@ -16,6 +16,7 @@ from pathlib import Path
 
 from . import baseline as baseline_module
 from . import budget as budget_module
+from . import ledger as ledger_module
 from . import repo as repo_module
 from .contract import load_config
 from .ids import digest
@@ -176,7 +177,8 @@ def resolved_exceptions(store) -> set[str]:
     return declared | operator
 
 
-def _check_supersedes(findings: list[dict], ledger: dict, repos: dict[str, Path]) -> str | None:
+def _check_supersedes(store, findings: list[dict], repos: dict[str, Path]) -> str | None:
+    ledger = store.state["ledger"]
     reviewed_ranges = ledger.get("reviewedRanges", [])
     if not reviewed_ranges or not repos:
         return None  # nothing cleared yet for a finding to supersede
@@ -196,6 +198,12 @@ def _check_supersedes(findings: list[dict], ledger: dict, repos: dict[str, Path]
     single_repo = next(iter(repos)) if len(repos) == 1 else None
     for finding in findings:
         repo_name = finding.get("repo") or single_repo
+        # LF-50: a finding carried forward from an open ledger entry (same id,
+        # repo, location file) needs no supersedes -- it is not new content on
+        # cleared code, it is the same finding still open.
+        entry = ledger_module.carried_forward(store, finding, repo_name)
+        if entry is not None and ledger_module.valid_update(entry, finding):
+            continue
         touched = touched_by_repo.get(repo_name, set()) if repo_name else set()
         path = finding.get("location", "").split(":", 1)[0]
         if path not in touched:
@@ -700,13 +708,13 @@ class Boundary:
                 is_full_from_base = bool(reviewed_range.get("full")) and reviewed_range["from"] == repo_info.get("baseSha")
                 if not is_full_from_base:
                     return f"repo {repo}: reviewed range does not continue from the last reviewed SHA"
-        findings = self.product.get("findings", []) + self.store.state["ledger"]["findings"]
+        findings = ledger_module.effective_findings(self.store, self.product.get("findings", []), self._repo_paths())
         if any(f["severity"] == "Critical" and f["disposition"] == "open" for f in findings):
             return "a Critical finding is open"
         return None
 
     def _v8(self) -> str | None:
-        return _check_supersedes(self.product.get("findings", []), self.store.state["ledger"], self._repo_paths())
+        return _check_supersedes(self.store, self.product.get("findings", []), self._repo_paths())
 
     def _v9(self) -> str | None:
         for verdict in self.product["verdicts"]:
