@@ -36,9 +36,20 @@ instead of the 6.x bash/jq implementation.
   with a waiver the result's `weakenedAssurance` names.
 - `LOOP_SPEC_MODEL_<ROLE>` and `roles.<role>.model` set the model on every role
   dispatch, not only the SPEC and PLAN lead steps.
-- ITERATE turns a `met` verdict over an open finding into `unmet` with one gap per
-  finding; I4 accepts `escalated` only for a refused rewind or an unmet verdict
-  with no gap.
+- ITERATE dispositions the findings a `met` verdict leaves open: Critical stays a
+  blocker, Important becomes a PLAN gap while the rewind budget has room, Minor (or
+  Important without room) is deferred as a caveat; I4 accepts `escalated` only for a
+  refused rewind or an unmet verdict with no gap.
+- The 7.0 code audit's eleven findings (R1 to R11) are fixed on the branch: the
+  current invocation's step file is authoritative; an SDK receipt counts only on an
+  SDK-launched run and lives under the run's steps dir; native attestation binds the
+  whole composed prompt; baselines and EXECUTE re-runs are per repo; a runner that
+  fails before collecting tests is a regression; terminal cleanup keeps open,
+  quarantined, and dirty worktrees and lists them in `cleanupBacklog`; D8 requires
+  every touched repo delivered with a real PR; the result's compatibility fields
+  follow the schema-1 table; a reused verify execution is re-matched against the
+  current claim; exempt criteria are never re-executed; timeout output is decoded.
+  `commitArtifacts` is removed (R8): the delivered head is always the verified SHA.
 
 ### Changed
 

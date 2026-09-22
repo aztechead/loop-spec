@@ -1,0 +1,102 @@
+{
+  "autonomous": false,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "feat/add-two-independent-functions-to-the-cal",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": true,
+  "createdAt": "2026-09-22T14:28:25+00:00",
+  "cycleType": "full",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [],
+        "deliveredSha": "924c132fab1848ea17cdf9ac6e4e4533b66bb809",
+        "pr": {
+          "base": "main",
+          "headRef": "feat/add-two-independent-functions-to-the-cal",
+          "headSha": "924c132fab1848ea17cdf9ac6e4e4533b66bb809",
+          "number": 5,
+          "url": "https://github.com/aztechead/loop-spec-live-7/pull/5"
+        },
+        "repo": "consumer",
+        "state": "delivered"
+      }
+    ]
+  },
+  "eligibleTargets": [
+    {
+      "branch": "feat/add-two-independent-functions-to-the-cal",
+      "targetSha": "924c132fab1848ea17cdf9ac6e4e4533b66bb809"
+    }
+  ],
+  "feature_title": "Add two independent functions to the calc package, each as its own deliverable with its own test module: subtract(a, b) returning a - b with tests in tests/test_subtract.py, and multiply(a, b) returning a * b with tests in tests/test_multiply.py. Both are exported from calc/__init__.py. Neither depends on the other, so plan them as two independent tasks. Verify each with: /private/tmp/claude-501/-Users-aztechead-Projects-loop-spec/aa3a1338-0fde-4f0c-a27e-945117d04f37/scratchpad/venv/bin/python -m pytest -q <its test module>",
+  "finishedAt": "2026-09-22T14:45:35+00:00",
+  "hostVersions": {
+    "claude": "2.1.278 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": true,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 0
+  },
+  "loopSpecVersion": "7.0.0",
+  "noChangeReason": null,
+  "outcome": "delivered",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [],
+  "prUrl": "https://github.com/aztechead/loop-spec-live-7/pull/5",
+  "prs": [
+    {
+      "number": 5,
+      "repo": "consumer",
+      "url": "https://github.com/aztechead/loop-spec-live-7/pull/5"
+    }
+  ],
+  "reason": null,
+  "result": "converged",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-46e4b2f9b508"
+    },
+    "T-2": {
+      "level": "host-attested",
+      "stepId": "step-fb071fe9b874"
+    }
+  },
+  "rewinds": 0,
+  "schema": 1,
+  "slug": "add-two-independent-functions-to-the-cal",
+  "status": "completed",
+  "summary": "full converged at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": "924c132fab1848ea17cdf9ac6e4e4533b66bb809",
+  "warnings": [],
+  "weakenedAssurance": [],
+  "workDelivered": true
+}
