@@ -102,6 +102,16 @@ step's schema and verifies the world (section 4) before accepting it. `loop-spec
 answer <feature> <json>` records a human reply. `loop-spec status <feature>` prints
 where things stand. Nothing else is exposed to the model.
 
+**Roles are bound skills, not house prose.** A role is a prompt plus an output
+schema. The prompt may be a skill loop-spec ships or one the operator installs
+(Matt Pocock's `tdd` and `code-review`, BMAD's review personas, or a team's own);
+the schema is the contract between whatever skill did the judgment and the step
+that consumes it. Loop-spec competes on nothing a skill set already does well. Its
+job is the part no instruction set can do: sequence, state, baseline, ledger,
+bounded rewinds, step verification, the result contract, and delivery. That is the
+answer to "why not just use BMAD or Pocock's skills": those are skills, and
+loop-spec is what makes a skill set run unattended and finish.
+
 **Roles that may ask the human run in the lead; roles that never ask run spawned.**
 SPEC and PLAN run in the lead session, in-context, and call `AskUserQuestion`
 natively, exactly as 6.9 does. In Claude Code that reaches the person; under the SDK
@@ -118,6 +128,18 @@ exit 2, execute the step: SPEC and PLAN in-context, any other role as a fresh
 context in the working directory the step names, and `submit` the result. On exit 3
 ask the question and `answer`. On exit 0 report the terminal result. Presets
 (section 9) are a list of which roles run.
+
+**The lead never carries a worker's result.** Each step names a result file in the
+state directory. The worker writes its JSON there with its own Write tool, and the
+lead submits only the step id; the program reads the file. The lead cannot summarize
+or paraphrase a payload it never held, which answers the transport concern in the
+[runner comparison](runner-decision-7.0.md#comparison-against-the-goal), and the
+file's existence, timestamp, and step nonce are the execution receipt for a native
+dispatch. This works on every host with a Write tool. It also keeps the lead's
+context small across a whole cycle: it holds SPEC and PLAN and a list of step ids,
+not six phases of output. A harness that wants one host session per phase still
+gets it, because `run` is resumable from state and `LOOP_SPEC_HANDOFF` marks the
+boundary.
 
 **Hooks go to near zero.** Worker scoping comes from the step the program hands out. The 73 hook
 files in 6.9 exist to stop the lead misusing a protocol it no longer drives. A
@@ -250,6 +272,16 @@ N and S ship behind the same core contract before cutover. The native path requi
 no SDK package or new API credential. An SDK worker started from interactive Claude
 Code is opt-in and cannot become the default until its separate compatibility gate
 passes. Do not silently switch runners after a permission or authentication failure.
+
+**Open decision for the maintainer: one runner or two before cutover.** The
+reviewers recommend N for interactive Claude Code and S for unattended SDK
+deployments, both shipped before cutover. The alternative position: ship N on both
+hosts, since a lead that executes one program-issued step at a time and never
+carries the payload is not the 6.9 lead driving a protocol, and add S only if N
+fails its SDK live gate (section 12). The gate runs either way; the difference is
+whether a second runner and its compatibility gate are built before there is a
+measured reason. Both positions agree S can never be the interactive default
+because of the authentication constraint above.
 
 ## 5. State and artifacts
 
