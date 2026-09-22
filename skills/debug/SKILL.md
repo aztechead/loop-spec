@@ -22,11 +22,15 @@ a stub is told the run's slug):
     `"${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" submit --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --slug <slug from LOOP_SPEC_NEXT> --step <stepAttemptId>`
     (no `--dispatch`) and repeat from "read the last stdout line".
   - `role`: dispatch a fresh worker with the `Agent` tool: name = the step attempt id
-    (`stepAttemptId`), prompt = the step's prompt verbatim, subagent_type
-    `general-purpose`, model only when the step carries `model`; then run
+    (`stepAttemptId`), prompt = the step's prompt verbatim (the program checks that
+    the worker's transcript opens with this exact prompt and ends with the result
+    digest; any rewording, prefix, or summary makes the step `unattested`, and an
+    unattested review does not count), subagent_type `general-purpose`, model only
+    when the step carries `model`; then run
     `"${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" submit --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --slug <slug from LOOP_SPEC_NEXT> --step <stepAttemptId> --dispatch <stepAttemptId>`
     (`--dispatch` is the same name you gave the Agent) and repeat from "read the last
-    stdout line".
+    stdout line". Never add your own instructions to a worker; if a step must be
+    redone, submit what you have and let the program re-issue it with the reason.
   - `external`: a person or another tool produces the product, not you. Stop, print
     the step path and its prompt, and tell the user an external implementation owns
     this phase; the operator submits with
