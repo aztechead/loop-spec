@@ -637,6 +637,10 @@ inside Bash tool calls.
 - No other host directory is written to. The data directory is the one the host offers
   for this.
 
+2026-09-22 live finding: model-written result files live under the project's
+`.loop-spec/results/` because Claude Code's default permission mode refuses writes
+under `~/.claude`; the state home keeps every program-written record.
+
 ## 13. Workspace mode
 
 Kept as a capability and rebuilt in the repo module, so nothing else re-detects it.

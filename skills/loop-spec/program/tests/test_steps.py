@@ -7,7 +7,7 @@ from pathlib import Path
 from loop_spec import steps
 from loop_spec.errors import LoopSpecError
 from loop_spec.ids import digest, digest_bytes
-from loop_spec.jsonio import atomic_write_json
+from loop_spec.jsonio import atomic_write_json, read_json
 from loop_spec.paths import FeaturePaths
 from loop_spec.repo import add_worktree, head_sha
 from loop_spec.state import StateStore
@@ -79,6 +79,42 @@ class SubmitTests(StepsTestCase):
             with self.assertRaises(LoopSpecError):
                 steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name=None, host=None)
             self.assertTrue(any(s["stepAttemptId"] == record["stepAttemptId"] for s in store.state["steps"]["open"]))
+
+    def test_result_file_override_reads_from_the_given_path_instead(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._issue(store, paths)
+            elsewhere = Path(tmp) / "results" / "written-by-the-worker.json"
+            elsewhere.parent.mkdir(parents=True)
+            atomic_write_json(elsewhere, {"ok": True})
+            submission = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name=None,
+                                       host=None, result_file=elsewhere)
+            self.assertEqual(submission.result, {"ok": True})
+            self.assertEqual(submission.result_digest, digest_bytes(elsewhere.read_bytes()))
+            self.assertFalse(Path(record["resultPath"]).exists())
+            self.assertEqual(store.state["steps"]["submissions"][record["stepAttemptId"]]["digest"],
+                              submission.result_digest)
+
+    def test_default_result_path_is_under_the_results_dir(self):
+        # LF-27: issue()'s own default (no result_path override) must land under
+        # paths.results_dir (the project root), not the state home -- a live
+        # model, under Claude Code's default permission mode, cannot always
+        # write there even with the Write tool allow-listed.
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._issue(store, paths)
+            self.assertEqual(Path(record["resultPath"]).parent, paths.results_dir)
+
+    def test_submit_records_a_copy_of_the_result_in_the_state_home(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._issue(store, paths)
+            atomic_write_json(Path(record["resultPath"]), {"ok": True})
+
+            steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name=None, host=None)
+
+            record_path = paths.steps_dir / record["stepAttemptId"] / "result.json"
+            self.assertEqual(read_json(record_path), {"ok": True})
 
     def test_same_digest_twice_idempotent(self):
         with tempfile.TemporaryDirectory() as tmp:

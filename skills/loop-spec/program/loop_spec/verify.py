@@ -16,6 +16,7 @@ from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
 from .execute import IssueStep, Product
 from .ids import new_id
+from .paths import ensure_results_dir
 from .postconditions import verified_head
 from .roles import compose_prompt, load_role
 
@@ -82,7 +83,10 @@ def _verifier_request(store, paths, ctx, verify_state: dict) -> dict:
     spec_product = store.state["products"]["spec"]["product"]
     _, repo_info = next(iter(store.state["repos"].items()))
     cwd = _verify_checkout(Path(repo_info["path"]), verify_state["head"], plan_product.get("prepare"), paths.checkouts_dir)
-    result_path = cwd / "loop-spec-verifier-result.json"
+    # LF-27: under the project root (paths.results_dir), not inside the checkout
+    # (a temp dir under the state home a live model cannot always write to).
+    ensure_results_dir(paths)
+    result_path = paths.results_dir / f"verify-{ctx['attempt']['id']}-verifier.json"
 
     inputs = {
         "criteria": spec_product["criteria"], "tasks": plan_product["tasks"],
@@ -109,7 +113,8 @@ def _reviewer_request(store, paths, ctx, verify_state: dict) -> dict:
     _, repo_info = next(iter(store.state["repos"].items()))
     repo_path = Path(repo_info["path"])
     cwd = _verify_checkout(repo_path, verify_state["head"], plan_product.get("prepare"), paths.checkouts_dir)
-    result_path = cwd / "loop-spec-verify-review-result.json"
+    ensure_results_dir(paths)
+    result_path = paths.results_dir / f"verify-{ctx['attempt']['id']}-reviewer.json"
 
     range_ = verify_state["range"]
     diff = repo_module.run_git(repo_path, "diff", f"{range_['from']}..{range_['to']}")

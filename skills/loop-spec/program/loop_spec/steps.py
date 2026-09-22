@@ -14,6 +14,7 @@ from .errors import LoopSpecError
 from .events import emit
 from .ids import digest_bytes, new_id, now_iso
 from .jsonio import atomic_write_json, read_json
+from .paths import ensure_results_dir
 from .repo import remove_worktree
 from .schema import validate, validate_or_raise
 
@@ -36,8 +37,14 @@ def issue(store, paths, *, phase: str, attempt_id: str, kind: str, role: str | N
     # phase's product) must land its result exactly where contract.invoke checks
     # for it (attempts/<id>/product.json), not at the auto-generated path below;
     # the caller passes that path in. Every other step (the PLAN critic, a future
-    # per-task EXECUTE/VERIFY step) is content with a result.json of its own.
-    result_path = Path(result_path) if result_path is not None else step_dir / "result.json"
+    # per-task EXECUTE/VERIFY step) is content with its own file under results_dir
+    # (LF-27: under the project root, not the state home a live model cannot
+    # always write to).
+    if result_path is not None:
+        result_path = Path(result_path)
+    else:
+        ensure_results_dir(paths)
+        result_path = paths.results_dir / f"{step_id}.json"
     issued_at = now_iso()
 
     full_prompt = prompt + _STEP_TRAILER.format(
@@ -74,12 +81,17 @@ def _open_step_record(store, step_id: str) -> dict:
     return next((s for s in store.state["steps"]["open"] if s["stepAttemptId"] == step_id), None)
 
 
-def submit(store, paths, *, step_id: str, dispatch_name: str | None, host) -> Submission:
+def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
+           result_file: str | Path | None = None) -> Submission:
     step_path = paths.steps_dir / step_id / "step.json"
     if not step_path.is_file():
         raise LoopSpecError(f"no open step {step_id}", repair="check `loop-spec status` for the open step id")
     step = read_json(step_path)
-    result_path = Path(step["resultPath"])
+    # A worker may write its result somewhere the program's own resultPath is not
+    # writable (a host that denies writes under the state home); --result-file
+    # points submit at those bytes instead. Validation, digest, and the submission
+    # record below are unchanged either way.
+    result_path = Path(result_file) if result_file is not None else Path(step["resultPath"])
 
     # A replay of an already-accepted submission (IT-03) must be checked before the
     # "retired" refusal below: a successful submit() moves the step to retired, so a
@@ -121,7 +133,14 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host) -> Su
         # which needs the step to still be open to retry against.
         raise LoopSpecError("; ".join(errors), repair=f"fix the listed fields in {result_path} and re-issue the step")
 
-    result_digest = digest_bytes(result_path.read_bytes())
+    result_bytes = result_path.read_bytes()
+    result_digest = digest_bytes(result_bytes)
+    # LF-27: results_dir (or --result-file) holds the model's own copy; the state
+    # home keeps its own beside step.json as the durable record, from the exact
+    # bytes just read and digested, not a second read of a path that could move.
+    record_path = paths.steps_dir / step_id / "result.json"
+    record_path.parent.mkdir(parents=True, exist_ok=True)
+    record_path.write_bytes(result_bytes)
     receipt_path = result_path.with_name("sdk-receipt.json")
 
     attestation = None

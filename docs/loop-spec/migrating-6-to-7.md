@@ -94,6 +94,13 @@ list, grounded in the program's own source, is
 | `.loop-spec/events.jsonl` | `<state home>/.../events.jsonl` |
 | `refs/loop-spec/state/<slug>` | not available at 7.0; `loop-spec state push|pull` is a seam the roadmap builds only when a harness needs it |
 
+`.loop-spec/` reappears in your repository at 7.x, but for a different reason: it
+now holds only a worker's own result files, at `.loop-spec/results/<slug>/`, never
+the state itself. This exists because Claude Code's default permission mode
+refuses writes under `~/.claude`, where the state home lives on that host; the
+program excludes `.loop-spec/` from `git status` itself, via `.git/info/exclude`,
+so it is never committed either.
+
 The state home resolves in this order: an explicit `--state-home` flag (the
 Claude Code skill stubs pass `${CLAUDE_PLUGIN_DATA}`, substituted by the host),
 else `$LOOP_SPEC_HOME`, else `~/.loop-spec/`. `loop-spec status` prints the

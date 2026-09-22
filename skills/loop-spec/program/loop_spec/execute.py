@@ -19,6 +19,7 @@ from . import repo as repo_module
 from .budget import has_room
 from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
+from .paths import ensure_results_dir
 from .postconditions import retry_limit
 from .roles import compose_prompt, load_role
 
@@ -211,9 +212,11 @@ def _ensure_worktree(store, paths, ctx, task_id: str, task_state: dict, plan_tas
 # --- step requests ---------------------------------------------------------
 
 def _result_path(paths, task_id: str, kind: str, n: int) -> Path:
-    results = paths.root / "results"
-    results.mkdir(parents=True, exist_ok=True)
-    return results / f"{task_id}-{kind}-{n}.json"
+    # LF-27: under the project root (paths.results_dir), not the state home --
+    # a live model, under Claude Code's default permission mode, cannot write
+    # under ~/.claude/... even with the Write tool allow-listed.
+    ensure_results_dir(paths)
+    return paths.results_dir / f"{task_id}-{kind}-{n}.json"
 
 
 def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, task_id: str) -> dict | Pause:

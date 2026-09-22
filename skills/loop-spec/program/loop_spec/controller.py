@@ -73,7 +73,7 @@ def run_entry(entry: str, *, project_root: Path, request_text: str | None, slug:
     if entry in _RESUMABLE_PHASES:
         if not slug:
             raise LoopSpecError(f"{entry} requires --slug", repair="pass --slug <slug>, see `loop-spec status`")
-        paths = FeaturePaths(root=feature_dir(home, rid, slug))
+        paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
         store = StateStore.open(paths)
         _check_phase_preconditions(store, entry)
         if store.state["phase"]["current"] != entry:
@@ -97,13 +97,13 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
         if not slug:
             raise LoopSpecError(f"{entry} requires --request, --request-file, or --slug to resume",
                                  repair="pass --request/--request-file for a new run, or --slug to resume one")
-        paths = FeaturePaths(root=feature_dir(home, rid, slug))
+        paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
         if not paths.state_json.exists():
             raise LoopSpecError(f"no run for slug {slug!r}", repair="check `loop-spec status` for known slugs, or pass --request to start one")
         return continue_run(StateStore.open(paths), paths, project_root=project_root)
 
     slug = slug or slug_from_request(request_text)
-    paths = FeaturePaths(root=feature_dir(home, rid, slug))
+    paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
     _clear_stale_last_result(paths, slug)
 
     if paths.state_json.exists():
@@ -125,12 +125,12 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
     return continue_run(store, paths, project_root=project_root)
 
 
-def _find_run_by_adoption_number(home: Path, rid: str, number: int) -> str | None:
+def _find_run_by_adoption_number(home: Path, rid: str, number: int, project_root: Path) -> str | None:
     repo_home = home / rid
     if not repo_home.exists():
         return None
     for slug_dir in sorted(repo_home.iterdir()):
-        candidate = FeaturePaths(root=slug_dir)
+        candidate = FeaturePaths(root=slug_dir, project_root=project_root)
         if not candidate.state_json.exists():
             continue
         adoption = StateStore.open(candidate).state.get("adoption")
@@ -144,7 +144,7 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
     if not pr:
         if not slug:
             raise LoopSpecError("revise requires --pr, or --slug to resume", repair="pass --pr <number-or-url>, or --slug to resume one")
-        paths = FeaturePaths(root=feature_dir(home, rid, slug))
+        paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
         if not paths.state_json.exists():
             raise LoopSpecError(f"no run for slug {slug!r}", repair="check `loop-spec status` for known slugs, or pass --pr to start one")
         return continue_run(StateStore.open(paths), paths, project_root=project_root)
@@ -161,9 +161,9 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
     if adoption is None:
         raise LoopSpecError(f"revise cannot adopt PR {pr!r}: {candidate.reason}", repair="check gh auth and that the PR is open and same-repo")
 
-    existing_slug = _find_run_by_adoption_number(home, rid, adoption.number)
+    existing_slug = _find_run_by_adoption_number(home, rid, adoption.number, project_root)
     slug = slug or existing_slug or f"revise-{adoption.number}"
-    paths = FeaturePaths(root=feature_dir(home, rid, slug))
+    paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
     _clear_stale_last_result(paths, slug)
 
     if paths.state_json.exists():

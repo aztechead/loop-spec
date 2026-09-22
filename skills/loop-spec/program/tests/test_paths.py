@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from loop_spec.paths import repo_id, slug_from_request, state_home
+from loop_spec.paths import FeaturePaths, ensure_results_dir, repo_id, slug_from_request, state_home
 
 
 def _git(cwd, *args):
@@ -52,6 +52,47 @@ class RepoIdTests(unittest.TestCase):
                 _git(tmp, "init", "-q")
                 _git(tmp, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", msg)
             self.assertNotEqual(repo_id(Path(a)), repo_id(Path(b)))
+
+
+class FeaturePathsResultsDirTests(unittest.TestCase):
+    # LF-27: a live model, under Claude Code's default permission mode, cannot
+    # write anywhere under the state home (~/.claude/...) even with the Write
+    # tool allow-listed; results_dir moves model-written results under the
+    # project root instead, which is always writable.
+    def test_results_dir_is_under_the_project_root_namespaced_by_slug(self):
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as project:
+            root = Path(home) / "repo-id" / "add-a-widget"
+            paths = FeaturePaths(root=root, project_root=Path(project))
+            self.assertEqual(paths.results_dir, Path(project) / ".loop-spec" / "results" / "add-a-widget")
+
+    def test_project_root_defaults_to_root_when_not_given(self):
+        with tempfile.TemporaryDirectory() as home:
+            root = Path(home) / "repo-id" / "add-a-widget"
+            paths = FeaturePaths(root=root)
+            self.assertEqual(paths.results_dir, root / ".loop-spec" / "results" / "add-a-widget")
+
+    def test_ensure_results_dir_creates_it_and_excludes_it_once(self):
+        with tempfile.TemporaryDirectory() as project:
+            _git(project, "init", "-q")
+            root = Path(project) / ".loop-spec-state" / "add-a-widget"
+            paths = FeaturePaths(root=root, project_root=Path(project))
+
+            ensure_results_dir(paths)
+            ensure_results_dir(paths)
+
+            self.assertTrue(paths.results_dir.is_dir())
+            exclude_text = (Path(project) / ".git" / "info" / "exclude").read_text()
+            self.assertEqual(exclude_text.count(".loop-spec/"), 1)
+
+    def test_ensure_results_dir_on_a_non_repo_just_makes_the_dir(self):
+        with tempfile.TemporaryDirectory() as project:
+            root = Path(project) / ".loop-spec-state" / "add-a-widget"
+            paths = FeaturePaths(root=root, project_root=Path(project))
+
+            ensure_results_dir(paths)
+
+            self.assertTrue(paths.results_dir.is_dir())
+            self.assertFalse((Path(project) / ".git").exists())
 
 
 class SlugFromRequestTests(unittest.TestCase):

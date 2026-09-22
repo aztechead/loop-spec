@@ -14,6 +14,7 @@ from loop_spec.repo import (
     commits_between,
     create_feature_branch,
     detect_workspace,
+    exclude_path,
     files_added_by,
     find_pr_reference,
     head_sha,
@@ -126,6 +127,38 @@ class WorktreeTests(unittest.TestCase):
             self.assertTrue(checkout_dest.is_dir())
             remove_worktree(Path(tmp), checkout_dest)
             self.assertFalse(checkout_dest.exists())
+
+
+class ExcludePathTests(unittest.TestCase):
+    # LF-27: keeps .loop-spec/ out of `git status` without ever committing it.
+    def test_appends_once_and_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _init_repo(tmp)
+
+            exclude_path(Path(tmp), ".loop-spec/")
+            exclude_path(Path(tmp), ".loop-spec/")
+
+            exclude_file = Path(tmp, ".git", "info", "exclude")
+            lines = exclude_file.read_text().splitlines()
+            self.assertEqual(lines.count(".loop-spec/"), 1)
+
+    def test_a_linked_worktree_resolves_to_the_shared_exclude_file(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as workdir:
+            _init_repo(tmp)
+            _commit(tmp, "a.txt", "first")
+            sha = head_sha(Path(tmp))
+            create_feature_branch(Path(tmp), "feat/x", sha)
+            wt_dest = Path(workdir, "wt")
+            add_worktree(Path(tmp), wt_dest, branch="feat/x")
+
+            exclude_path(wt_dest, ".loop-spec/")
+
+            self.assertIn(".loop-spec/", Path(tmp, ".git", "info", "exclude").read_text().splitlines())
+
+    def test_non_repo_does_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exclude_path(Path(tmp), ".loop-spec/")
+            self.assertFalse((Path(tmp) / ".git").exists())
 
 
 class HistoryTests(unittest.TestCase):

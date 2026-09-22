@@ -12,6 +12,7 @@ from .budget import has_room
 from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
 from .execute import IssueStep, Product
+from .paths import ensure_results_dir
 from .postconditions import verified_head
 from .roles import compose_prompt, load_role
 
@@ -28,7 +29,10 @@ def _judge_request(store, paths, ctx, head: str) -> dict:
             f"no verify checkout at {cwd}",
             repair="ITERATE runs after VERIFY passed, so verify.py's checkout should still exist",
         )
-    result_path = cwd / "loop-spec-iterate-result.json"
+    # LF-27: under the project root (paths.results_dir), not inside the checkout
+    # (a temp dir under the state home a live model cannot always write to).
+    ensure_results_dir(paths)
+    result_path = paths.results_dir / f"iterate-{ctx['attempt']['id']}.json"
 
     diff = repo_module.run_git(Path(repo_info["path"]), "diff", f"{repo_info['baseSha']}..{head}")
     if len(diff) > _DIFF_CAP:

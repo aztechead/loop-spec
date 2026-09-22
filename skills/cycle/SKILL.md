@@ -18,8 +18,11 @@ a stub is told the run's slug):
 
 - `step`: check `kind` in `step.json`:
   - `lead`: do the work the prompt describes yourself, in this session (you may use
-    AskUserQuestion); write the JSON result to `resultPath` (temp file then rename);
-    then run
+    AskUserQuestion); write the JSON result to `resultPath` (temp file then rename).
+    `resultPath` is under the project's `.loop-spec/results/`, never under `~/.claude`
+    (where the state home lives and a default permission mode refuses writes); if you
+    wrote the result somewhere else, add `--result-file <path>` to the submit command
+    below and the program reads it from there instead. Then run
     `"${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" submit --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --slug <slug from LOOP_SPEC_NEXT> --step <stepAttemptId>`
     (no `--dispatch`) and repeat from "read the last stdout line".
   - `role`: dispatch a fresh worker with the `Agent` tool: name = the step attempt id
@@ -27,7 +30,10 @@ a stub is told the run's slug):
     the worker's transcript opens with this exact prompt and ends with the result
     digest; any rewording, prefix, or summary makes the step `unattested`, and an
     unattested review does not count), subagent_type `general-purpose`, model only
-    when the step carries `model`; then run
+    when the step carries `model`. The worker's prompt names its own `resultPath`,
+    under the project's `.loop-spec/results/`, never under `~/.claude`; if the
+    worker's result landed somewhere else, add `--result-file <path>` to the submit
+    command below and the program reads it from there instead. Then run
     `"${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" submit --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --slug <slug from LOOP_SPEC_NEXT> --step <stepAttemptId> --dispatch <stepAttemptId>`
     (`--dispatch` is the same name you gave the Agent) and repeat from "read the last
     stdout line". Never add your own instructions to a worker; if a step must be

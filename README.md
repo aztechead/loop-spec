@@ -84,6 +84,14 @@ Nothing is committed to your repository unless `commitArtifacts` is configured
 (see below); the SPEC/PLAN/VERIFICATION documents a 6.x run committed are, by
 default, rendered into the pull request body instead.
 
+A worker's result file is the one exception: it is written to
+`<project root>/.loop-spec/results/<slug>/`, not the state home, because Claude
+Code's default permission mode refuses writes under `~/.claude`, where the state
+home lives on that host, even with the Write tool allow-listed. `loop-spec`
+excludes `.loop-spec/` from `git status` itself, via the repository's own
+`.git/info/exclude`, so this is never committed either; `submit` reads a result
+written somewhere else with `--result-file <path>`.
+
 ## Configuration
 
 Everything below is optional. Project config lives in `.loop-spec/config.json`;

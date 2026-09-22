@@ -57,6 +57,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("submit")
     p.add_argument("--step", required=True)
     p.add_argument("--dispatch")
+    p.add_argument("--result-file")
     _add_common(p)
 
     p = sub.add_parser("answer")
@@ -183,7 +184,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "submit":
             store, paths = _open_store(args)
             host = attest.ClaudeCodeAttestor() if os.environ.get("CLAUDE_CODE_SESSION_ID") else None
-            submission = steps.submit(store, paths, step_id=args.step, dispatch_name=args.dispatch, host=host)
+            submission = steps.submit(store, paths, step_id=args.step, dispatch_name=args.dispatch, host=host,
+                                       result_file=args.result_file)
             controller.route_submission(store, paths, submission.step, submission.result)
             next_ = controller.continue_run(store, paths, project_root=Path(args.project_root))
             marker_next(next_.kind, str(next_.path), next_.slug)

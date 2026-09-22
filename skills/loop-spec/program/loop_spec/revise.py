@@ -15,6 +15,7 @@ from . import repo as repo_module
 from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
 from .execute import IssueStep, Product
+from .paths import ensure_results_dir
 from .roles import compose_prompt, load_role
 
 _DIFF_CAP = 200_000  # ponytail: same flat cap as execute.py's review diff
@@ -58,7 +59,11 @@ def _reviser_request(store, paths, ctx) -> dict:
     adoption = store.state["adoption"]
     repo_path = Path(store.state["repos"][adoption["repo"]]["path"])
     base_sha, head_sha = adopted_range(store)
-    result_path = Path(paths.attempts_dir) / ctx["attempt"]["id"] / "revise-result.json"
+    # LF-27: under the project root (paths.results_dir), not the state home -- a
+    # live lead step, under Claude Code's default permission mode, cannot write
+    # under ~/.claude/... even with the Write tool allow-listed.
+    ensure_results_dir(paths)
+    result_path = paths.results_dir / f"revise-{ctx['attempt']['id']}.json"
 
     diff = repo_module.run_git(repo_path, "diff", f"{base_sha}..{head_sha}")
     if len(diff) > _DIFF_CAP:

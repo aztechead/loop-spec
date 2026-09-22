@@ -106,9 +106,14 @@ SPEC/PLAN lead dispatch sets this, from `LOOP_SPEC_MODEL_<ROLE>`).
 
 A worker writes its result to `resultPath` (write to a temp file in the same
 directory and rename) and, for a transcript-attested dispatch, ends its final
-message with `LOOP_SPEC_RESULT_DIGEST <sha256:hex of the result file bytes>`. Then
-run `loop-spec submit --step <id> --slug <slug> [--dispatch <name>]`
-(`cli.py`/`steps.py`).
+message with `LOOP_SPEC_RESULT_DIGEST <sha256:hex of the result file bytes>`.
+`resultPath` (`paths.ensure_results_dir`) is under the project's
+`.loop-spec/results/<slug>/`, never under the state home, because a live model's
+default permission mode refuses writes under `~/.claude` (LF-27; see "Model-written
+results" below). Then run `loop-spec submit --step <id> --slug <slug> [--dispatch
+<name>] [--result-file <path>]` (`cli.py`/`steps.py`); `--result-file` reads the
+result from `<path>` instead of `resultPath` — same schema validation, digest, and
+submission record — for a worker that wrote its result somewhere else.
 
 `submit` (`steps.submit`) validates the result against the step's schema, then
 picks one evidence level:
@@ -188,6 +193,19 @@ source: "plan" | "answer", reason}`.
 `repo id` is derived from the project's first root commit (`paths.repo_id`), so it
 survives a remote rename; `<state home>` itself is resolved by `state_home`
 (`paths.py`), see below.
+
+## Model-written results
+
+Program-written records (state, events, attempts, steps' own metadata) live under
+the state home above. A worker's result file is different: it is model-written,
+`resultPath` points at `<project root>/.loop-spec/results/<slug>/<step id>.json`
+(`paths.FeaturePaths.results_dir`, created by `paths.ensure_results_dir`), and
+`submit` reads and validates it from there, computing the same digest and
+evidence-level record it always has. This split exists because Claude Code's
+default permission mode refuses writes under `~/.claude`, where the state home
+lives on that host, even with the Write tool allow-listed (LF-27). `.loop-spec/`
+is kept out of `git status` via the repository's own `.git/info/exclude`
+(`repo.exclude_path`), never `.gitignore`, so nothing about it is committed.
 
 ## Configuration and environment
 

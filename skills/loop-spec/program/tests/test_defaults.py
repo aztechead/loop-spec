@@ -22,10 +22,14 @@ def _context(tmp: str) -> dict:
 
 class RunLeadPhaseTests(unittest.TestCase):
     def test_returns_2_with_a_valid_lead_step_request(self):
+        # LF-27: the model writes under the project root's results dir, not
+        # straight to product_path (the state home) -- a live lead step cannot
+        # always write there under Claude Code's default permission mode.
         with tempfile.TemporaryDirectory() as tmp:
             context_path = Path(tmp, "context.json")
             product_path = Path(tmp, "product.json")
             atomic_write_json(context_path, _context(tmp))
+            expected_result_path = Path(tmp, ".loop-spec", "results", Path(tmp).name, "spec-attempt-1.json")
 
             code = run_lead_phase("spec", "spec-writer", context_path, product_path)
 
@@ -34,27 +38,33 @@ class RunLeadPhaseTests(unittest.TestCase):
             self.assertEqual(step["kind"], "lead")
             self.assertEqual(step["role"], "spec-writer")
             self.assertEqual(step["phase"], "spec")
-            self.assertEqual(step["resultPath"], str(product_path))
+            self.assertEqual(step["resultPath"], str(expected_result_path))
             self.assertIn("## Method", step["prompt"])
             self.assertIn("## Output", step["prompt"])
             self.assertIn("### request", step["prompt"])
             self.assertIn("add a widget", step["prompt"])
 
-    def test_returns_0_when_a_valid_product_already_exists(self):
+    def test_returns_0_when_a_valid_result_already_exists_in_the_results_dir(self):
+        # LF-27: run_lead_phase checks the project-root results dir a worker would
+        # have written to, not product_path directly, and copies a valid result
+        # there into product_path before reporting done.
         with tempfile.TemporaryDirectory() as tmp:
             context_path = Path(tmp, "context.json")
             product_path = Path(tmp, "product.json")
             atomic_write_json(context_path, _context(tmp))
-            atomic_write_json(product_path, {
+            spec_product = {
                 "exit": "approved", "inputsDigest": "sha256:" + "a" * 64,
                 "boundTo": {"requirements": None, "plan": None},
                 "goal": "do the thing", "boundaries": [], "criteria": [{"id": "AC-1", "text": "it works"}],
                 "decisions": [], "openQuestions": [],
-            })
+            }
+            result_path = Path(tmp, ".loop-spec", "results", Path(tmp).name, "spec-attempt-1.json")
+            atomic_write_json(result_path, spec_product)
 
             code = run_lead_phase("spec", "spec-writer", context_path, product_path)
 
             self.assertEqual(code, 0)
+            self.assertEqual(read_json(product_path), spec_product)
 
     def test_model_env_override_lands_in_the_request(self):
         with tempfile.TemporaryDirectory() as tmp:

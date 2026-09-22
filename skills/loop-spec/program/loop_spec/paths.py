@@ -2,8 +2,9 @@
 
 Use `state_home` to find where durable run state lives (explicit flag beats
 LOOP_SPEC_HOME beats the ~/.loop-spec default), `repo_id` to namespace state per
-repository, `feature_dir` for one feature's directory under that namespace, and
-`FeaturePaths` for every file a single feature's run touches inside it.
+repository, `feature_dir` for one feature's directory under that namespace,
+`FeaturePaths` for every file a single feature's run touches inside it, and
+`ensure_results_dir` before any model-written result path under `results_dir`.
 """
 import os
 import re
@@ -11,6 +12,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import repo as repo_module
 from .ids import digest_bytes
 
 
@@ -52,6 +54,12 @@ class FeaturePaths:
     """Every path one feature's run touches, derived from its root directory."""
 
     root: Path
+    # LF-27: a live run's model, under Claude Code's default permission mode,
+    # cannot write anywhere under ~/.claude/... (the state home lives there) even
+    # with the Write tool allow-listed -- optional so a caller with no project
+    # root (a scan of past slugs, most existing tests) still gets a valid,
+    # writable results_dir, falling back to under root itself.
+    project_root: Path | None = None
     state_json: Path = field(init=False)
     events_jsonl: Path = field(init=False)
     attempts_dir: Path = field(init=False)
@@ -60,9 +68,11 @@ class FeaturePaths:
     checkouts_dir: Path = field(init=False)
     result_json: Path = field(init=False)
     last_result_json: Path = field(init=False)
+    results_dir: Path = field(init=False)
 
     def __post_init__(self) -> None:
         self.root = Path(self.root)
+        self.project_root = Path(self.project_root) if self.project_root is not None else self.root
         self.state_json = self.root / "state.json"
         self.events_jsonl = self.root / "events.jsonl"
         self.attempts_dir = self.root / "attempts"
@@ -71,6 +81,19 @@ class FeaturePaths:
         self.checkouts_dir = self.root / "checkouts"
         self.result_json = self.root / "result.json"
         self.last_result_json = self.root.parent / "last-result.json"
+        # root's own last path component IS the slug (feature_dir returns
+        # home/repo_id/slug) -- no separate slug field needed to namespace this.
+        self.results_dir = self.project_root / ".loop-spec" / "results" / self.root.name
+
+
+def ensure_results_dir(paths: FeaturePaths) -> Path:
+    """Create `paths.results_dir` and, for a git project root, keep `.loop-spec/`
+    out of `git status` via the repo's own (never committed) exclude file -- a
+    workspace root that is not a repo just gets the directory. Call before any
+    model-written result path under it; both effects are idempotent."""
+    paths.results_dir.mkdir(parents=True, exist_ok=True)
+    repo_module.exclude_path(paths.project_root, ".loop-spec/")
+    return paths.results_dir
 
 
 def feature_dir(home: Path, repo_id_: str, slug: str) -> Path:

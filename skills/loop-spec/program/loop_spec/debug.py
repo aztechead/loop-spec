@@ -14,6 +14,7 @@ from . import repo as repo_module
 from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
 from .execute import IssueStep, Product
+from .paths import ensure_results_dir
 from .roles import compose_prompt, load_role
 from .schema import load_schema
 
@@ -23,7 +24,11 @@ def _debugger_request(store, paths, ctx) -> dict:
     role = load_role("debugger", project_root, resolve_role(project_root, "debugger"))
     _, repo_info = next(iter(store.state["repos"].items()))
     cwd = Path(repo_info["path"])
-    result_path = Path(paths.attempts_dir) / ctx["attempt"]["id"] / "debug-result.json"
+    # LF-27: under the project root (paths.results_dir), not the state home -- a
+    # live lead step, under Claude Code's default permission mode, cannot write
+    # under ~/.claude/... even with the Write tool allow-listed.
+    ensure_results_dir(paths)
+    result_path = paths.results_dir / f"debug-{ctx['attempt']['id']}.json"
 
     inputs = {
         "request": ctx["request"]["text"], "state": ctx.get("state", {}), "entry": ctx.get("entry", {}),

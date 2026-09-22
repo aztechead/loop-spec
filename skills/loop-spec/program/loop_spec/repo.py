@@ -35,6 +35,24 @@ def run_git(repo: Path, *args: str) -> str:
     return proc.stdout
 
 
+def exclude_path(repo_path: Path, relative: str) -> None:
+    """Add `relative` to this repo's own, never-committed exclude file, once.
+    `--git-path` (not a hardcoded `.git/info/exclude`) resolves to the shared
+    common dir from a linked worktree too, not a private per-worktree path that
+    does not exist there. A non-repo `repo_path` just does nothing."""
+    proc = _git(repo_path, "rev-parse", "--git-path", "info/exclude")
+    if proc.returncode != 0:
+        return
+    raw = proc.stdout.strip()
+    exclude_file = Path(raw) if Path(raw).is_absolute() else Path(repo_path) / raw
+    exclude_file.parent.mkdir(parents=True, exist_ok=True)
+    existing = exclude_file.read_text().splitlines() if exclude_file.is_file() else []
+    if relative in existing:
+        return
+    with exclude_file.open("a") as f:
+        f.write(relative + "\n")
+
+
 def run_gh(repo: Path, *args: str) -> tuple[int, str, str]:
     try:
         proc = subprocess.run(["gh", *args], cwd=repo, capture_output=True, text=True, check=False)
