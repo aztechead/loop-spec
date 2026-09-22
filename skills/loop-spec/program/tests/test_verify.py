@@ -177,6 +177,36 @@ class VerifyTests(unittest.TestCase):
         self.assertIn('"module_state_reset"', events_text)
         self.assertIn("reviewers", events_text)
 
+    def test_v4_rejection_reissues_the_verifier_and_does_not_reclear_within_the_same_attempt(self):
+        # LF-30: a bare-interpreter evidence command re-ran differently in the
+        # program's clean checkout (V4); the verifier must be re-issued with the
+        # failure as its reason, not silently replay the same rejected product.
+        self._run_pass(_verifier_result([_verdict("AC-1", "pass")]))
+        last_verifier_step = self.store.state["verify"]["verifierStep"]
+
+        rejection_ctx = self.ctx | {
+            "attempt": {"id": "attempt-2"},
+            "entry": {"mode": "remediation", "payload": {"rejected": {
+                "exit": "passed",
+                "failures": [{"id": "V4", "message": "criterion AC-1: no matching re-run recorded"}],
+            }}},
+        }
+        action = step(self.store, self.paths, rejection_ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "verifier")
+        self.assertEqual(action.request["retryOf"], last_verifier_step)
+        self.assertIn("AC-1", action.request["reason"])
+        self.assertIsNone(self.store.state["verify"]["verifier"])
+
+        # A later step() call in this same attempt must not re-clear: simulate a
+        # re-invocation after a fresh result already landed some other way.
+        sentinel = _verifier_result([_verdict("AC-1", "pass")])
+        self.store.state["verify"]["verifier"] = sentinel
+        self.store.state["verify"]["phase"] = "done"
+        action = step(self.store, self.paths, rejection_ctx)
+        self.assertIsInstance(action, Product)
+        self.assertEqual(self.store.state["verify"]["verifier"], sentinel)
+
 
 class WorkspaceVerifyTests(unittest.TestCase):
     """LF-28: a workspace run with two touched repos -- one clean checkout and one
@@ -239,7 +269,10 @@ class WorkspaceVerifyTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def test_two_touched_repos_get_one_reviewer_step_each_and_the_untouched_one_gets_none(self):
+    def _run_full_pass(self):
+        """One verifier step (both criteria pass), then one reviewer step per
+        touched repo -- the shared setup the untouched-repo test and the V7
+        reviewer-retry test both need before their own assertions."""
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, IssueStep)
         self.assertEqual(action.request["role"], "verifier")
@@ -258,6 +291,10 @@ class WorkspaceVerifyTests(unittest.TestCase):
             reviewer_result = {"sha": range_["to"], "reviewedRange": {"from": range_["from"], "to": range_["to"]},
                                 "verdict": "pass", "findings": [], "securityDispositions": []}
             on_submit(self.store, self.paths, action.request | {"stepAttemptId": f"r-{repo_name}"}, reviewer_result)
+        return seen_repos
+
+    def test_two_touched_repos_get_one_reviewer_step_each_and_the_untouched_one_gets_none(self):
+        seen_repos = self._run_full_pass()
 
         self.assertEqual(set(seen_repos), {"calc", "textutil"})
         self.assertNotIn("untouched", self.store.state["verify"]["checkouts"])
@@ -268,6 +305,29 @@ class WorkspaceVerifyTests(unittest.TestCase):
         self.assertEqual({r["repo"] for r in product["reviewedRanges"]}, {"calc", "textutil"})
         evidence_by_criterion = {v["criterion"]: v["evidence"]["repo"] for v in product["verdicts"]}
         self.assertEqual(evidence_by_criterion, {"AC-1": "calc", "AC-2": "textutil"})
+
+    def test_v7_rejection_reissues_only_the_named_repos_reviewer_step(self):
+        # LF-30: the message names its repo ("repo textutil: ..."); only that
+        # repo's reviewer is reset and re-issued, calc's own result stays.
+        self._run_full_pass()
+        calc_reviewer = self.store.state["verify"]["reviewers"]["calc"]
+        last_textutil_step = self.store.state["verify"]["reviewerSteps"]["textutil"]
+
+        rejection_ctx = self.ctx | {
+            "attempt": {"id": "attempt-2"},
+            "entry": {"mode": "remediation", "payload": {"rejected": {
+                "exit": "passed",
+                "failures": [{"id": "V7", "message": "repo textutil: reviewed range does not continue from the last reviewed SHA"}],
+            }}},
+        }
+        action = step(self.store, self.paths, rejection_ctx)
+
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        self.assertEqual(action.request["retryOf"], last_textutil_step)
+        self.assertIn("textutil", action.request["reason"])
+        self.assertNotIn("textutil", self.store.state["verify"]["reviewers"])
+        self.assertEqual(self.store.state["verify"]["reviewers"]["calc"], calc_reviewer)
 
 
 if __name__ == "__main__":

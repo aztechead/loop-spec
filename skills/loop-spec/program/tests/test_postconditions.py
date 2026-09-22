@@ -396,7 +396,21 @@ class PostconditionsTests(unittest.TestCase):
     def test_v4(self):
         self.assertIsNone(self._boundary("verify", self.verify_product, "passed")._v4())
         del self.store.state["verifyRuns"]["AC-1"]
-        self.assertIsNotNone(self._boundary("verify", self.verify_product, "passed")._v4())
+        message = self._boundary("verify", self.verify_product, "passed")._v4()
+        self.assertEqual(message, "criterion AC-1: no matching re-run recorded")
+
+    def test_v4_mismatch_message_names_the_cause(self):
+        self.store.state["verifyRuns"]["AC-1"] = {
+            "rerun": {"cwd": "/tmp/verify-AC-1-abc123", "exitStatus": 127},
+            "matched": False, "reason": "exitStatus differs",
+        }
+        message = self._boundary("verify", self.verify_product, "passed")._v4()
+        self.assertEqual(
+            message,
+            "criterion AC-1: the program's re-run differs from the claim: exitStatus differs "
+            "(claimed exit 0, re-run exit 127 in verify-AC-1-abc123; an exit of 127 means the "
+            "command was not found in the clean checkout)",
+        )
 
     def test_v5(self):
         # No failing branch exists: _v5 only records exceptions, it never rejects.

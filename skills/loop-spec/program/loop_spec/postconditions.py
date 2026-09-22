@@ -574,8 +574,18 @@ class Boundary:
             if verdict["verdict"] not in ("pass", "fail") or verdict["criterion"] in exceptions:
                 continue
             record = runs.get(verdict["criterion"])
-            if record is None or not record.get("matched"):
+            if record is None:
                 return f"criterion {verdict['criterion']}: no matching re-run recorded"
+            if not record.get("matched"):
+                rerun = record.get("rerun") or {}
+                rerun_exit = rerun.get("exitStatus")
+                cwd_name = Path(rerun.get("cwd", "")).name
+                note = "; an exit of 127 means the command was not found in the clean checkout" if rerun_exit == 127 else ""
+                return (
+                    f"criterion {verdict['criterion']}: the program's re-run differs from the claim: "
+                    f"{record.get('reason')} (claimed exit {(verdict.get('evidence') or {}).get('exitStatus')}, "
+                    f"re-run exit {rerun_exit} in {cwd_name}{note})"
+                )
         return None
 
     def _v5(self) -> str | None:

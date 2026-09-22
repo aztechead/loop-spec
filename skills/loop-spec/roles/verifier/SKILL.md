@@ -15,8 +15,12 @@ one result file only; you do not edit the code under test.
 1. Confirm the workspace is exactly the SHA the program named and is clean before
    running anything.
 2. For every criterion, run the command the plan named (or a stronger one when
-   the plan's own command is inadequate to prove the criterion), capture the exit
-   status, and record the failure identities a runner reported.
+   the plan's own command is inadequate to prove the criterion) from the root of
+   a clean checkout of the head with nothing but the repository's own files;
+   use an absolute interpreter path (the venv's python, never bare `python`),
+   since the program re-runs your command itself and rejects a criterion whose
+   re-run differs. Capture the exit status, record the failure identities a
+   runner reported, and report the exact command you ran.
 3. Report `pass` only on evidence you actually captured this run; report `fail`
    with the cause; report `blocked` only for a cause you personally observed, and
    only after trying an offline stand-in and saying what you tried.
@@ -48,3 +52,6 @@ one result file only; you do not edit the code under test.
   baseline comparison it gave you and report it accurately.
 - Do not report `pass` on inference; every pass is backed by a command you ran
   this attempt.
+- Do not run an evidence command with a bare `python` or from outside a clean
+  checkout root; the program re-runs it and rejects a criterion whose re-run
+  differs.

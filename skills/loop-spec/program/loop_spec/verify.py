@@ -8,6 +8,7 @@ controller's dispatch is another agent's change. Module state lives under
 `store.state["ledger"]` via `ledger.py` once it accepts the product -- this module
 never writes the ledger itself.
 """
+import re
 from pathlib import Path
 
 from . import baseline as baseline_module
@@ -43,6 +44,67 @@ def _criterion_repo(plan_product: dict) -> dict[str, str]:
         for cid in task["criteria"]:
             mapping.setdefault(cid, task["repo"])
     return mapping
+
+
+# LF-30: a rejected VERIFY product re-enters remediation with the SAME already
+# -submitted results -- left alone, the next attempt reproduces the identical
+# product and gets rejected again. V2-V6 are all the verifier's own claims (a
+# criterion set, its evidence SHA, a stale re-run, an exception, a blocked
+# cause); V7/V8 are the reviewer's (range continuity, a finding's supersedes).
+_VERIFIER_RETRY_FAILURE_IDS = {"V2", "V3", "V4", "V5", "V6"}
+_REVIEWER_RETRY_FAILURE_IDS = {"V7", "V8"}
+_REPO_FAILURE_RE = re.compile(r"^repo (\S+):")
+
+
+def _failure_repo(message: str) -> str | None:
+    match = _REPO_FAILURE_RE.match(message)
+    return match.group(1) if match else None
+
+
+def _handle_rejection(store, paths, ctx, verify_state: dict) -> None:
+    entry = ctx["entry"]
+    if entry.get("mode") != "remediation":
+        return
+    rejected = (entry.get("payload") or {}).get("rejected")
+    if not rejected or not rejected.get("failures"):
+        return
+    attempt_id = ctx["attempt"]["id"]
+    if "handledRejections" not in verify_state:
+        verify_state["handledRejections"] = []
+        emit(paths, "module_state_reset",
+             {"summary": "verify state had no handledRejections; starting one", "missingKey": "handledRejections"},
+             phase="verify", attempt_id=attempt_id)
+    if attempt_id in verify_state["handledRejections"]:
+        return
+    verify_state["handledRejections"].append(attempt_id)
+
+    failures = rejected["failures"]
+    reviewer_failures = [f for f in failures if f["id"] in _REVIEWER_RETRY_FAILURE_IDS]
+    if reviewer_failures:
+        # A repo the message cannot name (V8's finding id, say) resets every
+        # reviewer rather than guess which one -- never silently leaves a
+        # rejected result unreviewed again.
+        repos = {_failure_repo(f["message"]) for f in reviewer_failures}
+        targets = repos & set(verify_state["reviewers"]) if None not in repos else set(verify_state["reviewers"])
+        reason = "\n".join(f["message"] for f in reviewer_failures)
+        for name in targets:
+            del verify_state["reviewers"][name]
+            verify_state.setdefault("reviewerReasons", {})[name] = reason
+            if name not in verify_state["pendingReviews"]:
+                verify_state["pendingReviews"].append(name)
+        if targets:
+            verify_state["phase"] = "reviewing"
+
+    verifier_messages = [f["message"] for f in failures if f["id"] in _VERIFIER_RETRY_FAILURE_IDS]
+    if verifier_messages:
+        # Checked last so it wins the phase: a fresh verifier step must be
+        # issued (and land) before on_submit's own pendingReviews check can
+        # correctly route back to any reviewer this same rejection just reset.
+        verify_state["reason"] = "\n".join(verifier_messages)
+        verify_state["verifier"] = None
+        verify_state["phase"] = "verifying"
+
+    store.save()
 
 
 def _verify_checkout(repo_path: Path, head: str, prepare: str | None, checkouts_dir: Path) -> Path:
@@ -105,8 +167,9 @@ def _init(store, paths, ctx) -> dict:
     verify_state = {
         "planRevision": store.state["revisions"]["plan"], "heads": heads,
         "checkouts": checkouts, "ranges": ranges, "rangeProbes": range_probes,
-        "phase": "verifying", "verifierStep": None, "reviewerSteps": {}, "verifier": None,
-        "reviewers": {}, "pendingReviews": list(touched), "pass": len(reviewed_ranges) + 1,
+        "phase": "verifying", "verifierStep": None, "reviewerSteps": {}, "verifier": None, "reason": None,
+        "reviewers": {}, "reviewerReasons": {}, "pendingReviews": list(touched),
+        "handledRejections": [], "pass": len(reviewed_ranges) + 1,
     }
     store.state["verify"] = verify_state
     store.save()
@@ -145,7 +208,11 @@ def _verifier_request(store, paths, ctx, verify_state: dict) -> dict:
     request = {
         "kind": "role", "role": "verifier", "phase": "verify", "cwd": str(cwd),
         "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
-        "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"], "retryOf": None, "reason": None,
+        "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
+        # LF-30: None/None on a fresh pass -- a rejection re-routed back to the
+        # verifier (see _handle_rejection) is the one case with a reason already
+        # set and a prior verifier step to retry.
+        "retryOf": verify_state.get("verifierStep"), "reason": verify_state.get("reason"),
     }
     errors = validate_request("step", request)
     if errors:
@@ -183,7 +250,11 @@ def _reviewer_request(store, paths, ctx, verify_state: dict, repo_name: str) -> 
     request = {
         "kind": "role", "role": "code-reviewer", "phase": "verify", "cwd": str(cwd),
         "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
-        "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"], "retryOf": None, "reason": None,
+        "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
+        # LF-30: None/None on a fresh pass -- a rejection re-routed back to this
+        # repo's review (see _handle_rejection) is the one case with a reason
+        # already set and a prior reviewer step to retry.
+        "retryOf": verify_state["reviewerSteps"].get(repo_name), "reason": verify_state.get("reviewerReasons", {}).get(repo_name),
     }
     errors = validate_request("step", request)
     if errors:
@@ -254,6 +325,8 @@ def step(store, paths, ctx):
         verify_state = None
     if verify_state is None:
         verify_state = _init(store, paths, ctx)
+    else:
+        _handle_rejection(store, paths, ctx, verify_state)
 
     if verify_state["phase"] == "verifying":
         return IssueStep(_verifier_request(store, paths, ctx, verify_state))
