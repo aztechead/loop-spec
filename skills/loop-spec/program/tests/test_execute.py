@@ -117,6 +117,34 @@ class ExecuteLifecycleTests(unittest.TestCase):
         return {"sha": sha, "reviewedRange": {"from": from_sha, "to": to_sha}, "verdict": "pass",
                 "findings": [], "securityDispositions": []}
 
+    def _implement_and_review(self, task_id, filename):
+        """One implement step, then one passing review step, for a task with no
+        prior attempts -- the shared setup the two plan-gap tests below both need
+        before the verify re-run they're actually exercising even happens."""
+        action = step(self.store, self.paths, self.ctx)
+        worktree = action.request["cwd"]
+        result = self._implementer_result(task_id, worktree, filename)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-1"}, result)
+
+        action = step(self.store, self.paths, self.ctx)
+        task_head = _head(worktree)
+        review = self._pass_review(task_head, self.base_sha, task_head)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-1"}, review)
+        return worktree, task_head
+
+    def _assert_routed_to_plan_gap(self, task_id):
+        """Zero retries spent, then the very next step() call hands back the plan-gap
+        product -- shared by both plan-gap tests, which differ only in what unfixable
+        verify verdict got the task there and are free to assert its issue text."""
+        task_state = self.store.state["execute"]["tasks"][task_id]
+        self.assertEqual(task_state["status"], "planGap")
+        self.assertEqual(task_state["retries"], 0)
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, Product)
+        self.assertEqual(action.product["exit"], "plan gap")
+        return action
+
     def test_full_success_lifecycle(self):
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, IssueStep)
@@ -207,6 +235,66 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertEqual(action.product["exit"], "blocked")
         self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "blocked")
         self.assertTrue(action.product["issues"])
+
+    def test_mustflip_on_an_ordinary_task_routes_to_plan_gap(self):
+        # LF-11: the planner mistakenly set featureAdded to the verify COMMAND
+        # string and mustFlip: true on an ordinary (non-debug-repair) task. No
+        # implementer retry can make an already-passing baseline "fail at base",
+        # so this must exit plan gap on the first pass, not burn retries toward
+        # a blocked no implementer could have prevented.
+        self.plan_tasks[0]["mustFlip"] = True
+        self.plan_tasks[0]["featureAdded"] = "sh verify.sh"
+
+        self._implement_and_review("T-1", "T-1.txt")
+
+        action = self._assert_routed_to_plan_gap("T-1")
+        self.assertEqual(action.product["issues"], [
+            {"task": "T-1", "text": "the verify re-run is mustFlip-failed: reproduction did not fail at base"},
+        ])
+
+    def test_missing_baseline_routes_to_plan_gap(self):
+        self.plan_tasks[0]["verify"] = "sh other.sh"
+        self.store.state["baseline"]["entries"]["sh other.sh"] = BaselineEntry(
+            command="sh other.sh", task=None, status="no-baseline", run=None,
+        ).to_dict()
+
+        self._implement_and_review("T-1", "T-1.txt")
+
+        self._assert_routed_to_plan_gap("T-1")
+
+    def test_regression_still_retries_before_blocking(self):
+        # A genuine regression (unlike mustFlip-failed/baseline-error above) is the
+        # implementer's to fix, so it keeps the existing retry-then-block path.
+        # verify.sh is broken once, on the task's own worktree/branch, which every
+        # retry below reuses (_ensure_worktree creates it only on the first call).
+        broken = False
+        for attempt in range(2 * (retry_limit() + 2)):
+            action = step(self.store, self.paths, self.ctx)
+            if isinstance(action, Product):
+                break
+            worktree = action.request["cwd"]
+            if action.request["role"] == "implementer":
+                _commit(worktree, f"T-1-{attempt}.txt", f"implement T-1 {attempt}")
+                if not broken:
+                    # A silent `exit 1` fingerprints identically to the baseline's
+                    # silent `exit 0` (fingerprints() hashes output text, never exit
+                    # status), so the break needs distinct output to register as a
+                    # new failure identity.
+                    Path(worktree, "verify.sh").write_text("#!/bin/sh\necho 'regression detected'\nexit 1\n")
+                    _git(worktree, "add", "verify.sh")
+                    _git(worktree, "commit", "-q", "-m", "break verify")
+                    broken = True
+                result = {"taskId": "T-1", "commits": [_head(worktree)], "summary": f"did T-1 {attempt}",
+                          "verifyRun": {"command": "sh verify.sh", "exitStatus": 1}, "issues": []}
+                on_submit(self.store, self.paths, action.request | {"stepAttemptId": f"impl-{attempt}"}, result)
+            else:
+                task_head = _head(worktree)
+                review = self._pass_review(task_head, self.base_sha, task_head)
+                on_submit(self.store, self.paths, action.request | {"stepAttemptId": f"rev-{attempt}"}, review)
+
+        self.assertIsInstance(action, Product)
+        self.assertEqual(action.product["exit"], "blocked")
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "blocked")
 
     def test_out_of_band_commit_pauses(self):
         step(self.store, self.paths, self.ctx)  # initializes worktrees, including worktrees/feature

@@ -136,10 +136,12 @@
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "description": "A target file PATH that does not exist at base, never a command. null for a task whose verify target already exists at base."
         },
         "mustFlip": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "true only for a debug repair task whose verify command is the failing reproduction; false for every ordinary task."
         }
       }
     }

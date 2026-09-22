@@ -20,9 +20,12 @@ never for installing, building, or running the plan's own verify commands.
 2. Map every criterion to at least one task; a criterion no task covers is a gap.
 3. For each task, name its repo, the files it touches, a `verify` command that
    runs correctly from a bare checkout of the repo root at the base commit — no
-   relative working-directory assumptions — and the criteria it satisfies. Use
-   `featureAdded` when the verify target does not exist yet at that base commit.
-   No task ships without a verify command.
+   relative working-directory assumptions — and the criteria it satisfies.
+   `featureAdded` is a target file PATH that does not exist yet at that base
+   commit, never a command; leave it `null` when the target already exists.
+   `mustFlip` is `false` for every ordinary task — it is reserved for a debug
+   repair task whose `verify` command IS the failing reproduction. No task
+   ships without a verify command.
 4. Keep `dependsOn` acyclic and real: a dependency the graph cannot resolve, or one
    that exists only to force an ordering two tasks do not actually need, is a
    defect. Give each file one owning task.

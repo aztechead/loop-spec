@@ -33,6 +33,11 @@ Read-only over the codebase; Write is for your one result file only.
 - A destructive or irreversible change with no boundary or rollback named.
 - A task graph that cannot execute as written (a cycle, an unresolvable
   dependency, two tasks that silently collide on the same file).
+- A task marked `mustFlip` that is not a debug repair.
+- `featureAdded` that is not a path, or that names a path already present at
+  base.
+- A verify command with a relative interpreter path that a clean checkout will
+  not have.
 
 ## What NOT to do
 

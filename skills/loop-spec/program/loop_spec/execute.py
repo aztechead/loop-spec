@@ -21,8 +21,14 @@ from .errors import LoopSpecError
 from .postconditions import retry_limit
 from .roles import compose_prompt, load_role
 
-_TERMINAL = {"done", "already-satisfied", "removed", "blocked"}
+_TERMINAL = {"done", "already-satisfied", "removed", "blocked", "planGap"}
 _DIFF_CAP = 200_000  # ponytail: a flat cap, raise it if a real diff gets truncated in practice
+# LF-11: a verify re-run that could never have passed no matter what the implementer
+# does is a defect in PLAN's own verify/featureAdded/mustFlip fields, not something a
+# retry fixes. "reproduction still fails at the candidate commit" (the OTHER
+# mustFlip-failed detail) stays on the retry path below -- that one means the
+# implementer's fix did not land yet, which a retry can still address.
+_MUST_FLIP_BASELINE_DETAIL = "reproduction did not fail at base"
 
 
 class IssueStep:
@@ -82,6 +88,25 @@ def _retry_or_block(execute_state: dict, task_id: str, task_state: dict, reason_
     else:
         task_state["status"] = "pending"
         task_state["reason"] = reason_text
+
+
+def _route_verify_comparison(execute_state: dict, task_id: str, task_state: dict, comparison) -> None:
+    """`baseline-error` and a `mustFlip-failed` baseline that never failed are PLAN's
+    own mistake (see `_MUST_FLIP_BASELINE_DETAIL` above): route straight to plan gap,
+    spending none of the task's retry budget on an outcome no retry can change. Every
+    other failing verdict (`regression`, `featureAdded-failed`, a `mustFlip-failed`
+    whose reproduction still fails at the candidate) is still the implementer's to fix
+    and keeps the retry-then-block path."""
+    reason_text = f"the verify re-run is {comparison.verdict}: {comparison.detail}"
+    is_plan_defect = comparison.verdict == "baseline-error" or (
+        comparison.verdict == "mustFlip-failed" and comparison.detail == _MUST_FLIP_BASELINE_DETAIL
+    )
+    if is_plan_defect:
+        task_state["status"] = "planGap"
+        task_state["reason"] = None
+        execute_state["issues"].append({"task": task_id, "text": reason_text})
+        return
+    _retry_or_block(execute_state, task_id, task_state, reason_text)
 
 
 # --- initialization (first step() call only) ------------------------------
@@ -255,7 +280,9 @@ def _final_product(store, ctx, execute_state: dict) -> dict:
                 "evidence": task_state["evidence"], "commits": [], "review": None,
             })
 
-    if execute_state["issues"]:
+    if any(t["status"] == "planGap" for t in execute_state["tasks"].values()):
+        exit_ = "plan gap"
+    elif execute_state["issues"]:
         exit_ = "blocked"
     elif any_done:
         exit_ = "integrated"
@@ -288,7 +315,7 @@ def step(store, paths, ctx):
         if actual is not None and actual != repo_state["head"]:
             return Pause(_pause_request(ctx, name, repo_state["head"], actual))
 
-    if any(t["status"] == "blocked" for t in execute_state["tasks"].values()):
+    if any(t["status"] in ("blocked", "planGap") for t in execute_state["tasks"].values()):
         return Product(_final_product(store, ctx, execute_state))
 
     plan_tasks = _plan_tasks(store)
@@ -363,7 +390,7 @@ def _on_review_submit(store, task_id: str, task_state: dict, step_record: dict, 
     store.state.setdefault("executeRuns", {})[task_id] = {"run": candidate.to_dict(), "comparison": comparison.to_dict()}
 
     if comparison.verdict not in ("no-regression", "featureAdded-ok", "mustFlip-ok"):
-        _retry_or_block(execute_state, task_id, task_state, f"the verify re-run is {comparison.verdict}: {comparison.detail}")
+        _route_verify_comparison(execute_state, task_id, task_state, comparison)
         return
 
     feature_worktree = Path(execute_state["repos"][task_state["repo"]]["worktree"])

@@ -93,12 +93,19 @@ CONTRACTS: dict[str, str] = {
         "repo root of a bare checkout at the base SHA -- no relative-cwd assumptions "
         "-- plus the criteria it covers. Use `featureAdded` when the verify target "
         "does not exist at base, and `prepare` for environment setup. No task without "
-        "a verify command; `dependsOn` is acyclic. Declare `exit: \"ready\"`, or "
-        "`\"spec gap\"` naming the missing requirement."
+        "a verify command; `dependsOn` is acyclic. `featureAdded` is a target file "
+        "PATH that does not exist at base, never a command; `mustFlip` is only for a "
+        "debug repair task whose verify is the failing reproduction, and is false for "
+        "every ordinary task; a verify command must run from the repository root of a "
+        "clean checkout. Declare `exit: \"ready\"`, or `\"spec gap\"` naming the "
+        "missing requirement."
     ),
     "plan-critic": (
         "Critical-only: a criterion no task covers, a verify command that cannot test "
-        "what it claims, a destructive change with no boundary. No style advice. "
+        "what it claims, a destructive change with no boundary, a task marked "
+        "`mustFlip` that is not a debug repair, `featureAdded` that is not a path or "
+        "names a path present at base, or a verify command with a relative "
+        "interpreter path that a clean checkout will not have. No style advice. "
         "Output `{\"findings\": []}` when nothing is Critical."
     ),
     "implementer": (
