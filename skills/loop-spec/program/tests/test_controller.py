@@ -627,6 +627,11 @@ class RejectedStepReissueTests(_QuietStdout):
                 bad_plan_product["tasks"][0]["repo"] = "bogus"  # fails P6
                 atomic_write_json(Path(first_plan_step["resultPath"]), bad_plan_product)
                 store = _open(paths)
+                # LF-31: a single-repo run normalizes an unrecognized repo name to
+                # the one repo instead of rejecting it; a second repo keeps "bogus"
+                # a genuine P6 failure, which is what this test is about.
+                store.state["repos"]["other"] = dict(store.state["repos"][repo_name], path=str(repo_dir))
+                store.save()
                 steps.submit(store, paths, step_id=first_plan_step["stepAttemptId"], dispatch_name=None, host=None)
                 with contextlib.redirect_stdout(markers):
                     next_ = controller.continue_run(store, paths, project_root=repo_dir)
@@ -719,6 +724,80 @@ class DebugAndReviseEntryTests(_QuietStdout):
                 self.assertEqual(next_.kind, "step")  # EXECUTE's own external step
                 self.assertIsNotNone(store.state["revisions"]["requirements"])
                 self.assertIsNotNone(store.state["revisions"]["plan"])
+
+    def test_debug_entry_normalizes_dot_repo_and_reaches_execute(self):
+        # LF-31: the debugger's compact plan named its one task's repo "." (meaning
+        # "the one repo") instead of the repo's real name; a single-repo run
+        # normalizes that before P6 sees it, instead of rejecting an obviously
+        # right product and falling back to a planner lead step.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            markers = io.StringIO()
+            repro_command = "python3 -c \"import sys; print('boom'); sys.exit(1)\""
+
+            with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+                next_, paths, store, repo_name = _start_debug_run(
+                    repo_dir, home, markers, "the greeting script crashes", "debugdotrepo",
+                )
+                debug_step = read_json(next_.path)
+                spec, plan = _minimal_spec_and_plan(".", "Fix the crash", "the crash no longer reproduces", "fix the crash")
+                debug_product = {
+                    "exit": "reproduced", "inputsDigest": "sha256:" + "0" * 64,
+                    "boundTo": {"requirements": None, "plan": None},
+                    "reproduction": {"command": repro_command, "failureDigest": digest_bytes(b"boom\n"), "reason": None},
+                    "original": None,
+                    "diagnosis": "the greeting script exits nonzero",
+                    "spec": spec, "plan": plan,
+                }
+                atomic_write_json(Path(debug_step["resultPath"]), debug_product)
+                next_ = _submit_and_continue(paths, repo_dir, markers, debug_step["stepAttemptId"])
+                self.assertEqual(next_.kind, "question")  # the compacted SPEC's own approval question
+                next_ = _approve_compacted_spec_and_submit_critic(paths, repo_dir, markers, next_)
+
+                store = _open(paths)
+                self.assertEqual(store.state["phase"]["current"], "execute")
+                self.assertEqual(next_.kind, "step")  # EXECUTE's own external step, not a re-planned PLAN
+                self.assertEqual(store.state["products"]["plan"]["product"]["tasks"][0]["repo"], repo_name)
+
+    def test_debug_entry_rejected_compact_plan_names_failures_in_the_replan_step(self):
+        # LF-31: a rejection unrelated to repo (an uncovered criterion, P2) still
+        # falls back to the default PLAN implementation's lead step, and that
+        # step's reason names the failure (LF-03) rather than leaving it silent.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            markers = io.StringIO()
+            repro_command = "python3 -c \"import sys; print('boom'); sys.exit(1)\""
+
+            with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+                next_, paths, store, repo_name = _start_debug_run(
+                    repo_dir, home, markers, "the greeting script crashes", "debugreject",
+                )
+                debug_step = read_json(next_.path)
+                spec, plan = _minimal_spec_and_plan(repo_name, "Fix the crash", "the crash no longer reproduces", "fix the crash")
+                plan["tasks"][0]["criteria"] = ["AC-9"]  # leaves AC-1 uncovered: a genuine P2 failure
+                debug_product = {
+                    "exit": "reproduced", "inputsDigest": "sha256:" + "0" * 64,
+                    "boundTo": {"requirements": None, "plan": None},
+                    "reproduction": {"command": repro_command, "failureDigest": digest_bytes(b"boom\n"), "reason": None},
+                    "original": None,
+                    "diagnosis": "the greeting script exits nonzero",
+                    "spec": spec, "plan": plan,
+                }
+                atomic_write_json(Path(debug_step["resultPath"]), debug_product)
+                next_ = _submit_and_continue(paths, repo_dir, markers, debug_step["stepAttemptId"])
+                self.assertEqual(next_.kind, "question")  # the compacted SPEC's own approval question
+                next_ = _answer_approve_and_continue(paths, repo_dir, markers, next_)
+
+                store = _open(paths)
+                self.assertEqual(store.state["phase"]["current"], "plan")
+                self.assertEqual(store.state["phase"]["entry"], "remediation")
+                self.assertEqual(next_.kind, "step")  # the default PLAN implementation's own lead step
+                replan_step = read_json(next_.path)
+                self.assertIn("P2", replan_step["reason"])
 
     def test_debug_blocked_reproduction_pauses(self):
         # B3 (a blocked-reproduction product carries no reproduction) needs

@@ -20,7 +20,7 @@ the codebase; Write is for your one result file only.
    boundary, with a decision recording why.
 3. For a comment about how the existing requirements should be implemented, fold
    it into the PLAN product as a new or revised task with its own verify
-   command.
+   command. Every task's `repo` is one of the repository names listed under `inputs.repos` (the envelope's repo map), never a path, `.`, or a guess; a single-repository run has exactly one name.
 4. Keep both products minimal: carry forward everything the comments did not
    touch unchanged, and do not re-litigate a decision no comment raised.
 5. A comment you cannot resolve into a concrete criterion or task is a question,

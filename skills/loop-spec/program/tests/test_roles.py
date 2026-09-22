@@ -76,6 +76,12 @@ class ComposePromptTests(unittest.TestCase):
         # name pull requests among the delivery facts a criterion is never about.
         self.assertIn("pull request", CONTRACTS["spec-writer"])
 
+    def test_planner_contract_names_inputs_repos_for_task_repo_names(self):
+        # LF-31: the debugger wrote a compact plan task with repo "." instead of
+        # a real repo name; the contract text must point at inputs.repos as the
+        # only valid source for a task's repo field.
+        self.assertIn("inputs.repos", CONTRACTS["planner"])
+
     def test_no_contract_section_when_role_has_none(self):
         # Every real role name now has a CONTRACTS entry (debugger's joined the
         # rest under LF-22); this exercises the "none" branch with a name that

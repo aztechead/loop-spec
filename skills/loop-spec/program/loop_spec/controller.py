@@ -482,6 +482,18 @@ def _answered_question_for_attempt(store: StateStore, attempt_id: str):
     return None
 
 
+def _normalize_single_repo_task_repos(store: StateStore, paths: FeaturePaths, attempt_id: str, product: dict) -> None:
+    repos = store.state.get("repos") or {}
+    if len(repos) != 1:
+        return  # a workspace's unknown repo is a real P6 failure, not ours to guess
+    only_repo = next(iter(repos))
+    for task in product.get("tasks", []):
+        if task.get("repo") not in repos:
+            task["repo"] = only_repo
+            emit(paths, "plan_repo_normalized", {"taskId": task["id"], "repo": only_repo},
+                 phase="plan", attempt_id=attempt_id)
+
+
 def _accept_product(store: StateStore, paths: FeaturePaths, project_root: Path, phase: str, attempt_id: str, product: dict) -> None:
     existing = store.state["products"].get(phase)
     if existing is not None and existing.get("attemptId") == attempt_id:
@@ -492,6 +504,15 @@ def _accept_product(store: StateStore, paths: FeaturePaths, project_root: Path, 
         # carries no "exit" at all (it is not one of the seven ROUTES phases).
         _accept_revise_product(store, paths, project_root, attempt_id, product)
         return
+
+    if phase == "plan":
+        # LF-31: a lead, compact (debug/revise), or external PLAN product can name
+        # a task's repo loosely ("." for "the one repo", or leave it out) when
+        # there is only one repo to mean; normalize before P6 or anything past it
+        # sees the product, so a single-repo run never rejects what a human would
+        # read as obviously right. A workspace has real ambiguity to report, so
+        # this never touches a product when more than one repo is registered.
+        _normalize_single_repo_task_repos(store, paths, attempt_id, product)
 
     exit_ = product["exit"]
 

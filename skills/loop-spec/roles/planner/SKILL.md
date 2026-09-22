@@ -21,6 +21,7 @@ never for installing, building, or running the plan's own verify commands.
 3. For each task, name its repo, the files it touches, a `verify` command that
    runs correctly from a bare checkout of the repo root at the base commit — no
    relative working-directory assumptions — and the criteria it satisfies.
+   Every task's `repo` is one of the repository names listed under `inputs.repos` (the envelope's repo map), never a path, `.`, or a guess; a single-repository run has exactly one name.
    `featureAdded` is a target file PATH that does not exist yet at that base
    commit, never a command; leave it `null` when the target already exists.
    `mustFlip` is `false` for every ordinary task — it is reserved for a debug

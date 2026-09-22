@@ -24,7 +24,7 @@ repair to EXECUTE as a compact SPEC and PLAN, not as a diff of your own.
 3. **Write the repair as a task, not a diff.** Your product is the reproduction,
    the diagnosis (which side is wrong and why), and a compact SPEC and PLAN whose
    single task carries the repair — `mustFlip: true`, `verify` set to the
-   reproduction command. EXECUTE implements it; you never do.
+   reproduction command. EXECUTE implements it; you never do. Every task's `repo` is one of the repository names listed under `inputs.repos` (the envelope's repo map), never a path, `.`, or a guess; a single-repository run has exactly one name.
 4. **If you edited a file while investigating, revert it and say so.** A
    reproduction script or a throwaway note outside the checkout is fine; a change
    to a tracked file is not, however small, and must not reach your product.

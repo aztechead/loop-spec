@@ -79,6 +79,14 @@ def load_role(name: str, project_root: Path, binding: str = "default") -> Role:
     return Role(name=name, body=body, schema=default_schema, source=str(found), version=digest_bytes(body.encode()))
 
 
+# A debug or revise task can slip a path or a guess into `repo`; the planner
+# contract already named this, so it is shared rather than restated per role.
+REPO_NAME_RULE = (
+    "Every task's `repo` is one of the repository names listed under "
+    "`inputs.repos` (the envelope's repo map), never a path, `.`, or a "
+    "guess; a single-repository run has exactly one name."
+)
+
 CONTRACTS: dict[str, str] = {
     "spec-writer": (
         "Interview with AskUserQuestion. Criteria ids are `AC-n`, each testable by a "
@@ -105,7 +113,7 @@ CONTRACTS: dict[str, str] = {
         "every ordinary task; a verify command must run from the repository root of a "
         "clean checkout. Declare `exit: \"ready\"`, or `\"spec gap\"` naming the "
         "missing requirement. Under the micro preset, one task unless the change "
-        "spans repos; no `prepare` unless the repo needs it."
+        "spans repos; no `prepare` unless the repo needs it. " + REPO_NAME_RULE
     ),
     "plan-critic": (
         "Critical-only: a criterion no task covers, a criterion that no command can "
@@ -158,8 +166,9 @@ CONTRACTS: dict[str, str] = {
         "SPEC and PLAN whose single task carries the repair for EXECUTE to do. If "
         "you already edited a file while investigating, revert it and say so. "
         "Reproduce before you diagnose; diagnose with one checked hypothesis at a "
-        "time, never a fix on one you have not checked."
+        "time, never a fix on one you have not checked. " + REPO_NAME_RULE
     ),
+    "reviser": REPO_NAME_RULE,
 }
 
 
