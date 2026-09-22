@@ -14,10 +14,10 @@ from .errors import LoopSpecError
 from .ids import new_id
 
 
-def record_range(store, *, from_sha: str, to_sha: str, full: bool, sha: str, by_step: str) -> str:
+def record_range(store, *, repo: str, from_sha: str, to_sha: str, full: bool, sha: str, by_step: str) -> str:
     range_id = new_id("range")
     store.state["ledger"]["reviewedRanges"].append({
-        "id": range_id, "from": from_sha, "to": to_sha, "full": full, "sha": sha, "byStep": by_step,
+        "id": range_id, "repo": repo, "from": from_sha, "to": to_sha, "full": full, "sha": sha, "byStep": by_step,
     })
     store.save()
     return range_id

@@ -109,13 +109,23 @@ _OFFLINE_CAUSE = re.compile(r"offline|network|unavailable|ENOTFOUND|Could not re
 
 
 def verified_head(store) -> str:
-    # M1 is single-repo in practice (workspace fan-out lands later); the first repo's
-    # head is the verified SHA in every scenario this wave's controller exercises.
+    # The single-repo convenience form: callers that already know there is exactly
+    # one repo (result.py's verifiedSha, ITERATE's compact boundSha use) read its
+    # head from here. A workspace run has no single "the" verified head; use
+    # verified_heads() instead.
     execute = store.state["products"]["execute"]
     repo_entry = next(iter(store.state["repos"].values()))
     if execute["exit"] == "no change":
         return repo_entry["baseSha"]
     return next(iter(execute["product"]["heads"].values()))
+
+
+def verified_heads(store) -> dict[str, str]:
+    # LF-28: EXECUTE's own product always carries a head per repo it initialized,
+    # touched or not (an untouched repo's head is already its base -- execute.py
+    # only ever moves a repo's head when one of its tasks lands), so there is no
+    # separate "no change" case to special-case here the way verified_head() does.
+    return store.state["products"]["execute"]["product"]["heads"]
 
 
 def review_evidence(store, task_id: str) -> tuple[str, str | None]:
@@ -134,16 +144,27 @@ def review_evidence(store, task_id: str) -> tuple[str, str | None]:
     return level, step_id
 
 
-def _check_supersedes(findings: list[dict], ledger: dict, repo_path: Path | None) -> str | None:
+def _check_supersedes(findings: list[dict], ledger: dict, repos: dict[str, Path]) -> str | None:
     reviewed_ranges = ledger.get("reviewedRanges", [])
-    if not reviewed_ranges or repo_path is None:
+    if not reviewed_ranges or not repos:
         return None  # nothing cleared yet for a finding to supersede
-    touched: set[str] = set()
+    # LF-28: a range's from/to belongs to the ONE repo it reviewed; diffing it
+    # against a different repo's git history is meaningless, so files are tracked
+    # per repo, never pooled across the workspace.
+    touched_by_repo: dict[str, set[str]] = {}
     for reviewed_range in reviewed_ranges:
+        repo_path = repos.get(reviewed_range.get("repo"))
+        if repo_path is None:
+            continue
         out = repo_module.run_git(repo_path, "diff", "--name-only", f"{reviewed_range['from']}..{reviewed_range['to']}")
-        touched.update(line for line in out.splitlines() if line)
+        touched_by_repo.setdefault(reviewed_range["repo"], set()).update(line for line in out.splitlines() if line)
     known_ids = {f["id"] for f in ledger["findings"]} | {r["id"] for r in reviewed_ranges if "id" in r}
+    # ponytail: a finding with no repo tag in a multi-repo product can't be matched
+    # to one repo's touched files; a single-repo product needs no tag at all.
+    single_repo = next(iter(repos)) if len(repos) == 1 else None
     for finding in findings:
+        repo_name = finding.get("repo") or single_repo
+        touched = touched_by_repo.get(repo_name, set()) if repo_name else set()
         path = finding.get("location", "").split(":", 1)[0]
         if path not in touched:
             continue
@@ -201,6 +222,9 @@ class Boundary:
         if not repos:
             return None
         return Path(next(iter(repos.values()))["path"])
+
+    def _repo_paths(self) -> dict[str, Path]:
+        return {name: Path(info["path"]) for name, info in self._repo_entries().items()}
 
     def _repo_head_or_error(self, name: str) -> tuple[str | None, str | None]:
         head = self.product["heads"].get(name)
@@ -530,11 +554,11 @@ class Boundary:
         return None
 
     def _v3(self) -> str | None:
-        head = verified_head(self.store)
+        heads = verified_heads(self.store)
         for verdict in self.product["verdicts"]:
             evidence = verdict.get("evidence")
-            if evidence and evidence["sha"] != head:
-                return f"criterion {verdict['criterion']}: evidence SHA is not the verified head"
+            if evidence and evidence["sha"] != heads.get(evidence["repo"]):
+                return f"criterion {verdict['criterion']}: evidence SHA is not the verified head for repo {evidence['repo']}"
         return None
 
     def _exceptions(self) -> set[str]:
@@ -593,20 +617,25 @@ class Boundary:
     def _v7(self) -> str | None:
         if any(v["verdict"] != "pass" for v in self.product["verdicts"]):
             return "not every verdict is pass"
-        reviewed_ranges = self.store.state["ledger"]["reviewedRanges"]
-        reviewed_range = self.product["reviewedRange"]
-        if not reviewed_ranges:
-            if not reviewed_range.get("full"):
-                return "first VERIFY pass must review the full diff"
-        elif reviewed_range["from"] != reviewed_ranges[-1]["to"]:
-            return "reviewed range does not continue from the last reviewed SHA"
+        # LF-28: the first/delta rule is per repo -- a repo VERIFY is reviewing for
+        # the first time must see its own full diff even if another repo in the
+        # same workspace already has a reviewed history to continue from.
+        ledger_ranges = self.store.state["ledger"]["reviewedRanges"]
+        for reviewed_range in self.product["reviewedRanges"]:
+            repo = reviewed_range["repo"]
+            prior = [r for r in ledger_ranges if r.get("repo") == repo]
+            if not prior:
+                if not reviewed_range.get("full"):
+                    return f"repo {repo}: first VERIFY pass must review the full diff"
+            elif reviewed_range["from"] != prior[-1]["to"]:
+                return f"repo {repo}: reviewed range does not continue from the last reviewed SHA"
         findings = self.product.get("findings", []) + self.store.state["ledger"]["findings"]
         if any(f["severity"] == "Critical" and f["disposition"] == "open" for f in findings):
             return "a Critical finding is open"
         return None
 
     def _v8(self) -> str | None:
-        return _check_supersedes(self.product.get("findings", []), self.store.state["ledger"], self._first_repo_path())
+        return _check_supersedes(self.product.get("findings", []), self.store.state["ledger"], self._repo_paths())
 
     def _v9(self) -> str | None:
         for verdict in self.product["verdicts"]:
@@ -625,9 +654,11 @@ class Boundary:
         bound_failure = self._bound()
         if bound_failure:
             return bound_failure
-        first_head = next(iter(self.store.state["products"]["execute"]["product"]["heads"].values()))
-        if self.product.get("boundSha") != first_head:
-            return "boundSha does not match the EXECUTE head"
+        heads = self.store.state["products"]["execute"]["product"]["heads"]
+        bound_shas = self.product.get("boundShas") or {}
+        for repo, head in heads.items():
+            if bound_shas.get(repo) != head:
+                return f"boundShas does not bind repo {repo} to the EXECUTE head"
         return None
 
     def _i2(self) -> str | None:

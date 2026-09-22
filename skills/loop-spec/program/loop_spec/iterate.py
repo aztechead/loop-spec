@@ -2,8 +2,9 @@
 picks the exit from the judge's verdict, gaps, and the ledger.
 
 Use `step`/`on_submit` the same way `execute.py` does. Module state lives under
-`store.state["iterate"]`, keyed to the current VERIFY head so a later ITERATE entry
-(after a rewind) issues a fresh judge call while `priorGaps` keeps accumulating.
+`store.state["iterate"]`, keyed to the current VERIFY heads (per repo, LF-28) so a
+later ITERATE entry (after a rewind) issues a fresh judge call while `priorGaps`
+keeps accumulating.
 """
 from pathlib import Path
 
@@ -13,35 +14,55 @@ from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
 from .execute import IssueStep, Product
 from .paths import ensure_results_dir
-from .postconditions import verified_head
 from .roles import compose_prompt, load_role
 
 _DIFF_CAP = 200_000  # ponytail: same flat cap as execute.py's review diff
 
 
-def _judge_request(store, paths, ctx, head: str) -> dict:
+def _heads(store) -> dict[str, str]:
+    # EXECUTE's own product always carries a head per repo it initialized
+    # (touched or not), unlike postconditions.verified_head, which only reads
+    # the first repo -- the single-repo assumption LF-28 is about.
+    return store.state["products"]["execute"]["product"]["heads"]
+
+
+def _touched_repos(store, heads: dict[str, str]) -> list[str]:
+    repos = store.state["repos"]
+    return [name for name in heads if heads[name] != repos[name]["baseSha"]]
+
+
+def _judge_request(store, paths, ctx, heads: dict[str, str]) -> dict:
     project_root = Path(ctx["paths"]["projectRoot"])
     role = load_role("iterate-judge", project_root, resolve_role(project_root, "iterate-judge"))
-    _, repo_info = next(iter(store.state["repos"].items()))
-    cwd = Path(paths.checkouts_dir) / f"verify-{head[:12]}"
-    if not cwd.is_dir():
-        raise LoopSpecError(
-            f"no verify checkout at {cwd}",
-            repair="ITERATE runs after VERIFY passed, so verify.py's checkout should still exist",
-        )
+    touched = _touched_repos(store, heads)
+
+    diffs = {}
+    for name in touched:
+        repo_info = store.state["repos"][name]
+        diff = repo_module.run_git(Path(repo_info["path"]), "diff", f"{repo_info['baseSha']}..{heads[name]}")
+        if len(diff) > _DIFF_CAP:
+            diff = diff[:_DIFF_CAP] + "\n...(truncated)"
+        diffs[name] = diff
+
+    if touched:
+        first_repo = touched[0]
+        cwd = Path(paths.checkouts_dir) / f"verify-{heads[first_repo][:12]}"
+        if not cwd.is_dir():
+            raise LoopSpecError(
+                f"no verify checkout at {cwd}",
+                repair="ITERATE runs after VERIFY passed, so verify.py's checkout should still exist",
+            )
+    else:
+        cwd = Path(next(iter(store.state["repos"].values()))["path"])
     # LF-27: under the project root (paths.results_dir), not inside the checkout
     # (a temp dir under the state home a live model cannot always write to).
     ensure_results_dir(paths)
     result_path = paths.results_dir / f"iterate-{ctx['attempt']['id']}.json"
 
-    diff = repo_module.run_git(Path(repo_info["path"]), "diff", f"{repo_info['baseSha']}..{head}")
-    if len(diff) > _DIFF_CAP:
-        diff = diff[:_DIFF_CAP] + "\n...(truncated)"
-
     budget_state = store.state["budget"]
     inputs = {
         "request": store.state["request"]["text"], "spec": store.state["products"]["spec"]["product"],
-        "diff": diff, "verify": store.state["products"]["verify"]["product"],
+        "diffs": diffs, "verify": store.state["products"]["verify"]["product"],
         "priorGaps": store.state["iterate"]["priorGaps"],
         "budget": {"spent": budget_state["spent"], "limit": budget_state["limit"], "hasRoom": has_room(store)},
     }
@@ -86,24 +107,27 @@ def _final_product(store, ctx, iterate_state: dict) -> dict:
     return {
         "exit": exit_, "inputsDigest": ctx["inputs"]["digest"],
         "boundTo": {"requirements": store.state["revisions"]["requirements"], "plan": store.state["revisions"]["plan"]},
-        "verdict": judge["verdict"], "gaps": judge["gaps"], "caveats": caveats, "boundSha": iterate_state["boundSha"],
+        "verdict": judge["verdict"], "gaps": judge["gaps"], "caveats": caveats, "boundShas": iterate_state["boundShas"],
     }
 
 
 def step(store, paths, ctx):
-    head = verified_head(store)
+    heads = _heads(store)
     iterate_state = store.state.get("iterate")
     if iterate_state is None:
-        iterate_state = {"priorGaps": [], "judgeStep": None, "judge": None, "boundSha": None}
+        iterate_state = {"priorGaps": [], "judgeStep": None, "judge": None, "boundShas": None}
         store.state["iterate"] = iterate_state
         store.save()
-    if iterate_state["boundSha"] != head:
+    if iterate_state["boundShas"] != heads:
         iterate_state["judge"] = None
-        iterate_state["boundSha"] = head
+        # A copy, not the same dict EXECUTE's own product still holds: aliasing it
+        # would make this comparison always equal the moment that product's heads
+        # change, since both sides would be the identical object.
+        iterate_state["boundShas"] = dict(heads)
         store.save()
 
     if iterate_state["judge"] is None:
-        return IssueStep(_judge_request(store, paths, ctx, head))
+        return IssueStep(_judge_request(store, paths, ctx, heads))
     return Product(_final_product(store, ctx, iterate_state))
 
 

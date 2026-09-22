@@ -111,7 +111,7 @@ class PostconditionsTests(unittest.TestCase):
         }
         self.store.state["executeRuns"] = {"T-1": {"comparison": {"verdict": "match"}}, "T-2": {"comparison": {"verdict": "match"}}}
 
-        evidence = {"command": _VERIFY_CMD, "sha": self.sha_b, "exitStatus": 0, "failureIdentities": [], "outputDigest": "sha256:" + "0" * 64}
+        evidence = {"command": _VERIFY_CMD, "repo": "repo", "sha": self.sha_b, "exitStatus": 0, "failureIdentities": [], "outputDigest": "sha256:" + "0" * 64}
         self.verify_product = {
             "exit": "passed", "inputsDigest": "sha256:" + "0" * 64,
             "boundTo": {"requirements": self.spec_revision, "plan": self.plan_revision},
@@ -120,14 +120,14 @@ class PostconditionsTests(unittest.TestCase):
                 {"criterion": "AC-2", "verdict": "pass", "evidence": copy.deepcopy(evidence), "cause": None},
             ],
             "findings": [], "remediationTasks": [],
-            "reviewedRange": {"from": self.base_sha, "to": self.sha_b, "full": True},
+            "reviewedRanges": [{"repo": "repo", "from": self.base_sha, "to": self.sha_b, "full": True}],
         }
         self.store.state["verifyRuns"] = {"AC-1": {"matched": True}, "AC-2": {"matched": True}}
 
         self.iterate_product = {
             "exit": "converged", "inputsDigest": "sha256:" + "0" * 64,
             "boundTo": {"requirements": self.spec_revision, "plan": self.plan_revision},
-            "verdict": "met", "gaps": [], "caveats": [], "boundSha": self.sha_b,
+            "verdict": "met", "gaps": [], "caveats": [], "boundShas": {"repo": self.sha_b},
         }
 
         self.deliver_product = {
@@ -156,6 +156,29 @@ class PostconditionsTests(unittest.TestCase):
 
     def _boundary(self, phase, product, exit_) -> postconditions.Boundary:
         return postconditions.Boundary(self.store, self.paths, phase=phase, product=product, exit=exit_, project_root=self.repo_dir)
+
+    def _second_repo(self) -> tuple[str, str]:
+        # LF-28: same shape as test_e4_workspace_filters_tasks_by_repo's own second
+        # repo, registered under "other" for the V3/I1 two-repo tests.
+        other = Path(self._tmp.name) / "other"
+        other.mkdir()
+        _git(other, "init", "-q", "-b", "main")
+        _git(other, "config", "user.email", "test@example.com")
+        _git(other, "config", "user.name", "Test")
+        (other / "a.txt").write_text("a\n", encoding="utf-8")
+        _git(other, "add", "a.txt")
+        _git(other, "commit", "-q", "-m", "base")
+        other_base = _rev_parse(other)
+        _git(other, "checkout", "-q", "-b", "feat/x")
+        (other / "b.txt").write_text("b\n", encoding="utf-8")
+        _git(other, "add", "b.txt")
+        _git(other, "commit", "-q", "-m", "T-9")
+        other_head = _rev_parse(other)
+        self.store.state["repos"]["other"] = {
+            "path": str(other), "baseSha": other_base, "featureBranch": "feat/x",
+            "defaultBranch": "main", "lastKnownHead": other_base,
+        }
+        return other_base, other_head
 
     # -- S: SPEC ---------------------------------------------------------
 
@@ -353,6 +376,23 @@ class PostconditionsTests(unittest.TestCase):
         bad["verdicts"][0]["evidence"]["sha"] = self.sha_a
         self.assertIsNotNone(self._boundary("verify", bad, "passed")._v3())
 
+    def test_v3_two_repos(self):
+        # LF-28: each verdict's evidence is checked against ITS OWN repo's head --
+        # a single global head would have missed a verdict naming the wrong one.
+        other_base, other_head = self._second_repo()
+        execute_product = copy.deepcopy(self.execute_product)
+        execute_product["heads"]["other"] = other_head
+        self.store.state["products"]["execute"]["product"] = execute_product
+
+        product = copy.deepcopy(self.verify_product)
+        product["verdicts"][1]["evidence"]["repo"] = "other"
+        product["verdicts"][1]["evidence"]["sha"] = other_head
+        self.assertIsNone(self._boundary("verify", product, "passed")._v3())
+
+        bad = copy.deepcopy(product)
+        bad["verdicts"][1]["evidence"]["sha"] = self.sha_b  # "repo"'s head, claimed for "other"
+        self.assertIsNotNone(self._boundary("verify", bad, "passed")._v3())
+
     def test_v4(self):
         self.assertIsNone(self._boundary("verify", self.verify_product, "passed")._v4())
         del self.store.state["verifyRuns"]["AC-1"]
@@ -392,7 +432,7 @@ class PostconditionsTests(unittest.TestCase):
         self.assertIsNotNone(self._boundary("verify", bad, "passed")._v7())
 
     def test_v8(self):
-        self.store.state["ledger"]["reviewedRanges"] = [{"id": "range-1", "from": self.base_sha, "to": self.sha_a, "full": False}]
+        self.store.state["ledger"]["reviewedRanges"] = [{"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.sha_a, "full": False}]
         finding = {"id": "f-1", "location": "a.txt:1", "cause": "c", "severity": "Minor", "disposition": "open", "reason": None, "supersedes": None}
         product = dict(self.verify_product, findings=[finding])
         self.assertIsNotNone(self._boundary("verify", product, "passed")._v8())
@@ -412,7 +452,22 @@ class PostconditionsTests(unittest.TestCase):
     def test_i1(self):
         self.assertIsNone(self._boundary("iterate", self.iterate_product, "converged")._i1())
         bad = copy.deepcopy(self.iterate_product)
-        bad["boundSha"] = self.sha_a
+        bad["boundShas"] = {"repo": self.sha_a}
+        self.assertIsNotNone(self._boundary("iterate", bad, "converged")._i1())
+
+    def test_i1_two_repos(self):
+        # LF-28: I1 checks every repo's own boundShas entry, not just the first.
+        other_base, other_head = self._second_repo()
+        execute_product = copy.deepcopy(self.execute_product)
+        execute_product["heads"]["other"] = other_head
+        self.store.state["products"]["execute"]["product"] = execute_product
+
+        product = copy.deepcopy(self.iterate_product)
+        product["boundShas"]["other"] = other_head
+        self.assertIsNone(self._boundary("iterate", product, "converged")._i1())
+
+        bad = copy.deepcopy(product)
+        bad["boundShas"]["other"] = other_base  # unbound to the EXECUTE head
         self.assertIsNotNone(self._boundary("iterate", bad, "converged")._i1())
 
     def test_i2(self):

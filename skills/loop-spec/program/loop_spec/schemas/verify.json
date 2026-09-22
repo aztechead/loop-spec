@@ -7,7 +7,7 @@
     "verdicts",
     "findings",
     "remediationTasks",
-    "reviewedRange"
+    "reviewedRanges"
   ],
   "additionalProperties": false,
   "$defs": {
@@ -26,6 +26,10 @@
       "properties": {
         "id": {
           "type": "string"
+        },
+        "repo": {
+          "type": "string",
+          "description": "Which touched repo the finding is in; optional because a single-repo run's findings need not name one."
         },
         "location": {
           "type": "string"
@@ -216,6 +220,7 @@
                 "type": "object",
                 "required": [
                   "command",
+                  "repo",
                   "sha",
                   "exitStatus",
                   "failureIdentities",
@@ -225,6 +230,10 @@
                 "properties": {
                   "command": {
                     "type": "string"
+                  },
+                  "repo": {
+                    "type": "string",
+                    "description": "The repo this evidence's command ran in; V3 checks `sha` against this repo's verified head."
                   },
                   "sha": {
                     "type": "string"
@@ -266,23 +275,31 @@
         "$ref": "#/$defs/planTask"
       }
     },
-    "reviewedRange": {
-      "type": "object",
-      "required": [
-        "from",
-        "to",
-        "full"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "from": {
-          "type": "string"
-        },
-        "to": {
-          "type": "string"
-        },
-        "full": {
-          "type": "boolean"
+    "reviewedRanges": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "repo",
+          "from",
+          "to",
+          "full"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "full": {
+            "type": "boolean"
+          }
         }
       }
     }

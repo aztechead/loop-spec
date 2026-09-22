@@ -794,15 +794,18 @@ def _run_execute_verifications(store: StateStore, paths: FeaturePaths, execute_p
 
 
 def _run_verify_reruns(store: StateStore, paths: FeaturePaths, verify_product: dict) -> None:
-    repo_name, repo_info = next(iter(store.state["repos"].items()))
-    repo_path = Path(repo_info["path"])
-    head = postconditions.verified_head(store)
+    # LF-28: each verdict's evidence names the repo it ran in; the clean re-run has
+    # to happen at THAT repo's head, not the first repo in the workspace.
+    heads = postconditions.verified_heads(store)
     prepare = store.state["products"]["plan"]["product"].get("prepare")
     verify_runs = store.state.setdefault("verifyRuns", {})
     for verdict in verify_product["verdicts"]:
         if verdict["verdict"] not in ("pass", "fail") or verdict["criterion"] in verify_runs:
             continue
         evidence = verdict.get("evidence") or {}
+        repo_name = evidence["repo"]
+        repo_path = Path(store.state["repos"][repo_name]["path"])
+        head = heads[repo_name]
         checkout = paths.checkouts_dir / f"verify-{verdict['criterion']}-{head[:12]}"
         repo_module.clean_checkout(repo_path, head, checkout)
         try:
@@ -812,7 +815,7 @@ def _run_verify_reruns(store: StateStore, paths: FeaturePaths, verify_product: d
         finally:
             repo_module.remove_worktree(repo_path, checkout, force=True)
         matched, reason = baseline_module.evidence_matches(evidence, rerun)
-        verify_runs[verdict["criterion"]] = {"rerun": rerun.to_dict(), "matched": matched, "reason": reason}
+        verify_runs[verdict["criterion"]] = {"rerun": rerun.to_dict(), "matched": matched, "reason": reason, "repo": repo_name}
     store.save()
 
 
@@ -908,14 +911,22 @@ def _record_accepted_product(store: StateStore, phase: str, attempt_id: str, pro
     if phase == "verify":
         # V7/V8 read this history on the NEXT VERIFY pass to decide whether that
         # pass may review only the delta since here, and whether a finding on
-        # already-cleared code names what it supersedes.
-        reviewed_range = product["reviewedRange"]
+        # already-cleared code names what it supersedes. LF-28: a workspace's
+        # product carries one reviewed range per touched repo, so each is its own
+        # ledger entry; findings are attributed to their own repo's entry rather
+        # than stamped with whichever range happened to be recorded last.
         by_step = (store.state.get("verify") or {}).get("reviewerStep")
-        range_id = ledger_module.record_range(
-            store, from_sha=reviewed_range["from"], to_sha=reviewed_range["to"], full=reviewed_range["full"],
-            sha=reviewed_range["to"], by_step=by_step,
-        )
-        ledger_module.record_findings(store, product.get("findings", []), sha=reviewed_range["to"], range_id=range_id)
+        findings = product.get("findings", [])
+        reviewed_ranges = product["reviewedRanges"]
+        multi_repo = len(reviewed_ranges) > 1
+        for reviewed_range in reviewed_ranges:
+            repo = reviewed_range["repo"]
+            range_id = ledger_module.record_range(
+                store, repo=repo, from_sha=reviewed_range["from"], to_sha=reviewed_range["to"],
+                full=reviewed_range["full"], sha=reviewed_range["to"], by_step=by_step,
+            )
+            repo_findings = [f for f in findings if f.get("repo") == repo] if multi_repo else findings
+            ledger_module.record_findings(store, repo_findings, sha=reviewed_range["to"], range_id=range_id)
     store.state["phase"]["retries"] = 0
     if boundary.unreviewed:
         store.state["unreviewed"] = boundary.unreviewed

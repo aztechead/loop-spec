@@ -239,13 +239,13 @@ class FullExternalCycleTests(_QuietStdout):
                     "verdicts": [{
                         "criterion": "AC-1", "verdict": "pass",
                         "evidence": {
-                            "command": 'python3 -c "import sys; sys.exit(0)"', "sha": commit_sha,
+                            "command": 'python3 -c "import sys; sys.exit(0)"', "repo": repo_name, "sha": commit_sha,
                             "exitStatus": 0, "failureIdentities": [], "outputDigest": "sha256:" + "0" * 64,
                         },
                         "cause": None,
                     }],
                     "findings": [], "remediationTasks": [],
-                    "reviewedRange": {"from": base_sha, "to": commit_sha, "full": True},
+                    "reviewedRanges": [{"repo": repo_name, "from": base_sha, "to": commit_sha, "full": True}],
                 }
                 atomic_write_json(Path(step["resultPath"]), verify_product)
                 store = _open(paths)
@@ -259,7 +259,7 @@ class FullExternalCycleTests(_QuietStdout):
                 iterate_product = {
                     "exit": "converged", "inputsDigest": "sha256:" + "0" * 64,
                     "boundTo": {"requirements": spec_revision, "plan": plan_revision},
-                    "verdict": "met", "gaps": [], "caveats": [], "boundSha": commit_sha,
+                    "verdict": "met", "gaps": [], "caveats": [], "boundShas": {repo_name: commit_sha},
                 }
                 atomic_write_json(Path(step["resultPath"]), iterate_product)
                 store = _open(paths)
@@ -510,7 +510,7 @@ class EscalatedPartialDraftTests(_QuietStdout):
         return {
             "exit": "escalated", "inputsDigest": "sha256:" + "0" * 64,
             "boundTo": {"requirements": None, "plan": None},
-            "verdict": "unmet", "gaps": [], "caveats": [], "boundSha": "c" * 40,
+            "verdict": "unmet", "gaps": [], "caveats": [], "boundShas": {"repo": "c" * 40},
         }
 
     def test_default_config_keeps_terminal_escalation(self):
@@ -820,6 +820,70 @@ class DebugAndReviseEntryTests(_QuietStdout):
                 store = _open(paths)
                 self.assertIsNotNone(store.state.get("adoptedReview"))
                 self.assertEqual(next_.kind, "step")  # EXECUTE's own external step, now that the adopted review is on record
+
+
+class VerifyRerunsTests(unittest.TestCase):
+    """LF-28: V4's clean re-run has to happen in the repo a verdict's evidence
+    names, not always the workspace's first repo."""
+
+    def test_run_verify_reruns_checks_out_each_verdicts_own_repo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_a = _init_repo(tmp)
+            head_a = repo_module.head_sha(repo_a)
+
+            repo_b = tmp / "repo-b"
+            repo_b.mkdir()
+            _git(repo_b, "init", "-q", "-b", "main")
+            _git(repo_b, "config", "user.email", "test@example.com")
+            _git(repo_b, "config", "user.name", "Test")
+            (repo_b / "README.md").write_text("hello from b\n", encoding="utf-8")
+            _git(repo_b, "add", "README.md")
+            _git(repo_b, "commit", "-q", "-m", "init")
+            head_b = repo_module.head_sha(repo_b)
+
+            paths = FeaturePaths(root=tmp / "feature")
+            store = StateStore.create(
+                paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x", "createdAt": "2026-01-01T00:00:00+00:00"}, "do it",
+            )
+            store.state["repos"] = {
+                "a": {"path": str(repo_a), "baseSha": head_a, "featureBranch": "feat/x", "defaultBranch": "main", "lastKnownHead": head_a},
+                "b": {"path": str(repo_b), "baseSha": head_b, "featureBranch": "feat/x", "defaultBranch": "main", "lastKnownHead": head_b},
+            }
+            store.state["products"]["execute"] = {
+                "attemptId": "attempt-e", "inputsDigest": "sha256:" + "0" * 64,
+                "boundTo": {"requirements": None, "plan": None}, "exit": "no change",
+                "product": {"heads": {"a": head_a, "b": head_b}, "tasks": []},
+                "receivedAt": "2026-01-01T00:00:00+00:00", "evidenceLevel": "human-attested",
+            }
+            store.state["products"]["plan"] = {
+                "attemptId": "attempt-p", "inputsDigest": "sha256:" + "0" * 64,
+                "boundTo": {"requirements": None, "plan": None}, "exit": "ready",
+                "product": {"prepare": None}, "receivedAt": "2026-01-01T00:00:00+00:00", "evidenceLevel": "human-attested",
+            }
+            store.save()
+
+            # Each command only succeeds against its OWN repo's checkout, so a
+            # re-run against the wrong repo (the pre-fix bug: always the first
+            # repo in the workspace) would fail to match.
+            verify_product = {
+                "verdicts": [
+                    {"criterion": "AC-a", "verdict": "pass", "cause": None, "evidence": {
+                        "command": "cat README.md", "repo": "a", "sha": head_a,
+                        "exitStatus": 0, "failureIdentities": [], "outputDigest": "sha256:" + "0" * 64,
+                    }},
+                    {"criterion": "AC-b", "verdict": "pass", "cause": None, "evidence": {
+                        "command": 'grep -q "from b" README.md', "repo": "b", "sha": head_b,
+                        "exitStatus": 0, "failureIdentities": [], "outputDigest": "sha256:" + "0" * 64,
+                    }},
+                ],
+            }
+            controller._run_verify_reruns(store, paths, verify_product)
+            runs = store.state["verifyRuns"]
+            self.assertEqual(runs["AC-a"]["repo"], "a")
+            self.assertEqual(runs["AC-b"]["repo"], "b")
+            self.assertTrue(runs["AC-a"]["matched"])
+            self.assertTrue(runs["AC-b"]["matched"])
 
 
 if __name__ == "__main__":

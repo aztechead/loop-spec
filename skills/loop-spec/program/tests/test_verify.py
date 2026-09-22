@@ -76,19 +76,20 @@ class VerifyTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def _run_pass(self, verifier_result, reviewer_findings=None):
+    def _run_pass(self, verifier_result, reviewer_findings=None, repos=("repo",)):
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, IssueStep)
         self.assertEqual(action.request["role"], "verifier")
         on_submit(self.store, self.paths, action.request | {"stepAttemptId": "v-step"}, verifier_result)
 
-        action = step(self.store, self.paths, self.ctx)
-        self.assertIsInstance(action, IssueStep)
-        self.assertEqual(action.request["role"], "code-reviewer")
-        range_ = self.store.state["verify"]["range"]
-        reviewer_result = {"sha": self.head_sha, "reviewedRange": {"from": range_["from"], "to": range_["to"]},
-                            "verdict": "pass", "findings": reviewer_findings or [], "securityDispositions": []}
-        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "r-step"}, reviewer_result)
+        for repo_name in repos:
+            action = step(self.store, self.paths, self.ctx)
+            self.assertIsInstance(action, IssueStep)
+            self.assertEqual(action.request["role"], "code-reviewer")
+            range_ = self.store.state["verify"]["ranges"][repo_name]
+            reviewer_result = {"sha": range_["to"], "reviewedRange": {"from": range_["from"], "to": range_["to"]},
+                                "verdict": "pass", "findings": reviewer_findings or [], "securityDispositions": []}
+            on_submit(self.store, self.paths, action.request | {"stepAttemptId": f"r-step-{repo_name}"}, reviewer_result)
 
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, Product)
@@ -96,27 +97,37 @@ class VerifyTests(unittest.TestCase):
 
     def test_first_pass_reviews_the_full_diff(self):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]))
-        self.assertTrue(product["reviewedRange"]["full"])
-        self.assertEqual(product["reviewedRange"]["from"], self.base_sha)
-        self.assertEqual(product["reviewedRange"]["to"], self.head_sha)
+        range_ = product["reviewedRanges"][0]
+        self.assertEqual(range_["repo"], "repo")
+        self.assertTrue(range_["full"])
+        self.assertEqual(range_["from"], self.base_sha)
+        self.assertEqual(range_["to"], self.head_sha)
 
     def test_delta_pass_reviews_from_the_last_reviewed_to(self):
-        self.store.state["ledger"]["reviewedRanges"] = [{"id": "range-1", "from": self.base_sha, "to": self.base_sha, "full": True}]
+        self.store.state["ledger"]["reviewedRanges"] = [
+            {"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.base_sha, "full": True},
+        ]
         self.store.save()
         product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]))
-        self.assertFalse(product["reviewedRange"]["full"])
-        self.assertEqual(product["reviewedRange"]["from"], self.base_sha)
+        range_ = product["reviewedRanges"][0]
+        self.assertFalse(range_["full"])
+        self.assertEqual(range_["from"], self.base_sha)
 
     def test_final_pass_forces_full_range(self):
-        self.store.state["ledger"]["reviewedRanges"] = [{"id": "range-1", "from": self.base_sha, "to": self.base_sha, "full": True}]
+        self.store.state["ledger"]["reviewedRanges"] = [
+            {"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.base_sha, "full": True},
+        ]
         self.store.save()
         self.ctx["entry"]["payload"] = {"finalPass": True}
         product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]))
-        self.assertTrue(product["reviewedRange"]["full"])
+        self.assertTrue(product["reviewedRanges"][0]["full"])
 
     def test_all_pass_exits_passed(self):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]))
         self.assertEqual(product["exit"], "passed")
+        # LF-28: evidence names the repo the criterion actually belongs to (the
+        # repo of the task that covers it), not left for the reader to guess.
+        self.assertEqual(product["verdicts"][0]["evidence"]["repo"], "repo")
 
     def test_a_fail_exits_implementation_gap_with_a_remediation_task(self):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "fail", {"files": ["feature.py"]})]))
@@ -126,6 +137,7 @@ class VerifyTests(unittest.TestCase):
         self.assertEqual(task["files"], ["feature.py"])
         self.assertEqual(task["verify"], "sh verify.sh")
         self.assertEqual(task["criteria"], ["AC-1"])
+        self.assertEqual(task["repo"], "repo")
 
     def test_a_blocked_verdict_exits_blocked(self):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "blocked")]))
@@ -142,6 +154,99 @@ class VerifyTests(unittest.TestCase):
         self.assertEqual(len(product["findings"]), 1)
         self.assertNotEqual(product["findings"][0]["id"], "whatever-the-reviewer-said")
         self.assertTrue(product["findings"][0]["id"].startswith("finding-"))
+        self.assertEqual(product["findings"][0]["repo"], "repo")
+
+
+class WorkspaceVerifyTests(unittest.TestCase):
+    """LF-28: a workspace run with two touched repos -- one clean checkout and one
+    reviewer step per repo, evidence and findings naming the repo they belong to,
+    an untouched third repo getting neither."""
+
+    def _repo(self, name):
+        repo = self.tmp / name
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _git(repo, "config", "user.name", "Test")
+        _git(repo, "config", "user.email", "test@example.com")
+        Path(repo, "verify.sh").write_text("#!/bin/sh\nexit 0\n")
+        _git(repo, "add", "verify.sh")
+        _git(repo, "commit", "-q", "-m", "init")
+        base_sha = _head(repo)
+        Path(repo, f"{name}.py").write_text("x = 1\n")
+        _git(repo, "add", f"{name}.py")
+        _git(repo, "commit", "-q", "-m", "feature")
+        return repo, base_sha, _head(repo)
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.calc, self.calc_base, self.calc_head = self._repo("calc")
+        self.textutil, self.textutil_base, self.textutil_head = self._repo("textutil")
+        self.untouched, self.untouched_base, _ = self._repo("untouched")
+
+        self.paths = FeaturePaths(root=self.tmp / "run")
+        self.store = StateStore.create(self.paths, {"id": "run-1"}, "add calc and textutil helpers")
+        self.store.state["repos"] = {
+            "calc": {"path": str(self.calc), "baseSha": self.calc_base, "featureBranch": "feature",
+                     "defaultBranch": "main", "lastKnownHead": self.calc_head},
+            "textutil": {"path": str(self.textutil), "baseSha": self.textutil_base, "featureBranch": "feature",
+                         "defaultBranch": "main", "lastKnownHead": self.textutil_head},
+            "untouched": {"path": str(self.untouched), "baseSha": self.untouched_base, "featureBranch": "feature",
+                          "defaultBranch": "main", "lastKnownHead": self.untouched_base},
+        }
+        self.store.state["products"]["spec"] = {"exit": "approved", "product": {
+            "criteria": [{"id": "AC-1", "text": "calc works"}, {"id": "AC-2", "text": "textutil works"}],
+        }}
+        self.store.state["products"]["plan"] = {"exit": "ready", "product": {
+            "tasks": [
+                {"id": "T-1", "title": "T-1", "dependsOn": [], "files": ["calc.py"], "repo": "calc",
+                 "verify": "sh verify.sh", "criteria": ["AC-1"], "featureAdded": None, "mustFlip": False},
+                {"id": "T-2", "title": "T-2", "dependsOn": [], "files": ["textutil.py"], "repo": "textutil",
+                 "verify": "sh verify.sh", "criteria": ["AC-2"], "featureAdded": None, "mustFlip": False},
+            ],
+            "prepare": None, "evidenceExceptions": [],
+        }}
+        self.store.state["products"]["execute"] = {"exit": "integrated", "product": {"heads": {
+            "calc": self.calc_head, "textutil": self.textutil_head, "untouched": self.untouched_base,
+        }}}
+        self.store.save()
+
+        self.ctx = {"attempt": {"id": "attempt-1"}, "inputs": {"digest": "sha256:" + "a" * 64},
+                    "paths": {"projectRoot": str(self.calc)}, "entry": {"mode": "fresh", "payload": None},
+                    "probes": {}}
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_two_touched_repos_get_one_reviewer_step_each_and_the_untouched_one_gets_none(self):
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "verifier")
+        verifier_result = _verifier_result([_verdict("AC-1", "pass"), _verdict("AC-2", "pass")])
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "v-step"}, verifier_result)
+
+        seen_repos = []
+        for _ in range(2):
+            action = step(self.store, self.paths, self.ctx)
+            self.assertIsInstance(action, IssueStep)
+            self.assertEqual(action.request["role"], "code-reviewer")
+            repo_name = next(name for name, r in self.store.state["verify"]["ranges"].items()
+                              if action.request["cwd"] == self.store.state["verify"]["checkouts"][name])
+            seen_repos.append(repo_name)
+            range_ = self.store.state["verify"]["ranges"][repo_name]
+            reviewer_result = {"sha": range_["to"], "reviewedRange": {"from": range_["from"], "to": range_["to"]},
+                                "verdict": "pass", "findings": [], "securityDispositions": []}
+            on_submit(self.store, self.paths, action.request | {"stepAttemptId": f"r-{repo_name}"}, reviewer_result)
+
+        self.assertEqual(set(seen_repos), {"calc", "textutil"})
+        self.assertNotIn("untouched", self.store.state["verify"]["checkouts"])
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, Product)
+        product = action.product
+        self.assertEqual({r["repo"] for r in product["reviewedRanges"]}, {"calc", "textutil"})
+        evidence_by_criterion = {v["criterion"]: v["evidence"]["repo"] for v in product["verdicts"]}
+        self.assertEqual(evidence_by_criterion, {"AC-1": "calc", "AC-2": "textutil"})
 
 
 if __name__ == "__main__":

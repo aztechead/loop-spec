@@ -18,6 +18,10 @@ def _git(cwd, *args):
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
 
 
+def _head(cwd):
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()
+
+
 def _finding(finding_id, severity, disposition):
     return {"id": finding_id, "location": "a.py:1", "cause": "x", "severity": severity,
             "disposition": disposition, "reason": "because", "supersedes": None}
@@ -39,7 +43,14 @@ class IterateTests(unittest.TestCase):
         Path(self.repo, "a.py").write_text("x = 1\n")
         _git(self.repo, "add", "a.py")
         _git(self.repo, "commit", "-q", "-m", "init")
-        self.base_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.repo, capture_output=True, text=True).stdout.strip()
+        self.base_sha = _head(self.repo)
+        # LF-28: a repo with no commits since base is untouched (no checkout, no
+        # reviewer step); this fixture is a genuinely touched repo, like a real
+        # integrated run.
+        Path(self.repo, "b.py").write_text("y = 1\n")
+        _git(self.repo, "add", "b.py")
+        _git(self.repo, "commit", "-q", "-m", "feature")
+        self.head_sha = _head(self.repo)
 
         self.paths = FeaturePaths(root=self.tmp / "run")
         self.store = StateStore.create(self.paths, {"id": "run-1"}, "add a widget")
@@ -47,11 +58,11 @@ class IterateTests(unittest.TestCase):
         # fixture; no shared test-fixture module exists in this tree yet.
         self.store.state["repos"] = {"repo": {"path": str(self.repo), "baseSha": self.base_sha,
                                                "featureBranch": "feature", "defaultBranch": "main",
-                                               "lastKnownHead": self.base_sha}}
-        self.store.state["products"]["execute"] = {"exit": "integrated", "product": {"heads": {"repo": self.base_sha}}}
+                                               "lastKnownHead": self.head_sha}}
+        self.store.state["products"]["execute"] = {"exit": "integrated", "product": {"heads": {"repo": self.head_sha}}}
         self.store.state["products"]["spec"] = {"exit": "approved", "product": {"criteria": [{"id": "AC-1", "text": "it works"}]}}
         self.store.state["products"]["verify"] = {"exit": "passed", "product": {"verdicts": []}}
-        self.checkout = self.paths.checkouts_dir / f"verify-{self.base_sha[:12]}"
+        self.checkout = self.paths.checkouts_dir / f"verify-{self.head_sha[:12]}"
         self.checkout.mkdir(parents=True)
         self.store.save()
 
@@ -73,6 +84,7 @@ class IterateTests(unittest.TestCase):
         action = self._judge_result("met", [])
         self.assertIsInstance(action, Product)
         self.assertEqual(action.product["exit"], "converged")
+        self.assertEqual(action.product["boundShas"], {"repo": self.head_sha})
 
     def test_met_with_accepted_finding_converges_with_caveats(self):
         self.store.state["ledger"]["findings"] = [_finding("F-1", "Minor", "deferred")]
@@ -101,10 +113,10 @@ class IterateTests(unittest.TestCase):
 
         # A rewind moves the run elsewhere and back; VERIFY produces a new head, and
         # ITERATE must issue a fresh judge call rather than replaying the old result.
-        Path(self.repo, "b.py").write_text("y = 2\n")
-        _git(self.repo, "add", "b.py")
+        Path(self.repo, "c.py").write_text("z = 3\n")
+        _git(self.repo, "add", "c.py")
         _git(self.repo, "commit", "-q", "-m", "second")
-        new_head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.repo, capture_output=True, text=True).stdout.strip()
+        new_head = _head(self.repo)
         self.store.state["products"]["execute"]["product"]["heads"]["repo"] = new_head
         (self.paths.checkouts_dir / f"verify-{new_head[:12]}").mkdir(parents=True, exist_ok=True)
         action = step(self.store, self.paths, self.ctx)

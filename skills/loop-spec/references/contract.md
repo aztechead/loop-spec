@@ -78,10 +78,12 @@ shape, including nested item schemas):
   `adopted`, `evidence`, `commits[]`, `review`), `issues[]`, `heads` (repo name to
   head SHA).
 - **verify**: `verdicts[]` (`criterion`, `verdict`: `pass`/`fail`/`blocked`,
-  `evidence`, `cause`), `findings[]`, `remediationTasks[]`, `reviewedRange`
-  (`from`, `to`, `full`).
+  `evidence` with a required `repo`, `cause`), `findings[]` (`repo` optional),
+  `remediationTasks[]`, `reviewedRanges[]` (`repo`, `from`, `to`, `full`; one per
+  touched repo — LF-28: a workspace run has no single reviewed range).
 - **iterate**: `verdict` (`met`/`unmet`), `gaps[]` (`target`: `spec`/`plan`/
-  `execute`/`verify`, `text`), `caveats[]`, `boundSha`.
+  `execute`/`verify`, `text`), `caveats[]`, `boundShas` (repo name to SHA; LF-28
+  replaced the single-repo `boundSha`).
 - **deliver**: `repos[]` (`repo`, `pr`, `deliveredSha`, `caveats[]`, `state`:
   `delivered`/`failed`/`skipped`).
 - **debug**: `reproduction` (`command`, `failureDigest`, `reason`), `original`,

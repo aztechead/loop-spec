@@ -46,6 +46,7 @@
                 "type": "object",
                 "required": [
                   "command",
+                  "repo",
                   "sha",
                   "exitStatus",
                   "failureIdentities",
@@ -55,6 +56,10 @@
                 "properties": {
                   "command": {
                     "type": "string"
+                  },
+                  "repo": {
+                    "type": "string",
+                    "description": "Which touched repo this criterion's verify command ran in."
                   },
                   "sha": {
                     "type": "string"

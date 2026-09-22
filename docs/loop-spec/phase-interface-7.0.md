@@ -151,19 +151,19 @@ integration reason code, not an exit.
 | | |
 |---|---|
 | Inputs | requirements revision; EXECUTE product and head; baseline; ledger; on re-entry, the prior VERIFY product |
-| Product | per criterion a `verdict` of `pass`, `fail`, or `blocked` with `evidence` (command, SHA, exit status, parsed failure identities, raw output digest); `findings[]` with dispositions and typed `supersedes`; `remediationTasks[]`; `reviewedRange` |
-| Preconditions | EXECUTE exited `integrated` or `no change` at the current revisions; the verified head equals the integrated head, or base for `no change` |
+| Product | per criterion a `verdict` of `pass`, `fail`, or `blocked` with `evidence` (command, repo, SHA, exit status, parsed failure identities, raw output digest); `findings[]` with dispositions and typed `supersedes`; `remediationTasks[]`; `reviewedRanges[]` (one per touched repo) |
+| Preconditions | EXECUTE exited `integrated` or `no change` at the current revisions; each repo's verified head equals its integrated head, or its base for `no change` |
 | Runs as | the probes once over `base..head`; verifier and reviewer as fresh contexts with those findings; the program re-runs every cited command |
 
 | Id | Postcondition | Gates |
 |---|---|---|
 | V1 | product validates; bound to both revisions | every exit |
 | V2 | every criterion id in the requirements revision has exactly one verdict | every exit except `evidence incomplete` |
-| V3 | every evidence SHA equals the verified head | `passed` |
+| V3 | every evidence SHA equals the verified head of its repo | `passed` |
 | V4 | for every criterion without a V5 exception, the program re-ran its cited command in a clean checkout of that SHA that it created, with prepare fixtures applied, and command identity, exit status, parsed failure identities, and normalized output digest matched | `passed` |
 | V5 | a criterion skipped V4 only under an exception declared in the PLAN product and approved with it, or granted by an operator answer at VERIFY; its verdict is recorded at assurance `claimed` and listed under `weakenedAssurance` | `passed` |
 | V6 | a `blocked` verdict cites a cause the program observed, in the baseline record or in its own re-run | `blocked` |
-| V7 | every verdict is `pass` and the review policy holds: first and final passes saw the full diff, other passes the delta since the last reviewed SHA, no Critical finding open | `passed` |
+| V7 | every verdict is `pass` and the review policy holds per repo: first and final passes saw that repo's full diff, other passes the delta since its last reviewed SHA, no Critical finding open | `passed` |
 | V8 | a finding on cleared code carries a typed `supersedes` naming a finding id or a reviewed-range id | every exit |
 | V9 | `blocked` for an offline-unavailable dependency was claimed only after a stand-in was tried | `blocked` |
 
@@ -193,7 +193,7 @@ outright incorrect implementations; the PR review catches the rest.
 
 | Id | Postcondition | Gates |
 |---|---|---|
-| I1 | product validates; the verdict binds the integrated SHA, the requirements revision, and the plan revision | every exit |
+| I1 | product validates; the verdict binds every repo's integrated SHA (`boundShas`), the requirements revision, and the plan revision | every exit |
 | I2 | every gap names a target of SPEC, PLAN, EXECUTE, or VERIFY | `rewind` |
 | I3 | T1 holds for this rewind | `rewind` |
 | I4 | a rewind is needed and T1 refuses it, or a criterion or goal gap is open that no route can close | `escalated` |

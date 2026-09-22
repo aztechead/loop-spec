@@ -127,12 +127,12 @@ class BundledSchemaTests(unittest.TestCase):
             "exit": "implementation gap", "inputsDigest": _DIGEST, "boundTo": _BOUND_TO,
             "verdicts": [{
                 "criterion": "AC-1", "verdict": "fail",
-                "evidence": {"command": "python3 -m unittest", "sha": "a" * 40, "exitStatus": 1,
+                "evidence": {"command": "python3 -m unittest", "repo": "repo", "sha": "a" * 40, "exitStatus": 1,
                              "failureIdentities": [], "outputDigest": _DIGEST},
                 "cause": "it failed",
             }],
             "findings": [], "remediationTasks": [remediation_task],
-            "reviewedRange": {"from": "a" * 40, "to": "b" * 40, "full": True},
+            "reviewedRanges": [{"repo": "repo", "from": "a" * 40, "to": "b" * 40, "full": True}],
         }
         self.assertEqual(validate(instance, load_schema("verify")), [])
 

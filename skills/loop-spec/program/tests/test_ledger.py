@@ -54,11 +54,12 @@ class LedgerTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_record_range_appends_with_an_id(self):
-        range_id = record_range(self.store, from_sha=self.base_sha, to_sha=self.head_sha, full=True,
+        range_id = record_range(self.store, repo="repo", from_sha=self.base_sha, to_sha=self.head_sha, full=True,
                                  sha=self.head_sha, by_step="step-1")
         ranges = self.store.state["ledger"]["reviewedRanges"]
         self.assertEqual(len(ranges), 1)
         self.assertEqual(ranges[0]["id"], range_id)
+        self.assertEqual(ranges[0]["repo"], "repo")
         self.assertEqual(ranges[0]["from"], self.base_sha)
         self.assertEqual(ranges[0]["to"], self.head_sha)
         self.assertTrue(ranges[0]["full"])
@@ -75,7 +76,8 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual([f["id"] for f in open_findings(self.store)], ["F-1"])
 
     def test_cleared_files_from_real_commits(self):
-        record_range(self.store, from_sha=self.base_sha, to_sha=self.head_sha, full=True, sha=self.head_sha, by_step="step-1")
+        record_range(self.store, repo="repo", from_sha=self.base_sha, to_sha=self.head_sha, full=True,
+                     sha=self.head_sha, by_step="step-1")
         self.assertEqual(cleared_files(self.store, self.repo), {"changed.txt"})
 
     def test_disposition_updates_the_finding(self):

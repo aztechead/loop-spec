@@ -7,7 +7,7 @@
     "verdict",
     "gaps",
     "caveats",
-    "boundSha"
+    "boundShas"
   ],
   "additionalProperties": false,
   "properties": {
@@ -84,8 +84,11 @@
         "type": "string"
       }
     },
-    "boundSha": {
-      "type": "string"
+    "boundShas": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
     }
   }
 }
