@@ -9,7 +9,6 @@ answers whether the postconditions for a claimed exit hold. controller.py reads
 `ROUTES[phase][exit]["next"]` to decide where to go, and reads `Boundary.unreviewed`/
 `Boundary.weakened_assurance` after a passing check to fold into state and the result.
 """
-import json
 import os
 import re
 from dataclasses import dataclass
@@ -21,7 +20,7 @@ from . import ledger as ledger_module
 from . import repo as repo_module
 from .contract import load_config
 from .ids import digest
-from .jsonio import read_json
+from .jsonio import read_json, render_json
 
 RETRY_LIMIT_DEFAULT = 3
 
@@ -634,7 +633,7 @@ class Boundary:
         _, step_id = review_evidence(self.store, cid)
         step_path = self.paths.steps_dir / str(step_id) / "step.json"
         prompt = read_json(step_path).get("prompt", "") if step_id and step_path.is_file() else ""
-        if json.dumps(close_out_view(entry), indent=2, sort_keys=True) not in prompt:
+        if render_json(close_out_view(entry)) not in prompt:
             return f"close-out {cid}: its review step was not issued for this close-out"
         return None
 

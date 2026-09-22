@@ -106,6 +106,17 @@ class ComposePromptTests(unittest.TestCase):
         self.assertIn(" context\n \n-old\n+new", prompt)  # whitespace-only context line kept
         self.assertIn("### literal\n" + literal + "\n\n### probes", prompt)  # interior blank run kept
 
+    def test_json_inputs_render_non_ascii_as_itself_and_keep_literal_escapes(self):
+        # LF-57: a lead re-typing the prompt writes the character, never its \\u escape.
+        role = Role(name="iterate-judge", body="Judge.", schema={"type": "object"}, source="default", version="sha256:" + "0" * 64)
+        value = {"verdicts": [{"cause": "return 0 \u2014 matches", "note": "café 🙂"}], "literal": "the text \\u2014 stays six characters"}
+        prompt = compose_prompt(role, inputs={"verify": value}, result_path=Path("/tmp/out/product.json"), cwd=Path("/tmp/out"), phase="iterate")
+        self.assertIn('"cause": "return 0 \u2014 matches"', prompt)
+        self.assertIn('"note": "café 🙂"', prompt)
+        self.assertIn('"literal": "the text \\\\u2014 stays six characters"', prompt)
+        block = prompt.split("### verify\n```json\n", 1)[1].split("\n```", 1)[0]
+        self.assertEqual(json.loads(block), value)
+
     def test_debugger_contract_forbids_repair(self):
         # LF-22: the debugger lead step fixed a failing test in the user's own
         # checkout; the contract text reaching its prompt must say plainly it

@@ -110,7 +110,8 @@ result's own JSON Schema), `postconditions[]`, `attempt`, `inputsDigest`,
 this from `roles.resolve_model`, env `LOOP_SPEC_MODEL_<ROLE>` or config
 `roles.<role>.model`). In the composed prompt each input section's trailing
 newlines are trimmed, so exactly one blank line separates sections; its interior
-lines are kept exactly. A step composed before 7.0.3 keeps its old prompt and can
+lines are kept exactly, and a JSON input shows a non-ASCII character as itself, never
+as a `\u` escape (`jsonio.render_json`). A step composed before 7.0.3 keeps its old prompt and can
 fail attestation on every dispatch; recover with a fresh run.
 
 A worker writes its result to `resultPath` (write to a temp file in the same

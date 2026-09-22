@@ -18,6 +18,7 @@ from pathlib import Path
 from .contract import load_config
 from .errors import LoopSpecError
 from .ids import digest_bytes
+from .jsonio import render_json
 
 ROLE_NAMES = ["spec-writer", "planner", "plan-critic", "implementer", "code-reviewer", "verifier", "iterate-judge", "debugger"]
 
@@ -212,7 +213,7 @@ def compose_prompt(role: Role, *, inputs: dict, result_path: Path, cwd: Path, ph
     input_sections = []
     for key, value in inputs.items():
         if isinstance(value, (dict, list)):
-            body = "```json\n" + json.dumps(value, indent=2, sort_keys=True) + "\n```"
+            body = "```json\n" + render_json(value) + "\n```"
         elif value is None or isinstance(value, bool):
             body = json.dumps(value)  # the worker reads JSON, not Python's None/True
         else:
@@ -224,7 +225,7 @@ def compose_prompt(role: Role, *, inputs: dict, result_path: Path, cwd: Path, ph
         input_sections.append(f"### {key}\n{body}")
     sections.append("## Inputs\n\n" + "\n\n".join(input_sections))
 
-    schema_json = json.dumps(role.schema, indent=2, sort_keys=True)
+    schema_json = render_json(role.schema)
     sections.append(
         "## Output\n"
         f"Write ONE JSON file to {result_path} matching this schema:\n"

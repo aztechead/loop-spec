@@ -866,6 +866,24 @@ class PostconditionsTests(unittest.TestCase):
         product["tasks"][-1]["review"] = None
         self.assertEqual(self._boundary("execute", product, "integrated")._e6(), "close-out C-1 is already-satisfied with no passing review")
 
+    def test_e6_close_out_binding_matches_a_non_ascii_obligation_as_the_prompt_renders_it(self):
+        # LF-57: E6 and compose_prompt share render_json, so an em dash matches both ways.
+        from loop_spec.roles import Role, compose_prompt
+        entry = self._close_out()
+        entry["text"] = "rename the helper \u2014 it shadows a builtin"
+        self.store.state["implementations"]["phases"]["execute"] = "default"
+        self.store.state["execute"] = {"tasks": {"T-1": {"reviewSteps": ["s1"]}, "T-2": {"reviewSteps": ["s2"]}, "C-1": {"reviewSteps": ["s3"]}}}
+        for sid in ("s1", "s2", "s3"):
+            self.store.state["steps"]["submissions"][sid] = {"evidenceLevel": "host-attested"}
+        role = Role(name="code-reviewer", body="Review.", schema={"type": "object"}, source="default", version="sha256:" + "0" * 64)
+        prompt = compose_prompt(role, inputs={"closeOut": postconditions.close_out_view(entry)},
+                                result_path=Path("/tmp/r.json"), cwd=Path("/tmp"), phase="execute")
+        atomic_write_json(self.paths.steps_dir / "s3" / "step.json", {"prompt": prompt})
+        product = copy.deepcopy(self.execute_product)
+        review = {"reviewedRange": {"from": self.sha_b, "to": self.sha_b}, "verdict": "pass", "findings": [], "securityDispositions": []}
+        product["tasks"].append({"id": "C-1", "disposition": "already-satisfied", "evidence": "e", "commits": [], "review": review})
+        self.assertIsNone(self._boundary("execute", product, "integrated")._e6())
+
     def test_i2_resolves_an_execute_gap_to_a_known_repo(self):
         gaps = copy.deepcopy(self.iterate_product)
         gaps["gaps"] = [{"target": "execute", "text": "x"}]

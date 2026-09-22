@@ -10,6 +10,13 @@ import os
 from pathlib import Path
 
 
+def render_json(value) -> str:
+    """JSON as a step prompt shows it. Non-ASCII stays itself, never a \\u escape: a
+    lead that re-types the prompt writes the character, so an escape could never
+    match the transcript (LF-57). A literal backslash-u in a string stays escaped."""
+    return json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False)
+
+
 def read_json(path: Path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)

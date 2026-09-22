@@ -103,6 +103,26 @@ class AttestorTests(unittest.TestCase):
         self.assertEqual(reason, "final message does not end with the result digest")
 
 
+    def test_composed_prompt_with_non_ascii_input_attests_and_a_changed_character_does_not(self):
+        # LF-57: the e2e-lf54 shape, an em dash inside a JSON input.
+        from loop_spec.roles import Role, compose_prompt
+        role = Role(name="iterate-judge", body="Judge.", schema={"type": "object"}, source="default", version="sha256:" + "0" * 64)
+        prompt = compose_prompt(role, inputs={"verify": {"cause": "return 0 \u2014 matching"}},
+                                result_path=Path("/tmp/out/product.json"), cwd=Path("/tmp/out"), phase="iterate")
+        step = {**_STEP, "prompt": prompt + "\n--- loop-spec step ---\nstep: step-1\n"}
+        records = _valid_records()
+        records[0] = {**records[0], "message": {"content": step["prompt"]}}
+        ok, reason = self._attest_step(step, records)
+        self.assertTrue(ok, reason)
+        records[0] = {**records[0], "message": {"content": step["prompt"].replace("\u2014", "-")}}
+        self.assertEqual(self._attest_step(step, records), (False, "opening does not contain the composed prompt"))
+
+    def _attest_step(self, step: dict, records: list[dict]) -> tuple[bool, str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            claude_home = Path(tmp)
+            _write_transcript(self._subagents_dir(claude_home) / "agent-aworker-1-0123456789abcdef.jsonl", records)
+            return self._attestor(claude_home).attest(step, _RESULT_DIGEST, "worker-1")
+
     def test_composed_review_prompt_with_a_diff_before_probes_attests_and_an_altered_input_does_not(self):
         # LF-56: the e2e-t2 shape, a diff input followed by a probes input.
         from loop_spec.roles import Role, compose_prompt
