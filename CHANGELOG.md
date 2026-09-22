@@ -27,6 +27,18 @@ instead of the 6.x bash/jq implementation.
   implementer or a harness author.
 - [`docs/loop-spec/live-runs-7.0.md`](docs/loop-spec/live-runs-7.0.md): which
   checklist case was shown by which recorded live run.
+- EXECUTE issues every task of a wave at once (`LOOP_SPEC_NEXT` per step,
+  `LOOP_SPEC_WAIT` while siblings are open); a task is reviewed against the head it
+  forked from and integrates with a merge commit when a sibling merged first; a
+  conflicting merge re-implements the task on the new head as a counted retry.
+- An unattested `plan-critic`, `code-reviewer`, or `iterate-judge` step is refused
+  and re-dispatched under a new name up to `LOOP_SPEC_STEP_RETRIES`, then accepted
+  with a waiver the result's `weakenedAssurance` names.
+- `LOOP_SPEC_MODEL_<ROLE>` and `roles.<role>.model` set the model on every role
+  dispatch, not only the SPEC and PLAN lead steps.
+- ITERATE turns a `met` verdict over an open finding into `unmet` with one gap per
+  finding; I4 accepts `escalated` only for a refused rewind or an unmet verdict
+  with no gap.
 
 ### Changed
 
