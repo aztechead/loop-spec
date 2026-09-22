@@ -74,6 +74,10 @@ def _reviser_request(store, paths, ctx) -> dict:
         "pr": {"number": adoption["number"], "url": adoption["url"], "headRef": adoption["headRef"],
                "baseBranch": adoption["baseBranch"]},
         "diff": diff,
+        # LF-37: the delivering run's SPEC/PLAN products, found by the program in
+        # its state home (controller._find_delivering_run_products); null when no
+        # prior run matched this PR, so the reviser derives from the PR body/diff.
+        "prior": store.state["revise"].get("prior"),
     }
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=repo_path, phase="revise")
     request = {

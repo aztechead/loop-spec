@@ -1021,5 +1021,76 @@ class VerifyRerunsTests(unittest.TestCase):
             self.assertTrue(runs["AC-b"]["matched"])
 
 
+class FindDeliveringRunProductsTests(unittest.TestCase):
+    """LF-37: the reviser needs the SPEC/PLAN products of whatever prior run
+    delivered this PR; this is the lookup that used to be a live lead's own
+    find|xargs grep over the state home."""
+
+    def _run_dir(self, home: Path, rid: str, slug: str, project_root: Path,
+                 spec: dict, plan: dict) -> tuple[FeaturePaths, StateStore]:
+        paths = FeaturePaths(root=home / rid / slug, project_root=project_root)
+        store = StateStore.create(paths, {"id": f"run-{slug}", "entry": "cycle", "slug": slug}, "add a greeting")
+        store.state["products"]["spec"] = {"product": spec}
+        store.state["products"]["plan"] = {"product": plan}
+        store.save()
+        return paths, store
+
+    def test_finds_the_run_whose_result_names_the_pr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            home, rid, project_root = tmp / "home", "repo-1", tmp / "project"
+            project_root.mkdir()
+            spec = {"criteria": [{"id": "AC-1", "text": "x"}]}
+            plan = {"tasks": []}
+            paths, _ = self._run_dir(home, rid, "delivered", project_root, spec, plan)
+            atomic_write_json(paths.result_json, {"prs": [{"number": 2, "repo": "consumer", "url": "https://example/pr/2"}]})
+
+            found = controller._find_delivering_run_products(home, rid, "https://example/pr/2", project_root)
+            self.assertEqual(found, {"slug": "delivered", "spec": spec, "plan": plan})
+
+            self.assertIsNone(controller._find_delivering_run_products(home, rid, "https://example/pr/999", project_root))
+
+    def test_prefers_the_delivering_result_over_a_prior_revise_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            home, rid, project_root = tmp / "home", "repo-1", tmp / "project"
+            project_root.mkdir()
+            pr_url = "https://example/pr/2"
+
+            # "aaa-revise" sorts before "zzz-delivered", so this proves the result.json
+            # hit is PREFERRED, not just visited first.
+            _, revise_store = self._run_dir(
+                home, rid, "aaa-revise", project_root,
+                {"criteria": [{"id": "AC-2", "text": "from the prior revise"}]}, {"tasks": []},
+            )
+            revise_store.state["adoption"] = {"repo": "consumer", "number": 2, "url": pr_url, "headRef": "pr-branch",
+                                               "baseBranch": "main", "baseSha": "a" * 40, "headSha": "b" * 40}
+            revise_store.save()
+
+            delivered_spec = {"criteria": [{"id": "AC-1", "text": "the original delivery"}]}
+            delivered_plan = {"tasks": []}
+            delivered_paths, _ = self._run_dir(home, rid, "zzz-delivered", project_root, delivered_spec, delivered_plan)
+            atomic_write_json(delivered_paths.result_json, {"prs": [{"number": 2, "repo": "consumer", "url": pr_url}]})
+
+            found = controller._find_delivering_run_products(home, rid, pr_url, project_root)
+            self.assertEqual(found, {"slug": "zzz-delivered", "spec": delivered_spec, "plan": delivered_plan})
+
+    def test_adoption_only_hit_used_when_no_result_names_the_pr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            home, rid, project_root = tmp / "home", "repo-1", tmp / "project"
+            project_root.mkdir()
+            pr_url = "https://example/pr/3"
+            spec = {"criteria": [{"id": "AC-2", "text": "from the prior revise"}]}
+            plan = {"tasks": []}
+            _, revise_store = self._run_dir(home, rid, "revise-3", project_root, spec, plan)
+            revise_store.state["adoption"] = {"repo": "consumer", "number": 3, "url": pr_url, "headRef": "pr-branch",
+                                               "baseBranch": "main", "baseSha": "a" * 40, "headSha": "b" * 40}
+            revise_store.save()
+
+            found = controller._find_delivering_run_products(home, rid, pr_url, project_root)
+            self.assertEqual(found, {"slug": "revise-3", "spec": spec, "plan": plan})
+
+
 if __name__ == "__main__":
     unittest.main()

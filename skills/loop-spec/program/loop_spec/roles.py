@@ -193,6 +193,8 @@ def compose_prompt(role: Role, *, inputs: dict, result_path: Path, cwd: Path, ph
     for key, value in inputs.items():
         if isinstance(value, (dict, list)):
             body = "```json\n" + json.dumps(value, indent=2, sort_keys=True) + "\n```"
+        elif value is None or isinstance(value, bool):
+            body = json.dumps(value)  # the worker reads JSON, not Python's None/True
         else:
             body = str(value)
         input_sections.append(f"### {key}\n{body}")

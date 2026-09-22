@@ -139,6 +139,46 @@ def _find_run_by_adoption_number(home: Path, rid: str, number: int, project_root
     return None
 
 
+def _delivering_run_entry(slug_dir_name: str, state: dict) -> dict | None:
+    spec = (state.get("products", {}).get("spec") or {}).get("product")
+    plan = (state.get("products", {}).get("plan") or {}).get("product")
+    if spec is None or plan is None:
+        return None
+    return {"slug": slug_dir_name, "spec": spec, "plan": plan}
+
+
+def _find_delivering_run_products(home: Path, rid: str, pr_url: str, project_root: Path) -> dict | None:
+    # LF-37: the reviser role reads "the SPEC and PLAN products it was delivered
+    # against" (its own SKILL.md), but had no way to find that prior run itself --
+    # a live lead scavenged the state home with find|xargs grep to do it by hand.
+    # This is that lookup: the run whose result.json names this PR (the original
+    # delivery) wins over a prior revise of the same PR (adoption.url match only).
+    repo_home = home / rid
+    if not repo_home.exists():
+        return None
+    result_hit, adoption_hit = None, None
+    for slug_dir in sorted(repo_home.iterdir()):
+        candidate = FeaturePaths(root=slug_dir, project_root=project_root)
+        if not candidate.state_json.exists():
+            continue
+        state = StateStore.open(candidate).state
+
+        prs = (state.get("result") or {}).get("prs") or []
+        if candidate.result_json.is_file():
+            try:
+                prs = read_json(candidate.result_json).get("prs") or prs
+            except (OSError, ValueError):
+                pass
+        if result_hit is None and any(p.get("url") == pr_url for p in prs):
+            result_hit = _delivering_run_entry(slug_dir.name, state)
+
+        adoption = state.get("adoption")
+        if adoption_hit is None and adoption is not None and adoption.get("url") == pr_url:
+            adoption_hit = _delivering_run_entry(slug_dir.name, state)
+
+    return result_hit or adoption_hit
+
+
 def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, home: Path, rid: str,
                        answer_policy: str | None) -> Next:
     if not pr:
@@ -181,7 +221,10 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
         "repo": repo_name, "number": adoption.number, "url": adoption.url, "headRef": adoption.branch,
         "baseBranch": adoption.base_branch, "baseSha": base_sha, "headSha": adoption.head_sha,
     }
-    store.state["revise"] = {"gaps": revise_module.gaps_from_pr(repo_path, adoption.number), "product": None}
+    store.state["revise"] = {
+        "gaps": revise_module.gaps_from_pr(repo_path, adoption.number), "product": None,
+        "prior": _find_delivering_run_products(home, rid, adoption.url, project_root),
+    }
     store.state["phase"]["current"] = "revise"
     _resolve_implementations(store, project_root)
     if answer_policy == "default":

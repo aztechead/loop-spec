@@ -109,6 +109,21 @@ class StepTests(unittest.TestCase):
         self.assertEqual(action.request["role"], "reviser")
         self.assertIn("please add a test", action.request["prompt"])
         self.assertIn("https://x/pull/7", action.request["prompt"])
+        # LF-37: setUp's fixture never sets revise.prior; the request still builds,
+        # and the prompt carries the key with no delivering run found.
+        self.assertIn("### prior\nnull", action.request["prompt"])
+
+    def test_step_carries_prior_spec_and_plan_when_found(self):
+        # LF-37: controller._find_delivering_run_products fills revise.prior before
+        # the step is ever issued; the reviser's own request just passes it through.
+        self.store.state["revise"]["prior"] = {
+            "slug": "delivered-run",
+            "spec": {"criteria": [{"id": "AC-1", "text": "the greeting is friendly"}]},
+            "plan": {"tasks": []},
+        }
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIn("### prior", action.request["prompt"])
+        self.assertIn("AC-1", action.request["prompt"])
 
     def test_on_submit_then_step_yields_a_product(self):
         action = step(self.store, self.paths, self.ctx)
