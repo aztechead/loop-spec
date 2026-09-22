@@ -1,0 +1,262 @@
+{
+  "type": "object",
+  "required": [
+    "exit",
+    "inputsDigest",
+    "boundTo",
+    "tasks",
+    "issues",
+    "heads"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": [
+        "id",
+        "location",
+        "cause",
+        "severity",
+        "disposition",
+        "reason",
+        "supersedes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "cause": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "Critical",
+            "Important",
+            "Minor"
+          ]
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "rejected",
+            "deferred",
+            "open"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "supersedes": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "id"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "finding",
+                    "range"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "properties": {
+    "exit": {
+      "type": "string",
+      "enum": [
+        "integrated",
+        "no change",
+        "blocked",
+        "plan gap"
+      ]
+    },
+    "inputsDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "boundTo": {
+      "type": "object",
+      "required": [
+        "requirements",
+        "plan"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "requirements": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "disposition",
+          "evidence",
+          "commits",
+          "review"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "disposition": {
+            "type": "string",
+            "enum": [
+              "done",
+              "already-satisfied",
+              "removed",
+              "adopted"
+            ]
+          },
+          "evidence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "commits": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{7,40}$"
+            }
+          },
+          "review": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "reviewedRange",
+                  "verdict",
+                  "findings",
+                  "securityDispositions"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "reviewedRange": {
+                    "type": "object",
+                    "required": [
+                      "from",
+                      "to"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "from": {
+                        "type": "string"
+                      },
+                      "to": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "verdict": {
+                    "type": "string",
+                    "enum": [
+                      "pass",
+                      "fail"
+                    ]
+                  },
+                  "findings": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/finding"
+                    }
+                  },
+                  "securityDispositions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "signal",
+                        "disposition",
+                        "reason"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "signal": {
+                          "type": "string"
+                        },
+                        "disposition": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "task",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "task": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "heads": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
+}

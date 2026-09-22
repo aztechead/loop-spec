@@ -1,0 +1,68 @@
+{
+  "type": "object",
+  "required": ["run", "attempt", "inputs", "products", "state", "entry", "repos", "paths", "answers", "probes"],
+  "additionalProperties": false,
+  "properties": {
+    "run": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {"id": {"type": "string"}}
+    },
+    "attempt": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {"id": {"type": "string"}}
+    },
+    "inputs": {
+      "type": "object",
+      "required": ["digest"],
+      "additionalProperties": false,
+      "properties": {"digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}
+    },
+    "products": {"type": "object"},
+    "state": {
+      "type": "object",
+      "required": ["requirementsRevision", "approval", "planRevision", "baseline", "ledger", "budget"],
+      "additionalProperties": false,
+      "properties": {
+        "requirementsRevision": {"type": ["string", "integer", "null"]},
+        "approval": {"type": ["object", "string", "boolean", "null"]},
+        "planRevision": {"type": ["string", "integer", "null"]},
+        "baseline": {"type": ["object", "null"]},
+        "ledger": {"type": "object"},
+        "budget": {"type": "object"}
+      }
+    },
+    "entry": {
+      "type": "object",
+      "required": ["mode", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {"type": "string", "enum": ["fresh", "remediation", "rewind"]},
+        "payload": {"type": ["object", "null"]}
+      }
+    },
+    "repos": {"type": ["object", "array", "null"]},
+    "paths": {
+      "type": "object",
+      "required": ["stateDir", "writable"],
+      "additionalProperties": false,
+      "properties": {
+        "stateDir": {"type": "string"},
+        "writable": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "answers": {
+      "type": "object",
+      "required": ["byQuestion", "policy"],
+      "additionalProperties": false,
+      "properties": {
+        "byQuestion": {"type": "object"},
+        "policy": {"type": ["string", "null"]}
+      }
+    },
+    "probes": {"type": "object"}
+  }
+}

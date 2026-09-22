@@ -1,0 +1,82 @@
+"""State-home and per-feature path resolution.
+
+Use `state_home` to find where durable run state lives (explicit flag beats
+LOOP_SPEC_HOME beats the ~/.loop-spec default), `repo_id` to namespace state per
+repository, `feature_dir` for one feature's directory under that namespace, and
+`FeaturePaths` for every file a single feature's run touches inside it.
+"""
+import os
+import re
+import subprocess
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from .ids import digest_bytes
+
+
+def state_home(explicit: str | None = None) -> Path:
+    if explicit:
+        home = Path(explicit)
+    else:
+        env = os.environ.get("LOOP_SPEC_HOME")
+        home = Path(env) if env else Path.home() / ".loop-spec"
+    home.mkdir(parents=True, exist_ok=True)
+    return home
+
+
+def repo_id(project_root: Path) -> str:
+    project_root = Path(project_root)
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=project_root, capture_output=True, text=True, check=True,
+        )
+        origin = result.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        origin = ""  # no origin, or no git at all: fall back to the realpath below
+    if origin:
+        canonical = origin[:-len(".git")] if origin.endswith(".git") else origin
+        canonical = canonical.rstrip("/")
+    else:
+        canonical = str(project_root.resolve())
+    full = digest_bytes(canonical.encode())  # "sha256:<64 hex>"
+    return full.split(":", 1)[1][:16]
+
+
+@dataclass
+class FeaturePaths:
+    """Every path one feature's run touches, derived from its root directory."""
+
+    root: Path
+    state_json: Path = field(init=False)
+    events_jsonl: Path = field(init=False)
+    attempts_dir: Path = field(init=False)
+    steps_dir: Path = field(init=False)
+    worktrees_dir: Path = field(init=False)
+    checkouts_dir: Path = field(init=False)
+    result_json: Path = field(init=False)
+    last_result_json: Path = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.root = Path(self.root)
+        self.state_json = self.root / "state.json"
+        self.events_jsonl = self.root / "events.jsonl"
+        self.attempts_dir = self.root / "attempts"
+        self.steps_dir = self.root / "steps"
+        self.worktrees_dir = self.root / "worktrees"
+        self.checkouts_dir = self.root / "checkouts"
+        self.result_json = self.root / "result.json"
+        self.last_result_json = self.root.parent / "last-result.json"
+
+
+def feature_dir(home: Path, repo_id_: str, slug: str) -> Path:
+    return Path(home) / repo_id_ / slug
+
+
+_SLUG_WORD = re.compile(r"[a-z0-9]+")
+
+
+def slug_from_request(text: str) -> str:
+    words = _SLUG_WORD.findall(text.lower())
+    slug = "-".join(words)[:40].rstrip("-")
+    return slug or "feature"

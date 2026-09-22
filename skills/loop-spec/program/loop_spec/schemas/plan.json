@@ -1,0 +1,133 @@
+{
+  "type": "object",
+  "required": [
+    "exit",
+    "inputsDigest",
+    "boundTo",
+    "tasks",
+    "prepare",
+    "evidenceExceptions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "exit": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "spec gap"
+      ]
+    },
+    "inputsDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "boundTo": {
+      "type": "object",
+      "required": [
+        "requirements",
+        "plan"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "requirements": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "dependsOn",
+          "files",
+          "repo",
+          "verify",
+          "criteria",
+          "featureAdded",
+          "mustFlip"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^T-[0-9]+$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "dependsOn": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "repo": {
+            "type": "string"
+          },
+          "verify": {
+            "type": "string"
+          },
+          "criteria": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "featureAdded": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mustFlip": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "prepare": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidenceExceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "criterion",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "criterion": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

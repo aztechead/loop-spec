@@ -1,0 +1,275 @@
+{
+  "type": "object",
+  "required": [
+    "exit",
+    "inputsDigest",
+    "boundTo",
+    "reproduction",
+    "original",
+    "diagnosis",
+    "spec",
+    "plan"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "reproduction": {
+      "type": "object",
+      "required": [
+        "command",
+        "failureDigest",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "failureDigest": {
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": [
+        "goal",
+        "boundaries",
+        "criteria",
+        "decisions",
+        "openQuestions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "goal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "boundaries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^AC-[0-9]+$"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "openQuestions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "required": [
+        "tasks",
+        "prepare",
+        "evidenceExceptions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "title",
+              "dependsOn",
+              "files",
+              "repo",
+              "verify",
+              "criteria",
+              "featureAdded",
+              "mustFlip"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^T-[0-9]+$"
+              },
+              "title": {
+                "type": "string"
+              },
+              "dependsOn": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "repo": {
+                "type": "string"
+              },
+              "verify": {
+                "type": "string"
+              },
+              "criteria": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "featureAdded": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "mustFlip": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "prepare": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidenceExceptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "criterion",
+              "reason"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "criterion": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "exit": {
+      "type": "string",
+      "enum": [
+        "reproduced",
+        "blocked reproduction"
+      ]
+    },
+    "inputsDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "boundTo": {
+      "type": "object",
+      "required": [
+        "requirements",
+        "plan"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "requirements": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "reproduction": {
+      "$ref": "#/$defs/reproduction"
+    },
+    "original": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/reproduction"
+        }
+      ]
+    },
+    "diagnosis": {
+      "type": "string"
+    },
+    "spec": {
+      "$ref": "#/$defs/spec"
+    },
+    "plan": {
+      "$ref": "#/$defs/plan"
+    }
+  }
+}
