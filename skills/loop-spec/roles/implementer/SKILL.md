@@ -62,3 +62,17 @@ it.
 - Do not stage with a wildcard (`git add -A`, `git commit -am`); name the files.
 - Do not leave a criterion you cannot meet unreported — say so as an issue rather
   than guessing past it.
+
+## Example
+
+One commit for task T-1, with the verify command's observed exit. Your values come from your own inputs and run.
+
+```json
+{
+  "taskId": "T-1",
+  "commits": ["3f9c2ab"],
+  "summary": "added lerp and three tests in tests/test_lerp.py",
+  "verifyRun": {"command": "/work/calc/.venv/bin/python -m pytest -q tests/test_lerp.py", "exitStatus": 0},
+  "issues": []
+}
+```

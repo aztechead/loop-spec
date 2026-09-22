@@ -42,3 +42,15 @@ only.
   let the program decide the route.
 - Do not reopen a decision already made without naming exactly why it must
   change.
+
+## Example
+
+An unmet verdict with one gap EXECUTE can close in the `calc` repo. Your values come from your own inputs and run.
+
+```json
+{
+  "verdict": "unmet",
+  "gaps": [{"target": "execute", "repo": "calc", "text": "the request asked for lerp to be importable as calc.lerp; it is defined but missing from calc.__all__"}],
+  "caveats": []
+}
+```

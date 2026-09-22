@@ -57,3 +57,17 @@ Read-only over the codebase; Write is for your one result file only.
 - Do not review anything outside the named range.
 - Do not block on a taste preference you cannot ground in the file's own
   neighbors or in a concrete rule above.
+
+## Example
+
+A passing review of the task's range with one Minor finding left open for the PR review. Your values come from your own inputs and run.
+
+```json
+{
+  "sha": "7f8e9d0c1b2a3f4e5d6c7b8a9f0e1d2c3b4a5f6e",
+  "reviewedRange": {"from": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b", "to": "7f8e9d0c1b2a3f4e5d6c7b8a9f0e1d2c3b4a5f6e"},
+  "verdict": "pass",
+  "findings": [{"id": "F-1", "location": "calc/__init__.py:12", "cause": "lerp accepts t outside [0, 1] and its docstring does not say so", "severity": "Minor", "disposition": "open", "reason": null, "supersedes": null}],
+  "securityDispositions": []
+}
+```

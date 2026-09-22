@@ -76,3 +76,13 @@ task's specific claim (for example that a particular file was left untouched).
 - Do not invent a debate partner; you are the only reviewer.
 - Do not report a finding you cannot justify as Critical under the definition
   above.
+
+## Example
+
+One Critical finding, with the recommendation the program asks with if it stays open. Your values come from your own inputs and run.
+
+```json
+{
+  "findings": [{"id": "F-1", "location": "T-1.verify", "cause": "the verify command runs tests/test_calc.py, which never calls lerp, so it passes whether or not T-1 works", "severity": "Critical", "recommendation": {"action": "reject", "reason": "T-1's own review reads tests/test_lerp.py; accept the weaker command for this plan"}}]
+}
+```

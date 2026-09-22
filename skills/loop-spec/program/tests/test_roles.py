@@ -1,4 +1,5 @@
 """Unit tests for loop_spec.roles: default/bound role loading and prompt composition."""
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,6 +22,18 @@ class LoadDefaultRoleTests(unittest.TestCase):
                 self.assertTrue(role.body.strip())
                 self.assertIsInstance(role.schema, dict)
                 self.assertTrue(role.version.startswith("sha256:"))
+
+
+class RoleExampleTests(unittest.TestCase):
+    def test_each_default_role_example_validates_against_its_schema(self):
+        # A role's one example is copied by the model it guides; a stale one teaches the wrong shape.
+        import re
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ROLE_NAMES:
+                role = load_role(name, Path(tmp))
+                block = re.search(r"## Example\n.*?```json\n(.*?)\n```", role.body, re.S)
+                self.assertIsNotNone(block, name)
+                self.assertEqual(validate(json.loads(block.group(1)), role.schema), [], name)
 
 
 class CloseOutSchemaTests(unittest.TestCase):

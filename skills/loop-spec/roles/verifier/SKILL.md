@@ -62,3 +62,15 @@ one result file only; you do not edit the code under test.
 - Do not run an evidence command with a bare `python` or from outside a clean
   checkout root; the program re-runs it and rejects a criterion whose re-run
   differs.
+
+## Example
+
+One criterion verified at the head from a clean checkout. Your values come from your own inputs and run.
+
+```json
+{
+  "planGap": false,
+  "intentGap": false,
+  "verdicts": [{"criterion": "AC-1", "verdict": "pass", "evidence": {"command": "/work/calc/.venv/bin/python -m pytest -q tests/test_lerp.py", "repo": "calc", "sha": "7f8e9d0c1b2a3f4e5d6c7b8a9f0e1d2c3b4a5f6e", "exitStatus": 0, "failureIdentities": [], "outputDigest": "sha256:b7d0b7d0b7d0b7d0b7d0b7d0b7d0b7d0b7d0b7d0b7d0b7d0b7d0b7d0b7d0b7d0"}, "cause": null, "remediation": null}]
+}
+```

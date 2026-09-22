@@ -55,3 +55,20 @@ repair to EXECUTE as a compact SPEC and PLAN, not as a diff of your own.
 - Do not report a reproduction without having actually run and watched it fail.
 - Do not widen scope beyond the reported failure; a repair task that also
   covers unrelated code is a different change.
+
+## Example
+
+A reproduced bug whose repair is one `mustFlip` task. `original` is null because the reproduction is the reported command itself. Your values come from your own inputs and run.
+
+```json
+{
+  "exit": "reproduced",
+  "inputsDigest": "sha256:4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a",
+  "boundTo": {"requirements": null, "plan": null},
+  "reproduction": {"command": "/work/calc/.venv/bin/python -m pytest -q tests/test_lerp.py::test_endpoints", "failureDigest": "sha256:e3a9e3a9e3a9e3a9e3a9e3a9e3a9e3a9e3a9e3a9e3a9e3a9e3a9e3a9e3a9e3a9", "reason": null},
+  "original": null,
+  "diagnosis": "lerp computes a + b * t, not a + (b - a) * t, so lerp(2, 4, 1) returns 6; the function is wrong, the test is right.",
+  "spec": {"goal": "lerp returns b at t = 1.", "boundaries": ["No change to existing calc functions."], "criteria": [{"id": "AC-1", "text": "lerp(2, 4, 1) returns 4"}], "decisions": [], "openQuestions": []},
+  "plan": {"tasks": [{"id": "T-1", "title": "Fix lerp's formula", "dependsOn": [], "files": ["calc/__init__.py"], "repo": "calc", "verify": "/work/calc/.venv/bin/python -m pytest -q tests/test_lerp.py::test_endpoints", "criteria": ["AC-1"], "featureAdded": null, "mustFlip": true}], "prepare": null, "evidenceExceptions": []}
+}
+```

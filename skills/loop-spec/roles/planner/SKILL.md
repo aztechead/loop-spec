@@ -60,3 +60,18 @@ never for installing, building, or running the plan's own verify commands.
   on its own, and do not fold required behavior into a "later" task — everything
   SPEC requires ships in this plan.
 - Do not run installs, builds, or tests; Bash here is read-only reconnaissance.
+
+## Example
+
+One task for that SPEC. `inputsDigest` and `boundTo` copy the values your inputs give. Your values come from your own inputs and run.
+
+```json
+{
+  "exit": "ready",
+  "inputsDigest": "sha256:4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a",
+  "boundTo": {"requirements": "sha256:9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e", "plan": null},
+  "tasks": [{"id": "T-1", "title": "Add lerp with its tests", "dependsOn": [], "files": ["calc/__init__.py", "tests/test_lerp.py"], "repo": "calc", "verify": "/work/calc/.venv/bin/python -m pytest -q tests/test_lerp.py", "criteria": ["AC-1"], "featureAdded": "tests/test_lerp.py", "mustFlip": false}],
+  "prepare": null,
+  "evidenceExceptions": []
+}
+```

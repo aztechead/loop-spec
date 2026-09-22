@@ -60,3 +60,20 @@ Write your result to the path the step names; write nowhere else.
 - Do not include an approval in the product; only the program records one.
 - Do not leave an open question in the product that you could have resolved by
   reading the inputs you were given.
+
+## Example
+
+A request to add `lerp` to a `calc` package. `inputsDigest` and `boundTo` copy the values your inputs give. Your values come from your own inputs and run.
+
+```json
+{
+  "exit": "approved",
+  "inputsDigest": "sha256:4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a",
+  "boundTo": {"requirements": null, "plan": null},
+  "goal": "calc exposes lerp(a, b, t), returning a + (b - a) * t.",
+  "boundaries": ["No change to existing calc functions."],
+  "criteria": [{"id": "AC-1", "text": "lerp(0, 10, 0.5) returns 5.0"}],
+  "decisions": [],
+  "openQuestions": []
+}
+```
