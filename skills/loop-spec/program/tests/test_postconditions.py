@@ -467,16 +467,31 @@ class PostconditionsTests(unittest.TestCase):
     # -- B: debug (not runnable until M4; the checks exist now) --------------
 
     def test_b1(self):
+        # LF-23: B1 holds on the program's own clean-checkout run, never on comparing
+        # the worker's failureDigest against it (the checkouts differ, so a digest
+        # comparison could never match).
         self.assertIsNotNone(self._boundary("debug", {"reproduction": {"failureDigest": "sha256:" + "d" * 64}}, "reproduced")._b1())
-        self.store.state["debug"] = {"baseRun": {"exitStatus": 1, "outputDigest": "sha256:" + "d" * 64, "normalizedDigest": "sha256:" + "d" * 64}}
+        self.store.state["debug"] = {"baseRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": ["boom"], "fingerprints": []}}
         self.assertIsNone(self._boundary("debug", {"reproduction": {"failureDigest": "sha256:" + "d" * 64}}, "reproduced")._b1())
+
+        self.store.state["debug"] = {"baseRun": {"exitStatus": 127, "errorClass": "command-not-found"}}
+        self.assertIn("could not run at base", self._boundary("debug", {}, "reproduced")._b1())
+
+        self.store.state["debug"] = {"baseRun": {"exitStatus": 0, "errorClass": None}}
+        self.assertIn("passed at base", self._boundary("debug", {}, "reproduced")._b1())
+
+        self.store.state["debug"] = {"baseRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": [], "fingerprints": []}}
+        self.assertIsNotNone(self._boundary("debug", {}, "reproduced")._b1())
 
     def test_b2(self):
         changed = {"original": "orig text", "reproduction": {"reason": None}}
         self.assertIsNotNone(self._boundary("debug", changed, "reproduced")._b2())
         changed["reproduction"]["reason"] = "the failure moved files"
-        self.store.state["debug"] = {"originalRun": {"exitStatus": 1}}
+        self.store.state["debug"] = {"originalRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": ["x"], "fingerprints": []}}
         self.assertIsNone(self._boundary("debug", changed, "reproduced")._b2())
+        # Same normalization as B1: an original run that passed at base does not hold.
+        self.store.state["debug"] = {"originalRun": {"exitStatus": 0, "errorClass": None}}
+        self.assertIsNotNone(self._boundary("debug", changed, "reproduced")._b2())
 
     def test_b3(self):
         self.assertIsNotNone(self._boundary("debug", {"reproduction": {"anything": True}}, "blocked reproduction")._b3())

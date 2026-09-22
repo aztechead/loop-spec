@@ -249,7 +249,7 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 
 | Id | Postcondition | Gates |
 |---|---|---|
-| B1 | the program ran the recorded reproduction at base in a clean checkout and it failed; the failure digest and parsed identities are recorded as the `mustFlip` baseline | `reproduced` |
+| B1 | the program ran the recorded reproduction at base in a clean checkout and it failed with at least one parsed identity or fingerprint; the failure digest it recorded is the `mustFlip` baseline | `reproduced` |
 | B2 | a changed reproduction states a reason and the original was run too, with both results recorded | `reproduced` |
 | B3 | no reproduction exists | `blocked reproduction`; forbids `reproduced` |
 

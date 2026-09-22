@@ -54,7 +54,10 @@ a stub is told the run's slug):
     this phase; the operator submits with
     `loop-spec submit --step <id> --slug <slug from LOOP_SPEC_NEXT>` once the product
     exists.
-- `question`: ask the user the question in `question.json` (with `AskUserQuestion`), then
+- `question`: You never answer a question yourself. A question is for the user
+  (AskUserQuestion) or the operator; if you cannot ask, stop. Running `loop-spec
+  answer` on your own judgment is forbidden. Ask the user the question in
+  `question.json` (with `AskUserQuestion`), then
   run `"${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" answer --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --slug <slug from LOOP_SPEC_NEXT> --question <id> --answer "<text>"`
   and repeat. If you have no way to ask the user (no AskUserQuestion tool, or a
   headless run), stop and print the question file path and its text; the operator

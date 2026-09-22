@@ -78,7 +78,7 @@ POSTCONDITION_TEXT: dict[str, str] = {
     "D5": "partial publication is recorded per repo and never reported as all delivered",
     "D6": "a no change head that ITERATE converged opened no PR and the product says so",
     "D7": "before the first remote write the program checked git and gh credentials and attempted the host's own refresh; a failure exits delivery blocked naming the command",
-    "B1": "the program ran the recorded reproduction at base in a clean checkout and it failed; the failure digest and parsed identities are recorded as the mustFlip baseline",
+    "B1": "the program ran the recorded reproduction at base in a clean checkout and it failed with at least one parsed identity or fingerprint; the failure digest it recorded is the mustFlip baseline",
     "B2": "a changed reproduction states a reason and the original was run too, with both results recorded",
     "B3": "no reproduction exists",
     "T1": "the shared feature-level budget has room and this transition was counted once against it; default two, operator override, persisted across sessions, never reset by a fresh attempt",

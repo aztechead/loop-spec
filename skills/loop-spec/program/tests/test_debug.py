@@ -62,7 +62,11 @@ class RecordBaseRunsTests(unittest.TestCase):
         self.repo = _new_repo(self.tmp)
         Path(self.repo, "repro.sh").write_text("#!/bin/sh\nexit 1\n")
         Path(self.repo, "old-repro.sh").write_text("#!/bin/sh\nexit 1\n")
-        _git(self.repo, "add", "repro.sh", "old-repro.sh")
+        # LF-23: a real shim (pyenv's, say) is itself a valid, spawnable script that
+        # exits 127 to report a missing binary -- subprocess.run never raises for it,
+        # unlike a genuinely absent command.
+        Path(self.repo, "missing-binary-shim.sh").write_text("#!/bin/sh\nexit 127\n")
+        _git(self.repo, "add", "repro.sh", "old-repro.sh", "missing-binary-shim.sh")
         _git(self.repo, "commit", "-q", "-m", "init")
         self.base_sha = _head(self.repo)
 
@@ -82,6 +86,15 @@ class RecordBaseRunsTests(unittest.TestCase):
         product = _debug_product("sh repro.sh", original_command="sh old-repro.sh")
         record_base_runs(self.store, self.paths, product, self.repo, self.base_sha)
         self.assertEqual(self.store.state["debug"]["originalRun"]["exitStatus"], 1)
+
+    def test_a_reproduction_naming_a_missing_binary_records_command_not_found(self):
+        # LF-23: run_command itself never sets errorClass for a shim's own 127 (no
+        # FileNotFoundError was raised); record_base_runs backfills it so B1's
+        # message can name what actually went wrong.
+        product = _debug_product("sh missing-binary-shim.sh")
+        record_base_runs(self.store, self.paths, product, self.repo, self.base_sha)
+        self.assertEqual(self.store.state["debug"]["baseRun"]["exitStatus"], 127)
+        self.assertEqual(self.store.state["debug"]["baseRun"]["errorClass"], "command-not-found")
 
 
 class CompactProductsTests(unittest.TestCase):

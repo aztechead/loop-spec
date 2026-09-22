@@ -753,21 +753,35 @@ class Boundary:
 
     # -- B: debug (checks implemented now; the entry lands at M4) ------------
 
+    def _reproduction_run_holds(self, run: dict | None) -> str | None:
+        # LF-23: the worker's own failureDigest comes from its own checkout, a
+        # different path than the program's clean checkout that recorded `run` --
+        # the two digests can never match (state.debug.claimedDigest records the
+        # worker's claim instead, never compared). B1/B2 hold on what the program's
+        # own run actually observed: it failed, it wasn't a spawn/lookup failure, and
+        # it parsed at least one identity or fingerprint to flip later.
+        if run is None:
+            return "the reproduction did not run at base in a recorded run"
+        exit_status = run.get("exitStatus")
+        error_class = run.get("errorClass")
+        if exit_status == 127 or error_class is not None:
+            return (f"the reproduction could not run at base ({error_class or 'command not found'}): "
+                    "use an absolute interpreter path and a command that runs from the checkout root")
+        if exit_status == 0:
+            return "the reproduction passed at base; it does not reproduce the report"
+        if not (run.get("failureIdentities") or run.get("fingerprints")):
+            return "the reproduction failed at base but recorded no parsed failure identity or fingerprint"
+        return None
+
     def _b1(self) -> str | None:
-        base_run = (self.store.state.get("debug") or {}).get("baseRun")
-        if base_run is None or base_run.get("exitStatus") == 0:
-            return "the reproduction did not fail at base in a recorded run"
-        digest_matches = self.product["reproduction"]["failureDigest"] in (base_run.get("outputDigest"), base_run.get("normalizedDigest"))
-        return None if digest_matches else "the recorded base run's digest does not match the reproduction's failure digest"
+        return self._reproduction_run_holds((self.store.state.get("debug") or {}).get("baseRun"))
 
     def _b2(self) -> str | None:
         if self.product.get("original") is None:
             return None
         if not self.product["reproduction"].get("reason"):
             return "a changed reproduction needs a stated reason"
-        if not (self.store.state.get("debug") or {}).get("originalRun"):
-            return "no recorded run for the original reproduction"
-        return None
+        return self._reproduction_run_holds((self.store.state.get("debug") or {}).get("originalRun"))
 
     def _b3(self) -> str | None:
         if self.product.get("reproduction") is not None:

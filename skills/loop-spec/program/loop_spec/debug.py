@@ -55,16 +55,30 @@ def on_submit(store, paths, step, result: dict) -> None:
     store.save()
 
 
+def _with_error_class(run: dict) -> dict:
+    """LF-23: a pyenv shim (or similar wrapper) can exit 127 without ever raising
+    FileNotFoundError, so run_command's own exception-based errorClass detection
+    never fires for it. Backfilling errorClass from the exit status here lets B1's
+    message name a missing binary either way run_command found it."""
+    if run.get("exitStatus") == 127 or run.get("errorClass") is not None:
+        return {**run, "errorClass": run.get("errorClass") or "command-not-found"}
+    return run
+
+
 def record_base_runs(store, paths, product: dict, repo_path: Path, base_sha: str) -> None:
     checkout = Path(paths.checkouts_dir) / f"debug-base-{base_sha[:12]}"
     repo_module.clean_checkout(repo_path, base_sha, checkout)
     try:
         base_run = baseline_module.run_command(product["reproduction"]["command"], checkout, base_sha)
         debug_state = store.state.setdefault("debug", {})
-        debug_state["baseRun"] = base_run.to_dict()
+        debug_state["baseRun"] = _with_error_class(base_run.to_dict())
+        # LF-23: the worker's own failureDigest came from its own checkout, a
+        # different path than the program's clean checkout above -- the two digests
+        # can never match, so this is recorded as the worker's claim, never compared.
+        debug_state["claimedDigest"] = product["reproduction"]["failureDigest"]
         if product.get("original") is not None:
             original_run = baseline_module.run_command(product["original"]["command"], checkout, base_sha)
-            debug_state["originalRun"] = original_run.to_dict()
+            debug_state["originalRun"] = _with_error_class(original_run.to_dict())
     finally:
         repo_module.remove_worktree(repo_path, checkout, force=True)
     store.save()

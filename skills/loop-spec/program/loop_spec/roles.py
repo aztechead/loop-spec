@@ -16,7 +16,7 @@ from pathlib import Path
 from .errors import LoopSpecError
 from .ids import digest_bytes
 
-ROLE_NAMES = ["spec-writer", "planner", "plan-critic", "implementer", "code-reviewer", "verifier", "iterate-judge"]
+ROLE_NAMES = ["spec-writer", "planner", "plan-critic", "implementer", "code-reviewer", "verifier", "iterate-judge", "debugger"]
 
 # skills/loop-spec/roles/<name>/ sits next to program/, i.e. two levels above this
 # file's own package directory (program/loop_spec/roles.py -> program -> loop-spec).
@@ -140,6 +140,16 @@ CONTRACTS: dict[str, str] = {
     "iterate-judge": (
         "Judge the delivered behavior against the ORIGINAL request text, not the "
         "checklist. Every gap names a target phase. `met` only with no gap."
+    ),
+    "debugger": (
+        "You do not repair anything. You modify no file. Your product is the "
+        "reproduction (a command that fails at base from a clean checkout root, "
+        "with absolute interpreter paths, e.g. the venv's python, never bare "
+        "`python`), the diagnosis (which side is wrong and why), and the compact "
+        "SPEC and PLAN whose single task carries the repair for EXECUTE to do. If "
+        "you already edited a file while investigating, revert it and say so. "
+        "Reproduce before you diagnose; diagnose with one checked hypothesis at a "
+        "time, never a fix on one you have not checked."
     ),
 }
 

@@ -61,8 +61,20 @@ class ComposePromptTests(unittest.TestCase):
         self.assertIn("hello", prompt)
         self.assertIn(str(Path("/tmp/out/product.json")), prompt)
 
-    def test_no_contract_section_when_role_has_none(self):
+    def test_debugger_contract_forbids_repair(self):
+        # LF-22: the debugger lead step fixed a failing test in the user's own
+        # checkout; the contract text reaching its prompt must say plainly it
+        # does not, before anything else in the section.
         role = Role(name="debugger", body="Do the thing.", schema={"type": "object"}, source="default", version="sha256:" + "0" * 64)
+        prompt = compose_prompt(role, inputs={}, result_path=Path("/tmp/out/product.json"), cwd=Path("/tmp/out"), phase="debug")
+        self.assertIn(CONTRACTS["debugger"], prompt)
+        self.assertTrue(CONTRACTS["debugger"].startswith("You do not repair anything. You modify no file."))
+
+    def test_no_contract_section_when_role_has_none(self):
+        # Every real role name now has a CONTRACTS entry (debugger's joined the
+        # rest under LF-22); this exercises the "none" branch with a name that
+        # deliberately is not one.
+        role = Role(name="made-up-role", body="Do the thing.", schema={"type": "object"}, source="default", version="sha256:" + "0" * 64)
         prompt = compose_prompt(role, inputs={}, result_path=Path("/tmp/out/product.json"), cwd=Path("/tmp/out"), phase="debug")
         self.assertNotIn("## loop-spec contract", prompt)
 
