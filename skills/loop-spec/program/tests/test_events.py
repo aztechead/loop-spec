@@ -80,11 +80,16 @@ class MarkerTests(unittest.TestCase):
             marker_question(_paths(tempfile.mkdtemp()), "question-1")
         self.assertEqual(out.getvalue().strip(), 'LOOP_SPEC_QUESTION {"questionId":"question-1"}')
 
-    def test_marker_next_prints_kind_and_path(self):
+    def test_marker_next_prints_kind_path_and_slug(self):
+        # LF-06: submit/answer require --slug and nothing else in LOOP_SPEC_NEXT
+        # names the run, so the marker carries it.
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            marker_next("result", "/tmp/result.json")
-        self.assertEqual(out.getvalue().strip(), 'LOOP_SPEC_NEXT {"kind":"result","path":"/tmp/result.json"}')
+            marker_next("result", "/tmp/result.json", "greeting")
+        self.assertEqual(
+            out.getvalue().strip(),
+            'LOOP_SPEC_NEXT {"kind":"result","path":"/tmp/result.json","slug":"greeting"}',
+        )
 
 
 if __name__ == "__main__":

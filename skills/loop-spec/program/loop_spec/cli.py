@@ -101,16 +101,20 @@ def _print_summary(state: dict, paths: FeaturePaths) -> None:
         print("open question: None")
     else:
         try:
-            text = read_json(Path(open_question["path"]))["text"]
+            record = read_json(Path(open_question["path"]))
+            text, options = record["text"], [o["value"] for o in record["options"]]
         except (OSError, ValueError, KeyError):
-            text = None
+            text, options = None, []
         print(f"open question: {open_question['questionId']}: {text}")
+        print(f"  options: {options}")
 
     open_steps = state["steps"]["open"]
     if not open_steps:
         print("open steps: []")
     for s in open_steps:
-        print(f"open step: {s['stepAttemptId']}: {paths.steps_dir / s['stepAttemptId'] / 'step.json'}")
+        step_path = paths.steps_dir / s["stepAttemptId"] / "step.json"
+        print(f"open step: {s['stepAttemptId']}: {step_path}")
+        print(f"  kind: {s.get('kind')} role: {s.get('role')}")
 
     result = state.get("result")
     print(f"result: {result.get('classification') if result else None}")
@@ -174,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
                 slug=args.slug, state_home=args.state_home, answer_policy=args.answer_policy,
                 pr=getattr(args, "pr", None),
             )
-            marker_next(next_.kind, str(next_.path))
+            marker_next(next_.kind, str(next_.path), next_.slug)
             return 0
         if args.command == "submit":
             store, paths = _open_store(args)
@@ -184,13 +188,13 @@ def main(argv: list[str] | None = None) -> int:
                 from . import execute as execute_module  # local: only default EXECUTE dispatches these roles
                 execute_module.on_submit(store, paths, submission.step, submission.result)
             next_ = controller.continue_run(store, paths, project_root=Path(args.project_root))
-            marker_next(next_.kind, str(next_.path))
+            marker_next(next_.kind, str(next_.path), next_.slug)
             return 0
         if args.command == "answer":
             store, paths = _open_store(args)
             questions.answer(store, paths, question_id=args.question, value=args.answer, scope=args.scope, by="human")
             next_ = controller.continue_run(store, paths, project_root=Path(args.project_root))
-            marker_next(next_.kind, str(next_.path))
+            marker_next(next_.kind, str(next_.path), next_.slug)
             return 0
         raise LoopSpecError(f"{args.command} lands in a later wave", repair="wait for the wave")
     except LoopSpecError as exc:

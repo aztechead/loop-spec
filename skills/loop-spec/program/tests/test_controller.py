@@ -14,6 +14,7 @@ from loop_spec import controller
 from loop_spec import postconditions
 from loop_spec import repo as repo_module
 from loop_spec import steps
+from loop_spec.errors import LoopSpecError
 from loop_spec.jsonio import atomic_write_json, read_json
 from loop_spec.paths import FeaturePaths, feature_dir, repo_id
 from loop_spec.state import StateStore
@@ -507,6 +508,65 @@ class EscalatedPartialDraftTests(_QuietStdout):
             result = read_json(paths.result_json)
             self.assertEqual(result["result"], "escalated")
             self.assertIsNotNone(result["delivery"])
+
+
+class ResumeBySlugTests(_QuietStdout):
+    def test_cycle_with_slug_and_no_request_resumes_the_existing_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+                started = controller.run_entry(
+                    "cycle", project_root=repo_dir, request_text="Add a greeting message",
+                    slug="greeting", state_home=str(home), answer_policy=None, pr=None,
+                )
+                resumed = controller.run_entry(
+                    "cycle", project_root=repo_dir, request_text=None,
+                    slug="greeting", state_home=str(home), answer_policy=None, pr=None,
+                )
+                self.assertEqual(resumed.kind, started.kind)
+                self.assertEqual(resumed.path, started.path)
+
+    def test_cycle_with_unknown_slug_and_no_request_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            with self.assertRaises(LoopSpecError):
+                controller.run_entry(
+                    "cycle", project_root=repo_dir, request_text=None,
+                    slug="never-started", state_home=str(home), answer_policy=None, pr=None,
+                )
+
+
+class RejectedStepReissueTests(_QuietStdout):
+    def test_reissued_step_carries_failure_reason_and_retry_of(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            markers = io.StringIO()
+
+            with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+                next_, spec_product, paths, repo_name = _start_greeting_run(repo_dir, home, markers)
+                self.assertEqual(next_.kind, "step")
+                first_plan_step = read_json(next_.path)
+
+                spec_revision = postconditions.requirements_revision(spec_product)
+                bad_plan_product = _greeting_plan_product(repo_name, spec_revision)
+                bad_plan_product["tasks"][0]["repo"] = "bogus"  # fails P6
+                atomic_write_json(Path(first_plan_step["resultPath"]), bad_plan_product)
+                store = _open(paths)
+                steps.submit(store, paths, step_id=first_plan_step["stepAttemptId"], dispatch_name=None, host=None)
+                with contextlib.redirect_stdout(markers):
+                    next_ = controller.continue_run(store, paths, project_root=repo_dir)
+
+                self.assertEqual(next_.kind, "step")  # re-issued after the rejection
+                reissued = read_json(next_.path)
+                self.assertIn("P6:", reissued["reason"])
+                self.assertIn("bogus", reissued["reason"])
+                self.assertEqual(reissued["retryOf"], first_plan_step["stepAttemptId"])
 
 
 if __name__ == "__main__":

@@ -757,7 +757,7 @@ the data directory placeholder. 7.x ships no hook (decided 2026-09-22).
   read the sibling hub's `SKILL.md`; on any other failure it reports the output and
   halts.
 - Two placeholders the host or the model fills: `{skill-root}`, this skill's absolute
-  directory (`${LOOP_SPEC_SKILL_DIR}` in Claude Code), and `{project-root}`. Never a
+  directory (`${CLAUDE_SKILL_DIR}` in Claude Code, which substitutes it inline in skill content; probed 2026-09-22, `${LOOP_SPEC_SKILL_DIR}` was a 6.9 hook export and is empty in 7.x), and `{project-root}`. Never a
   host variable, since `${CLAUDE_PLUGIN_ROOT}` is empty in Bash tool calls and other
   agents have no equivalent.
 - Each skill folder carries `manifest.toml`: `module = "loop-spec"`, `version`, and a

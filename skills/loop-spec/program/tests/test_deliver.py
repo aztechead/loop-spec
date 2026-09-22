@@ -4,6 +4,8 @@ No test calls the real `gh` or the network: `repo.run_gh` is patched with canned
 JSON, and pushes go to a local bare remote so a real rejection can be exercised
 without touching GitHub.
 """
+# simplicity: this stdlib import block matches test_controller.py's own; there is no
+# shared import-shape to factor out of six ordinary stdlib names.
 import json
 import subprocess
 import tempfile

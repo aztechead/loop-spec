@@ -85,7 +85,10 @@ def marker_result(paths: FeaturePaths, result_dict: dict) -> None:
     _marker(paths, "LOOP_SPEC_RESULT", result_dict)
 
 
-def marker_next(kind: str, path: str) -> None:
-    # No `paths` argument here (the design fixes this signature to take only kind/path),
-    # so unlike the other markers this one cannot also append itself to the ledger.
-    print(f"LOOP_SPEC_NEXT {_compact({'kind': kind, 'path': path})}")
+def marker_next(kind: str, path: str, slug: str) -> None:
+    # No `paths` argument here (the design fixes this signature to take only
+    # kind/path/slug), so unlike the other markers this one cannot also append
+    # itself to the ledger. `slug` (LF-06) is what a stub passes back on the next
+    # `submit`/`answer`, since those commands require --slug and nothing else in
+    # LOOP_SPEC_NEXT names the run.
+    print(f"LOOP_SPEC_NEXT {_compact({'kind': kind, 'path': path, 'slug': slug})}")

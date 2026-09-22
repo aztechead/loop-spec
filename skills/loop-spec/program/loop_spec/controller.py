@@ -34,6 +34,7 @@ _RESUMABLE_PHASES = ("spec", "plan", "execute", "verify", "iterate", "deliver")
 class Next:
     kind: Literal["step", "question", "result"]
     path: Path
+    slug: str
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +55,16 @@ def run_entry(entry: str, *, project_root: Path, request_text: str | None, slug:
 
     if entry in ("cycle", "micro"):
         if not request_text:
-            raise LoopSpecError(f"{entry} requires a request", repair="pass --request or --request-file")
+            # --slug with no request resumes that run instead of starting a new one;
+            # the digest check below only applies when a request text is given.
+            if not slug:
+                raise LoopSpecError(f"{entry} requires --request, --request-file, or --slug to resume",
+                                     repair="pass --request/--request-file for a new run, or --slug to resume one")
+            paths = FeaturePaths(root=feature_dir(home, rid, slug))
+            if not paths.state_json.exists():
+                raise LoopSpecError(f"no run for slug {slug!r}", repair="check `loop-spec status` for known slugs, or pass --request to start one")
+            return continue_run(StateStore.open(paths), paths, project_root=project_root)
+
         slug = slug or slug_from_request(request_text)
         paths = FeaturePaths(root=feature_dir(home, rid, slug))
         _clear_stale_last_result(paths, slug)
@@ -172,16 +182,17 @@ def _check_phase_preconditions(store: StateStore, phase: str) -> None:
 
 def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) -> Next:
     project_root = Path(project_root)
+    slug = store.state["run"]["slug"]
     while True:
         if store.state.get("result") is not None:
-            return Next(kind="result", path=paths.result_json)
+            return Next(kind="result", path=paths.result_json, slug=slug)
         open_question = store.state["questions"]["open"]
         if open_question is not None:
-            return Next(kind="question", path=Path(open_question["path"]))
+            return Next(kind="question", path=Path(open_question["path"]), slug=slug)
         open_steps = store.state["steps"]["open"]
         if open_steps:
             first = open_steps[0]
-            return Next(kind="step", path=paths.steps_dir / first["stepAttemptId"] / "step.json")
+            return Next(kind="step", path=paths.steps_dir / first["stepAttemptId"] / "step.json", slug=slug)
 
         blocked_question_id = store.state["phase"].get("blockedQuestionId")
         if blocked_question_id is not None:
@@ -290,13 +301,27 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
 
     if outcome.kind == "step":
         request = read_json(outcome.path)
-        steps.issue(
+        # LF-03: a step re-issued after a rejection carries WHY (the failures, as
+        # "id: message" lines) and WHAT it replaces (the rejected attempt's own
+        # product step), overriding whatever the implementation's own request set;
+        # any other remediation reason (a critic finding, a disapproval, ...) keeps
+        # the implementation's own retryOf/reason untouched.
+        rejected = (store.state["phase"].get("entryPayload") or {}).get("rejected")
+        if rejected is not None:
+            reason = "\n".join(f"{f['id']}: {f['message']}" for f in rejected["failures"])
+            retry_of = store.state["phase"].get("lastStepId")
+        else:
+            reason = request.get("reason")
+            retry_of = request.get("retryOf")
+        record = steps.issue(
             store, paths, phase=phase, attempt_id=attempt_id, kind=request["kind"], role=request.get("role"),
             cwd=Path(request["cwd"]), prompt=request["prompt"], schema=request["schema"],
             postconditions=request["postconditions"], inputs_digest=request["inputsDigest"],
-            retry_of=request.get("retryOf"), reason=request.get("reason"),
+            retry_of=retry_of, reason=reason,
             result_path=Path(request["resultPath"]),
         )
+        store.state["phase"]["lastStepId"] = record["stepAttemptId"]
+        store.save()
         return
     if outcome.kind == "question":
         request = read_json(outcome.path)

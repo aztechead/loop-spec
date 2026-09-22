@@ -5,7 +5,7 @@ description: "Show the state of a loop-spec run: current phase, open question or
 
 Run this once, without changing directory:
 
-    "${LOOP_SPEC_SKILL_DIR}/../loop-spec/program/loop-spec" status --project-root "{project-root}" [--slug "{slug}"]
+    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" status --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" [--slug "{slug}"]
 
 `{project-root}` is the repository (or workspace) root the user is working in.
 Pass `--slug` to see one run's detail; omit it to list the runs known for this repository.
