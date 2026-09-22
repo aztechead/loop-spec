@@ -61,14 +61,53 @@ Each entry is a skill, invoked as `/loop-spec:<name> <argument>`:
 | `/loop-spec:spec`, `plan`, `execute`, `verify`, `iterate`, `deliver` | a slug | resume just that phase of an existing run |
 
 Every entry ends by reading one file (a step, a question, or the terminal
-result) and reports back or asks you what it says. Headless, the same entries
-run under `claude -p "/loop-spec:cycle <request>"`; a paused run prints a
-question and exits, and the next `claude -p` invocation with the same slug
-answers it and continues (`loop-spec answer`, in
-[references/contract.md](skills/loop-spec/references/contract.md#questions)).
-Pass `--answer-policy default` to auto-answer any question that carries a
-default value (the requirements approval does) instead of stopping for it, for
-a fully unattended run.
+result) and reports back or asks you what it says.
+
+### Examples
+
+```
+/loop-spec:cycle Add a --json flag to the export command that prints one JSON object per row, with tests
+/loop-spec:cycle docs/specs/rate-limiter.md
+/loop-spec:micro Rename the retry_count config key to max_retries everywhere, keeping the old key as a deprecated alias
+/loop-spec:debug tests/test_parser.py::test_unicode fails with UnicodeDecodeError on main since 3f2a91c
+/loop-spec:revise 42
+/loop-spec:status
+/loop-spec:verify add-a-json-flag-to-the-export-command
+```
+
+Name the verify command in the request when you know it, as one plain command:
+`.venv/bin/python -m pytest -q tests/test_export.py`, not `cd tests && pytest`.
+The program runs commands with no shell and rejects shell syntax before it runs
+anything.
+
+### Headless
+
+The same entries run under `claude -p`. With `--output-format stream-json
+--verbose`, the lead's text, thinking, and tool calls arrive on stdout, and the
+program's `[PHASE]` progress lines appear in the Bash results it reads:
+
+```bash
+claude -p "/loop-spec:cycle <request> [Operator: this is a headless run; pass --answer-policy default on the loop-spec cycle command.]" \
+  --permission-mode bypassPermissions --output-format stream-json --verbose > run.jsonl
+```
+
+`--answer-policy default` answers every question that has a default, including the
+requirements approval. The skills do not add it themselves, so the prompt asks the
+lead to. Without it, or for a question with no default, the run stops and the final
+message names the question. Answer it with the launcher, passing the plugin's state
+home, then resume the session:
+
+```bash
+LS=~/.claude/plugins/cache/loop-spec-marketplace/loop-spec/<version>/skills/loop-spec/program/loop-spec
+"$LS" answer --project-root . --state-home ~/.claude/plugins/data/<loop-spec data dir> \
+  --slug <slug> --question <questionId> --answer approve
+claude -p --resume <session id> "The question was answered; continue the run." \
+  --permission-mode bypassPermissions --output-format stream-json --verbose >> run.jsonl
+```
+
+`ls -d ~/.claude/plugins/data/loop-spec*` shows the data directory. Question
+fields and scopes are in
+[references/contract.md](skills/loop-spec/references/contract.md#questions).
 
 ## How a run proceeds
 
@@ -106,7 +145,7 @@ environment variables take precedence over it.
 | `roles.<role>` (config), `LOOP_SPEC_ROLE_<ROLE>` | bind a role to a skill other than the bundled default |
 | `deliver.readiness` (config) | `"checks"` waits on required PR checks before DELIVER finishes |
 | `LOOP_SPEC_HOME` | state home root; default `~/.loop-spec` |
-| `LOOP_SPEC_MODEL_<ROLE>` | model for a SPEC or PLAN lead step |
+| `LOOP_SPEC_MODEL_<ROLE>` | model for every dispatch of that role, e.g. `LOOP_SPEC_MODEL_CODE_REVIEWER=haiku` |
 | `LOOP_SPEC_REWIND_BUDGET` | how many backward transitions one run may spend; default 2 |
 | `LOOP_SPEC_STEP_RETRIES` | retries before a rejected product asks you to fix and re-enter or stop; default 3 |
 
@@ -116,11 +155,20 @@ program's own source — is
 
 ## Embedding on the Agent SDK
 
-[`examples/supervisor/`](examples/supervisor/README.md) is a reference supervisor
-that drives one `loop-spec cycle` to completion with no person in the loop,
-dispatching each role step through `claude-agent-sdk` 0.2.157 (bundled CLI
-2.1.277, Python >= 3.10). It is not a supported product surface, and it has not
-been run live: this repository carries no Agent SDK credentials.
+Two reference scripts, neither a supported product surface. Both authenticate the
+way the SDK does, including a Claude subscription login.
+
+- [`examples/sdk-plugin/`](examples/sdk-plugin/README.md) loads loop-spec as a
+  local plugin in one `ClaudeSDKClient` session and sends `/loop-spec:<entry>`. The
+  plugin then runs as it does in Claude Code. It answers questions through
+  `can_use_tool` and streams the lead's text to stdout and its thinking, tool calls,
+  and workers' output to stderr. Start here.
+- [`examples/supervisor/`](examples/supervisor/README.md) drives the loop-spec
+  program itself and runs each step as a separate SDK query through
+  `loop_spec.sdk_runner`, for a service that must own every step.
+
+Both are run live on 7.0.2; see
+[live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md).
 
 ## Reading a result
 

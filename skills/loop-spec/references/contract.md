@@ -168,7 +168,10 @@ wave that issues several step requests at once (`execute.py`'s `IssueSteps`) pri
 one `LOOP_SPEC_NEXT` line of kind `step` per request instead of one, for the caller
 to dispatch in parallel; when a wave has open steps but nothing new to issue
 (`execute.py`'s `Wait`), the program prints `LOOP_SPEC_WAIT {"open": [<stepAttemptId>,
-...]}` (`events.marker_wait`) instead of any `LOOP_SPEC_NEXT` line.
+...]}` (`events.marker_wait`) instead of any `LOOP_SPEC_NEXT` line. Outside that case,
+every call re-announces each step still open as a `LOOP_SPEC_NEXT` line
+(`controller.continue_run`), including a step the caller already dispatched; a caller
+dispatches and submits each `stepAttemptId` once.
 Phase boundaries also print `LOOP_SPEC_PHASE_START {...}` and
 `LOOP_SPEC_PHASE_END {...}` (`marker_phase_start`/`marker_phase_end`), and a new
 question prints `LOOP_SPEC_QUESTION {"questionId": ...}`. Every marker also lands
