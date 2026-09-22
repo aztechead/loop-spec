@@ -551,7 +551,26 @@ class Boundary:
         return None
 
     def _v5(self) -> str | None:
-        self.weakened_assurance.extend(self._exceptions())
+        # Same two sources _exceptions() unions for V4's membership check, but V5's
+        # own record needs each one's own reason and where it came from, not just the
+        # criterion id: an entry here reads the same as E6's (kind/criterion/source/
+        # reason), not a bare criterion string.
+        plan_product = self.store.state["products"]["plan"]["product"]
+        seen: set[str] = set()
+        for exc in plan_product.get("evidenceExceptions", []):
+            if exc["criterion"] in seen:
+                continue
+            seen.add(exc["criterion"])
+            self.weakened_assurance.append(
+                {"kind": "evidence.exception", "criterion": exc["criterion"], "source": "plan", "reason": exc["reason"]}
+            )
+        for exc in self.store.state.get("verifyExceptionsThisAttempt") or []:
+            if exc["criterion"] in seen:
+                continue
+            seen.add(exc["criterion"])
+            self.weakened_assurance.append(
+                {"kind": "evidence.exception", "criterion": exc["criterion"], "source": "answer", "reason": exc.get("reason")}
+            )
         return None
 
     def _v6(self) -> str | None:

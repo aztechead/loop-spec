@@ -339,12 +339,18 @@ class PostconditionsTests(unittest.TestCase):
         self.assertIsNone(boundary._v5())
         self.assertEqual(boundary.weakened_assurance, [])
 
+        # Each source gets its own entry, kept as an object like E6's own
+        # weakenedAssurance entries (never a bare criterion id).
         plan_with_exception = copy.deepcopy(self.plan_product)
         plan_with_exception["evidenceExceptions"] = [{"criterion": "AC-1", "reason": "flaky in CI"}]
         self.store.state["products"]["plan"]["product"] = plan_with_exception
+        self.store.state["verifyExceptionsThisAttempt"] = [{"criterion": "AC-2", "reason": "operator approved at VERIFY"}]
         boundary = self._boundary("verify", self.verify_product, "passed")
         self.assertIsNone(boundary._v5())
-        self.assertEqual(boundary.weakened_assurance, ["AC-1"])
+        self.assertEqual(boundary.weakened_assurance, [
+            {"kind": "evidence.exception", "criterion": "AC-1", "source": "plan", "reason": "flaky in CI"},
+            {"kind": "evidence.exception", "criterion": "AC-2", "source": "answer", "reason": "operator approved at VERIFY"},
+        ])
 
     def test_v6(self):
         blocked = copy.deepcopy(self.verify_product)

@@ -162,7 +162,10 @@ Key fields: `status` (`completed`, `paused`, `escalated`, `failed`), `outcome`,
 `result` (`converged`, `converged-with-caveats`, `no-change`, `escalated`,
 `failed`, `paused`), `converged`, `workDelivered`, `phaseReached`, `prUrl`,
 `delivery`, `reviewed` (task id to evidence level), `unreviewed[]`,
-`weakenedAssurance[]`, `rewinds`, `hostVersions`.
+`weakenedAssurance[]`, `rewinds`, `hostVersions`. Every `weakenedAssurance` entry is
+an object carrying its own `kind`: E6's `evidence.review.accept` entries are
+`{kind, value, task}`; V5's `evidence.exception` entries are `{kind, criterion,
+source: "plan" | "answer", reason}`.
 
 ## State home layout
 
