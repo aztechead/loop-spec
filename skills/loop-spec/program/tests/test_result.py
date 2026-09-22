@@ -103,6 +103,26 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(record["verification"]["status"], "passed")
         self.assertTrue(record["partiallyDelivered"])
 
+    def test_a_stop_after_one_repo_published_reports_partial_delivery(self):
+        # LF-58: the stop path passes no flag; the per-repo facts decide. A skipped
+        # (untouched) repo beside a delivered one is not partial.
+        store, paths = _new_run(self.tmp / "stop", "stop", "deliver")
+        _verify_passed(store)
+        _deliver(store, [
+            {"repo": "calc", "state": "delivered", "pr": _pr(13), "deliveredSha": "a" * 40, "caveats": []},
+            {"repo": "textutil", "state": "failed", "pr": None, "deliveredSha": None, "caveats": ["push rejected"]},
+        ])
+        record = read_json(result_module.write(store, paths, "escalated", reason="deliver paused; operator chose 'stop'"))
+        self.assertTrue(record["partiallyDelivered"])
+        self.assertTrue(record["workDelivered"])
+        store2, paths2 = _new_run(self.tmp / "skip", "skip", "deliver")
+        _verify_passed(store2)
+        _deliver(store2, [
+            {"repo": "calc", "state": "delivered", "pr": _pr(1), "deliveredSha": "a" * 40, "caveats": []},
+            {"repo": "docs", "state": "skipped", "pr": None, "deliveredSha": None, "caveats": []},
+        ])
+        self.assertFalse(read_json(result_module.write(store2, paths2, "converged"))["partiallyDelivered"])
+
     def test_verification_passed_but_delivery_blocked_delivers_nothing(self):
         # VERIFY passed and ITERATE converged, but DELIVER could not publish
         # anything (credentials failed, the operator answered stop) -- the run

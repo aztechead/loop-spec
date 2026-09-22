@@ -8,6 +8,7 @@ here needs it, since an out-of-band remote move maps to a normal `delivery block
 product exit, the same way EXECUTE's `blocked` exit is a product, not a raw pause.
 """
 import json
+import re
 import tempfile
 from pathlib import Path
 
@@ -73,6 +74,14 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
             "headSha": data["headRefOid"], "base": data["baseRefName"]}, None
 
 
+def _push_repair(stderr: str) -> str:
+    # A non-zero push is not always a non-fast-forward (LF-58: an unreachable remote
+    # read as "resolve the out-of-band change"); name the repair only when git says so.
+    if re.search(r"non-fast-forward|\[rejected\]|fetch first", stderr):
+        return "the remote branch has commits the verified SHA lacks; fetch, reconcile, and re-enter (never force)"
+    return "check origin's push URL, network, and access, then re-enter (never force)"
+
+
 def run(store, paths, ctx):
     project_root = Path(ctx["paths"]["projectRoot"])
     config = load_config(project_root)
@@ -85,20 +94,30 @@ def run(store, paths, ctx):
 
     touched = _touched_repos(store)
     repos_out = []
-    blocked = None
+    bound_to = {"requirements": store.state["revisions"]["requirements"], "plan": store.state["revisions"]["plan"]}
+
+    # D7: every touched repo's credentials are checked before the FIRST remote write,
+    # so a refusal blocks DELIVER with nothing published anywhere.
+    refused = {}
+    for repo_name in touched:
+        check = credential_checks.get(repo_name) or {}
+        if not (check.get("git_ok") and check.get("gh_ok")):
+            failed_tool = "git" if not check.get("git_ok") else "gh"
+            refused[repo_name] = f"the {failed_tool} credential check failed: {check.get('failedCommand')}; repair: {check.get('repair')}"
+    if refused:
+        for repo_name in store.state["repos"]:
+            if repo_name not in touched:
+                repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [], "state": "skipped"})
+                continue
+            reason = refused.get(repo_name) or (f"not attempted: the credential check failed for "
+                                                f"{', '.join(sorted(refused))}, so DELIVER wrote to no remote")
+            repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"})
+        return Product({"exit": "delivery blocked", "inputsDigest": ctx["inputs"]["digest"], "boundTo": bound_to, "repos": repos_out})
 
     for repo_name, repo_info in store.state["repos"].items():
         if repo_name not in touched:
             repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [], "state": "skipped"})
             continue
-
-        check = credential_checks.get(repo_name) or {}
-        if not (check.get("git_ok") and check.get("gh_ok")):
-            failed_tool = "git" if not check.get("git_ok") else "gh"
-            reason = f"the {failed_tool} credential check failed: {check.get('failedCommand')}; repair: {check.get('repair')}"
-            repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"})
-            blocked = True
-            break
 
         # EXECUTE never commits into the operator's own checkout (repo_info["path"]);
         # its own worktrees/feature/<repo> is where the pushed commits actually live.
@@ -124,21 +143,26 @@ def run(store, paths, ctx):
         # config `-u` used to set, so dropping it costs no other caller anything.
         push = repo_module._git(worktree, "push", "origin", f"{verified_sha}:refs/heads/{repo_info['featureBranch']}")
         if push.returncode != 0:
-            reason = (f"push rejected: {push.stderr.strip()}; repair: fetch, resolve the "
-                      "out-of-band change, and resume (never force)")
+            # LF-58: one repo's rejected push is that repo's failed row; the others
+            # are still attempted, so a workspace can deliver partially.
+            stderr = push.stderr.strip()
+            reason = f"push rejected: {stderr}; repair: {_push_repair(stderr)}"
             repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"})
-            blocked = True
-            break
+            continue
 
         pr, error = _reconcile_pr(store, repo_name, worktree, repo_info, repo_info["defaultBranch"], draft,
                                    spec_product["goal"], render.pr_body(store))
         if error:
-            repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [error], "state": "failed"})
+            # The branch IS on the remote: record what was published and where it stopped.
+            reason = f"pushed {verified_sha[:12]} to {repo_info['featureBranch']}; the PR step failed: {error}"
+            repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "publishedSha": verified_sha,
+                              "caveats": [reason], "state": "failed"})
             continue
         repos_out.append({"repo": repo_name, "pr": pr, "deliveredSha": touched[repo_name], "caveats": [], "state": "delivered"})
 
-    exit_ = "delivery blocked" if blocked else (
-        "partially delivered" if any(r["state"] == "failed" for r in repos_out) else "delivered"
-    )
-    bound_to = {"requirements": store.state["revisions"]["requirements"], "plan": store.state["revisions"]["plan"]}
+    # Mixed is partial; nothing delivered is blocked (the rows name why); an
+    # untouched (skipped) repo never makes a delivery partial.
+    delivered_any = any(r["state"] == "delivered" for r in repos_out)
+    failed_any = any(r["state"] == "failed" for r in repos_out)
+    exit_ = "delivered" if not failed_any else ("partially delivered" if delivered_any else "delivery blocked")
     return Product({"exit": exit_, "inputsDigest": ctx["inputs"]["digest"], "boundTo": bound_to, "repos": repos_out})

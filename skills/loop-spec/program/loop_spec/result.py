@@ -92,6 +92,10 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
     # workDelivered is a delivery fact, not a label: true whenever any target
     # actually reached "delivered", including a partial draft on an escalated run.
     work_delivered = any(entry.get("state") == "delivered" for entry in delivery["targets"]) if delivery else False
+    # LF-58: any route to a terminal result (a stop after a partial DELIVER, too)
+    # reports partial publication from the per-repo facts, not the caller's flag alone.
+    if work_delivered and any(entry.get("state") == "failed" for entry in delivery["targets"]):
+        partially_delivered = True
 
     warnings = [f.get("cause") or f.get("id", "") for f in store.state["ledger"]["findings"] if f.get("disposition") in ("deferred", "open")]
 

@@ -93,6 +93,13 @@
               }
             ]
           },
+          "publishedSha": {
+            "description": "Set on a failed row whose push succeeded before a later step failed: the SHA now on the remote branch.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "deliveredSha": {
             "type": [
               "string",

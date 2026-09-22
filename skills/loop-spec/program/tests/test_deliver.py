@@ -17,6 +17,7 @@ from loop_spec import deliver
 from loop_spec import repo as repo_module
 from loop_spec.execute import Product
 from loop_spec.paths import FeaturePaths
+from loop_spec.schema import load_schema, validate
 from loop_spec.state import StateStore
 
 
@@ -201,7 +202,7 @@ class DeliverTests(unittest.TestCase):
         self.assertEqual(entry["state"], "failed")
         self.assertIsNone(entry["pr"])
         self.assertIn("feature branch moved after VERIFY", entry["caveats"][0])
-        self.assertEqual(action.product["exit"], "partially delivered")
+        self.assertEqual(action.product["exit"], "delivery blocked")  # LF-58: nothing delivered
         self.assertIsNone(repo_module.branch_sha(self.remote, "feature"))  # never pushed at all
 
     def test_normal_delivery_pushes_exactly_the_verified_sha_by_value(self):
@@ -230,6 +231,88 @@ class DeliverTests(unittest.TestCase):
             deliver.run(self.store, self.paths, self.ctx)
 
         self.assertIn("--draft", create_args)
+
+    # --- LF-58: one repo's failure never stops the others --------------------
+
+    def _add_second_repo(self, name="second"):
+        remote = self.tmp / f"{name}.git"
+        remote.mkdir()
+        _git(remote, "init", "-q", "--bare", "-b", "main")
+        repo = self.tmp / name
+        repo.mkdir()
+        _init_repo(repo)
+        _commit(repo, "a.py", "init")
+        base = _head(repo)
+        _git(repo, "remote", "add", "origin", str(remote))
+        _git(repo, "push", "origin", "main")
+        _git(repo, "checkout", "-q", "-b", "feature")
+        _commit(repo, "b.py", "work")
+        head = _head(repo)
+        _git(repo, "checkout", "-q", "main")
+        self.store.state["repos"][name] = {"path": str(repo), "baseSha": base, "featureBranch": "feature",
+                                           "defaultBranch": "main", "lastKnownHead": head}
+        self.store.state["credentialChecks"][name] = dict(self.store.state["credentialChecks"]["repo"])
+        self.store.state["products"]["execute"]["product"]["heads"][name] = head
+        self.store.save()
+        return repo, remote, head
+
+    def _deliver(self):
+        with self._run_gh_reconcile():
+            product = deliver.run(self.store, self.paths, self.ctx).product
+        self.assertEqual(validate(product, load_schema("deliver")), [])
+        return product, {r["repo"]: r for r in product["repos"]}
+
+    def test_a_failed_first_repo_still_lets_the_second_deliver(self):
+        second, second_remote, second_head = self._add_second_repo()
+        _git(self.repo, "config", "remote.origin.pushurl", "/nonexistent/remote.git")
+        product, rows = self._deliver()
+        self.assertEqual(product["exit"], "partially delivered")
+        self.assertEqual(rows["repo"]["state"], "failed")
+        self.assertIn("check origin's push URL", rows["repo"]["caveats"][0])
+        self.assertIn("does not appear to be a git repository", rows["repo"]["caveats"][0])  # raw stderr kept
+        self.assertEqual((rows["second"]["state"], rows["second"]["deliveredSha"]), ("delivered", second_head))
+        self.assertEqual(_head(second_remote, "feature"), second_head)
+
+    def test_a_failed_last_repo_keeps_the_first_delivery(self):
+        second, _, _ = self._add_second_repo()
+        _git(second, "config", "remote.origin.pushurl", "/nonexistent/remote.git")
+        product, rows = self._deliver()
+        self.assertEqual(product["exit"], "partially delivered")
+        self.assertEqual((rows["repo"]["state"], rows["second"]["state"]), ("delivered", "failed"))
+
+    def test_every_push_failing_is_delivery_blocked_naming_each_cause(self):
+        second, _, _ = self._add_second_repo()
+        for repo in (self.repo, second):
+            _git(repo, "config", "remote.origin.pushurl", "/nonexistent/remote.git")
+        product, rows = self._deliver()
+        self.assertEqual(product["exit"], "delivery blocked")
+        self.assertTrue(all(r["state"] == "failed" and r["caveats"] for r in rows.values()))
+
+    def test_one_refused_credential_blocks_before_any_remote_write(self):
+        second, second_remote, _ = self._add_second_repo()
+        self.store.state["credentialChecks"]["second"].update({"gh_ok": False, "failedCommand": "gh auth status", "repair": "run: gh auth login"})
+        self.store.save()
+        product, rows = self._deliver()
+        self.assertEqual(product["exit"], "delivery blocked")
+        self.assertIn("gh credential check failed", rows["second"]["caveats"][0])
+        self.assertIn("not attempted", rows["repo"]["caveats"][0])
+        self.assertIsNone(repo_module.branch_sha(self.remote, "feature"))
+        self.assertIsNone(repo_module.branch_sha(second_remote, "feature"))
+
+    def test_a_push_that_lands_before_the_pr_fails_records_what_was_published(self):
+        def fake_run_gh(repo, *args):
+            if args[:2] == ("pr", "list"):
+                return 0, "[]", ""
+            if args[:2] == ("pr", "create"):
+                return 1, "", "GraphQL: rate limited"
+            raise AssertionError(f"unexpected gh call: {args}")
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh):
+            product = deliver.run(self.store, self.paths, self.ctx).product
+        self.assertEqual(validate(product, load_schema("deliver")), [])
+        row = product["repos"][0]
+        self.assertEqual((row["state"], row["publishedSha"], row["deliveredSha"]), ("failed", self.head_sha, None))
+        self.assertIn("rate limited", row["caveats"][0])
+        self.assertEqual(_head(self.remote, "feature"), self.head_sha)
 
 
 if __name__ == "__main__":

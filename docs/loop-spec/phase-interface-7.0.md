@@ -264,9 +264,9 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | | |
 |---|---|
 | Inputs | ITERATE product; per-repo verified SHA; rendered summary; delivery configuration and readiness policy; existing remote state |
-| Product | per repo `pr` identity, `deliveredSha`, `caveats[]` |
+| Product | per repo `pr` identity, `deliveredSha`, `caveats[]`, `state` (`delivered`, `failed`, `skipped`); a `failed` row whose push landed before a later step failed carries `publishedSha` |
 | Preconditions | ITERATE `converged` or `converged with caveats`; or `escalated` with an operator policy allowing partial delivery as a draft |
-| Runs as | program code |
+| Runs as | program code: every touched repo's credentials are checked before the first remote write; then each repo is pushed and its PR reconciled, and a rejected push or failed PR step is that repo's `failed` row while the other repos are still attempted |
 
 | Id | Postcondition | Gates |
 |---|---|---|
@@ -282,8 +282,8 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | Exit | Requires | Route |
 |---|---|---|
 | `delivered` | D1 to D4, D7, D8 for every repo | terminal `converged` or `converged-with-caveats` |
-| `partially delivered` | D1, D2, D4, D5, D7, D8 for every repo whose remote write was attempted | terminal `escalated` (never `converged`, whatever ITERATE's own verdict was) with `partiallyDelivered: true`, `workDelivered: true`, and `reason` naming the repos that did not deliver |
-| `delivery blocked` | D4 | pause: a question naming the failed command and repair, with the answers fix-and-re-enter DELIVER or stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` with `result: escalated` and per-repo state |
+| `partially delivered` | at least one repo `delivered` and at least one `failed`; D1, D2, D4, D5, D7, D8 for every repo whose remote write was attempted | terminal `escalated` (never `converged`, whatever ITERATE's own verdict was) with `partiallyDelivered: true`, `workDelivered: true`, and `reason` naming the repos that did not deliver |
+| `delivery blocked` | D4; a credential refusal (D7), or no touched repo delivered | pause: a question naming the failed command and repair, with the answers fix-and-re-enter DELIVER or stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` with `result: escalated` and per-repo state |
 
 ## debug
 
