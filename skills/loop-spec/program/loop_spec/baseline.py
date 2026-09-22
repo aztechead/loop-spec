@@ -461,11 +461,23 @@ class Comparison:
         return cls(verdict=data["verdict"], new_identities=list(data["newIdentities"]), detail=data["detail"])
 
 
+def _incomplete(run: CommandRun) -> bool:
+    """True when `run` never finished in the way a comparison needs: either an
+    execution/environment failure (run_command's own error classes -- timeout,
+    command-not-found, spawn-error; there is no other path that sets one) or,
+    with a recognized runner, a nonzero exit with nothing parsed (a collection/
+    build failure -- the parser found no per-test failures because nothing ran,
+    not because everything passed). Either way, a set of failure identities or
+    fingerprints taken from it says nothing about what a FINISHED run would
+    have found."""
+    if run.error_class is not None:
+        return True
+    return run.runner is not None and run.exit_status != 0 and not run.failure_identities
+
+
 def compare_to_baseline(entry: BaselineEntry, candidate: CommandRun, *, feature_added: bool = False, must_flip: bool = False) -> Comparison:
     baseline_run = entry.run
 
-    if baseline_run is not None and baseline_run.error_class is not None:
-        return Comparison("baseline-error", [], "baseline run hit an environment error; E7 cannot be decided")
     if baseline_run is None and not feature_added:
         return Comparison("baseline-error", [], "no baseline run was recorded for this command")
 
@@ -488,23 +500,35 @@ def compare_to_baseline(entry: BaselineEntry, candidate: CommandRun, *, feature_
             return Comparison("featureAdded-failed", [], "no test ran")
         return Comparison("featureAdded-ok", [], "feature-added command passed")
 
+    # R4 (plus the round-2 residual): classify each run's own completion BEFORE
+    # ever comparing failure identities or fingerprints -- a run that did not
+    # finish might have found more had it actually finished, so an overlapping
+    # (even IDENTICAL) id or fingerprint set out of it is never "no-regression"
+    # on its own. Only a baseline stuck in the exact same broken state (same
+    # error class, same fingerprints) excuses a candidate that also didn't
+    # finish; a baseline that did not finish but the candidate does not
+    # reproduce leaves E7 undecidable rather than guessed at either way.
+    candidate_incomplete = _incomplete(candidate)
+    baseline_incomplete = _incomplete(baseline_run)
+    if candidate_incomplete:
+        same_pre_existing_failure = (
+            baseline_incomplete and baseline_run.error_class == candidate.error_class
+            and set(candidate.fingerprints) == set(baseline_run.fingerprints)
+        )
+        if same_pre_existing_failure:
+            return Comparison("no-regression", [], "same pre-existing collection/runner failure as base")
+        if baseline_incomplete:
+            return Comparison("baseline-error", [], "baseline run hit an environment error; E7 cannot be decided")
+        detail = (
+            f"candidate did not complete ({candidate.error_class}, exit {candidate.exit_status})"
+            if candidate.error_class is not None
+            else f"runner failed before collecting tests (exit {candidate.exit_status})"
+        )
+        return Comparison("regression", [], detail)
+    if baseline_incomplete:
+        return Comparison("baseline-error", [], "baseline run hit an environment error; E7 cannot be decided")
+
     if candidate.runner is not None and baseline_run.runner is not None:
-        # R4: a nonzero exit with nothing parsed is a collection/build/runner
-        # failure, not "zero test failures" -- comparing empty identity sets
-        # would read it as no-regression even though nothing was actually run.
-        # Only a baseline in that SAME broken state (same error class, same
-        # fingerprints) excuses it; anything else is a new regression.
-        if candidate.exit_status != 0 and not candidate.failure_identities:
-            same_pre_existing_failure = (
-                baseline_run.exit_status != 0 and not baseline_run.failure_identities
-                and candidate.error_class == baseline_run.error_class
-                and set(candidate.fingerprints) == set(baseline_run.fingerprints)
-            )
-            if same_pre_existing_failure:
-                return Comparison("no-regression", [], "same pre-existing collection/runner failure as base")
-            return Comparison(
-                "regression", [], f"runner failed before collecting tests (exit {candidate.exit_status})",
-            )
         new_identities = sorted(set(candidate.failure_identities) - set(baseline_run.failure_identities))
     else:
         new_identities = sorted(set(candidate.fingerprints) - set(baseline_run.fingerprints))

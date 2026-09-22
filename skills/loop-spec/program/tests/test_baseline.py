@@ -224,6 +224,38 @@ class CompareToBaselineTests(unittest.TestCase):
         result = compare_to_baseline(entry, candidate)
         self.assertEqual(result.verdict, "no-regression")
 
+    def test_candidate_timeout_with_a_matching_id_is_still_a_regression(self):
+        # R4 round 2: the candidate never finished (timeout), even though the
+        # one failure id its partial output DID parse happens to equal the
+        # baseline's -- set subtraction alone would read that as no-regression,
+        # but a run that timed out may have found more had it actually finished.
+        base_run = self._cr(exit_status=1, runner="pytest", failure_identities=["test_a.py::test_known"])
+        entry = BaselineEntry(command="pytest", task="T-1", status="ran", run=base_run)
+        candidate = self._cr(exit_status=124, runner="pytest", failure_identities=["test_a.py::test_known"], error_class="timeout")
+        result = compare_to_baseline(entry, candidate)
+        self.assertEqual(result.verdict, "regression")
+        self.assertIn("timeout", result.detail)
+
+    def test_baseline_and_candidate_both_timeout_identically_is_no_regression(self):
+        # Both stuck in the exact same broken state (same error class, same
+        # fingerprints) -- nothing NEW failed, so it is not held against the
+        # candidate the way an unmatched timeout is.
+        base_run = self._cr(exit_status=124, fingerprints_=["fp-timeout"], error_class="timeout")
+        entry = BaselineEntry(command="cmd", task="T-1", status="ran", run=base_run)
+        candidate = self._cr(exit_status=124, fingerprints_=["fp-timeout"], error_class="timeout")
+        result = compare_to_baseline(entry, candidate)
+        self.assertEqual(result.verdict, "no-regression")
+
+    def test_complete_candidate_with_the_same_known_failure_is_no_regression(self):
+        # Guards the accepted case this whole classification sits in front of:
+        # a candidate that actually FINISHED, with the same pre-existing
+        # failure plus more passing tests, is still no-regression.
+        base_run = self._cr(exit_status=1, runner="pytest", failure_identities=["test_a.py::test_known"])
+        entry = BaselineEntry(command="pytest", task="T-1", status="ran", run=base_run)
+        candidate = self._cr(exit_status=1, runner="pytest", failure_identities=["test_a.py::test_known"])
+        result = compare_to_baseline(entry, candidate)
+        self.assertEqual(result.verdict, "no-regression")
+
     def test_feature_added_ok(self):
         entry = BaselineEntry(command="cmd", task="T-1", status="no-baseline", run=None)
         candidate = self._cr(exit_status=0, runner="pytest", failure_identities=[])
