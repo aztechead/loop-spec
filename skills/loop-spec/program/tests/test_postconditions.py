@@ -243,6 +243,31 @@ class PostconditionsTests(unittest.TestCase):
         bad["tasks"][1]["commits"] = []  # sha_b no longer claimed by any task
         self.assertIsNotNone(self._boundary("execute", bad, "integrated")._e4())
 
+    def test_e4_workspace_filters_tasks_by_repo(self):
+        # LF-24: a second repo whose task commit is unknown to the first must not be
+        # unioned into the first repo's coverage check.
+        other = Path(self._tmp.name) / "other"
+        other.mkdir()
+        _git(other, "init", "-q", "-b", "main")
+        _git(other, "config", "user.email", "test@example.com")
+        _git(other, "config", "user.name", "Test")
+        (other / "a.txt").write_text("a\n", encoding="utf-8")
+        _git(other, "add", "a.txt")
+        _git(other, "commit", "-q", "-m", "base")
+        other_base = _rev_parse(other)
+        _git(other, "checkout", "-q", "-b", "feat/x")
+        (other / "b.txt").write_text("b\n", encoding="utf-8")
+        _git(other, "add", "b.txt")
+        _git(other, "commit", "-q", "-m", "T-9")
+        other_head = _rev_parse(other)
+        self.store.state["repos"]["other"] = {"path": str(other), "baseSha": other_base, "featureBranch": "feat/x", "defaultBranch": "main", "lastKnownHead": other_base}
+        plan = self.store.state["products"]["plan"]["product"]
+        plan["tasks"].append({**plan["tasks"][0], "id": "T-9", "repo": "other"})
+        product = copy.deepcopy(self.execute_product)
+        product["tasks"].append({"id": "T-9", "disposition": "done", "evidence": None, "commits": [other_head], "review": copy.deepcopy(product["tasks"][0]["review"])})
+        product["heads"]["other"] = other_head
+        self.assertIsNone(self._boundary("execute", product, "integrated")._e4())
+
     def test_e5(self):
         self.assertIsNone(self._boundary("execute", self.execute_product, "integrated")._e5())
         bad = copy.deepcopy(self.execute_product)

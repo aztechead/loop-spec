@@ -396,6 +396,9 @@ class Boundary:
         return None
 
     def _e4(self) -> str | None:
+        # A task's repo lives on the PLAN task; in a workspace, unioning every task's
+        # commits against each repo's range rejected a correct two-repo product (LF-24).
+        plan_repo = {t["id"]: t["repo"] for t in self.store.state["products"]["plan"]["product"]["tasks"]}
         for name, info in self._repo_entries().items():
             repo_path = Path(info["path"])
             head, error = self._repo_head_or_error(name)
@@ -403,7 +406,8 @@ class Boundary:
                 return error
             task_commits = {
                 repo_module.head_sha(repo_path, c) for t in self.product["tasks"]
-                if t["disposition"] in ("done", "adopted") for c in t["commits"]
+                if t["disposition"] in ("done", "adopted") and plan_repo.get(t["id"]) == name
+                for c in t["commits"]
             }
             actual = set(repo_module.commits_between(repo_path, info["baseSha"], head))
             if task_commits != actual:
