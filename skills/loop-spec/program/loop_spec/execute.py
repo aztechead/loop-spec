@@ -95,14 +95,14 @@ def _plan_tasks(store) -> dict:
     return {t["id"]: t for t in store.state["products"]["plan"]["product"]["tasks"]}
 
 
-def _retry_or_block(execute_state: dict, task_id: str, task_state: dict, reason_text: str) -> None:
+def _retry_or_block(execute_state: dict, task_id: str, task_state: dict, reason_text: str, *, retry_status: str = "pending") -> None:
     task_state["retries"] += 1
     if task_state["retries"] > retry_limit():
         task_state["status"] = "blocked"
         task_state["reason"] = None
         execute_state["issues"].append({"task": task_id, "text": reason_text})
     else:
-        task_state["status"] = "pending"
+        task_state["status"] = retry_status
         task_state["reason"] = reason_text
 
 
@@ -446,9 +446,11 @@ def _handle_rejection(store, paths, ctx, execute_state: dict) -> Pause | None:
         if failure["id"] in _REVIEW_RETRY_FAILURE_IDS:
             for task_id in _rejection_task_ids(failure["message"], execute_state):
                 task_state = execute_state["tasks"][task_id]
-                task_state["status"] = "probing"
                 task_state["review"] = None
-                task_state["reason"] = failure["message"]
+                # A re-issued review counts against the same retry limit as a
+                # re-implementation; without it a host that never attests a
+                # review re-issued it forever (LF-35).
+                _retry_or_block(execute_state, task_id, task_state, failure["message"], retry_status="probing")
         elif failure["id"] == _IMPLEMENT_RETRY_FAILURE_ID:
             for task_id in _rejection_task_ids(failure["message"], execute_state):
                 task_state = execute_state["tasks"][task_id]

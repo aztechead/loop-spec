@@ -97,6 +97,20 @@ if __name__ == "__main__":
 class MetaNameLayoutTests(unittest.TestCase):
     """Claude Code 2.1.278 names transcripts by agent id and keeps the dispatch name in .meta.json."""
 
+    def test_session_found_under_another_project_key(self):
+        # LF-34: the lookup keys on the session id, not on this process's cwd; a lead
+        # whose shell moved into the results dir still attests its workers.
+        import json as _json
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            subagents = home / "projects" / "-repo" / "sess" / "subagents"
+            subagents.mkdir(parents=True)
+            _write_transcript(subagents / "agent-a7b7490498fde8aac.jsonl", _valid_records())
+            (subagents / "agent-a7b7490498fde8aac.meta.json").write_text(_json.dumps({"name": "worker-1"}))
+            found = find_transcripts(home, Path("/repo/.loop-spec/results/slug"), "sess", "worker-1")
+            self.assertEqual([p.name for p in found], ["agent-a7b7490498fde8aac.jsonl"])
+            self.assertEqual(find_transcripts(home, Path("/repo"), "other-sess", "worker-1"), [])
+
     def test_meta_name_or_agent_id_matches(self):
         import json as _json
         with tempfile.TemporaryDirectory() as tmp:

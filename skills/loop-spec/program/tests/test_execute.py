@@ -382,6 +382,31 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertEqual(task_state["review"], {"sentinel": True})
         self.assertEqual(self.store.state["execute"]["handledRejections"], ["attempt-2"])
 
+    def test_review_reissues_past_the_limit_block_the_task(self):
+        # LF-35: a review that never attests must not be re-issued forever; each
+        # E6 re-issue counts as a retry, and past the limit the task blocks.
+        worktree, task_head = self._implement_and_review("T-1", "T-1.txt")
+        task_state = self.store.state["execute"]["tasks"]["T-1"]
+        for n in range(retry_limit() + 1):
+            rejection_ctx = self.ctx | {
+                "attempt": {"id": f"attempt-e6-{n}"},
+                "entry": {"mode": "remediation", "payload": {"rejected": {
+                    "exit": "integrated",
+                    "failures": [{"id": "E6", "message": "tasks with an unaccepted review evidence level: T-1"}],
+                }}},
+            }
+            action = step(self.store, self.paths, rejection_ctx)
+            if isinstance(action, Product):
+                break
+            self.assertEqual(action.request["role"], "code-reviewer")
+            review = self._pass_review(task_head, task_head, task_head)
+            on_submit(self.store, self.paths, action.request | {"stepAttemptId": f"rev-e6-{n}"}, review)
+        self.assertIsInstance(action, Product)
+        self.assertEqual(action.product["exit"], "blocked")
+        self.assertEqual(task_state["status"], "blocked")
+        self.assertEqual(task_state["retries"], retry_limit() + 1)
+        self.assertEqual(task_state["commits"], [task_head])
+
     def test_review_retry_after_rejection_does_not_wipe_commits(self):
         # LF-17: an E6 rejection resets a DONE task straight to "probing" (no new
         # implementation), so the fresh review's task_head equals the already

@@ -17,16 +17,23 @@ class HostAttestor(Protocol):
 
 
 def find_transcripts(claude_home: Path, project_cwd: Path, session_id: str, dispatch_name: str) -> list[Path]:
-    cwd_key = str(project_cwd).replace("/", "-")
-    subagents_dir = Path(claude_home) / "projects" / cwd_key / session_id / "subagents"
-    if not subagents_dir.is_dir():
+    # The session's transcript dir is keyed by the cwd Claude Code STARTED in, which is
+    # not necessarily the cwd this process runs in (LF-34: a lead's `cd` into the
+    # results dir moved Path.cwd() and every later lookup found nothing). The session
+    # id is unique across projects, so glob it under every project key; project_cwd is
+    # kept only as the first candidate so the common case stays one directory.
+    projects = Path(claude_home) / "projects"
+    candidates = [projects / str(project_cwd).replace("/", "-") / session_id / "subagents"]
+    candidates += [d for d in sorted(projects.glob(f"*/{session_id}/subagents")) if d not in candidates]
+    subagents_dirs = [d for d in candidates if d.is_dir()]
+    if not subagents_dirs:
         return []
     # Claude Code 2.1.278 names the file by agent id (`agent-<id>.jsonl`) and keeps the
     # dispatch name in the `.meta.json` sidecar (live finding LF-10; the probe record had
     # the name in the file name). Accept either spelling of the dispatch: the Agent
     # tool's name, or the agent id it returned.
     matches: list[Path] = []
-    for meta in sorted(subagents_dir.glob("agent-*.meta.json")):
+    for meta in sorted(m for d in subagents_dirs for m in d.glob("agent-*.meta.json")):
         transcript = meta.with_name(meta.name[: -len(".meta.json")] + ".jsonl")
         if not transcript.exists():
             continue
@@ -38,7 +45,7 @@ def find_transcripts(claude_home: Path, project_cwd: Path, session_id: str, disp
         if name == dispatch_name or agent_id == dispatch_name:
             matches.append(transcript)
     if not matches:
-        matches = sorted(subagents_dir.glob(f"agent-a{dispatch_name}-*.jsonl"))
+        matches = sorted(m for d in subagents_dirs for m in d.glob(f"agent-a{dispatch_name}-*.jsonl"))
     return matches
 
 
