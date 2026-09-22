@@ -6,8 +6,8 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [7.0.3] - 2026-09-22
 
-Seven defects found by the 7.0.2 live runs (LF-54 to LF-60), each fixed at its root
-with module tests and, except LF-60, shown live in `docs/loop-spec/live-runs-7.0.md`:
+Eight defects found by the 7.0.2 and 7.0.3 live runs (LF-54 to LF-61), each fixed at its root
+with module tests and shown live in `docs/loop-spec/live-runs-7.0.md`:
 
 - LF-54: the PLAN critic gets each task's baseline facts (ran or not, failing
   identities at base) and learns that the program compares failure identities, not
@@ -33,7 +33,16 @@ with module tests and, except LF-60, shown live in `docs/loop-spec/live-runs-7.0
   accepted; the phase asks a blocked question (`fix-and-re-enter` or `stop`, no
   default) unless `evidence.review.accept` or the new `evidence.judgment.accept`
   opts the role in. Cached judgments and reviewed ranges are consumed only with
-  accepted evidence.
+  accepted evidence. A task review is bound to the candidate SHA it was issued for,
+  and a branch that moved while the review ran is blocked, never relabelled as
+  reviewed.
+- LF-61: the program schedules the instruction-file Reads. `dispatchPrompt` states
+  the line count and lists each Read call. Ranges are cut by a provisional
+  16,000-byte rendered budget, not by line count, because 537 lines of hex already
+  exceeded the host's 25,000-token cap. The bootstrap says how to recover from a
+  short or over-limit read, and when to stop. A prompt line over the supported
+  budget stops the step before anything is written. Attestation still requires
+  every line.
 
 Each role skill also carries one brief, schema-valid result example.
 

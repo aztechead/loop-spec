@@ -280,6 +280,62 @@ class SubmitTests(StepsTestCase):
             self.assertEqual(submission.evidence_level, "unattested")
 
 
+def hex_heavy_prompt(hex_lines: int = 1300) -> str:
+    """LF-61: the shape of e2e-lf59b's failing review prompt (a prose header, then a diff
+    of sha256 hex literals, then the step trailer), generated deterministically."""
+    import hashlib
+    header = [f"Review rule {i}: every finding names a file, a line, and a cause." for i in range(300)]
+    diff = [f'+    "{hashlib.sha256(str(i).encode()).hexdigest()}",' for i in range(hex_lines)]
+    return "\n".join(header + diff + ["--- loop-spec step ---", "When done, write your JSON result."]) + "\n"
+
+
+def _rendered(prompt: str, offset: int, limit: int) -> int:
+    lines = prompt.split("\n")
+    return sum(len(f"{n}\t{lines[n - 1]}\n".encode()) for n in range(offset, offset + limit))
+
+
+class ReadScheduleTests(StepsTestCase):
+    """LF-61: the program, not the worker, chooses the Read ranges."""
+
+    def test_a_hex_heavy_prompt_is_covered_exactly_once_within_the_budget(self):
+        prompt = hex_heavy_prompt()
+        schedule = steps.read_schedule(prompt)
+        total = len(prompt.split("\n"))
+        self.assertEqual(schedule[0]["offset"], 1)
+        for before, after in zip(schedule, schedule[1:]):
+            self.assertEqual(after["offset"], before["offset"] + before["limit"])  # contiguous, in order
+        self.assertEqual(sum(r["limit"] for r in schedule), total)
+        self.assertTrue(all(r["offset"] >= 1 and r["limit"] >= 1 for r in schedule))
+        self.assertTrue(all(_rendered(prompt, r["offset"], r["limit"]) <= steps.READ_BUDGET_BYTES for r in schedule))
+        self.assertLess(schedule[0]["offset"] + schedule[0]["limit"] - 1, 537)  # the host's failing first page is split
+
+    def test_multibyte_lines_and_the_budget_boundary(self):
+        line = "é" * 27  # 54 bytes; rendered "1\t" + 54 + "\n" = 57
+        self.assertEqual(steps.read_schedule(line + "\n" + line, budget=57), [{"offset": 1, "limit": 1}, {"offset": 2, "limit": 1}])
+        with self.assertRaisesRegex(LoopSpecError, "line 1 .* 57 bytes, over the supported 56-byte read budget"):
+            steps.read_schedule(line, budget=56)
+
+    def test_an_over_budget_line_issues_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            with self.assertRaisesRegex(LoopSpecError, "execute code-reviewer step not issued: line 2 "):
+                self._issue(store, paths, role="code-reviewer", prompt="ok\n" + "é" * 9000)
+            self.assertEqual(store.state["steps"]["open"], [])
+            self.assertEqual(list(paths.steps_dir.glob("*")) if paths.steps_dir.exists() else [], [])
+
+    def test_the_bootstrap_lists_every_call_and_keeps_a_unicode_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = FeaturePaths(root=Path(tmp) / "fëature-日本")
+            store = StateStore.create(paths, {"id": "run-1", "entry": "cycle"}, "do the thing")
+            record = self._issue(store, paths, role="code-reviewer", prompt=hex_heavy_prompt(400))
+            self.assertIn(f"The instruction file {record['instructionPath']} has ", record["dispatchPrompt"])
+            self.assertIn("fëature-日本", record["dispatchPrompt"])
+            calls = [f"{i}. offset={r['offset']} limit={r['limit']}" for i, r in enumerate(record["readSchedule"], 1)]
+            self.assertGreater(len(calls), 1)
+            self.assertIn("\n".join(calls), record["dispatchPrompt"])
+            self.assertNotIn("\r", record["dispatchPrompt"])
+
+
 class AttestationRequiredRoleTests(StepsTestCase):
     """LF-30's post-hardening item 2: a plan-critic/code-reviewer/iterate-judge step
     with nothing behind it but the transcript is never accepted unattested -- the

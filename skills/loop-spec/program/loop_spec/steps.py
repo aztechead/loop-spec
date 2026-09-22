@@ -27,15 +27,52 @@ from .schema import validate, validate_or_raise
 ATTESTATION_REQUIRED_ROLES = frozenset({"plan-critic", "code-reviewer", "iterate-judge"})
 ACCEPTED_LEVELS = frozenset({"host-attested", "controller-observed", "human-attested"})
 
-# LF-59: the whole Agent prompt for a role step. attest.check_file_receipt requires the
+# LF-61: the most rendered bytes (`n<TAB>line<LF>`, UTF-8) one scheduled Read covers.
+# Provisional and empirical, not a proven token bound: on Claude Code 2.1.280, 16,000
+# bytes of hex diff measured about 8,900 of the Read tool's 25,000-token cap (probe-lf61),
+# and the recovery rules below cover a host that counts differently.
+READ_BUDGET_BYTES = 16_000
+
+# LF-59/61: the whole Agent prompt for a role step. attest.check_file_receipt requires the
 # worker's opening to equal it and the worker's first actions to be Reads covering
-# every line of the instruction file.
+# every line of the instruction file; the schedule only makes that easy to do.
 _DISPATCH_PROMPT = (
     "Execute loop-spec step {step_id}.\n"
-    "Before any other action, use the Read tool to read the complete instruction file at {path}; "
-    "if a read stops before the last line, keep reading it with offset and limit until you have every line.\n"
+    "The instruction file {path} has {lines} lines. Before any other action, make these calls to the Read tool, in order, "
+    "each with exactly this file_path and the offset and limit shown:\n"
+    "{calls}\n"
+    "If a read returns fewer lines than its limit, read again from the line after the last line it returned "
+    "up to the end of that same listed range, then go on. If a read is refused as too large, read only the first "
+    "half of the lines left in that range (at least one line), then continue the same way up to the end of that range. "
+    "If a one-line read is refused, returns no line, or returns its line cut short, stop: report that the "
+    "instruction file could not be read, and write no result.\n"
+    "Do not use any other tool, and do not skip, sample or summarize any range, until you have read every line "
+    "from 1 to {lines}.\n"
     "Then follow that file; it names where to write your result."
 )
+
+
+def read_schedule(prompt: str, budget: int = READ_BUDGET_BYTES) -> list[dict]:
+    """LF-61: contiguous Read ranges covering every line of `prompt` once, in order,
+    each rendering to at most `budget` bytes. A line that alone exceeds the budget
+    raises: it is over the supported read budget (not proof the host cannot read it)."""
+    lines = prompt.split("\n")  # a prompt ending in LF ends with its empty last line
+    ranges, start, size = [], 1, 0
+    for number, line in enumerate(lines, 1):
+        rendered = len(f"{number}\t{line}\n".encode("utf-8"))
+        if rendered > budget:
+            raise LoopSpecError(
+                f"line {number} of the composed prompt renders to {rendered} bytes, over the supported "
+                f"{budget}-byte read budget",
+                repair="shorten the input that produced that line (for example a minified or generated file in "
+                       "a diff); the program does not truncate, split or summarize a prompt line")
+        if size + rendered > budget:
+            ranges.append({"offset": start, "limit": number - start})
+            start, size = number, 0
+        size += rendered
+    ranges.append({"offset": start, "limit": len(lines) - start + 1})
+    return ranges
+
 
 _STEP_TRAILER = """
 --- loop-spec step ---
@@ -52,7 +89,6 @@ def issue(store, paths, *, phase: str, attempt_id: str, kind: str, role: str | N
           model: str | None = None) -> dict:
     step_id = new_id("step")
     step_dir = paths.steps_dir / step_id
-    step_dir.mkdir(parents=True, exist_ok=True)
     # A phase's own step (an external/lead/role implementation producing that
     # phase's product) must land its result exactly where contract.invoke checks
     # for it (attempts/<id>/product.json), not at the auto-generated path below;
@@ -86,11 +122,21 @@ def issue(store, paths, *, phase: str, attempt_id: str, kind: str, role: str | N
                                 repair="compose role prompts with LF line endings only")
         record["prompt"] = full_prompt = full_prompt + "\n"
         instruction_path = step_dir / "instructions.md"
-        with open(instruction_path, "w", encoding="utf-8", newline="") as f:
-            f.write(full_prompt)
-        record.update({"transport": "file", "instructionPath": str(instruction_path),
-                       "dispatchPrompt": _DISPATCH_PROMPT.format(step_id=step_id, path=instruction_path)})
+        # LF-61: scheduled on the final prompt, before anything is written, so a
+        # refusal leaves no step anyone could dispatch.
+        try:
+            schedule = read_schedule(full_prompt)
+        except LoopSpecError as exc:
+            raise LoopSpecError(f"{phase} {role} step not issued: {exc.message}", repair=exc.repair) from exc
+        calls = "\n".join(f"{i}. offset={r['offset']} limit={r['limit']}" for i, r in enumerate(schedule, 1))
+        record.update({"transport": "file", "instructionPath": str(instruction_path), "readSchedule": schedule,
+                       "dispatchPrompt": _DISPATCH_PROMPT.format(step_id=step_id, path=instruction_path,
+                                                                 lines=len(full_prompt.split("\n")), calls=calls)})
     validate_or_raise(record, "step")
+    step_dir.mkdir(parents=True, exist_ok=True)
+    if kind == "role":
+        with open(record["instructionPath"], "w", encoding="utf-8", newline="") as f:
+            f.write(full_prompt)
     atomic_write_json(step_dir / "step.json", record)
 
     store.state["steps"]["open"].append({

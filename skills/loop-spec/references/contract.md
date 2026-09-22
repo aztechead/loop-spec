@@ -112,8 +112,18 @@ this from `roles.resolve_model`, env `LOOP_SPEC_MODEL_<ROLE>` or config
 `roles.<role>.model`). A `role` step also carries `transport: "file"`,
 `instructionPath` (`steps/<step-id>/instructions.md`, written once at issue with
 the exact bytes of `prompt`, which then ends in one LF and holds no CR) and
-`dispatchPrompt`, the fixed text the lead passes as the Agent prompt; a step with
-no `transport` is a legacy step whose Agent prompt is `prompt` itself. An SDK or
+`dispatchPrompt`, the text the lead passes as the Agent prompt, and `readSchedule`
+(LF-61). The schedule is contiguous `{offset, limit}` Read ranges covering every line
+of `prompt` once. Each range renders (`n<TAB>line<LF>`, UTF-8) to at most
+`steps.READ_BUDGET_BYTES` (16,000). That is a provisional budget measured with margin
+on Claude Code 2.1.280, not a token guarantee. `dispatchPrompt` states the line count
+and lists every call, plus the recovery rules: after a short read, continue from the
+line after the last one returned to that range's end. After a read refused as too
+large, read the first half of what is left of the range. When a one-line read fails,
+stop and write no result. A prompt line that alone renders over the budget is over
+the supported budget, so the step is not issued (nothing is written or opened), and
+the error names the line to shorten. A step with no `transport` is a legacy step
+whose Agent prompt is `prompt` itself. An SDK or
 supervisor runner still sends `prompt` directly and is attested by its own receipt,
 not by a Read. In the composed prompt each input section's trailing
 newlines are trimmed, so exactly one blank line separates sections; its interior

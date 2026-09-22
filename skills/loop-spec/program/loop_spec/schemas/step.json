@@ -18,8 +18,25 @@
   ],
   "additionalProperties": false,
   "anyOf": [
-    {"required": ["transport", "dispatchPrompt", "instructionPath"], "properties": {"transport": {"const": "file"}}},
-    {"properties": {"transport": {"const": "prompt"}}}
+    {
+      "required": [
+        "transport",
+        "dispatchPrompt",
+        "instructionPath"
+      ],
+      "properties": {
+        "transport": {
+          "const": "file"
+        }
+      }
+    },
+    {
+      "properties": {
+        "transport": {
+          "const": "prompt"
+        }
+      }
+    }
   ],
   "properties": {
     "stepAttemptId": {
@@ -104,6 +121,29 @@
     },
     "attestationAttempts": {
       "type": "integer"
+    },
+    "readSchedule": {
+      "description": "LF-61: the Read calls a file-transport worker is told to make, in order: contiguous line ranges covering the instruction file exactly once, each within the read budget.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "offset",
+          "limit"
+        ],
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
     }
   }
 }

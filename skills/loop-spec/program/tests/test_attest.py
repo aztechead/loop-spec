@@ -301,6 +301,51 @@ class FileReceiptTests(unittest.TestCase):
         reused = self._read(1, "1\ta", limit=1) + self._read(1, "2\t", offset=2)
         self.assertEqual(self._check(self._step(prompt), reused)[1], "a tool_use id appears twice")
 
+    def _scheduled(self, prompt: str) -> tuple[dict, list[dict]]:
+        from loop_spec.steps import read_schedule
+        return self._step(prompt), read_schedule(prompt)
+
+    def test_a_receipt_that_follows_the_schedule_attests(self):
+        # LF-61: e2e-lf59b's shape; the scheduled Reads deliver every line.
+        from tests.test_steps import hex_heavy_prompt
+        prompt = hex_heavy_prompt()
+        step, schedule = self._scheduled(prompt)
+        middle = [rec for i, r in enumerate(schedule, 1)
+                  for rec in self._read(i, self._numbered(prompt, r["offset"], r["offset"] + r["limit"] - 1),
+                                        offset=r["offset"], limit=r["limit"])]
+        ok, reason = self._check(step, middle)
+        self.assertTrue(ok, reason)
+        skipped = [rec for i, r in enumerate(schedule, 1) if i != 2
+                   for rec in self._read(i, self._numbered(prompt, r["offset"], r["offset"] + r["limit"] - 1),
+                                         offset=r["offset"], limit=r["limit"])]
+        self.assertFalse(self._check(step, skipped)[0])  # a skipped range is refused
+
+    def test_recovery_from_a_short_read_and_an_over_limit_read_attests(self):
+        from tests.test_steps import hex_heavy_prompt
+        prompt = hex_heavy_prompt(200)
+        step, schedule = self._scheduled(prompt)
+        first, rest = schedule[0], schedule[1:]
+        end = first["offset"] + first["limit"] - 1
+        cut = first["offset"] + first["limit"] // 3
+        notice = {"type": "attachment", "attachment": {"type": "read_truncation_notice", "banner": "[Truncated: PARTIAL view]"}}
+        middle = (self._read(1, self._numbered(prompt, first["offset"], cut), offset=first["offset"], limit=first["limit"])
+                  + [notice]
+                  + self._read(2, "File content (25185 tokens) exceeds maximum allowed tokens (25000).", offset=cut + 1,
+                               limit=end - cut, error=True))
+        half = max(1, (end - cut) // 2)
+        middle += self._read(3, self._numbered(prompt, cut + 1, cut + half), offset=cut + 1, limit=half)
+        middle += self._read(4, self._numbered(prompt, cut + half + 1, end), offset=cut + half + 1, limit=end - cut - half)
+        for i, r in enumerate(rest, 5):
+            middle += self._read(i, self._numbered(prompt, r["offset"], r["offset"] + r["limit"] - 1), offset=r["offset"], limit=r["limit"])
+        ok, reason = self._check(step, middle)
+        self.assertTrue(ok, reason)
+
+    def test_a_failed_one_line_read_leaves_the_receipt_incomplete(self):
+        # The bootstrap tells the worker to stop; coverage stays mandatory.
+        prompt = "a\nb\n"
+        middle = self._read(1, "1\ta", limit=1) + self._read(2, "too large", offset=2, limit=1, error=True)
+        self.assertFalse(self._check(self._step(prompt), middle)[0])
+
     def test_calls_and_results_must_sit_in_their_own_roles(self):
         step = self._step("a\n")
         call, result = self._read(1, "1\ta\n2\t")
