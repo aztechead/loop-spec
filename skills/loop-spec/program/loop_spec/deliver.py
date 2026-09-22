@@ -40,6 +40,15 @@ def _commit_artifacts(store, worktree: Path, slug: str) -> None:
     repo_module.run_git(worktree, "commit", "-m", "docs: loop-spec artifacts")
 
 
+def pr_title(title: str, limit: int = 70) -> str:
+    # GitHub shows about 70 characters of a title; a cut mid-word read as a typo
+    # in the live debug run (LF-36), so cut at the last word boundary that fits.
+    if len(title) <= limit:
+        return title
+    head = title[: limit - 3].rsplit(" ", 1)[0].rstrip(" ,;:.")
+    return head + "..."
+
+
 def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: str,
                    draft: bool, title: str, body: str) -> tuple[dict | None, str | None]:
     branch = repo_info["featureBranch"]
@@ -55,7 +64,7 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
         store.save()
         body_path = Path(worktree) / ".loop-spec-pr-body.md"
         body_path.write_text(body)
-        args = ["pr", "create", "--base", base, "--head", branch, "--title", title[:70], "--body-file", str(body_path)]
+        args = ["pr", "create", "--base", base, "--head", branch, "--title", pr_title(title), "--body-file", str(body_path)]
         if draft:
             args.append("--draft")
         code, _, err = repo_module.run_gh(worktree, *args)

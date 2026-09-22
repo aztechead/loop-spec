@@ -202,3 +202,16 @@ class DeliverTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PrTitleTests(unittest.TestCase):
+    def test_long_title_is_cut_at_a_word_boundary(self):
+        # LF-36: the live debug run's PR title ended mid-word ("test_preexisti").
+        title = "Correct the wrong expected value in tests/test_calc.py::test_preexisting_failure so it asserts add(2, 2) == 4"
+        cut = deliver.pr_title(title)
+        self.assertLessEqual(len(cut), 70)
+        self.assertTrue(cut.endswith("..."))
+        self.assertIn(cut[:-3], title)
+        self.assertTrue(title.startswith(cut[:-3]))
+        self.assertEqual(title[len(cut) - 3], " ")
+        self.assertEqual(deliver.pr_title("short"), "short")
