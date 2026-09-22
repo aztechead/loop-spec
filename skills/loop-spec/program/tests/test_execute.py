@@ -153,6 +153,21 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertEqual(task["status"], "done")
         self.assertNotIn("reviewCheckout", task)
 
+    def test_a_replacement_review_is_never_applied_to_a_branch_that_moved_while_it_ran(self):
+        # LF-60 audit: refuse at H, re-review H in a fresh checkout, the retired worker
+        # moves the task branch to H2, the replacement passes: H2 is not integrated.
+        worktree, task = self._refuse_first_review()
+        candidate = _head(worktree)
+        feature_before = self.store.state["execute"]["repos"]["repo"]["head"]
+        action = step(self.store, self.paths, self.ctx)
+        _commit(worktree, "late.txt", "a write by the retired reviewer")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-2"},
+                  self._pass_review(candidate, self.base_sha, candidate))
+        self.assertEqual((task["status"], task["review"]["reviewedRange"]["to"] if task["review"] else None), ("blocked", None))
+        self.assertIn("moved from", self.store.state["execute"]["issues"][-1]["text"])
+        self.assertEqual(self.store.state["execute"]["repos"]["repo"]["head"], feature_before)
+        self.assertEqual(task["commits"], [])
+
     def test_a_branch_moved_after_a_refused_review_blocks_the_task(self):
         worktree, task = self._refuse_first_review()
         _commit(worktree, "late.txt", "a write after the refusal")

@@ -497,6 +497,9 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
     if errors:
         raise LoopSpecError("execute built an invalid review step request: " + "; ".join(errors),
                              repair="fix _review_request in execute.py")
+    # LF-60: the review is bound to this candidate at issue; the submit applies it
+    # to this SHA only, never to whatever the mutable task branch points at later.
+    task_state["reviewCandidate"] = task_head
     task_state["status"] = "reviewing"
     store.save()
     return request
@@ -1194,13 +1197,23 @@ def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record:
     execute_state = store.state["execute"]
     worktree = Path(task_state["worktree"])
     run_cwd = Path(task_state.pop("reviewCheckout", None) or worktree)
-    task_state.pop("reviewCandidate", None)
+    candidate = task_state.pop("reviewCandidate", None)
     # The reviewed range is base..task from the head this task's own worktree
     # FORKED from, matching what _review_request actually showed the reviewer
     # -- never the feature branch's current head, which a same-wave sibling can
     # have already moved by merging first.
     fork = _fork_point(paths, execute_state, task_state, task_id, step_record.get("attempt"))
-    task_head = repo_module.branch_sha(worktree, task_state["branch"])
+    current = repo_module.branch_sha(worktree, task_state["branch"])
+    if candidate is not None and current != candidate:
+        # LF-60: the review covers the issued candidate only; a branch that moved while
+        # it ran (a retired worker's late write) is never relabelled as reviewed.
+        task_state["status"] = "blocked"
+        task_state["reason"] = None
+        execute_state["issues"].append({"task": task_id, "text": (
+            f"the task branch moved from {candidate[:12]} to {(current or 'missing')[:12]} while its review ran; "
+            "the review covers only the issued candidate")})
+        return
+    task_head = candidate or current  # a review issued before LF-60's binding has none
     task_state["review"] = {
         "reviewedRange": {"from": _review_from(task_state), "to": task_head},
         "verdict": result["verdict"], "findings": result["findings"],
@@ -1334,6 +1347,7 @@ def on_step_refused(store, paths, step_id: str, refused: dict) -> None:
     task_id, task_state = found
     if task_state["status"] != "reviewing":
         return
+    # Bound when the refused review was issued; a pre-binding step falls back to the branch.
     candidate = task_state.get("reviewCandidate") or repo_module.branch_sha(Path(task_state["worktree"]), task_state["branch"])
     checkout = paths.checkouts_dir / f"review-{task_id}-{step_id}"
     if not checkout.exists():
