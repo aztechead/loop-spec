@@ -1,0 +1,109 @@
+{
+  "autonomous": false,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "feat/add-a-divide-a-b-function-to-the-calc-pa",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": true,
+  "createdAt": "2026-09-22T10:51:16+00:00",
+  "cycleType": "revise",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [],
+        "deliveredSha": "6274539fd20293aec918cd3976c96c87abe030f2",
+        "pr": {
+          "base": "main",
+          "headRef": "feat/add-a-divide-a-b-function-to-the-calc-pa",
+          "headSha": "6274539fd20293aec918cd3976c96c87abe030f2",
+          "number": 2,
+          "url": "https://github.com/aztechead/loop-spec-live-7/pull/2"
+        },
+        "repo": "consumer",
+        "state": "delivered"
+      }
+    ]
+  },
+  "eligibleTargets": [
+    {
+      "branch": "feat/add-a-divide-a-b-function-to-the-calc-pa",
+      "targetSha": "6274539fd20293aec918cd3976c96c87abe030f2"
+    }
+  ],
+  "feature_title": "revise PR #2: https://github.com/aztechead/loop-spec-live-7/pull/2",
+  "finishedAt": "2026-09-22T11:03:40+00:00",
+  "hostVersions": {
+    "claude": "2.1.278 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": true,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 0
+  },
+  "loopSpecVersion": "7.0.0",
+  "noChangeReason": null,
+  "outcome": "delivered",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [],
+  "prUrl": "https://github.com/aztechead/loop-spec-live-7/pull/2",
+  "prs": [
+    {
+      "number": 2,
+      "repo": "consumer",
+      "url": "https://github.com/aztechead/loop-spec-live-7/pull/2"
+    }
+  ],
+  "reason": null,
+  "result": "converged",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-9577a019a67f"
+    },
+    "T-2": {
+      "level": "host-attested",
+      "stepId": "step-352a5e1fefe3"
+    }
+  },
+  "rewinds": 0,
+  "schema": 1,
+  "slug": "revise-2",
+  "status": "completed",
+  "summary": "revise converged at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": "6274539fd20293aec918cd3976c96c87abe030f2",
+  "warnings": [],
+  "weakenedAssurance": [
+    {
+      "criterion": "AC-3",
+      "kind": "evidence.exception",
+      "reason": "AC-3's stated command (`pytest -q tests/test_calc.py`, the full file) also runs the pre-existing failing test_preexisting_failure (SPEC decision D2), so it cannot pass cleanly regardless of this change. T-1's verify instead runs the two new tests by node id; their collection and pass both require `divide` to be correctly exported and importable from calc/__init__.py, which is what AC-3 tests.",
+      "source": "plan"
+    }
+  ],
+  "workDelivered": true
+}

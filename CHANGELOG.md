@@ -54,7 +54,13 @@ Claude Code and the Claude Agent SDK only.
 ### Shown live
 
 Recorded in [docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md),
-against Claude Code 2.1.278 on `sonnet`.
+against Claude Code 2.1.278 on `sonnet`: the all-external traversal, a full
+native cycle to a delivered pull request, attestation in both directions, the
+blocked exit answered `stop`, a two-repo workspace, the debug and revise entries,
+the program's own invalid product ending a run as `failed`, the rewind budget
+ending one as `escalated`, and permission denial under the default mode. The
+45 live findings (LF-01 to LF-45) those runs raised are fixed on the 7.0 branch; each
+fix's commit subject names its finding number.
 
 ### Not shown live
 
