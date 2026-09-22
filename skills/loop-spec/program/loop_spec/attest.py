@@ -21,7 +21,25 @@ def find_transcripts(claude_home: Path, project_cwd: Path, session_id: str, disp
     subagents_dir = Path(claude_home) / "projects" / cwd_key / session_id / "subagents"
     if not subagents_dir.is_dir():
         return []
-    return sorted(subagents_dir.glob(f"agent-a{dispatch_name}-*.jsonl"))
+    # Claude Code 2.1.278 names the file by agent id (`agent-<id>.jsonl`) and keeps the
+    # dispatch name in the `.meta.json` sidecar (live finding LF-10; the probe record had
+    # the name in the file name). Accept either spelling of the dispatch: the Agent
+    # tool's name, or the agent id it returned.
+    matches: list[Path] = []
+    for meta in sorted(subagents_dir.glob("agent-*.meta.json")):
+        transcript = meta.with_name(meta.name[: -len(".meta.json")] + ".jsonl")
+        if not transcript.exists():
+            continue
+        try:
+            name = json.loads(meta.read_text(encoding="utf-8")).get("name")
+        except (OSError, ValueError):
+            name = None
+        agent_id = meta.name[len("agent-"): -len(".meta.json")]
+        if name == dispatch_name or agent_id == dispatch_name:
+            matches.append(transcript)
+    if not matches:
+        matches = sorted(subagents_dir.glob(f"agent-a{dispatch_name}-*.jsonl"))
+    return matches
 
 
 def _message_text(record: dict) -> str:

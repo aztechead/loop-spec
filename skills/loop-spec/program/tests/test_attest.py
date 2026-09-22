@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from loop_spec.attest import ClaudeCodeAttestor
+from loop_spec.attest import ClaudeCodeAttestor, find_transcripts
 
 _ISSUED_AT = "2026-09-22T10:00:00+00:00"
 _RESULT_DIGEST = "sha256:" + "a" * 64
@@ -92,3 +92,21 @@ class AttestorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MetaNameLayoutTests(unittest.TestCase):
+    """Claude Code 2.1.278 names transcripts by agent id and keeps the dispatch name in .meta.json."""
+
+    def test_meta_name_or_agent_id_matches(self):
+        import json as _json
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            subagents = home / "projects" / "-repo" / "sess" / "subagents"
+            subagents.mkdir(parents=True)
+            _write_transcript(subagents / "agent-a7b7490498fde8aac.jsonl", _valid_records())
+            (subagents / "agent-a7b7490498fde8aac.meta.json").write_text(_json.dumps({"name": "worker-1"}))
+            by_name = find_transcripts(home, Path("/repo"), "sess", "worker-1")
+            by_id = find_transcripts(home, Path("/repo"), "sess", "a7b7490498fde8aac")
+            self.assertEqual([p.name for p in by_name], ["agent-a7b7490498fde8aac.jsonl"])
+            self.assertEqual(by_name, by_id)
+            self.assertEqual(find_transcripts(home, Path("/repo"), "sess", "other"), [])
