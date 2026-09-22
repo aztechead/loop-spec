@@ -6,6 +6,7 @@ Use `step`/`on_submit` the same way `execute.py` does. Module state lives under
 later ITERATE entry (after a rewind) issues a fresh judge call while `priorGaps`
 keeps accumulating.
 """
+import copy
 from pathlib import Path
 
 from . import ledger as ledger_module
@@ -165,19 +166,36 @@ def step(store, paths, ctx):
              {"summary": "iterate state predates the per-repo shape; re-initializing", "missingKey": "boundShas"},
              phase="iterate", attempt_id=ctx["attempt"]["id"])
         iterate_state = {"priorGaps": iterate_state.get("priorGaps", []), "judgeStep": None,
-                          "judge": None, "boundShas": None}
+                          "judge": None, "boundShas": None, "inputs": None}
         store.state["iterate"] = iterate_state
         store.save()
     if iterate_state is None:
-        iterate_state = {"priorGaps": [], "judgeStep": None, "judge": None, "boundShas": None}
+        iterate_state = {"priorGaps": [], "judgeStep": None, "judge": None, "boundShas": None, "inputs": None}
         store.state["iterate"] = iterate_state
         store.save()
-    if iterate_state["boundShas"] != heads:
+
+    # LF-52: a cached judgment is never re-bound to revisions, heads, or an
+    # accepted VERIFY attempt it was not made against -- boundShas alone missed
+    # a requirements/plan revision change (or a new accepted VERIFY product) at
+    # the very same heads.
+    inputs = copy.deepcopy({
+        "requirements": store.state["revisions"]["requirements"],
+        "plan": store.state["revisions"]["plan"],
+        "heads": heads,
+        "verifyAttempt": (store.state["products"].get("verify") or {}).get("attemptId"),
+    })
+    if iterate_state.get("inputs") != inputs:
+        old_inputs = iterate_state.get("inputs")
         iterate_state["judge"] = None
+        iterate_state["judgeStep"] = None
         # A copy, not the same dict EXECUTE's own product still holds: aliasing it
         # would make this comparison always equal the moment that product's heads
         # change, since both sides would be the identical object.
         iterate_state["boundShas"] = dict(heads)
+        iterate_state["inputs"] = inputs
+        emit(paths, "iterate_state_reset",
+             {"summary": "iterate inputs changed; a fresh judgment is required", "from": old_inputs, "to": inputs},
+             phase="iterate", attempt_id=ctx["attempt"]["id"])
         store.save()
 
     if iterate_state["judge"] is None:

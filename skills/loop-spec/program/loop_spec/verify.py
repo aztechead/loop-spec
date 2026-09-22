@@ -8,6 +8,7 @@ controller's dispatch is another agent's change. Module state lives under
 `store.state["ledger"]` via `ledger.py` once it accepts the product -- this module
 never writes the ledger itself.
 """
+import copy
 import re
 from pathlib import Path
 
@@ -134,6 +135,14 @@ def _base_layers(repo_path: Path, base_sha: str, files: list[str], checkouts_dir
         repo_module.remove_worktree(repo_path, dest, force=True)
 
 
+def _current_inputs(store) -> dict:
+    return {
+        "requirements": store.state["revisions"]["requirements"],
+        "plan": store.state["revisions"]["plan"],
+        "heads": _heads(store),
+    }
+
+
 def _init(store, paths, ctx) -> dict:
     plan_product = store.state["products"]["plan"]["product"]
     heads = _heads(store)
@@ -184,6 +193,11 @@ def _init(store, paths, ctx) -> dict:
         "phase": "verifying", "verifierStep": None, "reviewerSteps": {}, "verifier": None, "reason": None,
         "reviewers": reused_reviewers, "reviewerReasons": {}, "pendingReviews": pending_reviews,
         "handledRejections": [], "pass": len(reviewed_ranges) + 1,
+        "inputs": copy.deepcopy({
+            "requirements": store.state["revisions"]["requirements"],
+            "plan": store.state["revisions"]["plan"],
+            "heads": heads,
+        }),
     }
     store.state["verify"] = verify_state
     store.save()
@@ -365,6 +379,12 @@ def step(store, paths, ctx):
         # every field below.
         emit(paths, "module_state_reset",
              {"summary": "verify state predates the per-repo shape; re-initializing", "missingKey": "reviewers"},
+             phase="verify", attempt_id=ctx["attempt"]["id"])
+        verify_state = None
+    if verify_state is not None and ("inputs" not in verify_state or verify_state["inputs"] != _current_inputs(store)):
+        emit(paths, "verify_state_reset",
+             {"summary": "verify inputs changed; re-initializing",
+              "from": verify_state.get("inputs"), "to": _current_inputs(store)},
              phase="verify", attempt_id=ctx["attempt"]["id"])
         verify_state = None
     if verify_state is None:

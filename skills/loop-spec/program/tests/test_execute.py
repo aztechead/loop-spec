@@ -778,6 +778,130 @@ class ExecuteLifecycleTests(unittest.TestCase):
         on_submit(self.store, self.paths, req1 | {"stepAttemptId": "impl-1"}, result1)
         self.assertEqual(tasks["T-1"]["status"], "probing")
 
+    # --- LF-52/4.8: EXECUTE reconciles a changed plan ----------------------
+
+    def test_unchanged_plan_reconciles_nothing(self):
+        self._drive_to_integrated()
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, Product)
+        self.assertEqual(action.product["exit"], "integrated")
+        events_text = self.paths.events_jsonl.read_text() if self.paths.events_jsonl.exists() else ""
+        self.assertNotIn('"execute_plan_reconciled"', events_text)
+
+    def test_changed_integrated_task_is_reopened_and_unchanged_task_kept(self):
+        self._drive_to_integrated()
+        self.plan_tasks[0]["title"] = "T-1 renamed"
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "implementer")
+        t1_state = self.store.state["execute"]["tasks"]["T-1"]
+        self.assertEqual(action.request["cwd"], t1_state["worktree"])
+        self.assertIn("title", action.request["reason"])
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-2"]["status"], "done")
+        events_text = self.paths.events_jsonl.read_text()
+        self.assertIn('"execute_plan_reconciled"', events_text)
+        self.assertIn('"reopened": ["T-1"]', events_text)
+        self.assertIn('"kept": ["T-2"]', events_text)
+
+    def test_changed_unintegrated_task_is_reset_under_a_new_generation_and_loses_its_verify_run(self):
+        # T-1 only: implement, but no review yet -- "probing", with a real
+        # committed change on its own branch but nothing integrated
+        # ("commits" stays empty until a review merges it).
+        action = step(self.store, self.paths, self.ctx)
+        t1_worktree = self.store.state["execute"]["tasks"]["T-1"]["worktree"]
+        old_branch = self.store.state["execute"]["tasks"]["T-1"]["branch"]
+        result = self._implementer_result("T-1", t1_worktree, "T-1.txt")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-1"}, result)
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "probing")
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["commits"], [])
+        self.store.state.setdefault("executeRuns", {})["T-1"] = {"stale": True}
+        self.store.save()
+
+        self.plan_tasks[0]["files"] = ["T-1-changed.txt"]
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertTrue(action.request["cwd"].endswith("T-1-r1"))
+        self.assertFalse(Path(t1_worktree).exists())
+        branches = subprocess.run(["git", "branch", "--list", old_branch], cwd=self.repo,
+                                   capture_output=True, text=True, check=True).stdout
+        self.assertIn(old_branch, branches)
+        self.assertNotIn("T-1", self.store.state["executeRuns"])
+
+    def test_retained_branch_name_collision_takes_the_next_generation(self):
+        # Same setup as the reset test above, driven twice: the second reset's
+        # request must fall to -r2, never re-use the -r1 name the first reset
+        # already took.
+        action = step(self.store, self.paths, self.ctx)
+        t1_worktree = self.store.state["execute"]["tasks"]["T-1"]["worktree"]
+        result = self._implementer_result("T-1", t1_worktree, "T-1.txt")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-1"}, result)
+
+        self.plan_tasks[0]["files"] = ["T-1-changed.txt"]
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertTrue(action.request["cwd"].endswith("T-1-r1"))
+        r1_worktree = action.request["cwd"]
+        result = self._implementer_result("T-1", r1_worktree, "T-1-changed.txt")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-2"}, result)
+
+        self.plan_tasks[0]["files"] = ["T-1-changed-again.txt"]
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertTrue(action.request["cwd"].endswith("T-1-r2"))
+
+    def test_new_plan_task_is_added_and_dropped_unintegrated_task_is_retired(self):
+        self._implement_and_review("T-1", "T-1.txt")
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "done")
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-2"]["status"], "pending")
+
+        t3 = _plan_task("T-3")
+        self.plan_tasks = [self.plan_tasks[0], t3]
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["role"], "implementer")
+        self.assertIn("T-3", self.store.state["execute"]["tasks"])
+        self.assertNotIn("T-2", self.store.state["execute"]["tasks"])
+        events_text = self.paths.events_jsonl.read_text()
+        self.assertIn('"added": ["T-3"]', events_text)
+        self.assertIn('"dropped": ["T-2"]', events_text)
+
+    def test_dropped_integrated_task_refuses(self):
+        self._drive_to_integrated()
+        self.store.state["products"]["plan"]["product"]["tasks"] = [self.plan_tasks[1]]
+        self.store.save()
+        with self.assertRaises(LoopSpecError):
+            step(self.store, self.paths, self.ctx)
+
+    def test_integrated_task_changing_repo_refuses(self):
+        self._drive_to_integrated()
+        self.store.state["repos"]["other"] = dict(self.store.state["repos"]["repo"])
+        self.plan_tasks[0]["repo"] = "other"
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+        with self.assertRaises(LoopSpecError) as cm:
+            step(self.store, self.paths, self.ctx)
+        self.assertIn("changed repo", str(cm.exception))
+
+    def test_legacy_execute_state_without_plan_snapshots_refuses(self):
+        step(self.store, self.paths, self.ctx)
+        del self.store.state["execute"]["tasks"]["T-1"]["plan"]
+        self.store.save()
+        with self.assertRaises(LoopSpecError):
+            step(self.store, self.paths, self.ctx)
+
 
 class AdoptedTaskTests(unittest.TestCase):
     """LF-38: a revise run's reviser carries an unchanged prior task forward

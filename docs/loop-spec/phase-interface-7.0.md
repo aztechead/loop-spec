@@ -156,13 +156,20 @@ re-fork, attributes new commits), and `reviewFrom`, its first fork (an adopted t
 base), which its review record always starts from so one review covers every commit it
 owns.
 
+A changed plan is reconciled by task identity (title, files, repo, verify, criteria,
+dependsOn, featureAdded, mustFlip): an unchanged task keeps its state, a changed task
+that owns integrated commits is re-opened against the current head, a changed task
+without them starts fresh under a new generation, a new task is added, a dropped task
+without commits is retired, and a dropped task with integrated commits or a repo change
+on such a task refuses the run.
+
 ## VERIFY
 
 | | |
 |---|---|
 | Inputs | requirements revision; EXECUTE product and head; baseline; ledger; on re-entry, the prior VERIFY product |
 | Product | per criterion a `verdict` of `pass`, `fail`, or `blocked` with `evidence` (command, repo, SHA, exit status, parsed failure identities, raw output digest); `findings[]` with dispositions and typed `supersedes`; `remediationTasks[]`; `reviewedRanges[]` (one per touched repo) |
-| Preconditions | EXECUTE exited `integrated` or `no change` at the current revisions; each repo's verified head equals its integrated head, or its base for `no change` |
+| Preconditions | EXECUTE exited `integrated` or `no change` at the current revisions; each repo's verified head equals its integrated head, or its base for `no change`; module state is re-initialized when the requirements revision, plan revision or candidate heads changed since it was built |
 | Runs as | the probes once over `base..head`; verifier and reviewer as fresh contexts with those findings; the program re-runs every cited command |
 
 | Id | Postcondition | Gates |
@@ -198,7 +205,7 @@ outright incorrect implementations; the PR review catches the rest.
 |---|---|
 | Inputs | the immutable original request; approved SPEC; integrated diff; VERIFY product; prior gaps; rewind count and budget |
 | Product | `verdict` against the original request; `gaps[]`; `route` |
-| Preconditions | VERIFY `passed` at the current revisions, including the `no change` head |
+| Preconditions | VERIFY `passed` at the current revisions, including the `no change` head; the judgment is re-issued when the requirements revision, plan revision, heads or the accepted VERIFY attempt changed |
 | Runs as | a fresh goal-judgment role |
 
 The program, not the judge role, dispositions every non-Critical open finding

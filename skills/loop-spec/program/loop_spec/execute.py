@@ -9,6 +9,7 @@ phase="execute" is another agent's change, not this module's. `dag_waves` is the
 pure Kahn-layering the plan's `dependsOn` graph needs before any task can start;
 nothing else here is reusable outside this one phase's loop.
 """
+import copy
 import os
 import re
 from pathlib import Path
@@ -47,6 +48,10 @@ _TASK_ID_RE = re.compile(r"T-\d+")
 # mustFlip-failed detail) stays on the retry path below -- that one means the
 # implementer's fix did not land yet, which a retry can still address.
 _MUST_FLIP_BASELINE_DETAIL = "reproduction did not fail at base"
+# LF-52/4.8: a plan task's identity for reconciliation -- the same eight fields
+# _mark_adopted_tasks already compares to decide whether a reviser's carried-
+# forward task is still the same task.
+_PLAN_IDENTITY_FIELDS = ("title", "files", "repo", "verify", "criteria", "dependsOn", "featureAdded", "mustFlip")
 
 
 class IssueStep:
@@ -162,10 +167,9 @@ def _mark_adopted_tasks(store, paths, ctx, tasks: dict, plan_tasks: list[dict]) 
     if adoption is None or not prior or not prior.get("plan"):
         return
     prior_tasks = {t["id"]: t for t in prior["plan"]["tasks"]}
-    fields = ("title", "files", "repo", "verify", "criteria", "dependsOn", "featureAdded", "mustFlip")
     for plan_task in plan_tasks:
         prior_task = prior_tasks.get(plan_task["id"])
-        if prior_task is None or any(plan_task.get(f) != prior_task.get(f) for f in fields):
+        if prior_task is None or any(plan_task.get(f) != prior_task.get(f) for f in _PLAN_IDENTITY_FIELDS):
             continue
         repo_name = plan_task["repo"]
         # The adopted range only covers the PR's own repo; a workspace's other
@@ -187,10 +191,53 @@ def _mark_adopted_tasks(store, paths, ctx, tasks: dict, plan_tasks: list[dict]) 
         emit(paths, "task_adopted", {"task": plan_task["id"]}, phase="execute", attempt_id=ctx["attempt"]["id"])
 
 
+def _execute_width() -> int:
+    return int(os.environ.get("LOOP_SPEC_EXECUTE_WIDTH", "3"))
+
+
+def _plan_snapshot(plan_task: dict) -> dict:
+    """The identity tuple a task's state is reconciled against on every PLAN
+    re-entry (4.8) -- deep-copied so a later in-place edit to the live plan
+    product (there is none today, but nothing here should rely on that) can
+    never retroactively change a snapshot already taken."""
+    return copy.deepcopy({f: plan_task.get(f) for f in _PLAN_IDENTITY_FIELDS})
+
+
+def _fresh_task_state(plan_task: dict) -> dict:
+    return {
+        "status": "pending", "repo": plan_task["repo"], "worktree": None, "branch": None,
+        "baseLayers": None, "implementSteps": [], "reviewSteps": [], "commits": [],
+        "review": None, "probes": None, "evidence": None, "retries": 0, "reason": None,
+        # LF-17: the range a task's commits were actually computed from, set once
+        # at its first real merge -- a later re-review of the same integration
+        # (feature_head == task_head, nothing new to merge) has no range of its
+        # own to overwrite these with.
+        "integratedFrom": None, "integratedTo": None,
+        # The feature head this task's own worktree/branch forked from (set once,
+        # in _ensure_worktree): a same-wave sibling issued at the same time can
+        # merge first and move the feature head before this task's own review or
+        # integration happen, so both must diff/compare against the head this
+        # task actually started from, never whatever the feature head is now.
+        "forkedFrom": None,
+        # LF-51: the task's REVIEW anchor -- set once, at the first fork (or a
+        # repo's baseSha for an adopted task), and kept through any later
+        # remediation re-fork so one review still covers every commit the task
+        # owns. forkedFrom moves on every re-fork; reviewFrom does not.
+        "reviewFrom": None,
+        # Bumped on every re-fork (remediation, plan reconciliation, a merge
+        # conflict); names that generation's branch/worktree so a retained
+        # earlier one is never collided with or silently reused.
+        "generation": 0,
+        "remediations": [],
+        # LF-52/4.8: this task's identity as PLAN currently states it, compared
+        # on every re-entry to decide whether its recorded work still applies.
+        "plan": _plan_snapshot(plan_task),
+    }
+
+
 def _init(store, paths, ctx) -> dict:
     plan_tasks = store.state["products"]["plan"]["product"]["tasks"]
-    width = int(os.environ.get("LOOP_SPEC_EXECUTE_WIDTH", "3"))
-    waves = dag_waves(plan_tasks, width=width)
+    waves = dag_waves(plan_tasks, width=_execute_width())
 
     # The feature branch is checked out in its own worktree here, once, so a task's
     # commits ever land in the operator's own checkout only via the fast-forward
@@ -217,35 +264,7 @@ def _init(store, paths, ctx) -> dict:
             "defaultHead": repo_module.branch_sha(repo_path, info["defaultBranch"]),
         }
 
-    tasks = {
-        t["id"]: {
-            "status": "pending", "repo": t["repo"], "worktree": None, "branch": None,
-            "baseLayers": None, "implementSteps": [], "reviewSteps": [], "commits": [],
-            "review": None, "probes": None, "evidence": None, "retries": 0, "reason": None,
-            # LF-17: the range a task's commits were actually computed from, set once
-            # at its first real merge -- a later re-review of the same integration
-            # (feature_head == task_head, nothing new to merge) has no range of its
-            # own to overwrite these with.
-            "integratedFrom": None, "integratedTo": None,
-            # The feature head this task's own worktree/branch forked from (set once,
-            # in _ensure_worktree): a same-wave sibling issued at the same time can
-            # merge first and move the feature head before this task's own review or
-            # integration happen, so both must diff/compare against the head this
-            # task actually started from, never whatever the feature head is now.
-            "forkedFrom": None,
-            # LF-51: the task's REVIEW anchor -- set once, at the first fork (or a
-            # repo's baseSha for an adopted task), and kept through any later
-            # remediation re-fork so one review still covers every commit the task
-            # owns. forkedFrom moves on every re-fork; reviewFrom does not.
-            "reviewFrom": None,
-            # Bumped on every re-fork (remediation, plan reconciliation, a merge
-            # conflict); names that generation's branch/worktree so a retained
-            # earlier one is never collided with or silently reused.
-            "generation": 0,
-            "remediations": [],
-        }
-        for t in plan_tasks
-    }
+    tasks = {t["id"]: _fresh_task_state(t) for t in plan_tasks}
     _mark_adopted_tasks(store, paths, ctx, tasks, plan_tasks)
 
     execute_state = {"waves": waves, "tasks": tasks, "repos": repos, "issues": [], "handledRejections": [], "handledRewinds": []}
@@ -264,6 +283,15 @@ def _ensure_worktree(store, paths, ctx, task_id: str, task_state: dict, plan_tas
     repo_state = execute_state["repos"][task_state["repo"]]
     repo_info = store.state["repos"][task_state["repo"]]
     repo_path = Path(repo_info["path"])
+    # LF-52/4.8: a task reset under a new generation (a reconciled plan change
+    # with no integrated commits) carries that generation forward, and a task
+    # whose plain worktree path is still sitting there (quarantined, or just not
+    # yet cleaned up) must never be raced -- either one forks a fresh generation
+    # exactly as a remediation re-fork would, instead of pausing on a plain-named
+    # branch/worktree this run itself already used once.
+    if task_state.get("generation", 0) > 0 or (paths.worktrees_dir / task_id).exists():
+        _refork(store, paths, task_id, task_state, plan_task, repo_state["head"], task_state.get("reason") or "fresh attempt")
+        return None
     # LF-14: task/<task-id> alone collided with the same task id from an earlier
     # run of this repo. Slug-scoping still is not enough on its own -- a LEFTOVER
     # branch from a PRIOR run of this exact slug is the same out-of-band condition
@@ -647,6 +675,34 @@ def _refork(store, paths, task_id: str, task_state: dict, plan_task: dict, featu
     store.save()
 
 
+def _reopen(store, paths, tid: str, task_state: dict, plan_task: dict, reason: str) -> bool:
+    """Reuse task_id's existing branch/worktree if it is still safe to build on
+    top of (clean, its writers known terminated, and an ancestor of the current
+    feature head -- 4.5), otherwise re-fork a fresh generation from the current
+    feature head (4.5/4.6). Shared by a VERIFY remediation (_handle_rewind) and a
+    PLAN reconciliation (_reconcile_plan) re-opening a task that owns integrated
+    commits. Returns whether the existing branch/worktree was reused."""
+    execute_state = store.state["execute"]
+    feature_head = execute_state["repos"][task_state["repo"]]["head"]
+    repo_path = Path(store.state["repos"][task_state["repo"]]["path"])
+    task_head = repo_module.branch_sha(repo_path, task_state["branch"]) if task_state["branch"] else None
+    reused = bool(
+        task_state["worktree"] and Path(task_state["worktree"]).exists() and task_head
+        and repo_module.is_clean(task_state["worktree"])
+        and steps_module.writers_known_terminated(store, paths, task_state["worktree"])
+        and repo_module.is_ancestor(Path(task_state["worktree"]), feature_head, task_head)
+    )
+    if reused:
+        task_state["review"] = None
+        task_state["probes"] = None
+        task_state["evidence"] = None
+        task_state["status"] = "pending"
+        task_state["reason"] = reason
+    else:
+        _refork(store, paths, tid, task_state, plan_task, feature_head, reason)
+    return reused
+
+
 def _handle_rewind(store, paths, ctx, execute_state: dict) -> None:
     """LF-51: a VERIFY `implementation gap` re-opens the plan task(s) owning each
     failed criterion against the current feature head. No-op unless the entry
@@ -720,28 +776,131 @@ def _handle_rewind(store, paths, ctx, execute_state: dict) -> None:
                 continue
             reopened.add(tid)
 
-            repo_path = Path(store.state["repos"][task_state["repo"]]["path"])
-            task_head = repo_module.branch_sha(repo_path, task_state["branch"]) if task_state["branch"] else None
-            reused = bool(
-                task_state["worktree"] and Path(task_state["worktree"]).exists() and task_head
-                and repo_module.is_clean(task_state["worktree"])
-                and steps_module.writers_known_terminated(store, paths, task_state["worktree"])
-                and repo_module.is_ancestor(Path(task_state["worktree"]), feature_head, task_head)
-            )
-            if reused:
-                task_state["review"] = None
-                task_state["probes"] = None
-                task_state["evidence"] = None
-                task_state["status"] = "pending"
-                task_state["reason"] = reason
-            else:
-                _refork(store, paths, tid, task_state, plan_tasks[tid], feature_head, reason)
+            reused = _reopen(store, paths, tid, task_state, plan_tasks[tid], reason)
 
             emit(paths, "task_reopened", {
                 "task": tid, "reused": reused,
                 "summary": f"{tid} reopened by VERIFY remediation {rem.get('id')} ({'reused' if reused else 're-forked'})",
             }, phase="execute", attempt_id=attempt_id)
 
+    store.save()
+
+
+# --- plan reconciliation (LF-52/4.8: a changed plan re-entry) --------------
+
+def _reconcile_plan(store, paths, ctx, execute_state: dict) -> None:
+    """A PLAN re-entry after EXECUTE already has state must not silently keep
+    running the old task states against a changed plan. Reconciles by task
+    identity (_PLAN_IDENTITY_FIELDS, the same one _mark_adopted_tasks uses):
+    an unchanged task keeps its state; a changed task that owns integrated
+    commits is re-opened against the current feature head, exactly like a
+    VERIFY remediation (_reopen); a changed task without integrated commits
+    starts over as fresh pending state under a new generation; a new plan task
+    id gets fresh state; a dropped task with no integrated commits is retired;
+    a dropped task that owns integrated commits, or one that changed repo while
+    owning integrated commits, fails closed -- those commits would be
+    unownable."""
+    plan_tasks = _plan_tasks(store)
+    tasks = execute_state["tasks"]
+
+    if any("plan" not in task_state for task_state in tasks.values()):
+        raise LoopSpecError(
+            "execute state predates plan snapshots; the program cannot tell which plan its recorded work ran against",
+            repair="start a fresh run for this request",
+        )
+
+    if set(tasks) == set(plan_tasks) and all(tasks[tid]["plan"] == _plan_snapshot(plan_tasks[tid]) for tid in tasks):
+        return
+
+    attempt_id = ctx["attempt"]["id"]
+
+    def _retire(tid: str, task_state: dict, repo_name: str) -> None:
+        repo_path = Path(store.state["repos"][repo_name]["path"])
+        last_step = (task_state["reviewSteps"] or task_state["implementSteps"] or [None])[-1]
+        _retire_worktree(store, paths, repo_path, task_state["worktree"], last_step=last_step)
+        store.state.get("executeRuns", {}).pop(tid, None)
+        for issue in [i for i in execute_state["issues"] if i["task"] == tid]:
+            execute_state["issues"].remove(issue)
+            execute_state.setdefault("issueHistory", []).append(issue)
+
+    kept, reopened, reset, added, dropped = [], [], [], [], []
+
+    for tid in list(tasks):
+        if tid in plan_tasks:
+            continue
+        task_state = tasks[tid]
+        if task_state["commits"]:
+            raise LoopSpecError(
+                f"plan task {tid} was removed but owns integrated commits {', '.join(c[:12] for c in task_state['commits'])}",
+                repair=f"restore {tid} in PLAN; a task that owns integrated commits cannot be dropped in 7.0",
+            )
+        _retire(tid, task_state, task_state["plan"]["repo"])
+        del tasks[tid]
+        dropped.append(tid)
+
+    for tid, plan_task in plan_tasks.items():
+        if tid not in tasks:
+            tasks[tid] = _fresh_task_state(plan_task)
+            added.append(tid)
+            continue
+
+        old = tasks[tid]
+        new_snap = _plan_snapshot(plan_task)
+        if old["plan"] == new_snap:
+            kept.append(tid)
+            continue
+
+        changed_fields = sorted(f for f in _PLAN_IDENTITY_FIELDS if old["plan"].get(f) != new_snap.get(f))
+        if old["commits"] and old["plan"]["repo"] != new_snap["repo"]:
+            raise LoopSpecError(
+                f"plan task {tid} changed repo from {old['plan']['repo']!r} to {new_snap['repo']!r} "
+                f"but owns integrated commits in {old['plan']['repo']!r}",
+                repair=(f"keep {tid} as the owner of its {old['plan']['repo']!r} commits and add a new "
+                        f"task for the {new_snap['repo']!r} work"),
+            )
+
+        if old["commits"]:
+            old.setdefault("remediations", []).append({
+                "planChange": {"from": old["plan"], "to": new_snap},
+                "priorStatus": old["status"], "priorRetries": old["retries"],
+                "priorBranch": old["branch"], "priorWorktree": old["worktree"],
+                "priorReview": old["review"], "at": now_iso(),
+            })
+            old["retries"] = 0
+            store.state.get("executeRuns", {}).pop(tid, None)
+            for issue in [i for i in execute_state["issues"] if i["task"] == tid]:
+                execute_state["issues"].remove(issue)
+                execute_state.setdefault("issueHistory", []).append(issue)
+            reason = f"PLAN changed {tid} ({', '.join(changed_fields)}) after it integrated; re-implement against the current head"
+            _reopen(store, paths, tid, old, plan_task, reason)
+            old["plan"] = new_snap
+            reopened.append(tid)
+        else:
+            # A fresh pending state, not a remediation-style reopen: nothing was
+            # ever integrated for this task, so its whole history (retries,
+            # steps, any remediations) is discarded, not carried forward.
+            generation = old.get("generation", 0)
+            had_fork = old["worktree"] is not None or old["branch"] is not None
+            _retire(tid, old, old["plan"]["repo"])
+            fresh = _fresh_task_state(plan_task)
+            fresh["generation"] = generation
+            tasks[tid] = fresh
+            if had_fork:
+                # The plain task/<slug>/<id> name is already spent on the
+                # discarded attempt's (possibly still-retained) branch -- fork
+                # a new generation right away instead of leaving _ensure_worktree
+                # to collide with it lazily later.
+                feature_head = execute_state["repos"][fresh["repo"]]["head"]
+                reason = f"PLAN changed {tid} ({', '.join(changed_fields)}); re-implementing against the current head"
+                _refork(store, paths, tid, fresh, plan_task, feature_head, reason)
+            reset.append(tid)
+
+    execute_state["waves"] = dag_waves(list(plan_tasks.values()), width=_execute_width())
+
+    emit(paths, "execute_plan_reconciled", {
+        "kept": kept, "reopened": reopened, "reset": reset, "added": added, "dropped": dropped,
+        "summary": f"plan changed: kept {len(kept)}, reopened {len(reopened)}, reset {len(reset)}, added {len(added)}, dropped {len(dropped)}",
+    }, phase="execute", attempt_id=attempt_id)
     store.save()
 
 
@@ -833,6 +992,7 @@ def step(store, paths, ctx):
     execute_state = store.state.get("execute")
     if execute_state is None:
         execute_state = _init(store, paths, ctx)
+    _reconcile_plan(store, paths, ctx, execute_state)
 
     if _self_heal_commits(store, execute_state):
         store.save()
