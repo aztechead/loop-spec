@@ -7,11 +7,12 @@ from pathlib import Path
 from loop_spec import repo as repo_module
 from loop_spec.baseline import BaselineEntry, run_command
 from loop_spec.errors import LoopSpecError
-from loop_spec.schema import load_schema, validate
-from loop_spec.execute import _final_product, IssueStep, Pause, Product, dag_waves, on_submit, step
+from loop_spec.execute import _final_product, IssueStep, IssueSteps, Pause, Product, dag_waves, on_submit, step
 from loop_spec.paths import FeaturePaths
 from loop_spec.postconditions import retry_limit
 from loop_spec.state import StateStore
+
+from tests._product_checks import assert_product_holds
 
 
 # simplicity: _git/_init_repo repeat test_repo.py's and test_baseline.py's own
@@ -102,6 +103,12 @@ class ExecuteLifecycleTests(unittest.TestCase):
         baseline_run = run_command("sh verify.sh", self.repo, self.base_sha)
         entry = BaselineEntry(command="sh verify.sh", task=None, status="ran", run=baseline_run)
         self.store.state["baseline"] = {"entries": {"sh verify.sh": entry.to_dict()}}
+        # These tests call on_submit directly, bypassing steps.submit's own
+        # evidence-level attestation; "external" is review_evidence's own escape
+        # for exactly that case (an external implementation's whole product is
+        # one human-attested submission), so E6 judges a hand-built result the
+        # same way it would a real external EXECUTE's.
+        self.store.state["implementations"]["phases"]["execute"] = "external"
         self.store.save()
 
         self.ctx = {"attempt": {"id": "attempt-1"}, "inputs": {"digest": "sha256:" + "a" * 64},
@@ -146,6 +153,7 @@ class ExecuteLifecycleTests(unittest.TestCase):
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, Product)
         self.assertEqual(action.product["exit"], "plan gap")
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product, check_boundary=False)
         return action
 
     def test_full_success_lifecycle(self):
@@ -193,6 +201,7 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertEqual(action.product["heads"]["repo"], t2_head)
         done_task = next(t for t in action.product["tasks"] if t["id"] == "T-1")
         self.assertEqual(done_task["review"]["verdict"], "pass")
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product)
 
     def test_review_fail_reissues_implement_with_the_finding_in_reason(self):
         action = step(self.store, self.paths, self.ctx)
@@ -238,6 +247,7 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertEqual(action.product["exit"], "blocked")
         self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "blocked")
         self.assertTrue(action.product["issues"])
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product, check_boundary=False)
 
     def test_mustflip_on_an_ordinary_task_routes_to_plan_gap(self):
         # LF-11: the planner mistakenly set featureAdded to the verify COMMAND
@@ -298,6 +308,7 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertIsInstance(action, Product)
         self.assertEqual(action.product["exit"], "blocked")
         self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "blocked")
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product, check_boundary=False)
 
     def test_out_of_band_commit_pauses(self):
         step(self.store, self.paths, self.ctx)  # initializes worktrees, including worktrees/feature
@@ -407,6 +418,7 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertEqual(task_state["status"], "blocked")
         self.assertEqual(task_state["retries"], retry_limit() + 1)
         self.assertEqual(task_state["commits"], [task_head])
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product, check_boundary=False)
 
     def test_review_retry_after_rejection_does_not_wipe_commits(self):
         # LF-17: an E6 rejection resets a DONE task straight to "probing" (no new
@@ -516,6 +528,10 @@ class AdoptedTaskTests(unittest.TestCase):
         self.store.state["products"]["spec"] = {
             "exit": "approved", "product": {"criteria": [{"id": "AC-1", "text": "it works"}]},
         }
+        # R-1's review below is submitted through on_submit directly, bypassing
+        # steps.submit's own attestation; see ExecuteLifecycleTests.setUp for why
+        # "external" is the right stand-in for E6's evidence-level judgment here.
+        self.store.state["implementations"]["phases"]["execute"] = "external"
         r1 = _plan_task("R-1")
         r1["title"] = "fix the remaining gap"
         self.plan_tasks = [_plan_task("T-1"), r1]
@@ -577,11 +593,17 @@ class AdoptedTaskTests(unittest.TestCase):
         # LF-42: the adopted task carries the adopted-range review, or E5 rejects it.
         self.store.state["adoptedReview"] = {"verdict": "pass", "reviewedRange": {"from": self.base_sha, "to": self.pr_head_sha},
                                              "findings": [], "securityDispositions": [], "sha": self.pr_head_sha}
+        # An adopted task never runs execute.py's own implement/review loop, the
+        # ONLY place execute.py itself records an executeRuns comparison (line
+        # ~670); a real run gets an adopted task's E7 coverage from controller.
+        # _run_execute_verifications's separate clean re-run instead. Standing in
+        # for that here, since this test drives execute.py without controller.py.
+        self.store.state.setdefault("executeRuns", {})["T-1"] = {"comparison": {"verdict": "match"}}
         product = _final_product(self.store, self.ctx, self.store.state["execute"])
         t1_review = {t["id"]: t["review"] for t in product["tasks"]}["T-1"]
         self.assertEqual(t1_review["reviewedRange"], {"from": self.base_sha, "to": self.pr_head_sha})
         self.assertNotIn("sha", t1_review)  # LF-43: the product schema refuses the reviewer's sha field
-        self.assertEqual(validate(product, load_schema("execute")), [])
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", product)
 
     def test_a_changed_prior_task_is_not_adopted(self):
         # The delivering run's T-1 ran a different verify command -- the reviser
@@ -589,9 +611,14 @@ class AdoptedTaskTests(unittest.TestCase):
         self.store.state["revise"]["prior"]["plan"]["tasks"][0]["verify"] = "sh other-verify.sh"
 
         action = step(self.store, self.paths, self.ctx)
-        self.assertIsInstance(action, IssueStep)
-        self.assertEqual(action.request["role"], "implementer")
-        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "pending")
+        # T-1 (redone) and R-1 (never adopted) are both pending in the same
+        # dependency-free wave, so wave-b1's parallel dispatch issues them
+        # together (IssueSteps), not one at a time.
+        self.assertIsInstance(action, IssueSteps)
+        t1_request = next(r for r in action.requests
+                           if r["cwd"] == self.store.state["execute"]["tasks"]["T-1"]["worktree"])
+        self.assertEqual(t1_request["role"], "implementer")
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "implementing")
 
 
 if __name__ == "__main__":

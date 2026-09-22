@@ -9,6 +9,8 @@ from loop_spec.paths import FeaturePaths
 from loop_spec.state import StateStore
 from loop_spec.verify import on_submit, step
 
+from tests._product_checks import assert_product_holds
+
 
 # simplicity: _git/_init_repo repeat test_repo.py's, test_baseline.py's, and
 # test_execute.py's own copies verbatim; there is no shared test-fixture module
@@ -77,6 +79,18 @@ class VerifyTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def _run_pass(self, verifier_result, reviewer_findings=None, repos=("repo",)):
+        # V3 (evidence SHA is the verified head) and V4 (the program's own
+        # re-run matched) are ordinarily settled by controller.py's own
+        # verified_heads/_run_verify_reruns, which drives EXECUTE and re-runs
+        # each criterion's command after accepting the product -- neither ever
+        # runs here, since this helper drives verify.step/on_submit directly.
+        # Standing in for both keeps a "passed" product from failing a Boundary
+        # check for a reason that has nothing to do with what a test asserts.
+        for v in verifier_result["verdicts"]:
+            if v["evidence"] is not None:
+                v["evidence"]["sha"] = self.head_sha
+            if v["verdict"] in ("pass", "fail"):
+                self.store.state.setdefault("verifyRuns", {})[v["criterion"]] = {"matched": True}
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, IssueStep)
         self.assertEqual(action.request["role"], "verifier")
@@ -102,6 +116,7 @@ class VerifyTests(unittest.TestCase):
         self.assertTrue(range_["full"])
         self.assertEqual(range_["from"], self.base_sha)
         self.assertEqual(range_["to"], self.head_sha)
+        assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
 
     def test_delta_pass_reviews_from_the_last_reviewed_to(self):
         self.store.state["ledger"]["reviewedRanges"] = [
@@ -112,6 +127,7 @@ class VerifyTests(unittest.TestCase):
         range_ = product["reviewedRanges"][0]
         self.assertFalse(range_["full"])
         self.assertEqual(range_["from"], self.base_sha)
+        assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
 
     def test_final_pass_forces_full_range(self):
         self.store.state["ledger"]["reviewedRanges"] = [
@@ -121,6 +137,7 @@ class VerifyTests(unittest.TestCase):
         self.ctx["entry"]["payload"] = {"finalPass": True}
         product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]))
         self.assertTrue(product["reviewedRanges"][0]["full"])
+        assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
 
     def test_all_pass_exits_passed(self):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]))
@@ -128,6 +145,7 @@ class VerifyTests(unittest.TestCase):
         # LF-28: evidence names the repo the criterion actually belongs to (the
         # repo of the task that covers it), not left for the reader to guess.
         self.assertEqual(product["verdicts"][0]["evidence"]["repo"], "repo")
+        assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
 
     def test_a_fail_exits_implementation_gap_with_a_remediation_task(self):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "fail", {"files": ["feature.py"]})]))
@@ -138,14 +156,17 @@ class VerifyTests(unittest.TestCase):
         self.assertEqual(task["verify"], "sh verify.sh")
         self.assertEqual(task["criteria"], ["AC-1"])
         self.assertEqual(task["repo"], "repo")
+        assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
 
     def test_a_blocked_verdict_exits_blocked(self):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "blocked")]))
         self.assertEqual(product["exit"], "blocked")
+        assert_product_holds(self, self.store, self.paths, self.repo, "verify", product, check_boundary=False)
 
     def test_plan_gap_flag_overrides_a_fail(self):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "fail")], plan_gap=True))
         self.assertEqual(product["exit"], "plan gap")
+        assert_product_holds(self, self.store, self.paths, self.repo, "verify", product, check_boundary=False)
 
     def test_gap_flags_need_a_failing_verdict(self):
         # LF-45: a flag with every verdict passing is a note (often a criterion
@@ -155,10 +176,12 @@ class VerifyTests(unittest.TestCase):
         events_text = self.paths.events_jsonl.read_text()
         self.assertIn('"verify_gap_flag_ignored"', events_text)
         self.assertIn('"planGap": true', events_text)
+        assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
 
     def test_intent_gap_flag_with_a_failing_verdict_routes(self):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "fail")], intent_gap=True))
         self.assertEqual(product["exit"], "intent gap")
+        assert_product_holds(self, self.store, self.paths, self.repo, "verify", product, check_boundary=False)
 
     def test_verifier_step_carries_evidence_exceptions(self):
         plan_product = self.store.state["products"]["plan"]["product"]
@@ -176,6 +199,7 @@ class VerifyTests(unittest.TestCase):
         self.assertNotEqual(product["findings"][0]["id"], "whatever-the-reviewer-said")
         self.assertTrue(product["findings"][0]["id"].startswith("finding-"))
         self.assertEqual(product["findings"][0]["repo"], "repo")
+        assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
 
     def test_legacy_verify_state_reinitializes_and_emits_module_state_reset(self):
         # A run whose state.verify predates the per-repo shape (LF-28) has no
@@ -298,6 +322,13 @@ class WorkspaceVerifyTests(unittest.TestCase):
         self.assertIsInstance(action, IssueStep)
         self.assertEqual(action.request["role"], "verifier")
         verifier_result = _verifier_result([_verdict("AC-1", "pass"), _verdict("AC-2", "pass")])
+        # V3/V4 need each criterion's own repo's real head and a matching re-run
+        # record -- see VerifyTests._run_pass for why (controller.py settles both
+        # for a real run; this helper drives verify.step/on_submit directly).
+        head_by_criterion = {"AC-1": self.calc_head, "AC-2": self.textutil_head}
+        for v in verifier_result["verdicts"]:
+            v["evidence"]["sha"] = head_by_criterion[v["criterion"]]
+            self.store.state.setdefault("verifyRuns", {})[v["criterion"]] = {"matched": True}
         on_submit(self.store, self.paths, action.request | {"stepAttemptId": "v-step"}, verifier_result)
 
         seen_repos = []
@@ -326,6 +357,7 @@ class WorkspaceVerifyTests(unittest.TestCase):
         self.assertEqual({r["repo"] for r in product["reviewedRanges"]}, {"calc", "textutil"})
         evidence_by_criterion = {v["criterion"]: v["evidence"]["repo"] for v in product["verdicts"]}
         self.assertEqual(evidence_by_criterion, {"AC-1": "calc", "AC-2": "textutil"})
+        assert_product_holds(self, self.store, self.paths, self.calc, "verify", product)
 
     def test_v7_rejection_reissues_only_the_named_repos_reviewer_step(self):
         # LF-30: the message names its repo ("repo textutil: ..."); only that

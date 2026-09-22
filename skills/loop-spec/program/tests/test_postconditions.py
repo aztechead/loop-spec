@@ -543,10 +543,20 @@ class PostconditionsTests(unittest.TestCase):
         escalated = copy.deepcopy(self.iterate_product)
         escalated["exit"] = "escalated"
         escalated["verdict"] = "unmet"
-        self.assertIsNotNone(self._boundary("iterate", escalated, "escalated")._i4())  # budget still has room
+        # No gap at all (the fixture's own "gaps": []): an unclosable gap, valid
+        # grounds for "escalated" on its own, regardless of budget room.
+        self.assertIsNone(self._boundary("iterate", escalated, "escalated")._i4())
+
+        # A gap the router could still act on, with room left to rewind into:
+        # neither branch justifies "escalated" yet.
+        routable = copy.deepcopy(escalated)
+        routable["gaps"] = [{"target": "plan", "text": "missing a case"}]
+        self.assertIsNotNone(self._boundary("iterate", routable, "escalated")._i4())
+
+        # Budget exhausted: the refused-rewind branch passes regardless of gaps.
         budget_module.spend(self.store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-1", reason="gap")
         budget_module.spend(self.store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-2", reason="gap")
-        self.assertIsNone(self._boundary("iterate", escalated, "escalated")._i4())
+        self.assertIsNone(self._boundary("iterate", routable, "escalated")._i4())
 
     def test_i5(self):
         self.assertIsNone(self._boundary("iterate", self.iterate_product, "converged")._i5())

@@ -9,6 +9,8 @@ from loop_spec.iterate import on_submit, step
 from loop_spec.paths import FeaturePaths
 from loop_spec.state import StateStore
 
+from tests._product_checks import assert_product_holds
+
 
 # simplicity: _git/_init_repo repeat test_repo.py's, test_baseline.py's, and
 # test_execute.py's own copies verbatim; there is no shared test-fixture module
@@ -85,27 +87,51 @@ class IterateTests(unittest.TestCase):
         self.assertIsInstance(action, Product)
         self.assertEqual(action.product["exit"], "converged")
         self.assertEqual(action.product["boundShas"], {"repo": self.head_sha})
+        assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
     def test_met_with_accepted_finding_converges_with_caveats(self):
         self.store.state["ledger"]["findings"] = [_finding("F-1", "Minor", "deferred")]
         action = self._judge_result("met", [])
         self.assertEqual(action.product["exit"], "converged with caveats")
         self.assertEqual(action.product["caveats"], ["F-1"])
+        assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
-    def test_met_with_critical_open_finding_escalates(self):
+    def test_met_with_critical_open_finding_and_budget_room_rewinds(self):
+        # A "met" verdict over an open Critical finding is reconciled to "unmet"
+        # with a synthesized gap (_final_product) before the four exit rules ever
+        # see it, so it rewinds like any other unmet verdict with a routable gap.
         self.store.state["ledger"]["findings"] = [_finding("F-1", "Critical", "open")]
         action = self._judge_result("met", [])
+        self.assertEqual(action.product["exit"], "rewind")
+        self.assertEqual(action.product["verdict"], "unmet")
+        self.assertEqual(action.product["gaps"], [{"target": "execute", "text": "open finding F-1 (Critical): x"}])
+        assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
+
+    def test_met_with_critical_open_finding_and_no_budget_room_escalates(self):
+        self.store.state["ledger"]["findings"] = [_finding("F-1", "Critical", "open")]
+        self.store.state["budget"]["spent"] = self.store.state["budget"]["limit"]
+        self.store.save()
+        action = self._judge_result("met", [])
         self.assertEqual(action.product["exit"], "escalated")
+        self.assertEqual(action.product["verdict"], "unmet")
+        assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
+
+    def test_unmet_with_no_gaps_escalates_and_holds_i4(self):
+        action = self._judge_result("unmet", [])
+        self.assertEqual(action.product["exit"], "escalated")
+        assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
     def test_unmet_with_gaps_and_budget_room_rewinds(self):
         action = self._judge_result("unmet", [{"target": "plan", "text": "missing a case"}])
         self.assertEqual(action.product["exit"], "rewind")
+        assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
     def test_unmet_without_budget_room_escalates(self):
         self.store.state["budget"]["spent"] = self.store.state["budget"]["limit"]
         self.store.save()
         action = self._judge_result("unmet", [{"target": "plan", "text": "missing a case"}])
         self.assertEqual(action.product["exit"], "escalated")
+        assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
     def test_prior_gaps_accumulate_across_a_rewind_and_a_new_head(self):
         self._judge_result("unmet", [{"target": "plan", "text": "first gap"}])

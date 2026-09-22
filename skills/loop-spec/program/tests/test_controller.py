@@ -21,8 +21,17 @@ from loop_spec.jsonio import atomic_write_json, read_json
 from loop_spec.paths import FeaturePaths, feature_dir, repo_id
 from loop_spec.state import StateStore
 
+from tests._product_checks import assert_product_holds
+
 _EXTERNAL_ENV = {f"LOOP_SPEC_PHASE_{p.upper()}": "external" for p in
                  ("spec", "plan", "execute", "verify", "iterate", "deliver")}
+
+# EXECUTE left out (falls back to config default = "default"): only execute.py's
+# own step()/on_submit() loop (contract._run_default_stepped) ever marks a task
+# "adopted" and emits task_adopted -- an external EXECUTE bypasses that whole
+# module for one hand-submitted product instead (contract.run_phase), so a test
+# asserting on adoption needs EXECUTE undispatched by _EXTERNAL_ENV.
+_EXTERNAL_ENV_EXCEPT_EXECUTE = {k: v for k, v in _EXTERNAL_ENV.items() if k != "LOOP_SPEC_PHASE_EXECUTE"}
 
 
 def _git(cwd, *args):
@@ -130,6 +139,22 @@ def _approve_compacted_spec_and_submit_critic(paths, repo_dir, markers, next_):
     critic_step = read_json(next_.path)
     atomic_write_json(Path(critic_step["resultPath"]), {"findings": []})
     return _submit_and_continue(paths, repo_dir, markers, critic_step["stepAttemptId"])
+
+
+def _write_sdk_receipt(step: dict) -> None:
+    """A real dispatch leaves this beside a role step's result so steps.submit can
+    mark it "controller-observed" (ACCEPTED_REVIEW_LEVELS) without a live host to
+    attest it; dispatch_name=None/host=None (this file's usual submit call) would
+    otherwise leave it "unattested" and E6 would reject a DEFAULT-mode EXECUTE
+    task's review. Only EXECUTE's own review-role steps (never SPEC/PLAN/DEBUG/
+    REVISE's compacted-approval or external-phase steps) need this -- E6 is the
+    only postcondition that reads a step's own evidenceLevel."""
+    result_path = Path(step["resultPath"])
+    receipt_path = result_path.with_name("sdk-receipt.json")
+    atomic_write_json(receipt_path, {
+        "stepAttemptId": step["stepAttemptId"], "resultDigest": digest_bytes(result_path.read_bytes()),
+        "sessionId": "test-session",
+    })
 
 
 def _submit_and_continue(paths, repo_dir, markers, step_id: str):
@@ -956,6 +981,451 @@ class DebugAndReviseEntryTests(_QuietStdout):
                 store = _open(paths)
                 self.assertIsNotNone(store.state.get("adoptedReview"))
                 self.assertEqual(next_.kind, "step")  # EXECUTE's own external step, now that the adopted review is on record
+
+    def test_revise_entry_delivers_after_adopting_the_prior_task(self):
+        # Item B (post-PR hardening): the sibling above stops once EXECUTE's own
+        # step is issued; this one drives a revise run all the way to DELIVER,
+        # with a REAL prior run on disk so adoption goes through
+        # controller._find_delivering_run_products for real, T-1 carried forward
+        # unchanged in the reviser's plan actually gets marked "adopted" (not
+        # re-implemented), and a genuinely new T-2 gets implemented, reviewed,
+        # verified, and delivered on top of it.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            origin = tmp / "origin.git"
+            _git(tmp, "init", "-q", "--bare", str(origin))
+            _git(repo_dir, "remote", "add", "origin", str(origin))
+            _git(repo_dir, "push", "-q", "origin", "main")
+            home = tmp / "home"
+            repo_name = repo_dir.name
+            rid = repo_id(repo_dir)
+
+            base_sha = repo_module.head_sha(repo_dir)
+            _git(repo_dir, "checkout", "-q", "-b", "pr-branch")
+            (repo_dir / "greet.py").write_text("print('hi')\n", encoding="utf-8")
+            _git(repo_dir, "add", "greet.py")
+            _git(repo_dir, "commit", "-q", "-m", "add greeting")
+            head_sha = repo_module.head_sha(repo_dir)
+            _git(repo_dir, "checkout", "-q", "main")
+
+            # --- the prior run that delivered PR #42 (its plan's T-1) ---
+            prior_spec = {
+                "goal": "Add a greeting", "boundaries": [],
+                "criteria": [{"id": "AC-1", "text": "prints a greeting"}],
+                "decisions": [], "openQuestions": [],
+            }
+            t1 = {
+                "id": "T-1", "title": "add greeting", "dependsOn": [], "files": ["greet.py"],
+                "repo": repo_name, "verify": "true", "criteria": ["AC-1"], "featureAdded": None, "mustFlip": False,
+            }
+            prior_plan = {"tasks": [t1], "prepare": None, "evidenceExceptions": []}
+            prior_paths = FeaturePaths(root=feature_dir(home, rid, "delivered-42"), project_root=repo_dir)
+            prior_store = StateStore.create(
+                prior_paths, {"id": "run-prior", "entry": "cycle", "slug": "delivered-42", "createdAt": "2026-01-01T00:00:00+00:00"},
+                "add a greeting",
+            )
+            prior_store.state["products"]["spec"] = {"product": prior_spec}
+            prior_store.state["products"]["plan"] = {"product": prior_plan}
+            prior_store.save()
+            pr_url = "https://github.com/example/repo/pull/42"
+            atomic_write_json(prior_paths.result_json, {"prs": [{"number": 42, "repo": repo_name, "url": pr_url}]})
+
+            adoption = repo_module.PrAdoption(
+                adopt=True, number=42, url=pr_url, branch="pr-branch",
+                base_branch="main", head_sha=head_sha, reason="named open PR #42",
+            )
+            gaps = [{"id": "G-1", "author": "reviewer", "body": "tighten the message", "path": None, "line": None, "url": None}]
+
+            with patch.object(repo_module, "adopt_pr", return_value=adoption), \
+                 patch.object(revise_module, "gaps_from_pr", return_value=gaps), \
+                 patch.dict("os.environ", _EXTERNAL_ENV_EXCEPT_EXECUTE, clear=False):
+                markers = io.StringIO()
+                with contextlib.redirect_stdout(markers):
+                    next_ = controller.run_entry(
+                        "revise", project_root=repo_dir, request_text=None, slug=None,
+                        state_home=str(home), answer_policy=None, pr="42",
+                    )
+                paths = FeaturePaths(root=feature_dir(home, rid, "revise-42"))
+                store = _open(paths)
+                self.assertEqual(store.state["run"]["cycleType"], "revise")
+                self.assertEqual(store.state["revise"]["prior"], {"slug": "delivered-42", "spec": prior_spec, "plan": prior_plan})
+                self.assertEqual(next_.kind, "step")
+
+                # --- REVISE's lead step: T-1 carried forward verbatim, plus a new T-2 ---
+                reviser_step = read_json(next_.path)
+                t2 = {
+                    "id": "T-2", "title": "add farewell", "dependsOn": [], "files": ["farewell.py"],
+                    "repo": repo_name, "verify": "true", "criteria": ["AC-2"], "featureAdded": None, "mustFlip": False,
+                }
+                reviser_spec = {
+                    "goal": "Tighten the greeting", "boundaries": [],
+                    "criteria": [{"id": "AC-1", "text": "prints a greeting"}, {"id": "AC-2", "text": "prints a farewell"}],
+                    "decisions": [], "openQuestions": [],
+                }
+                reviser_plan = {"tasks": [t1, t2], "prepare": None, "evidenceExceptions": []}
+                reviser_product = {"spec": reviser_spec, "plan": reviser_plan}
+                atomic_write_json(Path(reviser_step["resultPath"]), reviser_product)
+                next_ = _submit_and_continue(paths, repo_dir, markers, reviser_step["stepAttemptId"])
+                self.assertEqual(next_.kind, "question")  # the compacted SPEC's own approval question
+                next_ = _approve_compacted_spec_and_submit_critic(paths, repo_dir, markers, next_)
+
+                # --- the one full adopted-range review, before EXECUTE's own step ---
+                store = _open(paths)
+                self.assertEqual(store.state["phase"]["current"], "execute")
+                self.assertEqual(next_.kind, "step")
+                review_step = read_json(next_.path)
+                self.assertEqual(review_step["role"], "code-reviewer")
+                review_result = {
+                    "sha": head_sha, "reviewedRange": {"from": base_sha, "to": head_sha},
+                    "verdict": "pass", "findings": [], "securityDispositions": [],
+                }
+                atomic_write_json(Path(review_step["resultPath"]), review_result)
+                _write_sdk_receipt(review_step)  # E6 needs T-1's adopted-review evidence "controller-observed"
+                next_ = _submit_and_continue(paths, repo_dir, markers, review_step["stepAttemptId"])
+                store = _open(paths)
+                adopted_review = store.state.get("adoptedReview")
+                self.assertIsNotNone(adopted_review)
+                self.assertEqual(next_.kind, "step")  # EXECUTE's own step: T-1 auto-adopts, T-2 dispatches
+
+                # T-1 is marked "adopted" (and task_adopted fires) the moment EXECUTE's
+                # own step() first runs, before any step is even issued for T-2.
+                events_text = paths.events_jsonl.read_text()
+                self.assertIn('"task_adopted"', events_text)
+                store = _open(paths)
+                self.assertEqual(store.state["execute"]["tasks"]["T-1"]["status"], "adopted")
+
+                # --- EXECUTE: T-2's own implementer step, a real commit in its issued worktree ---
+                implementer_step = read_json(next_.path)
+                self.assertEqual(implementer_step["role"], "implementer")
+                t2_worktree = Path(store.state["execute"]["tasks"]["T-2"]["worktree"])
+                (t2_worktree / "farewell.py").write_text("print('bye')\n", encoding="utf-8")
+                _git(t2_worktree, "add", "farewell.py")
+                _git(t2_worktree, "commit", "-q", "-m", "T-2: add farewell")
+                commit_sha2 = repo_module.head_sha(t2_worktree)
+                implementer_result = {
+                    "taskId": "T-2", "commits": [commit_sha2], "summary": "added a farewell",
+                    "verifyRun": {"command": "true", "exitStatus": 0}, "issues": [],
+                }
+                atomic_write_json(Path(implementer_step["resultPath"]), implementer_result)
+                next_ = _submit_and_continue(paths, repo_dir, markers, implementer_step["stepAttemptId"])
+                self.assertEqual(next_.kind, "step")  # T-2's own code-reviewer step
+
+                review_t2_step = read_json(next_.path)
+                self.assertEqual(review_t2_step["role"], "code-reviewer")
+                review_t2_result = {
+                    "sha": commit_sha2, "reviewedRange": {"from": head_sha, "to": commit_sha2},
+                    "verdict": "pass", "findings": [], "securityDispositions": [],
+                }
+                atomic_write_json(Path(review_t2_step["resultPath"]), review_t2_result)
+                _write_sdk_receipt(review_t2_step)  # E6 needs T-2's own review evidence "controller-observed"
+                next_ = _submit_and_continue(paths, repo_dir, markers, review_t2_step["stepAttemptId"])
+                self.assertEqual(next_.kind, "step")  # VERIFY's own step (EXECUTE's product just accepted)
+
+                # Revisions are read off the STORED products (their own digest
+                # includes "exit", which reviser_spec/reviser_plan -- submitted
+                # without it -- never carried) rather than recomputed from the
+                # dicts this test wrote, to bind to what the run actually accepted.
+                store = _open(paths)
+                spec_revision = store.state["revisions"]["requirements"]
+                plan_revision = store.state["revisions"]["plan"]
+                self.assertEqual(store.state["products"]["execute"]["exit"], "integrated")
+                execute_product = store.state["products"]["execute"]["product"]
+                by_id = {t["id"]: t for t in execute_product["tasks"]}
+                self.assertEqual(by_id["T-1"]["disposition"], "adopted")
+                self.assertEqual(by_id["T-1"]["review"], {
+                    "reviewedRange": {"from": base_sha, "to": head_sha},
+                    "verdict": "pass", "findings": [], "securityDispositions": [],
+                })
+                self.assertEqual(by_id["T-2"]["disposition"], "done")
+                # Accepting EXECUTE mutates no ledger state (unlike VERIFY's own
+                # acceptance -- see the VERIFY check below), so re-checking its
+                # already-accepted product here is safe.
+                assert_product_holds(self, store, paths, repo_dir, "execute", execute_product)
+
+                # --- VERIFY ---
+                step = read_json(next_.path)
+                verify_product = {
+                    "exit": "passed", "inputsDigest": "sha256:" + "0" * 64,
+                    "boundTo": {"requirements": spec_revision, "plan": plan_revision},
+                    "verdicts": [
+                        {"criterion": "AC-1", "verdict": "pass", "cause": None, "evidence": {
+                            "command": "true", "repo": repo_name, "sha": commit_sha2,
+                            "exitStatus": 0, "failureIdentities": [], "outputDigest": "sha256:" + "0" * 64,
+                        }},
+                        {"criterion": "AC-2", "verdict": "pass", "cause": None, "evidence": {
+                            "command": "true", "repo": repo_name, "sha": commit_sha2,
+                            "exitStatus": 0, "failureIdentities": [], "outputDigest": "sha256:" + "0" * 64,
+                        }},
+                    ],
+                    "findings": [], "remediationTasks": [],
+                    "reviewedRanges": [{"repo": repo_name, "from": base_sha, "to": commit_sha2, "full": True}],
+                }
+                store = _open(paths)
+                # V4 (the program's own re-run matched) is ordinarily settled by
+                # controller._run_verify_reruns AFTER this product is accepted; see
+                # VerifyTests._run_pass in test_verify.py for the same stand-in,
+                # needed here because this checks the product BEFORE submission.
+                for verdict in verify_product["verdicts"]:
+                    store.state.setdefault("verifyRuns", {})[verdict["criterion"]] = {"matched": True}
+                assert_product_holds(self, store, paths, repo_dir, "verify", verify_product)
+                atomic_write_json(Path(step["resultPath"]), verify_product)
+                next_ = _submit_and_continue(paths, repo_dir, markers, step["stepAttemptId"])
+                self.assertEqual(next_.kind, "step")  # ITERATE's own step
+
+                store = _open(paths)
+                self.assertEqual(store.state["products"]["verify"]["exit"], "passed")
+
+                # --- ITERATE ---
+                step = read_json(next_.path)
+                iterate_product = {
+                    "exit": "converged", "inputsDigest": "sha256:" + "0" * 64,
+                    "boundTo": {"requirements": spec_revision, "plan": plan_revision},
+                    "verdict": "met", "gaps": [], "caveats": [], "boundShas": {repo_name: commit_sha2},
+                }
+                atomic_write_json(Path(step["resultPath"]), iterate_product)
+                store = _open(paths)
+                steps.submit(store, paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
+
+                def fake_run_gh(repo, *args):
+                    if args[:2] == ("auth", "status"):
+                        return 0, "", ""
+                    if args[:2] == ("pr", "view"):
+                        return 0, json.dumps({
+                            "state": "OPEN", "headRefName": "pr-branch", "headRefOid": commit_sha2,
+                            "baseRefName": "main", "number": 42, "url": pr_url,
+                        }), ""
+                    return 1, "", "unexpected gh call in test"
+
+                with patch.object(repo_module, "run_gh", fake_run_gh):
+                    with contextlib.redirect_stdout(markers):
+                        next_ = controller.continue_run(store, paths, project_root=repo_dir)
+                self.assertEqual(next_.kind, "step")  # DELIVER's own step
+
+                # --- DELIVER: push the branch for real, reusing the adopted PR ---
+                step = read_json(next_.path)
+                _git(repo_dir, "push", "-q", "origin", "pr-branch")
+                deliver_product = {
+                    "exit": "delivered", "inputsDigest": "sha256:" + "0" * 64,
+                    "boundTo": {"requirements": spec_revision, "plan": plan_revision},
+                    "repos": [{
+                        "repo": repo_name,
+                        "pr": {"number": 42, "url": pr_url, "headRef": "pr-branch", "headSha": commit_sha2, "base": "main"},
+                        "deliveredSha": commit_sha2, "caveats": [], "state": "delivered",
+                    }],
+                }
+                atomic_write_json(Path(step["resultPath"]), deliver_product)
+                store = _open(paths)
+                steps.submit(store, paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
+                with patch.object(repo_module, "run_gh", fake_run_gh):
+                    with contextlib.redirect_stdout(markers):
+                        next_ = controller.continue_run(store, paths, project_root=repo_dir)
+
+            self.assertEqual(next_.kind, "result")
+            result = read_json(next_.path)
+            self.assertEqual(result["result"], "converged")
+            self.assertEqual(result["status"], "completed")
+            self.assertEqual(result["cycleType"], "revise")
+
+            events_text = paths.events_jsonl.read_text()
+            self.assertIn('"worktrees_removed"', events_text)
+
+
+def _run_one_full_external_cycle(repo_dir, home, markers, slug: str, request_text: str, filename: str) -> FeaturePaths:
+    """Drive one whole "cycle" run, every phase external, from its own request text
+    to a delivered terminal result -- the same shape as FullExternalCycleTests's own
+    test, parameterized so WorktreeReuseTests can run it more than once against the
+    same repo_dir/home with a different slug each time. Returns its FeaturePaths."""
+    with contextlib.redirect_stdout(markers):
+        controller.run_entry(
+            "cycle", project_root=repo_dir, request_text=request_text,
+            slug=slug, state_home=str(home), answer_policy=None, pr=None,
+        )
+    paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), slug))
+    store = _open(paths)
+    repo_name = next(iter(store.state["repos"]))
+    next_, spec_product = _drive_through_spec_approval(store, paths, repo_dir, markers)
+    base_sha = store.state["repos"][repo_name]["baseSha"]
+    feature_branch = store.state["repos"][repo_name]["featureBranch"]
+
+    step = read_json(next_.path)
+    next_, plan_product = _submit_greeting_plan(paths, repo_dir, markers, step, repo_name, spec_product)
+
+    critic_step = read_json(next_.path)
+    atomic_write_json(Path(critic_step["resultPath"]), {"findings": []})
+    store = _open(paths)
+    steps.submit(store, paths, step_id=critic_step["stepAttemptId"], dispatch_name=None, host=None)
+    with contextlib.redirect_stdout(markers):
+        next_ = controller.continue_run(store, paths, project_root=repo_dir)
+
+    step = read_json(next_.path)
+    repo_module.create_feature_branch(repo_dir, feature_branch, base_sha)
+    feature_wt = home.parent / f"{slug}-wt"
+    repo_module.add_worktree(repo_dir, feature_wt, branch=feature_branch)
+    (feature_wt / filename).write_text("print('hi')\n", encoding="utf-8")
+    _git(feature_wt, "add", filename)
+    _git(feature_wt, "commit", "-q", "-m", f"T-1: add {filename}")
+    commit_sha = repo_module.head_sha(feature_wt)
+    repo_module.remove_worktree(repo_dir, feature_wt, force=True)
+
+    spec_revision = postconditions.requirements_revision(spec_product)
+    plan_revision = postconditions.plan_revision(plan_product)
+    execute_product = {
+        "exit": "integrated", "inputsDigest": "sha256:" + "0" * 64,
+        "boundTo": {"requirements": spec_revision, "plan": plan_revision},
+        "tasks": [{
+            "id": "T-1", "disposition": "done", "evidence": None, "commits": [commit_sha],
+            "review": {
+                "reviewedRange": {"from": base_sha, "to": commit_sha},
+                "verdict": "pass", "findings": [], "securityDispositions": [],
+            },
+        }],
+        "issues": [], "heads": {repo_name: commit_sha},
+    }
+    atomic_write_json(Path(step["resultPath"]), execute_product)
+    store = _open(paths)
+    steps.submit(store, paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
+    with contextlib.redirect_stdout(markers):
+        next_ = controller.continue_run(store, paths, project_root=repo_dir)
+
+    step = read_json(next_.path)
+    verify_product = {
+        "exit": "passed", "inputsDigest": "sha256:" + "0" * 64,
+        "boundTo": {"requirements": spec_revision, "plan": plan_revision},
+        "verdicts": [{
+            "criterion": "AC-1", "verdict": "pass",
+            "evidence": {
+                "command": 'python3 -c "import sys; sys.exit(0)"', "repo": repo_name, "sha": commit_sha,
+                "exitStatus": 0, "failureIdentities": [], "outputDigest": "sha256:" + "0" * 64,
+            },
+            "cause": None,
+        }],
+        "findings": [], "remediationTasks": [],
+        "reviewedRanges": [{"repo": repo_name, "from": base_sha, "to": commit_sha, "full": True}],
+    }
+    atomic_write_json(Path(step["resultPath"]), verify_product)
+    store = _open(paths)
+    steps.submit(store, paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
+    with contextlib.redirect_stdout(markers):
+        next_ = controller.continue_run(store, paths, project_root=repo_dir)
+
+    step = read_json(next_.path)
+    iterate_product = {
+        "exit": "converged", "inputsDigest": "sha256:" + "0" * 64,
+        "boundTo": {"requirements": spec_revision, "plan": plan_revision},
+        "verdict": "met", "gaps": [], "caveats": [], "boundShas": {repo_name: commit_sha},
+    }
+    atomic_write_json(Path(step["resultPath"]), iterate_product)
+    store = _open(paths)
+    steps.submit(store, paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
+
+    def fake_run_gh(repo, *args):
+        if args[:2] == ("auth", "status"):
+            return 0, "", ""
+        if args[:2] == ("pr", "view"):
+            return 0, json.dumps({
+                "state": "OPEN", "headRefName": feature_branch, "headRefOid": commit_sha,
+                "baseRefName": "main", "number": 1, "url": f"https://example.invalid/pull/{slug}",
+            }), ""
+        return 1, "", "unexpected gh call in test"
+
+    with patch.object(repo_module, "run_gh", fake_run_gh):
+        with contextlib.redirect_stdout(markers):
+            next_ = controller.continue_run(store, paths, project_root=repo_dir)
+
+    step = read_json(next_.path)
+    _git(repo_dir, "push", "-q", "origin", feature_branch)
+    deliver_product = {
+        "exit": "delivered", "inputsDigest": "sha256:" + "0" * 64,
+        "boundTo": {"requirements": spec_revision, "plan": plan_revision},
+        "repos": [{
+            "repo": repo_name,
+            "pr": {"number": 1, "url": f"https://example.invalid/pull/{slug}", "headRef": feature_branch, "headSha": commit_sha, "base": "main"},
+            "deliveredSha": commit_sha, "caveats": [], "state": "delivered",
+        }],
+    }
+    atomic_write_json(Path(step["resultPath"]), deliver_product)
+    store = _open(paths)
+    steps.submit(store, paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
+    with patch.object(repo_module, "run_gh", fake_run_gh):
+        with contextlib.redirect_stdout(markers):
+            next_ = controller.continue_run(store, paths, project_root=repo_dir)
+
+    assert next_.kind == "result", f"expected a terminal result, got {next_.kind}"
+    return paths
+
+
+class WorktreeReuseTests(_QuietStdout):
+    """LF-39: a terminal run removes its own worktrees so a LATER run against the
+    same repo is never refused by one it left behind."""
+
+    def test_two_sequential_runs_share_one_repo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            origin = tmp / "origin.git"
+            _git(tmp, "init", "-q", "--bare", str(origin))
+            _git(repo_dir, "remote", "add", "origin", str(origin))
+            _git(repo_dir, "push", "-q", "origin", "main")
+            home = tmp / "home"
+            markers = io.StringIO()
+
+            with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+                first_paths = _run_one_full_external_cycle(
+                    repo_dir, home, markers, "greeting-one", "Add a greeting message", "greet.py",
+                )
+            first_result = read_json(first_paths.result_json)
+            self.assertEqual(first_result["status"], "completed")
+
+            worktree_listing = repo_module.run_git(repo_dir, "worktree", "list", "--porcelain")
+            self.assertNotIn(str(first_paths.root), worktree_listing)
+
+            # --- second run: a different slug/request, EXECUTE left at "default" so
+            # it issues its own implementer step (an external EXECUTE, as the first
+            # run used, never touches add_worktree itself -- LF-39's own bug site). ---
+            with patch.dict("os.environ", _EXTERNAL_ENV_EXCEPT_EXECUTE, clear=False):
+                with contextlib.redirect_stdout(markers):
+                    controller.run_entry(
+                        "cycle", project_root=repo_dir, request_text="Add a farewell message",
+                        slug="greeting-two", state_home=str(home), answer_policy=None, pr=None,
+                    )
+                second_paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "greeting-two"))
+                store = _open(second_paths)
+                repo_name = next(iter(store.state["repos"]))
+                next_, spec_product = _drive_through_spec_approval(store, second_paths, repo_dir, markers)
+
+                step = read_json(next_.path)
+                plan_product = {
+                    "exit": "ready", "inputsDigest": "sha256:" + "0" * 64,
+                    "boundTo": {"requirements": postconditions.requirements_revision(spec_product), "plan": None},
+                    "tasks": [{
+                        "id": "T-1", "title": "add farewell", "dependsOn": [], "files": ["farewell.py"],
+                        "repo": repo_name, "verify": "true", "criteria": ["AC-1"], "featureAdded": None, "mustFlip": False,
+                    }],
+                    "prepare": None, "evidenceExceptions": [],
+                }
+                atomic_write_json(Path(step["resultPath"]), plan_product)
+                store = _open(second_paths)
+                steps.submit(store, second_paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
+                with contextlib.redirect_stdout(markers):
+                    next_ = controller.continue_run(store, second_paths, project_root=repo_dir)
+
+                critic_step = read_json(next_.path)
+                atomic_write_json(Path(critic_step["resultPath"]), {"findings": []})
+                store = _open(second_paths)
+                steps.submit(store, second_paths, step_id=critic_step["stepAttemptId"], dispatch_name=None, host=None)
+                with contextlib.redirect_stdout(markers):
+                    next_ = controller.continue_run(store, second_paths, project_root=repo_dir)
+
+            # EXECUTE's own default step() ran _init() (its own add_worktree call for
+            # the feature branch, plus one per dispatched task) with no "already used
+            # by worktree" LoopSpecError -- the very failure LF-39 fixed.
+            self.assertEqual(next_.kind, "step")
+            implementer_step = read_json(next_.path)
+            self.assertEqual(implementer_step["role"], "implementer")
+
+            second_listing = repo_module.run_git(repo_dir, "worktree", "list", "--porcelain")
+            self.assertNotIn(str(first_paths.root), second_listing)
 
 
 class VerifyRerunsTests(unittest.TestCase):
