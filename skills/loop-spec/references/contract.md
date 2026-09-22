@@ -124,14 +124,18 @@ picks one evidence level:
 | Evidence level | When |
 |---|---|
 | `human-attested` | `kind: "external"` |
-| `controller-observed` | a `sdk-receipt.json` sits beside the result, its `stepAttemptId` matches and its `resultDigest` equals the computed digest (`sdk_runner.run_step_sdk` writes this) |
-| `host-attested` | `--dispatch <name>` was given and `attest.ClaudeCodeAttestor` (only constructed when `CLAUDE_CODE_SESSION_ID` is set) finds and checks exactly one native subagent transcript for it |
+| `controller-observed` | this run's own `state["run"]["runner"] == "sdk"` (set by `sdk_runner.run_step_sdk` itself, before it launches a session) AND a `receipt.json` under `paths.steps_dir/<stepAttemptId>/` (never beside the worker-writable result) has a matching `stepAttemptId` and `resultDigest` |
+| `host-attested` | `--dispatch <name>` was given and `attest.ClaudeCodeAttestor` (only constructed when `CLAUDE_CODE_SESSION_ID` is set) finds and checks exactly one native subagent transcript, whose opening record contains the step's ENTIRE composed prompt (not just its trailer lines) |
 | `unattested` | none of the above, or an attestation attempt failed |
 
-A mismatched `sdk-receipt.json` (wrong id or digest) is recorded as
+A mismatched receipt (wrong id or digest) is recorded as
 `attestation: {ok: false, reason: "sdk receipt digest mismatch"}` and the level
-stays `unattested`. A step is retired once submitted; resubmitting the same digest
-replays the same result (idempotent); resubmitting a different one is refused.
+stays `unattested`; a receipt on a run whose `runner` is not `"sdk"`, or beside a
+result rather than under `paths.steps_dir`, is not even read (R2: a receipt in the
+old, worker-writable location, or on a run nothing here ever launched under the
+SDK, is not evidence of anything). A step is retired once submitted; resubmitting
+the same digest replays the same result (idempotent); resubmitting a different one
+is refused.
 
 A `role` step whose `role` is `plan-critic`, `code-reviewer`, or `iterate-judge`
 (pure judgment the program cannot re-derive) is never accepted `unattested`: an
@@ -236,7 +240,6 @@ optional:
 | `deliver.base` | overrides the branch DELIVER's PR targets, instead of the repo's detected default branch |
 | `deliver.readiness` | `"checks"` makes D3 wait on `gh pr checks`; default `"none"` skips that wait |
 | `deliver.escalatedPartialDraft` | `true` routes an escalated ITERATE forward into DELIVER for a draft PR instead of terminating |
-| `commitArtifacts` | `true` renders `spec.md`/`plan.md`/`verification.md` under `docs/loop-spec/<slug>/` and commits them |
 | `evidence.review.accept` | `"unattested"` lets an `unattested` review count toward EXECUTE's E6, instead of blocking the task; every task accepted this way is listed in the result's `weakenedAssurance` |
 
 Environment variables, precedence over config where both apply:

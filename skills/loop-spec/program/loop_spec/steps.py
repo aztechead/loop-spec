@@ -151,15 +151,19 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
     record_path = paths.steps_dir / step_id / "result.json"
     record_path.parent.mkdir(parents=True, exist_ok=True)
     record_path.write_bytes(result_bytes)
-    receipt_path = result_path.with_name("sdk-receipt.json")
+    # R2: under the state home (never beside result_path, which a worker/result
+    # author can write to), and only trusted when this run's own state says an
+    # SDK session actually launched it -- a receipt's mere presence, in the old
+    # worker-writable location, was accepted as proof by itself.
+    receipt_path = paths.steps_dir / step_id / "receipt.json"
 
     attestation = None
     if step["kind"] == "external":
         evidence_level = "human-attested"
-    elif receipt_path.is_file():
-        # sdk_runner.run_step_sdk wrote this beside the result: this process
-        # itself watched the SDK session end successfully, so "controller-observed"
-        # needs no host at all, only a receipt that actually names this submission.
+    elif store.state["run"].get("runner") == "sdk" and receipt_path.is_file():
+        # sdk_runner.run_step_sdk wrote this: this process itself watched the SDK
+        # session end successfully, so "controller-observed" needs no host at
+        # all, only a receipt that actually names this submission.
         try:
             receipt = read_json(receipt_path)
         except json.JSONDecodeError:

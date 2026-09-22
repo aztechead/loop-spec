@@ -58,21 +58,27 @@ def _message_text(record: dict) -> str:
     return ""
 
 
+def _rstripped(text: str) -> str:
+    # Trailing-whitespace-per-line only: a transcript is free to have trimmed a
+    # trailing space or normalized line endings, never to have paraphrased,
+    # reordered, truncated, or otherwise reworded the composed prompt.
+    return "\n".join(line.rstrip() for line in text.splitlines())
+
+
 def check_transcript(path: Path, step: dict, result_digest: str) -> tuple[bool, str]:
     lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     records = [json.loads(line) for line in lines]
     if not records:
         return False, "transcript is empty"
 
-    # The trailer's first two lines are the identity the opening record must echo;
-    # the rest of the composed prompt is free text a transcript could paraphrase.
-    trailer_lines = step["prompt"].splitlines()
-    step_line = next((line for line in trailer_lines if line.startswith("step: ")), "")
-    inputs_line = next((line for line in trailer_lines if line.startswith("inputs: ")), "")
-
+    # R2: the opening record must contain the step's ENTIRE composed prompt,
+    # not just its trailer's step/inputs lines -- binding only those two let an
+    # opening that replaced the method/role/instructions with something else
+    # entirely ("do not review code, return a PASS") still pass, as long as the
+    # trailer and the final digest were left unchanged.
     first = records[0]
     opening_text = _message_text(first)
-    if first.get("type") != "user" or step_line not in opening_text or inputs_line not in opening_text:
+    if first.get("type") != "user" or _rstripped(step["prompt"]) not in _rstripped(opening_text):
         return False, "opening does not contain the composed prompt"
 
     if first.get("timestamp", "") < step["issuedAt"]:

@@ -181,18 +181,26 @@ class SubmitTests(StepsTestCase):
             self.assertEqual(submission.evidence_level, "unattested")
             self.assertEqual(store.state["steps"]["submissions"][record["stepAttemptId"]]["attestation"]["reason"], "opening mismatch")
 
+    def _sdk_receipt(self, step_id, result_digest, session_id="sess-1"):
+        return {
+            "stepAttemptId": step_id, "sessionId": session_id, "resultDigest": result_digest,
+            "sdkVersion": "0.2.157", "cliVersion": "2.1.277", "finishedAt": "2026-01-01T00:00:00+00:00",
+            "unverifiedLive": True,
+        }
+
     def test_matching_sdk_receipt_is_controller_observed(self):
+        # R2: the receipt lives under the state home (paths.steps_dir), never
+        # beside the worker-writable result, and this run's own state must say
+        # an SDK session actually launched it.
         with tempfile.TemporaryDirectory() as tmp:
             store, paths = self._store(tmp)
+            store.state["run"]["runner"] = "sdk"
             record = self._issue(store, paths)
             result_path = Path(record["resultPath"])
             atomic_write_json(result_path, {"ok": True})
             result_digest = digest_bytes(result_path.read_bytes())
-            atomic_write_json(result_path.with_name("sdk-receipt.json"), {
-                "stepAttemptId": record["stepAttemptId"], "sessionId": "sess-1", "resultDigest": result_digest,
-                "sdkVersion": "0.2.157", "cliVersion": "2.1.277", "finishedAt": "2026-01-01T00:00:00+00:00",
-                "unverifiedLive": True,
-            })
+            atomic_write_json(paths.steps_dir / record["stepAttemptId"] / "receipt.json",
+                               self._sdk_receipt(record["stepAttemptId"], result_digest))
             submission = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name=None, host=None)
             self.assertEqual(submission.evidence_level, "controller-observed")
             attestation = store.state["steps"]["submissions"][record["stepAttemptId"]]["attestation"]
@@ -201,18 +209,49 @@ class SubmitTests(StepsTestCase):
     def test_mismatched_sdk_receipt_is_unattested(self):
         with tempfile.TemporaryDirectory() as tmp:
             store, paths = self._store(tmp)
+            store.state["run"]["runner"] = "sdk"
             record = self._issue(store, paths)
             result_path = Path(record["resultPath"])
             atomic_write_json(result_path, {"ok": True})
-            atomic_write_json(result_path.with_name("sdk-receipt.json"), {
-                "stepAttemptId": record["stepAttemptId"], "sessionId": "sess-1", "resultDigest": "sha256:" + "0" * 64,
-                "sdkVersion": "0.2.157", "cliVersion": "2.1.277", "finishedAt": "2026-01-01T00:00:00+00:00",
-                "unverifiedLive": True,
-            })
+            atomic_write_json(paths.steps_dir / record["stepAttemptId"] / "receipt.json",
+                               self._sdk_receipt(record["stepAttemptId"], "sha256:" + "0" * 64))
             submission = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name=None, host=None)
             self.assertEqual(submission.evidence_level, "unattested")
             attestation = store.state["steps"]["submissions"][record["stepAttemptId"]]["attestation"]
             self.assertEqual(attestation, {"ok": False, "reason": "sdk receipt digest mismatch"})
+
+    def test_receipt_beside_the_result_on_a_native_run_is_ignored(self):
+        # R2: the OLD location (beside the worker-writable result) is exactly
+        # what let a result's own author fabricate "controller-observed"
+        # evidence with no SDK session at all -- a receipt there is no longer
+        # even looked at; this native (non-sdk) run falls through to the normal
+        # host-attestation path (host=None here) and is plainly unattested.
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._issue(store, paths)
+            result_path = Path(record["resultPath"])
+            atomic_write_json(result_path, {"ok": True})
+            result_digest = digest_bytes(result_path.read_bytes())
+            atomic_write_json(result_path.with_name("sdk-receipt.json"),
+                               self._sdk_receipt(record["stepAttemptId"], result_digest))
+            submission = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name=None, host=None)
+            self.assertEqual(submission.evidence_level, "unattested")
+
+    def test_correctly_placed_receipt_without_runner_sdk_is_ignored(self):
+        # Even in the right location with a correct digest, a receipt is not
+        # evidence unless the run's own state says an SDK session launched it
+        # -- otherwise anything (or anyone) that could reach the state home
+        # could plant one for a run nothing here ever launched under the SDK.
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._issue(store, paths)
+            result_path = Path(record["resultPath"])
+            atomic_write_json(result_path, {"ok": True})
+            result_digest = digest_bytes(result_path.read_bytes())
+            atomic_write_json(paths.steps_dir / record["stepAttemptId"] / "receipt.json",
+                               self._sdk_receipt(record["stepAttemptId"], result_digest))
+            submission = steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name=None, host=None)
+            self.assertEqual(submission.evidence_level, "unattested")
 
 
 class AttestationRequiredRoleTests(StepsTestCase):

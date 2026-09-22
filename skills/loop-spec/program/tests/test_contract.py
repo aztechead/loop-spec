@@ -154,6 +154,64 @@ class InvokeTests(unittest.TestCase):
             self.assertEqual(outcome.code, 3)
             self.assertEqual(outcome.kind, "question")
 
+    def test_invoke_batch_then_single_within_one_attempt_returns_the_new_single_request(self):
+        # R1: a wave's shape can change call to call within the SAME attempt id (two
+        # tasks in flight collapsing to one review left) -- the stale steps.json a
+        # PRIOR call wrote must not shadow this call's real step.json.
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = FeaturePaths(root=Path(tmp) / "feature")
+            attempt_id = "attempt-1"
+            contract.write_context(paths, attempt_id, _envelope(attempt_id, tmp, paths))
+            from loop_spec import execute as execute_module
+
+            def _request(role, task_id):
+                return {
+                    "kind": "role", "role": role, "phase": "execute", "cwd": str(tmp),
+                    "prompt": f"do {task_id}", "resultPath": str(Path(tmp) / f"{task_id}.json"), "schema": {},
+                    "postconditions": [], "attempt": attempt_id, "inputsDigest": "sha256:" + "a" * 64,
+                    "retryOf": None, "reason": None,
+                }
+
+            old_a, old_b = _request("implementer", "T-1"), _request("implementer", "T-2")
+            with patch.object(execute_module, "step", return_value=execute_module.IssueSteps([old_a, old_b])):
+                first = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
+            self.assertEqual(first.kind, "steps")
+
+            new_review = _request("code-reviewer", "T-1")
+            with patch.object(execute_module, "step", return_value=execute_module.IssueStep(new_review)):
+                second = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
+            self.assertEqual(second.kind, "step")
+            self.assertEqual(read_json(second.path)["role"], "code-reviewer")
+
+    def test_invoke_single_then_batch_within_one_attempt_returns_the_new_batch(self):
+        # The reverse shape change: a stale single step.json must not survive to be
+        # read as "the" request once the same attempt issues a fresh batch.
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = FeaturePaths(root=Path(tmp) / "feature")
+            attempt_id = "attempt-1"
+            contract.write_context(paths, attempt_id, _envelope(attempt_id, tmp, paths))
+            from loop_spec import execute as execute_module
+
+            def _request(role, task_id):
+                return {
+                    "kind": "role", "role": role, "phase": "execute", "cwd": str(tmp),
+                    "prompt": f"do {task_id}", "resultPath": str(Path(tmp) / f"{task_id}.json"), "schema": {},
+                    "postconditions": [], "attempt": attempt_id, "inputsDigest": "sha256:" + "a" * 64,
+                    "retryOf": None, "reason": None,
+                }
+
+            old_single = _request("implementer", "T-1")
+            with patch.object(execute_module, "step", return_value=execute_module.IssueStep(old_single)):
+                first = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
+            self.assertEqual(first.kind, "step")
+
+            new_a, new_b = _request("implementer", "T-2"), _request("implementer", "T-3")
+            with patch.object(execute_module, "step", return_value=execute_module.IssueSteps([new_a, new_b])):
+                second = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
+            self.assertEqual(second.kind, "steps")
+            requests = read_json(second.path)
+            self.assertEqual({r["prompt"] for r in requests}, {"do T-2", "do T-3"})
+
     def test_invoke_bound_skill_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             paths = FeaturePaths(root=Path(tmp) / "feature")

@@ -18,6 +18,7 @@ from pathlib import Path
 from .errors import LoopSpecError
 from .ids import digest_bytes, now_iso
 from .jsonio import atomic_write_json
+from .state import StateStore
 
 _ASK_USER_QUESTION_MESSAGE = "questions go through loop-spec question.json"
 # The two patterns team lead named as never auto-approved, regardless of permission_mode.
@@ -84,14 +85,62 @@ async def policy(tool_name: str, input: dict, context):
     return sdk.PermissionResultAllow()
 
 
-async def _run_step_sdk_async(step: dict, *, plugin_path: Path, model: str | None, permission_mode: str) -> StepRun:
+def _state_home_denial(paths, tool_name: str, input: dict):
+    # R2: the run's own state directory (receipts, step/result records) is the
+    # program's alone to write; a worker able to reach it with Write/Edit/
+    # NotebookEdit or a Bash command naming it could author its own evidence
+    # (the exact fabricated-receipt path this finding is about).
+    sdk = _import_sdk()
+    root = Path(paths.root)
+    root_resolved = root.resolve()
+    if tool_name in ("Write", "Edit", "NotebookEdit"):
+        target = input.get("file_path")
+        if target and Path(target).resolve().is_relative_to(root_resolved):
+            return sdk.PermissionResultDeny(
+                message=f"{tool_name} may not touch the run's own state directory ({root}); "
+                        "a worker cannot author its own provenance")
+    elif tool_name == "Bash":
+        # A command is raw text, not a path this process can resolve on the
+        # worker's behalf; matching both the exact string the program always
+        # hands out and its resolved form (a symlinked /tmp, say) catches the
+        # realistic case without pretending to parse an arbitrary shell command.
+        command = input.get("command", "")
+        if str(root) in command or str(root_resolved) in command:
+            return sdk.PermissionResultDeny(
+                message=f"Bash may not name a path under the run's own state directory ({root}); "
+                        "a worker cannot author its own provenance")
+    return None
+
+
+def make_step_policy(paths):
+    """`can_use_tool` for a real role-step dispatch: the state-home guard above,
+    then the general `policy` above it. A bare `policy()` import (tests, or any
+    caller with no run to protect) is unaffected."""
+    async def _policy(tool_name: str, input: dict, context):
+        denial = _state_home_denial(paths, tool_name, input)
+        if denial is not None:
+            return denial
+        return await policy(tool_name, input, context)
+    return _policy
+
+
+async def _run_step_sdk_async(step: dict, *, paths, plugin_path: Path, model: str | None, permission_mode: str) -> StepRun:
+    # R2: a receipt is only ever evidence of an SDK-launched run when the run's
+    # own state SAYS so, recorded here (the one place that actually launches an
+    # SDK session) before the session runs, not inferred later from a file's mere
+    # presence. Idempotent: a later step in the same run just confirms the flag.
+    store = StateStore.open(paths)
+    if store.state["run"].get("runner") != "sdk":
+        store.state["run"]["runner"] = "sdk"
+        store.save()
+
     sdk = _import_sdk()
     options = sdk.ClaudeAgentOptions(
         cwd=step["cwd"], model=model, permission_mode=permission_mode,
         plugins=[{"type": "local", "path": str(plugin_path)}],
         setting_sources=["user", "project", "local"],
         output_format={"type": "json_schema", "schema": step["schema"]},
-        can_use_tool=policy,
+        can_use_tool=make_step_policy(paths),
     )
 
     events: list[dict] = []
@@ -123,11 +172,16 @@ async def _run_step_sdk_async(step: dict, *, plugin_path: Path, model: str | Non
     atomic_write_json(result_path, result_msg.structured_output)
     result_digest = digest_bytes(result_path.read_bytes())
 
-    # steps.submit reads this beside the result to grant "controller-observed"
-    # evidence: this process watched the SDK session end successfully, even though
-    # no host attests it the way a real Claude Code dispatch would.
+    # steps.submit reads this to grant "controller-observed" evidence: this
+    # process watched the SDK session end successfully, even though no host
+    # attests it the way a real Claude Code dispatch would. Written under the
+    # state home (paths.steps_dir), never beside the worker-writable result
+    # (R2): a result author has no path to a directory only the program itself
+    # controls, so it cannot fabricate this the way a sidecar next to its own
+    # output could be fabricated.
     from claude_agent_sdk import _cli_version
-    atomic_write_json(result_path.with_name("sdk-receipt.json"), {
+    receipt_path = paths.steps_dir / step["stepAttemptId"] / "receipt.json"
+    atomic_write_json(receipt_path, {
         "stepAttemptId": step["stepAttemptId"], "sessionId": session_id, "resultDigest": result_digest,
         "sdkVersion": sdk.__version__, "cliVersion": _cli_version.__cli_version__,
         "finishedAt": now_iso(), "unverifiedLive": True,
@@ -135,5 +189,5 @@ async def _run_step_sdk_async(step: dict, *, plugin_path: Path, model: str | Non
     return StepRun(ok=True, reason=None, session_id=session_id, events=events, result_digest=result_digest)
 
 
-def run_step_sdk(step: dict, *, plugin_path: Path, model: str | None, permission_mode: str = "acceptEdits") -> StepRun:
-    return asyncio.run(_run_step_sdk_async(step, plugin_path=plugin_path, model=model, permission_mode=permission_mode))
+def run_step_sdk(step: dict, *, paths, plugin_path: Path, model: str | None, permission_mode: str = "acceptEdits") -> StepRun:
+    return asyncio.run(_run_step_sdk_async(step, paths=paths, plugin_path=plugin_path, model=model, permission_mode=permission_mode))

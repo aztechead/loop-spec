@@ -135,7 +135,16 @@ _DEFAULT_ROLE_BY_PHASE = {"spec": "spec-writer", "plan": "planner"}
 _DEFAULT_STEPPED_MODULE_BY_PHASE = {"execute", "verify", "iterate", "debug", "revise"}
 
 
-def _run_default_stepped(module, store, paths, attempt_dir: Path, product_path: Path) -> int:
+# R1: a wave module's request shape can change call to call within the SAME attempt
+# (a multi-task IssueSteps wave collapsing to one IssueStep, or back) -- the file a
+# PRIOR call wrote for the shape it had then must not survive to be misread as this
+# call's answer, and invoke() below must not infer the shape from which of these
+# files happens to exist (that inference is exactly what let a stale steps.json
+# shadow a fresh step.json).
+_STEP_SHAPE_FILES = ("step.json", "steps.json", "wait.json")
+
+
+def _run_default_stepped(module, store, paths, attempt_dir: Path, product_path: Path) -> tuple[int, str | None]:
     # execute.py/verify.py/iterate.py/debug.py's step()/on_submit() need the live
     # StateStore (they carry per-task or per-pass progress across calls in
     # store.state[<phase>]), unlike run_lead_phase's context.json/product.json-only
@@ -145,20 +154,22 @@ def _run_default_stepped(module, store, paths, attempt_dir: Path, product_path: 
     from . import execute as execute_module
     ctx = read_json(attempt_dir / "context.json")
     outcome = module.step(store, paths, ctx)
+    for name in _STEP_SHAPE_FILES:
+        (attempt_dir / name).unlink(missing_ok=True)
     if isinstance(outcome, execute_module.Product):
         atomic_write_json(product_path, outcome.product)
-        return 0
+        return 0, "product"
     if isinstance(outcome, execute_module.IssueSteps):
         atomic_write_json(attempt_dir / "steps.json", outcome.requests)
-        return 2
+        return 2, "steps"
     if isinstance(outcome, execute_module.IssueStep):
         atomic_write_json(attempt_dir / "step.json", outcome.request)
-        return 2
+        return 2, "step"
     if isinstance(outcome, execute_module.Wait):
         atomic_write_json(attempt_dir / "wait.json", {"open": outcome.open})
-        return 4
+        return 4, "wait"
     atomic_write_json(attempt_dir / "question.json", outcome.question_request)
-    return 3
+    return 3, "question"
 
 
 def _run_default_deliver(store, paths, attempt_dir: Path, product_path: Path) -> int:
@@ -180,6 +191,12 @@ def _run_default_deliver(store, paths, attempt_dir: Path, product_path: Path) ->
 def invoke(paths, *, phase: str, attempt_id: str, implementation: str, program_launcher: Path, store=None) -> PhaseOutcome:
     attempt_dir = paths.attempts_dir / attempt_id
     product_path = attempt_dir / "product.json"
+    # Set only by _run_default_stepped, the one producer that can write either
+    # "step.json" or "steps.json" from the same attempt across calls (R1); every
+    # other path (external, defaults.py) only ever writes "step.json", so leaving
+    # this None for them and falling through to that fixed path below is correct,
+    # not an inference.
+    stepped_kind: str | None = None
 
     if implementation == "default":
         if phase in _DEFAULT_STEPPED_MODULE_BY_PHASE:
@@ -193,7 +210,7 @@ def invoke(paths, *, phase: str, attempt_id: str, implementation: str, program_l
             from . import verify as verify_module
             module = {"execute": execute_module, "verify": verify_module, "iterate": iterate_module,
                       "debug": debug_module, "revise": revise_module}[phase]
-            code = _run_default_stepped(module, store, paths, attempt_dir, product_path)
+            code, stepped_kind = _run_default_stepped(module, store, paths, attempt_dir, product_path)
         elif phase == "deliver":
             if store is None:
                 raise LoopSpecError("deliver's default implementation needs the live state store",
@@ -219,9 +236,8 @@ def invoke(paths, *, phase: str, attempt_id: str, implementation: str, program_l
     if code == 0:
         return _accept_product(phase, implementation, product_path)
     if code == 2:
-        steps_path = attempt_dir / "steps.json"
-        if steps_path.is_file():
-            return _accept_requests(steps_path, code)
+        if stepped_kind == "steps":
+            return _accept_requests(attempt_dir / "steps.json", code)
         return _accept_request(attempt_dir / "step.json", "step", code)
     if code == 3:
         return _accept_request(attempt_dir / "question.json", "question", code)

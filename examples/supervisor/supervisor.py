@@ -40,6 +40,8 @@ LAUNCHER = PROGRAM_ROOT / "loop-spec"
 sys.path.insert(0, str(PROGRAM_ROOT))
 
 from loop_spec.jsonio import atomic_write_json  # noqa: E402
+from loop_spec.paths import FeaturePaths, feature_dir, repo_id  # noqa: E402
+from loop_spec.paths import state_home as resolve_state_home  # noqa: E402
 from loop_spec.sdk_runner import run_step_sdk  # noqa: E402
 
 
@@ -137,14 +139,19 @@ def drive(project_root: Path, state_home: str | None, slug: str | None, request:
         if next_["kind"] == "step":
             step = json.loads(Path(next_["path"]).read_text())
             if step["kind"] == "role":
-                run = run_step_sdk(step, plugin_path=REPO_ROOT, model=step.get("model") or model)
+                # run_step_sdk needs this run's own FeaturePaths (not just its
+                # slug) to record store.state["run"]["runner"] = "sdk" and to
+                # write the receipt under the state home, never beside the
+                # worker-writable result (R2).
+                run_paths = FeaturePaths(root=feature_dir(resolve_state_home(state_home), repo_id(project_root), run_slug))
+                run = run_step_sdk(step, paths=run_paths, plugin_path=REPO_ROOT, model=step.get("model") or model)
                 if not run.ok:
                     print(f"role step ({step.get('role')}) failed: {run.reason}", file=sys.stderr)
                     return 1
-                # run_step_sdk wrote a receipt beside the result; steps.submit
-                # reads it and grants "controller-observed" evidence with no host
-                # needed. --dispatch is passed anyway for protocol fidelity with
-                # the role-dispatch shape SKILL.md describes.
+                # steps.submit reads the receipt run_step_sdk wrote and grants
+                # "controller-observed" evidence with no host needed. --dispatch
+                # is passed anyway for protocol fidelity with the role-dispatch
+                # shape SKILL.md describes.
                 stdout = run_cli("submit", *common, "--step", step["stepAttemptId"], "--dispatch", step["stepAttemptId"])
             elif step["kind"] == "lead":
                 asyncio.run(run_lead_step(step, plugin_path=REPO_ROOT, model=step.get("model") or model))
