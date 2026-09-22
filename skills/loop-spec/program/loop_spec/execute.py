@@ -344,6 +344,11 @@ def _drifted_repo(store, execute_state: dict) -> dict | None:
             return {"repo": name, "branch": repo_info["featureBranch"], "isDefault": False,
                      "expected": repo_state["head"], "actual": actual}
         default_actual = repo_module.branch_sha(repo_path, repo_info["defaultBranch"])
+        # A run that started before this check existed has no recorded default head;
+        # adopt the current one rather than fail every older run on resume.
+        if "defaultHead" not in repo_state:
+            repo_state["defaultHead"] = default_actual
+            store.save()
         if default_actual is not None and default_actual != repo_state["defaultHead"]:
             return {"repo": name, "branch": repo_info["defaultBranch"], "isDefault": True,
                      "expected": repo_state["defaultHead"], "actual": default_actual}
