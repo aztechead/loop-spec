@@ -16,6 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from paths import repo_path  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from loop_log import logger, stdout_log
 
 graph_path, schema_path, repo_root, skeleton_keys_json = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 # Strict adds the rules a PUBLISHED graph must meet on top of the rules every
@@ -33,21 +35,21 @@ try:
 except Exception as exc:
     # Unreadable/unparseable content is a defect (exit 1), not a usage error —
     # fail safe so a corrupt graph never looks clean.
-    print("FLAG %s:1: cannot parse graph: %s" % (graph_path, exc))
-    print("graph-validate: 1 flag(s)")
+    stdout_log.info("FLAG %s:1: cannot parse graph: %s" % (graph_path, exc))
+    stdout_log.info("graph-validate: 1 flag(s)")
     sys.exit(1)
 
 try:
     with open(schema_path, "r", encoding="utf-8") as fh:
         schema = json.load(fh)
 except Exception as exc:
-    print("graph-validate: cannot parse schema: %s" % exc, file=sys.stderr)
+    logger.error("graph-validate: cannot parse schema: %s" % exc)
     sys.exit(2)
 
 try:
     skeleton_keys = set(json.loads(skeleton_keys_json))
 except Exception as exc:
-    print("graph-validate: cannot parse derived skeleton keys: %s" % exc, file=sys.stderr)
+    logger.error("graph-validate: cannot parse derived skeleton keys: %s" % exc)
     sys.exit(2)
 
 node_kinds = set(schema["definitions"]["node"]["properties"]["kind"]["enum"])
@@ -59,8 +61,8 @@ acyclic_kinds = {"chain", "route", "fanout", "fanin"}
 if not isinstance(graph, dict):
     flag("/", "graph must be a JSON object")
     for line in flags:
-        print(line)
-    print("graph-validate: %d flag(s)" % len(flags))
+        stdout_log.info(line)
+    stdout_log.info("graph-validate: %d flag(s)" % len(flags))
     sys.exit(1)
 
 nodes = graph.get("nodes")
@@ -523,9 +525,9 @@ if idset:
         flag("/edges", "cycle among chain/route/fanout/fanin edges (DAG required; use bounded loop)")
 
 for line in flags:
-    print(line)
+    stdout_log.info(line)
 if flags:
-    print("graph-validate: %d flag(s)" % len(flags))
+    stdout_log.info("graph-validate: %d flag(s)" % len(flags))
     sys.exit(1)
-print("graph-validate: ok")
+stdout_log.info("graph-validate: ok")
 sys.exit(0)

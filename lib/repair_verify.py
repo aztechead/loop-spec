@@ -5,6 +5,7 @@ import sys
 
 from feature_write import publish
 from verify_command import validate
+from loop_log import stdout_log
 
 
 def repair(feature_dir, task_id, request):
@@ -61,7 +62,7 @@ def repair(feature_dir, task_id, request):
 
 if __name__ == '__main__':
     try:
-        print(json.dumps(repair(sys.argv[1], sys.argv[2], json.loads(Path(sys.argv[3]).read_text()))))
+        stdout_log.info(json.dumps(repair(sys.argv[1], sys.argv[2], json.loads(Path(sys.argv[3]).read_text()))))
     except (ValueError, OSError, KeyError, TypeError) as exc:
-        print(json.dumps({'error': str(exc)}))
+        stdout_log.info(json.dumps({'error': str(exc)}))
         sys.exit(1)

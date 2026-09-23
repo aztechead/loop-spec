@@ -12,6 +12,7 @@ import os
 import re
 import signal
 import sys
+from loop_log import logger, stdout_log
 
 # Output is meant to be piped (`| head`, `| cut`); a closed reader is a normal end, not
 # a traceback.
@@ -149,7 +150,7 @@ def purpose(path, ext):
 
 def emit(rows):
     for kind, path, text in rows:
-        print("%s\t%s\t%s" % (kind, path, text))
+        stdout_log.info("%s\t%s\t%s" % (kind, path, text))
     return 0 if rows else 1
 
 
@@ -163,20 +164,19 @@ def every_entry():
 if cmd == "list":
     kinds = args or ["all"]
     if len(kinds) != 1 or kinds[0] not in KINDS + ("all",):
-        print("surface.sh: list takes %s, or all" % ", ".join(KINDS), file=sys.stderr)
+        logger.error("surface.sh: list takes %s, or all" % ", ".join(KINDS))
         sys.exit(2)
     sys.exit(emit(every_entry() if kinds[0] == "all" else entries(kinds[0])))
 
 if cmd == "find":
     if not args or any(not a.strip() for a in args):
-        print("surface.sh: find needs at least one term", file=sys.stderr)
+        logger.error("surface.sh: find needs at least one term")
         sys.exit(2)
     terms = [a.lower() for a in args]
     rows = [r for r in every_entry()
             if all(t in (r[1] + " " + r[2]).lower() for t in terms)]
     if not rows:
-        print("surface.sh: no bundled script or contract matches: %s" % " ".join(args),
-              file=sys.stderr)
+        logger.error("surface.sh: no bundled script or contract matches: %s" % " ".join(args))
     sys.exit(emit(rows))
 
 def matches(name):
@@ -197,7 +197,7 @@ def resolve_target(name):
         return name
     found = matches(name)
     if len(found) > 1:
-        print("surface.sh: %r is ambiguous: %s" % (name, ", ".join(found)), file=sys.stderr)
+        logger.error("surface.sh: %r is ambiguous: %s" % (name, ", ".join(found)))
         sys.exit(2)
     return found[0] if found else name
 
@@ -244,7 +244,7 @@ if cmd == "covers":
     # path as a fixture is listed too. Over-reporting costs a test run; under-reporting
     # ships an unpinned change.
     if not args:
-        print("surface.sh: covers needs at least one path", file=sys.stderr)
+        logger.error("surface.sh: covers needs at least one path")
         sys.exit(2)
     suites = []
     for suite in registered_suites():
@@ -269,16 +269,16 @@ if cmd == "covers":
         else:
             unmatched.append(target)
     for target in unmatched:
-        print("surface.sh: no registered suite names %s" % target, file=sys.stderr)
+        logger.error("surface.sh: no registered suite names %s" % target)
     for row in rows:
-        print("%s\t%s\t%s" % row)
+        stdout_log.info("%s\t%s\t%s" % row)
     # Any unanswered target is a miss, even when a sibling target matched: the caller
     # asked about each path, and a silent 0 says every one of them is pinned.
     sys.exit(1 if unmatched or not rows else 0)
 
 if cmd == "show":
     if len(args) != 1:
-        print("surface.sh: show takes exactly one path or name", file=sys.stderr)
+        logger.error("surface.sh: show takes exactly one path or name")
         sys.exit(2)
     wanted = args[0]
     # resolve_target() exits 2 on a bare name two files share, so `show checkpoint`
@@ -287,14 +287,14 @@ if cmd == "show":
     for kind, path, _text in every_entry():
         if path == target:
             abs_path = os.path.join(root, path)
-            print(path)
+            stdout_log.info(path)
             block = (frontmatter_lines(abs_path) if kind == "agent"
                      else header_lines(abs_path, os.path.splitext(path)[1]))
             for line in block:
-                print("  " + line if line else "")
+                stdout_log.info("  " + line if line else "")
             sys.exit(0)
-    print("surface.sh: no bundled script or contract named %r" % wanted, file=sys.stderr)
+    logger.error("surface.sh: no bundled script or contract named %r" % wanted)
     sys.exit(1)
 
-print("surface.sh: unknown command %r" % cmd, file=sys.stderr)
+logger.error("surface.sh: unknown command %r" % cmd)
 sys.exit(2)

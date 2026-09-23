@@ -39,7 +39,7 @@ present "DELIVER skill names the reconciler" skills/deliver/SKILL.md "delivery-r
 present "ITERATE closes the phase on the terminal pass" skills/iterate/SKILL.md '--terminal'
 present "cycle documents seven-phase chain" skills/cycle/SKILL.md "VERIFY -> ITERATE -> DELIVER"
 present "short path still walks ITERATE and DELIVER" skills/cycle/SKILL.md "never skips ITERATE or DELIVER"
-present "completion still emits the terminal result" lib/graph/driver.py '"cycle-result", "write"'
+present "completion still emits the terminal result" lib/graph/driver.py 'write_result("write"'
 present "empty ITERATE summary still publishes" lib/graph/driver.py "Cycle completed; PR delivered."
 present "named open PRs are adopted" lib/graph/driver.py '"adopt-pr", "resolve"'
 present "micro adopts a named open PR" skills/micro/SKILL.md "adopt-pr.sh"

@@ -35,6 +35,7 @@ import re
 import subprocess
 import sys
 import time
+from loop_log import logger, stdout_log
 
 # ecosystem -> how to resolve a name. `url` is a format with {name}; `parse` reads the
 # JSON into the common record. A runtime (python, nodejs, go, ...) is one more row.
@@ -317,17 +318,17 @@ def cmd_docs(rec, topics, max_lines):
             parser.feed(body)
             body = re.sub(r"\n{3,}", "\n\n", "".join(parser.out)).strip()
         text = body
-        print("docs: %s@%s source=%s" % (rec["name"], rec["version"], url))
-        print(select(text, topics, max_lines))
+        stdout_log.info("docs: %s@%s source=%s" % (rec["name"], rec["version"], url))
+        stdout_log.info(select(text, topics, max_lines))
         return 0
-    print("docs: unverified reason=no documentation source answered for %s@%s (tried llms.txt, README, registry readme, docs page)"
+    stdout_log.info("docs: unverified reason=no documentation source answered for %s@%s (tried llms.txt, README, registry readme, docs page)"
           % (rec["name"], rec["version"]))
     return 1
 
 
 def main(argv):
     if len(argv) < 3 or argv[1] not in ("resolve", "latest", "docs"):
-        print("docs-probe: usage: docs-probe.py resolve|latest|docs <name> [options]", file=sys.stderr)
+        logger.error("docs-probe: usage: docs-probe.py resolve|latest|docs <name> [options]")
         sys.exit(2)
     cmd, name = argv[1], argv[2]
     eco = version = None
@@ -346,18 +347,18 @@ def main(argv):
         elif flag == "--dir" and args:
             directory = args.pop(0)
         else:
-            print("docs-probe: unknown option '%s'" % flag, file=sys.stderr)
+            logger.error("docs-probe: unknown option '%s'" % flag)
             sys.exit(2)
     rec, tried, refusal = resolve(name, ecosystems_for(eco, directory), version)
     if rec is None:
         reason = refusal or "no source answered for '%s' (tried %s)" % (name, ", ".join(tried) or "nothing")
-        print(("docs: unverified reason=%s" if cmd == "docs" else "version=unverified reason=%s") % reason)
+        stdout_log.info(("docs: unverified reason=%s" if cmd == "docs" else "version=unverified reason=%s") % reason)
         return 1
     if cmd == "resolve":
-        print(json.dumps({k: rec.get(k) for k in ("name", "ecosystem", "version", "homepage", "docs", "repo", "source")}))
+        stdout_log.info(json.dumps({k: rec.get(k) for k in ("name", "ecosystem", "version", "homepage", "docs", "repo", "source")}))
         return 0
     if cmd == "latest":
-        print("version=%s source=%s ecosystem=%s" % (rec["version"], rec["source"], rec["ecosystem"]))
+        stdout_log.info("version=%s source=%s ecosystem=%s" % (rec["version"], rec["source"], rec["ecosystem"]))
         return 0
     return cmd_docs(rec, topics, max_lines)
 

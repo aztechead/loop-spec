@@ -4,6 +4,38 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.11.1] - 2026-09-23
+
+A finished full-cycle run's log showed DELIVER opened and never closed, and never
+printed the run's result, so a reader of the log saw the run stuck in DELIVER.
+
+### Fixed
+
+- Every phase that opens now closes in the log. The graph engine emits
+  `LOOP_SPEC_PHASE_START`/`LOOP_SPEC_PHASE_END` only on node transitions. `finish`,
+  `escalate`, the no-change completion, and a stopped delivery all end a run without
+  one, so the phase they ended in never closed. Each of them now closes the phase that
+  the event ledger still holds open, with `next` set to `completed` or `escalated`.
+  `events.sh` gives an escalated close the verdict `escalated` (it previously said
+  `advanced`).
+- Every result the driver publishes now prints its `LOOP_SPEC_RESULT` line on the
+  driver's stderr, the same stream as the phase markers. Before, the driver captured
+  `cycle-result.sh`'s stdout, so the line never reached the log.
+
+### Changed
+
+- The Python under `lib/` no longer calls `print()`. All output goes through stdlib
+  `logging` in `lib/loop_log.py`, which has two channels:
+  - `logger` (stderr) carries diagnostics, notes, and markers, with levels.
+  - `stdout_log` (stdout) carries the protocol line and the JSON that callers parse.
+    It is fixed at INFO with no level setting, so no configuration can drop a line a
+    caller depends on.
+
+  Both write the bare message to the stream that is current when the line is logged,
+  so every line keeps its bytes and the driver's in-process `capture()` still works.
+  A line that cannot be written, such as one sent to a closed pipe, raises an error
+  as `print()` did; logging's default would print a traceback and carry on.
+
 ## [6.11.0] - 2026-09-23
 
 Fixes from a 6.9.1 upstream report: a headless run stayed in VERIFY for 30 minutes

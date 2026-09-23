@@ -255,6 +255,7 @@ sys.path.insert(0, str(LIB_DIR))
 import engine  # noqa: E402
 import feature_read  # noqa: E402
 from session_identity import resolve_session_id  # noqa: E402
+from loop_log import logger, stdout_log
 
 GRAPH = os.environ.get("LOOP_SPEC_GRAPH") or str(REPO_ROOT / "graph" / "cycle.graph.json")
 EMPTY_COMMANDS = {"prepare": "", "test": "", "lint": "", "typecheck": ""}
@@ -271,7 +272,7 @@ class Die(Exception):
 
 
 def usage():
-    print(__doc__.split("Usage:", 1)[1].rstrip(), file=sys.stderr)
+    logger.error(__doc__.split("Usage:", 1)[1].rstrip())
     raise Die("", 2)
 
 
@@ -321,6 +322,43 @@ def lib(name, *args, **kw):
 
 def lib_run(name, *args, **kw):
     return run(["bash", LIB_DIR / (name + ".sh")] + list(args), **kw)
+
+
+def write_result(*args, check=True, **kw):
+    """cycle-result.sh with its LOOP_SPEC_RESULT line forwarded to stderr, where the
+    engine's LOOP_SPEC_PHASE_* markers land. lib() and lib_run() capture stdout, so a
+    finished run's log never showed its result line."""
+    proc = run(["bash", LIB_DIR / "cycle-result.sh"] + list(args), **kw)
+    for line in proc.stdout.splitlines():
+        if line.startswith("LOOP_SPEC_RESULT "):
+            logger.info(line)
+    if check and proc.returncode != 0:
+        raise Die("", proc.returncode)
+    return proc
+
+
+def close_open_phase(feature_dir, nxt):
+    """phase_end for the phase the marker ledger still holds open. The engine emits phase
+    markers only on node transitions, and finish, escalate, and the no-change completion
+    end a run without one, so a finished run's log showed DELIVER opened and never closed."""
+    open_phase = None
+    try:
+        with open(os.path.join(feature_dir, "events.jsonl"), encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    # A torn line is not a phase marker; the ledger around it still is.
+                    continue
+                if event.get("event") == "phase_start":
+                    open_phase = event.get("phase")
+                elif event.get("event") == "phase_end":
+                    open_phase = None
+    except FileNotFoundError:
+        return
+    if open_phase:
+        subprocess.call(["bash", str(LIB_DIR / "events.sh"), "emit", feature_dir, "phase_end",
+                         "--phase", open_phase, "--data", json.dumps({"next": nxt})], stdout=sys.stderr)
 
 
 def git(*args, **kw):
@@ -387,7 +425,7 @@ def handoff_answer(feature_dir, rec):
     caller then read no result and ended the run after SPEC (final2-sonnet-fastapi)."""
     nxt = rec.get("next") or ""
     frm = rec.get("from") or ""
-    lib("cycle-result", "write", feature_dir, "--status", "paused", "--reason", "phase-handoff",
+    write_result("write", feature_dir, "--status", "paused", "--reason", "phase-handoff",
         "--summary", "Phase %s completed; %s is ready in durable state." % (frm, nxt))
     order = lib("graph/phases", "list").splitlines()
     if nxt in order and frm in order and order.index(nxt) < order.index(frm):
@@ -491,7 +529,7 @@ def cmd_start(argv):
             if m:
                 os.environ[m.group(1)] = "".join(shlex.split(m.group(2)))
     else:
-        print("cycle-driver: profile.json is invalid; running without it", file=sys.stderr)
+        logger.warning("cycle-driver: profile.json is invalid; running without it")
 
     resource_env = lib_run("resource-bounds", "env")
     if resource_env.returncode != 0:
@@ -561,7 +599,7 @@ def cmd_start(argv):
     if mode == "backlog":
         entry_proc = lib_run("backlog", "next", "--json")
         if entry_proc.returncode != 0:
-            print("backlog empty — nothing to drain", file=sys.stderr)
+            logger.info("backlog empty — nothing to drain")
             raise Die("", 3)
         entry = json.loads(entry_proc.stdout)
         title = entry.get("text") or ""
@@ -602,9 +640,8 @@ def cmd_start(argv):
                               "options": ["Start new project here", "Abort"],
                               "default": "Start new project here"})
         else:
-            print("loop-spec: not a git repo and no child repos found. cd into a repo, create "
-                  ".loop-spec/workspace.json, or start a net-new app with /loop-spec:cycle new <description>.",
-                  file=sys.stderr)
+            logger.error("loop-spec: not a git repo and no child repos found. cd into a repo, create "
+                  ".loop-spec/workspace.json, or start a net-new app with /loop-spec:cycle new <description>.")
             raise Die("", 3)
     elif inv.get("greenfield") is True:
         # Already a git repo: a leading `new` means skip resume and start a fresh
@@ -698,8 +735,8 @@ def cmd_start(argv):
     # -- title (bare) ----------------------------------------------------------
     if not title and not resume_pick and mode == "bare":
         if autonomous:
-            print("loop-spec: autonomous invocations must carry a feature description, a spec file "
-                  "path, or 'backlog'.", file=sys.stderr)
+            logger.error("loop-spec: autonomous invocations must carry a feature description, a spec file "
+                  "path, or 'backlog'.")
             raise Die("", 3)
         if non_interactive:
             raise Die("LOOP_SPEC_ANSWER_TITLE is required when LOOP_SPEC_SPEC_FILE is unset", 2)
@@ -750,7 +787,7 @@ def cmd_start(argv):
     if harness == "claude":
         subprocess.run(["bash", str(REPO_ROOT / "hooks" / "pre-cycle-permission-check.sh")], stdout=sys.stderr)
 
-    print(json.dumps({
+    stdout_log.info(json.dumps({
         "invocation": dict(inv, mode=mode, style=style, title=title, slug=slug, spec_path=spec_path),
         "profile": profile, "classification": classification,
         "autonomous": autonomous, "greenfield": greenfield,
@@ -985,8 +1022,7 @@ def cmd_init(argv):
         adopted = True
         feature_branch = adopt["branch"]
         base_branch = adopt["baseBranch"]
-        print("loop-spec: adopting PR %s on %s (base %s)." % (adopt.get("number"), feature_branch, base_branch),
-              file=sys.stderr)
+        logger.info("loop-spec: adopting PR %s on %s (base %s)." % (adopt.get("number"), feature_branch, base_branch))
     else:
         base_branch = lib("git-ops", "-C", repo_root, "detect-base-branch")
     lib("runtime-ignore", "ensure", repo_root)
@@ -1041,14 +1077,14 @@ def cmd_init(argv):
         # but Claude Code's EnterWorktree then refuses it as "not a linked worktree of
         # <repo>", so a live run spent four turns tearing it down (PR 93). Work in place.
         worktrees = "0"
-        print("loop-spec: %s/.git is a file (submodule or linked worktree); working in place on the feature branch (LOOP_SPEC_WORKTREES=0)." % repo_root, file=sys.stderr)
+        logger.info("loop-spec: %s/.git is a file (submodule or linked worktree); working in place on the feature branch (LOOP_SPEC_WORKTREES=0)." % repo_root)
     if worktrees == "1" and lib("harness", "headless") == "true":
         # A session worktree exists so a human can keep editing the checkout while the
         # cycle runs. Headless has no such human, and Claude Code's worktree guard then
         # refuses plugin calls whose quoted text it cannot prove git-free (PR 93). In
         # place, on the feature branch, is the same isolation for free.
         worktrees = "0"
-        print("loop-spec: headless invocation; working in place on the feature branch (LOOP_SPEC_WORKTREES=0).", file=sys.stderr)
+        logger.info("loop-spec: headless invocation; working in place on the feature branch (LOOP_SPEC_WORKTREES=0).")
     if harness == "claude" and worktrees == "1":
         if adopted:
             attach = lib_run("git-ops", "-C", repo_root, "attach-feature-worktree", slug, feature_branch)
@@ -1085,7 +1121,7 @@ def cmd_init(argv):
     if spec_file:
         shutil.copy(spec_file, os.path.join(feature_dir, "spec-draft.md"))
     persist_backlog_entry(feature_dir, backlog_entry)
-    print(json.dumps({
+    stdout_log.info(json.dumps({
         "featureDir": feature_dir, "slug": slug, "executionRoot": exec_root,
         "enterWorktree": worktree_abs or None, "branch": feature_branch, "baseBranch": base_branch,
         "baseSha": base_sha, "greenfield": greenfield == "1", "testCommand": finalize.stdout,
@@ -1103,10 +1139,9 @@ def init_workspace(ws_root, slug, title, style, profile, class_text, autonomous,
         if lib_run("git-ops", "-C", rpath, "ensure-clean-or-stash", quiet=True).stdout != "clean":
             dirty.append("%s (%s)" % (r["name"], rpath))
     if dirty:
-        print("loop-spec: cannot create feature branches -- the following repos have uncommitted changes:",
-              file=sys.stderr)
+        logger.error("loop-spec: cannot create feature branches -- the following repos have uncommitted changes:")
         for entry in dirty:
-            print("  " + entry, file=sys.stderr)
+            logger.error("  " + entry)
         raise Die("commit or stash changes in each repo above, then re-invoke cycle.")
     bases = {}
     for r in repos:
@@ -1179,7 +1214,7 @@ def init_workspace(ws_root, slug, title, style, profile, class_text, autonomous,
     lib("cycle-result", "begin", "--result-root", ws_root, "--cycle-type", "full", "--title", title,
         "--slug", slug, "--feature-dir", feature_dir, "--phase", "startup",
         "--autonomous", json_bool(autonomous == "1"), passthrough=True)
-    print(json.dumps({
+    stdout_log.info(json.dumps({
         "featureDir": feature_dir, "slug": slug, "executionRoot": ws_root, "enterWorktree": None,
         "branch": None, "baseBranch": None, "baseSha": None, "greenfield": greenfield == "1",
         "workspace": True,
@@ -1242,8 +1277,7 @@ def cmd_resume(argv):
                           "from a clean checkout.")
             listed = git("worktree", "list", "--porcelain").splitlines()
             if ("worktree " + wt) not in listed:
-                print("loop-spec: worktree %s is missing; recreating it from the recorded branch." % wt,
-                      file=sys.stderr)
+                logger.warning("loop-spec: worktree %s is missing; recreating it from the recorded branch." % wt)
                 if git_ok("show-ref", "--verify", "--quiet", "refs/heads/%s" % branch):
                     if subprocess.run(["git", "worktree", "add", wt, branch], stdout=sys.stderr).returncode != 0:
                         raise Die("could not recreate worktree %s" % wt)
@@ -1271,7 +1305,7 @@ def cmd_resume(argv):
     if feat.get("currentPhase") == "discuss":
         fset(feature_dir, "currentPhase", "spec")
         feat = state(feature_dir)
-        print("loop-spec: DISCUSS folded into SPEC: resuming at SPEC", file=sys.stderr)
+        logger.info("loop-spec: DISCUSS folded into SPEC: resuming at SPEC")
         # A pause recorded at the old approval node must resume at the new one, or the
         # engine re-steps toward a node the graph no longer has.
         pause_path = os.path.join(feature_dir, "graph-pause.json")
@@ -1280,8 +1314,7 @@ def cmd_resume(argv):
             pause["node"] = "human.after-spec"
             with open(pause_path, "w", encoding="utf-8") as fh:
                 json.dump(pause, fh)
-            print("loop-spec: DISCUSS folded into SPEC: the pending approval resumes at human.after-spec",
-                  file=sys.stderr)
+            logger.info("loop-spec: DISCUSS folded into SPEC: the pending approval resumes at human.after-spec")
 
     done_ids = remaining_ids = ""
     sidecar = (feat.get("artifacts") or {}).get("tasks") or ""
@@ -1307,7 +1340,7 @@ def cmd_resume(argv):
     if (read_json(stale, {}) or {}).get("status") == "escalated":
         os.remove(stale)
         lib("cycle-result", "clear", "--result-root", feature_root)
-    print(json.dumps({
+    stdout_log.info(json.dumps({
         "featureDir": feature_dir, "slug": slug, "currentPhase": feat.get("currentPhase"),
         "enterWorktree": enter or None, "tasksDone": done_ids, "tasksRemaining": remaining_ids,
         "progressTail": tail, "recoverCompletion": recover, "watchdog": watchdog or None,
@@ -1411,7 +1444,7 @@ def cmd_next(argv):
 
     handed = handed_off_here(feat)
     if handed is not None and returned != (handed.get("from") or ""):
-        print(handoff_answer(feature_dir, handed))
+        stdout_log.info(handoff_answer(feature_dir, handed))
         return 0
     rec = feat.get("handoffSession")
     if not returned and isinstance(rec, dict) and rec.get("next") == feat.get("currentPhase") \
@@ -1430,7 +1463,7 @@ def cmd_next(argv):
     if returned:
         answer = returned_checks(feature_dir, returned)
         if answer is not None:
-            print(answer)
+            stdout_log.info(answer)
             return 0
         from phase_snapshot import verify
         instructions = (feat.get("driverNext") or {}).get("instructions")
@@ -1451,11 +1484,11 @@ def cmd_next(argv):
                         "the rendered instructions were verified as written" % str(exc).split(": ", 1)[-1])
                 # stderr: the cycle skill acts on the FIRST stdout line (NEXT/REDO/...), and
                 # a note there hid the protocol line on the very path this note exists for.
-                print(note, file=sys.stderr)
+                logger.info(note)
                 fappend(feature_dir, "warnings", note)
         except (OSError, ValueError, KeyError) as exc:
             cmd_escalate(["--feature-dir", feature_dir, "--reason", "instruction snapshot verification failed: " + str(exc)], silent=True)
-            print("DONE status=escalated reason=instruction-hash-mismatch")
+            stdout_log.info("DONE status=escalated reason=instruction-hash-mismatch")
             return 0
         try:
             recovery = review_recovery(feature_dir, returned)
@@ -1469,10 +1502,10 @@ def cmd_next(argv):
                 if count_redo(feature_dir, feat, returned, flags) < redo_max():
                     lib("events", "emit", feature_dir, "redo", "--phase", returned,
                         "--data", json.dumps({"flags": 1, "classes": {"review-route": 1}, "messages": flags}))
-                    print("REDO phase=%s flags=1\n%s" % (returned, flags[0]))
+                    stdout_log.info("REDO phase=%s flags=1\n%s" % (returned, flags[0]))
                     return 0
             cmd_escalate(["--feature-dir", feature_dir, "--reason", "review recovery failed: " + reason], silent=True)
-            print("DONE status=escalated reason=review-recovery-failed")
+            stdout_log.info("DONE status=escalated reason=review-recovery-failed")
             return 0
         if recovery == "rewind":
             step_rc, descriptor = graph_step(feature_dir, returned)
@@ -1481,18 +1514,18 @@ def cmd_next(argv):
                 raise Die("review recovery: graph did not route bad-spec to " + target)
             fset(feature_dir, "reviewRouting.pending", False)
             answer = record_transition(feature_dir, returned, target, "reverted implementation and amended spec", ws_mode)
-            print(answer or ("REDO phase=oneshot flags=1\nFLAG [review] implementation reverted and spec corrected; implement the amended spec and obtain a fresh review"
+            stdout_log.info(answer or ("REDO phase=oneshot flags=1\nFLAG [review] implementation reverted and spec corrected; implement the amended spec and obtain a fresh review"
                              if target == returned else "REWIND next=" + target))
             return 0
         if recovery:
-            print("DONE status=escalated reason=review-" + recovery)
+            stdout_log.info("DONE status=escalated reason=review-" + recovery)
             return 0
         answer = boundary_review(feature_dir, returned)
         if answer is not None:
             flags = [line for line in answer.splitlines() if line.startswith("FLAG ")]
             lib("events", "emit", feature_dir, "redo", "--phase", returned,
                 "--data", json.dumps({"flags": len(flags), "classes": {"review": len(flags)}, "messages": flags}))
-            print(answer)
+            stdout_log.info(answer)
             return 0
         if returned == "oneshot":
             # Observe before judging: every criterion's command and the test suite run
@@ -1504,7 +1537,7 @@ def cmd_next(argv):
                 try:
                     verification_run(feature_dir, feat, docs, vpath, spath, None, True)
                 except Die as exc:
-                    print("cycle-driver: verification run at the oneshot boundary: %s" % exc.message, file=sys.stderr)
+                    logger.error("cycle-driver: verification run at the oneshot boundary: %s" % exc.message)
         # The gate runs on every return, because a phase that closed clean once and was
         # edited after advanced to EXECUTE on the stale close (23 acceptance-lint flags
         # in PLAN.md, 6.6.2 live run). phase-exit.sh is idempotent (close_phase records a
@@ -1540,7 +1573,7 @@ def cmd_next(argv):
                     reason = "%s exit gate unsatisfied after cumulative design budget exhaustion: %s" % (
                         returned, " ".join(flags[:3]))
                     cmd_escalate(["--feature-dir", feature_dir, "--reason", reason], silent=True)
-                    print('DONE status=escalated reason="%s"' % reason)
+                    stdout_log.info('DONE status=escalated reason="%s"' % reason)
                     return 0
                 # The same flags three times is a gate the phase cannot satisfy, not a phase that
                 # needs one more try: the 6.2.0 haiku runs looped six times on one flag and then
@@ -1566,16 +1599,16 @@ def cmd_next(argv):
                             os.replace(vpath, os.path.join(docs_dir(feature_dir, feat), "VERIFICATION.oneshot-attempt.md"))
                         lib("events", "emit", feature_dir, "escalate", "--phase", returned,
                             "--data", json.dumps({"attempts": redo_count, "classes": classes, "messages": flags}))
-                        print("NOTE [escalate] the oneshot exit gate held after %d attempts (%s): route: full written; the run continues on the full path" % (redo_count, ", ".join(classes)), file=sys.stderr)
+                        logger.info("NOTE [escalate] the oneshot exit gate held after %d attempts (%s): route: full written; the run continues on the full path" % (redo_count, ", ".join(classes)))
                         exit_proc = subprocess.run(["bash", str(LIB_DIR / "phase-exit.sh")] + exit_args,
                                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
                         if exit_proc.returncode != 0:
-                            print("ABORT reason=phase-exit-failed exit=%d" % exit_proc.returncode)
-                            print(exit_proc.stdout, file=sys.stderr)
+                            stdout_log.info("ABORT reason=phase-exit-failed exit=%d" % exit_proc.returncode)
+                            logger.error(exit_proc.stdout)
                             return 1
                     else:
                         cmd_escalate(["--feature-dir", feature_dir, "--reason", reason], silent=True)
-                        print("DONE status=escalated reason=%s" % reason)
+                        stdout_log.info("DONE status=escalated reason=%s" % reason)
                         return 0
                 else:
                     classes = {}
@@ -1585,13 +1618,13 @@ def cmd_next(argv):
                         classes[label] = classes.get(label, 0) + 1
                     lib("events", "emit", feature_dir, "redo", "--phase", returned,
                         "--data", json.dumps({"attempt": redo_count, "flags": len(flags), "classes": classes, "messages": flags}))
-                    print("REDO phase=%s flags=%d attempt=%d" % (returned, len(flags), redo_count))
+                    stdout_log.info("REDO phase=%s flags=%d attempt=%d" % (returned, len(flags), redo_count))
                     for flag in flags:
-                        print(flag)
+                        stdout_log.info(flag)
                     return 0
             if exit_proc.returncode != 0 and exit_proc.returncode != 1:
-                print("ABORT reason=phase-exit-failed exit=%d" % exit_proc.returncode)
-                print(exit_out, file=sys.stderr)
+                stdout_log.info("ABORT reason=phase-exit-failed exit=%d" % exit_proc.returncode)
+                logger.error(exit_out)
                 return 1
             if exit_proc.returncode == 0:
                 # A passed gate zeroes its own counter; the 6.6.5 live run escalated at
@@ -1608,8 +1641,8 @@ def cmd_next(argv):
         try:
             text = Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8")
         except OSError as exc:
-            print("ABORT reason=spec-unreadable")
-            print("cycle-driver: %s" % exc, file=sys.stderr)
+            stdout_log.info("ABORT reason=spec-unreadable")
+            logger.error("cycle-driver: %s" % exc)
             return 1
         if route_is_full(text) or not re.search(r"^## Intent$", text, re.M):
             # The oneshot shape has an Intent block and no Goals; it is not the full-spec freeze.
@@ -1621,16 +1654,16 @@ def cmd_next(argv):
                 if not (feat.get("specIntentSeen") or {}).get("reopened"):
                     fset(feature_dir, "specIntentSeen", {"sha256": intent_digest(text), "at": now()})
             except ValueError as exc:
-                print("ABORT reason=spec-intent-unreadable")
-                print("cycle-driver: %s" % exc, file=sys.stderr)
+                stdout_log.info("ABORT reason=spec-intent-unreadable")
+                logger.error("cycle-driver: %s" % exc)
                 return 1
 
     # Graph step: the engine dispatches gates/functions/subgraphs itself and stops at an
     # agent node, a human pause, an abort, or the terminal node.
     if run(["bash", GRAPH_DIR / "validate.sh", GRAPH], quiet=True).returncode != 0:
-        print("run.sh: graph failed validation: %s" % GRAPH, file=sys.stderr)
+        logger.error("run.sh: graph failed validation: %s" % GRAPH)
         subprocess.run(["bash", str(GRAPH_DIR / "validate.sh"), GRAPH], stdout=sys.stderr)
-        print("ABORT reason=graph-step-failed exit=1")
+        stdout_log.info("ABORT reason=graph-step-failed exit=1")
         return 1
     completion = returned
     answer = ""
@@ -1644,10 +1677,10 @@ def cmd_next(argv):
                 answer += " intent=%s" % intent_since_spec(feature_dir)
             break
         if step_rc == 5:
-            print("ABORT reason=graph-route-blocked (see stderr for route or retry-limit diagnostics)")
+            stdout_log.info("ABORT reason=graph-route-blocked (see stderr for route or retry-limit diagnostics)")
             return 1
         if step_rc != 0:
-            print("ABORT reason=graph-step-failed exit=%d" % step_rc)
+            stdout_log.info("ABORT reason=graph-step-failed exit=%d" % step_rc)
             return 1
         nxt = descriptor["node"]
         if descriptor.get("terminal") is True:
@@ -1668,17 +1701,17 @@ def cmd_next(argv):
             record_spec_approval(feature_dir, feat, approval_source(feature_dir, feat), "plan")
         except (OSError, ValueError) as exc:
             cmd_escalate(["--feature-dir", feature_dir, "--reason", str(exc)], silent=True)
-            print("DONE status=escalated reason=spec-approval-refused")
-            print("cycle-driver: %s" % exc, file=sys.stderr)
+            stdout_log.info("DONE status=escalated reason=spec-approval-refused")
+            logger.error("cycle-driver: %s" % exc)
             return 0
         feat = state(feature_dir)
     if returned:
         handed = record_transition(feature_dir, returned, nxt, note, ws_mode)
         if handed is not None:
-            print(handed)
+            stdout_log.info(handed)
             return 0
     if answer:
-        print(answer)
+        stdout_log.info(answer)
         return 0
 
     label, effort = descriptor["label"], descriptor["effort"]
@@ -1767,11 +1800,11 @@ def instruction_record(feature_dir, phase):
 
 def print_next(nxt, label, effort, feature_dir):
     record = instruction_record(feature_dir, nxt)
-    print('NEXT phase=%s label="%s" effort=%s' % (nxt, label, effort))
+    stdout_log.info('NEXT phase=%s label="%s" effort=%s' % (nxt, label, effort))
     node_skill = next((n.get("skill") for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == nxt), None)
     if node_skill:
-        print("EXT skill=%s" % node_skill)
-    print("EXT instructions=%s sha256=%s" % (record["prompt"], record["promptSha256"]))
+        stdout_log.info("EXT skill=%s" % node_skill)
+    stdout_log.info("EXT instructions=%s sha256=%s" % (record["prompt"], record["promptSha256"]))
 
 
 def plan_dispatch_packet(feature_dir, feat, instructions, mode):
@@ -2078,10 +2111,10 @@ def returned_checks(feature_dir, phase):
                            (phase, budget, design_minutes))
                 if warning not in (feat.get("warnings") or []):
                     fappend(feature_dir, "warnings", warning)
-                    print("loop-spec: %s" % warning, file=sys.stderr)
+                    logger.warning("loop-spec: %s" % warning)
         if mins > int(ceiling):
             # The watchdog never kills work; it makes a wedged loop visible.
-            print("loop-spec: phase %s took %dm, ceiling %sm" % (phase, mins, ceiling), file=sys.stderr)
+            logger.warning("loop-spec: phase %s took %dm, ceiling %sm" % (phase, mins, ceiling))
             fappend(feature_dir, "warnings", "phase %s took %dm, ceiling %sm" % (phase, mins, ceiling))
     # An ITERATE gap only an operator can close ends the run here with the fix as the
     # reason, instead of a rewind that reproduces the gap or a question to an absent
@@ -2119,7 +2152,7 @@ def snapshot_state(feature_dir, label, ws_mode):
                               stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, universal_newlines=True)
     if snapshot.returncode != 0:
         err = snapshot.stderr.strip()
-        print("cycle-driver: state snapshot failed in %s: %s" % (root, err), file=sys.stderr)
+        logger.error("cycle-driver: state snapshot failed in %s: %s" % (root, err))
         fappend(feature_dir, "warnings", "state snapshot failed at %s: %s" % (label, err))
 
 
@@ -2180,7 +2213,7 @@ def record_transition(feature_dir, phase, nxt, note, ws_mode):
         return None
     # One phase per session: the next phase starts in a fresh context whose whole ingress
     # is lib/phase-entry.sh. A rewind is a next phase the graph lists before this one.
-    lib("cycle-result", "write", feature_dir, "--status", "paused", "--reason", "phase-handoff",
+    write_result("write", feature_dir, "--status", "paused", "--reason", "phase-handoff",
         "--summary", "Phase %s completed; %s is ready in durable state." % (phase, nxt))
     fset(feature_dir, "handoffSession", {"id": session_id(), "from": phase, "next": nxt, "at": now()})
     order = lib("graph/phases", "list").splitlines()
@@ -2204,8 +2237,9 @@ def deliver_stalled(feature_dir, delivery):
     summary = verdict.get("summary") or ""
     if (no_changes and verdict.get("converged") is True and verdict.get("deterministic_gate_passed") is True
             and not budget_warning and summary.strip()):
-        lib("cycle-result", "write", feature_dir, "--status", "completed", "--summary", summary,
-            "--no-change-reason", "already-satisfied")
+        close_open_phase(feature_dir, "completed")
+        write_result("write", feature_dir, "--status", "completed", "--summary", summary,
+                     "--no-change-reason", "already-satisfied")
         # The same terminal transition cmd_finish makes: this answer never reaches finish
         # (its sidecar says no-changes), so without it the record stayed at deliver.
         fset(feature_dir, "currentPhase", "completed")
@@ -2214,8 +2248,9 @@ def deliver_stalled(feature_dir, delivery):
         return "DONE status=completed reason=already-satisfied"
     reason = next((t.get("error") for t in targets if t.get("error")), None) \
         or "delivery stopped with status %s" % (delivery.get("status") or "unknown")
-    lib("cycle-result", "write", feature_dir, "--status", "escalated", "--reason", reason,
-        "--summary", "Delivery stopped: " + reason)
+    close_open_phase(feature_dir, "escalated")
+    write_result("write", feature_dir, "--status", "escalated", "--reason", reason,
+                 "--summary", "Delivery stopped: " + reason)
     return 'DONE status=escalated reason="%s"' % reason
 
 
@@ -2241,8 +2276,8 @@ def cmd_finish(argv):
     delivery = read_json(os.path.join(feature_dir, "delivery.json"), {}) or {}
     status = delivery.get("status") or ""
     if status not in DELIVERED_STATUSES:
-        print("loop-spec: delivery-incomplete (sidecar status '%s'); feature.json.currentPhase stays at deliver."
-              % (status or "none"), file=sys.stderr)
+        logger.error("loop-spec: delivery-incomplete (sidecar status '%s'); feature.json.currentPhase stays at deliver."
+              % (status or "none"))
         raise Die("", 1)
     feat = state(feature_dir)
     pr_url = feat.get("prUrl") or ""
@@ -2255,9 +2290,10 @@ def cmd_finish(argv):
     write_args = ["write", feature_dir, "--status", "completed", "--summary", summary]
     if pr_url:
         write_args += ["--pr-url", pr_url]
-    if lib_run("cycle-result", *write_args).returncode != 0:
-        print("cycle-result.sh write failed; retrying once", file=sys.stderr)
-        lib("cycle-result", *write_args)
+    close_open_phase(feature_dir, "completed")
+    if write_result(*write_args, check=False).returncode != 0:
+        logger.warning("cycle-result.sh write failed; retrying once")
+        write_result(*write_args)
     # The result is published; now make the terminal transition durable in feature.json
     # itself (6.6.7). The graph's completed node is the only other writer of this value,
     # and the paths that reach finish without entering it (recoverCompletion, the DELIVER
@@ -2305,7 +2341,7 @@ def cmd_finish(argv):
     lines.append("backlog entries remaining: %s" % backlog_count)
     if str(feedback.get("reviewDecision") or "").lower().replace("_", "") == "changesrequested" and pr_url:
         lines.append("next: /loop-spec:revise " + pr_url)
-    print(json.dumps({
+    stdout_log.info(json.dumps({
         "status": status, "prUrl": pr_url or None, "summary": summary,
         "targets": targets, "feedback": delivery.get("feedback"),
         "warnings": feat.get("warnings") or [], "chain": chain, "backlogCount": int(backlog_count),
@@ -2327,13 +2363,14 @@ def cmd_escalate(argv, silent=False):
     fset(feature_dir, "currentTeammates", [])
     feat = state(feature_dir)
     phase = feat.get("currentPhase")
-    lib_run("cycle-result", "write", feature_dir, "--status", "escalated", "--reason", reason,
-            "--summary", "Cycle stopped during %s: %s" % (phase, reason))
+    close_open_phase(feature_dir, "escalated")
+    write_result("write", feature_dir, "--status", "escalated", "--reason", reason,
+                 "--summary", "Cycle stopped during %s: %s" % (phase, reason), check=False)
     subprocess.run(["bash", str(LIB_DIR / "checkpoint-pr.sh"), "create", feature_dir, "--reason", reason],
                    stdout=sys.stderr)
     if silent:
         return 0
-    print(json.dumps({
+    stdout_log.info(json.dumps({
         "reason": reason, "phase": phase, "gateHistory": (feat.get("gateHistory") or [])[-3:],
         "artifacts": feat.get("artifacts") or {},
         "delivery": read_json(os.path.join(feature_dir, "delivery.json")),
@@ -2371,11 +2408,11 @@ def cmd_decline(argv):
     # and no file, so the proof of publication is a result newer than this call.
     result = os.path.join(root, ".loop-spec", "last-result.json")
     before = os.stat(result).st_mtime_ns if os.path.isfile(result) else -1
-    proc = lib_run("cycle-result", *args, quiet=True)
+    proc = write_result(*args, check=False, quiet=True)
     after = os.stat(result).st_mtime_ns if os.path.isfile(result) else -1
     if proc.returncode != 0 or after <= before:
         raise Die("decline: the result writer refused: %s" % (proc.stderr.strip() or "no result was published"), 1)
-    print(json.dumps({"status": "escalated", "outcome": "protocol-mismatch", "reason": reason, "result": result}))
+    stdout_log.info(json.dumps({"status": "escalated", "outcome": "protocol-mismatch", "reason": reason, "result": result}))
     return 0
 
 
@@ -2396,7 +2433,7 @@ def cmd_begin(argv):
         if inv.get("backlogEntry"):
             init_cmd += " --backlog-entry %s" % shlex.quote(json.dumps(inv["backlogEntry"]))
         resume_cmd = 'bash "$DRV" resume --dir %s --feature-root <featureRoot of the pick> --slug <slug of the pick>' % shlex.quote(directory)
-        print(json.dumps(dict(st, action="decisions", next={"init": init_cmd, "resume": resume_cmd})))
+        stdout_log.info(json.dumps(dict(st, action="decisions", next={"init": init_cmd, "resume": resume_cmd})))
         return 0
     pick = (st.get("resume") or {}).get("autoPick")
     if pick:
@@ -2404,12 +2441,12 @@ def cmd_begin(argv):
         out = json.loads(capture(cmd_resume, ["--dir", directory, "--feature-root", root, "--slug", pick]))
         merged = dict(st, action="resume")
         merged.update(out)
-        print(json.dumps(merged))
+        stdout_log.info(json.dumps(merged))
         return 0
     inv = st["invocation"]
     title, slug = inv.get("title") or "", inv.get("slug") or ""
     if not title or not slug:
-        print("cycle-driver: begin needs a feature title (start left none and asked no question)", file=sys.stderr)
+        logger.error("cycle-driver: begin needs a feature title (start left none and asked no question)")
         raise Die("", 3)
     init_args = ["--dir", st["workspace"]["root"], "--slug", slug, "--title", title,
                  "--style", inv["style"], "--profile", st["profile"],
@@ -2424,7 +2461,7 @@ def cmd_begin(argv):
     out = json.loads(capture(cmd_init, init_args))
     merged = dict(st, action="init")
     merged.update(out)
-    print(json.dumps(merged))
+    stdout_log.info(json.dumps(merged))
     return 0
 
 
@@ -2480,10 +2517,10 @@ def cmd_deliver(argv):
                 break
             feedback.append(json.loads(checked.stdout))
         if route == "feedback-failed":
-            print("cycle-driver: PR feedback persistence failed; completion blocked", file=sys.stderr)
+            logger.error("cycle-driver: PR feedback persistence failed; completion blocked")
     else:
         route = nxt
-    print(json.dumps({
+    stdout_log.info(json.dumps({
         "rc": rc, "status": status, "nextPhase": nxt, "route": route,
         "targets": sidecar.get("targets") or [], "feedback": feedback, "stderr": err or None,
     }))
@@ -2655,7 +2692,7 @@ def footprint_drop(feature_dir, feat, target, path, reason):
     text = text.replace("## Implementation notes\n", "## Implementation notes\n" + note, 1)
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(text)
-    print(json.dumps({"spec": target, "dropped": path, "reason": reason, "footprint": remaining}))
+    stdout_log.info(json.dumps({"spec": target, "dropped": path, "reason": reason, "footprint": remaining}))
     return 0
 
 
@@ -2759,7 +2796,7 @@ def spec_fill(target, o):
                        ("grounding-lint", [target])):
         out = lib_run(name, *args, quiet=True).stdout
         flags += [line for line in out.splitlines() if line.startswith("FLAG")]
-    print(json.dumps({"spec": target, "filled": filled, "flags": flags}))
+    stdout_log.info(json.dumps({"spec": target, "filled": filled, "flags": flags}))
     return 0
 
 
@@ -2770,7 +2807,7 @@ def spec_escalate(target, reason):
     text = text.replace("## Implementation notes\n", "## Implementation notes\n- escalated (route: full): %s\n" % reason, 1)
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(text)
-    print(json.dumps({"spec": target, "route": "full", "reason": reason}))
+    stdout_log.info(json.dumps({"spec": target, "route": "full", "reason": reason}))
     return 0
 
 
@@ -2818,14 +2855,14 @@ def spec_judge(feature_dir, feat, verdict_flag):
         # of it without reading routeJudgment. Calling the judge here could only spend an
         # opus dispatch on a verdict nothing would read -- and, in-harness, park the lead
         # on a judge call the run does not need.
-        print(json.dumps({"route": None, "code": "operator-override", "stored": False,
+        stdout_log.info(json.dumps({"route": None, "code": "operator-override", "stored": False,
                           "skipped": True,
                           "reason": "LOOP_SPEC_ROUTE=%s fixes the route; the deterministic "
                                     "probe answers it" % fixed_route}))
         return 0
     cached = feat.get("routeJudgment")
     if isinstance(cached, dict) and cached.get("route"):
-        print(json.dumps(dict(cached, cached=True)))
+        stdout_log.info(json.dumps(dict(cached, cached=True)))
         return 0
     dispatch = os.path.join(feature_dir, "dispatch")
     os.makedirs(dispatch, exist_ok=True)
@@ -2879,7 +2916,7 @@ def spec_judge(feature_dir, feat, verdict_flag):
             shutil.copy(verdict_flag, verdict_path)
         source = "in-harness"
     elif lib("harness", "session-layer") != "session":
-        print(json.dumps({"action": "in-harness", "reason": lib("harness", "session-layer-reason"),
+        stdout_log.info(json.dumps({"action": "in-harness", "reason": lib("harness", "session-layer-reason"),
                           "prompt": prompt, "footprint": footprint_ledger, "task": task_path, "verdict": verdict_path}))
         return 0
     else:
@@ -2901,12 +2938,12 @@ def spec_judge(feature_dir, feat, verdict_flag):
     if code == "unusable-verdict" or route is None:
         lib("events", "emit", feature_dir, "route-judge-failed", "--phase", "spec",
             "--data", json.dumps({"status": code, "code": code, "lastStderrLine": tail[:200] if tail else None}))
-        print(json.dumps({"route": route, "reason": reason, "code": code, "stored": False}))
+        stdout_log.info(json.dumps({"route": route, "reason": reason, "code": code, "stored": False}))
         return 1
     record = {"route": route, "reason": reason, "code": code, "model": model, "source": source, "at": now()}
     fset(feature_dir, "routeJudgment", record)
     lib("events", "emit", feature_dir, "route-judged", "--phase", "spec", "--data", json.dumps(record))
-    print(json.dumps(dict(record, stored=True)))
+    stdout_log.info(json.dumps(dict(record, stored=True)))
     return 0
 
 
@@ -2944,7 +2981,7 @@ def cmd_spec(argv):
             record_spec_approval(feature_dir, feat, source_flag, feat.get("currentPhase") or "spec")
         except (OSError, ValueError) as exc:
             raise Die("spec approve: %s" % exc, 1)
-        print(json.dumps({"spec": target, "approval": fget(feature_dir, "specApproval")}))
+        stdout_log.info(json.dumps({"spec": target, "approval": fget(feature_dir, "specApproval")}))
         return 0
     if sub == "drop":
         if not source or not (o.get("reason") or "").strip():
@@ -2980,7 +3017,7 @@ def cmd_spec(argv):
             for call in calls:
                 out = json.loads(capture(lambda a: spec_fill(a[0], a[1]), [target, call]))
                 filled += out["filled"]
-            print(json.dumps({"spec": target, "filled": filled, "flags": out["flags"]}))
+            stdout_log.info(json.dumps({"spec": target, "filled": filled, "flags": out["flags"]}))
             return 0
         return spec_fill(target, o)
     if sub == "skeleton":
@@ -2995,7 +3032,7 @@ def cmd_spec(argv):
         spec = None
         if route == "oneshot":
             if os.path.exists(target):
-                print("cycle-driver: %s exists; kept as written (delete it to start over)" % target, file=sys.stderr)
+                logger.info("cycle-driver: %s exists; kept as written (delete it to start over)" % target)
             else:
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 with open(target, "w", encoding="utf-8") as fh:
@@ -3006,7 +3043,7 @@ def cmd_spec(argv):
         if route == "full":
             record = instruction_record(feature_dir, "spec")
             full_spec = str(Path(record["manifest"]).parent / "skills/spec/SKILL.md")
-        print(json.dumps({"route": route, "reason": reason, "footprint": footprint, "readOnly": read_only, "spec": spec, "fullSpec": full_spec}))
+        stdout_log.info(json.dumps({"route": route, "reason": reason, "footprint": footprint, "readOnly": read_only, "spec": spec, "fullSpec": full_spec}))
         return 0
     if not source:
         raise Die("spec write needs --file PATH (or - for stdin)", 2)
@@ -3022,7 +3059,7 @@ def cmd_spec(argv):
         body = sys.stdin.read()
     else:
         if os.path.realpath(source) == os.path.realpath(target):
-            print(target)
+            stdout_log.info(target)
             return 0
         if not os.path.isfile(source):
             raise Die("spec write: no such file: %s" % source, 2)
@@ -3030,7 +3067,7 @@ def cmd_spec(argv):
     os.makedirs(os.path.dirname(target), exist_ok=True)
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(body)
-    print(target)
+    stdout_log.info(target)
     return 0
 
 
@@ -3214,7 +3251,7 @@ def cmd_verification(argv):
                 raise Die("verification review: no report at %s (the reviewer writes it; in-harness, save the reviewer's result there first)" % report, 2)
             model = o.get("reviewer_model") or (feat.get("models") or {}).get("codeReviewer") or "inherit"
             findings, verdict = verification_review(target, report, model)
-            print(json.dumps({"verification": target, "report": report, "reviewerVerdict": verdict or None,
+            stdout_log.info(json.dumps({"verification": target, "report": report, "reviewerVerdict": verdict or None,
                               "findings": findings,
                               "routingInstructions": str(Path(instruction_record(feature_dir, feat.get("currentPhase") or "oneshot")["manifest"]).parent / "skills/shared/review-routing.md") if findings else None,
                               "flags": verification_lint_flags(root, target, spec)}))
@@ -3237,14 +3274,14 @@ def cmd_verification(argv):
         text = line.sub(lambda m: "%s | verdict: %s — %s%s" % (m.group(1), verdict, reason, routing), text, count=1)
         with open(target, "w", encoding="utf-8") as fh:
             fh.write(text)
-        print(json.dumps({"verification": target, "finding": finding, "verdict": verdict,
+        stdout_log.info(json.dumps({"verification": target, "finding": finding, "verdict": verdict,
                           "flags": verification_lint_flags(root, target, spec)}))
         return 0
     if argv[0] == "run":
         o = parse_pairs(argv[1:], ("--feature-dir", "--row"))
         feature_dir, feat, docs, target, spec, root = verification_paths(o, "run")
         rows = verification_run(feature_dir, feat, docs, target, spec, o.get("row"), not o.get("row"))
-        print(json.dumps({"verification": target, "ran": rows, "flags": verification_lint_flags(root, target, spec)}))
+        stdout_log.info(json.dumps({"verification": target, "ran": rows, "flags": verification_lint_flags(root, target, spec)}))
         return 0 if all(r["status"] != "FAIL" for r in rows) else 1
     o = parse_pairs(argv[1:], ("--feature-dir", "--row", "--implementation", "--proof", "--integration",
                                "--integration-proof"))
@@ -3273,7 +3310,7 @@ def cmd_verification(argv):
         raise Die("verification fill: nothing to fill", 2)
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(text)
-    print(json.dumps({"verification": target, "filled": filled, "flags": verification_lint_flags(root, target, spec)}))
+    stdout_log.info(json.dumps({"verification": target, "filled": filled, "flags": verification_lint_flags(root, target, spec)}))
     return 0
 
 
@@ -3287,7 +3324,7 @@ def cmd_oneshot(argv):
     feature_dir = os.path.realpath(feature_dir)
     feat = state(feature_dir)
     if lib("harness", "session-layer") != "session":
-        print(json.dumps({"action": "in-harness", "reason": lib("harness", "session-layer-reason")}))
+        stdout_log.info(json.dumps({"action": "in-harness", "reason": lib("harness", "session-layer-reason")}))
         return 0
     root = feature_root(feature_dir, feat)
     head = run(["git", "-C", root, "rev-parse", "HEAD"], quiet=True).stdout
@@ -3320,7 +3357,7 @@ def cmd_oneshot(argv):
             "--data", json.dumps({"role": "code-reviewer", "model": model, "rung": "session", "launchedBy": "driver"}))
     else:
         line["dispatchEvent"] = "withheld: the reviewer session did not complete with a report"
-    print(json.dumps(line))
+    stdout_log.info(json.dumps(line))
     return 0 if returncode == 0 else 1
 
 
@@ -3341,14 +3378,14 @@ def cmd_phase_begin(argv):
         raise Die("cannot begin phase without LOOP_SPEC_SESSION_ID; the harness must inject the native session id", 2)
     handed = handed_off_here(phase_state)
     if handed is not None and phase != (handed.get("from") or ""):
-        print("cycle-driver: this session handed off after %s; %s starts in a fresh invocation (%s)"
-              % (handed.get("from"), phase, handoff_answer(feature_dir, handed)), file=sys.stderr)
+        logger.error("cycle-driver: this session handed off after %s; %s starts in a fresh invocation (%s)"
+              % (handed.get("from"), phase, handoff_answer(feature_dir, handed)))
         return 4
     if phase == "oneshot":
         deferred = subprocess.run(["bash", str(LIB_DIR / "deferred-baseline.sh"), "run", feature_dir],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if deferred.stderr:
-            print(deferred.stderr, file=sys.stderr, end="")
+            logger.error((deferred.stderr).rstrip("\n"))
         if deferred.returncode != 0:
             raise Die("deferred baseline failed before oneshot dispatch", 2)
     node = next((n for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == phase), {})
@@ -3357,7 +3394,7 @@ def cmd_phase_begin(argv):
     entry = subprocess.run(["bash", str(LIB_DIR / "phase-entry.sh"), phase, "--feature-dir", feature_dir],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     if entry.returncode > 1:
-        print(entry.stdout, file=sys.stderr)
+        logger.error(entry.stdout)
         return 2
     fields, reads, flags = {}, [], []
     for line in entry.stdout.splitlines():
@@ -3397,7 +3434,7 @@ def cmd_phase_begin(argv):
             raise Die("cannot prepare verifier assignment: " + str(exc), 2)
         if verifier:
             packet["verifier"] = verifier
-    print(json.dumps(packet))
+    stdout_log.info(json.dumps(packet))
     if entry.returncode != 0:
         return 1
     return extra_rc
@@ -3420,7 +3457,7 @@ def _clear_pending_dispatch(argv):
             except FileNotFoundError:
                 pass
             except OSError as exc:
-                print("cycle-driver: cannot clear pending-dispatch marker: %s" % exc, file=sys.stderr)
+                logger.error("cycle-driver: cannot clear pending-dispatch marker: %s" % exc)
             return
 
 
@@ -3449,7 +3486,7 @@ def stuck_note(command, feature_dir, error):
                               node if node.startswith("human.") else None, error)
     if note:
         # stderr: the first stdout line is the protocol line, and phase-begin's stdout is JSON.
-        print(note, file=sys.stderr)
+        logger.info(note)
 
 
 def observed(command, handler, argv):
@@ -3500,5 +3537,5 @@ if __name__ == "__main__":
         sys.exit(main(sys.argv[1:]))
     except Die as die:
         if die.message:
-            print("cycle-driver: %s" % die.message, file=sys.stderr)
+            logger.error("cycle-driver: %s" % die.message)
         sys.exit(die.code)

@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from loop_log import logger
 
 
 def words(command):
@@ -169,5 +170,5 @@ if __name__ == '__main__':
     try:
         validate(sys.stdin.read())
     except ValueError as exc:
-        print(str(exc), file=sys.stderr)
+        logger.error(str(exc))
         sys.exit(1)

@@ -12,6 +12,7 @@ from __future__ import print_function
 import os
 import re
 import sys
+from loop_log import logger, stdout_log
 
 # Comment syntax per extension, so a commented-out `exit 1` is not read as code.
 LANGUAGE = {
@@ -313,22 +314,22 @@ def main(argv):
         if text is None:
             if keep is not None:
                 continue        # deleted by the change; nothing to read
-            print("failure-tells: cannot read {}".format(path), file=sys.stderr)
+            logger.error("failure-tells: cannot read {}".format(path))
             return 2
         scanned += 1
         for lineno, tell, detail in scan(path, text):
             if keep is not None and lineno not in keep[path]:
                 continue
-            print("{}:{}: tell={}: {}".format(path, lineno, tell, detail[:90]))
+            stdout_log.info("{}:{}: tell={}: {}".format(path, lineno, tell, detail[:90]))
             total += 1
 
     reason = "{} file(s)".format(scanned)
     if skipped:
         reason += ", {} skipped (no rules for that language)".format(skipped)
     if total:
-        print("failure-tells: {} finding(s) ({})".format(total, reason))
+        stdout_log.info("failure-tells: {} finding(s) ({})".format(total, reason))
         return 1
-    print("failure-tells: clean ({})".format(reason))
+    stdout_log.info("failure-tells: clean ({})".format(reason))
     return 0
 
 

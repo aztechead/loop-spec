@@ -72,7 +72,7 @@ checks=(
   # The snapshot NOTE rides stderr (the escalate NOTE is a behavior case in
   # tests/lib/cycle-driver-short-route.test.sh; the first-stdout-line rule in
   # tests/lib/cycle-driver-phases.test.sh).
-  $'lib/graph/driver.py\tprint(note, file=sys.stderr)'
+  $'lib/graph/driver.py\tlogger.info(note)'
 )
 
 check_fixed_strings "${checks[@]}"

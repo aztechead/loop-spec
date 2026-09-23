@@ -3,7 +3,7 @@
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.sh"
 
 checks=(
-  "lib/graph/driver.py	\"cycle-result\", \"write\""
+  "lib/graph/driver.py	write_result(\"write\""
   "skills/micro/SKILL.md	write-terminal"
   "skills/debug/SKILL.md	write-terminal"
   "skills/micro/SKILL.md	LOOP_SPEC_RESULT"

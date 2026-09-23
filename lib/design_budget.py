@@ -8,6 +8,7 @@ import sys
 import time
 from datetime import datetime
 import feature_read
+from loop_log import logger, stdout_log
 
 
 def epoch(value):
@@ -32,7 +33,7 @@ def main(feature_dir, phase):
     override = os.environ.get("LOOP_SPEC_DESIGN_BUDGET_MINS", "")
     if override and (not override.isascii() or not re.fullmatch(r"[1-9][0-9]*", override)
                      or int(override) > 3600):
-        print("design-budget: LOOP_SPEC_DESIGN_BUDGET_MINS must be an integer from 1 to 3600", file=sys.stderr)
+        logger.error("design-budget: LOOP_SPEC_DESIGN_BUDGET_MINS must be an integer from 1 to 3600")
         raise SystemExit(2)
     if override:
         budget = int(override)
@@ -99,7 +100,7 @@ def main(feature_dir, phase):
             and (boundary_epoch is None or started >= boundary_epoch)):
         elapsed += max(0, int(time.time() - started))
     elapsed_minutes = elapsed // 60
-    print("budget=%d elapsed=%d remaining=%d exhausted=%s budgetReason=%s" %
+    stdout_log.info("budget=%d elapsed=%d remaining=%d exhausted=%s budgetReason=%s" %
           (budget, elapsed_minutes, max(0, budget - elapsed_minutes),
            str(elapsed_minutes >= budget).lower(), reason))
 
