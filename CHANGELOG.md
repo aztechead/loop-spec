@@ -29,6 +29,11 @@ because a pre-team suite regression could not reach EXECUTE.
 - Findings left open when a critique closes at its ceiling are added to
   feature.json `warnings`, so the PR body lists them under "Shipped with warnings".
   Before, they were written only to the residue file, which nothing read.
+- The RULES.md rule that ITERATE writes when its iteration limit is spent pointed its
+  check at `bash lib/criteria-coverage.sh` with absolute artifact paths. That check
+  resolves only inside loop-spec itself. It now stores
+  `{loop-spec-lib}/criteria-coverage.sh` with repo-relative artifact paths, and
+  `rules.sh render` replaces the placeholder with the installed `lib/` directory.
 
 ### Added
 

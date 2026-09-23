@@ -160,7 +160,7 @@ PY
         terminal=true
         warnings="$(jq -c --arg w "iterate-terminal: $desc — fix first: $fix" '. + [$w]' <<<"$warnings")"
         lib backlog terminal "$gid" "two iteration limits spent on $slug; approach wrong" >/dev/null 2>&1 || true
-        lib rules add "iterate limit spent on $slug with a $(jq -r '.type // "execute"' <<<"$gap")-level gap: $desc" --check "bash lib/criteria-coverage.sh $docs/SPEC.md $docs/PLAN.md" >/dev/null 2>&1 || true
+        lib rules add "iterate limit spent on $slug with a $(jq -r '.type // "execute"' <<<"$gap")-level gap: $desc" --check "bash {loop-spec-lib}/criteria-coverage.sh docs/loop-spec/features/$slug/SPEC.md docs/loop-spec/features/$slug/PLAN.md" >/dev/null 2>&1 || true
       else
         warnings="$(jq -c --arg w "iterate-budget-spent: $desc — fix first: $fix" '. + [$w]' <<<"$warnings")"
         lib backlog add "$slug" iterate-gap "$desc — fix first: $fix" ${gid:+--id "$gid"} >/dev/null 2>&1 || true

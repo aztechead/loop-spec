@@ -30,6 +30,7 @@
 #       Print the rules body suitable for context injection: the project file,
 #       followed by a "## Global rules" section for global rules not already in
 #       the project file. Empty output (exit 0) when there are no rules at all.
+#       `{loop-spec-lib}` in a check becomes this install's lib/ directory.
 #
 #   rules.sh path [--global]
 #       Print the resolved RULES.md path (project default, --global for global).
@@ -69,6 +70,9 @@ ensure_file() { # ensure_file <path> <header>
   fi
 }
 
+# A check runs from the target repository root, where `lib/` is the project's own; a
+# stored absolute plugin path would rot on the next plugin update, so it is resolved here.
+_resolve() { sed "s|{loop-spec-lib}|$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)|g"; }
 # Emit rule bullets of a file, one per line, full bullet form.
 _bullets() { # _bullets <file>
   [[ -f "$1" ]] || return 0
@@ -144,7 +148,7 @@ case "$cmd" in
     [[ "$proj_has" == "0" && "$glob_has" == "0" ]] && exit 0
 
     if [[ "$proj_has" == "1" ]]; then
-      cat "$PROJECT_RULES_FILE"
+      _resolve < "$PROJECT_RULES_FILE"
     fi
     if [[ "$glob_has" == "1" ]]; then
       proj_bare="$(_bullets "$PROJECT_RULES_FILE" | _bare)"
@@ -157,7 +161,7 @@ case "$cmd" in
       if [[ -n "$extra" ]]; then
         [[ "$proj_has" == "1" ]] && printf '\n'
         printf '## Global rules (%s)\n\n' "$GLOBAL_RULES_FILE"
-        printf '%s' "$extra"
+        printf '%s' "$extra" | _resolve
       fi
     fi
     ;;

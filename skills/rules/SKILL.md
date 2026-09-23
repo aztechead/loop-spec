@@ -20,7 +20,8 @@ The user owns and maintains this file.
   enforce beats a sentence the model can rationalize around). `--global` writes the
   cross-project layer (`~/.loop-spec/RULES.md`) for lessons that travel everywhere.
   A check runs from the target repository's root, so `lib/...` resolves only inside
-  loop-spec itself; in a consumer repository, name the project's own commands.
+  loop-spec itself. To call a bundled script, write `{loop-spec-lib}/<script>`;
+  `render` replaces it with the installed `lib/` path.
 - `list [--global]` - Print current rules (text only). Default: merged project + global
   (exact duplicates once); `--global`: global layer only.
 - `render` - Print the injectable rules body (project file + a `## Global rules` section

@@ -45,6 +45,11 @@ echo "$listout" | grep -q '^- \[' && fail "list stripped prefix" || pass "list s
 rout="$(r render)"
 echo "$rout" | grep -q "# RULES.md" && pass "render emits body" || fail "render emits body"
 
+# Case 6b: a bundled-script check is stored install-independent and resolved at render
+r add "criteria stay covered" --check "bash {loop-spec-lib}/criteria-coverage.sh SPEC.md PLAN.md" >/dev/null
+grep -Fq '{loop-spec-lib}/criteria-coverage.sh' "$RF" && pass "check stores the placeholder" || fail "check stores the placeholder"
+r render | grep -Fq "bash $(dirname "$SCRIPT")/criteria-coverage.sh SPEC.md" && pass "render resolves the placeholder" || fail "render resolves the placeholder"
+
 # Case 7: empty add rejected
 if r add "" >/dev/null 2>&1; then fail "empty add rejected"; else pass "empty add rejected"; fi
 
