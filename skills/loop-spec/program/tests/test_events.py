@@ -91,6 +91,21 @@ class MarkerTests(unittest.TestCase):
             'LOOP_SPEC_NEXT {"kind":"result","path":"/tmp/result.json","slug":"greeting"}',
         )
 
+    def test_marker_next_for_a_role_step_carries_what_a_lead_dispatches(self):
+        # The lead dispatches from the marker and dispatch.txt, never the ~170 KB step.json.
+        import json
+        step_dir = Path(tempfile.mkdtemp()) / "step-1"
+        step_dir.mkdir()
+        (step_dir / "step.json").write_text(json.dumps({"kind": "role", "stepAttemptId": "step-1", "role": "code-reviewer",
+                                                        "model": "haiku", "transport": "file", "prompt": "x" * 1000}))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            marker_next("step", str(step_dir / "step.json"), "greeting")
+        marker = json.loads(out.getvalue().strip().removeprefix("LOOP_SPEC_NEXT "))
+        self.assertEqual((marker["stepKind"], marker["stepAttemptId"], marker["role"], marker["model"], marker["dispatchPath"]),
+                         ("role", "step-1", "code-reviewer", "haiku", str(step_dir / "dispatch.txt")))
+        self.assertNotIn("prompt", marker)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -29,7 +29,7 @@ the program writes `state.json`; nothing else should edit it.
 
 Every controller entry ends its stdout with one line,
 `LOOP_SPEC_NEXT {"kind": "step"|"question"|"result", "path": "<file>", "slug": "<slug>"}`,
-open the file at `path` and act on it. A wave that issues several steps at once
+act on it: open the file at `path`, except for a role step (below). A wave that issues several steps at once
 prints several `LOOP_SPEC_NEXT` lines of kind `step`: dispatch every one of them in
 the same `Agent` tool message so they run concurrently, each under its own
 `stepAttemptId`, then submit each as it returns. `LOOP_SPEC_WAIT
@@ -38,7 +38,7 @@ waiting on steps you already dispatched: submit them, do not start anything new.
 Pass `--slug <slug from LOOP_SPEC_NEXT>` on every `submit` and `answer` below (both
 require it, and this line is the only place a stub is told the run's slug):
 
-- `step`: check `kind` in `step.json`:
+- `step`: act on the marker's `stepKind` (the same `kind` as in `step.json`):
   - `lead`: do the work the prompt describes yourself, in this session (you may use
     AskUserQuestion); write the JSON result to `resultPath` (temp file then rename).
     `resultPath` is under the project's `.loop-spec/results/`, never under `~/.claude`
@@ -48,13 +48,14 @@ require it, and this line is the only place a stub is told the run's slug):
     `"${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" submit --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --slug <slug from LOOP_SPEC_NEXT> --step <stepAttemptId>`
     (no `--dispatch`) and repeat from "read the last stdout line".
   - `role`: dispatch a fresh worker with the `Agent` tool: name = the step attempt id
-    (`stepAttemptId`), prompt = the step's `dispatchPrompt` verbatim when it has one,
-    else its `prompt` verbatim (the program checks that the worker's transcript opens
+    (`stepAttemptId`), prompt = the exact text of the file at the marker's
+    `dispatchPath` (the step's `dispatchPrompt`; a role step needs nothing from
+    `step.json`), else the step's `prompt` verbatim (the program checks that the worker's transcript opens
     with exactly that text, that the worker read the whole instruction file it names,
     and that it ends with the result digest; any rewording, prefix, or summary makes
     the step `unattested`, and an unattested review does not count), subagent_type
     `general-purpose`, model only
-    when the step carries `model`. The worker's prompt names its own `resultPath`,
+    when the marker's `model` is not null. The worker's prompt names its own `resultPath`,
     under the project's `.loop-spec/results/`, never under `~/.claude`; if the
     worker's result landed somewhere else, add `--result-file <path>` to the submit
     command below and the program reads it from there instead. Then run

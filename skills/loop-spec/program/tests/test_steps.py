@@ -63,6 +63,8 @@ class IssueTests(StepsTestCase):
             self.assertEqual(record["transport"], "file")
             self.assertTrue(record["prompt"].endswith("`.\n") and not record["prompt"].endswith("\n\n"))
             self.assertEqual(Path(record["instructionPath"]).read_bytes(), record["prompt"].encode("utf-8"))
+            dispatch = Path(record["instructionPath"]).parent / "dispatch.txt"
+            self.assertEqual(dispatch.read_bytes(), record["dispatchPrompt"].encode("utf-8"))
             self.assertIn(record["stepAttemptId"], record["dispatchPrompt"])
             self.assertIn(record["instructionPath"], record["dispatchPrompt"])
             self.assertIn("Read tool", record["dispatchPrompt"])

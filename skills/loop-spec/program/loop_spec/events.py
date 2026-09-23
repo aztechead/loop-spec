@@ -9,10 +9,11 @@ file is a complete history even for a caller that only reads stdout.
 import json
 import os
 import sys
+from pathlib import Path
 
 from .errors import LoopSpecError
 from .ids import now_iso
-from .jsonio import append_jsonl
+from .jsonio import append_jsonl, read_json
 from .paths import FeaturePaths
 
 # The program reserves these names for its own lifecycle events; an implementation
@@ -97,4 +98,13 @@ def marker_next(kind: str, path: str, slug: str) -> None:
     # itself to the ledger. `slug` (LF-06) is what a stub passes back on the next
     # `submit`/`answer`, since those commands require --slug and nothing else in
     # LOOP_SPEC_NEXT names the run.
-    print(f"LOOP_SPEC_NEXT {_compact({'kind': kind, 'path': path, 'slug': slug})}")
+    marker = {'kind': kind, 'path': path, 'slug': slug}
+    if kind == "step":
+        # A step's own fields, so a lead dispatching a role step never opens
+        # step.json, which carries the whole composed prompt (up to ~170 KB).
+        step = read_json(Path(path))
+        marker.update({"stepKind": step["kind"], "stepAttemptId": step["stepAttemptId"],
+                       "role": step.get("role"), "model": step.get("model")})
+        if step.get("transport") == "file":
+            marker["dispatchPath"] = str(Path(path).parent / "dispatch.txt")
+    print(f"LOOP_SPEC_NEXT {_compact(marker)}")

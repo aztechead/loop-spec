@@ -80,7 +80,7 @@ step: {step_id}
 inputs: {inputs_digest}
 phase: {phase}
 result: {result_path}
-When done, write your JSON result to the result path above (write to a temporary file in the same directory and rename), then end your final message with the line `LOOP_SPEC_RESULT_DIGEST <sha256:hex of the result file bytes>`."""
+When done, write your JSON result to the result path above (write to a temporary file in the same directory and rename). The result file carries your findings, so keep your final message to a sentence or two, then end it with the line `LOOP_SPEC_RESULT_DIGEST <sha256:hex of the result file bytes>`."""
 
 
 def issue(store, paths, *, phase: str, attempt_id: str, kind: str, role: str | None, cwd: Path,
@@ -137,6 +137,8 @@ def issue(store, paths, *, phase: str, attempt_id: str, kind: str, role: str | N
     if kind == "role":
         with open(record["instructionPath"], "w", encoding="utf-8", newline="") as f:
             f.write(full_prompt)
+        with open(step_dir / "dispatch.txt", "w", encoding="utf-8", newline="") as f:
+            f.write(record["dispatchPrompt"])
     atomic_write_json(step_dir / "step.json", record)
 
     store.state["steps"]["open"].append({
