@@ -4,6 +4,26 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.0.5] - 2026-09-23
+
+From the 7.0.3/7.0.4 timing runs, a prompt audit, and a cost profile of those runs:
+
+- LF-68: an open Important finding at ITERATE becomes an EXECUTE close-out, as a
+  Critical one does, instead of a PLAN gap; the re-plan cost 8 to 12 minutes per
+  rewind.
+- LF-69: the PLAN critic drops a finding whose honest recommendation is "reject, a
+  later check covers it", and treats a criterion about how code is written as code
+  review's to check; its example no longer models a self-closing Critical.
+- Review, judge and revise diffs leave out package-manager lockfile content and name
+  each changed lockfile (`uv.lock` was 90% of those diffs, about 16% of spend).
+- `LOOP_SPEC_NEXT` for a step carries `stepKind`, `stepAttemptId`, `role`, `model`,
+  and `dispatchPath` (a `dispatch.txt` with the dispatch text), so a lead dispatches
+  a role step without opening the ~170 KB `step.json`; the step trailer asks for a
+  short final message.
+- Prompt audit: every stub carries the wave and unattested re-dispatch rules; the
+  verifier loses steps its schema cannot hold; implementer, plan-critic, planner and
+  spec-writer text corrected.
+
 ## [7.0.4] - 2026-09-23
 
 Four defects found by Sonnet FastAPI timing runs on 7.0.3 (claude -p and the Agent SDK
