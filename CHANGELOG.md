@@ -43,6 +43,20 @@ because a pre-team suite regression could not reach EXECUTE.
 
 ### Added
 
+- The driver notices a lead that keeps calling `next` or `phase-begin` without changing
+  anything. It fingerprints every repository's HEAD and working tree plus the
+  phase-related feature.json fields, not the command, so alternating the two calls
+  still counts. On the third unchanged call it prints `NOTE [stuck] ... Next:
+  <command>` to stderr, naming the command that moves the cycle on:
+  - the remediate return when VERIFY has queued a task
+  - `critique resume` when a critique gate is open
+  - fixing the last REDO's flags
+  - acting on the phase-begin answer
+  - ending the session at a human pause
+  - fixing the error when the same refusal repeats
+
+  It only prints guidance; it never refuses a call or escalates
+  (`lib/stuck_hint.py`, `tests/lib/stuck-hint.test.sh`).
 - `phase-begin verify` stores its result. A repeat call on the same clean HEADs,
   commands, baseline, and mode returns that result with `cached: true`. It does not
   re-run the suite or record another gate entry, and it re-queues only tasks that are

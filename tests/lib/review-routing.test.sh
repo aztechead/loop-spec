@@ -162,6 +162,12 @@ with tempfile.TemporaryDirectory() as temp:
     driver.instruction_record(str(feature), "verify")
     answer = driver.capture(driver.cmd_next, ["--feature-dir", str(feature), "--returned-from", "verify"])
     assert answer.startswith("REWIND next=execute"), answer
+    # The driver's own entry point counts calls: a lead that keeps asking on unchanged
+    # state is told the command that moves it (6.9.1 upstream report: 8 calls, 25 minutes).
+    calls = [subprocess.run(["bash", str(plugin / "lib/cycle-driver.sh"), "next", "--feature-dir", str(feature)],
+                            cwd=temp, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for _ in range(3)]
+    assert "NOTE [stuck]" not in calls[1].stderr and "NOTE [stuck] 3 driver calls" in calls[2].stderr, calls[2].stderr
+    assert calls[2].stdout.splitlines()[0] == calls[0].stdout.splitlines()[0], "the note stays off stdout"
 print("PASS: a pre-team remediate returns from VERIFY to EXECUTE without VERIFICATION.md")
 
 for invalid in ({"route":"bad-spec","cause":"x","section":"Goals","replacement":"different"},
