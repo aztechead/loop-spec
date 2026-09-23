@@ -295,7 +295,7 @@ FINDINGS="$(jq -cn --argjson feats "$FEATS" --argjson min "$MIN" --argjson fleet
       {id: "gate-cap-plan-critique", kind: "rule-candidate",
        pattern: "plan-critique repeatedly needed all critique rounds",
        evidence: {count: ($planCapFeats | length), features: $planCapFeats},
-       rule: {text: "Retro: plan-critique repeatedly hits its round cap - ground PLAN.md tighter in PATTERNS.md analogs before the gate", check: null}}
+       rule: {text: "Retro: plan-critique repeatedly hits its round cap - ground PLAN.md tighter in its ## Existing code citations before the gate", check: null}}
      else empty end),
     (if (($firstPass | length) >= $min) and (($execFeats | length) < $min) then
       {id: "effort-headroom", kind: "suggestion",

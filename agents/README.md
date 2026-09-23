@@ -64,11 +64,11 @@ feature-branch HEAD and is a single, auditable mechanism.
 
 ### `color`
 
-Display color in the harness task list / transcript. loop-spec assigns colors by role family so a running cycle reads at a glance: authors (`spec-writer`, `planner`) blue, critique gate (`challenger`) purple, review gates (`code-reviewer`, `spec-compliance-reviewer`, `security-reviewer`) red, judge (`iterate-judge`) orange, `implementer` green, `verifier` yellow, `pattern-mapper` cyan. Allowed values: `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan` (validated).
+Display color in the harness task list / transcript. loop-spec assigns colors by role family so a running cycle reads at a glance: authors (`spec-writer`, `planner`) blue, critique gate (`challenger`) purple, review gates (`code-reviewer`, `spec-compliance-reviewer`, `security-reviewer`) red, judge (`iterate-judge`) orange, `implementer` green, `verifier` yellow. Allowed values: `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan` (validated).
 
 ### `memory`
 
-Persistent memory scope (`user` | `project` | `local`, validated). Grants the agent a directory that survives across dispatches; `project` scope (`.claude/agent-memory/<name>/`) is shareable via version control. **Setting `memory` auto-enables Write/Edit for the agent**, so a read-only role that gains memory MUST get a matching path-restriction case in `hooks/restrict-agent-paths.sh` confining its writes to `.claude/agent-memory/**` (see the `code-reviewer` case) plus test cases. Currently enabled for `code-reviewer` (recurring findings) and `pattern-mapper` (concept -> analog cache). Memory content is advisory: agents must re-verify remembered paths/claims against the current codebase before acting on them.
+Persistent memory scope (`user` | `project` | `local`, validated). Grants the agent a directory that survives across dispatches; `project` scope (`.claude/agent-memory/<name>/`) is shareable via version control. **Setting `memory` auto-enables Write/Edit for the agent**, so a read-only role that gains memory MUST get a matching path-restriction case in `hooks/restrict-agent-paths.sh` confining its writes to `.claude/agent-memory/**` (see the `code-reviewer` case) plus test cases. Currently enabled for `code-reviewer` (recurring findings). Memory content is advisory: agents must re-verify remembered paths/claims against the current codebase before acting on them.
 
 ## Forbidden fields
 
@@ -83,8 +83,7 @@ Persistent memory scope (`user` | `project` | `local`, validated). Grants the ag
 | `code-reviewer` | Quality + security review of feature branch diff. Read-only. |
 | `implementer` | Implements one task per dispatch in its own git worktree. Commits to worktree branch; orchestrator merges. |
 | `iterate-judge` | Judges the integrated result against the original goal (not just the SPEC checklist) in the ITERATE phase and classifies the highest-leverage gap (execute/plan/spec). Read-only; returns verdict JSON. |
-| `pattern-mapper` | Maps feature concepts to existing-codebase analogs (imports, core pattern, error handling) so the planner can write house-style-conformant tasks. Writes only to docs/loop-spec/features/{slug}/PATTERNS.md. |
-| `planner` | Produces PATTERNS.md then PLAN.md (task DAG, files, verify cmds) from SPEC.md. Writes only to docs/loop-spec/features/**. |
+| `planner` | Produces PLAN.md (existing-code lookup, task DAG, files, verify cmds) from SPEC.md. Writes only to docs/loop-spec/features/**. |
 | `security-reviewer` | Adversarial security review persona. Checks input handling, authz, injection, secrets exposure, and unsafe defaults. Returns severity-ranked findings (CRITICAL/HIGH/MEDIUM/LOW). Never suppresses its own findings. |
 | `spec-compliance-reviewer` | Verifies one implementer's commit matches its task spec. Read-only. |
 | `spec-writer` | Produces SPEC.md from a SPEC design-lock conversation. Writes only to docs/loop-spec/features/**. |

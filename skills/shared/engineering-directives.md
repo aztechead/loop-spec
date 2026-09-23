@@ -21,7 +21,7 @@ design or task boundaries through the existing phase path.
 
 | Fires when | Do | Artifact | Probe |
 |---|---|---|---|
-| You are about to write a line | Read the neighbors first; the surrounding code is the style guide (`human-code.md` §1). Where the repo has an analog, mirror it (`PATTERNS.md`). | The diff looks like the file it lands in | `lib/house-style.sh compare` |
+| You are about to write a line | Read the neighbors first; the surrounding code is the style guide (`human-code.md` §1). Where the repo has an analog, mirror it. | The diff looks like the file it lands in | `lib/house-style.sh compare` |
 | Two solutions both work | Take the one the next reader decodes without a comment. Clever is a construct that needs an explanation; simple is the construct the language documents for this job. | No `simplicity:` marker needed | `lib/indirection-scan.sh scan` |
 | You reach for a comment | Say why, never what: the constraint, the decision and the alternative it beat, the landmine (`human-code.md` §2–§4). A name that states intent deletes the comment. | Comments the file's density allows, spent on why | `lib/comment-tells.sh scan` |
 | You use a language feature or library call | Use the idiom the language's current documentation recommends for the version the repo pins (the manifest, lockfile, `.tool-versions`, CI matrix). An older idiom the neighbors use outranks a newer one you prefer; note the newer one in the report. | The construct a maintainer of that language expects | `lib/house-style.sh compare` |

@@ -225,7 +225,7 @@ case "$cmd" in
       "- \($contracts_out): the engineering contracts these files call for (\($contracts | split(" ") | join(", "))), rendered from skills/shared at dispatch. Read it once instead of opening the sources.",
       "",
       "## Context rule",
-      "Everything that binds this task is in this brief and the files listed. Do not read SPEC.md, PLAN.md, PATTERNS.md, or EVIDENCE.md; ask the lead if a value is missing.",
+      "Everything that binds this task is in this brief and the files listed. Do not read SPEC.md, PLAN.md, or EVIDENCE.md; ask the lead if a value is missing.",
       "",
       (if .batchGroup then "## Batch group\n\(.batchGroup)\n" else empty end),
       (if .memberIds then "## Batch members\n\(.memberIds | map("- \(.)") | join("\n"))\n" else empty end)

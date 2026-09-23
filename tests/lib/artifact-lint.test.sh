@@ -200,6 +200,10 @@ Two tasks. Note: prose may mention `.loop-spec/features/{slug}/` paths legitimat
 | task-001 | do a thing | - | a.sh | small |
 | task-002 | do more | task-001 | b.sh | small |
 
+## Existing code
+
+- writer: reuse `lib/writer.sh:1-20` — interface: writes one file per call; test analog: `tests/writer.test.sh`
+
 ## Tasks
 
 ### task-001: do a thing
@@ -230,11 +234,27 @@ Two tasks. Note: prose may mention `.loop-spec/features/{slug}/` paths legitimat
 EOF
 check "well-formed plan passes" 0 plan "$WORK/plan-good.md"
 
+# '## Existing code' records the lookup of the module each concept reuses or extends.
+grep -v -e '^## Existing code' -e '^- writer: reuse' "$WORK/plan-good.md" > "$WORK/plan-no-existing.md"
+check "plan without '## Existing code' flags" 1 plan "$WORK/plan-no-existing.md"
+sed 's/^- writer: reuse .*/- writer: looks similar to lib\/writer.sh/' "$WORK/plan-good.md" > "$WORK/plan-existing-noverb.md"
+check "existing-code entry without reuse|extend|new flags" 1 plan "$WORK/plan-existing-noverb.md"
+sed 's/^- writer: reuse .*/- writer: extend the writer module/' "$WORK/plan-good.md" > "$WORK/plan-existing-nocite.md"
+check "extend entry without a path:lines citation flags" 1 plan "$WORK/plan-existing-nocite.md"
+sed 's/^- writer: reuse .*/- writer: new — nothing fits/' "$WORK/plan-good.md" > "$WORK/plan-existing-nosearch.md"
+check "new entry that names no search flags" 1 plan "$WORK/plan-existing-nosearch.md"
+sed 's/^- writer: reuse .*/- writer: new — searched lib\/ for "write"; no module writes files/' "$WORK/plan-good.md" > "$WORK/plan-existing-new.md"
+check "new entry that names its search passes" 0 plan "$WORK/plan-existing-new.md"
+
 # Task blocks are canonical in compact plans; the legacy DAG table remains
 # optional, while explicit BlockedBy prevents dependency loss during extraction.
 # Keep a two-task compact fixture readable and deterministic.
 cat > "$WORK/plan-compact.md" <<'EOF'
 # Compact - Implementation Plan
+
+## Existing code
+
+- writer: reuse `lib/writer.sh:1-20` — interface: writes one file per call; test analog: `tests/writer.test.sh`
 
 ## Tasks
 
@@ -302,6 +322,10 @@ cat > "$WORK/plan-notasks.md" <<'EOF'
 | ID |
 |----|
 
+## Existing code
+
+- writer: reuse `lib/writer.sh:1-20` — interface: writes one file per call; test analog: `tests/writer.test.sh`
+
 ## Tasks
 
 The work is straightforward.
@@ -316,6 +340,10 @@ cat > "$WORK/plan-emptyac.md" <<'EOF'
 ## Task DAG
 
 | task-001 |
+
+## Existing code
+
+- writer: reuse `lib/writer.sh:1-20` — interface: writes one file per call; test analog: `tests/writer.test.sh`
 
 ## Tasks
 
@@ -332,12 +360,6 @@ cat > "$WORK/plan-emptyac.md" <<'EOF'
 - [ ] Step 1
 EOF
 check "Acceptance criteria marker with no items flags" 1 plan "$WORK/plan-emptyac.md"
-
-# --- patterns ---
-printf '# PATTERNS.md - feat\n\n## Concept: writer\n\ndetail\n' > "$WORK/patterns-good.md"
-check "patterns with a Concept section passes" 0 patterns "$WORK/patterns-good.md"
-printf '# PATTERNS.md - feat\n\nno sections at all\n' > "$WORK/patterns-bare.md"
-check "patterns without sections flags" 1 patterns "$WORK/patterns-bare.md"
 
 # --- verification ---
 cat > "$WORK/verif-good.md" <<'EOF'

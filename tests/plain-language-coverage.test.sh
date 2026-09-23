@@ -18,7 +18,6 @@ agents=(
   agents/spec-writer.md
   agents/planner.md
   agents/verifier.md
-  agents/pattern-mapper.md
   agents/challenger.md
   agents/advocate.md
   agents/code-reviewer.md

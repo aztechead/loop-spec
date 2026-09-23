@@ -25,8 +25,6 @@ checks=(
   "skills/plan/SKILL.md	planner role contract"
   "agents/planner.md	engineering-stances.md"
   "agents/planner.md	## System design"
-  "agents/pattern-mapper.md	engineering-stances.md"
-  "agents/pattern-mapper.md	## Problem areas"
   "agents/code-reviewer.md	engineering-stances.md"
   "agents/code-reviewer.md	Performance pass"
   "agents/code-reviewer.md	perf:"

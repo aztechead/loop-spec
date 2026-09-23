@@ -11,7 +11,7 @@ It flushes a unique temporary file before replacement. The live path remains pre
 **Writing rules (every phase, no exceptions):** never mutate `feature.json` with raw `jq`/`python3` — that bypasses the atomic write and `.bak` rotation that resume depends on. `feature-write.sh set` takes **nested dot paths** (object keys only, no array indices) and a **JSON value** (strings must be quoted):
 
 ```bash
-bash "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" artifacts.patterns '"docs/loop-spec/features/'"${slug}"'/PATTERNS.md"'
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" artifacts.plan '"docs/loop-spec/features/'"${slug}"'/PLAN.md"'
 bash "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-write.sh" append "$fdir" warnings '"some warning"'
 ```
 
@@ -69,8 +69,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "iterateJudge": "effective alias for the active phase",
     "implementer": "effective alias for the active phase",
     "codeReviewer": "effective alias for the active phase",
-    "verifier": "effective alias for the active phase",
-    "patternMapper": "effective alias for the active phase"
+    "verifier": "effective alias for the active phase"
   },
   "routeJudgment": {
     "route": "oneshot | full",
@@ -91,8 +90,6 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   },
   "artifacts": {
     "spec": "path or null",
-    "patterns": "path or null (docs/loop-spec/features/{slug}/PATTERNS.md, written at PLAN Step 0)",
-    "patternsSource": "gsd-ingest | pattern-mapper | manual | null",
     "plan": "path or null",
     "tasks": "path or null (.loop-spec/features/{slug}/tasks.json — gate-validated tasks[] JSON persisted at PLAN Step 6; EXECUTE Step 2a's preferred task source, validated by lib/artifact-lint.sh tasks; optional per-task status pending|done is the resume ledger — cycle resume and EXECUTE read it via lib/task-progress.sh)",
     "execution": "path or null",
@@ -347,7 +344,7 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
 
 **SPEC.** No harness task list for the critique step's teammates. The challenger (and spec-writer only when SPEC.md was missing) communicate via `SendMessage`; the lead tracks gate state in `feature.json.currentGate` and appends round-end messages to `.loop-spec/features/{slug}/gate-logs/`.
 
-**PLAN.** No harness task list for PLAN's internal teammates (pattern-mapper, planner, challenger). PLAN derives the validated `tasks[]` JSON from PLAN.md's task blocks (`lib/plan-tasks.sh extract`) into `tasks.json`; the EXECUTE team's harness task list is created from it later, by `TaskCreate` calls in EXECUTE Step 3 (one task per planned task), populated with `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst`, and `specPath` in task `metadata`. It is not pre-created at PLAN exit and there is no EXECUTE Step 0.
+**PLAN.** No harness task list for PLAN's internal teammates (planner, challenger). PLAN derives the validated `tasks[]` JSON from PLAN.md's task blocks (`lib/plan-tasks.sh extract`) into `tasks.json`; the EXECUTE team's harness task list is created from it later, by `TaskCreate` calls in EXECUTE Step 3 (one task per planned task), populated with `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst`, and `specPath` in task `metadata`. It is not pre-created at PLAN exit and there is no EXECUTE Step 0.
 
 **EXECUTE.** One task per planned task. Implementers self-claim by calling `TaskUpdate({taskId, status: "in_progress", owner: "<own-name>"})`. The harness serializes concurrent claims on the same task id; the losing implementer must re-query and retry. Task lifecycle: `pending -> in_progress -> awaiting_review -> completed | needs_rework`. Per-task `retries` in metadata is the retry counter; `claimedBy` identifies the owner for reviewer-to-implementer messaging.
 

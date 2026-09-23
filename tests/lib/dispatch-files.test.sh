@@ -309,7 +309,7 @@ check "brief preserves visible text around inline HTML comment" "1" "$(grep -c '
 check "brief drops the template comment" "0" "$(grep -c '<!--' "$sliced")"
 check "brief carries only the cited EVID rows" "1,0" "$(grep -c '^- EVID-001 ' "$sliced"),$(grep -c 'EVID-010' "$sliced")"
 check "brief carries the lead's environment facts" "1" "$(grep -c '^tofu: OpenTofu v1.12.6$' "$sliced")"
-check "brief tells the implementer not to open the artifacts" "1" "$(grep -c 'Do not read SPEC.md, PLAN.md, PATTERNS.md, or EVIDENCE.md' "$sliced")"
+check "brief tells the implementer not to open the artifacts" "1" "$(grep -c 'Do not read SPEC.md, PLAN.md, or EVIDENCE.md' "$sliced")"
 check "brief prefers the collapsed task" "1" "$(grep -c '^- b$' "$sliced")"
 check "brief lists batch members" "1" "$(grep -c '^- task-002$' "$sliced")"
 

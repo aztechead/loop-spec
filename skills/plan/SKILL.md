@@ -1,6 +1,6 @@
 ---
 name: plan
-description: "Create PATTERNS.md, PLAN.md, and tasks.json from the frozen SPEC. Internal phase of /loop-spec:cycle. Start there for repository work."
+description: "Create PLAN.md and tasks.json from the frozen SPEC. Internal phase of /loop-spec:cycle. Start there for repository work."
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
 ---
 
@@ -9,7 +9,7 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 Use `feature_dir=.loop-spec/features/{slug}`. Relay any entry FLAG and return. Follow
 `skills/shared/dispatch.md` for every agent dispatch.
 
-Create compact `PATTERNS.md` and authored `PLAN.md` under
+Create the authored `PLAN.md` under
 `docs/loop-spec/features/{slug}/`; derive `tasks.json` from PLAN's task blocks. Read
 only the entry packet first:
 
@@ -20,7 +20,7 @@ pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin plan -
 # .mode.critique .mode.reentry .mode.budget .mode.remaining .mode.exhausted
 ```
 
-Reuse SPEC, decisions, evidence, and PATTERNS. Keep searches within route files and
+Reuse SPEC, decisions, and evidence. Keep searches within route files and
 criteria; refresh `design-budget.sh` before optional scans or redispatches. The budget
 is a soft deadline, not permission to pass unresolved required findings.
 
@@ -31,11 +31,11 @@ the entry fast-path is stale until this recomputation. For greenfield, task-001 
 the scaffold, lockfile, test harness, and walking-skeleton test; every other task
 depends on it. Workspace tasks carry one `repo` and workspace-relative paths.
 
-## PATTERNS and PLAN
+## PLAN
 
-The planner owns the compact PATTERNS scan. Reuse an existing artifact when present;
-otherwise use the absolute paths in the planner assignment. Do not prefetch,
-dispatch a second scan, or poll for a teammate.
+The planner looks up the existing code each concept should reuse or extend and
+records it in PLAN's `## Existing code` section; `artifact-lint plan` rejects a PLAN
+without it. Do not prefetch, dispatch a separate lookup, or poll for a teammate.
 
 Immediately dispatch one `planner-1` through the active harness adapter using
 `.planner.model`, `.planner.subagentType`, and the exact one-line prompt

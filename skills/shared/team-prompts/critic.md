@@ -15,7 +15,7 @@ Surface gaps, ambiguities, flawed assumptions, and missing acceptance criteria i
 1. Read `{artifact_path}`. For a PLAN phase review, also read `{spec_path}`.
    Read only the cited `EVID-NNN` rows from `{evidence_path}`, not the whole ledger.
    Use the evidence identifiers in the artifact to locate those rows.
-   Do not read PATTERNS.md, interview or design-lock transcripts, or `gate-logs/`. Keep the review independent of the author's explanations.
+   Do not read interview or design-lock transcripts, or `gate-logs/`. Keep the review independent of the author's explanations.
    Search the repository for evidence supporting each claim you check.
 2. Enumerate **every specific, actionable issue** the artifact has, in this one pass,
    grouped by section with `[major]` first. There is no cap on count or length, and

@@ -2,7 +2,7 @@
 # artifact-lint.sh - Structural format gate for model-authored phase artifacts.
 #
 # Why: every phase hands the next phase artifacts a model wrote (SPEC.md, PLAN.md,
-# PATTERNS.md, VERIFICATION.md, the tasks[] JSON). The existing gates are semantic
+# VERIFICATION.md, the tasks[] JSON). The existing gates are semantic
 # (criteria coverage, grounding, acceptance quality) and silently assume the artifact
 # is STRUCTURALLY well-formed — the section headings exist, task blocks carry their
 # required fields, the file is not wrapped in a stray code fence, the JSON parses.
@@ -14,7 +14,6 @@
 # Usage:
 #   artifact-lint.sh spec         <SPEC.md path | ->
 #   artifact-lint.sh plan         <PLAN.md path | ->
-#   artifact-lint.sh patterns     <PATTERNS.md path | ->
 #   artifact-lint.sh verification <VERIFICATION.md path | ->
 #   artifact-lint.sh tasks        <tasks JSON path | ->
 #   artifact-lint.sh json         <path> [<path>...]
@@ -35,9 +34,9 @@ set -euo pipefail
 type="${1:-}"
 case "$type" in
   spec) [[ $# -eq 2 || ( $# -eq 4 && "$3" == "--feature-dir" ) ]] || { echo "usage: artifact-lint.sh spec <path|-> [--feature-dir DIR]" >&2; exit 2; } ;;
-  plan|patterns|verification|tasks) [[ $# -eq 2 ]] || { echo "usage: artifact-lint.sh $type <path|->" >&2; exit 2; } ;;
+  plan|verification|tasks) [[ $# -eq 2 ]] || { echo "usage: artifact-lint.sh $type <path|->" >&2; exit 2; } ;;
   json) [[ $# -ge 2 ]] || { echo "usage: artifact-lint.sh json <path> [<path>...]" >&2; exit 2; } ;;
-  *) echo "usage: artifact-lint.sh <spec|plan|patterns|verification|tasks|json> <path> [...]" >&2; exit 2 ;;
+  *) echo "usage: artifact-lint.sh <spec|plan|verification|tasks|json> <path> [...]" >&2; exit 2 ;;
 esac
 shift
 feature_dir=""
@@ -114,11 +113,11 @@ UNFILLED = {
     '# {feature_title}',
     '# {feature_title} - Implementation Plan',
     '# {feature_title} - Verification',
-    '# PATTERNS.md - {slug}',
     '**Slug:** `{slug}`',
     '**Created:** {created_at}',
     '### task-001: {subject}',
-    '## Concept: {name}',
+    '- {concept}: {reuse|extend} `{path}:{lines}` — interface: {what callers rely on}; test analog: `{test path}`',
+    '- {concept}: new — searched {terms}; {why nothing fits}',
 }
 
 
@@ -279,11 +278,40 @@ def lint_spec(display, data):
 TASK_HEADING = re.compile(r'^### (task-[A-Za-z0-9][A-Za-z0-9-]*)\b')
 
 
+EXISTING_ENTRY = re.compile(r'^- [^:]+:\s*(reuse|extend|new)\b(.*)$')
+
+
+def lint_existing_code(display, lines, mask):
+    """The planner looks up the module that already does the job before planning a
+    new one; each '## Existing code' bullet records that lookup as a decision."""
+    head = require_heading(display, lines, mask, '## Existing code')
+    if head is None:
+        return
+    entries = 0
+    for no, line in visible(lines, mask):
+        if no <= head or not line.startswith('- '):
+            if no > head and line.startswith('## '):
+                break
+            continue
+        entries += 1
+        m = EXISTING_ENTRY.match(line.strip())
+        if not m:
+            flag(display, no, "'## Existing code' entry must read '- <concept>: reuse|extend|new ...'")
+        elif m.group(1) != 'new' and not re.search(r'`[^`]+:\d', m.group(2)):
+            flag(display, no, "'## Existing code' %s entry must cite the `path:lines` it read" % m.group(1))
+        elif m.group(1) == 'new' and 'searched' not in m.group(2):
+            flag(display, no, "'## Existing code' new entry must say what was searched")
+    if entries == 0:
+        flag(display, head, "'## Existing code' has no entries — look up the closest "
+             'existing module for each concept before planning tasks')
+
+
 def lint_plan(display, data):
     lines, mask = markdown_scan(display, data, allow_frontmatter=False)
     if lines is None:
         return
     require_heading(display, lines, mask, '## Tasks')
+    lint_existing_code(display, lines, mask)
 
     vis = visible(lines, mask)
     # Task blocks are the canonical plan representation.  Older plans carried a
@@ -356,15 +384,6 @@ def lint_plan(display, data):
             if ac_items == 0:
                 flag(display, no, "task block %s has an '**Acceptance criteria:**' marker "
                      'but no criteria list items under it' % tid)
-
-
-def lint_patterns(display, data):
-    lines, mask = markdown_scan(display, data, allow_frontmatter=False)
-    if lines is None:
-        return
-    if not any(line.strip().startswith('## ') for _, line in visible(lines, mask)):
-        flag(display, 0, "no '## ' sections found — the planner reads '## Concept:' "
-             'sections (or an explicit no-analog section) from PATTERNS.md')
 
 
 def lint_verification(display, data):
@@ -526,7 +545,6 @@ def lint_json(display, data):
 LINTERS = {
     'spec': lint_spec,
     'plan': lint_plan,
-    'patterns': lint_patterns,
     'verification': lint_verification,
     'tasks': lint_tasks,
     'json': lint_json,

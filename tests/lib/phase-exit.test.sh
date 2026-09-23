@@ -254,6 +254,10 @@ One task.
 
 - `bash -n a.sh` exits 0 -> task-001
 
+## Existing code
+
+- writer: reuse `lib/writer.sh:1-20` — interface: writes one file per call; test analog: `tests/writer.test.sh`
+
 ## Tasks
 
 ### task-001: do a thing
@@ -272,7 +276,6 @@ One task.
 
 - none
 MD
-printf '# PATTERNS.md - my feature\n\n## Concept: writer\n\ndetail\n' > "$DOCS/PATTERNS.md"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: missing tasks.json flags" "1" "$ec"
 check "exit plan: names the sidecar" "1" "$(grep -c 'tasks.json missing' <<<"$out")"
@@ -352,7 +355,6 @@ check "mode plan: one small task takes the fast path" "critique=skip" "${out%% *
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: gated plan passes" "0" "$ec"
 check "exit plan: tasks pointer recorded" "1" "$([[ "$(fj '.artifacts.tasks')" == *tasks.json ]] && echo 1 || echo 0)"
-check "exit plan: patterns source defaulted" "pattern-mapper" "$(fj '.artifacts.patternsSource')"
 check "exit plan: PLAN.md committed" "1" "$(git log --oneline | grep -c 'plan: my-feature')"
 
 # --- execute ------------------------------------------------------------------------

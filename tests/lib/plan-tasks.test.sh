@@ -28,6 +28,10 @@ cat > "$tmp/PLAN.md" <<'MD'
 | task-002 | write the CSV | task-001 | lib/csv.py, tests/test_csv.py | small |
 | task-003 | wire the flag | task-001, task-002 | api/flags.py | small |
 
+## Existing code
+
+- writer: reuse `lib/writer.sh:1-20` — interface: writes one file per call; test analog: `tests/writer.test.sh`
+
 ## Tasks
 
 ### task-001: add the endpoint
@@ -122,6 +126,10 @@ rc=0; bash "$LINT" tasks - <<<"$out" >/dev/null 2>&1 || rc=$?
 check "extracted tasks pass the tasks lint" "0" "$rc"
 
 cat > "$tmp/PLAN-continuations.md" <<'MD'
+## Existing code
+
+- writer: reuse `lib/writer.sh:1-20` — interface: writes one file per call; test analog: `tests/writer.test.sh`
+
 ## Tasks
 ### task-001: wrapped fields
 **Files:**
@@ -183,6 +191,10 @@ check "real PLAN fixture passes the tasks lint" "0" "$rc"
 # silently turn into an independent task.
 cat > "$tmp/PLAN-compact.md" <<'MD'
 # Compact - Implementation Plan
+
+## Existing code
+
+- writer: reuse `lib/writer.sh:1-20` — interface: writes one file per call; test analog: `tests/writer.test.sh`
 
 ## Tasks
 

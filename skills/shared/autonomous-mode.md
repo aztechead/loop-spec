@@ -59,7 +59,7 @@ autonomous derives the recommended answer.
 
 1. State the unresolved choice as a question.
 2. Answer as the options' author would recommend: what the codebase already does
-   (map, PATTERNS, evidence) first, then industry practice, then the most reversible
+   (PLAN, evidence) first, then industry practice, then the most reversible
    option.
 3. Record it to disk at once, never in model memory:
    `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/decisions.sh" add "$dir" "$phase" "$question" "$answer" "$rationale"`

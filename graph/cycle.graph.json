@@ -245,7 +245,6 @@
           }
         ],
         "optional": [
-          "{docs}/PATTERNS.md",
           "{docs}/EVIDENCE.md"
         ]
       },
@@ -284,25 +283,17 @@
           }
         ],
         "writes": [
-          "artifacts.patternsPrefetch",
-          "artifacts.patternsSource",
-          "artifacts.patterns",
           "artifacts.plan",
           "artifacts.tasks"
         ],
         "artifacts": {
           "plan": "{docs}/PLAN.md",
-          "patterns": "{docs}/PATTERNS.md",
           "tasks": "{featureDir}/tasks.json"
-        },
-        "artifactsDefault": {
-          "patternsSource": "pattern-mapper"
         },
         "commit": {
           "message": "plan: {slug}",
           "paths": [
             "{docs}/PLAN.md",
-            "{docs}/PATTERNS.md",
             "{docs}/EVIDENCE.md"
           ]
         },
@@ -409,9 +400,6 @@
             "writer": "PLAN",
             "path": "{docs}/PLAN.md"
           }
-        ],
-        "optional": [
-          "{docs}/PATTERNS.md"
         ]
       },
       "egress": {

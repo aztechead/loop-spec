@@ -16,6 +16,22 @@
 - Database schema / interface architecture: {changed entities and user surface}
 - Caching strategy / scale bound: {invalidation and bounded growing input}
 
+## Existing code
+
+<!-- Look before you plan. For each concept this feature adds or changes, search the
+     tree by domain words, follow imports and callers, and name the closest module that
+     already does the job or something like it. One bullet per concept, one decision:
+       reuse  - call that module through its current interface
+       extend - put the new behavior behind that module's interface (deepen it)
+       new    - nothing fits; name what you searched for
+     reuse/extend cite the `path:lines` you read and the interface callers rely on
+     (signature, invariants, error modes). Never copy code. A new module must pass the
+     deletion test: deleting it would push its complexity back into several callers.
+     Add a seam only where two adapters exist (production + test). Task blocks cite
+     these entries in `read_first`. -->
+- {concept}: {reuse|extend} `{path}:{lines}` — interface: {what callers rely on}; test analog: `{test path}`
+- {concept}: new — searched {terms}; {why nothing fits}
+
 ## Global constraints
 
 <!-- Binding rules every task must respect, stated VERBATIM (copied from SPEC
