@@ -110,7 +110,7 @@ class IterateTests(unittest.TestCase):
         action = self._judge_result("met", [])
         self.assertEqual(action.product["exit"], "rewind")
         self.assertEqual(action.product["verdict"], "unmet")
-        self.assertEqual(action.product["gaps"], [{"target": "execute", "text": "open finding F-1 (Critical): x", "findingId": "F-1"}])
+        self.assertEqual(action.product["gaps"], [{"target": "execute", "text": "open finding F-1 (Critical) at a.py:1: x", "findingId": "F-1"}])
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
     def test_met_with_critical_open_finding_and_no_budget_room_escalates(self):
@@ -134,14 +134,14 @@ class IterateTests(unittest.TestCase):
         self.assertEqual(finding["reason"], "left open at ITERATE; deferred by policy")
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
-    def test_met_with_important_open_finding_and_budget_room_rewinds_to_plan(self):
+    def test_met_with_important_open_finding_and_budget_room_rewinds_to_an_execute_close_out(self):
         self.store.state["ledger"]["findings"] = [_finding("F-1", "Important", "open")]
         action = self._judge_result("met", [])
         self.assertEqual(action.product["exit"], "rewind")
         self.assertEqual(action.product["verdict"], "unmet")
-        self.assertEqual(action.product["gaps"], [{"target": "plan", "text": "open finding F-1 (Important) at a.py:1: x"}])
+        self.assertEqual(action.product["gaps"], [{"target": "execute", "text": "open finding F-1 (Important) at a.py:1: x", "findingId": "F-1"}])
         # A gap that routes it, not a disposition -- Important-with-room is not
-        # deferred; it stays open until PLAN's remediation closes it.
+        # deferred; it stays open until its EXECUTE close-out closes it.
         self.assertEqual(self.store.state["ledger"]["findings"][0]["disposition"], "open")
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 

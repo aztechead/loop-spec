@@ -237,9 +237,10 @@ outright incorrect implementations; the PR review catches the rest.
 | Runs as | a fresh goal-judgment role |
 
 The program, not the judge role, dispositions every non-Critical open finding
-before deciding the exit: Minor is always deferred; Important becomes a PLAN gap
-while the rewind budget has room, and is deferred once it does not; Critical is
-never deferred (decided 2026-09-22, LF-46).
+before deciding the exit: Minor is always deferred; Important becomes an `execute`
+gap (a close-out) while the rewind budget has room, and is deferred once it does not;
+Critical is never deferred and always becomes an `execute` gap (decided 2026-09-22,
+LF-46; Important moved from PLAN to EXECUTE in LF-68).
 
 | Id | Postcondition | Gates |
 |---|---|---|
