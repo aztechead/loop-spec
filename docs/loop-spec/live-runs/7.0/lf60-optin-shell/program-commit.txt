@@ -1,0 +1,1 @@
+Plugin checkout this run read: ffcd87a. Driven from the operator shell with no model and no CLAUDE_CODE_SESSION_ID (no host attestor), config evidence.judgment.accept = unattested. Stopped by the operator once PLAN advanced; no result.json.
