@@ -37,9 +37,11 @@ _DIFF_CAP = 200_000  # ponytail: a flat cap, raise it if a real diff gets trunca
 # can change.
 _REVIEW_RETRY_FAILURE_IDS = {"E5", "E6", "E11"}
 _IMPLEMENT_RETRY_FAILURE_ID = "E7"
+# LF-66: "stop" is first and the default, so a headless answerer (the default policy,
+# or one that takes the first option) ends the run instead of improvising a fix.
 _BLOCKED_OPTIONS = [
-    {"value": "fix-and-re-enter", "label": "Fix and re-enter"},
     {"value": "stop", "label": "Stop"},
+    {"value": "fix-and-re-enter", "label": "Fix and re-enter"},
 ]
 _TASK_ID_RE = re.compile(r"[TRC]-\d+")  # plan T-n/R-n, close-out C-n (LF-55)
 # LF-11: a verify re-run that could never have passed no matter what the implementer
@@ -512,7 +514,7 @@ def _pause_request(ctx, repo_name: str, expected: str, actual: str, *, text: str
                           f"(expected {expected}, found {actual}); reset it to {expected} (or move the "
                           f"commits into a task worktree), then fix-and-re-enter, or stop"),
         "options": _BLOCKED_OPTIONS,
-        "defaultValue": None, "kind": "blocked",
+        "defaultValue": "stop", "kind": "blocked",
         "payload": {"repo": repo_name, "expected": expected, "actual": actual},
     }
     errors = validate_request("question", request)
@@ -529,7 +531,7 @@ def _blocked_pause_request(ctx, text: str, payload: dict) -> dict:
     own blocked questions already use, never an automatic resume."""
     request = {
         "attempt": ctx["attempt"]["id"], "phase": "execute", "text": text,
-        "options": _BLOCKED_OPTIONS, "defaultValue": None, "kind": "blocked", "payload": payload,
+        "options": _BLOCKED_OPTIONS, "defaultValue": "stop", "kind": "blocked", "payload": payload,
     }
     errors = validate_request("question", request)
     if errors:

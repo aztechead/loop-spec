@@ -63,7 +63,7 @@ unattested` in config, and the result then carries `weakenedAssurance`. A judgme
 role (`plan-critic`, `code-reviewer`, `iterate-judge`) refuses an `unattested`
 submission outright and re-dispatches instead, up to the retry bound. Exhausting that
 bound is never a waiver: the step is refused, nothing it produced is accepted, and the
-phase asks a blocked question (`fix-and-re-enter` or `stop`, no default) unless config
+phase asks a blocked question (`stop` or `fix-and-re-enter`, default `stop`) unless config
 opts the role in (`evidence.review.accept` for reviews, `evidence.judgment.accept` for
 the critic and judge). A cached judgment is consumed only while its step's evidence is
 accepted or opted in. See `skills/loop-spec/references/contract.md`'s evidence section.

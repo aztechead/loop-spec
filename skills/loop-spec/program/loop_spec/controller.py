@@ -1268,8 +1268,8 @@ def _reject_product(store: StateStore, paths: FeaturePaths, phase: str, attempt_
         record = questions.ask(
             store, paths, phase=phase, attempt_id=attempt_id,
             text=f"{phase.upper()} product rejected {store.state['phase']['retries']} times: {'; '.join(f.message for f in failures)}",
-            kind="blocked", options=[{"value": "fix-and-re-enter", "label": "Fix and re-enter"}, {"value": "stop", "label": "Stop"}],
-            default_value=None, payload={"phase": phase},
+            kind="blocked", options=[{"value": "stop", "label": "Stop"}, {"value": "fix-and-re-enter", "label": "Fix and re-enter"}],
+            default_value="stop", payload={"phase": phase},
         )
         store.state["phase"]["blockedQuestionId"] = record["questionId"]
         store.save()
@@ -1300,8 +1300,8 @@ def _ask_pause_question(store: StateStore, paths: FeaturePaths, phase: str, exit
     record = questions.ask(
         store, paths, phase=phase, attempt_id=attempt_id,
         text=f"{phase.upper()} exited {exit_}: {cause}",
-        kind="blocked", options=[{"value": "fix-and-re-enter", "label": "Fix and re-enter"}, {"value": "stop", "label": "Stop"}],
-        default_value=None, payload={"phase": phase, "exit": exit_},
+        kind="blocked", options=[{"value": "stop", "label": "Stop"}, {"value": "fix-and-re-enter", "label": "Fix and re-enter"}],
+        default_value="stop", payload={"phase": phase, "exit": exit_},
     )
     store.state["phase"]["blockedQuestionId"] = record["questionId"]
     store.state["phase"]["entry"] = "remediation"
@@ -1485,8 +1485,8 @@ def _finish_refusals(store: StateStore, paths: FeaturePaths) -> None:
             record = questions.ask(
                 store, paths, phase=refused["phase"], attempt_id=attempt_id,
                 text=f"step {step_id} ({refused['role']}) has no accepted evidence: {refused['reason']}",
-                kind="blocked", options=[{"value": "fix-and-re-enter", "label": "Fix and re-enter"}, {"value": "stop", "label": "Stop"}],
-                default_value=None, payload={"phase": refused["phase"], "refusedStep": step_id}, save=False,
+                kind="blocked", options=[{"value": "stop", "label": "Stop"}, {"value": "fix-and-re-enter", "label": "Fix and re-enter"}],
+                default_value="stop", payload={"phase": refused["phase"], "refusedStep": step_id}, save=False,
             )
             refused["questionId"] = record["questionId"]
             store.state["phase"]["blockedQuestionId"] = record["questionId"]

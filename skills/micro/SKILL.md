@@ -54,6 +54,8 @@ a stub is told the run's slug):
   headless run), stop and print the question file path and its text; the operator
   answers with `loop-spec answer ...` and re-runs this entry with `--slug <slug>` and
   no request to resume.
+  You never edit the project or dispatch a worker the program did not issue: a
+  `fix-and-re-enter` option is the operator's fix, not yours.
 - `result`: report the result file to the user in the chat shape. Stop.
 
 If the launcher is missing, read the sibling hub `skills/loop-spec/SKILL.md`. On any other

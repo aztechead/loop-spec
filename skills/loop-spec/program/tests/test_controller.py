@@ -2157,35 +2157,48 @@ class ModulePauseAnswerTests(unittest.TestCase):
     so `stop` ends the run and `fix-and-re-enter` re-invokes the module once, never
     re-asking a pause nothing read."""
 
-    def _paused(self, tmp: Path):
+    def _paused(self, tmp: Path, policy=None):
         paths = FeaturePaths(root=tmp / "feature")
         store = StateStore.create(
             paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x", "createdAt": "2026-01-01T00:00:00+00:00"}, "do it",
         )
         store.state["phase"].update(current="execute", attemptId="attempt-1")
         store.state["implementations"]["phases"]["execute"] = "default"
+        store.state["questions"]["policy"] = policy
         store.save()
         request = {"attempt": "attempt-1", "phase": "execute", "text": "feature branch moved out of band",
-                   "options": [{"value": "fix-and-re-enter", "label": "Fix and re-enter"}, {"value": "stop", "label": "Stop"}],
-                   "defaultValue": None, "kind": "blocked", "payload": {"repo": "repo"}}
+                   "options": [{"value": "stop", "label": "Stop"}, {"value": "fix-and-re-enter", "label": "Fix and re-enter"}],
+                   "defaultValue": "stop", "kind": "blocked", "payload": {"repo": "repo"}}
         (tmp / "q.json").write_text(json.dumps(request))
         with patch.object(controller.contract, "invoke", return_value=controller.contract.PhaseOutcome(3, "question", tmp / "q.json", "")):
             controller._drive_phase(store, paths, tmp)
-        question_id = store.state["questions"]["open"]["questionId"]
+        question_id = store.state["phase"]["blockedQuestionId"]
+        self.assertIsNotNone(question_id)
         self.assertEqual(StateStore.open(paths).state["phase"]["blockedQuestionId"], question_id)
         return paths, store, question_id
+
+    def _continue_capturing_finish(self, store, paths, tmp):
+        finished = []
+        def finish(store, paths, classification, *, reason=None, **_):
+            finished.append((classification, reason))
+            store.state["result"] = {"status": classification}
+        with patch.object(controller, "_finish_run", side_effect=finish):
+            controller.continue_run(store, paths, project_root=Path(tmp))
+        return finished
+
+    def test_the_default_policy_answers_stop_and_escalates_without_re_asking(self):
+        # LF-66: a headless run ends with a result instead of the lead improvising a fix.
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, store, question_id = self._paused(Path(tmp), policy="default")
+            self.assertIsNone(store.state["questions"]["open"])
+            self.assertEqual(store.state["questions"]["answered"][question_id]["value"], "stop")
+            self.assertEqual(self._continue_capturing_finish(store, paths, tmp)[0][0], "escalated")
 
     def test_stop_escalates(self):
         with tempfile.TemporaryDirectory() as tmp:
             paths, store, question_id = self._paused(Path(tmp))
             questions.answer(store, paths, question_id=question_id, value="stop")
-            finished = []
-            def finish(store, paths, classification, *, reason=None, **_):
-                finished.append((classification, reason))
-                store.state["result"] = {"status": classification}
-            with patch.object(controller, "_finish_run", side_effect=finish):
-                controller.continue_run(store, paths, project_root=Path(tmp))
-            self.assertEqual(finished[0][0], "escalated")
+            self.assertEqual(self._continue_capturing_finish(store, paths, tmp)[0][0], "escalated")
 
     def test_fix_and_re_enter_re_invokes_the_module_without_re_asking(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2240,7 +2253,7 @@ class RefusedEvidenceTests(unittest.TestCase):
             self.assertIsNone(store.state["phase"]["criticStepId"])
             self.assertIsNone(store.state.get("critic"))  # no handler consumed the refused findings
             question = read_json(Path(store.state["questions"]["open"]["path"]))
-            self.assertEqual((question["defaultValue"], question["payload"]["refusedStep"]), (None, step_id))
+            self.assertEqual((question["defaultValue"], question["payload"]["refusedStep"]), ("stop", step_id))
 
     def test_a_crash_between_the_owner_reset_and_the_question_asks_exactly_once(self):
         with tempfile.TemporaryDirectory() as tmp:
