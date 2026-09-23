@@ -81,7 +81,7 @@ elif [[ "$AGENT_CLI" == "adk" ]]; then
   # only lib/adk-install.sh knows where the caller mounted it. Absence is a
   # missing prerequisite, not a fallback to another harness's flags.
   [[ -n "${LOOP_SPEC_ADK_AGENT_DIR:-}" ]] || \
-    _die2 "harness is adk but LOOP_SPEC_ADK_AGENT_DIR is unset (run: bash lib/adk-install.sh install --project <dir>)"
+    _die2 "harness is adk but LOOP_SPEC_ADK_AGENT_DIR is unset (run: bash $SCRIPT_DIR/adk-install.sh install --project <dir>)"
   [[ -d "${LOOP_SPEC_ADK_AGENT_DIR}" ]] || \
     _die2 "LOOP_SPEC_ADK_AGENT_DIR='${LOOP_SPEC_ADK_AGENT_DIR}' is not a directory"
   AGENT_ARGS=(run "${LOOP_SPEC_ADK_AGENT_DIR}")

@@ -34,6 +34,12 @@ because a pre-team suite regression could not reach EXECUTE.
   resolves only inside loop-spec itself. It now stores
   `{loop-spec-lib}/criteria-coverage.sh` with repo-relative artifact paths, and
   `rules.sh render` replaces the placeholder with the installed `lib/` directory.
+- Gate failures and hook refusals that tell the lead to run a bundled script now
+  print the installed `lib/` path, not `bash lib/<script>`. The relative path does
+  not resolve in a consumer repository. This covers the PLAN exit gate's extract
+  command, the grounding lint's `evidence.sh` hint, the EXECUTE exit gate, the
+  terminal-result and forgery guards, `execute-step`, `profile`, `issue-intake`, and
+  the Codex adapter. `tests/lib-path-hints-coverage.test.sh` fails on a new one.
 
 ### Added
 

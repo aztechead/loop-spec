@@ -457,7 +457,7 @@ PY
       feat_dir="$(_resolve_full_feature_dir "$(_resolve_result_root "$result_root" 2>/dev/null || echo "$result_root")" "$slug" 2>/dev/null || true)"
       next_phase="$(bash "$SCRIPT_DIR/feature-read.sh" "$feat_dir" -r --filter '.driverNext.phase // empty' 2>/dev/null || true)"
       if [[ -n "$next_phase" ]]; then
-        echo "cycle-result.sh: the driver answered NEXT phase=$next_phase for $feat_dir and nothing says that phase cannot continue; write-terminal will not record 'interrupted' without --reason. Continue the cycle instead: bash lib/cycle-driver.sh next --feature-dir $feat_dir --returned-from $next_phase --note '<what the phase produced>' and act on its answer. Only a run that cannot continue publishes --status failed --outcome interrupted --reason '<what stopped it>'" >&2
+        echo "cycle-result.sh: the driver answered NEXT phase=$next_phase for $feat_dir and nothing says that phase cannot continue; write-terminal will not record 'interrupted' without --reason. Continue the cycle instead: bash $SCRIPT_DIR/cycle-driver.sh next --feature-dir $feat_dir --returned-from $next_phase --note '<what the phase produced>' and act on its answer. Only a run that cannot continue publishes --status failed --outcome interrupted --reason '<what stopped it>'" >&2
         exit 3
       fi
     fi

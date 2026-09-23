@@ -63,7 +63,7 @@ jq --arg sidecar "$WORK/foreign-tasks.json" '.sidecar=$sidecar' "$FD/dispatch/pr
 mv "$FD/dispatch/prepare.tmp" "$FD/dispatch/prepare.json"
 ec=0; error="$(bash "$STEP" dispatch --feature-dir "$FD" --task task-001 2>&1)" || ec=$?
 check "dispatch: stale cached sidecar is refused" "2" "$ec"
-check "dispatch: stale cache requests a new preparation" "1" "$(grep -c 'rerun lib/execute-prepare.sh' <<<"$error")"
+check "dispatch: stale cache requests a new preparation" "1" "$(grep -Fc "rerun $REPO_ROOT/lib/execute-prepare.sh" <<<"$error")"
 check "dispatch: stale cache writes no task state" "0" "$([[ -f "$FD/dispatch/task-001.json" ]] && echo 1 || echo 0)"
 check "dispatch: stale cache leaves foreign progress untouched" "$foreign_before" "$(cat "$WORK/foreign-tasks.json")"
 mv "$WORK/prepare.saved.json" "$FD/dispatch/prepare.json"

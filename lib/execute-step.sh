@@ -93,7 +93,7 @@ case "$role" in implementer|reviewer) ;; *) usage ;; esac
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
 prep="$feature_dir/dispatch/prepare.json"
-[[ -f "$prep" ]] || { echo "execute-step: $prep is missing; run lib/execute-prepare.sh first" >&2; exit 2; }
+[[ -f "$prep" ]] || { echo "execute-step: $prep is missing; run $SCRIPT_DIR/execute-prepare.sh first" >&2; exit 2; }
 fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 pget() { jq -r "$1" "$prep"; }
 slug="$(fget '.slug')"
@@ -102,7 +102,7 @@ sidecar="$feature_dir/tasks.json"
 # A cached preparation from another checkout is not authority to read or publish
 # that checkout's progress. Rebuild the packet before any task side effects.
 if [[ "$(pget '.sidecar')" != "$sidecar" ]]; then
-  echo "execute-step: prepared sidecar belongs to another feature location; rerun lib/execute-prepare.sh" >&2
+  echo "execute-step: prepared sidecar belongs to another feature location; rerun $SCRIPT_DIR/execute-prepare.sh" >&2
   exit 2
 fi
 # The dispatch list is the collapsed one (lib/task-batch.sh): a merged chain or batch

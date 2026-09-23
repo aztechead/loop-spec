@@ -39,7 +39,7 @@ case "$cmd" in
       if lint_out="$(lib artifact-lint tasks "$tasks" 2>&1)"; then
         if remaining="$(lib task-progress remaining "$tasks" 2>&1)"; then
           remaining="$(printf '%s' "$remaining" | paste -sd, -)"
-          [[ -z "$remaining" ]] || flag "[plan-adherence] tasks not published: $remaining (dispatch them again, or for a task whose commit is already on the feature branch run: bash lib/cycle-driver.sh task integrate --feature-dir $feature_dir --task <id>)"
+          [[ -z "$remaining" ]] || flag "[plan-adherence] tasks not published: $remaining (dispatch them again, or for a task whose commit is already on the feature branch run: bash $SCRIPT_DIR/cycle-driver.sh task integrate --feature-dir $feature_dir --task <id>)"
         else
           flag "[plan-adherence] cannot read task progress: $remaining"
         fi

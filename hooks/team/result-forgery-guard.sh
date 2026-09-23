@@ -92,5 +92,6 @@ if [[ "$VERDICT" == artifact\ * ]]; then
   echo "DENY: '$match' writes a driver-owned artifact of feature '$slug' by shell on the oneshot route (${route#route=oneshot reason=}). The driver fills it: cycle-driver.sh spec fill|escalate|footprint drop, verification fill|run|review|verdict --feature-dir $fd. (Disable: LOOP_SPEC_FORGERY_GUARD=0)" >&2
   exit 2
 fi
-echo "DENY: '$VERDICT' writes a loop-spec contract file by hand. The terminal result is published only by lib/cycle-result.sh (write, write-terminal) and feature state only by lib/feature-write.sh (usage: bash lib/feature-write.sh set <feature_dir> <dot.path> '<json-value>' -- strings JSON-quoted, e.g. '\"in-flight\"'); a result those writers refuse is a run that has not earned it. Return to the cycle, or publish the honest status with --reason. (Disable: LOOP_SPEC_FORGERY_GUARD=0)" >&2
+lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)"
+echo "DENY: '$VERDICT' writes a loop-spec contract file by hand. The terminal result is published only by $lib_dir/cycle-result.sh (write, write-terminal) and feature state only by $lib_dir/feature-write.sh (usage: bash $lib_dir/feature-write.sh set <feature_dir> <dot.path> '<json-value>' -- strings JSON-quoted, e.g. '\"in-flight\"'); a result those writers refuse is a run that has not earned it. Return to the cycle, or publish the honest status with --reason. (Disable: LOOP_SPEC_FORGERY_GUARD=0)" >&2
 exit 2

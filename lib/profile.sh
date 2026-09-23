@@ -31,6 +31,7 @@
 #   1 validate found findings, or an unreadable file on resolve/env
 #   2 bad invocation or unknown preset
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # A preset is env only. It cannot switch a gate off: the authority scripts
 # (trust.sh, autonomous-chain.sh, task-route.sh) never read this file. Only
@@ -98,7 +99,7 @@ if [[ "$op" == "presets" ]]; then
 fi
 if [[ "$op" == "show" ]]; then
   jq -e --arg p "$preset_arg" 'has($p)' <<<"$PRESETS" >/dev/null \
-    || { echo "profile: unknown preset '$preset_arg' (bash lib/profile.sh presets)" >&2; exit 2; }
+    || { echo "profile: unknown preset '$preset_arg' (bash $SCRIPT_DIR/profile.sh presets)" >&2; exit 2; }
   jq -r --arg p "$preset_arg" '.[$p] | to_entries[] | "\(.key)=\(.value)"' <<<"$PRESETS"
   exit 0
 fi
@@ -132,7 +133,7 @@ if [[ -n "${LOOP_SPEC_PROFILE_PRESET:-}" ]]; then
   preset="$LOOP_SPEC_PROFILE_PRESET"; source="LOOP_SPEC_PROFILE_PRESET"
 fi
 jq -e --arg p "$preset" 'has($p)' <<<"$PRESETS" >/dev/null \
-  || finding "unknown preset '$preset' (bash lib/profile.sh presets)"
+  || finding "unknown preset '$preset' (bash $SCRIPT_DIR/profile.sh presets)"
 
 overrides="$(jq -c '.env // {}' <<<"$doc")"
 [[ "$(jq -r 'type' <<<"$overrides")" == "object" ]] \
