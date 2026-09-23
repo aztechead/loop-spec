@@ -188,7 +188,7 @@ tag_checkpoint() {
 # prefix (gate rounds, team state, journaling). What one phase's skill or in-phase
 # scripts own is that node's `egress.writes`. phase-exit's own artifacts.* and
 # completedPhases writes happen after the check, so they are not listed.
-WRITES_ALL="currentGate gateHistory currentTeamName currentTeammates updatedAt warnings activeWorkflow checkpointPrUrl"
+WRITES_ALL="currentGate gateHistory currentTeamName currentTeammates updatedAt warnings activeWorkflow checkpointPrUrl checkpointPrHead"
 
 egress_check() {
   local mode="${LOOP_SPEC_EGRESS_GUARD:-warn}" snap="$feature_dir/.phase-entry.json"

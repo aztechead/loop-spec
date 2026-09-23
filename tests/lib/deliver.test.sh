@@ -33,6 +33,7 @@ while [[ $# -gt 0 ]]; do
     --base) base="$2"; shift 2 ;;
     --sha) sha="$2"; shift 2 ;;
     --body-file) body="$2"; shift 2 ;;
+    --title) [[ -z "${FAKE_DELIVERY_TITLE:-}" ]] || printf '%s\n' "$2" > "$FAKE_DELIVERY_TITLE"; shift 2 ;;
     --hold-ready) hold=1; shift ;;
     --restore-draft) restore=1; shift ;;
     *) shift ;;
@@ -62,7 +63,8 @@ if [[ "$fail" == "1" ]]; then
       baseBranch:$base,targetSha:$sha,remoteSha:$sha,headSha:$sha,prNumber:7,prUrl:$url,
       prAction:"reused",metadataAction:"unchanged",readinessAction:"none",isDraft:true,
       checks:{status:"failed",required:[{name:"test",bucket:"fail"}]},
-      observedAt:"2026-01-01T00:00:00Z",errorCode:$code,error:"failed"}'
+      observedAt:"2026-01-01T00:00:00Z",errorCode:$code,error:"failed"}
+      + (if env.FAKE_DELIVERY_ACCEPTED then {remoteHeadAccepted:[env.FAKE_DELIVERY_ACCEPTED]} else {} end)'
   exit 1
 fi
 if [[ "$restore" == "1" ]]; then
@@ -121,7 +123,9 @@ EOF
 printf '# Spec\nThe goal.\n' > "$DOCS/SPEC.md"
 printf '# Verification\nAll pass.\n' > "$DOCS/VERIFICATION.md"
 printf '# Iteration\nConverged.\n' > "$DOCS/ITERATION.md"
-jq -n --arg base "$BASE" '{schemaVersion:7,slug:"demo",feature_title:"Demo feature",
+# A run's goal can be a whole paragraph; the PR title must still fit on one line.
+LONG_GOAL="$(printf 'deliver the demo %.0s' $(seq 1 67))"; LONG_GOAL="${LONG_GOAL% }"
+jq -n --arg base "$BASE" --arg goal "$LONG_GOAL" '{schemaVersion:7,slug:"demo",feature_title:$goal,
   currentPhase:"deliver",branch:"feat/demo",baseSha:$base,baseBranch:"main",workspace:null,
   prUrl:null,checkpointPrUrl:"https://github.com/test/repo/pull/7",warnings:[],
   artifacts:{spec:"docs/loop-spec/features/demo/SPEC.md",verification:"docs/loop-spec/features/demo/VERIFICATION.md",iteration:"docs/loop-spec/features/demo/ITERATION.md"},
@@ -131,9 +135,9 @@ git -C "$SINGLE" add .gitignore ".loop-spec/features/demo/feature.json" \
 git -C "$SINGLE" commit -q -m "final candidate"
 PRE_FINALIZE_SHA="$(git -C "$SINGLE" rev-parse HEAD)"
 
-LOG="$WORK/calls.log"; BODY="$WORK/body.md"; : > "$LOG"
+LOG="$WORK/calls.log"; BODY="$WORK/body.md"; TITLE="$WORK/title.txt"; : > "$LOG"
 ec=0
-out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" FAKE_DELIVERY_TITLE="$TITLE" \
   LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$FDIR")" || ec=$?
 check "single: exit 0" "0" "$ec"
 check "single: aggregate ready" "ready-for-review" "$(jq -r '.status' <<<"$out" 2>/dev/null)"
@@ -155,6 +159,8 @@ check "single: exact finalized HEAD delegated" "$FINALIZED_SHA" "$(jq -r '.targe
 check "single: checkout remains clean" "0" "$(git -C "$SINGLE" status --porcelain | wc -l | tr -d ' ')"
 check "single: checkpoint hint reused" "1" "$(grep -c -- '--pr-url https://github.com/test/repo/pull/7' "$LOG" || true)"
 check "single: final iteration in body" "1" "$(grep -c 'Converged' "$BODY" || true)"
+check "single: a 1138-char goal yields a title of at most 130 chars; the body keeps it whole" "1138,1,1" \
+  "${#LONG_GOAL},$(( $(wc -c < "$TITLE") - 1 <= 130 )),$(grep -cF "$LONG_GOAL" "$BODY" || true)"
 
 # Completion recovery has an eligible exact-SHA binding. Re-entering DELIVER may
 # refresh external observations, but candidate finalization must create no commit or
@@ -173,6 +179,7 @@ check "bound resume: exact SHA remains delegated" "$FINALIZED_SHA" "$(jq -r '.ta
 : > "$LOG"
 ec=0
 out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" FAKE_DELIVERY_FAIL=1 \
+  FAKE_DELIVERY_ACCEPTED=b0b0 \
   LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$FDIR")" || ec=$?
 check "failure: exit 1" "1" "$ec"
 check "failure: state not ready" "checks-failed" "$(jq -r '.delivery.status' "$FDIR/feature.json")"
@@ -182,6 +189,8 @@ check "failure: graph probe sees execute" "nextPhase=execute" \
 check "failure: remediation attempt counted" "1" "$(jq -r '.delivery.ciRemediationAttempts' "$FDIR/feature.json")"
 check "failure: phase routed to execute" "execute" "$(jq -r '.currentPhase' "$FDIR/feature.json")"
 check "failure: remediation task appended" "task-delivery-ci-demo" "$(jq -r '.pendingRemediationTasks[0].id' "$FDIR/feature.json")"
+check "failure: remediation notes name the accepted remote commit" "1" \
+  "$(jq -r '.pendingRemediationTasks[0].notes' "$FDIR/feature.json" | grep -c '^remote commits accepted on the PR branch: b0b0; rebase or merge them')"
 check "failure: remediation verify command nonempty" "1" "$([[ -n "$(jq -r '.pendingRemediationTasks[0].verifyCommand' "$FDIR/feature.json")" ]] && echo 1 || echo 0)"
 check "failure: PR URL retained" "https://github.com/test/repo/pull/7" "$(jq -r '.prUrl' "$FDIR/feature.json")"
 

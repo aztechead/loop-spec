@@ -86,12 +86,20 @@ def normalize(line):
     line = re.sub(r"\b[0-9]{5,}\b", "<N>", line)
     return " ".join(line.split())
 
+# A runner summary carries pass counts that move whenever a test is added: a red base's
+# "87 failed, 2571 passed" read as a new failure at "2611 passed" (6.9.0 run). A -v
+# PASSED line is a success even when the test is named test_error_path.
+summary = re.compile(r"^\s*=*\s*\d+ (?:failed|passed|errors?)\b.*\bin\b"
+                     r"|^=+ .*\b(?:passed|failed|errors?)\b"
+                     r"|^\s*(?:Tests|Test Suites):\s"
+                     r"|\bPASSED\b")
+lines = [line for line in lines if not summary.search(ansi.sub("", line))]
 candidates = [normalize(line) for line in lines if marker.search(line)]
 candidates = [line for line in candidates if line]
 if not candidates:
     nonempty = [normalize(line) for line in lines if line.strip()]
     candidates = nonempty[-1:] or ["<no failure output>"]
-print(json.dumps(sorted({hashlib.sha256(line.encode()).hexdigest()[:16] for line in candidates})))
+print(json.dumps({hashlib.sha256(line.encode()).hexdigest()[:16]: line for line in candidates}, sort_keys=True))
 PY
 }
 
@@ -137,7 +145,7 @@ run_command() {
   local rc status fps failure_kind
   if [[ -z "$command" ]]; then
     : > "$log"
-    jq -cn --arg command "$command" '{command: $command, status: "skipped", exitCode: null, fingerprints: []}'
+    jq -cn --arg command "$command" '{command: $command, status: "skipped", exitCode: null, fingerprints: [], fingerprintLines: {}}'
     return
   fi
   assert_repo_state "$expected_head" "before $name command" || return 21
@@ -152,7 +160,7 @@ run_command() {
   assert_repo_state "$expected_head" "after $name command" || return 21
   if [[ "$rc" -eq 0 ]]; then
     status="pass"
-    fps="[]"
+    fps="{}"
   elif [[ "$failure_kind" == "timeout" || "$failure_kind" == "idle_timeout" \
           || "$failure_kind" == "signal" || "$failure_kind" == "spawn_failed" \
           || "$rc" -eq 126 || "$rc" -eq 127 || "$rc" -ge 128 ]]; then
@@ -165,7 +173,7 @@ run_command() {
   jq -cn --arg command "$command" --arg status "$status" --arg failureKind "$failure_kind" \
     --argjson exitCode "$rc" --argjson fps "$fps" \
     '{command: $command, status: $status, exitCode: $exitCode,
-      failureKind: $failureKind, fingerprints: $fps}'
+      failureKind: $failureKind, fingerprints: ($fps | keys), fingerprintLines: $fps}'
 }
 
 run_all() {
@@ -250,6 +258,8 @@ for name in test lint typecheck; do
   now_status="$(jq -r '.status' <<<"$now")"
   added="$(jq -cn --argjson old "$old" --argjson now "$now" \
     '[($now.fingerprints // [])[] | select(. as $fp | (($old.fingerprints // []) | index($fp) | not))]')"
+  added_lines="$(jq -cn --argjson now "$now" --argjson added "$added" \
+    '[$added[] | ($now.fingerprintLines // {})[.] // empty]')"
   command_regression=false
   if [[ "$old_status" == "pass" && "$now_status" == "fail" ]]; then
     command_regression=true
@@ -259,8 +269,8 @@ for name in test lint typecheck; do
   [[ "$command_regression" == "false" ]] || regression=true
   comparison="$(jq -cn --argjson all "$comparison" --arg name "$name" \
     --arg baselineStatus "$old_status" --arg currentStatus "$now_status" \
-    --argjson added "$added" --argjson regression "$command_regression" \
-    '$all + {($name): {baselineStatus: $baselineStatus, currentStatus: $currentStatus, addedFingerprints: $added, regression: $regression}}')"
+    --argjson added "$added" --argjson addedLines "$added_lines" --argjson regression "$command_regression" \
+    '$all + {($name): {baselineStatus: $baselineStatus, currentStatus: $currentStatus, addedFingerprints: $added, addedLines: $addedLines, regression: $regression}}')"
 done
 
 if [[ "$regression" == "true" ]]; then

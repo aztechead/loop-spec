@@ -244,7 +244,7 @@ PY
       pr_kind="existing"
     else
       # ── Step 6: Create draft PR ──────────────────────────────────────────────
-      pr_title="WIP: ${feature_title} (checkpoint: ${current_phase})"
+      pr_title="WIP: $(bash "$script_dir/pr-body.sh" title "$feature_title" "$(basename "$feature_dir")") (checkpoint: ${current_phase})"
 
       pr_body="This is an automated checkpoint of an INCOMPLETE loop-spec cycle.
 
@@ -319,6 +319,7 @@ Run documents under \`docs/loop-spec/features/\` are kept out of this PR by \`LO
             pr_url="$(tr -d '\r\n' < "$command_out")"
             pr_kind="draft"
           else
+            create_err="$(tail -n 5 "$command_err" | tr '\n' ' ')"
             relist_rc=0
             list_open_pr_once || relist_rc=$?
             if [[ "$relist_rc" -eq 0 && -n "$existing_url" && "$existing_url" != "null" ]]; then
@@ -329,24 +330,26 @@ Run documents under \`docs/loop-spec/features/\` are kept out of this PR by \`LO
                 LOOP_SPEC_AUTH_ERROR_CODE="authentication_failed"
                 LOOP_SPEC_AUTH_ERROR_MESSAGE="authentication failed after credential refresh"
               fi
-              auth_skip "gh pr create failed after credential refresh"
+              auth_skip "gh pr create failed after credential refresh: $create_err"
             fi
           fi
         fi
       else
+        create_err="$(tail -n 5 "$command_err" | tr '\n' ' ')"
         relist_rc=0
         list_open_pr_once || relist_rc=$?
         if [[ "$relist_rc" -eq 0 && -n "$existing_url" && "$existing_url" != "null" ]]; then
           pr_url="$existing_url"
           pr_kind="existing"
         else
-          _skip "gh pr create failed"
+          _skip "gh pr create failed: $create_err"
         fi
       fi
     fi
 
     # ── Step 7: Persist + emit (both best-effort) ───────────────────────────────
     bash "$(dirname "${BASH_SOURCE[0]}")/feature-write.sh" set "$feature_dir" checkpointPrUrl "\"$pr_url\"" 2>/dev/null || true
+    bash "$(dirname "${BASH_SOURCE[0]}")/feature-write.sh" set "$feature_dir" checkpointPrHead "$(jq -n --arg h "$pr_head" '$h')" 2>/dev/null || true
 
     data_json=$(jq -cn --arg url "$pr_url" '{"url": $url}') || true
     bash "$(dirname "${BASH_SOURCE[0]}")/events.sh" emit "$feature_dir" checkpoint_pr --data "$data_json" 2>/dev/null || true

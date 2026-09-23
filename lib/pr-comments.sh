@@ -4,9 +4,11 @@
 # (skills/shared/pr-feedback-check.md). Read-only; never mutates the PR.
 #
 # Usage:
-#   pr-comments.sh fetch <pr-number> [--repo <owner/repo>] [--include-resolved]
+#   pr-comments.sh fetch <pr-number> [--repo [<host>/]<owner/repo>] [--include-resolved]
 #   pr-comments.sh fetch --fixture <file> [--include-resolved]
-#   pr-comments.sh summary <pr-number> [--repo <owner/repo>]
+#   pr-comments.sh summary <pr-number> [--repo [<host>/]<owner/repo>]
+#   A <host>/ prefix exports GH_HOST so every gh call and the credential refresh reach
+#   that host (GitHub Enterprise); without one, gh's default host applies.
 #   pr-comments.sh summary --fixture <file>
 #
 # Output: a JSON array on stdout, one element per feedback item:
@@ -88,6 +90,9 @@ while [[ $# -gt 0 ]]; do
     *) PR="$1"; shift ;;
   esac
 done
+case "$REPO" in
+  */*/*) export GH_HOST="${REPO%%/*}"; REPO="${REPO#*/}" ;;
+esac
 
 # Shared normalize: input = the combined raw object, output = the stable array.
 # Skip reasons are a probe, not a model judgment — the same item must classify

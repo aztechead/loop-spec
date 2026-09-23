@@ -222,6 +222,29 @@ check "9: comments auth refresh once" "1" \
 check "9: comments hook target repo" "1" \
   "$([[ "$(grep -cF "github-api|pre-stage|github.com|$TARGET_REPO" "$REFRESH_LOG" || true)" -gt 0 ]] && echo 1 || echo 0)"
 
+# ── Case 10: a host-qualified --repo reaches that host on every gh call ───────
+cat > "$WORK/shims/gh" <<'GH'
+#!/usr/bin/env bash
+set -uo pipefail
+argv="$*"
+printf '%s %s\n' "${GH_HOST:-unset}" "${argv//$'\n'/ }" >> "${FAKE_GH_LOG:?}"
+case "${1:-} ${2:-}" in
+  "api graphql") printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}\n' ;;
+  "api "*) printf '[]\n' ;;
+  "pr view") printf '{"reviewDecision":"","reviewRequests":[]}\n' ;;
+  *) echo "fake gh: unhandled $*" >&2; exit 1 ;;
+esac
+GH
+: > "$GH_LOG"; : > "$REFRESH_LOG"
+ec=0
+(cd "$WORK/repo" && env -u GH_HOST PATH="$WORK/shims:$PATH" FAKE_GH_LOG="$GH_LOG" \
+  FAKE_REFRESH_LOG="$REFRESH_LOG" LOOP_SPEC_CREDENTIAL_REFRESH_CMD="$REFRESH_HOOK" \
+  bash "$LIB" summary 7 --repo ghe.example/test/repo >/dev/null 2>&1) || ec=$?
+check "10: host-qualified summary exits 0; api, graphql, and pr view all ran" "0:1,1,1" \
+  "$ec:$(grep -c ' api repos/test/repo/pulls/7/comments' "$GH_LOG"),$(grep -c ' api graphql' "$GH_LOG"),$(grep -c ' pr view 7 --repo test/repo ' "$GH_LOG")"
+check "10: every gh call saw GH_HOST=ghe.example" "0" "$(grep -vc '^ghe.example ' "$GH_LOG")"
+check "10: credential refresh names the enterprise host" "0" "$(grep -vc '|ghe.example|' "$REFRESH_LOG")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

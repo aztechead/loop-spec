@@ -105,6 +105,10 @@ case "${1:-} ${2:-}" in
         *) shift ;;
       esac
     done
+    if [[ -n "${FAKE_GH_CREATE_FAIL_MSG:-}" ]]; then
+      echo "$FAKE_GH_CREATE_FAIL_MSG" >&2
+      exit 1
+    fi
     body="$(cat "$body_file")"
     pr="$(jq -cn --arg sha "${FAKE_GH_HEAD_SHA:?}" --arg base "$base" \
       --arg head "$head" --arg title "$title" --arg body "$body" \
@@ -120,6 +124,10 @@ case "${1:-} ${2:-}" in
     printf 'https://github.com/test/repo/pull/1\n'
     ;;
   "pr edit")
+    if [[ -n "${FAKE_GH_EDIT_FAIL_MSG:-}" ]]; then
+      echo "$FAKE_GH_EDIT_FAIL_MSG" >&2
+      exit 1
+    fi
     title=""; base=""; body_file=""
     shift 2
     [[ $# -gt 0 ]] && shift
@@ -184,6 +192,7 @@ chmod +x "$WORK/shims/gh"
 cat > "$WORK/shims/git" <<'GIT'
 #!/usr/bin/env bash
 set -uo pipefail
+[[ -z "${FAKE_GIT_LOG:-}" ]] || printf '%s\n' "$*" >> "$FAKE_GIT_LOG"
 if [[ " $* " == *" ls-remote "* && "${FAKE_GIT_LS_REMOTE_AUTH:-0}" == "1" ]]; then
   echo "fatal: Authentication failed for remote" >&2
   exit 128
@@ -611,6 +620,20 @@ check "credential create reconcile: one create" "1" "$(grep -c '^pr create ' "$G
 check "credential create reconcile: re-listed" "2" "$(grep -c '^pr list ' "$GH_LOG" || true)"
 check "credential create reconcile: PR reused" "reused" "$(jq -r '.prAction' <<<"$out")"
 
+# gh's own reason survives into the structured error: a title over GitHub's limit is
+# otherwise indistinguishable from any other create failure.
+reset_gh '[]' '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+ec=0
+out="$(FAKE_GH_CREATE_FAIL_MSG="GraphQL: title is too long (createPullRequest)" run_delivery 2>"$WORK/err")" || ec=$?
+check "create stderr: pr_create_failed carries gh's reason" "pr_create_failed:1" \
+  "$(jq -r '.errorCode' <<<"$out"):$(jq -r '.error' <<<"$out" | grep -c 'title is too long')"
+
+reset_gh "[$checkpoint]" '[[]]' true
+ec=0
+out="$(FAKE_GH_EDIT_FAIL_MSG="HTTP 422: base branch does not exist" run_delivery 2>"$WORK/err")" || ec=$?
+check "edit stderr: metadata_failed carries gh's reason" "metadata_failed:1" \
+  "$(jq -r '.errorCode' <<<"$out"):$(jq -r '.error' <<<"$out" | grep -c 'base branch does not exist')"
+
 # Ambiguous readiness success is observed before any retry.
 checkpoint="$(jq -c '.isDraft=true' <<<"$checkpoint")"
 reset_gh "[$checkpoint]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
@@ -806,6 +829,85 @@ out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" 
   --title "t" --body-file "$BODY" 2>/dev/null)"
 check "hostless remote: checkpoint mode refuses with its own code, not gh_missing" "remote_hostless" "$(jq -r '.errorCode' <<<"$out")"
 git -C "$WORK/repo" remote remove local
+
+# --- LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS: a bot commit on the PR branch --------------
+# Each case pushes the verified SHA to its own branch, then a bot clone commits on top.
+git clone -q "$WORK/origin.git" "$WORK/bot"
+git -C "$WORK/bot" config user.email bot@t
+git -C "$WORK/bot" config user.name bot
+GIT_LOG="$WORK/git-calls.log"
+bot_commit() {
+  local branch="$1"; shift
+  git -C "$WORK/repo" push -q "$WORK/origin.git" "$TARGET_SHA:refs/heads/$branch"
+  git -C "$WORK/bot" fetch -q origin "$branch"
+  git -C "$WORK/bot" checkout -q -B "$branch" FETCH_HEAD
+  (cd "$WORK/bot" && "$@")
+  git -C "$WORK/bot" add -A
+  git -C "$WORK/bot" commit -q -m "bot: release notes"
+  git -C "$WORK/bot" push -q origin "$branch"
+  git -C "$WORK/bot" rev-parse HEAD
+}
+run_accept() {
+  local branch="$1" head="$2"; shift 2
+  : > "$GIT_LOG"
+  env PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
+    FAKE_GH_HEAD_SHA="$head" FAKE_GIT_LOG="$GIT_LOG" "$@" bash "$SCRIPT" final -C "$WORK/repo" \
+      --branch "$branch" --base main --sha "$TARGET_SHA" --title "feat: delivery" \
+      --body-file "$BODY" --checks-timeout 2 --checks-interval 0
+}
+green='[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+
+bot_a="$(bot_commit feat/accept-a sh -c 'printf "notes\n" > CHANGELOG.md')"
+reset_gh '[]' "$green"
+ec=0; out="$(run_accept feat/accept-a "$bot_a" LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS=CHANGELOG.md 2>"$WORK/err")" || ec=$?
+check "accept remote: exit 0" "0:delivered" "$ec:$(jq -r '.outcome' <<<"$out")"
+check "accept remote: recorded in remoteHeadAccepted" "[\"$bot_a\"]" "$(jq -c '.remoteHeadAccepted' <<<"$out")"
+check "accept remote: PR head bound to the bot commit" "$bot_a" "$(jq -r '.headSha' <<<"$out")"
+check "accept remote: targetSha stays the verified SHA" "$TARGET_SHA" "$(jq -r '.targetSha' <<<"$out")"
+check "accept remote: push skipped" "0" "$(grep -c ' push ' "$GIT_LOG" || true)"
+check "accept remote: stderr names the accepted path" "1" "$(grep -c 'changes only: CHANGELOG.md' "$WORK/err")"
+
+bot_b="$(bot_commit feat/accept-b sh -c 'printf "notes\n" > CHANGELOG.md')"
+reset_gh '[]' "$green"
+ec=0; out="$(run_accept feat/accept-b "$bot_b" 2>"$WORK/err")" || ec=$?
+check "accept remote unset: strict push_failed, nothing accepted" "1:push_failed:[]" \
+  "$ec:$(jq -r '.errorCode' <<<"$out"):$(jq -c '.remoteHeadAccepted' <<<"$out")"
+
+bot_c="$(bot_commit feat/accept-c sh -c 'printf "changed\n" > base.txt')"
+reset_gh '[]' "$green"
+ec=0; out="$(run_accept feat/accept-c "$bot_c" LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS=CHANGELOG.md 2>"$WORK/err")" || ec=$?
+check "accept remote off-list path: refused, naming the path" "1:push_failed:1" \
+  "$ec:$(jq -r '.errorCode' <<<"$out"):$(jq -r '.error' <<<"$out" | grep -c "changes 'base.txt'")"
+
+bot_d="$(bot_commit feat/accept-d git mv base.txt CHANGELOG.md)"
+reset_gh '[]' "$green"
+ec=0; out="$(run_accept feat/accept-d "$bot_d" LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS=CHANGELOG.md 2>"$WORK/err")" || ec=$?
+check "accept remote rename: the source path must match too" "1:push_failed:1" \
+  "$ec:$(jq -r '.errorCode' <<<"$out"):$(jq -r '.error' <<<"$out" | grep -c "changes 'base.txt'")"
+reset_gh '[]' "$green"
+ec=0; out="$(run_accept feat/accept-d "$bot_d" "LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS=CHANGELOG.md:base.*" 2>"$WORK/err")" || ec=$?
+check "accept remote rename: both paths allowlisted" "0:[\"$bot_d\"]" "$ec:$(jq -c '.remoteHeadAccepted' <<<"$out")"
+
+# A commit landing after checks passed was never checked: refused, never promoted.
+bot_e="$(bot_commit feat/accept-e-bot sh -c 'printf "notes\n" > CHANGELOG.md')"
+# Local, so only the closed acceptance window can refuse it.
+git -C "$WORK/repo" fetch -q "$WORK/origin.git" feat/accept-e-bot
+reset_gh '[]' "$green"
+ec=0; out="$(run_accept feat/accept-e "$TARGET_SHA" LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS=CHANGELOG.md \
+  FAKE_GH_HEAD_OVERRIDE_AFTER_CHECKS=1 FAKE_GH_HEAD_OVERRIDE="$bot_e" 2>"$WORK/err")" || ec=$?
+check "accept remote after checks: pr_head_moved, nothing accepted" "1:pr_head_moved:[]" \
+  "$ec:$(jq -r '.errorCode' <<<"$out"):$(jq -c '.remoteHeadAccepted' <<<"$out")"
+check "accept remote after checks: no promotion" "0" "$(grep -c '^pr ready ' "$GH_LOG" || true)"
+
+# observe binds what is there; it never accepts a new head.
+observed_pr="$(jq -c --arg sha "$bot_a" '.headRefOid = $sha | .headRefName = "feat/accept-a"' <<<"$draft_pr")"
+reset_gh "[$observed_pr]" "$green"
+ec=0
+out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
+  LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS=CHANGELOG.md bash "$SCRIPT" observe -C "$WORK/repo" \
+  --branch feat/accept-a --sha "$TARGET_SHA" 2>"$WORK/err")" || ec=$?
+check "accept remote observe: strict" "1:pr_head_moved:[]" \
+  "$ec:$(jq -r '.errorCode' <<<"$out"):$(jq -c '.remoteHeadAccepted' <<<"$out")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

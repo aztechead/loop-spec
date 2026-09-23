@@ -52,6 +52,7 @@
         "stalenessHours",
         "prUrl",
         "checkpointPrUrl",
+        "checkpointPrHead",
         "delivery",
         "verificationBaseline",
         "verificationBaselineAttempted",

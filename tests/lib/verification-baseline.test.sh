@@ -115,6 +115,35 @@ out="$(bash "$SCRIPT" compare --baseline "$BASELINE" --root "$REPO" --base-sha "
   --test "$port_cmd" --lint '' --typecheck '')" || ec=$?
 check "a failure line that differs in a count or a status is still a regression" "20:regression" "$ec:$(jq -r '.outcome' <<<"$out")"
 
+# A red base whose failures the feature never touched: the summary's pass count moves
+# with every added test and must not read as a new failure (6.9.0 run).
+PYTEST_OUTPUT="$WORK/pytest-output"
+export PYTEST_OUTPUT
+pytest_cmd='cat "$PYTEST_OUTPUT"; exit 1'
+old_failure='FAILED tests/test_old.py::test_a - AssertionError'
+pytest_compare() {
+  printf '%s\n' "$old_failure" "$1" > "$PYTEST_OUTPUT"
+  capture --test "$pytest_cmd" --lint '' --typecheck '' > "$BASELINE"
+  printf '%s\n' "$old_failure" "$2" > "$PYTEST_OUTPUT"
+  ec=0
+  out="$(bash "$SCRIPT" compare --baseline "$BASELINE" --root "$REPO" --base-sha "$BASE" \
+    --prepare-key prep-1 --log-dir "$LOGS/pytest-$3" \
+    --test "$pytest_cmd" --lint '' --typecheck '')" || ec=$?
+}
+pytest_compare '===== 87 failed, 2571 passed, 29 skipped, 1 warning in 75.20s (0:01:15) =====' \
+  '===== 87 failed, 2611 passed, 29 skipped, 1 warning in 76.10s (0:01:16) =====' bordered
+check "a pytest summary whose pass count grew is not a regression" "0:accepted" "$ec:$(jq -r '.outcome' <<<"$out")"
+pytest_compare '87 failed, 2571 passed in 1.0s' '87 failed, 2611 passed in 1.1s' quiet
+check "a pytest -q summary whose pass count grew is not a regression" "0:accepted" "$ec:$(jq -r '.outcome' <<<"$out")"
+pytest_compare '' 'tests/test_api.py::test_status[error] PASSED [ 50%]' verbose
+check "a -v PASSED line naming error is not a failure" "0:accepted" "$ec:$(jq -r '.outcome' <<<"$out")"
+pytest_compare '' 'FAILED tests/test_new.py::test_b - AssertionError' new-failure
+check "a new FAILED line is a regression that names the line" \
+  '20:["FAILED tests/test_new.py::test_b - AssertionError"]' "$ec:$(jq -c '.commands.test.addedLines' <<<"$out")"
+printf '%s\n' '===== 3 failed, 10 passed in 1.00s =====' > "$PYTEST_OUTPUT"
+check "a log that is only a summary still yields a fingerprint that is not the summary" \
+  '["<no failure output>"]' "$(capture --test "$pytest_cmd" --lint '' --typecheck '' | jq -c '[.commands.test.fingerprintLines[]]')"
+
 RECOVER_FLAG="$WORK/recover-flag"
 export RECOVER_FLAG
 recover_cmd='if [[ -f "$RECOVER_FLAG" ]]; then exit 0; fi; echo ERROR old; exit 1'

@@ -4,6 +4,52 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.9.1] - 2026-09-23
+
+Two autonomous runs against a GitHub Enterprise Server (upstream report, 2026-09-23) did
+the work and still failed. Every item below is one of their findings.
+
+### Fixed
+
+- The delivery PR title is derived from the goal, not the goal itself: `lib/pr-body.sh
+  title` keeps the first sentence, capped at 120 characters; the body still carries the
+  full goal. A 1138-character goal produced a 1144-character title that the server
+  refused three times (create, edit, and the escalation checkpoint). The checkpoint
+  draft uses the same title.
+- `pr_create_failed`, `metadata_failed`, and the checkpoint's "gh pr create failed"
+  skip now carry the last lines of gh's stderr, as the push path already did. The
+  three refusals above logged nothing but "gh pr create failed".
+- With `LOOP_SPEC_ARTIFACTS_IN_PR=0`, the frozen-intent check no longer escalates
+  `frozen-intent-changed` with a missing-file error once finalization has moved
+  `SPEC.md` to the artifact store: the driver reads the store copy
+  (`artifactSink.path`, new). A blocked delivery now reports its own blocker, and a
+  successful one no longer escalates. A second finalization at a new head (after a CI
+  remediation round) carries the stored documents forward instead of recording an
+  empty store. A `SPEC.md` that is missing everywhere escalates as `spec-unreadable`.
+- The suite-regression gate no longer fingerprints runner summary lines (pytest with
+  or without `===` borders, jest, vitest) or `PASSED` lines. On a base with 87
+  pre-existing failures, a feature that added 40 passing tests was reported as a
+  regression because "2611 passed" hashed differently from "2571 passed". The
+  remediation task now lists each added failure line (`addedLines`, capped at 10) so
+  the implementer can see what counts.
+- `pr-feedback` addresses the PR's host: the driver passes `--repo <host>/<owner/repo>`
+  from the PR URL and `lib/pr-comments.sh` exports `GH_HOST` from it. On an Enterprise
+  host with `GH_HOST` unset, every feedback call went to github.com and the observation
+  degraded.
+
+### Added
+
+- `LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS` (opt-in, colon-separated globs): final
+  delivery accepts a remote commit on the PR branch that descends from the verified SHA
+  and touches only matching paths, binding the PR head to it without re-verifying;
+  the result records `remoteHeadAccepted`. A changelog workflow that pushes one
+  `CHANGELOG.md` commit onto every new PR blocked delivery forever (`push_failed`, then
+  `post_gate_drift` after the agent fast-forwarded). Unset, behavior is unchanged.
+  Commits landing after checks pass are still refused.
+- `checkpointPrHead` in feature.json and result.json: the head branch of the
+  escalation checkpoint PR, `<branch>-checkpoint` under `LOOP_SPEC_ARTIFACTS_IN_PR=0`.
+  A host that found the run's PR by `branch` opened a duplicate.
+
 ## [6.9.0] - 2026-09-17
 
 ### Changed

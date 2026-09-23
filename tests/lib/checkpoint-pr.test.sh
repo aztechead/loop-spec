@@ -74,6 +74,10 @@ if [[ "$subcmd" == "pr" && "$sub2" == "list" ]]; then
 fi
 if [[ "$subcmd" == "pr" && "$sub2" == "create" ]]; then
   printf '%s\n' "pr create $*" >> "$SHIM_LOG"
+  if [[ -n "${SHIM_GH_CREATE_FAIL_MSG:-}" ]]; then
+    echo "$SHIM_GH_CREATE_FAIL_MSG" >&2
+    exit 1
+  fi
   if [[ "${SHIM_GH_CREATE_APPLIED_AUTH:-0}" == "1" ]]; then
     printf 'https://github.com/test/repo/pull/7\n' > "${SHIM_GH_STATE:?}"
     echo "HTTP 403: response lost after create" >&2
@@ -256,6 +260,8 @@ check "4: output contains draft PR url" \
   "1" "$([[ "$out" == *"https://github.com/test/repo/pull/1"* ]] && echo 1 || echo 0)"
 check "4: pr create used the branch head (LOOP_SPEC_ARTIFACTS_IN_PR unset)" \
   "1" "$([[ -f "$GH_LOG4" ]] && grep -q -- "--head feat/my-feature" "$GH_LOG4" && echo 1 || echo 0)"
+check "4: feature.json records the PR head" "feat/my-feature" \
+  "$(jq -r '.checkpointPrHead // empty' "$FEAT_DIR/feature.json")"
 
 # ── Case 5: Idempotency — existing open PR reused ────────────────────────────
 reset_fixture
@@ -393,6 +399,8 @@ check "12: pr create used the checkpoint head" \
   "1" "$(grep -q -- "--head feat/scrubbed-checkpoint" "$GH_LOG12" && echo 1 || echo 0)"
 check "12: pr body explains the scrub" \
   "1" "$(grep -q 'kept out of this PR' "$GH_LOG12" && echo 1 || echo 0)"
+check "12: feature.json records the checkpoint head" "feat/scrubbed-checkpoint" \
+  "$(jq -r '.checkpointPrHead // empty' "$SCRUB_FEAT_DIR/feature.json")"
 
 # Rebuild: a second checkpoint on new branch content force-pushes a fresh ref.
 git -C "$REPO" checkout -q feat/scrubbed
@@ -435,6 +443,20 @@ check "13: checkpoint keeps the base image of the docs dir" \
   "# base readme" "$(git -C "$WORK/bare" show feat/based-checkpoint:docs/loop-spec/features/based/README.md 2>/dev/null)"
 check "13: checkpoint drops the branch-added SPEC.md" \
   "0" "$(git -C "$WORK/bare" ls-tree -r --name-only feat/based-checkpoint 2>/dev/null | grep -c 'features/based/SPEC.md')"
+
+# ── Case 14: a paragraph goal keeps a short title; create stderr reaches the skip ─
+reset_fixture
+jq --arg t "$(printf 'Make the widget faster %.0s' $(seq 1 60)). Then more." '.feature_title = $t' \
+  <<<"$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
+GH_LOG14="$WORK/gh-case14.log"
+ec=0
+out=$( (cd "$REPO"; PATH="$SHIMS:$PATH" LOOP_SPEC_CHECKPOINT_PR=1 SHIM_GH_LOG="$GH_LOG14" \
+  SHIM_GH_CREATE_FAIL_MSG="GraphQL: title is too long (createPullRequest)" \
+  bash "$LIB" create "$FEAT_DIR") 2>&1 ) || ec=$?
+title14="$(sed -n 's/.* --title \(WIP: .*(checkpoint: execute)\) --body.*/\1/p' "$GH_LOG14" | head -1)"
+check "14: WIP title is at most 160 chars" "1" "$(( ${#title14} > 0 && ${#title14} <= 160 ))"
+check "14: create failure exits 0 and the skip line carries gh stderr" \
+  "0:1" "$ec:$([[ "$out" == *"gh pr create failed: GraphQL: title is too long"* ]] && echo 1 || echo 0)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

@@ -151,6 +151,16 @@ check "J: reason in result.json" "user pause" "$(jq -r '.reason' "$FEAT_DIR/resu
 printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
 bash "$LIB" write "$FEAT_DIR" --status completed --summary "Completed without a failure reason." >/dev/null 2>&1
 check "J2: no reason arg → reason is null" "null" "$(jq -r '.reason' "$FEAT_DIR/result.json")"
+check "J2: no checkpoint head → checkpointPrHead is present and null" "[true,null]" \
+  "$(jq -c '[has("checkpointPrHead"), .checkpointPrHead]' "$FEAT_DIR/result.json")"
+
+# Case J3: the checkpoint PR head surfaces, so a host that finds the PR by branch
+# looks at <branch>-checkpoint when run documents were scrubbed from it.
+jq '.checkpointPrUrl = "https://github.com/test/repo/pull/9" | .checkpointPrHead = "feat/my-feature-checkpoint"' \
+  <<<"$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
+bash "$LIB" write "$FEAT_DIR" --status paused --reason "user pause" \
+  --summary "The run paused at the user's request." >/dev/null 2>&1
+check "J3: checkpointPrHead surfaces" "feat/my-feature-checkpoint" "$(jq -r '.checkpointPrHead' "$FEAT_DIR/result.json")"
 
 # Case K: converged=false for iterate-terminal: warning
 printf '%s\n' "$(jq '.warnings = ["iterate-terminal: gap closed as terminal"]' "$FEAT_DIR/feature.json")" > "$FEAT_DIR/feature.json"

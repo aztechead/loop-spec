@@ -245,6 +245,7 @@ import time
 from glob import glob
 from io import StringIO
 from pathlib import Path
+from urllib.parse import urlparse
 
 GRAPH_DIR = Path(__file__).resolve().parent
 LIB_DIR = GRAPH_DIR.parent
@@ -1724,7 +1725,7 @@ def instruction_record(feature_dir, phase):
                       "`cycle-driver.sh next` records it when the cycle enters PLAN, so enter through it")
     if feat.get("specApproval"):
         try:
-            verify_intent(Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8"), feat["specApproval"])
+            verify_intent(spec_text(feature_dir, feat), feat["specApproval"])
         except (OSError, ValueError) as exc:
             entry_refused(feature_dir, phase, str(exc))
     active = fget(feature_dir, "driverNext", {}) or {}
@@ -2021,7 +2022,7 @@ def intent_since_spec(feature_dir):
     # digest is what its human saw.
     seen = (feat.get("specIntentSeen") or feat.get("specApproval") or {}).get("sha256")
     try:
-        current = intent_digest(Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8"))
+        current = intent_digest(spec_text(feature_dir, feat))
     except (OSError, ValueError):
         return "unknown"
     if not seen:
@@ -2036,7 +2037,13 @@ def returned_checks(feature_dir, phase):
     if feat.get("specApproval"):
         from spec_intent import verify_intent
         try:
-            verify_intent(Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8"), feat["specApproval"])
+            verify_intent(spec_text(feature_dir, feat), feat["specApproval"])
+        except FileNotFoundError as exc:
+            # A missing file is not a changed intent: the 6.9.0 run reported a deliver
+            # block as frozen-intent-changed with an errno for its reason.
+            reason = "spec-unreadable: %s" % (exc.filename or exc)
+            cmd_escalate(["--feature-dir", feature_dir, "--reason", reason], silent=True)
+            return 'DONE status=escalated reason="%s"' % reason
         except (OSError, ValueError) as exc:
             cmd_escalate(["--feature-dir", feature_dir, "--reason", str(exc)], silent=True)
             return "DONE status=escalated reason=frozen-intent-changed"
@@ -2454,7 +2461,10 @@ def cmd_deliver(argv):
                 continue
             check_args = [str(target["prNumber"])]
             if target.get("repo"):
-                check_args += ["--repo", target["repo"]]
+                # A bare OWNER/REPO sent an Enterprise PR's reads to github.com; the host
+                # of the PR URL keeps them on the PR's own server.
+                host = urlparse(target.get("prUrl") or "").hostname
+                check_args += ["--repo", "%s/%s" % (host, target["repo"]) if host else target["repo"]]
             checked = lib_run("pr-feedback", "check", *check_args)
             if checked.returncode != 0:
                 route = "feedback-failed"
@@ -2512,6 +2522,18 @@ def feature_root(feature_dir, feat):
 
 def docs_dir(feature_dir, feat):
     return os.path.join(feature_root(feature_dir, feat), "docs", "loop-spec", "features", feat.get("slug") or "")
+
+
+def spec_text(feature_dir, feat):
+    """SPEC.md from the tree, or from the artifact store once finalize moved the feature
+    documents out of it (LOOP_SPEC_ARTIFACTS_IN_PR=0, lib/artifact-sink.sh)."""
+    try:
+        return Path(docs_dir(feature_dir, feat), "SPEC.md").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        sink = (feat.get("artifactSink") or {}).get("path")
+        if not sink:
+            raise
+        return Path(sink, "artifacts", "SPEC.md").read_text(encoding="utf-8")
 
 
 def good_enough_criteria(spec_path):
