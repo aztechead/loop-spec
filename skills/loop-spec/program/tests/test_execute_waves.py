@@ -128,15 +128,10 @@ class ExecuteStepIssuesWholeWaveTests(unittest.TestCase):
         self.assertEqual({tid for _, tid in worktrees_and_tasks}, {"T-1", "T-2"})
         by_task = {tid: (wt, req) for (wt, tid), req in zip(worktrees_and_tasks, action.requests)}
 
-        # Submit only T-1's implement. T-2's implement step is still open, but
-        # requests-to-issue always win over open-steps-to-wait-on (see step()'s
-        # own ordering), and T-1 has just become "probing" with a review to
-        # build -- so this returns T-1's review as a single IssueStep, not Wait.
-        # execute.step() never mints step ids itself (steps.issue() does that,
-        # in the real controller path this test bypasses); simulate the program
-        # having actually issued both requests, the same way it would for a real
-        # IssueSteps wave, so Wait's own open-step lookup (by worktree cwd in
-        # store.state["steps"]["open"]) has something real to find below.
+        # 6.10's per-wave review: T-1 finished first, but its review waits while T-2
+        # is still implementing, then one review step covers both.
+        # execute.step() never mints step ids itself (steps.issue() does that); simulate
+        # the program having issued both implement requests so Wait finds them.
         for tid, (wt, req) in by_task.items():
             self.store.state["steps"]["open"].append({"stepAttemptId": f"impl-{tid}-open", "cwd": str(wt)})
 
@@ -144,18 +139,6 @@ class ExecuteStepIssuesWholeWaveTests(unittest.TestCase):
         on_submit(self.store, self.paths, by_task["T-1"][1] | {"stepAttemptId": "impl-t1"},
                   _implementer_result("T-1", t1_worktree, "T-1.txt"))
         self.store.state["steps"]["open"] = [s for s in self.store.state["steps"]["open"] if s["stepAttemptId"] != "impl-T-1-open"]
-        action = step(self.store, self.paths, self.ctx)
-        self.assertIsInstance(action, IssueStep)
-        self.assertEqual(action.request["role"], "code-reviewer")
-        t1_head = _head(t1_worktree)
-        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-t1"},
-                  _pass_review(t1_head, self.base_sha, t1_head))
-        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "done")
-
-        # T-1 is now terminal and T-2's implement is still the only open step in
-        # the wave: nothing left to actively issue, so this is exactly Wait's
-        # case ("non-terminal tasks, nothing pending/probing, a step already
-        # open") -- assert the precise shape, not just "not a Pause".
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, Wait)
         self.assertEqual(action.open, ["impl-T-2-open"])
@@ -167,6 +150,8 @@ class ExecuteStepIssuesWholeWaveTests(unittest.TestCase):
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, IssueStep)
         self.assertEqual(action.request["role"], "code-reviewer")
+        self.assertEqual(action.request["schema"]["properties"]["tasks"]["minItems"], 2)
+        t1_head = _head(t1_worktree)
 
         # T-2's own worktree forked from the ORIGINAL feature head (both T-1
         # and T-2 were issued from the same head, so they could run in
@@ -176,10 +161,13 @@ class ExecuteStepIssuesWholeWaveTests(unittest.TestCase):
         # divergent sibling with a real (--no-ff) merge commit instead of
         # assuming the feature head has not moved.
         t2_head = _head(t2_worktree)
-        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-t2"},
-                  _pass_review(t2_head, self.base_sha, t2_head))
+        wave_result = {"tasks": [{"task": "T-1", **_pass_review(t1_head, self.base_sha, t1_head)},
+                                 {"task": "T-2", **_pass_review(t2_head, self.base_sha, t2_head)}]}
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-wave"}, wave_result)
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "done")
         self.assertEqual(self.store.state["execute"]["tasks"]["T-2"]["status"], "done")
         self.assertEqual(self.store.state["execute"]["tasks"]["T-2"]["commits"], [t2_head])
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-2"]["reviewSteps"], ["rev-wave"])
 
         new_feature_head = self.store.state["execute"]["repos"]["repo"]["head"]
         self.assertEqual(len(_parents(self.repo, new_feature_head)), 2, "T-2 integrated as a merge commit")
@@ -202,6 +190,25 @@ class ExecuteStepIssuesWholeWaveTests(unittest.TestCase):
         self.assertEqual(action.request["role"], "implementer")
         _, t3_task_id = self._worktree_and_task(action.request)
         self.assertEqual(t3_task_id, "T-3")
+
+
+    def test_a_refused_wave_review_sends_every_task_back_to_review(self):
+        from loop_spec.execute import on_step_refused
+        from loop_spec.jsonio import atomic_write_json
+        action = step(self.store, self.paths, self.ctx)
+        for request in action.requests:
+            wt, tid = self._worktree_and_task(request)
+            on_submit(self.store, self.paths, request | {"stepAttemptId": f"impl-{tid}"}, _implementer_result(tid, wt, f"{tid}.txt"))
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, IssueStep)
+        atomic_write_json(self.paths.steps_dir / "rev-wave" / "step.json", action.request | {"stepAttemptId": "rev-wave"})
+        on_step_refused(self.store, self.paths, "rev-wave",
+                        {"cwd": action.request["cwd"], "role": "code-reviewer", "reason": "no host attestor"})
+        for tid in ("T-1", "T-2"):
+            task_state = self.store.state["execute"]["tasks"][tid]
+            self.assertEqual((task_state["status"], task_state["retries"]), ("probing", 1))
+            self.assertNotIn("waveReview", task_state)
+            self.assertIn(f"review-{tid}-rev-wave", task_state["reviewCheckout"])
 
 
 class ConflictDuringIntegrationTests(unittest.TestCase):
@@ -276,14 +283,7 @@ class ConflictDuringIntegrationTests(unittest.TestCase):
         t1_result = {"taskId": "T-1", "commits": [_head(t1_worktree)], "summary": "did T-1",
                      "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []}
         on_submit(self.store, self.paths, t1_request | {"stepAttemptId": "impl-t1"}, t1_result)
-
-        action = step(self.store, self.paths, self.ctx)
-        self.assertIsInstance(action, IssueStep)
-        t1_head = _head(t1_worktree)
-        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-t1"},
-                  _pass_review(t1_head, self.base_sha, t1_head))
-        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "done")
-        feature_head_after_t1 = self.store.state["execute"]["repos"]["repo"]["head"]
+        self.assertIsInstance(step(self.store, self.paths, self.ctx), Wait)  # T-1's review waits for T-2
 
         t2_worktree, t2_request = by_task["T-2"]
         self._edit_shared_line(t2_worktree, "from T-2\n", "T-2: rewrite the shared line differently")
@@ -291,12 +291,18 @@ class ConflictDuringIntegrationTests(unittest.TestCase):
                      "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []}
         on_submit(self.store, self.paths, t2_request | {"stepAttemptId": "impl-t2"}, t2_result)
 
+        # One wave review passes both; T-1 integrates first, then T-2 conflicts.
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, IssueStep)
         self.assertEqual(action.request["role"], "code-reviewer")
-        t2_head = _head(t2_worktree)
-        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-t2"},
-                  _pass_review(t2_head, self.base_sha, t2_head))
+        t1_head, t2_head = _head(t1_worktree), _head(t2_worktree)
+        base_after_t1 = t1_head
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-wave"},
+                  {"tasks": [{"task": "T-1", **_pass_review(t1_head, self.base_sha, t1_head)},
+                             {"task": "T-2", **_pass_review(t2_head, self.base_sha, t2_head)}]})
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "done")
+        feature_head_after_t1 = self.store.state["execute"]["repos"]["repo"]["head"]
+        self.assertEqual(feature_head_after_t1, base_after_t1)
 
         task_state = self.store.state["execute"]["tasks"]["T-2"]
         self.assertEqual(task_state["status"], "pending")
@@ -336,8 +342,8 @@ class ConflictDuringIntegrationTests(unittest.TestCase):
         t1_result = {"taskId": "T-1", "commits": [t1_commit1], "summary": "did T-1",
                      "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []}
         on_submit(self.store, self.paths, t1_request | {"stepAttemptId": "impl-t1"}, t1_result)
-        self.store.state["steps"]["open"] = [s for s in self.store.state["steps"]["open"]
-                                              if s["stepAttemptId"] != "impl-T-1-open"]
+        # T-2 never runs here, so no step of its is in flight for T-1's review to wait on.
+        self.store.state["steps"]["open"] = []
 
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, IssueStep)

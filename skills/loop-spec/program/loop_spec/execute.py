@@ -10,6 +10,7 @@ pure Kahn-layering the plan's `dependsOn` graph needs before any task can start;
 nothing else here is reusable outside this one phase's loop.
 """
 import copy
+import dataclasses
 import os
 import re
 from pathlib import Path
@@ -22,7 +23,8 @@ from .budget import has_room
 from .contract import resolve_role, validate_request
 from .errors import LoopSpecError
 from .events import emit
-from .ids import now_iso
+from .ids import new_id, now_iso
+from .jsonio import read_json
 from .paths import ensure_results_dir
 from .postconditions import adopted_commits, close_out_view, close_outs, retry_limit
 from .roles import compose_prompt, load_role, resolve_model
@@ -507,6 +509,72 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
     return request
 
 
+def _wave_schema(schema: dict, count: int) -> dict:
+    """One code-reviewer result per task, each naming its task; the role's $defs move
+    to the root, where schema.validate resolves every $ref."""
+    item = {k: copy.deepcopy(v) for k, v in schema.items() if k != "$defs"}
+    item["properties"] = {"task": {"type": "string"}, **item["properties"]}
+    item["required"] = ["task", *item["required"]]
+    return {"type": "object", "required": ["tasks"], "additionalProperties": False,
+            "$defs": copy.deepcopy(schema.get("$defs") or {}),
+            "properties": {"tasks": {"type": "array", "minItems": count, "maxItems": count, "items": item}}}
+
+
+def _wave_review_request(store, paths, ctx, task_ids: list[str]) -> dict:
+    """One review step for several tasks of one wave, once none of them is still
+    implementing (6.10's per-wave review): one reviewer context instead of one per
+    task. Each task is judged on its own and gets its own result entry, which
+    on_submit applies exactly as a single-task review; rework stays per task."""
+    project_root = Path(ctx["paths"]["projectRoot"])
+    role = load_role("code-reviewer", project_root, resolve_role(project_root, "code-reviewer"))
+    execute_state = store.state["execute"]
+    signals = (ctx.get("probes") or {}).get("securitySignals") or []
+    ensure_results_dir(paths)
+    result_path = paths.results_dir / f"wave-{'_'.join(task_ids)}-review-{new_id('step').split('-', 1)[1]}.json"
+    entries, first_cwd = [], None
+    for task_id in task_ids:
+        task_state = execute_state["tasks"][task_id]
+        plan_task = _task_spec(store, task_id)
+        worktree = Path(task_state["worktree"])
+        review_cwd = Path(task_state.get("reviewCheckout") or worktree)
+        first_cwd = first_cwd or review_cwd
+        _fork_point(paths, execute_state, task_state, task_id, ctx["attempt"]["id"])
+        review_from = _review_from(task_state)
+        task_head = repo_module.branch_sha(worktree, task_state["branch"])
+        diff = repo_module.review_diff(worktree, f"{review_from}..{task_head}")
+        if len(diff) > _DIFF_CAP:
+            diff = diff[:_DIFF_CAP] + "\n...(truncated)"
+        entry = {"task": plan_task, "cwd": str(review_cwd), "range": {"from": review_from, "to": task_head},
+                 "diff": diff, "probes": task_state["probes"],
+                 "securitySignals": [s for s in signals if s.get("file") in plan_task["files"]]}
+        if task_state.get("reason"):
+            entry["reason"] = task_state["reason"]
+        entries.append(entry)
+        task_state.update({"reviewCandidate": task_head, "status": "reviewing", "waveReview": str(result_path)})
+    inputs = {
+        "tasks": entries,
+        "ledger": store.state.get("ledger", {}),
+        "wave": (f"This step reviews {len(task_ids)} tasks of one wave together. Review each task on its own: "
+                 "its range, diff and files, read in its own `cwd`, judged on its own criteria; one task's "
+                 "verdict never decides another's. Write one result per task in `tasks`, each naming its "
+                 "`task` id, in the shape the Method describes for a single review."),
+    }
+    wave_role = dataclasses.replace(role, schema=_wave_schema(role.schema, len(task_ids)))
+    prompt = compose_prompt(wave_role, inputs=inputs, result_path=result_path, cwd=first_cwd, phase="execute")
+    request = {
+        "kind": "role", "role": "code-reviewer", "phase": "execute", "cwd": str(first_cwd),
+        "prompt": prompt, "resultPath": str(result_path), "schema": wave_role.schema, "postconditions": [],
+        "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
+        "retryOf": None, "reason": None, "model": resolve_model(project_root, "code-reviewer"),
+    }
+    errors = validate_request("step", request)
+    if errors:
+        raise LoopSpecError("execute built an invalid wave review step request: " + "; ".join(errors),
+                             repair="fix _wave_review_request in execute.py")
+    store.save()
+    return request
+
+
 def _pause_request(ctx, repo_name: str, expected: str, actual: str, *, text: str | None = None) -> dict:
     request = {
         "attempt": ctx["attempt"]["id"], "phase": "execute",
@@ -610,7 +678,9 @@ def _open_step_id(store, task_state: dict) -> str | None:
     # actually open for it lives in store.state["steps"]["open"], keyed by the
     # same worktree cwd on_submit itself uses to find a task.
     cwds = {task_state["worktree"], task_state.get("reviewCheckout")}
-    return next((s["stepAttemptId"] for s in store.state["steps"]["open"] if s["cwd"] in cwds), None)
+    wave = task_state.get("waveReview")  # a shared wave review runs in its first task's cwd
+    return next((s["stepAttemptId"] for s in store.state["steps"]["open"]
+                 if (wave and s.get("resultPath") == wave) or (not wave and s["cwd"] in cwds)), None)
 
 
 def _rejection_task_ids(message: str, execute_state: dict) -> list[str]:
@@ -1108,6 +1178,7 @@ def step(store, paths, ctx):
 
         requests: list[dict] = []
         open_steps: list[str] = []
+        ready_for_review: list[str] = []
         for task_id in wave:
             task_state = execute_state["tasks"][task_id]
             if task_state["status"] == "pending":
@@ -1125,16 +1196,28 @@ def step(store, paths, ctx):
                         f"{task_state['reviewCandidate'][:12]}); a worker whose termination is unknown may have written to it")})
                     store.save()
                     return step(store, paths, ctx)
-                requests.append(_review_request(store, paths, ctx, _task_spec(store, task_id), task_state))
+                ready_for_review.append(task_id)
             elif task_state["status"] in ("implementing", "reviewing"):
                 open_id = _open_step_id(store, task_state)
-                if open_id is not None:
+                if open_id is not None and open_id not in open_steps:
                     open_steps.append(open_id)
             elif task_state["status"] not in _TERMINAL:
                 raise LoopSpecError(
                     f"execute task {task_id} is in status {task_state['status']!r}, which step() does not understand",
                     repair="check execute.py's task status machine for a missing case",
                 )
+        # 6.10's per-wave review: a task ready for review waits while a sibling in its
+        # wave is still implementing, then the ready ones share one review step. A lone
+        # task, and a close-out (E6 checks its own prompt), keep the single-task review.
+        sibling_implementing = any(execute_state["tasks"][t]["status"] in ("pending", "implementing")
+                                   for t in wave if t not in ready_for_review)
+        if ready_for_review and not (sibling_implementing and (requests or open_steps)):
+            batch = [t for t in ready_for_review if not execute_state["tasks"][t].get("closeOut")]
+            singles = [t for t in ready_for_review if t not in batch or len(batch) < 2]
+            if len(batch) >= 2:
+                requests.append(_wave_review_request(store, paths, ctx, batch))
+            for task_id in singles:
+                requests.append(_review_request(store, paths, ctx, _task_spec(store, task_id), execute_state["tasks"][task_id]))
         if requests:
             return IssueStep(requests[0]) if len(requests) == 1 else IssueSteps(requests)
         if open_steps:
@@ -1316,6 +1399,18 @@ def on_submit(store, paths, step, result: dict) -> None:
         # exactly where it was and let the next step() call raise the pause
         # instead (never reset the drift out from under the operator here).
         return
+    wave = [tid for tid, t in execute_state["tasks"].items() if t.get("waveReview") == step.get("resultPath")]
+    if step["role"] == "code-reviewer" and wave:
+        by_task = {entry["task"]: entry for entry in result["tasks"]}
+        if set(by_task) != set(wave):
+            raise LoopSpecError(f"wave review {step['stepAttemptId']} returned results for {sorted(by_task)}, not {sorted(wave)}",
+                                repair="the wave review must write exactly one result per task it was issued for")
+        for task_id in wave:
+            execute_state["tasks"][task_id].pop("waveReview")
+            entry = {k: v for k, v in by_task[task_id].items() if k != "task"}
+            _on_review_submit(store, paths, task_id, execute_state["tasks"][task_id], step, entry)
+        store.save()
+        return
     found = next(((tid, t) for tid, t in execute_state["tasks"].items()
                   if step["cwd"] in (t["worktree"], t.get("reviewCheckout"))), None)
     if found is None:
@@ -1345,18 +1440,25 @@ def on_step_refused(store, paths, step_id: str, refused: dict) -> None:
     worktree is never reused while its worker's termination is unknown. Mutates
     state only; the controller saves it with the ownerReset flag."""
     execute_state = store.state.get("execute") or {}
-    found = next(((tid, t) for tid, t in execute_state.get("tasks", {}).items()
-                  if refused["cwd"] in (t["worktree"], t.get("reviewCheckout"))), None)
-    if found is None or refused["role"] != "code-reviewer":
+    if refused["role"] != "code-reviewer":
         return
-    task_id, task_state = found
-    if task_state["status"] != "reviewing":
-        return
-    # Bound when the refused review was issued; a pre-binding step falls back to the branch.
-    candidate = task_state.get("reviewCandidate") or repo_module.branch_sha(Path(task_state["worktree"]), task_state["branch"])
-    checkout = paths.checkouts_dir / f"review-{task_id}-{step_id}"
-    if not checkout.exists():
-        repo_module.clean_checkout(Path(store.state["repos"][task_state["repo"]]["path"]), candidate, checkout)
-    task_state.update({"review": None, "reviewCheckout": str(checkout), "reviewCandidate": candidate})
-    _retry_or_block(execute_state, task_id, task_state, f"review step {step_id} refused: {refused['reason']}",
-                    retry_status="probing")
+    tasks = execute_state.get("tasks", {})
+    step_path = paths.steps_dir / step_id / "step.json"
+    result_path = read_json(step_path).get("resultPath") if step_path.is_file() else None
+    affected = [(tid, t) for tid, t in tasks.items() if result_path and t.get("waveReview") == result_path]
+    if not affected:
+        found = next(((tid, t) for tid, t in tasks.items()
+                      if refused["cwd"] in (t["worktree"], t.get("reviewCheckout"))), None)
+        affected = [found] if found is not None else []
+    for task_id, task_state in affected:
+        if task_state["status"] != "reviewing":
+            continue
+        task_state.pop("waveReview", None)
+        # Bound when the refused review was issued; a pre-binding step falls back to the branch.
+        candidate = task_state.get("reviewCandidate") or repo_module.branch_sha(Path(task_state["worktree"]), task_state["branch"])
+        checkout = paths.checkouts_dir / f"review-{task_id}-{step_id}"
+        if not checkout.exists():
+            repo_module.clean_checkout(Path(store.state["repos"][task_state["repo"]]["path"]), candidate, checkout)
+        task_state.update({"review": None, "reviewCheckout": str(checkout), "reviewCandidate": candidate})
+        _retry_or_block(execute_state, task_id, task_state, f"review step {step_id} refused: {refused['reason']}",
+                        retry_status="probing")
