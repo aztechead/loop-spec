@@ -133,6 +133,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "stalenessHours": 48,
   "prUrl": "string or null (legacy/tracked remediation shortcut; successful delivery URLs live in ignored delivery.json)",
   "checkpointPrUrl": "string or null (draft PR URL set by lib/checkpoint-pr.sh on pause/escalation/terminal salvage; null otherwise)",
+  "checkpointPrHead": "string or null (head branch of that draft PR: <branch>-checkpoint when LOOP_SPEC_ARTIFACTS_IN_PR=0, else <branch>)",
   "delivery": {
     "status": "pending | ready-for-review | delivered-draft | checks-failed | checks-timeout | partial | no-changes | another structured delivery error",
     "attemptedAt": "ISO-8601 timestamp or null",
@@ -164,9 +165,9 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "baseSha": "exact full base commit ID",
     "prepareKey": "preparation key from lib/prepare-environment.sh",
     "commands": {
-      "test": {"command": "", "status": "pass | fail | skipped | infra_error", "exitCode": 0, "fingerprints": []},
-      "lint": {"command": "", "status": "pass | fail | skipped | infra_error", "exitCode": 0, "fingerprints": []},
-      "typecheck": {"command": "", "status": "pass | fail | skipped | infra_error", "exitCode": 0, "fingerprints": []}
+      "test": {"command": "", "status": "pass | fail | skipped | infra_error", "exitCode": 0, "fingerprints": [], "fingerprintLines": {}},
+      "lint": {"command": "", "status": "pass | fail | skipped | infra_error", "exitCode": 0, "fingerprints": [], "fingerprintLines": {}},
+      "typecheck": {"command": "", "status": "pass | fail | skipped | infra_error", "exitCode": 0, "fingerprints": [], "fingerprintLines": {}}
     }
   },
   "warnings": ["array of strings"],
@@ -186,7 +187,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "autonomous": "boolean; set by lib/feature-bootstrap.sh for an unattended run",
   "backlogEntry": "string or null; the backlog text a cycle started from (cycle backlog)",
   "backlogEntryId": "string or null; its id, so DELIVER can close the entry",
-  "artifactSink": "{mode: store, manifest: <slug>/<sha>/manifest.json} once lib/artifact-sink.sh moved the artifacts to a store; absent otherwise",
+  "artifactSink": "{mode: store, manifest: <slug>/<sha>/manifest.json, path: absolute store directory; the driver reads SPEC.md from its artifacts/ once the tree copy is gone} once lib/artifact-sink.sh moved the artifacts to a store; absent otherwise",
   "mergeQueue": ["array of task ids in FIFO arrival order awaiting merge to feat/{slug}; empty between phases and at EXECUTE exit"],
   "pendingRemediationTasks": ["array of remediation task objects appended by VERIFY (lib/feature-write.sh append) and consumed+cleared by EXECUTE Step 2a; empty between phases"],
   "activeWorkflow": {
@@ -250,7 +251,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - `pendingRemediationTasks` carries remediation tasks until EXECUTE consumes them. `activeWorkflow` records an active workflow under `skills/shared/dispatch.md`.
   Both are runtime state. Do not clear pending remediation merely because the phase changes.
 - `commands.prepare` is persisted beside the quality commands. Resolution precedence is an already-persisted explicit command, `LOOP_SPEC_CMD_PREPARE` (including an explicit empty value), `.loop-spec/workflow.json.prepareCommand`, then conservative lockfile detection by `lib/prepare-environment.sh`; ambiguous lockfiles produce an empty command rather than a mutable install guess. Detection covers workspace layouts: when the root carries no lockfile for an ecosystem, a single tracked `manifest + lockfile` pair within three directories of the root resolves to the same frozen install scoped to that directory (`(cd webapp/frontend && npm ci)`), and the preparation key hashes that directory's manifests alongside the root's. In workspace mode each repo owns its command and preparation key independently.
-- `verificationBaseline` is `null` unless the durable `verificationBaselineOptIn` choice is true. The choice originates from `LOOP_SPEC_STARTUP_BASELINE=1` and survives phase handoff; capture occurs after design at the start of EXECUTE or ONESHOT. Default runs never capture one: the cycle spends no fresh-checkout time on repository-wide validation before the feature exists, and VERIFY's end-of-cycle comparison blocks on every failure it observes. `verificationBaselineAttempted` becomes true only after a capture result is persisted or a handled failure has been recorded; an interrupted capture leaves it false so re-entry can retry against the same exact base. Single-repo mode uses the top-level field; workspace mode leaves that field null and uses `workspace.repos[].verificationBaseline`, persisting completed repositories incrementally. `LOOP_SPEC_WORKTREES=0` skips capture with a notice because exact-base capture requires a temporary worktree. Its compact JSON is committed with feature state, but command logs remain machine-local. Comparison requires matching `baseSha`, preparation key, and test/lint/typecheck command strings. Pass-to-fail and added fingerprints are regressions; unchanged or subset known failures are accepted; command/runtime infrastructure errors are distinct. Criterion-specific acceptance commands are never included. A missing baseline on an older feature is strict: current failures regress and are never learned from the modified feature head.
+- `verificationBaseline` is `null` unless the durable `verificationBaselineOptIn` choice is true. The choice originates from `LOOP_SPEC_STARTUP_BASELINE=1` and survives phase handoff; capture occurs after design at the start of EXECUTE or ONESHOT. Default runs never capture one: the cycle spends no fresh-checkout time on repository-wide validation before the feature exists, and VERIFY's end-of-cycle comparison blocks on every failure it observes. `verificationBaselineAttempted` becomes true only after a capture result is persisted or a handled failure has been recorded; an interrupted capture leaves it false so re-entry can retry against the same exact base. Single-repo mode uses the top-level field; workspace mode leaves that field null and uses `workspace.repos[].verificationBaseline`, persisting completed repositories incrementally. `LOOP_SPEC_WORKTREES=0` skips capture with a notice because exact-base capture requires a temporary worktree. Its compact JSON is committed with feature state, but command logs remain machine-local. Comparison requires matching `baseSha`, preparation key, and test/lint/typecheck command strings. Runner summary lines (pytest, jest, vitest) and `PASSED` lines are never fingerprinted, and `fingerprintLines` maps each hash to its normalized line so the comparison's `addedLines` can name each added failure in VERIFY's suite-regression task. Pass-to-fail and added fingerprints are regressions; unchanged or subset known failures are accepted; command/runtime infrastructure errors are distinct. Criterion-specific acceptance commands are never included. A missing baseline on an older feature is strict: current failures regress and are never learned from the modified feature head.
 - `baseBranch` is initialized at feature creation (cycle Step 5, via `lib/git-ops.sh detect-base-branch`) so a plan-only or early-exit feature opens its PR against the correct base.
 - `models` is the effective per-role map for the active phase (no preset axis).
   `lib/feature-init.sh activate <feature-dir> <phase>` rewrites it immediately

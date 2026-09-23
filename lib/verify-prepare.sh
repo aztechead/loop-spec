@@ -84,7 +84,12 @@ elif [[ "$(jq -r '.rc' <<<"$validation")" == "21" ]]; then
   route=escalate; class=infrastructure
 elif [[ "$(jq -r '.rc' <<<"$validation")" == "20" ]]; then
   route=remediate; class=suite-regression
-  tasks="$(jq -cn --argjson t "$(task task-verify-suite-1 "Fix the repository-wide suite regression" "the repository-wide test, lint, and typecheck commands pass as before the change")" '[$t]')"
+  # The added lines are what the comparison counts as a regression; without them the
+  # implementer could only fix every pre-existing failure or delete tests (6.9.0 run).
+  added="$(jq -c '[.result.targets[]?.comparison.commands[]?.addedLines[]?] | .[:10]
+    | map("this failure no longer appears: " + .)' <<<"$validation")"
+  tasks="$(jq -cn --argjson t "$(task task-verify-suite-1 "Fix the repository-wide suite regression" "the repository-wide test, lint, and typecheck commands pass as before the change")" \
+    --argjson added "$added" '[$t | .acceptanceCriteria += $added]')"
 fi
 tasks="$(jq -c --arg v "$default_verify" 'map(.verifyCommand = (.verifyCommand // $v))' <<<"$tasks")"
 

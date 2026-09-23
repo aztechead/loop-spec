@@ -50,6 +50,12 @@ check "artifact deletion is staged" "1" \
 check "store retry is idempotent" "$result" \
   "$(LOOP_SPEC_ARTIFACTS_IN_PR=0 LOOP_SPEC_ARTIFACT_DIR="$store" \
     bash "$LIB" store "$feature" "$WORK")"
+check "feature records the store path" "$destination" "$(jq -r '.artifactSink.path' "$feature/feature.json")"
+git -C "$WORK" -c user.name=Test -c user.email=test@example.com commit -qm "remediation round"
+second="$(LOOP_SPEC_ARTIFACTS_IN_PR=0 LOOP_SPEC_ARTIFACT_DIR="$store" \
+  bash "$LIB" store "$feature" "$WORK")"
+check "a second finalize carries the documents to the new head" "1" \
+  "$([[ "${second#stored:}" != "$destination" && -f "${second#stored:}/artifacts/SPEC.md" ]] && echo 1 || echo 0)"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

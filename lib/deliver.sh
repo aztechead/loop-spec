@@ -38,6 +38,7 @@ bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '.schemaVersion ==
 
 slug="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.slug')"
 feature_title="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.feature_title // .slug')"
+pr_title="$(bash "$SCRIPT_DIR/pr-body.sh" title "$feature_title" "$slug")"
 workspace_root="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else empty end')"
 if [[ -n "$workspace_root" ]]; then
   artifact_root="$workspace_root"
@@ -239,7 +240,7 @@ if [[ -z "$workspace_root" ]]; then
     else
       result_rc=0
       result="$(invoke_delivery "$artifact_root" "$branch" "$base_branch" "$target_sha" \
-        "feat: $feature_title" "$hint")" || result_rc=$?
+        "feat: $pr_title" "$hint")" || result_rc=$?
       record="$(jq -c --arg name "$slug" --arg path "$artifact_root" '. + {name:$name,path:$path,bindingEligible:true}' <<<"$result")"
       targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
     fi
@@ -377,7 +378,7 @@ else
     branch="$(jq -r '.branch' <<<"$entry")"; base="$(jq -r '.base' <<<"$entry")"
     sha="$(jq -r '.sha' <<<"$entry")"; hint="$(jq -r '.hint' <<<"$entry")"
     result="$(invoke_delivery "$path" "$branch" "$base" "$sha" \
-      "feat: $feature_title ($name)" "$hint" "$hold" "$restore")" || result_rc=$?
+      "feat: $pr_title ($name)" "$hint" "$hold" "$restore")" || result_rc=$?
     record="$(jq -c --arg name "$name" --arg path "$path" '. + {name:$name,path:$path,bindingEligible:true}' <<<"$result")"
     targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
     return "$result_rc"
@@ -498,10 +499,16 @@ if [[ "$next_phase" == "execute" ]]; then
           repo: (if $feature.workspace == null then null else $target.name end),
           blockedBy: [],
           retries: 0,
-          notes: ([ $target.checks.required[]?
-                    | ((.name // "check") +
-                       (if (.link // "") == "" then "" else " " + .link end)) ]
-                  | join("; "))
+          notes: ([ ([ $target.checks.required[]?
+                       | ((.name // "check") +
+                          (if (.link // "") == "" then "" else " " + .link end)) ]
+                     | join("; ")),
+                    (($target.remoteHeadAccepted // []) as $accepted
+                     | if ($accepted | length) == 0 then ""
+                       else "remote commits accepted on the PR branch: " + ($accepted | join(","))
+                            + "; rebase or merge them before the fix or the next push is refused"
+                       end) ]
+                  | map(select(. != "")) | join("\n"))
         }
     ]')" || true  # an empty list here is caught below: --argjson refuses it and deliver exits 2
 fi

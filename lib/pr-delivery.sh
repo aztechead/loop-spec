@@ -13,6 +13,12 @@
 # plain final call promotes it. Callers use this to stage multi-repo readiness so no
 # PR is marked ready until every repo in the feature has cleared its checks.
 #
+# LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS (final only): colon-separated globs. A remote
+# head that descends from --sha and changes only matching paths (a bot's CHANGELOG
+# commit) becomes the PR head instead of a push_failed / pr_head_moved refusal, until
+# required checks pass; after that the head is held strictly. Accepted SHAs are
+# reported in remoteHeadAccepted. Unset keeps every comparison strict.
+#
 # observe: do not push, create, edit metadata, or flip readiness. Find the open PR
 # for --branch (or --pr-url), bind it to --sha (PR head and remote branch), and read
 # required checks once. Green draft → outcome "delivered-draft"; green ready →
@@ -61,6 +67,7 @@ checks_timeout="${LOOP_SPEC_CHECKS_TIMEOUT_SECONDS:-900}"
 checks_interval="${LOOP_SPEC_CHECKS_INTERVAL_SECONDS:-10}"
 command_timeout="${LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS:-60}"
 registration_grace="${LOOP_SPEC_CHECKS_REGISTRATION_GRACE_SECONDS:-30}"
+accept_remote_paths="${LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS:-}"
 hold_ready=0
 restore_draft=0
 unknown_arg=""
@@ -93,6 +100,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 target_sha=""
+expected_remote=""
+accepted_remote='[]'
+accept_remote_open=1
+bind_reject_reason=""
 remote_sha=""
 head_sha=""
 repo_identity=""
@@ -135,6 +146,7 @@ emit_result() {
     --arg observed "$observed" \
     --arg errorCode "$error_code" \
     --arg error "$error_message" \
+    --argjson remoteHeadAccepted "$accepted_remote" \
     '{schema:1,ok:$ok,mode:$mode,outcome:$outcome,
       repo:(if $repo == "" then null else $repo end),
       branch:(if $branch == "" then null else $branch end),
@@ -146,7 +158,7 @@ emit_result() {
       prUrl:(if $url == "" then null else $url end),
       prAction:$prAction,metadataAction:$metadataAction,
       readinessAction:$readinessAction,isDraft:$draft,checks:$checks,
-      observedAt:$observed,
+      observedAt:$observed,remoteHeadAccepted:$remoteHeadAccepted,
       errorCode:(if $errorCode == "" then null else $errorCode end),
       error:(if $error == "" then null else $error end)}'
 }
@@ -222,6 +234,7 @@ elif [[ "$mode" != "observe" ]]; then
 fi
 target_sha="$(git -C "$repo_dir" rev-parse --verify "${target_arg}^{commit}" 2>/dev/null)" \
   || fail_bad "bad_sha" "target is not a local commit: $target_arg"
+expected_remote="$target_sha"
 git -C "$repo_dir" remote get-url "$remote" >/dev/null 2>&1 \
   || fail_bad "remote_missing" "remote '$remote' is not configured"
 push_urls=()
@@ -355,6 +368,52 @@ remote_sha_from_refresh() {
   awk 'NR == 1 {print $1}' "$tmp_dir/git-ls-remote.out"
 }
 
+# Return 0 when <observed> may be the PR head. Past the equal case only final mode
+# with LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS set, and only while accept_remote_open:
+# the observed commit must descend from the head bound so far and change nothing but
+# allowlisted paths. Nothing re-verifies that commit, which is why the allowlist is
+# opt-in and the window closes once required checks pass. Every unknown refuses and
+# leaves bind_reject_reason for the caller's message.
+bind_remote_head() {
+  local observed="$1" changed path glob matched
+  bind_reject_reason=""
+  [[ "$observed" == "$expected_remote" ]] && return 0
+  [[ "$mode" == "final" && -n "$accept_remote_paths" && "$accept_remote_open" == "1" && -n "$observed" ]] \
+    || return 1
+  # Fetch by ref, never by raw SHA: a server may refuse an unadvertised object.
+  if ! run_gh "$tmp_dir/git-fetch.out" "$tmp_dir/git-fetch.err" \
+      git -C "$repo_dir" fetch "$remote_url" "refs/heads/$branch"; then
+    bind_reject_reason="cannot fetch '$branch' to inspect '$observed'"
+    return 1
+  fi
+  if ! git -C "$repo_dir" merge-base --is-ancestor "$expected_remote" "$observed" 2>/dev/null; then
+    bind_reject_reason="remote head '$observed' is not a descendant of '$expected_remote'"
+    return 1
+  fi
+  changed="$(git -C "$repo_dir" diff --no-renames --name-only "$expected_remote" "$observed" 2>/dev/null)" || {
+    bind_reject_reason="cannot diff '$expected_remote'..'$observed'"
+    return 1
+  }
+  [[ -n "$changed" ]] || { bind_reject_reason="remote head '$observed' changes no paths"; return 1; }
+  while IFS= read -r path; do
+    matched=0
+    # read, not `for glob in $list`: an unquoted expansion would glob against the cwd.
+    while IFS= read -r glob; do
+      [[ -n "$glob" ]] || continue
+      # shellcheck disable=SC2254 # the glob is the allowlist pattern
+      case "$path" in $glob) matched=1; break ;; esac
+    done <<<"$(tr ':' '\n' <<<"$accept_remote_paths")"
+    if [[ "$matched" == "0" ]]; then
+      bind_reject_reason="remote head '$observed' changes '$path', outside LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS"
+      return 1
+    fi
+  done <<<"$changed"
+  echo "pr-delivery: accepting remote head $observed over $expected_remote; it changes only: $(tr '\n' ' ' <<<"$changed")" >&2
+  expected_remote="$observed"
+  accepted_remote="$(jq -c --arg s "$observed" '. + [$s]' <<<"$accepted_remote")"
+  return 0
+}
+
 # Refresh $readiness_out. Like refresh_remote_sha, it runs in the caller's shell
 # so its LOOP_SPEC_AUTH_ERROR_CODE assignment survives; the caller reads the
 # observed value with observed_draft_from_refresh.
@@ -455,17 +514,30 @@ credential_host="$repo_host"
 # Push the requested commit, not HEAD, then prove the remote ref is identical.
 # observe never mutates the remote: it binds an already-pushed SHA to an open PR.
 if [[ "$mode" != "observe" ]]; then
+  push_needed=1
+  # An accepted remote head already carries the verified commit; pushing the
+  # verified SHA over it would be a rejected rewind.
+  if [[ "$mode" == "final" && -n "$accept_remote_paths" ]]; then
+    refresh_remote_sha \
+      || fail_delivery "remote_query_failed" "cannot read remote branch before push: $(tr '\n' ' ' < "$tmp_dir/git-ls-remote.err")"
+    pre_push_sha="$(remote_sha_from_refresh)"
+    if [[ -n "$pre_push_sha" && "$pre_push_sha" != "$target_sha" ]] && bind_remote_head "$pre_push_sha"; then
+      push_needed=0
+    fi
+  fi
   push_rc=0
-  run_gh "$tmp_dir/git-push.out" "$tmp_dir/git-push.err" \
-    git -C "$repo_dir" push "$remote_url" "$target_sha:refs/heads/$branch" || push_rc=$?
+  if [[ "$push_needed" == "1" ]]; then
+    run_gh "$tmp_dir/git-push.out" "$tmp_dir/git-push.err" \
+      git -C "$repo_dir" push "$remote_url" "$target_sha:refs/heads/$branch" || push_rc=$?
+  fi
   if [[ "$push_rc" -ne 0 ]]; then
-    fail_delivery "push_failed" "exact-SHA push failed: $(tr '\n' ' ' < "$tmp_dir/git-push.err")"
+    fail_delivery "push_failed" "exact-SHA push failed: $(tr '\n' ' ' < "$tmp_dir/git-push.err")${bind_reject_reason:+ ($bind_reject_reason)}"
   fi
   refresh_remote_sha \
     || fail_delivery "remote_query_failed" "cannot read pushed branch: $(tr '\n' ' ' < "$tmp_dir/git-ls-remote.err")"
   remote_sha="$(remote_sha_from_refresh)"
-  [[ "$remote_sha" == "$target_sha" ]] \
-    || fail_delivery "remote_sha_mismatch" "remote branch is '$remote_sha', expected '$target_sha'"
+  bind_remote_head "$remote_sha" \
+    || fail_delivery "remote_sha_mismatch" "remote branch is '$remote_sha', expected '$expected_remote'${bind_reject_reason:+ ($bind_reject_reason)}"
 fi
 
 pr_json=""
@@ -545,8 +617,8 @@ PY
   [[ "$pr_state" == "OPEN" ]] || fail_delivery "pr_closed" "PR is not open"
   [[ "$pr_head" == "$branch" ]] \
     || fail_delivery "pr_identity_mismatch" "PR head '$pr_head' does not match '$branch'"
-  [[ "$snapshot_head" == "$target_sha" ]] \
-    || fail_delivery "pr_head_moved" "PR head is '$snapshot_head', expected verified SHA '$target_sha'"
+  bind_remote_head "$snapshot_head" \
+    || fail_delivery "pr_head_moved" "PR head is '$snapshot_head', expected verified SHA '$expected_remote'${bind_reject_reason:+ ($bind_reject_reason)}"
   jq -cn --argjson number "$snapshot_number" --arg url "$snapshot_url" \
     --arg headSha "$snapshot_head" --argjson draft "$snapshot_draft" \
     '{number:$number,url:$url,headSha:$headSha,isDraft:$draft}' \
@@ -653,6 +725,9 @@ else
     run_gh_no_auth_retry "$gh_out" "$gh_err" github-pr gh pr create --draft --repo "$repo_selector" \
       --base "$base_branch" --head "$branch" --title "$title" --body-file "$body_file" \
       || create_rc=$?
+    # Captured before any re-list overwrites gh.err: gh's reason (a title over
+    # GitHub's limit, a missing base) is the only actionable part of the failure.
+    create_err="$(tail -n 5 "$gh_err" | tr '\n' ' ')"
     if loop_spec_is_auth_failure "$create_rc" "$gh_out" "$gh_err"; then
       loop_spec_credential_refresh "$repo_dir" "github-pr" "auth-retry" "$credential_host" \
         || fail_delivery "credential_refresh_failed" "credential refresh hook failed"
@@ -667,11 +742,11 @@ else
           LOOP_SPEC_AUTH_ERROR_CODE="authentication_failed"
           LOOP_SPEC_AUTH_ERROR_MESSAGE="authentication failed after credential refresh"
         fi
-        fail_delivery "pr_create_failed" "cannot re-list PRs after an authentication failure"
+        fail_delivery "pr_create_failed" "cannot re-list PRs after an authentication failure${create_err:+: $create_err}"
       fi
       list_count="$(jq -r 'if type == "array" then length else -1 end' "$gh_out" 2>/dev/null || echo -1)"
       [[ "$list_count" -ge 0 && "$list_count" -le 1 ]] \
-        || fail_delivery "pr_create_failed" "cannot safely reconcile PR create after authentication failure"
+        || fail_delivery "pr_create_failed" "cannot safely reconcile PR create after authentication failure${create_err:+: $create_err}"
       if [[ "$list_count" -eq 1 ]]; then
         pr_json="$(jq -c '.[0]' "$gh_out")"
         pr_action="reused"
@@ -681,6 +756,7 @@ else
         run_gh_once "$gh_out" "$gh_err" gh pr create --draft --repo "$repo_selector" \
           --base "$base_branch" --head "$branch" --title "$title" --body-file "$body_file" \
           || create_rc=$?
+        create_err="$(tail -n 5 "$gh_err" | tr '\n' ' ')"
         if loop_spec_is_auth_failure "$create_rc" "$gh_out" "$gh_err"; then
           LOOP_SPEC_AUTH_ERROR_CODE="authentication_failed"
           LOOP_SPEC_AUTH_ERROR_MESSAGE="authentication failed after credential refresh"
@@ -692,15 +768,15 @@ else
       # A concurrent delivery may have won the create race. Re-list once.
       run_gh "$gh_out" "$gh_err" gh pr list --repo "$repo_selector" --head "$branch" \
         --state open --json "$pr_fields" \
-        || fail_delivery "pr_create_failed" "gh pr create failed"
+        || fail_delivery "pr_create_failed" "gh pr create failed${create_err:+: $create_err}"
       [[ "$(jq -r 'length' "$gh_out" 2>/dev/null)" == "1" ]] \
-        || fail_delivery "pr_create_failed" "gh pr create failed and no unique PR appeared"
+        || fail_delivery "pr_create_failed" "gh pr create failed and no unique PR appeared${create_err:+: $create_err}"
       pr_json="$(jq -c '.[0]' "$gh_out")"
       pr_action="reused"
     elif [[ -z "$pr_json" ]]; then
       created_ref="$(tr -d '\r\n' < "$gh_out")"
-      [[ -n "$created_ref" ]] || fail_delivery "pr_create_failed" "gh pr create returned no PR URL"
-      view_pr "$created_ref" || fail_delivery "pr_create_failed" "created PR could not be loaded"
+      [[ -n "$created_ref" ]] || fail_delivery "pr_create_failed" "gh pr create returned no PR URL${create_err:+: $create_err}"
+      view_pr "$created_ref" || fail_delivery "pr_create_failed" "created PR could not be loaded${create_err:+: $create_err}"
       pr_json="$(jq -c . "$gh_out")"
       pr_action="created"
     fi
@@ -718,7 +794,7 @@ actual_body="$(jq -r '.body // ""' <<<"$pr_json")"
 if [[ "$actual_title" != "$title" || "$actual_base" != "$base_branch" || "$actual_body" != "$expected_body" ]]; then
   if ! run_gh "$gh_out" "$gh_err" gh pr edit "$pr_number" --repo "$repo_selector" \
       --title "$title" --base "$base_branch" --body-file "$body_file"; then
-    fail_delivery "metadata_failed" "failed to reconcile PR title, body, or base"
+    fail_delivery "metadata_failed" "failed to reconcile PR title, body, or base: $(tail -n 5 "$gh_err" | tr '\n' ' ')"
   fi
   metadata_action="updated"
   view_pr "$pr_number" || fail_delivery "metadata_failed" "updated PR could not be refreshed"
@@ -863,6 +939,8 @@ while :; do
   [[ "$sleep_for" -le "$remaining" ]] || sleep_for="$remaining"
   [[ "$sleep_for" -gt 0 ]] && sleep "$sleep_for"
 done
+# Green checks belong to expected_remote; from here a new head is never accepted.
+accept_remote_open=0
 
 # Re-read both refs immediately before changing review visibility. Checks can pass
 # and then a concurrent push can move the head before `gh pr ready` runs.
@@ -873,7 +951,7 @@ apply_pr_snapshot
 refresh_remote_sha \
   || fail_delivery "remote_query_failed" "cannot read remote branch before readiness transition"
 remote_sha="$(remote_sha_from_refresh)"
-[[ "$remote_sha" == "$target_sha" ]] \
+[[ "$remote_sha" == "$expected_remote" ]] \
   || fail_delivery "remote_sha_mismatch" "remote branch moved to '$remote_sha' before readiness transition"
 actual_title="$(jq -r '.title' <<<"$pr_json")"
 actual_base="$(jq -r '.baseRefName' <<<"$pr_json")"
@@ -923,7 +1001,7 @@ if ! view_pr "$pr_number"; then
 fi
 pr_json="$(jq -c . "$gh_out")"
 final_head="$(jq -r '.headRefOid // empty' <<<"$pr_json")"
-if [[ "$final_head" != "$target_sha" ]]; then
+if [[ "$final_head" != "$expected_remote" ]]; then
   head_sha="$final_head"
   rollback_readiness
   fail_delivery "pr_head_moved" "PR head moved to '$final_head' during readiness transition"
@@ -935,9 +1013,9 @@ if ! refresh_remote_sha; then
   fail_delivery "remote_query_failed" "cannot read remote branch for final observation"
 fi
 remote_sha="$(remote_sha_from_refresh)"
-if [[ "$remote_sha" != "$target_sha" ]]; then
+if [[ "$remote_sha" != "$expected_remote" ]]; then
   rollback_readiness
-  fail_delivery "remote_sha_mismatch" "final remote SHA no longer matches '$target_sha'"
+  fail_delivery "remote_sha_mismatch" "final remote SHA no longer matches '$expected_remote'"
 fi
 [[ "$is_draft" == "false" ]] || fail_delivery "ready_failed" "PR remains a draft after readiness transition"
 actual_title="$(jq -r '.title' <<<"$pr_json")"

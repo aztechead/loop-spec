@@ -4,6 +4,10 @@
 # reference for what micro/debug PR bodies should look like (short, GFM, no dumps).
 #
 # Usage: pr-body.sh render <feature.json> <artifact-root> <output-file>
+#        pr-body.sh title <goal> <fallback>
+#   title prints the goal's first sentence, whitespace collapsed, capped at 120 chars
+#   at a word boundary (`...` marks a cut); <fallback> when that leaves nothing. A
+#   run's goal can be a whole paragraph, and a PR title is one line people scan.
 #
 # Contract (the "clear, concise, easy to follow" rules):
 #   - Bounded excerpts, never whole artifacts: Summary + Acceptance criteria from the
@@ -22,7 +26,25 @@
 set -euo pipefail
 
 cmd="${1:-}"
-[[ "$cmd" == "render" ]] || { echo "pr-body.sh: unknown subcommand '${cmd:-}' (usage: pr-body.sh render <feature.json> <artifact-root> <output-file>)" >&2; exit 2; }
+if [[ "$cmd" == "title" ]]; then
+  [[ $# -eq 3 ]] || { echo "pr-body.sh: title requires <goal> <fallback>" >&2; exit 2; }
+  python3 - "$2" "$3" <<'PY'
+import re, sys
+
+goal, fallback = sys.argv[1:]
+TITLE_CAP = 120
+first = re.split(r"\.\s+(?=\S)|\n", goal.strip(), maxsplit=1)[0]
+title = " ".join(first.split())
+if len(title) > TITLE_CAP:
+    cut = title[:TITLE_CAP - 3]
+    if " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
+    title = cut.rstrip() + "..."
+print(title or " ".join(fallback.split()) or fallback)
+PY
+  exit
+fi
+[[ "$cmd" == "render" ]] || { echo "pr-body.sh: unknown subcommand '${cmd:-}' (usage: pr-body.sh render <feature.json> <artifact-root> <output-file> | title <goal> <fallback>)" >&2; exit 2; }
 shift
 [[ $# -eq 3 ]] || { echo "pr-body.sh: render requires <feature.json> <artifact-root> <output-file>" >&2; exit 2; }
 case "${LOOP_SPEC_PR_BODY_VERBOSE:-0}" in 0|1) ;; *)

@@ -82,12 +82,22 @@ docs_source="$repo_root/$docs_rel"
   echo "artifact-sink.sh: refusing a symlinked feature-document directory" >&2
   exit 2
 }
-if [[ -d "$docs_source" && "$reuse" -eq 0 ]]; then
-  cp -R "$docs_source" "$destination/artifacts"
+if [[ "$reuse" -eq 0 ]]; then
+  if [[ -d "$docs_source" ]]; then
+    cp -R "$docs_source" "$destination/artifacts"
+  else
+    # A second finalize at a new head (a CI remediation round in the 6.9.0 GHE run) finds
+    # the documents already moved out; without the previous copy this head's store is
+    # empty and the driver can no longer read SPEC.md.
+    prior="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.artifactSink.path // ""')"
+    if [[ -n "$prior" && -d "$prior/artifacts" ]]; then
+      cp -R "$prior/artifacts" "$destination/artifacts"
+    fi
+  fi
 fi
 
-metadata="$(jq -cn --arg manifest "$slug/$head_sha/manifest.json" \
-  '{mode:"store",manifest:$manifest}')"
+metadata="$(jq -cn --arg manifest "$slug/$head_sha/manifest.json" --arg path "$destination" \
+  '{mode:"store",manifest:$manifest,path:$path}')"
 bash "$SCRIPT_DIR/feature-write.sh" set "$feature_dir" artifactSink "$metadata" >/dev/null
 rm -rf "$destination/state"
 cp -R "$feature_dir" "$destination/state"

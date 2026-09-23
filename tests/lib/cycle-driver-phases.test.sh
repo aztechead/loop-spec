@@ -161,6 +161,52 @@ check "spec escalate: a quoted route: \"full\" gets no second route line" "1" "$
 check "spec escalate: the reason is still recorded under Implementation notes" "1" "$(grep -c '^- escalated (route: full): held$' "$WORK/quoted.md")"
 
 
+# --- returned from deliver with the feature documents in the artifact store ----------
+# LOOP_SPEC_ARTIFACTS_IN_PR=0: finalize moved SPEC.md out of the tree before DELIVER
+# blocked. The 6.9.0 run then read the tree copy and escalated a deliver block as
+# frozen-intent-changed with an errno for its reason.
+sink_rig() {
+  local root fd sink
+  root="$(new_repo "$1")"; fd="$root/.loop-spec/features/demo"; sink="$WORK/$1-store/demo/head"
+  mkdir -p "$fd" "$sink/artifacts"
+  cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$sink/artifacts/SPEC.md"
+  jq -n --arg sha "$(python3 -c "import sys; sys.path.insert(0, '$REPO_ROOT/lib'); from spec_intent import intent_digest
+print(intent_digest(open('$sink/artifacts/SPEC.md').read()))")" --arg sink "${2-$sink}" \
+    '{schemaVersion:7,slug:"demo",currentPhase:"deliver",specApproval:{sha256:$sha,source:"human"}}
+     + (if $sink == "" then {} else {artifactSink:{mode:"store",path:$sink}} end)' > "$fd/feature.json"
+  printf '%s\n' "$fd"
+}
+FDS="$(sink_rig sink-stalled)"
+printf '{"status":"blocked","nextPhase":"deliver","targets":[{"errorCode":"post_gate_drift","error":"post_gate_drift: the branch moved after the gate"}]}\n' > "$FDS/delivery.json"
+out="$(drv next --feature-dir "$FDS" --returned-from deliver 2>/dev/null)"
+check "next: a deliver block with SPEC.md in the store names the block" \
+  'DONE status=escalated reason="post_gate_drift: the branch moved after the gate"' "$out"
+FDS="$(sink_rig sink-completed)"
+printf '{"status":"ready-for-review","nextPhase":"completed","targets":[]}\n' > "$FDS/delivery.json"
+check "next: a completed delivery with SPEC.md in the store passes the returned checks" "None" \
+  "$(cd "$REPO_ROOT/lib/graph" && python3 -c 'import sys, driver; print(driver.returned_checks(sys.argv[1], "deliver"))' "$FDS")"
+FDS="$(sink_rig sink-missing "")"
+printf '{"status":"blocked","nextPhase":"deliver","targets":[]}\n' > "$FDS/delivery.json"
+drv next --feature-dir "$FDS" --returned-from deliver >/dev/null 2>&1
+check "next: SPEC.md in neither place is spec-unreadable, not a changed intent" "spec-unreadable" \
+  "$(jq -r '.reason | split(":")[0]' "$FDS/result.json")"
+
+# --- pr-feedback reads an Enterprise PR on its own host -----------------------------------
+# $PLUGIN is the copy the moving-checkout case built; its deliver and pr-feedback are
+# stand-ins here, so the only thing observed is the --repo the driver passes.
+FDH="$(sink_rig ghe-feedback)"
+cat > "$PLUGIN/lib/deliver.sh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' '{"status":"ready-for-review","nextPhase":"completed","targets":[{"name":"r","prNumber":7,"repo":"o/r","prUrl":"https://ghe.example/o/r/pull/7"}]}' > "$2/delivery.json"
+STUB
+cat > "$PLUGIN/lib/pr-feedback.sh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "$PR_FEEDBACK_ARGS"; exit 1
+STUB
+PR_FEEDBACK_ARGS="$WORK/pr-feedback.args" SCRIPT="$PLUGIN/lib/cycle-driver.sh" drv deliver --feature-dir "$FDH" >/dev/null 2>&1
+check "deliver: pr-feedback gets the PR's host with its repository" "check 7 --repo ghe.example/o/r" \
+  "$(cat "$WORK/pr-feedback.args" 2>/dev/null)"
+
 echo
 echo "cycle-driver-phases: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

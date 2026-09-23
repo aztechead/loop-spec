@@ -190,6 +190,17 @@ check "6: unknown subcommand exit 2" "2" "$ec"
 ec=0; LOOP_SPEC_PR_BODY_VERBOSE=maybe bash "$LIB" render "$WORK/feature.json" "$WORK" "$OUT" >/dev/null 2>&1 || ec=$?
 check "6: invalid verbosity exits 2" "2" "$ec"
 
+# ── Case 7: title keeps a PR title to one scannable line ─────────────────────
+check "7: title stops at the first sentence end" "Add retries" \
+  "$(bash "$LIB" title "Add retries. Then log every attempt." fb)"
+check "7: title stops at the first newline" "Add retries" \
+  "$(bash "$LIB" title "$(printf 'Add retries\nwith backoff')" fb)"
+check "7: a colon is not a sentence end" "Fix: x" "$(bash "$LIB" title "Fix: x" fb)"
+long_title="$(bash "$LIB" title "$(printf 'word %.0s' $(seq 1 300))" fb)"
+check "7: long title is capped at 120 chars and ends with ..." "1:word..." \
+  "$(( ${#long_title} > 0 && ${#long_title} <= 120 )):${long_title##* }"
+check "7: empty goal falls back" "demo" "$(bash "$LIB" title "   " demo)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

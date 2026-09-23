@@ -56,6 +56,23 @@ check "marker: tasks carry the project test command" "true" "$(jq -r '.pendingRe
 check "marker: the acceptance gate recorded a fail" "fail" "$(jq -r '[.gateHistory[] | select(.phase == "verify" and .gate == "acceptance")][-1].result' "$FD/feature.json")"
 check "marker: a verify_failure event was emitted" "1" "$(grep -c '"event":"verify_failure"' "$FD/events.jsonl")"
 
+# --- a suite regression names the failure it added ----------------------------------------
+# The implementer cannot see what counts as a regression unless the task carries the line.
+git -C "$REPO" rm -q stub.py; git -C "$REPO" commit -q -m "chore: drop stub"
+new_failure='FAILED tests/test_new.py::test_b - AssertionError'
+red_test="echo '$new_failure'; exit 1"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands "$(jq -cn --arg t "$red_test" '{prepare:"",test:$t,lint:"",typecheck:""}')" >/dev/null
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" verificationBaseline "$(jq -cn \
+  --arg base "$(jq -r '.baseSha' "$FD/feature.json")" --arg t "$red_test" \
+  '{schemaVersion:1,baseSha:$base,prepareKey:"",commands:{
+     test:{command:$t,status:"fail",exitCode:1,fingerprints:[]},
+     lint:{command:"",status:"skipped",exitCode:null,fingerprints:[]},
+     typecheck:{command:"",status:"skipped",exitCode:null,fingerprints:[]}}}')" >/dev/null
+out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
+check "suite-regression: the task names the added failure line" \
+  "suite-regression:this failure no longer appears: $new_failure" \
+  "$(jq -r '"\(.class):\(.remediationTasks[0].acceptanceCriteria[-1])"' <<<"$out")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1
