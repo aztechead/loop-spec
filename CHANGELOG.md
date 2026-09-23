@@ -4,6 +4,34 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.10.0] - 2026-09-23
+
+PLAN no longer writes PATTERNS.md. The planner now looks up existing code inside
+PLAN.md, where the tasks that depend on it can cite it.
+
+### Changed
+
+- PLAN.md has a required `## Existing code` section that comes before the tasks. For
+  each concept the feature adds or changes, the planner searches the tree for the
+  module that already does the job and records one decision: `reuse` (call it through
+  its current interface), `extend` (add the behavior behind that interface), or `new`
+  (says what was searched and why nothing fits). `reuse` and `extend` cite the
+  `path:lines` read, the interface callers rely on, and a test analog. A new module
+  must pass the deletion test, and a new seam needs two adapters (production and
+  test). Tasks list the cited files in `read_first`.
+- `lib/artifact-lint.sh plan` flags a PLAN that has no `## Existing code` section, an
+  entry without a decision, a `reuse`/`extend` entry without a `path:lines`
+  citation, and a `new` entry that does not say what was searched. The PLAN exit
+  gate and the artifact-lint hook enforce these through the same lint.
+
+### Removed
+
+- PATTERNS.md, its template, `artifact-lint.sh patterns`, and the PATTERNS entries in
+  the PLAN graph node (ingress, egress artifacts, commit paths).
+- The `pattern-mapper` agent, its `patternMapper` model key and
+  `LOOP_SPEC_MODEL_PATTERN_MAPPER` override, its path-guard case, and
+  `lib/gsd-ingest.sh`, which only imported a GSD PATTERNS.md.
+
 ## [6.9.1] - 2026-09-23
 
 Two autonomous runs against a GitHub Enterprise Server (upstream report, 2026-09-23) did

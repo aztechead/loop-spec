@@ -50,6 +50,12 @@ This feature adds two new skills and four new bash hooks to loop-spec. The skill
 | task-009 | run-all.sh registration | task-004, task-005, task-006, task-007 | tests/run-all.sh | small |
 | task-010 | CHANGELOG entry | task-001, task-002, task-003, task-004, task-005, task-006, task-007, task-008, task-009 | CHANGELOG.md | small |
 
+## Existing code
+
+- hook kill-switch and fail-open: reuse `hooks/team/task-created.sh:1-40` — interface: stdin JSON payload, exit 0 allow / exit 2 block; test analog: `hooks/team/task-created.test.sh`
+- task metadata validation: extend `lib/validate-task-metadata.sh:1-60` — interface: one task JSON in, FLAG lines out
+- context-usage threshold: new — searched hooks/ and lib/ for "usage" and "context"; no hook reads token usage yet
+
 ## Tasks
 
 ---

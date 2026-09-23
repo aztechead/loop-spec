@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Pin the SPEC/PLAN wall-clock contract: one bounded critique round, one canonical
-# pattern scan, no prose-pruning dispatch, and no advocate dispatch.
+# Pin the SPEC/PLAN wall-clock contract: one bounded critique round, no separate
+# code-lookup dispatch, no prose-pruning dispatch, and no advocate dispatch.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.sh"
 
 checks=(
@@ -10,7 +10,7 @@ checks=(
   "skills/plan/SKILL.md	Send the planner one combined list"
   'skills/plan/SKILL.md	The critique never re-opens on a `REDO`'
   "skills/plan/SKILL.md	Never spawn \`advocate-1\`"
-  "skills/plan/SKILL.md	planner owns the compact PATTERNS scan"
+  'skills/plan/SKILL.md	`artifact-lint plan` rejects a PLAN'
   "agents/challenger.md	Critique is challenger-only"
   "skills/shared/team-prompts/challenger.md	not dispatched"
   "skills/shared/team-prompts/advocate.md	not dispatched"

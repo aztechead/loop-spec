@@ -1781,7 +1781,6 @@ def plan_dispatch_packet(feature_dir, feat, instructions, mode):
     spec = artifact("spec", os.path.join(docs, "SPEC.md"))
     evidence = artifact("evidence", os.path.join(docs, "EVIDENCE.md"))
     plan = artifact("plan", os.path.join(docs, "PLAN.md"))
-    patterns = artifact("patterns", os.path.join(docs, "PATTERNS.md"))
     snapshot_root = Path(instructions["manifest"]).parent
     templates = snapshot_root / "skills" / "shared" / "artifact-templates"
     contracts = snapshot_root / "agents" / "planner.md"
@@ -1791,20 +1790,18 @@ def plan_dispatch_packet(feature_dir, feat, instructions, mode):
     lines = [
         "# PLAN planner packet",
         "",
-        "Role: planner. Read the focused source artifacts below, then author PLAN.md and PATTERNS.md.",
+        "Role: planner. Read the focused source artifacts below, then author PLAN.md.",
         "The coordinator has already completed phase ingress and does not paraphrase these sources.",
         "",
         "## Source artifacts",
         "- spec_path: %s" % spec,
         "- evidence_path: %s%s" % (evidence, " (optional; absent until authored)" if not os.path.isfile(evidence) else ""),
-        "- patterns_path: %s (reuse when present; create it when absent)" % patterns,
         "- plan_path: %s" % plan,
         "- decisions ledger: %s" % (Path(feature_dir) / "decisions.jsonl"),
         "",
         "## Snapshot contracts",
         "- planner role contract: %s" % contracts,
         "- template_path: %s" % (templates / "PLAN.md.template"),
-        "- patterns_template_path: %s" % (templates / "PATTERNS.md.template"),
         "- repository root: %s" % root,
         "- feature directory: %s" % feature_dir,
         "- greenfield: %s" % bool(feat.get("greenfield")),

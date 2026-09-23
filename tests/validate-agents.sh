@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Validates all 12 agent defs.
+# Validates all 11 agent defs.
 set -euo pipefail
-EXPECTED="${EXPECTED:-12}"
+EXPECTED="${EXPECTED:-11}"
 ALLOWED_MODELS="inherit"
 RESTRICTED_AGENTS="spec-compliance-reviewer code-reviewer advocate challenger"
 
@@ -25,7 +25,7 @@ for f in agents/*.md; do
   # These are cycle-owned dispatch roles; their descriptions must keep them out
   # of generic auto-delegation so routing cannot mistake them for free agents.
   case "$basename" in
-    planner|pattern-mapper)
+    planner)
       grep -qi 'not for ad-hoc auto-delegation' <<<"$fm" \
         || { echo "FAIL: $f must say it is not for ad-hoc auto-delegation"; exit 1; }
       ;;

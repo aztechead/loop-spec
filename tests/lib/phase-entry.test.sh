@@ -56,13 +56,9 @@ check "spec: entry snapshots feature.json as the egress baseline" "my-feature" "
 
 printf '# My Feature\n' > "$DOCS/SPEC.md"
 
-# --- plan: SPEC.md required, PATTERNS.md optional -----------------------------------
+# --- plan: SPEC.md required -----------------------------------------------------------
 ec=0; out="$(bash "$ENTRY" plan --feature-dir "$FD")" || ec=$?
 check "plan: SPEC.md alone enters clean" "0" "$ec"
-check "plan: absent PATTERNS.md is not listed and not flagged" "0" "$(grep -c 'PATTERNS.md' <<<"$out")"
-printf '# Patterns\n' > "$DOCS/PATTERNS.md"
-out="$(bash "$ENTRY" plan --feature-dir "$FD")"
-check "plan: present PATTERNS.md is listed" "1" "$(grep -c '^read=.*PATTERNS.md$' <<<"$out")"
 
 # --- execute: the tasks sidecar and PLAN.md are required ----------------------------
 ec=0; out="$(bash "$ENTRY" execute --feature-dir "$FD")" || ec=$?

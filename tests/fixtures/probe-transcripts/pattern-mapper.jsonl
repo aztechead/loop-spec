@@ -1,1 +1,0 @@
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"loop-spec:pattern-mapper","prompt":"Map patterns for feature foo"}}]}}

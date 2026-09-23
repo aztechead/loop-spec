@@ -24,7 +24,6 @@ checks=(
   "agents/implementer.md	Docs for humans"
   "agents/planner.md	Docs for humans"
   "agents/spec-writer.md	Docs for humans"
-  "agents/pattern-mapper.md	Docs for humans"
   "agents/verifier.md	Docs for humans"
   "agents/code-reviewer.md	Docs-for-humans pass"
   "skills/shared/team-prompts/implementer.md	Docs for humans"

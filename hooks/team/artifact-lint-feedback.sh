@@ -15,7 +15,7 @@
 #
 # Recognized paths (anywhere under docs/loop-spec/features/<slug>/ or .loop-spec/features/<slug>/):
 #   SPEC.md -> artifact-lint spec     PLAN.md -> artifact-lint plan
-#   PATTERNS.md -> artifact-lint patterns   tasks.json -> artifact-lint tasks + acceptance-lint
+#   tasks.json -> artifact-lint tasks + acceptance-lint
 #   VERIFICATION.md -> artifact-lint verification + converged-floor (the ITERATE floor
 #   wants an exact `## Acceptance criteria` table; a live verifier learned that two
 #   phases later) + verification-grounding-lint (the `## Repository grounding` rows)
@@ -52,7 +52,6 @@ print(str((p.get("tool_input") or {}).get("file_path") or ""))
 case "$FILE" in
   */docs/loop-spec/features/*/SPEC.md) kind=spec ;;
   */docs/loop-spec/features/*/PLAN.md) kind=plan ;;
-  */docs/loop-spec/features/*/PATTERNS.md) kind=patterns ;;
   */docs/loop-spec/features/*/VERIFICATION.md) kind=verification ;;
   */.loop-spec/features/*/tasks.json) kind=tasks ;;
   *) exit 0 ;;

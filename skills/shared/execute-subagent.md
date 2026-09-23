@@ -436,7 +436,7 @@ Return only JSON plus a one-line test summary. Exact values live in the brief; d
 ask the lead to paste them.
 The brief also carries PLAN.md's Global constraints verbatim, the EVIDENCE rows this
 task cites, and the tool versions the lead probed. Do not open SPEC.md, PLAN.md,
-PATTERNS.md, or EVIDENCE.md, and do not re-run version or auth checks: if a value you
+or EVIDENCE.md, and do not re-run version or auth checks: if a value you
 need is not in the brief or the listed files, stop and report it as a blocker.
 Interfaces (from the task block; contracts your neighbors consume/produce):
 {task Interfaces lines, or "- none"}
@@ -567,7 +567,7 @@ Write your full report to:
   {report path from dispatch-files.sh}
 The brief also carries PLAN.md's Global constraints verbatim, the EVIDENCE rows this
 task cites, and the tool versions the lead probed. Do not open SPEC.md, PLAN.md,
-PATTERNS.md, or EVIDENCE.md, and do not re-run version or auth checks: if a value you
+or EVIDENCE.md, and do not re-run version or auth checks: if a value you
 need is not in the brief or the listed files, stop and report it as a blocker.
 Interfaces (from the task block; contracts your neighbors consume/produce):
 {task Interfaces lines, or "- none"}

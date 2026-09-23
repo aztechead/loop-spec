@@ -1,7 +1,7 @@
 # Model routing
 
 Roles generally inherit the session model across Claude Code, OpenCode, Codex, and ADK.
-Claude's challenger, code-reviewer, spec-compliance-reviewer, and pattern-mapper default to `sonnet` unless a phase or role override applies.
+Claude's challenger, code-reviewer, and spec-compliance-reviewer default to `sonnet` unless a phase or role override applies.
 Claude's route judge defaults to `opus`; override with `LOOP_SPEC_MODEL_ROUTE_JUDGE`.
 The table below records the defaults.
 
@@ -25,7 +25,7 @@ harnesses, regardless of which models either account exposes.
 | Role family | Default |
 |---|---|
 | spec-writer, planner | inherit |
-| challenger, code-reviewer, spec-compliance-reviewer, pattern-mapper | `sonnet` on Claude Code, inherit on peer harnesses |
+| challenger, code-reviewer, spec-compliance-reviewer | `sonnet` on Claude Code, inherit on peer harnesses |
 | routeJudge | opus on Claude Code, inherit on peer harnesses |
 | advocate | inherit |
 | iterate-judge, verifier | inherit |
@@ -79,8 +79,7 @@ The consuming surfaces differ and a selector valid for one is not valid for all:
 Supported phase suffixes are `SPEC`, `PLAN`, `EXECUTE`, `VERIFY`,
 `ITERATE`, and `DELIVER`. Supported role suffixes are `SPEC_WRITER`,
 `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`,
-`ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`,
-and `PATTERN_MAPPER`.
+`ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, and `VERIFIER`.
 
 For a fresh main-context phase, `feature.phaseModels.<phase>` supplies the
 configured selector to a Claude CLI or SDK launcher. An unset entry remains

@@ -101,14 +101,6 @@ check "R5: a feature.json outside .loop-spec is not a contract file ALLOW" 0 \
 check "I: spec-writer Write to /abs/path/docs/loop-spec/features/bar/SPEC.md ALLOW" 0 \
   "$(payload "Write" "/abs/path/docs/loop-spec/features/bar/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
 
-# Case K: pattern-mapper Write to allowed features path -> ALLOW (exit 0)
-check "K: pattern-mapper Write to docs/loop-spec/features/foo/PATTERNS.md ALLOW" 0 \
-  "$(payload "Write" "docs/loop-spec/features/foo/PATTERNS.md" "$FIXTURES/pattern-mapper.jsonl")"
-
-# Case L: pattern-mapper Write to disallowed path -> DENY (exit 2)
-check "L: pattern-mapper Write to src/foo.py DENY" 2 \
-  "$(payload "Write" "src/foo.py" "$FIXTURES/pattern-mapper.jsonl")"
-
 # Case M: dispatch FINISHED (tool_result received) -> main thread, ALLOW anywhere
 check "M: finished spec-writer dispatch does not restrict main thread ALLOW" 0 \
   "$(payload "Write" "src/foo.py" "$FIXTURES/finished-dispatch.jsonl")"
@@ -180,10 +172,6 @@ check "T4: payload code-reviewer identity still denies source writes" 2 \
 # Case U: code-reviewer Write to its agent-memory dir -> ALLOW (exit 0)
 check "U: code-reviewer Write to .claude/agent-memory/code-reviewer/MEMORY.md ALLOW" 0 \
   "$(payload "Write" ".claude/agent-memory/code-reviewer/MEMORY.md" "$FIXTURES/code-reviewer.jsonl")"
-
-# Case V: pattern-mapper Write to its agent-memory dir -> ALLOW (exit 0)
-check "V: pattern-mapper Write to .claude/agent-memory/pattern-mapper/notes.md ALLOW" 0 \
-  "$(payload "Write" ".claude/agent-memory/pattern-mapper/notes.md" "$FIXTURES/pattern-mapper.jsonl")"
 
 # Case W: code-reviewer Edit to absolute agent-memory path -> ALLOW (exit 0)
 check "W: code-reviewer Edit to /abs/proj/.claude/agent-memory/code-reviewer/MEMORY.md ALLOW" 0 \

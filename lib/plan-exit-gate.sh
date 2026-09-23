@@ -24,7 +24,6 @@ if [[ -f "$feature_dir/tasks.extract.err" ]]; then
 fi
 [[ -f "$tasks" ]] || flag "[tasks] $tasks missing: derive it from PLAN.md first ($extract)"
 run_gate artifact-lint lib artifact-lint plan "$docs/PLAN.md"
-run_gate artifact-lint lib artifact-lint patterns "$docs/PATTERNS.md"
 if [[ -f "$tasks" ]]; then
   run_gate artifact-lint lib artifact-lint tasks "$tasks"
   # PLAN.md is the source of tasks.json; a sidecar copied from a chat message can
