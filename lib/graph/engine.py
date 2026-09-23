@@ -729,10 +729,12 @@ def process_node(current, admitting, defer_agent_routing):
             publish_result("failed", "function body %s" % detail)
             raise EngineExit(1)
 
+    published = False
     if kind == "function" and dispatch_rc is None and body and _is_cycle_result_body(
             repo_path(body, repo_root)) and not dry_run:
         if publish_result("completed", "completed at %s" % current) != 0:
             raise EngineExit(3)
+        published = True
 
     emit_trace(current, admitting, None, effort_reason, effort)
     checkpoint(current, admitting, effort,
@@ -756,7 +758,9 @@ def process_node(current, admitting, defer_agent_routing):
         # Only `completed` is the DELIVER→converged publication. Any other
         # dead-end (nested subgraph, synthetic terminal) is not a delivered
         # cycle and must not stamp last-result.json completed.
-        if current == "completed":
+        # The shipped `completed` node's body is cycle-result.sh itself, which published
+        # just above; a second write printed a second LOOP_SPEC_RESULT for one run.
+        if current == "completed" and not published:
             publish_result("completed", "completed at %s (%s)" % (current, edge_label))
         descriptor["terminal"] = True
         return {"status": "terminal", "descriptor": descriptor, "next": None}

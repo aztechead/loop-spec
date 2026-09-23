@@ -4,6 +4,15 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.11.2] - 2026-09-23
+
+### Fixed
+
+- The terminal `completed` node published the run's result twice: once because its
+  body is `cycle-result.sh`, and again because the node has no outgoing edge. A live
+  Sonnet run on 6.11.1 printed two identical `LOOP_SPEC_RESULT` lines from one
+  `next --returned-from deliver`. The node now publishes once.
+
 ## [6.11.1] - 2026-09-23
 
 A finished full-cycle run's log showed DELIVER opened and never closed, and never
