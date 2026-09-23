@@ -18,6 +18,10 @@ never for installing, building, or running the plan's own verify commands.
    indirection) before reading anything yourself; the probes already answer what a
    fresh scan would only re-derive.
 2. Map every criterion to at least one task; a criterion no task covers is a gap.
+   A criterion about the whole suite or the whole change (such as "the full test
+   suite passes") is covered by any task whose `verify` runs that suite; VERIFY
+   checks it again at the integrated head, so it never needs a `dependsOn`, and
+   tasks on separate files still share a wave.
 3. For each task, name its repo, the files it touches, a `verify` command that
    runs correctly from a bare checkout of the repo root at the base commit — no
    relative working-directory assumptions — and the criteria it satisfies.

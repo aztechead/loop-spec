@@ -9,6 +9,9 @@ All notable changes documented here. Format follows Keep a Changelog.
 - EXECUTE reviews a wave's ready tasks in one code-reviewer step (6.10's per-wave
   review): the step returns one result per task, each applied as that task's own
   review; a lone task and a close-out keep a review step of their own.
+- LF-71: a whole-suite criterion ("the full test suite passes") is covered by any
+  task whose verify runs that suite and never needs a `dependsOn`; a 7.0.7 run's
+  lead chained two disjoint tasks to cover one, so they never shared a wave.
 
 ## [7.0.6] - 2026-09-23
 
