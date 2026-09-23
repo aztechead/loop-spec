@@ -344,7 +344,9 @@ The four routes the first version left for M1, answered from the M1 fixtures rev
 
 - Every `blocked` exit pauses with a question and resumes into the same phase or, on a
   stop answer, exits terminal `escalated`. One rule for EXECUTE, VERIFY, debug, and
-  DELIVER.
+  DELIVER, and for a pause a phase raises mid-attempt (EXECUTE's out-of-band branch,
+  leftover task branch, and unmapped-commit pauses): each offers `fix-and-re-enter` or
+  `stop`, and `fix-and-re-enter` re-runs the phase's own check once.
 - One shared budget bounds every backward transition (T1, referenced by I3). Exhaustion
   at any exit escalates directly from the controller; only ITERATE's own refused rewind
   goes through I4 (after the re-audit at `8d45bbb`).

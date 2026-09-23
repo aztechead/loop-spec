@@ -526,10 +526,17 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
         return Next(kind="wait", path=outcome.path, slug=store.state["run"]["slug"])
     if outcome.kind == "question":
         request = read_json(outcome.path)
-        questions.ask(
+        record = questions.ask(
             store, paths, phase=phase, attempt_id=attempt_id, text=request["text"], kind=request["kind"],
             options=request["options"], default_value=request.get("defaultValue"), payload=request.get("payload"),
+            save=False,
         )
+        # LF-65: a module's blocked pause is answered through the same blockedQuestionId
+        # handler as the controller's own; without it nothing read the answer and the
+        # module re-asked the same pause forever.
+        if request["kind"] == "blocked":
+            store.state["phase"]["blockedQuestionId"] = record["questionId"]
+        store.save()
         return
     if outcome.kind == "error":
         _finish_run(store, paths, "failed", reason=outcome.stderr)

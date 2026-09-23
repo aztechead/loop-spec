@@ -2152,6 +2152,54 @@ class FindDeliveringRunProductsTests(unittest.TestCase):
             self.assertEqual(found, {"slug": "revise-3", "spec": spec, "plan": plan})
 
 
+class ModulePauseAnswerTests(unittest.TestCase):
+    """LF-65: a phase module's blocked pause is answered through phase.blockedQuestionId,
+    so `stop` ends the run and `fix-and-re-enter` re-invokes the module once, never
+    re-asking a pause nothing read."""
+
+    def _paused(self, tmp: Path):
+        paths = FeaturePaths(root=tmp / "feature")
+        store = StateStore.create(
+            paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x", "createdAt": "2026-01-01T00:00:00+00:00"}, "do it",
+        )
+        store.state["phase"].update(current="execute", attemptId="attempt-1")
+        store.state["implementations"]["phases"]["execute"] = "default"
+        store.save()
+        request = {"attempt": "attempt-1", "phase": "execute", "text": "feature branch moved out of band",
+                   "options": [{"value": "fix-and-re-enter", "label": "Fix and re-enter"}, {"value": "stop", "label": "Stop"}],
+                   "defaultValue": None, "kind": "blocked", "payload": {"repo": "repo"}}
+        (tmp / "q.json").write_text(json.dumps(request))
+        with patch.object(controller.contract, "invoke", return_value=controller.contract.PhaseOutcome(3, "question", tmp / "q.json", "")):
+            controller._drive_phase(store, paths, tmp)
+        question_id = store.state["questions"]["open"]["questionId"]
+        self.assertEqual(StateStore.open(paths).state["phase"]["blockedQuestionId"], question_id)
+        return paths, store, question_id
+
+    def test_stop_escalates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, store, question_id = self._paused(Path(tmp))
+            questions.answer(store, paths, question_id=question_id, value="stop")
+            finished = []
+            def finish(store, paths, classification, *, reason=None, **_):
+                finished.append((classification, reason))
+                store.state["result"] = {"status": classification}
+            with patch.object(controller, "_finish_run", side_effect=finish):
+                controller.continue_run(store, paths, project_root=Path(tmp))
+            self.assertEqual(finished[0][0], "escalated")
+
+    def test_fix_and_re_enter_re_invokes_the_module_without_re_asking(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, store, question_id = self._paused(Path(tmp))
+            questions.answer(store, paths, question_id=question_id, value="fix-and-re-enter")
+            (Path(tmp) / "wait.json").write_text(json.dumps({"open": []}))
+            with patch.object(controller.contract, "invoke",
+                              return_value=controller.contract.PhaseOutcome(4, "wait", Path(tmp) / "wait.json", "")) as invoke:
+                controller.continue_run(store, paths, project_root=Path(tmp))
+            self.assertEqual(invoke.call_count, 1)
+            self.assertIsNone(store.state["questions"]["open"])
+            self.assertIsNone(store.state["phase"]["blockedQuestionId"])
+
+
 class RefusedEvidenceTests(unittest.TestCase):
     """LF-60: a judgment step refused for want of evidence accepts nothing, raises one
     blocked question, and leaves no owner holding the dead step, across crashes."""

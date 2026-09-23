@@ -348,7 +348,7 @@ def _ensure_worktree(store, paths, ctx, task_id: str, task_state: dict, plan_tas
     existing = repo_module.branch_sha(repo_path, branch)
     if existing is not None and existing != repo_state["head"]:
         text = (f"task branch {branch!r} already exists with commits not in the feature "
-                f"head (expected {repo_state['head']}, found {existing}); how should the run proceed?")
+                f"head (expected {repo_state['head']}, found {existing}); delete it, then fix-and-re-enter, or stop")
         return Pause(_pause_request(ctx, task_state["repo"], repo_state["head"], existing, text=text))
     if existing is None:
         repo_module.create_feature_branch(repo_path, branch, repo_state["head"])
@@ -509,11 +509,9 @@ def _pause_request(ctx, repo_name: str, expected: str, actual: str, *, text: str
     request = {
         "attempt": ctx["attempt"]["id"], "phase": "execute",
         "text": text or (f"repo {repo_name}'s feature branch moved out of band "
-                          f"(expected {expected}, found {actual}); how should the run proceed?"),
-        "options": [
-            {"value": "resume", "label": "treat the new head as the base and continue"},
-            {"value": "abort", "label": "stop the run here"},
-        ],
+                          f"(expected {expected}, found {actual}); reset it to {expected} (or move the "
+                          f"commits into a task worktree), then fix-and-re-enter, or stop"),
+        "options": _BLOCKED_OPTIONS,
         "defaultValue": None, "kind": "blocked",
         "payload": {"repo": repo_name, "expected": expected, "actual": actual},
     }
