@@ -40,6 +40,7 @@ PROGRAM_ROOT = REPO_ROOT / "skills" / "loop-spec" / "program"
 LAUNCHER = PROGRAM_ROOT / "loop-spec"
 sys.path.insert(0, str(PROGRAM_ROOT))
 
+from loop_spec import log  # noqa: E402
 from loop_spec.jsonio import atomic_write_json  # noqa: E402
 from loop_spec.paths import FeaturePaths, feature_dir, repo_id  # noqa: E402
 from loop_spec.paths import state_home as resolve_state_home  # noqa: E402
@@ -52,7 +53,8 @@ def run_cli(*args: str) -> str:
     stdout (the markers) is captured for parsing and echoed. Raises on a non-zero
     exit, matching how a human running the same command would see it."""
     proc = subprocess.run([str(LAUNCHER), *args], stdout=subprocess.PIPE, text=True)
-    print(proc.stdout, end="")
+    if proc.stdout:
+        log.stdout.info(proc.stdout.rstrip("\n"))
     if proc.returncode != 0:
         raise SystemExit(proc.returncode)
     return proc.stdout
@@ -98,9 +100,9 @@ def log_worker_events(role: str | None, events: list[dict]) -> None:
     tools it called, on stderr after the step ends."""
     for event in events:
         if event["kind"] == "worker_text":
-            print(f"  [{role}] {event['text']}", file=sys.stderr)
+            log.stderr.info(f"  [{role}] {event['text']}")
         elif event["kind"] == "worker_tool_use":
-            print(f"  [{role}] tool: {event['name']}", file=sys.stderr)
+            log.stderr.info(f"  [{role}] tool: {event['name']}")
 
 
 def answer_by_policy(question: dict) -> str:
@@ -159,7 +161,7 @@ async def run_lead_step(step: dict, *, plugin_path: Path, model: str | None) -> 
             for block in msg.content:
                 text = getattr(block, "thinking", None) or getattr(block, "text", None)
                 if text:
-                    print(f"  [lead] {text}", file=sys.stderr)
+                    log.stderr.info(f"  [lead] {text}")
         if type(msg).__name__ == "ResultMessage":
             result_msg = msg
 
@@ -195,7 +197,7 @@ def drive(project_root: Path, state_home: str | None, slug: str | None, request:
                 run_paths = FeaturePaths(root=feature_dir(resolve_state_home(state_home), repo_id(project_root), run_slug))
                 run = run_step_sdk(step, paths=run_paths, plugin_path=REPO_ROOT, model=step.get("model") or model)
                 if not run.ok:
-                    print(f"role step ({step.get('role')}) failed: {run.reason}", file=sys.stderr)
+                    log.stderr.error(f"role step ({step.get('role')}) failed: {run.reason}")
                     return 1
                 log_worker_events(step.get("role"), run.events)
                 # steps.submit reads the receipt run_step_sdk wrote and grants
@@ -207,8 +209,7 @@ def drive(project_root: Path, state_home: str | None, slug: str | None, request:
                 asyncio.run(run_lead_step(step, plugin_path=REPO_ROOT, model=step.get("model") or model))
                 stdout = run_cli("submit", *common, "--step", step["stepAttemptId"])
             else:
-                print(f"external step at {next_['path']}: an operator must produce the product and submit it",
-                      file=sys.stderr)
+                log.stderr.error(f"external step at {next_['path']}: an operator must produce the product and submit it")
                 return 1
         elif next_["kind"] == "question":
             question = json.loads(Path(next_["path"]).read_text())
@@ -221,7 +222,7 @@ def drive(project_root: Path, state_home: str | None, slug: str | None, request:
         queue.add(stdout)
 
     result = json.loads(Path(next_["path"]).read_text())
-    print(json.dumps({k: result.get(k) for k in ("status", "outcome", "reason", "phaseReached")}, indent=2))
+    log.stdout.info(json.dumps({k: result.get(k) for k in ("status", "outcome", "reason", "phaseReached")}, indent=2))
     return 0 if result.get("status") == "completed" else 1
 
 

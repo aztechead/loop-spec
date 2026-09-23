@@ -4,6 +4,14 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.1.2] - 2026-09-23
+
+- All program output goes through `logging`: the new `loop_spec.log` gives a stdout
+  logger (status lines, `LOOP_SPEC_*` markers, unchanged byte for byte) and a stderr
+  logger (progress and errors), each writing to the stream current at the time. The
+  `examples/` consumers log the same way. No module calls `print`; a unit test
+  enforces it.
+
 ## [7.1.1] - 2026-09-23
 
 - PLAN gets the fact probes it was promised: for each repo, the tracked files the

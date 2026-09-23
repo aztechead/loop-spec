@@ -8,9 +8,9 @@ file is a complete history even for a caller that only reads stdout.
 """
 import json
 import os
-import sys
 from pathlib import Path
 
+from loop_spec import log
 from loop_spec.errors import LoopSpecError
 from loop_spec.ids import now_iso
 from loop_spec.jsonio import append_jsonl, read_json
@@ -47,7 +47,7 @@ def emit(paths: FeaturePaths, event: str, data: dict | None = None, *,
             # would surface in Cloud Logging as a stream of errors (port of the same
             # precedence in lib/events.sh).
             stream = "stdout" if (os.environ.get("CLOUD_RUN_JOB") or os.environ.get("K_SERVICE")) else "stderr"
-        print(f"[{tag}] {summary}", file=sys.stdout if stream == "stdout" else sys.stderr)
+        (log.stdout if stream == "stdout" else log.stderr).info(f"[{tag}] {summary}")
     return record
 
 
@@ -56,7 +56,7 @@ def _compact(payload: dict) -> str:
 
 
 def _marker(paths: FeaturePaths, prefix: str, payload: dict) -> None:
-    print(f"{prefix} {_compact(payload)}")
+    log.stdout.info(f"{prefix} {_compact(payload)}")
     append_jsonl(paths.events_jsonl, {
         "event": prefix[len("LOOP_SPEC_"):].lower(), "timestamp": now_iso(),
         "phase": payload.get("phase"), "attemptId": payload.get("attemptId"),
@@ -107,4 +107,4 @@ def marker_next(kind: str, path: str, slug: str) -> None:
                        "role": step.get("role"), "model": step.get("model")})
         if step.get("transport") == "file":
             marker["dispatchPath"] = str(Path(path).parent / "dispatch.txt")
-    print(f"LOOP_SPEC_NEXT {_compact(marker)}")
+    log.stdout.info(f"LOOP_SPEC_NEXT {_compact(marker)}")

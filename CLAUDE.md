@@ -10,6 +10,10 @@ recognize while working and what to do; a rule with no trigger does not fire.
   whether a claimed exit holds, `controller.py` is the one place that transitions a
   phase). `examples/` holds a reference consumer that may import the SDK it
   demonstrates and says in its own README that it is not a supported surface.
+- **When you would write output or a log line** in shipped code or `examples/`, use
+  the `logging` module, never `print`: in `loop_spec`, `log.stdout` for what a caller
+  reads (status lines, `LOOP_SPEC_*` markers) and `log.stderr` for diagnostics.
+  `tests/test_log.py` fails on any `print` call.
 - **When you would write an offline test for a whole cycle**, don't. Unit tests
   (`skills/loop-spec/program/tests/`, `python3 -m unittest discover -s tests`) cover
   the program's deterministic Python only: state, contract, routing,

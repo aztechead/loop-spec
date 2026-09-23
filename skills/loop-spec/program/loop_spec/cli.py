@@ -7,10 +7,9 @@ argparse's own "unrecognized command", so the CLI is honest about what exists.
 import argparse
 import json
 import os
-import sys
 from pathlib import Path
 
-from loop_spec import VERSION, attest, contract, controller, questions, steps
+from loop_spec import VERSION, attest, contract, controller, log, questions, steps
 from loop_spec.errors import LoopSpecError
 from loop_spec.events import emit as emit_event
 from loop_spec.events import marker_next, marker_wait
@@ -93,43 +92,43 @@ def _cmd_emit(args: argparse.Namespace) -> int:
 
 def _print_summary(state: dict, paths: FeaturePaths) -> None:
     run, phase, budget = state["run"], state["phase"], state["budget"]
-    print(f"run: {run['id']} entry: {run['entry']}")
-    print(f"phase: {phase['current']} attempt: {phase['attemptId']}")
-    print(f"revisions: requirements={state['revisions']['requirements']} plan={state['revisions']['plan']}")
-    print(f"budget: {budget['spent']}/{budget['limit']}")
+    log.stdout.info(f"run: {run['id']} entry: {run['entry']}")
+    log.stdout.info(f"phase: {phase['current']} attempt: {phase['attemptId']}")
+    log.stdout.info(f"revisions: requirements={state['revisions']['requirements']} plan={state['revisions']['plan']}")
+    log.stdout.info(f"budget: {budget['spent']}/{budget['limit']}")
     for entry in state.get("closeOuts") or []:
         if entry["status"] == "active":
             source = entry["source"]
-            print(f"close-out: {entry['id']} {entry['repo']} (iterate {source['attemptId']} gap {source['gapIndex']})")
+            log.stdout.info(f"close-out: {entry['id']} {entry['repo']} (iterate {source['attemptId']} gap {source['gapIndex']})")
 
     open_question = state["questions"]["open"]
     if open_question is None:
-        print("open question: None")
+        log.stdout.info("open question: None")
     else:
         try:
             record = read_json(Path(open_question["path"]))
             text, options = record["text"], [o["value"] for o in record["options"]]
         except (OSError, ValueError, KeyError):
             text, options = None, []
-        print(f"open question: {open_question['questionId']}: {text}")
-        print(f"  options: {options}")
+        log.stdout.info(f"open question: {open_question['questionId']}: {text}")
+        log.stdout.info(f"  options: {options}")
 
     open_steps = state["steps"]["open"]
     if not open_steps:
-        print("open steps: []")
+        log.stdout.info("open steps: []")
     for s in open_steps:
         step_path = paths.steps_dir / s["stepAttemptId"] / "step.json"
-        print(f"open step: {s['stepAttemptId']}: {step_path}")
-        print(f"  kind: {s.get('kind')} role: {s.get('role')}")
+        log.stdout.info(f"open step: {s['stepAttemptId']}: {step_path}")
+        log.stdout.info(f"  kind: {s.get('kind')} role: {s.get('role')}")
         try:
             dispatch = read_json(step_path).get("dispatchPrompt")
         except (OSError, ValueError):
             dispatch = None
         if dispatch:
-            print(f"  dispatch prompt: {dispatch!r}")
+            log.stdout.info(f"  dispatch prompt: {dispatch!r}")
 
     result = state.get("result")
-    print(f"result: {result.get('classification') if result else None}")
+    log.stdout.info(f"result: {result.get('classification') if result else None}")
 
 
 def _cmd_status(args: argparse.Namespace) -> int:
@@ -141,20 +140,20 @@ def _cmd_status(args: argparse.Namespace) -> int:
     if args.slug:
         paths = FeaturePaths(root=feature_dir(home, rid, args.slug))
         if not paths.state_json.exists():
-            print(f"no loop-spec state for {root}")
+            log.stdout.info(f"no loop-spec state for {root}")
             return 0
         _print_summary(StateStore.open(paths).state, paths)
         return 0
 
     if not repo_home.exists():
-        print(f"no loop-spec state for {root}")
+        log.stdout.info(f"no loop-spec state for {root}")
         return 0
     slugs = sorted(p.name for p in repo_home.iterdir() if p.is_dir())
     if not slugs:
-        print(f"no loop-spec state for {root}")
+        log.stdout.info(f"no loop-spec state for {root}")
         return 0
     for slug in slugs:
-        print(slug)
+        log.stdout.info(slug)
     return 0
 
 
@@ -217,17 +216,17 @@ def main(argv: list[str] | None = None) -> int:
                                        result_file=args.result_file, project_root=Path(args.project_root))
             if submission.refused is not None:
                 # LF-60: nothing was accepted; continue_run raises the blocked question.
-                print(f"[{submission.step['phase'].upper()}] step {args.step} refused: {submission.refused}; "
-                      "nothing was accepted from it", file=sys.stderr)
+                log.stderr.info(f"[{submission.step['phase'].upper()}] step {args.step} refused: {submission.refused}; "
+                                "nothing was accepted from it")
                 _print_next(paths, controller.continue_run(store, paths, project_root=Path(args.project_root)))
                 return 0
             if submission.redispatch is not None:
                 step_path = paths.steps_dir / submission.step["stepAttemptId"] / "step.json"
                 tag = submission.step["phase"].upper()
                 attempts = submission.step["attestationAttempts"]
-                print(f"[{tag}] step {args.step} unattested ({attempts}/{retry_limit()}): "
-                      f"{submission.step['reason']}; dispatch a fresh worker named {submission.redispatch} "
-                      f"with the same dispatchPrompt (or prompt, for a step without one) and submit again with --dispatch {submission.redispatch}")
+                log.stdout.info(f"[{tag}] step {args.step} unattested ({attempts}/{retry_limit()}): "
+                                f"{submission.step['reason']}; dispatch a fresh worker named {submission.redispatch} "
+                                f"with the same dispatchPrompt (or prompt, for a step without one) and submit again with --dispatch {submission.redispatch}")
                 marker_next("step", str(step_path), args.slug)
                 return 0
             controller.route_submission(store, paths, submission.step, submission.result)
@@ -242,6 +241,6 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         raise LoopSpecError(f"{args.command} lands in a later wave", repair="wait for the wave")
     except LoopSpecError as exc:
-        print(f"loop-spec: {exc.message}", file=sys.stderr)
-        print(f"  repair: {exc.repair}", file=sys.stderr)
+        log.stderr.error(f"loop-spec: {exc.message}")
+        log.stderr.error(f"  repair: {exc.repair}")
         return 1

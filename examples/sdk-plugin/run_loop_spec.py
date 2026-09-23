@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Awaitable, Callable
@@ -71,8 +72,22 @@ NEXT_PREFIX = "LOOP_SPEC_NEXT "
 IDLE_SECONDS = 60  # how long a finished turn waits for a task's follow-up turn
 
 
+OUT = logging.getLogger("run_loop_spec.stdout")  # the lead's own text
+ERR = logging.getLogger("run_loop_spec.stderr")  # progress, thinking, workers, tool calls
+
+
+def configure_logging() -> None:
+    """Each logger writes its bare message to its stream, as the terminal shows it."""
+    for logger, stream in ((OUT, sys.stdout), (ERR, sys.stderr)):
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+
+
 def err(line: str) -> None:
-    print(line, file=sys.stderr, flush=True)
+    ERR.info(line)
 
 
 def tool_result_lines(block: ToolResultBlock) -> list[str]:
@@ -216,7 +231,7 @@ def render(message: Message) -> None:
             elif isinstance(block, TextBlock) and who:
                 err(f"  [worker] {block.text}")
             elif isinstance(block, TextBlock):
-                print(block.text, flush=True)
+                OUT.info(block.text)
             elif isinstance(block, ToolUseBlock):
                 summary = block.input.get("command") or block.input.get("description") or ""
                 err(f"  [{who}tool] {block.name} {str(summary)[:200]}")
@@ -297,6 +312,7 @@ def main() -> int:
     if not args.request and not args.resume:
         ap.error("pass a request, or --resume SESSION_ID")
     args.project_root = args.project_root.resolve()
+    configure_logging()
     return asyncio.run(run(args))
 
 
