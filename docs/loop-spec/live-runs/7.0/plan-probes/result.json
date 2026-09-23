@@ -1,0 +1,93 @@
+{
+  "autonomous": true,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "feat/add-inches-to-cm-inches-and-cm-to-inches",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": false,
+  "createdAt": "2026-09-23T19:12:00+00:00",
+  "cycleType": "full",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [
+          "pushed ead06c5e1e2d to feat/add-inches-to-cm-inches-and-cm-to-inches; the PR step failed: gh pr list failed: none of the git remotes configured for this repository point to a known GitHub host. To tell gh about a new GitHub host, please use `gh auth login`",
+          "published: ead06c5e1e2d (attempt attempt-85cb06463db0)"
+        ],
+        "deliveredSha": null,
+        "pr": null,
+        "publishedSha": "ead06c5e1e2d49b75dbc4d7ae42366fa56aa046d",
+        "repo": "checks-cli",
+        "state": "failed"
+      }
+    ]
+  },
+  "eligibleTargets": [
+    {
+      "branch": "feat/add-inches-to-cm-inches-and-cm-to-inches",
+      "targetSha": "ead06c5e1e2d49b75dbc4d7ae42366fa56aa046d"
+    }
+  ],
+  "feature_title": "Add inches_to_cm(inches) and cm_to_inches(cm) to unitkit/length.py, both taking and returning float, tested in tests/test_length.py; verified by uv run pytest -q.",
+  "finishedAt": "2026-09-23T19:20:29+00:00",
+  "hostVersions": {
+    "claude": "2.1.280 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": false,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 0
+  },
+  "loopSpecVersion": "7.1.1",
+  "noChangeReason": null,
+  "outcome": "escalated",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [
+    "question-915da3bcfd7d",
+    "question-b9ec20742c9a"
+  ],
+  "prUrl": null,
+  "prs": [],
+  "reason": "deliver paused; operator chose 'stop'",
+  "result": "escalated",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-00d09ccb84f0"
+    }
+  },
+  "rewinds": 0,
+  "schema": 1,
+  "slug": "add-inches-to-cm-inches-and-cm-to-inches",
+  "status": "escalated",
+  "summary": "full escalated at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": "ead06c5e1e2d49b75dbc4d7ae42366fa56aa046d",
+  "warnings": [],
+  "weakenedAssurance": [],
+  "workDelivered": false
+}

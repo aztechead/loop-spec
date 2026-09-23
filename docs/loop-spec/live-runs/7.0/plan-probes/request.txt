@@ -1,0 +1,1 @@
+Add inches_to_cm(inches) and cm_to_inches(cm) to unitkit/length.py, both taking and returning float, tested in tests/test_length.py; verified by uv run pytest -q.
