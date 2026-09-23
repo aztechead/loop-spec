@@ -29,7 +29,12 @@ never for installing, building, or running the plan's own verify commands.
    ships without a verify command.
 4. Keep `dependsOn` acyclic and real: a dependency the graph cannot resolve, or one
    that exists only to force an ordering two tasks do not actually need, is a
-   defect. Give each file one owning task.
+   defect. Give each file one owning task. Keep a test in the same task as the code
+   it tests: the implementer writes that test first, so code split from its tests is
+   built with nothing to fail against. Split into more tasks only where they touch
+   separate files and can run in the same wave (the program runs up to three at
+   once); every task adds an implement step and a review step, so a small service
+   is usually one or two tasks.
 5. Name a `prepare` command for anything the environment needs before verify can
    run (installs, migrations, fixtures); leave it `null` when nothing is needed.
 6. Declare `exit: "ready"`, or `"spec gap"` naming exactly what SPEC is missing.
