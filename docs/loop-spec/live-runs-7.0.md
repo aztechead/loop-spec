@@ -50,6 +50,42 @@ runs already made; it does not describe how to run one.
 | LF-60 opt-in: an unattested plan-critic accepted under `evidence.judgment.accept`, carried to the result | `lf60-optin-shell` on `ffcd87a` (operator shell, no model, through PLAN), then `e2e-lf60-optin-finish`, session `ca543d1d-dc57-4063-8359-a0cf071fdf9d` | `converged` | [live-runs/7.0/lf60-optin-shell](live-runs/7.0/lf60-optin-shell/) | Driven like `m1-ext`: the operator wrote the SPEC and PLAN lead products and a no-findings critic result, then submitted with no `CLAUDE_CODE_SESSION_ID`, so no host could attest. With `evidence.judgment.accept: "unattested"` set, the critic `step-1d0b170ade4e` was accepted `unattested`, and PLAN advanced to EXECUTE. It recorded `{kind: "evidence.unattested-step", step, role: "plan-critic", attempts: 1, policy: "evidence.judgment.accept", source: "config"}`. Model leads declined to fake this case twice (the row below), so it was shown without one. A normal model lead then finished the run with the same config, dispatching every step exactly (all `host-attested`). The run delivered PR live-7#21 with `rewinds: 0`, and the result's `weakenedAssurance` carries that waiver unchanged, with its `policy` and `source`. |
 | Whole cycles on `ffcd87a` with no probe applied | `e2e-lf60`, session `66237a3e-c8ba-4f5d-abc5-61de67fbfe54`; `e2e-lf60c`, session `1de712ea-cf25-463c-a871-0d789c1e03f1` | `converged` | [live-runs/7.0/e2e-lf60-clean](live-runs/7.0/e2e-lf60-clean/), [live-runs/7.0/e2e-lf60c-declined-probe](live-runs/7.0/e2e-lf60c-declined-probe/) | Both leads were asked to prefix the plan-critic dispatch: first in the request text, then in the system prompt for the opt-in case. Both declined, saying it would break the step's attestation, and dispatched every step exactly. Each run converged with `rewinds: 0` and empty `weakenedAssurance`: PR live-7#18 and PR live-7#20. |
 
+## Timing: FastAPI services, `claude -p` and the Agent SDK
+
+Three requests, each a uv + Python 3.14 FastAPI service with pytest tests: `todo`
+(in-memory CRUD), `shortener` (SQLite), `inventory` (pagination, stock adjust with
+409). Each ran once under `claude -p --model sonnet` (Claude Code 2.1.280) and once
+under [`examples/sdk-plugin`](../../examples/sdk-plugin/) with `--model sonnet --auto`
+(claude-agent-sdk 0.2.157, bundled CLI 2.1.277), both headless with
+`--answer-policy default`, two runs at a time. Each fixture repository's `origin` is a
+local bare repository, so DELIVER always pushes and then stops at the PR step
+(`delivery blocked`); DELIVER itself takes seconds, and the operator's `stop`
+(by hand on 7.0.3, by policy on 7.0.4) turns it into the terminal `escalated`.
+Wall time is the launched process, start to exit. Evidence:
+[live-runs/7.0/fastapi-timing](live-runs/7.0/fastapi-timing/).
+
+| Run | Plugin | Wall | Cost | Turns | Rewinds | End |
+|---|---|---|---|---|---|---|
+| `todo-cli` | 7.0.3 `58639ed` | 1909 s | $6.29 | 75 | 0 | no result: LF-64 loop, the lead fixed the code outside any step |
+| `todo-sdk` | 7.0.3 `58639ed` | 1717 s | $8.65 | 110 | 0 | no result: LF-64 loop, then the LF-65 pause re-asked five times |
+| `shortener-cli` | 7.0.3 `58639ed` | 1173 s | $4.23 | 43 | 0 | `escalated` at DELIVER, verification passed |
+| `shortener-sdk` | 7.0.3 `58639ed` | 1279 s | $4.97 | 63 | 0 | `escalated` at DELIVER, verification passed |
+| `inventory-cli` | 7.0.3 `58639ed` | 2124 s | $6.52 | 84 | 1 | `escalated` at DELIVER, verification passed |
+| `inventory-sdk` | 7.0.3 `58639ed` | 957 s | $3.58 | 60 | 0 | `escalated` at DELIVER, verification passed |
+| `todo2-cli` | 7.0.4 `db0c744` | 1971 s | $8.12 | 93 | 1 | `escalated` at DELIVER by policy, verification passed |
+| `todo2-sdk` | 7.0.4 `db0c744` | 1094 s | $3.63 | 46 | 0 | `escalated` at DELIVER by policy, verification passed |
+
+A run with no rewind spent about 40 s in SPEC, 180 to 230 s in PLAN, 360 to 560 s in
+EXECUTE, 200 to 290 s in VERIFY and 80 to 120 s in ITERATE. Both rewinds were ITERATE
+forcing an open Important finding (a thread-pool race in the in-memory store) to
+PLAN, which then took 8 to 12 minutes: a re-plan the program rejected twice (criteria
+dropped, a new verify command with no baseline run) and a critic that re-raised a
+finding its own recommendation closed. The `todo` pair on 7.0.3 opened LF-64 to LF-66;
+on 7.0.4 the DELIVER question was answered `stop` by policy (LF-66 live). Neither
+7.0.4 review left a Critical open, so LF-64's route is shown by module tests only.
+`todo2-cli`'s lead once ran `cycle --request resume` instead of `--slug`, which started
+a stray run named `resume` that it abandoned after SPEC issued one step.
+
 ## Reading the evidence
 
 Each evidence directory holds the run's `result.json` (the shape `schemas/result.json`
