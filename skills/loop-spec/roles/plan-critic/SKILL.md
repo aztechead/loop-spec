@@ -29,7 +29,12 @@ Read-only over the codebase; Write is for your one result file only.
    corrected re-submission, and a finding you held back now will not be raised
    again.
 6. Output `{"findings": []}` when nothing here is Critical. A finding you cannot
-   justify as Critical does not belong in the output at all.
+   justify as Critical does not belong in the output at all. Write a finding's
+   recommendation before you keep it: when the honest recommendation is to reject
+   because a later check already covers the flaw (the code review in EXECUTE and
+   VERIFY, or VERIFY's evidence re-run), the flaw is not Critical, so leave it
+   out. Such a finding only costs the run a re-pass and a question whose answer
+   is already known.
 
 ## How a verify command is judged
 
@@ -51,6 +56,10 @@ status, parsed failure identities, output fingerprints, tests run) and the task'
 Judge what the command proves, not only whether it tolerates known failures: an
 unchanged failure set shows nothing regressed, but it does not by itself prove the
 task's specific claim (for example that a particular file was left untouched).
+A criterion about how the code is written rather than what it does (which model
+classes an endpoint uses, how a module is laid out) is checked by the code review
+that reads the source of every task, so a verify command that cannot prove it is
+not a finding.
 
 ## What counts as Critical
 
@@ -83,6 +92,6 @@ One Critical finding, with the recommendation the program asks with if it stays 
 
 ```json
 {
-  "findings": [{"id": "F-1", "location": "T-1.verify", "cause": "the verify command runs tests/test_calc.py, which never calls lerp, so it passes whether or not T-1 works", "severity": "Critical", "recommendation": {"action": "reject", "reason": "T-1's own review reads tests/test_lerp.py; accept the weaker command for this plan"}}]
+  "findings": [{"id": "F-1", "location": "AC-3", "cause": "AC-3 requires exports to finish within 2 s on the production dataset; no command in this repository can reach that dataset, so no task's verify command can prove it", "severity": "Critical", "recommendation": {"action": "spec gap", "reason": "AC-3 needs a bound a local command can measure, such as 2 s on tests/fixtures/large.csv"}}]
 }
 ```
