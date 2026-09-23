@@ -124,6 +124,11 @@ or the markers in section 6.
 | `.loop-spec/events.jsonl` | `<state home>/<repo id>/<slug>/events.jsonl` |
 | `refs/loop-spec/state/<slug>` | not available in 7.0 |
 
+`<repo id>` hashes the repository's first root commit, so it survives new remotes, renames,
+and clones. Two clones of one repository therefore share it: the same request run in both
+at once shares one run's state. Run concurrent work from different slugs, or give each
+scratch repository its own first commit.
+
 The state home resolves in this order: `--state-home`, else `$LOOP_SPEC_HOME`, else
 `~/.loop-spec/`. The Claude Code skills pass `--state-home ${CLAUDE_PLUGIN_DATA}`,
 which is a directory under `~/.claude/plugins/data/` (`ls -d ~/.claude/plugins/data/loop-spec*`).

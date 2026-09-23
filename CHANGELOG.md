@@ -4,6 +4,29 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.0.4] - 2026-09-23
+
+Four defects found by Sonnet FastAPI timing runs on 7.0.3 (claude -p and the Agent SDK
+plugin example), each fixed at its root with module tests:
+
+- LF-64: every verdict passing with a Critical review finding open made VERIFY exit
+  `passed`, which V7 rejected, and the re-review found the same finding until a blocked
+  question. VERIFY now exits `implementation gap` with one remediation task per finding,
+  reopening the plan task that owns the finding's file.
+- LF-65: a phase module's blocked pause (EXECUTE's out-of-band branch, leftover task
+  branch, unmapped commits) was asked but never linked, so its answer was ignored and
+  the pause re-asked forever. It now goes through the controller's blocked handler; the
+  branch pauses offer `stop` or `fix-and-re-enter` instead of the unhandled
+  `resume`/`abort`.
+- LF-66: fix-and-re-enter/stop questions had no default, so headless runs could not
+  answer them and the lead edited project code itself. They now list `stop` first and
+  default to it; every stub says the lead never edits the project or dispatches a worker
+  the program did not issue.
+- LF-67: a code-review submission from an unknown checkout raised StopIteration; it is
+  now a LoopSpecError naming the checkout.
+- Docs: `migrating-6-to-7.md` says two clones of one repository share a repo id and so
+  share a concurrent run's state.
+
 ## [7.0.3] - 2026-09-22
 
 Ten defects found by the 7.0.2 and 7.0.3 live runs (LF-54 to LF-63), each fixed at its root
