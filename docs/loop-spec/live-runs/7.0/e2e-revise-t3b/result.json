@@ -1,0 +1,109 @@
+{
+  "autonomous": true,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "feat/add-two-new-modules-to-the-calc-package",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": true,
+  "createdAt": "2026-09-22T21:13:49+00:00",
+  "cycleType": "revise",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [],
+        "deliveredSha": "1bc7881c1cf7edbb5040f7abe92ce1a446cdcd48",
+        "pr": {
+          "base": "main",
+          "headRef": "feat/add-two-new-modules-to-the-calc-package",
+          "headSha": "5f4c5882445e187f2df1967c8d1b1e7aefa033c2",
+          "number": 6,
+          "url": "https://github.com/aztechead/loop-spec-live-7/pull/6"
+        },
+        "repo": "consumer",
+        "state": "delivered"
+      }
+    ]
+  },
+  "eligibleTargets": [
+    {
+      "branch": "feat/add-two-new-modules-to-the-calc-package",
+      "targetSha": "1bc7881c1cf7edbb5040f7abe92ce1a446cdcd48"
+    }
+  ],
+  "feature_title": "revise PR #6: https://github.com/aztechead/loop-spec-live-7/pull/6",
+  "finishedAt": "2026-09-22T21:41:46+00:00",
+  "hostVersions": {
+    "claude": "2.1.280 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": true,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 1
+  },
+  "loopSpecVersion": "7.0.2",
+  "noChangeReason": null,
+  "outcome": "delivered",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [
+    "question-dc395512ea97",
+    "question-5c360556a44c"
+  ],
+  "prUrl": "https://github.com/aztechead/loop-spec-live-7/pull/6",
+  "prs": [
+    {
+      "number": 6,
+      "repo": "consumer",
+      "url": "https://github.com/aztechead/loop-spec-live-7/pull/6"
+    }
+  ],
+  "reason": null,
+  "result": "converged",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-565188483af2"
+    },
+    "T-2": {
+      "level": "host-attested",
+      "stepId": "step-565188483af2"
+    },
+    "T-3": {
+      "level": "host-attested",
+      "stepId": "step-c83322856ad8"
+    }
+  },
+  "rewinds": 1,
+  "schema": 1,
+  "slug": "revise-6",
+  "status": "completed",
+  "summary": "revise converged at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": "1bc7881c1cf7edbb5040f7abe92ce1a446cdcd48",
+  "warnings": [],
+  "weakenedAssurance": [],
+  "workDelivered": true
+}

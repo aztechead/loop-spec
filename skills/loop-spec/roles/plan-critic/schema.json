@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "required": ["findings"],
+  "additionalProperties": false,
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "location", "cause", "severity"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "cause": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["Critical", "Important", "Minor"]
+          },
+          "recommendation": {
+            "type": "object",
+            "required": ["action", "reason"],
+            "additionalProperties": false,
+            "description": "How to close this finding if the planner cannot fix it: 'spec gap' when the requirements must change, or 'reject' with the reason a reviewer could accept for proceeding. Advisory: it becomes the blocked question's default, never a disposition by itself.",
+            "properties": {
+              "action": {"type": "string", "enum": ["spec gap", "reject"]},
+              "reason": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    }
+  }
+}

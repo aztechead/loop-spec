@@ -1,0 +1,107 @@
+{
+  "autonomous": true,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "feat/lf-54-check-add-sign-x-to-calc-init-py-r",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": true,
+  "createdAt": "2026-09-22T21:46:12+00:00",
+  "cycleType": "full",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [],
+        "deliveredSha": "d331559325ec1c26f561f980ede5dc053a26e9bb",
+        "pr": {
+          "base": "main",
+          "headRef": "feat/lf-54-check-add-sign-x-to-calc-init-py-r",
+          "headSha": "d331559325ec1c26f561f980ede5dc053a26e9bb",
+          "number": 12,
+          "url": "https://github.com/aztechead/loop-spec-live-7/pull/12"
+        },
+        "repo": "consumer",
+        "state": "delivered"
+      }
+    ]
+  },
+  "eligibleTargets": [
+    {
+      "branch": "feat/lf-54-check-add-sign-x-to-calc-init-py-r",
+      "targetSha": "d331559325ec1c26f561f980ede5dc053a26e9bb"
+    }
+  ],
+  "feature_title": "LF-54 check: add sign(x) to calc/__init__.py returning -1, 0 or 1 by the sign of x, with pytest tests in tests/test_sign.py verified by '/private/tmp/claude-501/-Users-aztechead-Projects-loop-spec/aa3a1338-0fde-4f0c-a27e-945117d04f37/scratchpad/venv/bin/python -m pytest -q tests/test_sign.py'. The plan must also carry a regression check over the whole suite, '/private/tmp/claude-501/-Users-aztechead-Projects-loop-spec/aa3a1338-0fde-4f0c-a27e-945117d04f37/scratchpad/venv/bin/python -m pytest -q', as a verify command; that suite has a known failing test, tests/test_calc.py::test_preexisting_failure, which fails at base and stays untouched. [Operator: this is a headless run; pass --answer-policy default on the loop-spec cycle command.]",
+  "finishedAt": "2026-09-22T22:14:19+00:00",
+  "hostVersions": {
+    "claude": "2.1.280 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": true,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 0
+  },
+  "loopSpecVersion": "7.0.2",
+  "noChangeReason": null,
+  "outcome": "delivered",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [
+    "question-d171fb1ab3c3"
+  ],
+  "prUrl": "https://github.com/aztechead/loop-spec-live-7/pull/12",
+  "prs": [
+    {
+      "number": 12,
+      "repo": "consumer",
+      "url": "https://github.com/aztechead/loop-spec-live-7/pull/12"
+    }
+  ],
+  "reason": null,
+  "result": "converged",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-052e8c3aa404"
+    }
+  },
+  "rewinds": 0,
+  "schema": 1,
+  "slug": "lf-54-check-add-sign-x-to-calc-init-py-r",
+  "status": "completed",
+  "summary": "full converged at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": "d331559325ec1c26f561f980ede5dc053a26e9bb",
+  "warnings": [],
+  "weakenedAssurance": [
+    {
+      "attempts": 4,
+      "kind": "evidence.unattested-step",
+      "role": "iterate-judge",
+      "step": "step-50b2e560b9b1"
+    }
+  ],
+  "workDelivered": true
+}

@@ -1,0 +1,115 @@
+{
+  "autonomous": true,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "feat/partial-delivery-retest-on-the-two-repo",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": false,
+  "createdAt": "2026-09-22T21:45:58+00:00",
+  "cycleType": "full",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [],
+        "deliveredSha": "35075db9368d268975abcef5168fc70117534e9f",
+        "pr": {
+          "base": "main",
+          "headRef": "feat/partial-delivery-retest-on-the-two-repo",
+          "headSha": "35075db9368d268975abcef5168fc70117534e9f",
+          "number": 13,
+          "url": "https://github.com/aztechead/loop-spec-live-7/pull/13"
+        },
+        "repo": "calc",
+        "state": "delivered"
+      },
+      {
+        "caveats": [
+          "push rejected: fatal: '/nonexistent/loop-spec-live-7b.git' does not appear to be a git repository\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.; repair: fetch, resolve the out-of-band change, and resume (never force)"
+        ],
+        "deliveredSha": null,
+        "pr": null,
+        "repo": "textutil",
+        "state": "failed"
+      }
+    ]
+  },
+  "eligibleTargets": [],
+  "feature_title": "Partial-delivery retest on the two-repo workspace here (calc/ and textutil/, each its own git repo with its own remote). Add lerp(a, b, t) to calc/calc/__init__.py returning a + (b - a) * t, with pytest tests in calc/tests/test_lerp.py verified by '/private/tmp/claude-501/-Users-aztechead-Projects-loop-spec/aa3a1338-0fde-4f0c-a27e-945117d04f37/scratchpad/venv/bin/python -m pytest -q tests/test_lerp.py' (a featureAdded check on the new file; the existing suite's known failing test stays untouched). Add capitalize_words(s) to textutil/textutil/__init__.py returning s with each space-separated word capitalized, with a unittest.TestCase in textutil/tests/test_capitalize.py verified by 'python3 -m unittest discover -s tests -p test_capitalize.py'. Each repo gets its own PR against main. [Operator: this is a headless run; pass --answer-policy default on the loop-spec command.]",
+  "finishedAt": "2026-09-22T22:23:17+00:00",
+  "hostVersions": {
+    "claude": "2.1.280 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": false,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 0
+  },
+  "loopSpecVersion": "7.0.2",
+  "noChangeReason": null,
+  "outcome": "escalated",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [
+    "question-3f5e49d958b1"
+  ],
+  "prUrl": "https://github.com/aztechead/loop-spec-live-7/pull/13",
+  "prs": [
+    {
+      "number": 13,
+      "repo": "calc",
+      "url": "https://github.com/aztechead/loop-spec-live-7/pull/13"
+    }
+  ],
+  "reason": "deliver paused; operator chose 'stop'",
+  "result": "escalated",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-071f4d15626f"
+    },
+    "T-2": {
+      "level": "host-attested",
+      "stepId": "step-4b9f16d421e2"
+    }
+  },
+  "rewinds": 0,
+  "schema": 1,
+  "slug": "partial-delivery-retest-on-the-two-repo",
+  "status": "escalated",
+  "summary": "full escalated at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": null,
+  "warnings": [],
+  "weakenedAssurance": [
+    {
+      "attempts": 4,
+      "kind": "evidence.unattested-step",
+      "role": "iterate-judge",
+      "step": "step-07ff80f9bdf7"
+    }
+  ],
+  "workDelivered": true
+}

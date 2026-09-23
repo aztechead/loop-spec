@@ -1,0 +1,176 @@
+{
+  "type": "object",
+  "required": ["spec", "plan"],
+  "additionalProperties": false,
+  "$defs": {
+    "spec": {
+      "type": "object",
+      "required": ["goal", "boundaries", "criteria", "decisions", "openQuestions"],
+      "additionalProperties": false,
+      "properties": {
+        "goal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "boundaries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "text"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^AC-[0-9]+$"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "text"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "openQuestions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "text"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "required": ["tasks", "prepare", "evidenceExceptions"],
+      "additionalProperties": false,
+      "properties": {
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "title", "dependsOn", "files", "repo", "verify", "criteria", "featureAdded", "mustFlip"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[TR]-[0-9]+$"
+              },
+              "title": {
+                "type": "string"
+              },
+              "dependsOn": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "repo": {
+                "type": "string"
+              },
+              "verify": {
+                "type": "string"
+              },
+              "criteria": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "featureAdded": {
+                "type": ["string", "null"]
+              },
+              "mustFlip": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "prepare": {
+          "type": ["string", "null"]
+        },
+        "evidenceExceptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["criterion", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "criterion": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "criticResponses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["findingId", "disposition", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "findingId": {
+                "type": "string"
+              },
+              "disposition": {
+                "type": "string",
+                "enum": ["fixed", "rejected"]
+              },
+              "reason": {
+                "type": ["string", "null"]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "spec": {
+      "$ref": "#/$defs/spec"
+    },
+    "plan": {
+      "$ref": "#/$defs/plan"
+    }
+  }
+}

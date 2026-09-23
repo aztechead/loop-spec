@@ -1,0 +1,309 @@
+{
+  "type": "object",
+  "required": [
+    "exit",
+    "inputsDigest",
+    "boundTo",
+    "verdicts",
+    "findings",
+    "remediationTasks",
+    "reviewedRanges"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": [
+        "id",
+        "location",
+        "cause",
+        "severity",
+        "disposition",
+        "reason",
+        "supersedes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string",
+          "description": "Which touched repo the finding is in; optional because a single-repo run's findings need not name one."
+        },
+        "location": {
+          "type": "string"
+        },
+        "cause": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "Critical",
+            "Important",
+            "Minor"
+          ]
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "rejected",
+            "deferred",
+            "open"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "supersedes": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "id"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "finding",
+                    "range"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "planTask": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "dependsOn",
+        "files",
+        "repo",
+        "verify",
+        "criteria",
+        "featureAdded",
+        "mustFlip"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[TR]-[0-9]+$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "dependsOn": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "repo": {
+          "type": "string"
+        },
+        "verify": {
+          "description": "One argv command, run with no shell: no &&, ||, |, ;, redirection, newlines, $ expansion, backticks, leading ~ or #, unquoted * ? [, or NAME=value prefix. Quote literals and patterns the program reads itself; call a venv's python by its path.",
+          "type": "string"
+        },
+        "criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "featureAdded": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "A target file PATH that does not exist at base, never a command. null for a task whose verify target already exists at base."
+        },
+        "mustFlip": {
+          "type": "boolean",
+          "description": "true only for a debug repair task whose verify command is the failing reproduction; false for every ordinary task."
+        }
+      }
+    }
+  },
+  "properties": {
+    "exit": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "implementation gap",
+        "plan gap",
+        "intent gap",
+        "evidence incomplete",
+        "blocked"
+      ]
+    },
+    "inputsDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "boundTo": {
+      "type": "object",
+      "required": [
+        "requirements",
+        "plan"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "requirements": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "verdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "criterion",
+          "verdict",
+          "evidence",
+          "cause"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "criterion": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "blocked"
+            ]
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "command",
+                  "repo",
+                  "sha",
+                  "exitStatus",
+                  "failureIdentities",
+                  "outputDigest"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "description": "One argv command, run with no shell: no &&, ||, |, ;, redirection, newlines, $ expansion, backticks, leading ~ or #, unquoted * ? [, or NAME=value prefix. Quote literals and patterns the program reads itself; call a venv's python by its path.",
+                    "type": "string"
+                  },
+                  "repo": {
+                    "type": "string",
+                    "description": "The repo this evidence's command ran in; V3 checks `sha` against this repo's verified head."
+                  },
+                  "sha": {
+                    "type": "string"
+                  },
+                  "exitStatus": {
+                    "type": "integer"
+                  },
+                  "failureIdentities": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "outputDigest": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "cause": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "remediationTasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/planTask"
+      }
+    },
+    "reviewedRanges": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "repo",
+          "from",
+          "to",
+          "full"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "full": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

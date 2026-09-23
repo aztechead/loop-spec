@@ -1,0 +1,98 @@
+{
+  "autonomous": false,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "feat/add-is-negative-n-to-calc-init-py-return",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": true,
+  "createdAt": "2026-09-22T20:48:00+00:00",
+  "cycleType": "micro",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [],
+        "deliveredSha": "6fd99fdee428905b92b15912e7ed0f791fa34cb2",
+        "pr": {
+          "base": "main",
+          "headRef": "feat/add-is-negative-n-to-calc-init-py-return",
+          "headSha": "6fd99fdee428905b92b15912e7ed0f791fa34cb2",
+          "number": 11,
+          "url": "https://github.com/aztechead/loop-spec-live-7/pull/11"
+        },
+        "repo": "sdkp-consumer",
+        "state": "delivered"
+      }
+    ]
+  },
+  "eligibleTargets": [
+    {
+      "branch": "feat/add-is-negative-n-to-calc-init-py-return",
+      "targetSha": "6fd99fdee428905b92b15912e7ed0f791fa34cb2"
+    }
+  ],
+  "feature_title": "Add is_negative(n) to calc/__init__.py returning True when n < 0 and False otherwise, with pytest tests in tests/test_is_negative.py verified by '/private/tmp/claude-501/-Users-aztechead-Projects-loop-spec/aa3a1338-0fde-4f0c-a27e-945117d04f37/scratchpad/venv/bin/python -m pytest -q tests/test_is_negative.py'. The existing suite's known failing test stays untouched.",
+  "finishedAt": "2026-09-22T20:58:13+00:00",
+  "hostVersions": {
+    "claude": "2.1.280 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": true,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 0
+  },
+  "loopSpecVersion": "7.0.2",
+  "noChangeReason": null,
+  "outcome": "delivered",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [],
+  "prUrl": "https://github.com/aztechead/loop-spec-live-7/pull/11",
+  "prs": [
+    {
+      "number": 11,
+      "repo": "sdkp-consumer",
+      "url": "https://github.com/aztechead/loop-spec-live-7/pull/11"
+    }
+  ],
+  "reason": null,
+  "result": "converged",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-f1354740735f"
+    }
+  },
+  "rewinds": 0,
+  "schema": 1,
+  "slug": "add-is-negative-n-to-calc-init-py-return",
+  "status": "completed",
+  "summary": "micro converged at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": "6fd99fdee428905b92b15912e7ed0f791fa34cb2",
+  "warnings": [],
+  "weakenedAssurance": [],
+  "workDelivered": true
+}

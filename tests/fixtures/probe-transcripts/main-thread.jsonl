@@ -1,2 +1,0 @@
-{"type":"user","message":{"content":[{"type":"text","text":"Run the loop-spec cycle for feature foo"}]}}
-{"type":"assistant","message":{"content":[{"type":"text","text":"Starting loop-spec cycle for feature foo..."}]}}

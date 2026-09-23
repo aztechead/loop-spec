@@ -1,0 +1,149 @@
+{
+  "type": "object",
+  "required": [
+    "stepAttemptId",
+    "kind",
+    "role",
+    "phase",
+    "cwd",
+    "prompt",
+    "resultPath",
+    "schema",
+    "postconditions",
+    "attempt",
+    "inputsDigest",
+    "issuedAt",
+    "retryOf",
+    "reason"
+  ],
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "required": [
+        "transport",
+        "dispatchPrompt",
+        "instructionPath"
+      ],
+      "properties": {
+        "transport": {
+          "const": "file"
+        }
+      }
+    },
+    {
+      "properties": {
+        "transport": {
+          "const": "prompt"
+        }
+      }
+    }
+  ],
+  "properties": {
+    "stepAttemptId": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "role",
+        "lead",
+        "external"
+      ]
+    },
+    "role": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "phase": {
+      "type": "string"
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "resultPath": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "object"
+    },
+    "postconditions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "attempt": {
+      "type": "string"
+    },
+    "inputsDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "issuedAt": {
+      "type": "string"
+    },
+    "retryOf": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "transport": {
+      "description": "How the worker receives the prompt: absent or prompt = the Agent prompt is the whole composed prompt (legacy); file = the Agent prompt is dispatchPrompt and the worker reads instructionPath (LF-59).",
+      "type": "string",
+      "enum": [
+        "prompt",
+        "file"
+      ]
+    },
+    "dispatchPrompt": {
+      "type": "string"
+    },
+    "instructionPath": {
+      "type": "string"
+    },
+    "model": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "attestationAttempts": {
+      "type": "integer"
+    },
+    "readSchedule": {
+      "description": "LF-61: the Read calls a file-transport worker is told to make, in order: contiguous line ranges covering the instruction file exactly once, each within the read budget.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "offset",
+          "limit"
+        ],
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    }
+  }
+}

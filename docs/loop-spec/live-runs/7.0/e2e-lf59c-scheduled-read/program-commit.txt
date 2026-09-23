@@ -1,0 +1,1 @@
+Plugin checkout this run read: c68fae2 (LF-61) for SPEC through the first VERIFY (launches e2e-lf59c and e2e-lf59c-r1); ffcd87a (LF-63, which includes LF-62) from the first ITERATE on (launch e2e-lf59c-r2). The PLAN critic question-2c0e620395b4 was answered by the operator by hand (by: human); question-ab67b2ad307a was answered by policy on ffcd87a.

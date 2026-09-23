@@ -1,0 +1,275 @@
+# Re-audit of the 7.0 phase-interface contract
+
+Reviewed revision: `f0a7202`. Scope: the updated [roadmap](ROADMAP-7.0.md), the
+current-position section of the [runner document](runner-decision-7.0.md), and all
+nine findings in the [previous review](phase-interface-review-7.0.md).
+
+Verdict: substantial progress, but the opening claim that all nine findings are
+closed is premature. The phase-interface architecture remains reasonable. The
+remaining issues concern its acceptance policy, evidence execution, and consistency.
+These are findings about the proposed contract, not tests of implemented 7.0 code.
+
+## Previous findings
+
+| Finding | Current assessment |
+|---|---|
+| F1: file receipt versus execution | Partial. Transport is correctly distinguished, but acceptance of unattested reviews and dispatch binding remain unspecified. |
+| F2: sampling and unsupported PASS | The sampling counterexample and semantic overclaim are addressed. Full re-runs introduce the reproducibility and checkout issues below. |
+| F3: missing tasks | Closed in the written contract: required dispositions, dependency completion, and commit mapping are explicit. |
+| F4: approval scope | Closed in the written contract: criteria and decisions are revisioned and approval comes from a correlated human/policy answer. |
+| F5: wrong PR/readiness | The original PR-identity and check counterexamples are addressed. No-change routing and result compatibility remain incomplete. |
+| F6: identity/lifecycle/ownership | Mostly addressed: attempt IDs, atomic publication, stale rejection, idempotence, and cooperative trust are explicit. Retired workers' repository writes still need handling. |
+| F7: stream compatibility | Partial: stream exceptions and output style are addressed; schema-1 outcome compatibility is not. |
+| F8: missing routes | Partial: new environment failures, VERIFY rewinds, partial delivery, and typed coverage are addressed. No-change and feature-added checks remain inconsistent. |
+| F9: context/format-only | Addressed in the roadmap as explicit choices. The runner document's current-position section still contradicts them. |
+
+“Closed” here means that the stated counterexample is rejected by the written
+contract. Implementation and live-host evidence remain future work.
+
+## Remaining findings
+
+### R1 — P1: review evidence can still be optional at acceptance
+
+Roadmap lines 221–233 and EXECUTE at line 143.
+
+The EXECUTE row requires an evidence level to be recorded, not an acceptable level.
+Section 5 says policy *can* require a minimum. Without one, the original fabricated
+review can be recorded as `unattested`, included in `reviewed`, and accepted as
+`integrated`. Section 6 still promises no unreviewed commits.
+
+Also, checking that a transcript postdates the step and contains its result digest
+does not establish that the requested review role ran against the assigned input
+range. An implementation session can contain the same digest.
+
+Specify default accepted evidence classes per role and mode. An unattested review
+must not satisfy a guaranteed-review gate by default; an explicit exception must
+remain visible as weaker assurance. Host attestation needs to bind the actual
+completed dispatch, role/method, attempt/input digest, repository, and reviewed range
+to the result. Probe that mechanism in native Claude Code before making the native
+path depend on it. An unavailable transcript must not silently force SDK credentials
+or claim a review happened.
+
+### R2 — P1: exact output-digest equality recreates a reported failure class
+
+Roadmap VERIFY row at line 144.
+
+Two successful runs of the same test commonly print different elapsed times,
+temporary paths, or output order. The proposed raw output digests differ, so the
+boundary rejects valid verification. Repeating the step cannot make elapsed times
+reliably identical. The report's baseline failure was also caused by treating
+incidental output changes as meaningful regressions.
+
+Keep a raw digest for provenance, but compare explicitly defined semantic evidence:
+command identity, exit status, parsed test/failure identities, criterion observations,
+and a versioned normalization rule where appropriate. State what happens for
+nondeterministic commands and commands that cannot safely be repeated. Section 11's
+baseline normalization does not currently apply to this new evidence comparison.
+
+### R3 — P1: the evidence SHA does not establish the tested repository contents
+
+Roadmap VERIFY row at line 144 and cancellation at lines 208–210.
+
+The controller re-runs in the implementation-supplied working directory. A checkout
+can have HEAD at the expected SHA while uncommitted edits make a failing test pass.
+Both the worker and controller can observe the same passing result there, but the
+committed and delivered tree remains broken. Neither matching SHA fields nor
+matching command output detects that condition.
+
+A retired native worker is another source of these changes: rejecting its result
+does not stop it editing a worktree reused by the next attempt. The plan explicitly
+allows the host process to remain alive.
+
+Bind evidence to controller-resolved repository/worktree identity and a known source
+snapshot. Run checks in a clean checkout of the target commit, with declared
+environment fixtures, or define equivalent dirty-tree detection before and after.
+Keep still-live retired attempts' workspaces separate from new attempts, and do not
+integrate or delete them while their lifecycle is unresolved. This is accidental
+concurrency handling within the cooperative-worker model, not a hostile-worker
+sandbox requirement.
+
+### R4 — P1: “schema 1 kept additively” changes existing result meanings
+
+Roadmap lines 571–577 versus `agent-output-contract.md` lines 88–160.
+
+The existing no-change result uses `outcome: no-change-needed`, an explicit
+`noChangeReason`, and validated convergence. The roadmap replaces that outcome with
+`no-change` while calling the mapping additive. It likewise introduces `converged`
+and `converged-with-caveats` as existing-field outcomes without mapping the current
+`converged`, `implementationConverged`, `workDelivered`, verification, draft/readiness,
+and retry fields. Existing consumers can misclassify or fail to recognize results.
+
+Deferring a matrix to M1 is reasonable, but does not make the stated mapping
+compatible. Preserve the old fields and meanings and add a separate classification,
+or declare a versioned migration. Include no-change, delivered draft, caveats,
+partial workspace publication, interruption, and delivery-blocked fixtures. Do not
+close F7 until the mapping is defined.
+
+### R5 — P2: no-change and feature-added routes still conflict
+
+Roadmap phase table, section 11, and milestone M1.
+
+EXECUTE explicitly prohibits `integrated` for an empty range, while VERIFY requires
+an integrated head and ITERATE requires VERIFY passed. DELIVER mentions no-change
+but still requires ITERATE. Thus an already-satisfied request has no explicit path
+through the required verification and goal checks. M1 asks for an empty cycle,
+making this relevant before implementation begins.
+
+Separately, PLAN permits a `feature-added` check that cannot run at base. Section 11
+still requires every plan command to run at base, and EXECUTE compares each command
+against a baseline that does not exist for that new check. Define a baseline state
+for unavailable-at-base checks and require meaningful candidate success at first
+integration. Absence at base is neither failure evidence nor automatic tolerance.
+
+Specify a validated unchanged candidate head that can enter VERIFY and ITERATE,
+then terminate without a PR. Make no-change eligibility explicit rather than
+bypassing those phases. Reconcile the feature-added exception across all three rows.
+
+### R6 — P2: the two documents still contradict their recorded decisions
+
+Runner document lines 19–21 and 38–50; roadmap sections 6, 8, and 18.
+
+The runner document's current-position section still says boundary checks make a
+valid product unable to describe false completion and that `external` supplies the
+pure instruction-led option. The roadmap now correctly limits semantic guarantees
+and explicitly calls external a change from format-only behavior. These are current
+claims, not preserved historical review text.
+
+The roadmap also says workers are unsandboxed and can access state in section 6,
+then says a borrowed skill cannot reach state in section 8. Milestone M4 still names
+a spot check after the contract switched to full re-runs. The runner's pointers to
+section 8 as the runner decision are stale; it is now section 9.
+
+Update the current-position text and these stale assertions. Keep the old comparison
+as historical evidence if desired, but do not describe conflicting current claims
+as resolved.
+
+## Validation
+
+- Read the updated phase table, lifecycle, trust, default implementations,
+  convergence, baseline, output contract, live gates, and milestones.
+- Compared each prior finding with its proposed correction and the current runner
+  position. Checked result mappings against the existing consumer contract.
+- Used a disposable Git fixture to confirm that HEAD can remain unchanged while
+  modified working-tree content satisfies a check. The fixture was removed.
+- Confirmed that identical pass counts with different elapsed-time text produce
+  different raw output hashes. This demonstrates R2's equality problem, not the
+  behavior of a future 7.0 verifier.
+
+Native Claude Code support remains explicit: existing login, lead interviews,
+settings/permissions, output style, and a separate live gate. The new attestation
+mechanism must be proven there without silently downgrading acceptance or requiring
+SDK authentication. No paid model calls or live compatibility tests were run.
+
+
+## Follow-up at revision 88569d7
+
+The main corrections are present in the files. R1's default acceptance hole is
+closed in the written contract: unattested review is rejected by default, exceptions
+are explicit, and host evidence binds the dispatch opening and result. Native
+transcript access remains a live feasibility gate, not a demonstrated capability.
+R2's raw-hash comparison is replaced by normalized evidence. R3's re-run checkout is
+controller-owned and retired workspaces are not reused. R5's no-change and
+feature-added paths are reconciled. R6's identified contradictions are removed.
+
+Three issues prevent full closure:
+
+### Follow-up A — P1: the caveats mapping still changes schema-1 semantics
+
+Roadmap section 15, line 636, maps `converged-with-caveats` “as converged,” which
+inherits `outcome: delivered` and `converged: true`, then sets the draft flag.
+The existing `agent-output-contract.md`, lines 150–157, treats draft delivery as
+`outcome: delivered-draft`, `converged: false`, and `workDelivered: true`; unresolved
+iteration warnings can instead classify it as `completed-with-gaps`.
+`lib/cycle-result.sh`, particularly its outcome selection around line 968, also
+makes these distinctions.
+
+Adding the new `result` field is compatible. Reusing the old ready-delivery flags
+for a draft with outstanding findings is not. Derive every legacy field from the
+existing 6.9 classification rules, then add `result: converged-with-caveats` without
+changing those legacy meanings. Include both a clean draft and a draft with
+outstanding iteration gaps in the M1 fixtures. R4/F7 remain open as the plan now
+acknowledges. Also distinguish M0 contract closure from M1 fixture validation:
+M0 currently requires F7 closed while section 15 holds it open until M1.
+
+### Follow-up B — P1: non-repeatable evidence is a self-selected exemption
+
+The VERIFY row at line 147 accepts `repeatable: false` with a reason, skips the
+controller re-run, and records assurance `claimed`. The same row accepts `passed`
+when all verdicts are pass and review policy holds. It does not require permission
+to take the exemption, an accepted assurance class for verification, or a visible
+result-level downgrade comparable to the review exception.
+
+An implementation can therefore label unsupported passing evidence non-repeatable
+and avoid the independent observation that resolved F2. Legitimately non-repeatable
+checks need support, but exception authority must live outside the implementation:
+for example, an approved criterion policy or correlated operator decision. Specify
+which independent or human attestation suffices, the default route when it is absent,
+and how weaker evidence affects classification and `weakenedAssurance`. A reason
+explains a claim; it does not authorize accepting it.
+
+The normalization correction itself is accepted. This is a new gap introduced by
+its non-repeatable exception, not a request to restore raw-digest equality.
+
+### Follow-up C — P2: elapsed grace time does not establish worker termination
+
+Roadmap section 5, lines 217–224, permits deletion after either host-confirmed
+completion or an operator-set grace period. The latter permits removing a directory
+under a still-running native worker, potentially losing its remaining edits or
+invalidating its tool working directory. Retiring a step prevents acceptance of its
+result, but does not stop filesystem writes.
+
+Use grace expiry to request cancellation, report a cleanup backlog, or quarantine
+the workspace. Delete only after confirmed dispatch termination or verified cleanup
+of a controller-owned process. If the host cannot establish termination, retain the
+retired worktree and expose it for cleanup. The clean-checkout verification fix and
+non-reuse rule are accepted; only this cleanup clause remains unresolved from R3.
+
+### Runner decision
+
+Recommend shipping both runners: native execution for interactive Claude Code, and
+direct SDK execution for unattended deployments using supported authentication.
+The shared phase contract and validators remain the same. This recommendation does
+not authorize silently switching an interactive user to SDK credentials.
+
+Make the native attestation probe an early implementation feasibility gate and native
+Claude Code an independent cutover gate. A successful SDK run cannot compensate for
+failure there. If native attestation is unavailable, the documented human-attested
+or explicitly weakened paths are choices, but the maintainer must decide whether
+they meet the promised native workflow before release. Do not call SDK availability
+proof that Claude Code compatibility has been preserved.
+
+Validation for this follow-up: reviewed the revision diff, the changed contract rows,
+the evidence policy, and the current 6.9 result documentation and implementation.
+No live model/host tests were run, and the favored-plan documents were not modified.
+
+
+## Closure check at revision 808985d
+
+The three follow-up counterexamples are closed at the written-contract level.
+This does not close implementation testing or the separately tracked F7 consumer
+compatibility gate.
+
+| Follow-up | Resolution verified in the current files | Status |
+|---|---|---|
+| A: draft incorrectly inherits ready-delivery convergence | The caveats row now uses `delivered-draft`, `workDelivered: true`, and `converged: false`. The rule retains legacy convergence semantics and places the new classification only in `result`. | Contract correction accepted; F7 remains open for the M1 compatibility fixtures. |
+| B: self-selected evidence exemption | VERIFY requires approval outside the implementation, through approved PLAN policy or a correlated operator answer. Claimed evidence is reported under `weakenedAssurance`. | Closed in the contract. |
+| C: cleanup deletes an active worker's directory after a timeout | Grace expiry cancels where possible, quarantines, and reports a cleanup backlog. Deletion requires confirmed termination; expiry alone cannot trigger it. | Closed in the contract. |
+
+The both-runner decision is consistent in the roadmap and the runner document.
+The auditor continues to recommend it. Native Claude Code remains an independent
+release gate, and the program does not silently move an interactive user to SDK
+authentication. Native attestation is explicitly an early feasibility gate. If the
+probe fails, accepting human attestation or weaker assurance is a maintainer release
+decision, not an automatic fallback or an audit claim of native parity.
+
+Outstanding work remains explicit: the migration inventory, standalone route
+matrix, supported host versions, native attestation probe, M1 compatibility fixtures,
+and the separate live gates. The legacy mapping fixtures must include the existing
+`completed-with-gaps` rules for blocking feedback or iteration-budget warnings,
+as well as `delivered-draft`, `delivered-unready`, and partial delivery. The corrected
+convergence boolean alone is not proof that every legacy classification round-trips.
+
+This check reviewed the commit diff, the phase and approval requirements, cleanup
+lifecycle, both runner-position sections, and the existing result writer around
+`lib/cycle-result.sh` lines 932–968. No new plan-level blocking finding was identified
+in those changes. No 7.0 runtime or live-host validation was performed.

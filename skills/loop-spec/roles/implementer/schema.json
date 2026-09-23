@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "required": ["taskId", "commits", "summary", "verifyRun", "issues"],
+  "additionalProperties": false,
+  "properties": {
+    "taskId": {
+      "type": "string",
+      "pattern": "^[TRC]-[0-9]+$"
+    },
+    "commits": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{7,40}$"
+      }
+    },
+    "summary": {
+      "type": "string"
+    },
+    "verifyRun": {
+      "type": "object",
+      "required": ["command", "exitStatus"],
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "exitStatus": {
+          "type": "integer"
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

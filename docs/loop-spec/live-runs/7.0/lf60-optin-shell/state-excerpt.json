@@ -1,0 +1,27 @@
+{
+  "attestationWaivers": [
+    {
+      "attempts": 1,
+      "kind": "evidence.unattested-step",
+      "policy": "evidence.judgment.accept",
+      "role": "plan-critic",
+      "source": "config",
+      "step": "step-1d0b170ade4e"
+    }
+  ],
+  "critic": {
+    "findings": [],
+    "inputsIdentity": "sha256:c76e118d11a75d74dcee09f371fb4006be7f3db29608b2ed7fbc2647bc80f094",
+    "passes": 1,
+    "planRevision": "sha256:2b08783f0e933006f144d015f8802b1ac622e90135e3ba74623ce94be15a5183",
+    "stepId": "step-1d0b170ade4e"
+  },
+  "criticSubmission": {
+    "attestation": null,
+    "digest": "sha256:b8adad3852f196db84ad05c2affa3855c7e15d1c9d24c62c8d32165e34a82c39",
+    "dispatch": null,
+    "evidenceLevel": "unattested",
+    "submittedAt": "2026-09-23T01:33:50+00:00"
+  },
+  "phase": "execute"
+}

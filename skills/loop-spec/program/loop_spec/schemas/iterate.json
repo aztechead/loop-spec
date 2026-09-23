@@ -1,0 +1,100 @@
+{
+  "type": "object",
+  "required": [
+    "exit",
+    "inputsDigest",
+    "boundTo",
+    "verdict",
+    "gaps",
+    "caveats",
+    "boundShas"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "exit": {
+      "type": "string",
+      "enum": [
+        "converged",
+        "converged with caveats",
+        "rewind",
+        "escalated"
+      ]
+    },
+    "inputsDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "boundTo": {
+      "type": "object",
+      "required": [
+        "requirements",
+        "plan"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "requirements": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "met",
+        "unmet"
+      ]
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "target",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": [
+              "spec",
+              "plan",
+              "execute",
+              "verify"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "findingId": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "caveats": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "boundShas": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
+}

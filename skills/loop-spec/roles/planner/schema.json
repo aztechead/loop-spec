@@ -1,0 +1,167 @@
+{
+  "type": "object",
+  "required": [
+    "exit",
+    "inputsDigest",
+    "boundTo",
+    "tasks",
+    "prepare",
+    "evidenceExceptions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "exit": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "spec gap"
+      ]
+    },
+    "inputsDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "boundTo": {
+      "type": "object",
+      "required": [
+        "requirements",
+        "plan"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "requirements": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "dependsOn",
+          "files",
+          "repo",
+          "verify",
+          "criteria",
+          "featureAdded",
+          "mustFlip"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[TR]-[0-9]+$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "dependsOn": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "repo": {
+            "type": "string"
+          },
+          "verify": {
+            "description": "One argv command, run with no shell: no &&, ||, |, ;, redirection, newlines, $ expansion, backticks, leading ~ or #, unquoted * ? [, or NAME=value prefix. Quote literals and patterns the program reads itself; call a venv's python by its path.",
+            "type": "string"
+          },
+          "criteria": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "featureAdded": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A target file PATH that does not exist at base, never a command. null for a task whose verify target already exists at base."
+          },
+          "mustFlip": {
+            "type": "boolean",
+            "description": "true only for a debug repair task whose verify command is the failing reproduction; false for every ordinary task."
+          }
+        }
+      }
+    },
+    "prepare": {
+      "description": "One argv command, run with no shell: no &&, ||, |, ;, redirection, newlines, $ expansion, backticks, leading ~ or #, unquoted * ? [, or NAME=value prefix. Quote literals and patterns the program reads itself; call a venv's python by its path.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidenceExceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "criterion",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "criterion": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "criticResponses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "findingId",
+          "disposition",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "findingId": {
+            "type": "string"
+          },
+          "disposition": {
+            "type": "string",
+            "enum": [
+              "fixed",
+              "rejected"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

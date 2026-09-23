@@ -1,83 +1,62 @@
-# Reliability of specs, loops, and graph recovery
+# Trusting a 7.x result
 
-For maintainers changing the workflow: this explains the reliability decisions behind
-the 6.0 release and the evidence that can falsify them. Source review cutoff: September
-4, 2026. These are engineering recommendations drawn from primary sources, not a claim
-that the three development approaches share a formal industry standard.
+For someone deciding whether to trust a 7.x run's result: what the program
+proves about it, and what stays judgment. Full detail:
+[ROADMAP-7.0.md](ROADMAP-7.0.md).
 
-## Specs are testable contracts
+## The identities
 
-[GitHub Spec Kit's analysis command](https://github.com/github/spec-kit/blob/main/templates/commands/analyze.md)
-checks consistency and coverage across requirements, plans, and tasks. Loop-spec already
-has task criteria, decision coverage, and repository grounding. The gap was at convergence:
-a missing specification or a result marked PENDING could still clear the mechanical floor.
+Every run, phase attempt, and worker step has its own id; every question has
+a one-time id. Every context, product, and result carries an inputs digest,
+so a stale product is rejected without reading further. `state.json` has one
+writer, the program, which refuses to continue over a file whose digest no
+longer matches what it last wrote (section 5).
 
-`lib/converged-floor.sh` now requires a readable Good Enough contract, grounding for each
-GE identifier, and exactly one PASS acceptance result per criterion. Acceptance rows use
-the criterion's number or GE identifier in the `#` column; the header names the status
-column (`Status` or `Result`), and the cell begins with PASS, FAIL, or N/A. VERIFY's exit
-runs the same parser with `--shape`, so a table the floor cannot read is a REDO in VERIFY,
-never a veto of a converged verdict that rewinds through an empty EXECUTE. A grounding row establishes where the behavior
-lives; it does not replace the acceptance result. Semantic agreement between a requirement
-and its implementation still needs the goal judge and reviewer.
+## Evidence levels
 
-`lib/phase-exit.sh` enforces the floor before accepting a converged ITERATE verdict,
-so omitting a prose instruction cannot skip this check.
+A result file on disk proves a result was published, not who produced it — a
+lead recovering from a failed dispatch can write a plausible one itself. So
+every worker step carries an evidence level the program sets, never the
+implementation:
 
-Evidence: `tests/lib/converged-floor.test.sh` exercises missing contracts, missing results,
-PENDING/SKIP/UNKNOWN outcomes as failures, the verifier's four-column table, and `--shape`;
-`tests/lib/phase-exit.test.sh` pins the VERIFY-exit flag.
+- `controller-observed`: the program spawned the worker and consumed its
+  output. Only the SDK runner gives this.
+- `host-attested`: the host's transcript for the submitted dispatch id
+  postdates the step, opens with the prompt's identity, ends with the digest.
+- `human-attested`: an external phase, attested by a named answer.
+- `unattested`: none of the above.
 
-## Loops need outcome evidence and durable handoffs
+Only `controller-observed` and `host-attested` are accepted for a review by
+default; `unattested` blocks `integrated` unless `evidence.review.accept:
+"unattested"` is set, listing the task in `weakenedAssurance` (section 5). A
+review, PLAN critic, or ITERATE judge step with no accepted evidence after its
+re-dispatches is refused and stops the run at a blocked question, unless
+`evidence.review.accept` or `evidence.judgment.accept` opts that role in. No
+level says the review was thorough — that stays judgment (section 6).
 
-[Anthropic's evaluation guidance](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)
-distinguishes outcomes from an agent's trajectory and recommends inspecting evaluation
-failures. Its [March 2026 harness experiments](https://www.anthropic.com/engineering/harness-design-long-running-apps)
-also stress evaluating which orchestration components improve results before retaining
-their complexity. Loop-spec already separates implementation from judging and bounds
-iteration. This release strengthens the state and tests those mechanisms depend on.
+## What the program re-runs itself
 
-Feature writes serialize field updates and preserve a continuously readable current
-file. Resume carries the selected slug rather than choosing the first directory in a
-shared checkout. The complete offline test command includes integration and harness
-suites; selecting a suite cannot silently omit it.
+A baseline runs every plan-declared command once at base, before EXECUTE
+starts; a task's verify command must add no new failure identity against it
+(E7). VERIFY re-runs every cited command in a clean checkout of the verified
+SHA it creates, comparing exit status, failure identity, and normalized
+output (V4). Neither proves a command tests the right thing, only that it
+produces the claimed result (section 11; full list:
+[contract.md](../../skills/loop-spec/references/contract.md#products)).
 
-Evidence: `tests/lib/feature-write.test.sh`, `tests/lib/cycle-driver-*.test.sh`, and
-`tests/run-all.test.sh`. Concurrent callers serialize per feature; state processing is
-linear in the state document's size. Full snapshot replacement is still an overwrite,
-so concurrent callers use field operations.
+## The budget and terminal results
 
-## Graphs distinguish admission from completion
+One shared budget bounds every backward transition, counted once per accepted
+transition and never reset within a run. Spent out, a run escalates rather
+than retrying forever. Terminal outcomes: `converged`, `converged-with-caveats`
+(draft PR, findings listed), `escalated` (a gap open, partial draft only if
+opted in), `failed` (sections 10, 15).
 
-[LangGraph persistence](https://docs.langchain.com/oss/python/langgraph/persistence) and
-its [functional API guidance](https://docs.langchain.com/oss/python/langgraph/functional-api)
-separate persisted results from replayed work and call for idempotent side effects.
-Applying that principle here requires a started/completed distinction in the existing
-checkpoint ledger, without adopting another graph runtime.
+## Known limits
 
-An agent dispatch remains started until its caller acknowledges the returned node.
-Resuming without an acknowledgement retries it. Function and gate failures stop the graph,
-and checkpoint publication failures prevent further dispatch. The graph does not promise
-exactly-once external effects: node implementations must observe existing results or
-use idempotent operations when replaying.
-
-Retry counts travel with checkpoints. Each process resumes the consumed budget, and
-route edges obey the matching loop ceiling. Repeated process launches cannot replenish
-the retry allowance.
-
-Evidence: `tests/lib/graph-recovery.test.sh` checks interrupted dispatch, wrong completion
-identity, failed-gate replay, and unavailable checkpoint storage. The larger graph suite
-checks routing and the shipped cycle with explicit acknowledgements.
-
-## Upgrade from 5.x
-
-Ordinary cycle callers keep using `next --returned-from PHASE`; the driver carries the
-acknowledgement. Direct graph callers must pass `--completed-node ID` after a successful
-agent return. See [the graph contract](graph-remediation-contract.md). Resume callers
-must pass `--slug` when several feature directories share their selected root. Legacy
-checkpoint records retain their completed meaning.
-
-`bash tests/run-all.sh` is now the complete offline gate. The shorter check remains
-available as `RUN_ALL_PROFILE=unit bash tests/run-all.sh`. Offline checks establish
-mechanical behavior; they do not measure live model task success or replace the manual
-harness matrix in [the test guide](../../tests/README.md).
+- Workers are cooperative, not sandboxed: a prompt contract does not restrict
+  filesystem access; the program detects an out-of-band change, never prevents one.
+- The SDK runner's `controller-observed` evidence is grounded from the
+  installed package's source, not confirmed by a run in this repository.
+- `unattested` reaches `integrated` only under the `evidence.review.accept`
+  opt-in above; the result names every task it weakened.

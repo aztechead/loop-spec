@@ -4,6 +4,194 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.0.3] - 2026-09-22
+
+Ten defects found by the 7.0.2 and 7.0.3 live runs (LF-54 to LF-63), each fixed at its root
+with module tests and shown live in `docs/loop-spec/live-runs-7.0.md`:
+
+- LF-54: the PLAN critic gets each task's baseline facts (ran or not, failing
+  identities at base) and learns that the program compares failure identities, not
+  exit status. Each finding carries a `recommendation`; the blocked critic question
+  takes its default from them, so a headless run no longer stops on it.
+- LF-55: an ITERATE rewind with free-text `execute` gaps registers close-out tasks
+  (`closeOuts`, `C-n`) that EXECUTE must implement or prove already true under
+  review, so the rewind changes something before VERIFY runs again.
+- LF-56: a string input's trailing newlines are trimmed at the section boundary, so
+  a review prompt survives transit unchanged and attests.
+- LF-57: JSON inputs render non-ASCII text as itself, not as `\u` escapes a lead
+  would retype differently.
+- LF-58: one repo's rejected push is that repo's failed row; the other repos still
+  deliver (`partially delivered`, `partiallyDelivered: true`). Publication history
+  (a pushed SHA, a PR) survives a later failed or retried attempt. The repair text
+  names divergence only when git reports it.
+- LF-59: a role worker gets a fixed bootstrap and reads its prompt from
+  `steps/<id>/instructions.md`. Attestation requires the worker's own Read calls to
+  return every line of the issued prompt before any other tool call. The calls must
+  sit in assistant records and their results in user records.
+- LF-60: a `plan-critic`, `code-reviewer` or `iterate-judge` step with no accepted
+  evidence after its re-dispatches is refused, never waived. Nothing it produced is
+  accepted; the phase asks a blocked question (`fix-and-re-enter` or `stop`, no
+  default) unless `evidence.review.accept` or the new `evidence.judgment.accept`
+  opts the role in. Cached judgments and reviewed ranges are consumed only with
+  accepted evidence. A task review is bound to the candidate SHA it was issued for,
+  and a branch that moved while the review ran is blocked, never relabelled as
+  reviewed.
+- LF-61: the program schedules the instruction-file Reads. `dispatchPrompt` states
+  the line count and lists each Read call. Ranges are cut by a provisional
+  16,000-byte rendered budget, not by line count, because 537 lines of hex already
+  exceeded the host's 25,000-token cap. The bootstrap says how to recover from a
+  short or over-limit read, and when to stop. A prompt line over the supported
+  budget stops the step before anything is written. Attestation still requires
+  every line.
+- LF-62: under `--answer-policy default`, the PLAN critic's second-pass question is
+  answered with the critic's recommendation. Until now, only callers that remembered
+  to resolve the policy applied it. `questions.ask` now applies the policy for every
+  question. The critic question, its answer and its link are saved together, so a
+  crash cannot separate them.
+- LF-63: the ITERATE judge gets each touched repo's diff as its own input section
+  (`diff`, or `diff:<repo>` in a workspace) instead of a `diffs` object. JSON had put
+  a whole diff on one escaped line, and LF-61's read budget then refused the step.
+  A project that binds its own iterate-judge skill and read `diffs` must read the new
+  sections. Each diff is still cut at 200,000 characters (`_DIFF_CAP`) before the
+  prompt is composed. A complete receipt of the prompt does not mean a complete
+  receipt of a larger diff.
+
+Each role skill also carries one brief, schema-valid result example.
+
+## [7.0.2] - 2026-09-22
+
+One defect found by the second end-to-end workspace run (LF-53):
+
+- A product command that relies on shell syntax is rejected before it runs. The
+  program runs PLAN `verify` and `prepare`, the debug reproduction and original,
+  and VERIFY evidence commands as argv with no shell, so a verify command joined
+  with `&&` reached git as arguments and every EXECUTE retry failed. P3, B1, B2,
+  and V4 now name the task, command, or criterion and the construct; quoted and
+  escaped literals still pass. The rules are under "Commands" in
+  `docs/loop-spec/phase-interface-7.0.md`.
+
+## [7.0.1] - 2026-09-22
+
+Four defects found by the first end-to-end workspace run on the audited 7.0 program
+(LF-49 to LF-52), each fixed at its root with deterministic module tests:
+
+- An "already satisfied" implement result is honored only when Git agrees: a
+  recorded fork, an existing branch at that fork, and a clean worktree. Commits
+  past the fork take the ordinary review path (`already_satisfied_contradicted`).
+- A reviewer that repeats an open ledger finding by its id carries it forward
+  instead of minting a duplicate V8 rejects; the ledger records an observation and
+  takes a closure with a reason; an echo of a closed finding is dropped; a reopen
+  needs an explicit `supersedes`. V7 evaluates the ledger with the product's valid
+  closures overlaid.
+- A VERIFY `implementation gap` now reaches EXECUTE: the transition carries the
+  failing verdicts and remediation tasks, and the plan task owning each failed
+  criterion is re-opened against the current feature head with a fresh retry
+  allowance. A worktree is reused only when clean, its writers known terminated,
+  and already containing the head; otherwise a new generation branch and worktree
+  is forked and the old worktree is kept (quarantined unless clean and
+  terminated). Tasks carry `forkedFrom` (attributes new commits) and `reviewFrom`
+  (one review record covers every commit a task owns); conflict recovery keeps
+  integrated commits and never deletes the branch. Forward transitions clear the
+  entry payload. `confirm_terminated` no longer force-removes a dirty worktree.
+- VERIFY and ITERATE key their module state on their inputs (requirements and
+  plan revisions, heads, and for ITERATE the accepted VERIFY attempt) and rebuild
+  when any changed, so a repaired head is never judged by pre-repair evidence.
+  EXECUTE reconciles a changed plan by task identity and refuses a dropped or
+  repo-moved task that owns integrated commits, and legacy state without plan
+  snapshots.
+
+## [7.0.0] - 2026-09-21
+
+A ground-up rewrite: loop-spec is now a stdlib-only Python program
+(`skills/loop-spec/program/loop_spec/`) driven by thin Claude Code skill stubs,
+instead of the 6.x bash/jq implementation.
+
+### Added
+
+- The 7.x program: `controller.py` drives SPEC, PLAN, EXECUTE, VERIFY, ITERATE,
+  DELIVER (plus the DEBUG and REVISE entries) one phase at a time, and
+  `postconditions.py` checks every claimed exit before it advances.
+- Twelve Claude Code entries: `cycle`, `micro`, `debug`, `revise`, `spec`, `plan`,
+  `execute`, `verify`, `iterate`, `deliver`, `status`, and the `loop-spec` hub.
+- `loop_spec/sdk_runner.py` and [`examples/supervisor/`](examples/supervisor/README.md):
+  an unattended runner and reference supervisor on `claude-agent-sdk`, for driving
+  a cycle with no Claude Code session at all.
+- `controller-observed` evidence: an SDK receipt beside a step's result grants the
+  same standing as a native host attestation, with no host process required.
+- [`skills/loop-spec/references/contract.md`](skills/loop-spec/references/contract.md):
+  the process contract — files, fields, exit codes, config, environment — for an
+  implementer or a harness author.
+- [`docs/loop-spec/live-runs-7.0.md`](docs/loop-spec/live-runs-7.0.md): which
+  checklist case was shown by which recorded live run.
+- EXECUTE issues every task of a wave at once (`LOOP_SPEC_NEXT` per step,
+  `LOOP_SPEC_WAIT` while siblings are open); a task is reviewed against the head it
+  forked from and integrates with a merge commit when a sibling merged first; a
+  conflicting merge re-implements the task on the new head as a counted retry.
+- An unattested `plan-critic`, `code-reviewer`, or `iterate-judge` step is refused
+  and re-dispatched under a new name up to `LOOP_SPEC_STEP_RETRIES`, then accepted
+  with a waiver the result's `weakenedAssurance` names.
+- `LOOP_SPEC_MODEL_<ROLE>` and `roles.<role>.model` set the model on every role
+  dispatch, not only the SPEC and PLAN lead steps.
+- ITERATE dispositions the findings a `met` verdict leaves open: Critical stays a
+  blocker, Important becomes a PLAN gap while the rewind budget has room, Minor (or
+  Important without room) is deferred as a caveat; I4 accepts `escalated` only for a
+  refused rewind or an unmet verdict with no gap.
+- The 7.0 code audit's eleven findings (R1 to R11) are fixed on the branch: the
+  current invocation's step file is authoritative; an SDK receipt counts only on an
+  SDK-launched run and lives under the run's steps dir; native attestation binds the
+  whole composed prompt; baselines and EXECUTE re-runs are per repo; a runner that
+  fails before collecting tests is a regression; terminal cleanup keeps open,
+  quarantined, and dirty worktrees and lists them in `cleanupBacklog`; D8 requires
+  every touched repo delivered with a real PR; the result's compatibility fields
+  follow the schema-1 table; a reused verify execution is re-matched against the
+  current claim; exempt criteria are never re-executed; timeout output is decoded.
+  `commitArtifacts` is removed (R8): the delivered head is always the verified SHA.
+  The round-2 audit's residuals are fixed too: a candidate run that did not
+  complete is never `no-regression`; a partial delivery ends the run `escalated`;
+  DELIVER refuses a feature branch that moved after VERIFY and pushes the verified
+  SHA by value.
+
+### Changed
+
+- Run state moves off `docs/loop-spec/features/<slug>/feature.json` and committed
+  markdown into `<state home>/<repo id>/<slug>/state.json`, durable outside the
+  consumer repository. Configuration moves from environment variables into
+  `.loop-spec/config.json`'s `phases`/`roles`/`deliver` keys.
+  [migrating-6-to-7.md](docs/loop-spec/migrating-6-to-7.md) maps each surface.
+  The terminal result keeps schema 1; a new `result` field carries the 7.x
+  classification (`converged`, `converged-with-caveats`, `no-change`,
+  `escalated`, `failed`, `paused`) alongside the fields a 6.x consumer already
+  reads.
+
+### Removed
+
+Per the M7 cutover plan in [ROADMAP-7.0.md](docs/loop-spec/ROADMAP-7.0.md#17-testing-live-gates-and-cutover):
+`hooks/`, `extensions/`, `lib/`, `graph/`, `agents/`, `commands/`, `evals/`,
+`.codex-plugin/`, the 6.x `skills/` tree (every skill but the twelve listed
+above), and the 6.x `tests/` suite. The environment variables each one read are
+listed, with their 7.x fate, in
+[migrating-6-to-7.md](docs/loop-spec/migrating-6-to-7.md#3-move-your-environment-variables-into-config-or-flags).
+opencode, Google ADK, and OpenAI Codex support goes with them; 7.x targets
+Claude Code and the Claude Agent SDK only.
+
+### Shown live
+
+Recorded in [docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md),
+against Claude Code 2.1.278 on `sonnet`: the all-external traversal, a full
+native cycle to a delivered pull request, attestation in both directions, the
+blocked exit answered `stop`, a two-repo workspace, the debug and revise entries,
+the program's own invalid product ending a run as `failed`, the rewind budget
+ending one as `escalated`, and permission denial under the default mode. The
+45 live findings (LF-01 to LF-45) those runs raised are fixed on the 7.0 branch; each
+fix's commit subject names its finding number.
+
+### Not shown live
+
+The SDK runner and reference supervisor: this repository has no Claude Agent SDK
+credentials. Deferred by the maintainer's own accepted decision of 2026-09-22
+(recorded in ROADMAP-7.0.md); grounded from the installed package's source and
+its docs instead of a live run's output.
+
 ## [6.9.0] - 2026-09-17
 
 ### Changed

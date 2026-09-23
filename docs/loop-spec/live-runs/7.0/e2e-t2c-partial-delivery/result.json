@@ -1,0 +1,111 @@
+{
+  "autonomous": true,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "feat/lf-58-partial-delivery-acceptance-on-the",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": false,
+  "createdAt": "2026-09-22T23:15:25+00:00",
+  "cycleType": "full",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [],
+        "deliveredSha": "4ecb5a6ebd493fa7abb50f43eaaf9eee622c9d9d",
+        "pr": {
+          "base": "main",
+          "headRef": "feat/lf-58-partial-delivery-acceptance-on-the",
+          "headSha": "4ecb5a6ebd493fa7abb50f43eaaf9eee622c9d9d",
+          "number": 17,
+          "url": "https://github.com/aztechead/loop-spec-live-7/pull/17"
+        },
+        "repo": "calc",
+        "state": "delivered"
+      },
+      {
+        "caveats": [
+          "push rejected: fatal: '/nonexistent/loop-spec-live-7b.git' does not appear to be a git repository\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.; repair: check origin's push URL, network, and access, then re-enter (never force)"
+        ],
+        "deliveredSha": null,
+        "pr": null,
+        "repo": "textutil",
+        "state": "failed"
+      }
+    ]
+  },
+  "eligibleTargets": [],
+  "feature_title": "LF-58 partial-delivery acceptance on the two-repo workspace here (calc/ and textutil/, each its own git repo with its own remote). Add lerp(a, b, t) to calc/calc/__init__.py returning a + (b - a) * t, with pytest tests in calc/tests/test_lerp.py verified by '/private/tmp/claude-501/-Users-aztechead-Projects-loop-spec/aa3a1338-0fde-4f0c-a27e-945117d04f37/scratchpad/venv/bin/python -m pytest -q tests/test_lerp.py' (a featureAdded check on the new file; the existing suite's known failing test stays untouched). Add capitalize_words(s) to textutil/textutil/__init__.py returning s with each space-separated word capitalized, with a unittest.TestCase in textutil/tests/test_capitalize.py verified by 'python3 -m unittest discover -s tests -p test_capitalize.py'. Each repo gets its own PR against main.",
+  "finishedAt": "2026-09-22T23:25:49+00:00",
+  "hostVersions": {
+    "claude": "2.1.280 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": false,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 0
+  },
+  "loopSpecVersion": "7.0.2",
+  "noChangeReason": null,
+  "outcome": "escalated",
+  "outstanding": [],
+  "partiallyDelivered": true,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [
+    "question-51413d02c8a2"
+  ],
+  "prUrl": "https://github.com/aztechead/loop-spec-live-7/pull/17",
+  "prs": [
+    {
+      "number": 17,
+      "repo": "calc",
+      "url": "https://github.com/aztechead/loop-spec-live-7/pull/17"
+    }
+  ],
+  "reason": "did not deliver: textutil",
+  "result": "escalated",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-233b3a544277"
+    },
+    "T-2": {
+      "level": "host-attested",
+      "stepId": "step-26f439a4ef07"
+    }
+  },
+  "rewinds": 0,
+  "schema": 1,
+  "slug": "lf-58-partial-delivery-acceptance-on-the",
+  "status": "escalated",
+  "summary": "full escalated at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": null,
+  "warnings": [
+    "lerp accepts t outside [0, 1] (extrapolation) with no docstring or guard noting that behavior",
+    "New test uses unittest.TestCase style (class + assertEqual), while the existing neighbor tests/test_textutil.py uses plain pytest-style functions with bare assert; the diff introduces a second, inconsistent testing convention into the same tests/ directory."
+  ],
+  "weakenedAssurance": [],
+  "workDelivered": true
+}
