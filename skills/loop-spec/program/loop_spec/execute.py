@@ -830,12 +830,17 @@ def _handle_rewind(store, paths, ctx, execute_state: dict) -> None:
             store.state.get("executeRuns", {}).pop(tid, None)
             task_state["retries"] = 0
 
-            cause = next((cause_by_criterion[c] for c in rem["criteria"] if cause_by_criterion.get(c)), "no cause recorded")
+            cause = next((cause_by_criterion[c] for c in rem["criteria"] if cause_by_criterion.get(c)), None)
             files_text = ", ".join(rem.get("files") or []) or "(none named)"
             feature_head = execute_state["repos"][task_state["repo"]]["head"]
-            reason = (f"VERIFY found {', '.join(rem['criteria'])} failing at {feature_head[:12]}: {cause}. "
-                      f"Remediation {rem.get('id')}: {rem.get('title')}; files: {files_text}; "
-                      f"VERIFY ran: {rem.get('verify') or '(no command)'}")
+            if cause is None and not any(c in cause_by_criterion for c in rem["criteria"]):
+                # LF-64: a remediation for an open Critical review finding; no criterion failed.
+                reason = (f"VERIFY review left a Critical finding open at {feature_head[:12]}. "
+                          f"Remediation {rem.get('id')}: {rem.get('title')}; files: {files_text}")
+            else:
+                reason = (f"VERIFY found {', '.join(rem['criteria'])} failing at {feature_head[:12]}: {cause or 'no cause recorded'}. "
+                          f"Remediation {rem.get('id')}: {rem.get('title')}; files: {files_text}; "
+                          f"VERIFY ran: {rem.get('verify') or '(no command)'}")
             if tid in reopened:
                 task_state["reason"] = f"{task_state['reason']}\n{reason}"
                 continue

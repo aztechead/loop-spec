@@ -149,7 +149,7 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 
 | | |
 |---|---|
-| Inputs | PLAN product; baseline; ledger; on `remediation` from a VERIFY `implementation gap`, the transition carries the failing verdicts and the remediation tasks; EXECUTE re-opens the plan task(s) owning each failed criterion against the current feature head (a clean, terminated worktree that already contains the head is reused, anything else gets a new generation branch and worktree and the old one is kept); `remediationTasks` describe the gap and are not tasks of their own; on `rewind`, the findings; always, the close-out registry (`state.closeOuts` in the envelope): every `execute` gap of an accepted ITERATE rewind, `C-n`, with its text, repo and source |
+| Inputs | PLAN product; baseline; ledger; on `remediation` from a VERIFY `implementation gap`, the transition carries the failing verdicts and the remediation tasks; EXECUTE re-opens the plan task(s) owning each failed criterion, or for a Critical finding the task(s) owning its file (else the repo's last task), against the current feature head (a clean, terminated worktree that already contains the head is reused, anything else gets a new generation branch and worktree and the old one is kept); `remediationTasks` describe the gap and are not tasks of their own; on `rewind`, the findings; always, the close-out registry (`state.closeOuts` in the envelope): every `execute` gap of an accepted ITERATE rewind, `C-n`, with its text, repo and source |
 | Product | per task a `disposition` of `done`, `already-satisfied` with evidence, `removed` by an approved plan amendment, or `adopted` for the one range task a `revise` entry creates; one entry per registered close-out (`C-n`), `done` or `already-satisfied`; `commits[]` per task; `issues[]` unresolved; per-repo `head` |
 | Preconditions | PLAN bound to the current requirements revision; baseline present |
 | Runs as | program-run: waves of at most three, one worktree per task, implement step, then the diff-mode probes on the task's commits, then the review step with the probe findings as inputs; each close-out after the plan's waves, one per wave, with no verify command: its review is its proof, and a no-change claim is reviewed over the empty range at the head (re-reviewed if a later commit moves that head) |
@@ -215,7 +215,7 @@ on such a task refuses the run.
 | Exit | Requires | Route |
 |---|---|---|
 | `passed` | V1 to V5, V7, V8 | ITERATE |
-| `implementation gap` | V1, V2, V8, T1; at least one `fail` with remediation tasks | EXECUTE, `remediation` |
+| `implementation gap` | V1, V2, V8, T1; at least one `fail` with remediation tasks, or every verdict `pass` with a Critical finding open, remediated by one task per finding | EXECUTE, `remediation` |
 | `plan gap` | V1, V2, V8, T1 | PLAN, `remediation` |
 | `intent gap` | V1, V2, V8, T1 | SPEC, `remediation` |
 | `evidence incomplete` | V1, T1 | VERIFY re-entry, new attempt |

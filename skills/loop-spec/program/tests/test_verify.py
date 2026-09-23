@@ -240,6 +240,24 @@ class VerifyTests(unittest.TestCase):
         self.assertEqual(task["repo"], "repo")
         assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
 
+    def test_an_open_critical_with_every_verdict_passing_exits_implementation_gap(self):
+        # LF-64: re-reviewing the same head only re-finds it, so the finding is remediated.
+        finding = {"id": "F-1", "location": "feature.py:1", "cause": "PATCH stores null", "severity": "Critical",
+                   "disposition": "open", "reason": None, "supersedes": None}
+        product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]), reviewer_findings=[finding])
+        self.assertEqual(product["exit"], "implementation gap")
+        [task] = product["remediationTasks"]
+        self.assertEqual((task["id"], task["files"], task["criteria"], task["repo"]), ("R-2", ["feature.py"], ["AC-1"], "repo"))
+        self.assertIn("PATCH stores null", task["title"])
+        assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
+
+    def test_a_fixed_critical_with_every_verdict_passing_exits_passed(self):
+        finding = {"id": "F-1", "location": "feature.py:1", "cause": "PATCH stores null", "severity": "Critical",
+                   "disposition": "fixed", "reason": "validated now", "supersedes": None}
+        product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]), reviewer_findings=[finding])
+        self.assertEqual(product["exit"], "passed")
+        self.assertEqual(product["remediationTasks"], [])
+
     def test_a_blocked_verdict_exits_blocked(self):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "blocked")]))
         self.assertEqual(product["exit"], "blocked")

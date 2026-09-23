@@ -369,6 +369,34 @@ def _final_product(store, paths, ctx, verify_state: dict) -> dict:
         exit_ = "implementation gap"
     else:
         exit_ = "passed"
+    # LF-64: every verdict passing with a Critical review finding still open is an
+    # implementation gap, not a pass V7 will reject: re-reviewing the same head only
+    # re-finds it. One remediation per finding reopens the plan task owning its file
+    # (else the repo's last task); a repo with no plan task has nothing to reopen.
+    if exit_ == "passed":
+        critical_ids = []
+        for f in ledger_module.effective_findings(store, findings_out, store.state["repos"]):
+            if f["severity"] != "Critical" or f["disposition"] != "open":
+                continue
+            repo = f.get("repo") or next(iter(store.state["repos"]))
+            path = (f.get("location") or "").split(":", 1)[0]
+            repo_tasks = [t for t in plan_product["tasks"] if t["repo"] == repo]
+            if not repo_tasks:
+                continue
+            owners = [t for t in repo_tasks if path in t["files"]] or repo_tasks[-1:]
+            criteria = sorted({c for t in owners for c in t["criteria"]})
+            remediation_tasks.append({
+                "id": f"R-{len(verifier_result['verdicts']) + len(critical_ids) + 1}",
+                "title": f"fix Critical finding {f['id']} at {f['location']}: {f['cause']}",
+                "dependsOn": [], "files": [path] if path else [], "repo": repo, "verify": "",
+                "criteria": criteria, "featureAdded": None, "mustFlip": False,
+            })
+            critical_ids.append(f["id"])
+        if critical_ids:
+            exit_ = "implementation gap"
+            emit(paths, "verify_critical_remediation",
+                 {"findings": critical_ids, "summary": f"open Critical finding(s) {', '.join(critical_ids)} routed to EXECUTE"},
+                 phase="verify", attempt_id=ctx["attempt"]["id"])
     if (verifier_result["intentGap"] or verifier_result["planGap"]) and not any_not_pass:
         emit(paths, "verify_gap_flag_ignored",
              {"planGap": verifier_result["planGap"], "intentGap": verifier_result["intentGap"]},

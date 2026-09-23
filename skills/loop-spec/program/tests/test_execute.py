@@ -279,6 +279,27 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertIsInstance(action, Product)
         self.assertEqual(len(self.store.state["execute"]["tasks"]["T-1"]["remediations"]), 1)
 
+    def test_a_critical_finding_remediation_reopens_the_file_owner_and_names_the_finding(self):
+        # LF-64: no criterion failed, so the reason must not claim one did.
+        self.plan_tasks[1]["criteria"] = ["AC-2"]
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+        self._drive_to_integrated()
+
+        remediation = {"id": "R-2", "title": "fix Critical finding F-1 at T-1.txt:1: PATCH stores null",
+                        "dependsOn": [], "files": ["T-1.txt"], "repo": "repo", "verify": "", "criteria": ["AC-1"],
+                        "featureAdded": None, "mustFlip": False}
+        ctx2 = self._rewind_ctx("attempt-2", remediation)
+        ctx2["entry"]["payload"]["rewind"]["verdicts"] = []
+
+        action = step(self.store, self.paths, ctx2)
+        self.assertIsInstance(action, IssueStep)
+        self.assertEqual(action.request["cwd"], self.store.state["execute"]["tasks"]["T-1"]["worktree"])
+        self.assertIn("left a Critical finding open", action.request["reason"])
+        self.assertIn("PATCH stores null", action.request["reason"])
+        self.assertNotIn("failing", action.request["reason"])
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-2"]["status"], "done")
+
     def test_rewind_with_stale_revisions_is_ignored(self):
         self.plan_tasks[1]["criteria"] = ["AC-2"]
         self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
