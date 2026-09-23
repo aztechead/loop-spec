@@ -189,6 +189,67 @@ class IterateTests(unittest.TestCase):
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, IssueStep)
 
+    def _commit_hex_file(self, repo: Path, lines: int = 1300) -> str:
+        import hashlib
+        body = "".join(f'    "{hashlib.sha256(str(i).encode()).hexdigest()}",\n' for i in range(lines))
+        Path(repo, "digests.py").write_text("ROWS = (\n" + body + ")\n")
+        _git(repo, "add", "digests.py")
+        _git(repo, "commit", "-q", "-m", "digests")
+        return _head(repo)
+
+    def _headings(self, prompt: str) -> list[str]:
+        return [line[4:] for line in prompt.split("\n") if line.startswith("### ")]
+
+    def test_a_large_diff_renders_as_real_lines_within_the_read_budget(self):
+        # LF-63: e2e-lf59c's judge prompt held the whole diff on one 94,463-byte line.
+        from loop_spec import steps as steps_module
+        head = self._commit_hex_file(self.repo)
+        self.store.state["products"]["execute"]["product"]["heads"]["repo"] = head
+        (self.paths.checkouts_dir / f"verify-{head[:12]}").mkdir(parents=True, exist_ok=True)
+        request = step(self.store, self.paths, self.ctx).request
+        self.assertIn("diff", self._headings(request["prompt"]))
+        self.assertNotIn("diffs", self._headings(request["prompt"]))
+        diff = subprocess.run(["git", "diff", f"{self.base_sha}..{head}"], cwd=self.repo, capture_output=True,
+                              text=True, check=True).stdout.rstrip("\n")
+        self.assertIn("### diff\n" + diff + "\n", request["prompt"])  # the diff's own lines, unchanged
+        record = steps_module.issue(
+            self.store, self.paths, phase="iterate", attempt_id="attempt-1", kind="role", role="iterate-judge",
+            cwd=Path(request["cwd"]), prompt=request["prompt"], schema=request["schema"], postconditions=[],
+            inputs_digest=request["inputsDigest"], result_path=Path(request["resultPath"]))
+        self.assertGreater(len(record["readSchedule"]), 1)
+
+    def _add_workspace_repo(self, name: str, touched: bool) -> None:
+        repo = self.tmp / name
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _git(repo, "config", "user.name", "Test")
+        _git(repo, "config", "user.email", "test@example.com")
+        Path(repo, "c.py").write_text("z = 1\n")
+        _git(repo, "add", "c.py")
+        _git(repo, "commit", "-q", "-m", "init")
+        base = _head(repo)
+        head = self._commit_hex_file(repo, 3) if touched else base
+        self.store.state["repos"][name] = {"path": str(repo), "baseSha": base, "featureBranch": "feature",
+                                           "defaultBranch": "main", "lastKnownHead": head}
+        self.store.state["products"]["execute"]["product"]["heads"][name] = head
+        self.store.save()
+
+    def test_a_workspace_names_each_touched_repos_diff_even_when_only_one_changed(self):
+        self._add_workspace_repo("other", touched=False)
+        headings = self._headings(step(self.store, self.paths, self.ctx).request["prompt"])
+        self.assertEqual([h for h in headings if h.startswith("diff")], ["diff:repo"])
+        self._add_workspace_repo("alpha", touched=True)
+        headings = self._headings(step(self.store, self.paths, self.ctx).request["prompt"])
+        self.assertEqual([h for h in headings if h.startswith("diff")], ["diff:alpha", "diff:repo"])
+
+    def test_an_unchanged_run_issues_a_judge_with_no_diff_section(self):
+        self.store.state["products"]["execute"]["product"]["heads"]["repo"] = self.base_sha
+        self.store.save()
+        request = step(self.store, self.paths, self.ctx).request
+        headings = self._headings(request["prompt"])
+        self.assertFalse([h for h in headings if h.startswith("diff")])
+        self.assertTrue({"request", "spec", "verify", "priorGaps", "budget"} <= set(headings))
+
     def test_legacy_iterate_state_reinitializes_and_emits_module_state_reset(self):
         # A run whose state.iterate predates the per-repo shape (LF-28) has
         # "boundSha" (singular) instead of "boundShas"; a hand-built dict in that

@@ -6,7 +6,7 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [7.0.3] - 2026-09-22
 
-Nine defects found by the 7.0.2 and 7.0.3 live runs (LF-54 to LF-62), each fixed at its root
+Ten defects found by the 7.0.2 and 7.0.3 live runs (LF-54 to LF-63), each fixed at its root
 with module tests and shown live in `docs/loop-spec/live-runs-7.0.md`:
 
 - LF-54: the PLAN critic gets each task's baseline facts (ran or not, failing
@@ -48,6 +48,13 @@ with module tests and shown live in `docs/loop-spec/live-runs-7.0.md`:
   to resolve the policy applied it. `questions.ask` now applies the policy for every
   question. The critic question, its answer and its link are saved together, so a
   crash cannot separate them.
+- LF-63: the ITERATE judge gets each touched repo's diff as its own input section
+  (`diff`, or `diff:<repo>` in a workspace) instead of a `diffs` object. JSON had put
+  a whole diff on one escaped line, and LF-61's read budget then refused the step.
+  A project that binds its own iterate-judge skill and read `diffs` must read the new
+  sections. Each diff is still cut at 200,000 characters (`_DIFF_CAP`) before the
+  prompt is composed. A complete receipt of the prompt does not mean a complete
+  receipt of a larger diff.
 
 Each role skill also carries one brief, schema-valid result example.
 

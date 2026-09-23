@@ -40,13 +40,16 @@ def _judge_request(store, paths, ctx, heads: dict[str, str]) -> dict:
     role = load_role("iterate-judge", project_root, resolve_role(project_root, "iterate-judge"))
     touched = _touched_repos(store, heads)
 
-    diffs = {}
-    for name in touched:
+    # LF-63: each touched repo's diff is its own top-level string input, so it renders
+    # as real lines; nested in a dict, JSON put a whole diff on one escaped line. A
+    # workspace keeps the repo in the key even when only one of its repos changed.
+    diff_inputs = {}
+    for name in sorted(touched):
         repo_info = store.state["repos"][name]
         diff = repo_module.run_git(Path(repo_info["path"]), "diff", f"{repo_info['baseSha']}..{heads[name]}")
         if len(diff) > _DIFF_CAP:
             diff = diff[:_DIFF_CAP] + "\n...(truncated)"
-        diffs[name] = diff
+        diff_inputs["diff" if len(store.state["repos"]) == 1 else f"diff:{name}"] = diff
 
     if touched:
         first_repo = touched[0]
@@ -66,7 +69,7 @@ def _judge_request(store, paths, ctx, heads: dict[str, str]) -> dict:
     budget_state = store.state["budget"]
     inputs = {
         "request": store.state["request"]["text"], "spec": store.state["products"]["spec"]["product"],
-        "diffs": diffs, "verify": store.state["products"]["verify"]["product"],
+        **diff_inputs, "verify": store.state["products"]["verify"]["product"],
         "priorGaps": store.state["iterate"]["priorGaps"],
         "budget": {"spent": budget_state["spent"], "limit": budget_state["limit"], "hasRoom": has_room(store)},
     }
