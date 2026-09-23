@@ -7,6 +7,8 @@ argparse's own "unrecognized command", so the CLI is honest about what exists.
 import argparse
 import json
 import os
+import re
+import shlex
 from pathlib import Path
 
 from loop_spec import VERSION, attest, contract, controller, log, questions, steps
@@ -191,6 +193,22 @@ def _request_text(args: argparse.Namespace) -> str | None:
     return getattr(args, "request", None)
 
 
+_REPAIR_COMMAND = re.compile(
+    r"`loop-spec (status|cycle|micro|debug|revise|spec|plan|execute|verify|iterate|deliver|submit|answer)\b")
+
+
+def _runnable_repair(repair: str, args: argparse.Namespace) -> str:
+    """7.2.0: a repair names `loop-spec <command>`, which is not on PATH in a consumer
+    repo and would read the default state home; name this launcher and this call's
+    project root and state home instead, so the hint runs as printed."""
+    project_root = getattr(args, "project_root", None)
+    if not project_root:
+        return repair
+    prefix = shlex.quote(str(Path(__file__).resolve().parents[1] / "loop-spec"))
+    flags = f"--project-root {shlex.quote(str(project_root))} --state-home {shlex.quote(str(state_home(args.state_home)))}"
+    return _REPAIR_COMMAND.sub(lambda m: f"`{prefix} {m.group(1)} {flags}", repair)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -242,5 +260,5 @@ def main(argv: list[str] | None = None) -> int:
         raise LoopSpecError(f"{args.command} lands in a later wave", repair="wait for the wave")
     except LoopSpecError as exc:
         log.stderr.error(f"loop-spec: {exc.message}")
-        log.stderr.error(f"  repair: {exc.repair}")
+        log.stderr.error(f"  repair: {_runnable_repair(exc.repair, args)}")
         return 1

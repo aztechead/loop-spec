@@ -32,7 +32,9 @@ def _touched_repos(store) -> dict:
 
 def pr_title(title: str, limit: int = 70) -> str:
     # GitHub shows about 70 characters of a title; a cut mid-word read as a typo
-    # in the live debug run (LF-36), so cut at the last word boundary that fits.
+    # in the live debug run (LF-36), so cut at the last word boundary that fits. A goal
+    # may span lines; a title is one (7.2.0).
+    title = " ".join(title.split())
     if len(title) <= limit:
         return title
     head = title[: limit - 3].rsplit(" ", 1)[0].rstrip(" ,;:.")

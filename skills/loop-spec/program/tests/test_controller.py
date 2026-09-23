@@ -1851,6 +1851,27 @@ class VerifyRerunsTests(unittest.TestCase):
         }
         return paths, store
 
+    def test_run_verify_reruns_runs_again_when_prepare_changed(self):
+        """7.2.0: a cached execution is reused only under the same prepare command."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo = _init_repo(tmp)
+            head = repo_module.head_sha(repo)
+            paths, store = self._single_repo_store(tmp, repo, head)
+            store.save()
+            evidence = {"command": 'python3 -c "import sys; sys.exit(0)"', "repo": "repo", "sha": head,
+                        "exitStatus": 0, "failureIdentities": [], "outputDigest": "sha256:" + "0" * 64}
+            product = {"verdicts": [{"criterion": "AC-1", "verdict": "pass", "cause": None, "evidence": evidence}]}
+            controller._run_verify_reruns(store, paths, product)
+            real = controller.baseline_module.run_command
+            with patch("loop_spec.controller.baseline_module.run_command", side_effect=real) as run:
+                controller._run_verify_reruns(store, paths, product)
+                self.assertEqual(run.call_count, 0)
+                store.state["products"]["plan"]["product"]["prepare"] = "true"
+                controller._run_verify_reruns(store, paths, product)
+                self.assertEqual(run.call_count, 2)  # prepare, then the evidence command
+            self.assertEqual(store.state["verifyRuns"]["AC-1"]["prepare"], "true")
+
     def test_run_verify_reruns_rechecks_a_changed_claim_against_a_cached_execution(self):
         # R9: a cached execution (same repo/sha/command) may be reused, but
         # "matched" must be re-evaluated against the CURRENT claim every time,
@@ -2350,6 +2371,18 @@ class CompatibilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             _, _, paths = self._run_with_baseline(Path(t), None)
             controller.check_compatible(StateStore.open(paths))  # no raise
+
+
+class RepairHintTests(unittest.TestCase):
+    """7.2.0: a repair hint names this launcher with this call's project root and state home."""
+
+    def test_a_bare_loop_spec_command_in_a_repair_runs_as_printed(self):
+        from loop_spec import cli
+        with tempfile.TemporaryDirectory() as t:
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(cli.main(["submit", "--project-root", t, "--state-home", f"{t}/home", "--step", "step-x"]), 1)
+        launcher = Path(cli.__file__).resolve().parents[1] / "loop-spec"
+        self.assertIn(f"see `{launcher} status --project-root {t} --state-home {t}/home`", err.getvalue())
 
 
 class PhaseProbesTests(unittest.TestCase):

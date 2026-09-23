@@ -389,6 +389,7 @@ class PrTitleTests(unittest.TestCase):
         self.assertTrue(title.startswith(cut[:-3]))
         self.assertEqual(title[len(cut) - 3], " ")
         self.assertEqual(deliver.pr_title("short"), "short")
+        self.assertEqual(deliver.pr_title("Add a flag\n\nthat exports  rows"), "Add a flag that exports rows")
 
 
 class AcceptedRemoteTests(DeliverTests.__bases__[0]):

@@ -52,8 +52,16 @@ never for installing, building, or running the plan's own verify commands.
    --check`; any other command (such as `npm run lint`) is compared by its output lines.
    The program runs each check at base, after every task, and at VERIFY's head; a new
    diagnostic sends the task back. Leave `checks` out when the repo configures none.
-7. Declare `exit: "ready"`, or `"spec gap"` naming exactly what SPEC is missing.
-8. Under the micro preset (`inputs.entry.payload.preset` is `micro`), one task
+7. Record in `existingCode` each concept the plan adds or changes: search the repo
+   for code that already does it (the named-file probes are a start, not the whole
+   search), then decide `reuse` (call it as is), `extend` (change it), or `new`. A
+   `reuse` or `extend` entry cites the code (`path` and `lines` as `first-last` at the
+   base commit, or at the head for code an earlier task of this run added) and names
+   the tasks that use it; `reason` says why. A `new` entry's `reason` says what you
+   searched for and where. The program checks every cite resolves (P8); the
+   implementer of each named task is handed its entries.
+8. Declare `exit: "ready"`, or `"spec gap"` naming exactly what SPEC is missing.
+9. Under the micro preset (`inputs.entry.payload.preset` is `micro`), one task
    unless the change spans repos; no `prepare` unless the repo needs it.
 
 ## Engineering principles
@@ -92,6 +100,7 @@ One task for that SPEC. `inputsDigest` and `boundTo` copy the values your inputs
   "boundTo": {"requirements": "sha256:9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e", "plan": null},
   "tasks": [{"id": "T-1", "title": "Add lerp with its tests", "dependsOn": [], "files": ["calc/__init__.py", "tests/test_lerp.py"], "repo": "calc", "verify": "/work/calc/.venv/bin/python -m pytest -q tests/test_lerp.py", "criteria": ["AC-1"], "featureAdded": "tests/test_lerp.py", "mustFlip": false}],
   "prepare": null,
+  "existingCode": [{"concept": "linear interpolation", "decision": "extend", "repo": "calc", "cites": [{"path": "calc/__init__.py", "lines": "1-14"}], "tasks": ["T-1"], "reason": "calc/__init__.py holds the numeric helpers (clamp); lerp belongs beside them, and no helper blends two values yet"}],
   "checks": [],
   "evidenceExceptions": []
 }

@@ -476,6 +476,9 @@ def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, tas
     }
     if task_state.get("closeOut"):
         inputs["closeOut"] = close_out_view(close_outs(store)[task_id])
+    existing = [e for e in store.state["products"]["plan"]["product"].get("existingCode") or [] if task_id in e["tasks"]]
+    if existing:
+        inputs["existingCode"] = existing  # 7.2.0: the code PLAN decided this task reuses or extends
     if task_state["reason"]:
         inputs["retryReason"] = task_state["reason"]
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=worktree, phase="execute")
@@ -887,6 +890,21 @@ def _reopen(store, paths, tid: str, task_state: dict, plan_task: dict, reason: s
     return reused
 
 
+def _rerun_lines(store, criteria: list[str], feature_head: str) -> str:
+    """7.2.0: what the program's own VERIFY re-run of a failing criterion printed (its
+    failure ids, else its last lines), at this head; the verifier's cause is a claim."""
+    for criterion in criteria:
+        entry = (store.state.get("verifyRuns") or {}).get(criterion)
+        if not entry or entry["rerun"].get("sha") != feature_head:
+            continue
+        run = baseline_module.CommandRun.from_dict(entry["rerun"])
+        if run.exit_status == 0:
+            continue
+        lines = baseline_module.describe_failure(baseline_module.Comparison("regression", run.failure_identities, ""), run)
+        return "\nThe program's re-run of " + criterion + " printed:\n" + "\n".join(lines)
+    return ""
+
+
 def _handle_rewind(store, paths, ctx, execute_state: dict) -> None:
     """LF-51: a VERIFY `implementation gap` re-opens the plan task(s) owning each
     failed criterion against the current feature head. No-op unless the entry
@@ -961,6 +979,7 @@ def _handle_rewind(store, paths, ctx, execute_state: dict) -> None:
                 reason = (f"VERIFY found {', '.join(rem['criteria'])} failing at {feature_head[:12]}: {cause or 'no cause recorded'}. "
                           f"Remediation {rem.get('id')}: {rem.get('title')}; files: {files_text}; "
                           f"VERIFY ran: {rem.get('verify') or '(no command)'}")
+                reason += _rerun_lines(store, rem["criteria"], feature_head)
                 provenance = _failing_test_provenance(store, rewind["attemptId"], rem["criteria"], task_state["repo"], feature_head)
                 if provenance is not None:
                     task_state["provenance"] = provenance

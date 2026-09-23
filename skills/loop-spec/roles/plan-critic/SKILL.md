@@ -75,6 +75,8 @@ not a finding.
   base.
 - A verify command with a relative interpreter path that a clean checkout will
   not have.
+- An `existingCode` entry marked `new` for behavior that code the plan cites, or
+  the probes name, already implements, so a task would build a second copy of it.
 
 ## What NOT to do
 

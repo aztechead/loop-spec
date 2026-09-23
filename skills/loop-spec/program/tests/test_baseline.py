@@ -6,6 +6,7 @@ from unittest import mock
 from pathlib import Path
 
 from loop_spec.baseline import (
+    fingerprint_candidates,
     BaselineEntry,
     CommandRun,
     Comparison,
@@ -456,8 +457,19 @@ class SummaryCountTests(unittest.TestCase):
             ("== 3 failed, 12 passed in 0.41s ==", "== 3 failed, 13 passed in 0.52s =="),
             ("FAILED (failures=1, errors=2)", "FAILED (failures=1, errors=3)"),
             ("Tests:       2 failed, 7 passed, 9 total", "Tests:       2 failed, 8 passed, 10 total"),
+            # 7.2.0: pytest's long-run suffix, jest suites, vitest files, cargo.
+            ("== 87 failed, 2611 passed in 123.45s (0:02:03) ==", "== 87 failed, 2571 passed in 99.1s (0:01:39) =="),
+            ("Test Suites: 1 failed, 40 passed, 41 total", "Test Suites: 1 failed, 41 passed, 42 total"),
+            (" Test Files  1 failed | 40 passed (41)", " Test Files  1 failed | 41 passed (42)"),
+            ("test result: FAILED. 1 passed; 1 failed; 0 ignored", "test result: FAILED. 2 passed; 1 failed; 0 ignored"),
         ]:
             self.assertEqual(fingerprints(before, Path("/r")), fingerprints(after, Path("/r")), before)
+
+    def test_a_pass_line_is_never_a_failure_whatever_its_id_says(self):
+        output = ("tests/error/test_a.py::test_b PASSED [ 50%]\n"
+                  "\x1b[32mPASSED\x1b[0m tests/error/test_c.py::test_d\n"
+                  "tests/error/test_e.py::test_f FAILED\n")
+        self.assertEqual(fingerprint_candidates(output, Path("/r")), ["tests/error/test_e.py::test_f FAILED"])
 
     def test_other_numbers_survive(self):
         self.assertNotEqual(fingerprints("AssertionError: expected 1 errors", Path("/r")),

@@ -1133,17 +1133,19 @@ def _run_verify_reruns(store: StateStore, paths: FeaturePaths, verify_product: d
         if verdict["criterion"] in exceptions:
             continue
         # R9: the EXECUTION may be reused when it was against the same repo, SHA,
-        # and command (nothing about running the command again would differ), but
+        # command, and prepare (7.2.0; nothing about running it again would differ), but
         # "matched" is a property of THIS claim against that execution, never a
         # fact stored once and trusted for a later, possibly different, claim.
         prior = verify_runs.get(verdict["criterion"])
         if prior and prior.get("repo") == evidence.get("repo") \
                 and prior["rerun"].get("sha") == evidence.get("sha") \
-                and prior["rerun"].get("command") == evidence.get("command"):
+                and prior["rerun"].get("command") == evidence.get("command") \
+                and prior.get("prepare") == prepare:
             rerun = baseline_module.CommandRun.from_dict(prior["rerun"])
             matched, reason = baseline_module.evidence_matches(evidence, rerun)
             verify_runs[verdict["criterion"]] = {
                 "rerun": prior["rerun"], "matched": matched, "reason": reason, "repo": prior["repo"],
+                "prepare": prepare,
             }
             continue
         repo_name = evidence["repo"]
@@ -1158,7 +1160,8 @@ def _run_verify_reruns(store: StateStore, paths: FeaturePaths, verify_product: d
         finally:
             repo_module.remove_worktree(repo_path, checkout, force=True)
         matched, reason = baseline_module.evidence_matches(evidence, rerun)
-        verify_runs[verdict["criterion"]] = {"rerun": rerun.to_dict(), "matched": matched, "reason": reason, "repo": repo_name}
+        verify_runs[verdict["criterion"]] = {"rerun": rerun.to_dict(), "matched": matched, "reason": reason, "repo": repo_name,
+                                             "prepare": prepare}
     store.save()
 
 

@@ -137,7 +137,8 @@ CONTRACTS: dict[str, str] = {
         "cannot test what it claims, a destructive change with no boundary, a task "
         "marked `mustFlip` that is not a debug repair, `featureAdded` that is not a "
         "path or names a path present at base, or a verify command with a relative "
-        "interpreter path that a clean checkout will not have. No style advice. "
+        "interpreter path that a clean checkout will not have, or an `existingCode` "
+        "entry marked `new` for behavior cited or named code already implements. No style advice. "
         "Output `{\"findings\": []}` when nothing is Critical."
     ),
     "implementer": (

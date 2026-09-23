@@ -14,7 +14,9 @@ it.
 
 1. Work only in the given working directory: start every command with `cd` into it
    (or use `git -C`), as the top of this prompt says; do not write anywhere else.
-2. Read the task's goal, files, verify command, and the criteria it must satisfy.
+2. Read the task's goal, files, verify command, and the criteria it must satisfy,
+   and every range `inputs.existingCode` cites: that is the code PLAN decided this
+   task reuses or extends, so call or change it rather than writing a second copy.
 3. For a code-producing task, write the failing test first, run it, and confirm it
    fails for the reason the task expects, before writing the implementation.
 4. Implement the smallest change that makes the test pass. Never weaken an

@@ -126,6 +126,71 @@
         "prepare": {
           "type": ["string", "null"]
         },
+        "existingCode": {
+          "description": "7.2.0: per concept the plan adds or changes, whether it reuses, extends, or adds code, with the existing code it cites (P8 checks each cite exists). Optional; absent means none recorded.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "concept",
+              "decision",
+              "repo",
+              "cites",
+              "tasks",
+              "reason"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "concept": {
+                "type": "string",
+                "minLength": 1
+              },
+              "decision": {
+                "type": "string",
+                "enum": [
+                  "reuse",
+                  "extend",
+                  "new"
+                ]
+              },
+              "repo": {
+                "type": "string",
+                "minLength": 1
+              },
+              "cites": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "path",
+                    "lines"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "lines": {
+                      "type": "string",
+                      "pattern": "^[0-9]+-[0-9]+$"
+                    }
+                  }
+                }
+              },
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
         "checks": {
           "description": "7.1.0: repo-wide checks (lint, typecheck, format check) the program baselines and re-runs at integration and at VERIFY's head. Optional; absent means none.",
           "type": "array",

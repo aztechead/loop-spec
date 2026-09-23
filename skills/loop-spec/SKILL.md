@@ -69,7 +69,7 @@ require it, and this line is the only place a stub is told the run's slug):
   - `external`: a person or another tool produces the product, not you. Stop, print
     the step path and its prompt, and tell the user an external implementation owns
     this phase; the operator submits with
-    `loop-spec submit --step <id> --slug <slug from LOOP_SPEC_NEXT>` once the product
+    `"${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" submit --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --slug <slug from LOOP_SPEC_NEXT> --step <id>` once the product
     exists.
 - `question`: You never answer a question yourself. A question is for the user
   (AskUserQuestion) or the operator; if you cannot ask, stop. Running `loop-spec
@@ -78,7 +78,7 @@ require it, and this line is the only place a stub is told the run's slug):
   run `"${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" answer --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --slug <slug from LOOP_SPEC_NEXT> --question <id> --answer "<text>"`
   and repeat. If you have no way to ask the user (no AskUserQuestion tool, or a
   headless run), stop and print the question file path and its text; the operator
-  answers with `loop-spec answer ...` and re-runs this entry with `--slug <slug>` and
+  answers with `"${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" answer --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --slug <slug> --question <id> --answer "<text>"` and re-runs this entry with `--slug <slug>` and
   no request to resume.
   You never edit the project or dispatch a worker the program did not issue: a
   `fix-and-re-enter` option is the operator's fix, not yours.

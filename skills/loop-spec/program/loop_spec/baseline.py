@@ -173,7 +173,7 @@ def detect_runner(command: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 # v2: counts on a whole summary line are stripped (7.1.0); the diagnostics parser.
-NORMALIZATION_VERSION = 2
+NORMALIZATION_VERSION = 3
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _HEX = re.compile(r"\b0x[0-9a-f]+\b", re.IGNORECASE)
@@ -185,10 +185,14 @@ _BIG_INT = re.compile(r"\b[0-9]{5,}\b")
 # ENTIRELY one of these shapes has its digits replaced; any other line keeps them, so two
 # assertion messages that differ only in a number stay two fingerprints.
 _SUMMARY_LINES = (
-    re.compile(r"^[=\s-]*\d+ \w+(?:\s*[,|]\s*\d+ \w+)*(?: in <TIME>)?[=\s-]*$"),  # pytest, vitest
+    re.compile(r"^[=\s-]*\d+ \w+(?:\s*[,|]\s*\d+ \w+)*(?: in <TIME>(?: \(\d+:<LINE>\))?)?[=\s-]*$"),  # pytest
     re.compile(r"^FAILED \((?:\w+=\d+(?:, )?)+\)$"),  # unittest
-    re.compile(r"^Tests?:\s+.*\b\d+ total$"),  # jest
+    re.compile(r"^(?:Tests?|Test Suites|Snapshots):\s+.*\b\d+ total$"),  # jest
+    re.compile(r"^(?:Test Files|Tests)\s+\d+ \w+(?:\s*\|\s*\d+ \w+)*\s*\(\d+\)$"),  # vitest
+    re.compile(r"^test result: \w+\. \d+ passed; \d+ failed;.*$"),  # cargo
 )
+# A line reporting a PASS is never a failure, whatever words its test id holds (7.2.0).
+_PASS_LINE = re.compile(r"^\s*(?:ok\b|✓|√|PASS\b|--- PASS:)|\bPASSED\b|\.\.\. ok\s*$")
 _FAILURE_MARKER = re.compile(
     r"(?:\bfail(?:ed|ure)?\b|\berror\b|\bexception\b|\bpanic\b|\bfatal\b|\bassert(?:ion)?\b|\bnot ok\b)",
     re.IGNORECASE,
@@ -224,7 +228,8 @@ def fingerprint_candidates(text: str, root: Path) -> list[str]:
     # The marker check runs on the RAW line, before normalization, matching the 6.9
     # shell/python tool exactly; normalizing first would let a scrubbed number or
     # path swallow the word that made the line worth fingerprinting.
-    candidates = [_normalize_line(line, root_str) for line in lines if _FAILURE_MARKER.search(line)]
+    candidates = [_normalize_line(line, root_str) for line in lines
+                  if not _PASS_LINE.search(_ANSI.sub("", line)) and _FAILURE_MARKER.search(line)]
     candidates = [c for c in candidates if c]
     if not candidates:
         nonempty = [_normalize_line(line, root_str) for line in lines if line.strip()]

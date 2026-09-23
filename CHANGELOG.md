@@ -4,6 +4,29 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.2.0] - 2026-09-23
+
+The 6.9.1, 6.10.0 and 6.11.0 fixes, checked item by item against v7 and done in v7's
+terms where v7 did not already cover them:
+
+- Existing-code lookup (6.10.0): the PLAN product may record `existingCode`, per concept
+  `reuse`, `extend` or `new` with the code it cites and the tasks it applies to. New
+  postcondition P8 checks the facts (known repo and tasks, a cite for reuse/extend,
+  every cite resolves at the plan's commit or the run's EXECUTE head, lines within the
+  file). The planner records it, the critic treats a `new` entry that duplicates cited
+  or named code as Critical, and each task's implementer is handed its entries.
+- Suite fingerprints (6.9.1): pytest's long-run summary `(H:MM:SS)`, jest's
+  `Test Suites:`, vitest's `Test Files` and cargo's `test result:` lines lose their
+  counts, and a line reporting a pass is never a failure fingerprint whatever its test
+  id says. Normalization v3; a run from older rules is refused before any write.
+- Repair hints (6.11.0): a hint naming `loop-spec <command>` is printed with this
+  launcher's path and the call's `--project-root` and `--state-home`, so it runs as
+  printed; the stubs' operator lines name the full command too.
+- A failed-verdict remediation carries what the program's own VERIFY re-run printed at
+  that head (6.11.0), not only the verifier's cause.
+- A VERIFY evidence re-run is reused only under the same prepare command (6.11.0).
+- A PR title is one line even when the goal spans lines (6.9.1).
+
 ## [7.1.2] - 2026-09-23
 
 - All program output goes through `logging`: the new `loop_spec.log` gives a stdout

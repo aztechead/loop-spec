@@ -126,7 +126,7 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 | | |
 |---|---|
 | Inputs | approved SPEC product; program probes on the files the request or SPEC product names; on `rewind` or `remediation`, the plan-gap findings |
-| Product | `tasks[]` each with `id`, `dependsOn`, `files`, `repo`, `verify` command, `criteria` covered, optional `featureAdded` target path; `prepare` command; declared evidence exceptions |
+| Product | `tasks[]` each with `id`, `dependsOn`, `files`, `repo`, `verify` command, `criteria` covered, optional `featureAdded` target path; `prepare` command; declared evidence exceptions; optional `existingCode[]`, per concept the plan adds or changes: `reuse`, `extend`, or `new`, the existing code it cites (`path`, `lines`), the tasks it applies to, and the reason (for `new`, what was searched) |
 | Preconditions | requirements revision approved and current |
 | Runs in | the lead session; then one light critic pass over the drafted product for Critical misses only, before submit |
 
@@ -139,10 +139,11 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 | P5 | the task graph is acyclic and every `dependsOn` names a task in the plan | `ready` |
 | P6 | workspace resolved once and the repo list stored in state; every task names a repo in it; every repo check names a repo some task changes, appears once per repo, and is not a `featureAdded` task's verify command in that repo | `ready` |
 | P7 | the critic pass ran and every Critical finding is closed as `fixed` with the critic re-run once on the corrected product, or `rejected` with a stated reason recorded in state; `deferred` is not a disposition for Critical; a Critical finding still open after the one re-run exits `spec gap` or asks a question, whose default is the critic's own recommendation (`spec gap` if any open Critical recommends it, else every finding's stated `reject` reason; no default when any finding carries no recommendation), so an answer policy can close it. The critic judges on the plan, the requirements, and each task's baseline facts; a change to any of them re-issues it | `ready` |
+| P8 | every `existingCode` entry names a repo in state and tasks in the plan; a `reuse` or `extend` entry cites at least one range of existing code; every cite's path exists at the repo's plan commit (base, or the adopted PR head) or at its current EXECUTE head, and its line range lies within that file | `ready` |
 
 | Exit | Requires | Route |
 |---|---|---|
-| `ready` | P1 to P7 | EXECUTE, `fresh` |
+| `ready` | P1 to P8 | EXECUTE, `fresh` |
 | `spec gap` | P1, T1 | SPEC, `remediation`, with the gap named |
 
 ## EXECUTE
@@ -312,7 +313,7 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 
 | Exit | Requires | Route |
 |---|---|---|
-| `reproduced` | B1, B2, S1 to S3, P1 to P7 for the compact products | EXECUTE, `fresh`, with the repair task; then VERIFY, ITERATE, and DELIVER as above. The reproduction passing after the repair is E7's `mustFlip` check, not a debug-local claim |
+| `reproduced` | B1, B2, S1 to S3, P1 to P8 for the compact products | EXECUTE, `fresh`, with the repair task; then VERIFY, ITERATE, and DELIVER as above. The reproduction passing after the repair is E7's `mustFlip` check, not a debug-local claim |
 | `blocked reproduction` | B3 | pause: a question asking for a reproduction or a stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` |
 
 ## Entry points and the order

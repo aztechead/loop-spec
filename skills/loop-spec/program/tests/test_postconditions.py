@@ -252,6 +252,26 @@ class PostconditionsTests(unittest.TestCase):
         bad["tasks"][0]["repo"] = "bogus"
         self.assertIsNotNone(self._boundary("plan", bad, "ready")._p6())
 
+    def test_p8_checks_existing_code_facts(self):
+        """7.2.0: cites resolve at the base (or the run's EXECUTE head), within the file."""
+        def p8(**entry):
+            product = copy.deepcopy(self.plan_product)
+            product["existingCode"] = [{"concept": "greeting", "decision": "reuse", "repo": "repo",
+                                        "cites": [{"path": "README.md", "lines": "1-1"}], "tasks": ["T-1"],
+                                        "reason": "README says hello"} | entry]
+            return self._boundary("plan", product, "ready")._p8()
+
+        self.assertIsNone(self._boundary("plan", self.plan_product, "ready")._p8())  # no entries
+        self.assertIsNone(p8())
+        self.assertIsNone(p8(decision="new", cites=[]))
+        self.assertIn("cites no code", p8(decision="extend", cites=[]))
+        self.assertIn("not in the plan", p8(tasks=["T-9"]))
+        self.assertIn("outside the file", p8(cites=[{"path": "README.md", "lines": "1-2"}]))
+        self.assertIn("outside the file", p8(cites=[{"path": "README.md", "lines": "0-1"}]))
+        self.assertIn("does not exist", p8(cites=[{"path": "a.txt", "lines": "1-1"}]))  # added after base
+        self.store.state["execute"] = {"repos": {"repo": {"head": self.sha_a}}}
+        self.assertIsNone(p8(cites=[{"path": "a.txt", "lines": "1-1"}]))
+
     def test_p7(self):
         self.assertIsNone(self._boundary("plan", self.plan_product, "ready")._p7())
         self.store.state["critic"] = None

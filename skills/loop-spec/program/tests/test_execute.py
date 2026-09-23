@@ -279,6 +279,22 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertIsInstance(action, Product)
         self.assertEqual(len(self.store.state["execute"]["tasks"]["T-1"]["remediations"]), 1)
 
+    def test_a_failed_verdict_remediation_carries_the_programs_rerun_lines(self):
+        """7.2.0: the reason carries what the program's own re-run printed at this head."""
+        from loop_spec import baseline as baseline_module
+        self.plan_tasks[1]["criteria"] = ["AC-2"]
+        self.store.state["products"]["plan"]["product"]["tasks"] = self.plan_tasks
+        self.store.save()
+        self._drive_to_integrated()
+        head = self.store.state["execute"]["repos"]["repo"]["head"]
+        run = baseline_module.run_command("python3 -c \"import sys; print('boom: widget is None'); sys.exit(1)\"", self.repo, head)
+        self.store.state["verifyRuns"] = {"AC-1": {"rerun": run.to_dict(), "matched": True, "reason": "", "repo": "repo"}}
+        remediation = {"id": "R-1", "title": "fix AC-1", "dependsOn": [], "files": ["T-1.txt"],
+                       "repo": "repo", "verify": "sh verify.sh", "criteria": ["AC-1"],
+                       "featureAdded": None, "mustFlip": False}
+        action = step(self.store, self.paths, self._rewind_ctx("attempt-2", remediation))
+        self.assertIn("The program's re-run of AC-1 printed:\nboom: widget is None", action.request["reason"])
+
     def test_a_critical_finding_remediation_reopens_the_file_owner_and_names_the_finding(self):
         # LF-64: no criterion failed, so the reason must not claim one did.
         self.plan_tasks[1]["criteria"] = ["AC-2"]
@@ -551,6 +567,18 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self._implement_and_review("T-1", "T-1.txt")
 
         self._assert_routed_to_plan_gap("T-1")
+
+    def test_the_implementer_gets_the_existing_code_its_task_reuses(self):
+        """7.2.0: only the existingCode entries that name the task reach its implementer."""
+        self.store.state["products"]["plan"]["product"]["existingCode"] = [
+            {"concept": "greeter", "decision": "extend", "repo": "repo", "cites": [{"path": "greet.py", "lines": "1-9"}],
+             "tasks": ["T-1"], "reason": "greet() already formats names"},
+            {"concept": "exporter", "decision": "new", "repo": "repo", "cites": [], "tasks": ["T-2"],
+             "reason": "searched for export and csv; nothing writes rows"}]
+        self.store.save()
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIn("greet() already formats names", action.request["prompt"])
+        self.assertNotIn("nothing writes rows", action.request["prompt"])
 
     def test_a_repo_check_regression_at_integration_sends_the_task_back_with_the_diagnostic(self):
         # 7.1.0: the plan's repo checks run at the task head after its verify command;

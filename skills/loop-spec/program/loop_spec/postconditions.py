@@ -70,7 +70,7 @@ ROUTES: dict[str, dict[str, dict]] = {
         "needs answer": {"requires": ["S1"], "next": ("spec", "remediation"), "backward": False},
     },
     "plan": {
-        "ready": {"requires": ["P1", "P2", "P3", "P4", "P5", "P6", "P7"], "next": ("execute", "fresh"), "backward": False},
+        "ready": {"requires": ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"], "next": ("execute", "fresh"), "backward": False},
         "spec gap": {"requires": ["P1", "T1"], "next": ("spec", "remediation"), "backward": True},
     },
     "execute": {
@@ -101,7 +101,7 @@ ROUTES: dict[str, dict[str, dict]] = {
     "debug": {
         # Not runnable until M4 (run_entry refuses "debug"); the checks exist now so
         # postconditions.py needs no rework when the entry lands.
-        "reproduced": {"requires": ["B1", "B2", "S1", "S2", "S3", "P1", "P2", "P3", "P4", "P5", "P6", "P7"], "next": ("execute", "fresh"), "backward": False},
+        "reproduced": {"requires": ["B1", "B2", "S1", "S2", "S3", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"], "next": ("execute", "fresh"), "backward": False},
         "blocked reproduction": {"requires": ["B3"], "next": ("debug", "remediation"), "backward": False, "pause": True},
     },
 }
@@ -459,6 +459,35 @@ class Boundary:
             if key in feature_added:
                 return f"check {check['command']!r} is also a featureAdded task's verify command; use a different command for the check"
             seen.add(key)
+        return None
+
+    def _p8(self) -> str | None:
+        # 7.2.0: the program checks the facts of each existing-code entry (repo, tasks,
+        # cites that resolve); whether reuse was the right call is the critic's.
+        repos = self._repo_entries()
+        task_ids = {t["id"] for t in self.product["tasks"]}
+        adoption = self.store.state.get("adoption") or {}
+        execute_repos = (self.store.state.get("execute") or {}).get("repos") or {}
+        for entry in self.product.get("existingCode") or []:
+            if entry["repo"] not in repos:
+                return f"existingCode {entry['concept']!r} names an unknown repo {entry['repo']!r}"
+            unknown = [t for t in entry["tasks"] if t not in task_ids]
+            if unknown:
+                return f"existingCode {entry['concept']!r} names tasks not in the plan: {', '.join(unknown)}"
+            if entry["decision"] != "new" and not entry["cites"]:
+                return f"existingCode {entry['concept']!r} is {entry['decision']} but cites no code"
+            info = repos[entry["repo"]]
+            shas = [adoption["headSha"] if adoption.get("repo") == entry["repo"] else info["baseSha"]]
+            if (execute_repos.get(entry["repo"]) or {}).get("head"):
+                shas.append(execute_repos[entry["repo"]]["head"])  # code an earlier task of this run added
+            for cite in entry["cites"]:
+                first, last = (int(n) for n in cite["lines"].split("-"))
+                texts = [shown.stdout for sha in shas
+                         if (shown := repo_module._git(Path(info["path"]), "show", f"{sha}:{cite['path']}")).returncode == 0]
+                if not texts:
+                    return f"existingCode {entry['concept']!r} cites {cite['path']}, which does not exist at the plan's commit"
+                if not any(1 <= first <= last <= len(text.splitlines()) for text in texts):
+                    return f"existingCode {entry['concept']!r} cites {cite['path']}:{cite['lines']}, outside the file"
         return None
 
     def _p7(self) -> str | None:
