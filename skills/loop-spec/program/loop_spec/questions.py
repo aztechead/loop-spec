@@ -6,11 +6,11 @@ policy (`resolve_policy_answer`) before a question is surfaced to a person. This
 module records facts and enforces the one-open-question and retired-id identity
 rules; it never decides what to ask or what a route does next.
 """
-from .errors import LoopSpecError
-from .events import emit, marker_question
-from .ids import new_id, now_iso
-from .jsonio import atomic_write_json
-from .schema import validate_or_raise
+from loop_spec.errors import LoopSpecError
+from loop_spec.events import emit, marker_question
+from loop_spec.ids import new_id, now_iso
+from loop_spec.jsonio import atomic_write_json
+from loop_spec.schema import validate_or_raise
 
 
 def ask(store, paths, *, phase: str, attempt_id: str, text: str, kind: str,

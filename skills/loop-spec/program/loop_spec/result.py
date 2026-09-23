@@ -9,12 +9,12 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from . import VERSION
-from .events import marker_result
-from .ids import now_iso
-from .jsonio import atomic_write_json
-from .postconditions import bound_ok, review_evidence, verified_head
-from .schema import validate_or_raise
+from loop_spec import VERSION
+from loop_spec.events import marker_result
+from loop_spec.ids import now_iso
+from loop_spec.jsonio import atomic_write_json
+from loop_spec.postconditions import bound_ok, review_evidence, verified_head
+from loop_spec.schema import validate_or_raise
 
 _STATUS = {
     "converged": "completed", "converged-with-caveats": "completed", "no-change": "completed",

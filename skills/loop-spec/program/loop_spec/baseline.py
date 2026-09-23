@@ -14,13 +14,13 @@ import pathlib
 import shlex
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from . import repo as repo_module
-from .errors import LoopSpecError
-from .ids import digest_bytes, now_iso
+from loop_spec import repo as repo_module
+from loop_spec.errors import LoopSpecError
+from loop_spec.ids import digest_bytes, now_iso
 
 # ---------------------------------------------------------------------------
 # Failure identity parsers
@@ -91,13 +91,49 @@ def parse_cargo_test(text: str) -> list[str]:
     return sorted(identities)
 
 
+# Repo checks (lint, typecheck, format check): one identity per diagnostic, "<path>:
+# <message>", with the line/column dropped so an unrelated edit above a pre-existing
+# diagnostic does not make it look new. Supported output shapes, each tested: ruff
+# `--output-format concise`, mypy, flake8 (`path:line[:col]: message`), tsc
+# `--pretty false` (`path(line,col): message`), and `ruff format --check`
+# (`Would reformat: path`). Anything else falls back to fingerprints.
+_DIAG_COLON = re.compile(r"^(\S+?\.\w+):\d+(?::\d+)?:?\s+(.+)$")
+_DIAG_TSC = re.compile(r"^(\S+?\.\w+)\(\d+,\d+\):\s+(.+)$")
+_DIAG_REFORMAT = re.compile(r"^Would reformat:\s+(\S+)$")
+
+
+def parse_diagnostics(text: str, root: str = "") -> list[str]:
+    identities = set()
+    prefix = root.rstrip("/") + "/" if root else None
+    for raw in text.splitlines():
+        line = _ANSI.sub("", raw).strip()
+        if m := _DIAG_REFORMAT.match(line):
+            path, message = m.group(1), "would reformat"
+        elif m := (_DIAG_COLON.match(line) or _DIAG_TSC.match(line)):
+            path, message = m.group(1), " ".join(m.group(2).split())
+        else:
+            continue
+        if prefix and path.startswith(prefix):
+            path = path[len(prefix):]
+        identities.add(f"{path}: {message}")
+    return sorted(identities)
+
+
 PARSERS = {
     "pytest": parse_pytest,
     "vitest": parse_vitest_jest,
     "jest": parse_vitest_jest,
     "go": parse_go_test,
     "cargo": parse_cargo_test,
+    "diagnostics": parse_diagnostics,
 }
+_DIAGNOSTIC_TOOLS = {"ruff", "mypy", "tsc", "flake8"}
+
+
+def _parse(runner: str, output: str, root: Path) -> list[str]:
+    if runner == "diagnostics":
+        return parse_diagnostics(output, str(root))
+    return PARSERS[runner](output)
 
 
 def detect_runner(command: str) -> str | None:
@@ -125,6 +161,8 @@ def detect_runner(command: str) -> str | None:
             return "go"
         if name == "cargo" and names[i + 1:i + 2] == ["test"]:
             return "cargo"
+        if name in _DIAGNOSTIC_TOOLS:
+            return "diagnostics"
     return None
 
 
@@ -134,7 +172,8 @@ def detect_runner(command: str) -> str | None:
 # here agree on the same raw output).
 # ---------------------------------------------------------------------------
 
-NORMALIZATION_VERSION = 1
+# v2: counts on a whole summary line are stripped (7.1.0); the diagnostics parser.
+NORMALIZATION_VERSION = 2
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _HEX = re.compile(r"\b0x[0-9a-f]+\b", re.IGNORECASE)
@@ -142,6 +181,14 @@ _LINE_NO = re.compile(r"(?<=:)[0-9]+(?::[0-9]+)?\b")
 _TIME = re.compile(r"\b[0-9]+(?:\.[0-9]+)?(?:ms|s)\b")
 _LABELED_NUM = re.compile(r"\b(pid|process|port)([:=# ]+)[0-9]+\b", re.IGNORECASE)
 _BIG_INT = re.compile(r"\b[0-9]{5,}\b")
+# A summary banner's counts change whenever a passing test is added, so a line that is
+# ENTIRELY one of these shapes has its digits replaced; any other line keeps them, so two
+# assertion messages that differ only in a number stay two fingerprints.
+_SUMMARY_LINES = (
+    re.compile(r"^[=\s-]*\d+ \w+(?:\s*[,|]\s*\d+ \w+)*(?: in <TIME>)?[=\s-]*$"),  # pytest, vitest
+    re.compile(r"^FAILED \((?:\w+=\d+(?:, )?)+\)$"),  # unittest
+    re.compile(r"^Tests?:\s+.*\b\d+ total$"),  # jest
+)
 _FAILURE_MARKER = re.compile(
     r"(?:\bfail(?:ed|ure)?\b|\berror\b|\bexception\b|\bpanic\b|\bfatal\b|\bassert(?:ion)?\b|\bnot ok\b)",
     re.IGNORECASE,
@@ -155,7 +202,10 @@ def _normalize_line(line: str, root: str) -> str:
     line = _TIME.sub("<TIME>", line)
     line = _LABELED_NUM.sub(r"\1\2<N>", line)
     line = _BIG_INT.sub("<N>", line)
-    return " ".join(line.split())
+    line = " ".join(line.split())
+    if any(summary.match(line) for summary in _SUMMARY_LINES):
+        line = re.sub(r"\d+", "<N>", line)
+    return line
 
 
 def normalize_output(text: str, root: Path) -> str:
@@ -163,7 +213,12 @@ def normalize_output(text: str, root: Path) -> str:
     return "\n".join(_normalize_line(line, root_str) for line in text.splitlines())
 
 
-def fingerprints(text: str, root: Path) -> list[str]:
+def _fingerprint_hash(line: str) -> str:
+    return hashlib.sha256(line.encode()).hexdigest()[:16]
+
+
+def fingerprint_candidates(text: str, root: Path) -> list[str]:
+    """The normalized lines `fingerprints` hashes, in output order."""
     root_str = str(root)
     lines = text.splitlines()
     # The marker check runs on the RAW line, before normalization, matching the 6.9
@@ -174,7 +229,16 @@ def fingerprints(text: str, root: Path) -> list[str]:
     if not candidates:
         nonempty = [_normalize_line(line, root_str) for line in lines if line.strip()]
         candidates = nonempty[-1:] or ["<no failure output>"]
-    return sorted({hashlib.sha256(c.encode()).hexdigest()[:16] for c in candidates})
+    return candidates
+
+
+def fingerprints(text: str, root: Path) -> list[str]:
+    return sorted({_fingerprint_hash(c) for c in fingerprint_candidates(text, root)})
+
+
+_LINE_CAP = 300  # display characters kept per line; the hash is of the whole line
+_FINGERPRINT_LINE_CAP = 50
+_TAIL_LINES = 20
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +263,10 @@ class CommandRun:
     error_class: str | None
     tests_ran: int
     log_path: str | None
+    # Readable failure text for a retry reason (7.1.0); state written before has none.
+    fingerprint_lines: dict[str, str] = field(default_factory=dict)
+    omitted_lines: int = 0
+    tail: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -217,6 +285,9 @@ class CommandRun:
             "errorClass": self.error_class,
             "testsRan": self.tests_ran,
             "logPath": self.log_path,
+            "fingerprintLines": dict(self.fingerprint_lines),
+            "omittedLines": self.omitted_lines,
+            "tail": list(self.tail),
         }
 
     @classmethod
@@ -228,6 +299,8 @@ class CommandRun:
             normalized_digest=data["normalizedDigest"], normalization_version=data["normalizationVersion"],
             started_at=data["startedAt"], elapsed_seconds=data["elapsedSeconds"], error_class=data["errorClass"],
             tests_ran=data["testsRan"], log_path=data["logPath"],
+            fingerprint_lines=dict(data.get("fingerprintLines") or {}),
+            omitted_lines=data.get("omittedLines", 0), tail=list(data.get("tail") or []),
         )
 
 
@@ -237,6 +310,7 @@ _TESTS_RAN_PATTERNS = {
     "jest": re.compile(r"✓|√|Tests:\s+\d+ passed"),
     "go": re.compile(r"^--- PASS|^ok\s"),
     "cargo": re.compile(r"^test result:.*\bok\b|\.\.\. ok$"),
+    "diagnostics": re.compile(r"(?!)"),  # a check runs no tests
 }
 
 
@@ -405,10 +479,17 @@ def run_command(
         # below still comes from the bytes, not the file, so it is correct even if the
         # write fails or the file is later moved.
         Path(log_path).write_text(output)
+    candidates = fingerprint_candidates(output, root)
+    fingerprint_lines: dict[str, str] = {}
+    for line in candidates:
+        fingerprint_lines.setdefault(_fingerprint_hash(line), line[:_LINE_CAP])
+    kept = dict(list(fingerprint_lines.items())[:_FINGERPRINT_LINE_CAP])
+    tail = [line[:_LINE_CAP] for line in normalize_output(output, root).splitlines() if line][-_TAIL_LINES:]
     return CommandRun(
         command=command, cwd=str(cwd), sha=sha, exit_status=exit_status, runner=runner,
-        failure_identities=PARSERS[runner](output) if runner else [],
-        fingerprints=fingerprints(output, root),
+        failure_identities=_parse(runner, output, root) if runner else [],
+        fingerprints=sorted(fingerprint_lines),
+        fingerprint_lines=kept, omitted_lines=len(fingerprint_lines) - len(kept), tail=tail,
         output_digest=digest_bytes(output.encode()),
         normalized_digest=digest_bytes(normalize_output(output, root).encode()),
         normalization_version=NORMALIZATION_VERSION,
@@ -572,6 +653,26 @@ class Comparison:
         return cls(verdict=data["verdict"], new_identities=list(data["newIdentities"]), detail=data["detail"])
 
 
+def describe_failure(comparison: Comparison, run: CommandRun, limit: int = 20) -> list[str]:
+    """What a person (or a retrying implementer) needs to read about a failing
+    comparison: the new parsed identities, else the output lines behind new
+    fingerprints, else the run's last lines (mustFlip, featureAdded, a run that never
+    finished carry no identities at all)."""
+    new = list(comparison.new_identities)
+    if new and all(i in run.failure_identities for i in new):
+        lines = new
+    elif new:
+        lines = [run.fingerprint_lines[h] for h in new if h in run.fingerprint_lines]
+        missing = len(new) - len(lines)
+        if missing:
+            lines.append(f"({missing} failure line(s) past the stored {_FINGERPRINT_LINE_CAP} not shown)")
+    else:
+        lines = list(run.tail)
+    if len(lines) > limit:
+        lines = lines[:limit] + [f"({len(lines) - limit} more not shown)"]
+    return lines
+
+
 def _incomplete(run: CommandRun) -> bool:
     """True when `run` never finished in the way a comparison needs: either an
     execution/environment failure (run_command's own error classes -- timeout,
@@ -604,7 +705,7 @@ def compare_to_baseline(entry: BaselineEntry, candidate: CommandRun, *, feature_
             return Comparison("featureAdded-failed", [], "feature-added command did not exit 0")
         if candidate.runner is not None and candidate.failure_identities:
             return Comparison("featureAdded-failed", list(candidate.failure_identities), "feature-added command reported failures")
-        if candidate.runner is not None and candidate.tests_ran == 0:
+        if candidate.runner not in (None, "diagnostics") and candidate.tests_ran == 0:
             # Exit 0 with zero parsed failures also happens when zero tests were
             # collected; tests_ran (counted from the raw output at capture time,
             # since CommandRun keeps only digests) is what tells the two apart.
@@ -621,6 +722,12 @@ def compare_to_baseline(entry: BaselineEntry, candidate: CommandRun, *, feature_
     # reproduce leaves E7 undecidable rather than guessed at either way.
     candidate_incomplete = _incomplete(candidate)
     baseline_incomplete = _incomplete(baseline_run)
+    if baseline_run.normalization_version != candidate.normalization_version and (
+            candidate_incomplete or candidate.runner is None or baseline_run.runner is None):
+        # Fingerprints from two normalization rules are not comparable (a run resumed
+        # across an upgrade is refused before it gets here; this is the backstop).
+        return Comparison("baseline-error", [], f"baseline normalization v{baseline_run.normalization_version}, "
+                                                f"candidate v{candidate.normalization_version}")
     if candidate_incomplete:
         same_pre_existing_failure = (
             baseline_incomplete and baseline_run.error_class == candidate.error_class

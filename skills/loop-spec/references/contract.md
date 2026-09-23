@@ -74,8 +74,11 @@ shape, including nested item schemas):
 - **spec**: `goal`, `boundaries[]`, `criteria[]` (`{id: "AC-n", text}`),
   `decisions[]`, `openQuestions[]`.
 - **plan**: `tasks[]` (`id: "T-n"`, `title`, `dependsOn[]`, `files[]`, `repo`,
-  `verify`, `criteria[]`, `featureAdded`, `mustFlip`), `prepare`,
-  `evidenceExceptions[]`, `criticResponses[]`.
+  `verify`, `criteria[]`, `featureAdded`, `mustFlip`), `prepare`, optional
+  `checks[]` (`repo`, `command`: the repo's lint, typecheck and format checks, baselined,
+  re-run at each task integration and at VERIFY's head for V10),
+  `evidenceExceptions[]`, `criticResponses[]`. The same optional `checks[]` is in the
+  compact plan of **debug** and **revise**.
 - **execute**: `tasks[]` (`id`, `disposition`: `done`/`already-satisfied`/`removed`/
   `adopted`, `evidence`, `commits[]`, `review`; one entry per registered close-out
   `C-n`, `done` or `already-satisfied`), `issues[]`, `heads` (repo name to head SHA).
@@ -89,7 +92,9 @@ shape, including nested item schemas):
   replaced the single-repo `boundSha`).
 - **deliver**: `repos[]` (`repo`, `pr`, `deliveredSha`, `caveats[]`, `state`:
   `delivered`/`failed`/`skipped`; `publishedSha` on a `failed` row whose branch this or
-  an earlier DELIVER attempt put on the remote).
+  an earlier DELIVER attempt put on the remote; `acceptedRemote` (`head`, `commits[]`
+  of `{sha, subject, paths[]}`, `paths[]`) on a row whose remote branch held commits
+  after the verified SHA that `deliver.acceptRemotePaths` accepted).
 - **debug**: `reproduction` (`command`, `failureDigest`, `reason`), `original`,
   `diagnosis`, a compact `spec` and `plan` (the same shapes as SPEC's and PLAN's
   own products, folded into SPEC and PLAN once accepted).
@@ -289,6 +294,7 @@ optional:
 | `roles.<role>` | binds that role to a skill other than the bundled default (`roles.load_role`); a plain string is the binding, or an object `{"binding": ..., "model": ...}` also names a model for that role's dispatches (`roles.resolve_model`), reachable without also rebinding the skill |
 | `deliver.base` | overrides the branch DELIVER's PR targets, instead of the repo's detected default branch |
 | `deliver.readiness` | `"checks"` makes D3 wait on `gh pr checks`; default `"none"` skips that wait |
+| `deliver.acceptRemotePaths` | a list of path globs (repo-relative, every repo of a workspace); commits someone else put on the PR branch after the verified SHA, such as a changelog bot's, are accepted when every path they touch in any commit matches and none is changed by the verified change. DELIVER then skips the push, keeps `deliveredSha` as the verified SHA, and records the commits as `acceptedRemote` (D1/D2). Absent or `[]`: any such commit blocks delivery. Anything but a list of strings is a config error |
 | `deliver.escalatedPartialDraft` | `true` routes an escalated ITERATE forward into DELIVER for a draft PR instead of terminating |
 | `evidence.review.accept` | `"unattested"` lets an `unattested` review count toward EXECUTE's E6, instead of blocking the task, and lets a `code-reviewer` step with no accepted evidence be accepted instead of refused; every task and step accepted this way is listed in the result's `weakenedAssurance` |
 | `evidence.judgment.accept` | `"unattested"` lets a `plan-critic` or `iterate-judge` step with no accepted evidence be accepted instead of refused, listed in `weakenedAssurance`. Either key with any other value is a config error |

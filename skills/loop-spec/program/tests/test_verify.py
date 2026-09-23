@@ -540,3 +540,36 @@ class WorkspaceVerifyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CheckRemediationTests(unittest.TestCase):
+    """7.1.0: a repo check that regressed at the verified head becomes a remediation for
+    the task owning the diagnostic's file, whatever the verdicts say."""
+
+    def setUp(self):
+        from tests.test_postconditions import PostconditionsTests, _git, _rev_parse
+        PostconditionsTests.setUp(self)
+        from loop_spec import baseline as baseline_module
+        check = "git grep -n TODO"
+        plan = dict(self.plan_product, checks=[{"repo": "repo", "command": check}])
+        captured = baseline_module.capture_baseline(self.repo_dir, self.base_sha, [(check, None, None)], None,
+                                                    self.paths.checkouts_dir, "repo")
+        self.store.state["baseline"] = {"planRevision": "x", "repos": {"repo": captured.to_dict()}}
+        self.store.state["products"]["plan"] = {"exit": "ready", "product": plan}
+        (self.repo_dir / "b.txt").write_text("TODO fails here\n", encoding="utf-8")
+        _git(self.repo_dir, "commit", "-qam", "T-2 again")
+        self.execute_product["heads"]["repo"] = _rev_parse(self.repo_dir)
+        self.store.state["products"]["execute"] = {"exit": "integrated", "product": self.execute_product}
+
+    def test_regressed_check_turns_a_pass_into_an_implementation_gap(self):
+        from loop_spec.verify import _check_remediations
+        remediations = []
+        exit_ = _check_remediations(self.store, self.paths, {"attempt": {"id": "v-1"}}, self.plan_product,
+                                    {"verdicts": [{}, {}]}, remediations, "passed")
+        self.assertEqual(exit_, "implementation gap")
+        [rem] = remediations
+        # git grep is no diagnostics tool: its lines are fingerprints, so no file is
+        # named and the repo's last task owns the remediation.
+        self.assertEqual((rem["id"], rem["files"], rem["criteria"]), ("R-3", [], ["AC-2"]))
+        self.assertIn("b.txt:<LINE>:TODO fails here", rem["title"])
+        self.assertIn("repo check `git grep -n TODO` regressed", rem["title"])

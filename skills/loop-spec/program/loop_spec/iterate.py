@@ -9,16 +9,16 @@ keeps accumulating.
 import copy
 from pathlib import Path
 
-from . import ledger as ledger_module
-from . import repo as repo_module
-from . import steps as steps_module
-from .budget import has_room
-from .contract import resolve_role, validate_request
-from .errors import LoopSpecError
-from .events import emit
-from .execute import IssueStep, Product
-from .paths import ensure_results_dir
-from .roles import compose_prompt, load_role, resolve_model
+from loop_spec import ledger as ledger_module
+from loop_spec import repo as repo_module
+from loop_spec import steps as steps_module
+from loop_spec.budget import has_room
+from loop_spec.contract import resolve_role, validate_request
+from loop_spec.errors import LoopSpecError
+from loop_spec.events import emit
+from loop_spec.execute import IssueStep, Product
+from loop_spec.paths import ensure_results_dir
+from loop_spec.roles import compose_prompt, load_role, resolve_model
 
 _DIFF_CAP = 200_000  # ponytail: same flat cap as execute.py's review diff
 

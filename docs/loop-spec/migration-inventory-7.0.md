@@ -150,7 +150,7 @@ lands.
 | `adk-install.sh` | removed | R§20 |
 | `adopt-pr.sh` | replaced | repo module input at SPEC entry; adopted branch and PR identity recorded in state (R§7) |
 | `artifact-lint.sh` | removed | artifacts are rendered, never authored (R§3) |
-| `artifact-sink.sh` | replaced | state home holds rendered artifacts; `commitArtifacts` config (R§12) |
+| `artifact-sink.sh` | replaced | state home holds rendered artifacts; nothing is committed to the consumer repo (R§12) |
 | `autonomous-chain.sh` | replaced | `run` is resumable from state; the harness continues it (R§7) |
 | `backlog.sh` | replaced | ledger `deferred` disposition; `BACKLOG.md` goes |
 | `bounded-run.sh` | replaced | program command runner (baseline and evidence re-run) |
@@ -181,7 +181,7 @@ lands.
 | `delivery-reconcile.sh` | replaced | DELIVER reconciles by PR identity (R§4) |
 | `delta-findings-lint.sh` | replaced | ledger delta rule and `supersedes` schema requirement (R§10) |
 | `design-budget.sh` | removed | design-phase budget; SPEC and PLAN run in the lead |
-| `detect-test-cmd.sh` | replaced | baseline detects repo checks from manifests (R§11) |
+| `detect-test-cmd.sh` | replaced | the repo-checks probe reports configured tools; the PLAN product's `checks` names the commands the baseline captures (R§11) |
 | `dispatch-files.sh` | replaced | `step.json` (R§5) |
 | `doc-deps.sh` | replaced | program probe at PLAN: dependencies the named files import (R§7) |
 | `doc-tells.sh` | replaced | program probe, diff mode on touched markdown per task before review; whole range at VERIFY (R§7) |
@@ -196,7 +196,7 @@ lands.
 | `execute-step.sh` | replaced | EXECUTE default: implement step, review step, integrate (R§7) |
 | `execute-stop.sh` | replaced | out-of-band change pauses for reconciliation (R§7) |
 | `exit-gate-prelude.sh` | replaced | boundary check in the program (R§2) |
-| `extension-points.sh` | replaced | config `phases`, `roles`, `prepare` |
+| `extension-points.sh` | replaced | config `phases`, `roles`; the PLAN product's `prepare` |
 | `failure-tells.sh` | replaced | program probe, diff mode per task before review; whole range at VERIFY (R§7) |
 | `feature-bootstrap.sh` | replaced | state and repo modules |
 | `feature-init.sh` | replaced | state module |
@@ -243,12 +243,12 @@ lands.
 | `plugin-version.sh` | replaced | result `loopSpecVersion` read from the manifest |
 | `pr-body.sh` | replaced | DELIVER renders the PR body from products (R§12) |
 | `pr-comments.sh` | replaced | `revise` entry: comment fetch in the program |
-| `pr-delivery.sh` | replaced | DELIVER (R§4): exact SHA, required checks, identity reconciliation |
+| `pr-delivery.sh` | replaced | DELIVER (R§4): exact SHA (plus an opt-in accepted extension, `deliver.acceptRemotePaths`), required checks, identity reconciliation |
 | `pr-feedback.sh` | replaced | `revise` entry: comment-to-gap mapping |
 | `prejudge-lint.sh` | replaced | the program composes prompts; a test on the composer pins that the contract section cannot coach |
-| `prepare-environment.sh` | replaced | config `prepare` before baseline (R§11) |
+| `prepare-environment.sh` | replaced | the PLAN product's `prepare` before baseline (R§11) |
 | `profile.sh` | removed | run profiles; `micro` preset |
-| `project-commands.sh` | replaced | baseline detection plus config `prepare` |
+| `project-commands.sh` | replaced | the PLAN product's verify commands, `checks`, and `prepare` |
 | `python-path.sh` | replaced | program runtime check at entry |
 | `quality-loop-state.sh` | removed | with `quality-loop` |
 | `ralph-remediation.sh` | replaced | rewind budget and per-step retry limit (R§10) |
@@ -396,11 +396,11 @@ once. Names ending in `_` are prefixes.
 | `CYCLE_RESULT_BIN`, `ACTIVE_CYCLE_BIN`, `PR_DELIVERY_BIN`, `PR_COMMENTS_BIN`, `FINALIZE_CANDIDATE_BIN`, `DEFERRAL_LINT_BIN`, `PR_DELIVERY_CWD`, `BOUNDED_RUN_CWD`, `BOUNDED_RUN_STDIN` | removed | test seams for shell scripts; 7.x has no cycle-level suite to seam (R§17) |
 | `NON_INTERACTIVE`, `AUTONOMOUS`, `PAUSE` | replaced | answer scope `question` or `run` and `--answer-policy default` at entry (R§5). `NON_INTERACTIVE` needs no successor: exit 3 hands the question to whoever runs the program. `AUTONOMOUS` is a `run`-scoped answer. `PAUSE` is a pending question, `status: paused` |
 | `ORACLE`, `ORACLE_WRITE`, `ORACLE_RECORD`, `ANSWER_`, `ANSWER_TITLE`, `ANSWER_REPOS`, `ANSWER_STYLE`, `ANSWER_SPEC_CONFIRM`, `ANSWER_ITERATE_SPEC` | replaced | supervisor question policy answering `question.json` by id (R§5, R§7) |
-| `CMD_`, `CMD_TEST`, `CMD_LINT`, `CMD_TYPECHECK`, `CMD_PREPARE`, `PROJ_VERIFY_CMD`, `STARTUP_BASELINE`, `EXTENSIONS` | replaced | config `prepare` and baseline detection (R§11) |
+| `CMD_`, `CMD_TEST`, `CMD_LINT`, `CMD_TYPECHECK`, `CMD_PREPARE`, `PROJ_VERIFY_CMD`, `STARTUP_BASELINE`, `EXTENSIONS` | replaced | the PLAN product: task verify commands (tests), `checks` (lint, typecheck), `prepare`; the program's repo-checks facts inform the planner (R§11) |
 | `BASELINE_TIMEOUT_SECS`, `BASELINE_IDLE_TIMEOUT_SECS`, `PREPARE_TIMEOUT_SECS`, `PREPARE_IDLE_TIMEOUT_SECS`, `COMMAND_TIMEOUT_SECS`, `COMMAND_IDLE_TIMEOUT_SECS`, `PHASE_TIMEOUT_MINS`, `DISPATCH_WAIT_MINS`, `REGRESSION_CMD_TIMEOUT_SECONDS`, `LIVE_PROBE_TIMEOUT_SECONDS`, `LIVE_READY_PROBE_TIMEOUT_SECONDS`, `DIGEST_MAX_LINES` | replaced | command runner timeouts in config; the worker grace period is operator-set (R§5). Names fixed at M1 |
 | `ITERATE_MAX_ITERATIONS` | replaced | rewind budget override (R§10) |
 | `REDO_MAX`, `RALPH_THRESHOLD`, `STRATEGY_ROTATION`, `STRATEGY_ROTATION_THRESHOLD` | replaced | per-step retry limit (R§7) |
-| `ARTIFACTS_IN_PR` | replaced | config `commitArtifacts` (R§12) |
+| `ARTIFACTS_IN_PR` | removed | nothing is committed to the consumer repo; the PR body carries the summary (R§12; `commitArtifacts` removed on the 7.0 audit's R8) |
 | `CHECKPOINT_PR`, `CHECKPOINT_EACH_PHASE` | replaced | draft delivery under operator policy (R§4); per-phase checkpoints go |
 | `CHECKS_TIMEOUT_SECONDS`, `CHECKS_INTERVAL_SECONDS`, `CHECKS_REGISTRATION_GRACE_SECONDS`, `GH_COMMAND_TIMEOUT_SECONDS` | replaced | DELIVER readiness policy in config, carrying 6.9 behavior (R§4) |
 | `PR_BODY_VERBOSE`, `DELIVERY_RECONCILE`, `REVIEW_GROUP_BYTES` | removed | DELIVER renders one body and always reconciles |

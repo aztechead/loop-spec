@@ -10,15 +10,15 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from .contract import unattested_policy
-from .errors import LoopSpecError
-from .events import emit
-from .ids import digest_bytes, new_id, now_iso
-from .jsonio import atomic_write_json, read_json
-from .paths import ensure_results_dir
-from .postconditions import retry_limit
-from .repo import remove_worktree
-from .schema import validate, validate_or_raise
+from loop_spec.contract import unattested_policy
+from loop_spec.errors import LoopSpecError
+from loop_spec.events import emit
+from loop_spec.ids import digest_bytes, new_id, now_iso
+from loop_spec.jsonio import atomic_write_json, read_json
+from loop_spec.paths import ensure_results_dir
+from loop_spec.postconditions import retry_limit
+from loop_spec.repo import remove_worktree
+from loop_spec.schema import validate, validate_or_raise
 
 # The verifier and debugger are re-run by the program itself (V4, B1), and the
 # implementer's evidence is its own review; these three roles are pure judgment

@@ -242,3 +242,18 @@ class ValidateRequestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AcceptRemotePathsConfigTests(unittest.TestCase):
+    def test_accepts_a_list_of_globs_and_refuses_anything_else(self):
+        from loop_spec.contract import load_config
+        from loop_spec.errors import LoopSpecError
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            (root / ".loop-spec").mkdir()
+            config = root / ".loop-spec" / "config.json"
+            config.write_text('{"deliver": {"acceptRemotePaths": ["CHANGELOG.md", "docs/*.md"]}}')
+            self.assertEqual(load_config(root)["deliver"]["acceptRemotePaths"], ["CHANGELOG.md", "docs/*.md"])
+            config.write_text('{"deliver": {"acceptRemotePaths": "CHANGELOG.md"}}')
+            with self.assertRaises(LoopSpecError):
+                load_config(root)

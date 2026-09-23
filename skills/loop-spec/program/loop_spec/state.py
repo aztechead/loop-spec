@@ -6,11 +6,11 @@ state.json; the sidecar digest is how `open()` notices if something else did.
 """
 from pathlib import Path
 
-from . import VERSION
-from .errors import LoopSpecError
-from .ids import digest
-from .jsonio import atomic_write_json, read_json
-from .paths import FeaturePaths
+from loop_spec import VERSION
+from loop_spec.errors import LoopSpecError
+from loop_spec.ids import digest
+from loop_spec.jsonio import atomic_write_json, read_json
+from loop_spec.paths import FeaturePaths
 
 
 def _digest_path(paths: FeaturePaths) -> Path:

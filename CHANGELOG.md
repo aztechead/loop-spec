@@ -4,6 +4,33 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.1.0] - 2026-09-23
+
+From the 6.9.x upstream and improvement reports, checked against 7.0.7 (the items 7.x
+did not already cover):
+
+- Repo checks: PLAN may name `checks` (lint, typecheck, format check) per repo; the
+  program reports which tools each repo's manifests configure (read from git objects),
+  baselines the checks, re-runs them at every task integration (a new diagnostic sends
+  the task back) and at VERIFY's head, where a regression is a remediation and V10 gates
+  `passed`. A diagnostics parser gives ruff, mypy, flake8, tsc and `ruff format --check`
+  output stable `<path>: <message>` identities.
+- DELIVER: opt-in `deliver.acceptRemotePaths` accepts commits someone else put on the PR
+  branch after the verified SHA (a changelog bot) when every path they touch matches and
+  none is part of the verified change; the verified SHA stays the delivered one and the
+  commits are recorded as `acceptedRemote` (D1/D2 hold both to one observed head). An
+  existing PR's body is refreshed on re-entry.
+- A retrying implementer reads the failures: new test ids, the output lines behind new
+  fingerprints, or the run's last lines.
+- Fingerprints strip the counts on a whole summary line (normalization v2); a run whose
+  baseline used other comparison rules is refused before any command touches it.
+- A criterion that passed and now fails is re-run by the program; a failing test file
+  added since the pass is stated to the implementer as a fact (ROADMAP §10).
+- The PR body lists Critical PLAN-critic findings the run rejected, with the reason.
+- Imports inside `loop_spec` are absolute.
+- Docs: migration inventory and ROADMAP §11 no longer claim `commitArtifacts`, config
+  `prepare`, detected repo checks or integration reason codes that did not exist.
+
 ## [7.0.7] - 2026-09-23
 
 - EXECUTE reviews a wave's ready tasks in one code-reviewer step (6.10's per-wave

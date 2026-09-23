@@ -10,27 +10,29 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from . import baseline as baseline_module
-from . import budget as budget_module
-from . import contract
-from . import debug as debug_module
-from . import execute as execute_module
-from . import iterate as iterate_module
-from . import ledger as ledger_module
-from . import postconditions
-from . import questions
-from . import repo as repo_module
-from . import result as result_module
-from . import revise as revise_module
-from . import steps
-from . import verify as verify_module
-from .errors import LoopSpecError
-from .ids import digest, new_id, now_iso
-from .jsonio import atomic_write_json, read_json
-from .events import emit, marker_phase_end, marker_phase_start
-from .paths import FeaturePaths, ensure_results_dir, feature_dir, repo_id, slug_from_request
-from .paths import state_home as resolve_state_home
-from .state import StateStore
+from loop_spec import baseline as baseline_module
+from loop_spec import budget as budget_module
+from loop_spec import contract
+from loop_spec import debug as debug_module
+from loop_spec import execute as execute_module
+from loop_spec import iterate as iterate_module
+from loop_spec import ledger as ledger_module
+from loop_spec import postconditions
+from loop_spec import probes as probes_module
+from loop_spec import questions
+from loop_spec import repo as repo_module
+from loop_spec import repo_checks
+from loop_spec import result as result_module
+from loop_spec import revise as revise_module
+from loop_spec import steps
+from loop_spec import verify as verify_module
+from loop_spec.errors import LoopSpecError
+from loop_spec.ids import digest, new_id, now_iso
+from loop_spec.jsonio import atomic_write_json, read_json
+from loop_spec.events import emit, marker_phase_end, marker_phase_start
+from loop_spec.paths import FeaturePaths, ensure_results_dir, feature_dir, repo_id, slug_from_request
+from loop_spec.paths import state_home as resolve_state_home
+from loop_spec.state import StateStore
 
 _PHASE_ORDER = ["spec", "plan", "execute", "verify", "iterate", "deliver"]
 _ALL_IMPLEMENTATION_PHASES = _PHASE_ORDER + ["debug", "revise"]
@@ -80,7 +82,7 @@ def run_entry(entry: str, *, project_root: Path, request_text: str | None, slug:
         if not slug:
             raise LoopSpecError(f"{entry} requires --slug", repair="pass --slug <slug>, see `loop-spec status`")
         paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
-        store = StateStore.open(paths)
+        store = _open_existing(paths)
         _check_phase_preconditions(store, entry)
         if store.state["phase"]["current"] != entry:
             store.state["phase"]["current"] = entry
@@ -106,17 +108,18 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
         paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
         if not paths.state_json.exists():
             raise LoopSpecError(f"no run for slug {slug!r}", repair="check `loop-spec status` for known slugs, or pass --request to start one")
-        return continue_run(StateStore.open(paths), paths, project_root=project_root)
+        return continue_run(_open_existing(paths), paths, project_root=project_root)
 
     slug = slug or slug_from_request(request_text)
     paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
-    _clear_stale_last_result(paths, slug)
 
     if paths.state_json.exists():
-        store = StateStore.open(paths)
+        store = _open_existing(paths)
+        _clear_stale_last_result(paths, slug)
         if store.state["request"]["digest"] != digest(request_text):
             raise LoopSpecError(f"slug {slug} is in use by another request", repair="pass --slug to choose a different slug")
     else:
+        _clear_stale_last_result(paths, slug)
         run_fields = {
             "id": new_id("run"), "entry": entry, "createdAt": now_iso(),
             "slug": slug, "repoId": rid, "cycleType": cycle_type,
@@ -193,7 +196,7 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
         paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
         if not paths.state_json.exists():
             raise LoopSpecError(f"no run for slug {slug!r}", repair="check `loop-spec status` for known slugs, or pass --pr to start one")
-        return continue_run(StateStore.open(paths), paths, project_root=project_root)
+        return continue_run(_open_existing(paths), paths, project_root=project_root)
 
     workspace = repo_module.detect_workspace(project_root)
     if workspace.mode == "none":
@@ -210,10 +213,12 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
     existing_slug = _find_run_by_adoption_number(home, rid, adoption.number, project_root)
     slug = slug or existing_slug or f"revise-{adoption.number}"
     paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
-    _clear_stale_last_result(paths, slug)
 
     if paths.state_json.exists():
-        return continue_run(StateStore.open(paths), paths, project_root=project_root)
+        store = _open_existing(paths)
+        _clear_stale_last_result(paths, slug)
+        return continue_run(store, paths, project_root=project_root)
+    _clear_stale_last_result(paths, slug)
 
     base_sha = repo_module.run_git(repo_path, "merge-base", adoption.base_branch, adoption.head_sha).strip()
     request_text = f"revise PR #{adoption.number}: {adoption.url}"
@@ -237,6 +242,33 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
         store.state["questions"]["policy"] = "default"
     store.save()
     return continue_run(store, paths, project_root=project_root)
+
+
+def check_compatible(store: StateStore) -> None:
+    """A run is never resumed across a change in how outputs are compared (7.1.0): its
+    stored baselines, cached comparisons and critic facts were all made under the rules
+    that captured it. Checked before any command touches the run's state; a run with no
+    baseline yet has nothing to be incompatible with."""
+    baseline_state = store.state.get("baseline")
+    if baseline_state is None:
+        return
+    repo_baselines = baseline_state.get("repos")
+    if repo_baselines is None:
+        repo_baselines = {"": baseline_state}  # a pre-R3 flat baseline
+    for repo_baseline in repo_baselines.values():
+        version = (repo_baseline or {}).get("normalizationVersion")
+        if version is not None and version != baseline_module.NORMALIZATION_VERSION:
+            raise LoopSpecError(
+                f"this run's baseline was captured by comparison rules v{version}; "
+                f"this program uses v{baseline_module.NORMALIZATION_VERSION}",
+                repair="finish the run on the loop-spec version that started it, or start a new run",
+            )
+
+
+def _open_existing(paths: FeaturePaths) -> StateStore:
+    store = StateStore.open(paths)
+    check_compatible(store)
+    return store
 
 
 def _clear_stale_last_result(paths: FeaturePaths, slug: str) -> None:
@@ -319,6 +351,7 @@ def _check_phase_preconditions(store: StateStore, phase: str) -> None:
 
 
 def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) -> Next:
+    check_compatible(store)
     project_root = Path(project_root)
     slug = store.state["run"]["slug"]
     while True:
@@ -394,6 +427,18 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
             return waiting
 
 
+def _phase_probes(state: dict, phase: str) -> dict:
+    """7.1.0: the phases that write a PLAN get the repo-checks facts for each repo, read
+    at the tree that plan will run against (a revise run's adopted repo at the PR head)."""
+    if phase not in ("plan", "debug", "revise"):
+        return {}
+    adoption = state.get("adoption") or {}
+    return {"repoChecks": {
+        name: probes_module.repo_checks_probe(Path(info["path"]), adoption["headSha"] if adoption.get("repo") == name else info["baseSha"])
+        for name, info in state["repos"].items()
+    }}
+
+
 def build_envelope(store: StateStore, paths: FeaturePaths, phase: str, attempt_id: str, project_root: Path) -> dict:
     state = store.state
     products = {
@@ -435,7 +480,7 @@ def build_envelope(store: StateStore, paths: FeaturePaths, phase: str, attempt_i
             "projectRoot": str(project_root),
         },
         "answers": questions.answers_for_context(store, attempt_id),
-        "probes": {},  # M1: probes.py lands at M2 (wave F); every phase sees an empty envelope.
+        "probes": _phase_probes(state, phase),
     }
 
 
@@ -565,6 +610,11 @@ def _normalize_single_repo_task_repos(store: StateStore, paths: FeaturePaths, at
             task["repo"] = only_repo
             emit(paths, "plan_repo_normalized", {"taskId": task["id"], "repo": only_repo},
                  phase="plan", attempt_id=attempt_id)
+    for check in product.get("checks") or []:
+        if check.get("repo") not in repos:
+            check["repo"] = only_repo
+            emit(paths, "plan_repo_normalized", {"check": check["command"], "repo": only_repo},
+                 phase="plan", attempt_id=attempt_id)
 
 
 def _accept_product(store: StateStore, paths: FeaturePaths, project_root: Path, phase: str, attempt_id: str, product: dict) -> None:
@@ -606,6 +656,8 @@ def _accept_product(store: StateStore, paths: FeaturePaths, project_root: Path, 
 
     if phase == "verify" and exit_ == "passed":
         _run_verify_reruns(store, paths, product)
+    elif phase == "verify" and exit_ == "implementation gap":
+        _observe_failures(store, paths, product, attempt_id)
 
     _finalize(store, paths, project_root, phase, attempt_id, product, exit_)
 
@@ -761,6 +813,19 @@ def _critic_baseline_facts(store: StateStore, plan_product: dict) -> list[dict]:
                 "fingerprints": run.get("fingerprints") or [],
             })
         facts.append(fact)
+    for check in plan_product.get("checks") or []:
+        repo_dict = baseline_module.repo_baseline_dict(baseline_state, check["repo"], repos) or {}
+        run = ((repo_dict.get("entries") or {}).get(check["command"]) or {}).get("run")
+        fact = {"check": check["command"], "repo": check["repo"], "baseSha": repo_dict.get("baseSha")}
+        if run is None:
+            fact["status"] = "missing"
+        else:
+            fact.update({
+                "status": "incomplete" if baseline_module._incomplete(baseline_module.CommandRun.from_dict(run)) else "ran",
+                "exitStatus": run.get("exitStatus"), "errorClass": run.get("errorClass"), "runner": run.get("runner"),
+                "failureIdentities": run.get("failureIdentities") or [],
+            })
+        facts.append(fact)
     return facts
 
 
@@ -789,7 +854,7 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
     # the role's own schema.json; every other role step goes through
     # roles.compose_prompt/load_role (see _issue_adopted_review), and the critic
     # step now does too.
-    from .roles import compose_prompt, load_role, resolve_model
+    from loop_spec.roles import compose_prompt, load_role, resolve_model
     repo_path = next(iter(store.state["repos"].values()))["path"]
     spec_product = store.state["products"]["spec"]["product"]
     inputs = {"specCriteria": spec_product["criteria"], "planTasks": plan_product["tasks"], "baseline": facts}
@@ -957,6 +1022,10 @@ def _capture_plan_baseline(store: StateStore, paths: FeaturePaths, plan_product:
     tasks_by_repo: dict[str, list[tuple]] = {}
     for t in plan_product["tasks"]:
         tasks_by_repo.setdefault(t["repo"], []).append((t["verify"], t["id"], t.get("featureAdded")))
+    for check in plan_product.get("checks") or []:
+        # 7.1.0: after the tasks' commands, so a shared (non-featureAdded) command keeps
+        # its task attribution; P6 already refused a featureAdded collision.
+        tasks_by_repo.setdefault(check["repo"], []).append((check["command"], None, None))
 
     baselines: dict[str, dict] = {}
     # environmentHealth stays keyed per repo too, the same reason entries do: a
@@ -1069,6 +1138,56 @@ def _run_verify_reruns(store: StateStore, paths: FeaturePaths, verify_product: d
     store.save()
 
 
+def _observe_failures(store: StateStore, paths: FeaturePaths, verify_product: dict, attempt_id: str) -> None:
+    """7.1.0: for a failing criterion that passed at an earlier accepted VERIFY, the
+    program re-runs its evidence command at the head, so EXECUTE can say whether the
+    failing test file was added after that pass (a fact; the implementer judges). Every
+    unmet condition skips the observation; it never rejects or blocks VERIFY."""
+    passes = store.state.get("criterionPasses") or {}
+    execute_product = (store.state["products"].get("execute") or {}).get("product")
+    if not passes or execute_product is None:
+        return
+    heads = execute_product["heads"]
+    exceptions = postconditions.resolved_exceptions(store)
+    prepare = store.state["products"]["plan"]["product"].get("prepare")
+    observations = store.state.setdefault("failureObservations", {})
+    for verdict in verify_product["verdicts"]:
+        criterion = verdict["criterion"]
+        record = passes.get(criterion)
+        if verdict["verdict"] != "fail" or record is None:
+            continue
+        evidence = verdict.get("evidence") or {}
+        repo_name, command = evidence.get("repo"), evidence.get("command") or ""
+        why = None
+        if criterion in exceptions:
+            why = "the criterion is an evidence exception"
+        elif not command or baseline_module.shell_syntax(command) is not None:
+            why = "no runnable evidence command"
+        elif repo_name not in store.state["repos"] or repo_name != record["repo"]:
+            why = "the evidence names another repo than the recorded pass"
+        elif record["requirementsRevision"] != store.state["revisions"]["requirements"]:
+            why = "the requirements changed since the pass"
+        elif not repo_module.is_ancestor(Path(store.state["repos"][repo_name]["path"]), record["sha"], heads[repo_name]):
+            why = "the pass is not an ancestor of the verified head"
+        if why is not None:
+            emit(paths, "failure_observation_skipped", {"criterion": criterion, "why": why,
+                 "summary": f"no provenance hint for {criterion}: {why}"}, phase="verify", attempt_id=attempt_id)
+            continue
+        head = heads[repo_name]
+        repo_path = Path(store.state["repos"][repo_name]["path"])
+        checkout = paths.checkouts_dir / f"observe-{criterion}-{head[:12]}"
+        repo_module.clean_checkout(repo_path, head, checkout)
+        try:
+            if prepare:
+                baseline_module.run_command(prepare, checkout, head)
+            run = baseline_module.run_command(command, checkout, head)
+        finally:
+            repo_module.remove_worktree(repo_path, checkout, force=True)
+        observations[criterion] = {"repo": repo_name, "sha": head, "command": command, "attemptId": attempt_id,
+                                   "runner": run.runner, "failureIdentities": run.failure_identities}
+    store.save()
+
+
 def _record_deliver_credentials(store: StateStore, attempt_id: str) -> None:
     checks = store.state.setdefault("credentialChecks", {})
     for name, info in store.state["repos"].items():
@@ -1097,6 +1216,9 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
         _finish_run(store, paths, "escalated", reason=f"the rewind budget has no room for {phase} {exit_}")
         return
 
+    if phase == "verify":
+        # V10 reads only program records; every VERIFY implementation gets them here.
+        repo_checks.ensure_check_runs(store, paths)
     boundary = postconditions.Boundary(store, paths, phase=phase, product=product, exit=exit_, project_root=project_root)
     failures = boundary.check()
     if failures:
@@ -1249,6 +1371,20 @@ def _record_accepted_product(store: StateStore, phase: str, attempt_id: str, pro
             )
             repo_findings = [f for f in findings if f.get("repo") == repo] if multi_repo else findings
             ledger_module.record_findings(store, repo_findings, sha=reviewed_range["to"], range_id=range_id)
+        if exit_ == "passed":
+            # 7.1.0: where each criterion last passed, as the program re-ran and matched
+            # it; a later failure of the same criterion is compared against this.
+            exceptions = postconditions.resolved_exceptions(store)
+            verify_runs = store.state.get("verifyRuns") or {}
+            passes = store.state.setdefault("criterionPasses", {})
+            for verdict in product["verdicts"]:
+                record = verify_runs.get(verdict["criterion"])
+                if verdict["verdict"] != "pass" or verdict["criterion"] in exceptions or not (record or {}).get("matched"):
+                    continue
+                passes[verdict["criterion"]] = {
+                    "repo": record["repo"], "sha": record["rerun"]["sha"], "command": record["rerun"]["command"],
+                    "requirementsRevision": store.state["revisions"]["requirements"], "attemptId": attempt_id,
+                }
     store.state["phase"]["retries"] = 0
     if boundary.unreviewed:
         store.state["unreviewed"] = boundary.unreviewed
@@ -1387,7 +1523,7 @@ def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: 
     # code-reviewer pass over the whole adopted range is on record. Issued once,
     # before EXECUTE's own attempt starts, so that record exists before any task
     # can claim it.
-    from .roles import compose_prompt, load_role, resolve_model
+    from loop_spec.roles import compose_prompt, load_role, resolve_model
     adoption = store.state["adoption"]
     repo_info = store.state["repos"][adoption["repo"]]
     repo_path = Path(repo_info["path"])

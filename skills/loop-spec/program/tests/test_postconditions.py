@@ -903,3 +903,61 @@ class PostconditionsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RepoCheckPostconditionTests(unittest.TestCase):
+    """7.1.0: P3/P6 for the plan's repo checks, and V10 over the program's own check runs."""
+
+    setUp = PostconditionsTests.setUp
+    _boundary = PostconditionsTests._boundary
+
+    _CHECK = "git grep -n TODO"  # exits 1 with no output at base; a TODO line is a new failure
+
+    def _plan_with_check(self, **check):
+        plan = copy.deepcopy(self.plan_product)
+        plan["checks"] = [{"repo": "repo", "command": self._CHECK, **check}]
+        return plan
+
+    def test_p6_rejects_bad_checks(self):
+        self.assertIsNone(self._boundary("plan", self._plan_with_check(), "ready")._p6())
+        self.assertIn("which no task changes", self._boundary("plan", self._plan_with_check(repo="other"), "ready")._p6())
+        twice = self._plan_with_check()
+        twice["checks"].append(dict(twice["checks"][0]))
+        self.assertIn("listed twice", self._boundary("plan", twice, "ready")._p6())
+        collide = self._plan_with_check(command=_VERIFY_CMD)
+        collide["tasks"][0]["featureAdded"] = "new.txt"
+        self.assertIn("featureAdded", self._boundary("plan", collide, "ready")._p6())
+
+    def test_p3_needs_a_baseline_run_for_each_check(self):
+        plan = self._plan_with_check()
+        self.assertIn("no baseline run", self._boundary("plan", plan, "ready")._p3())
+        baseline = baseline_module.capture_baseline(
+            self.repo_dir, self.base_sha, [(_VERIFY_CMD, "T-1", None), (self._CHECK, None, None)], None,
+            self.paths.checkouts_dir, "repo")
+        self.store.state["baseline"] = baseline.to_dict()
+        self.assertIsNone(self._boundary("plan", plan, "ready")._p3())
+        self.assertIn("shell", self._boundary("plan", self._plan_with_check(command="ruff check | tee x"), "ready")._p3())
+
+    def test_v10_holds_only_for_a_clean_program_run_at_the_verified_head(self):
+        from loop_spec import repo_checks
+        plan = self._plan_with_check()
+        baseline = baseline_module.capture_baseline(
+            self.repo_dir, self.base_sha, [(_VERIFY_CMD, "T-1", None), (self._CHECK, None, None)], None,
+            self.paths.checkouts_dir, "repo")
+        self.store.state["baseline"] = {"planRevision": "x", "repos": {"repo": baseline.to_dict()}}
+        self.store.state["products"]["plan"] = {"exit": "ready", "product": plan}
+        self.store.state["products"]["execute"] = {"exit": "integrated", "product": self.execute_product}
+        v10 = lambda: self._boundary("verify", self.verify_product, "passed")._v10()  # noqa: E731
+        self.assertIn("no program run", v10())
+        repo_checks.ensure_check_runs(self.store, self.paths)
+        self.assertIsNone(v10())
+
+        # A new head with a TODO: the stale record no longer counts, and the fresh run regressed.
+        (self.repo_dir / "c.txt").write_text("TODO: failing on purpose\n", encoding="utf-8")
+        _git(self.repo_dir, "add", "c.txt")
+        _git(self.repo_dir, "commit", "-q", "-m", "T-2 more")
+        self.execute_product["heads"]["repo"] = _rev_parse(self.repo_dir)
+        self.assertIn("no program run", v10())
+        rows = repo_checks.ensure_check_runs(self.store, self.paths)
+        self.assertEqual(rows[0]["comparison"]["verdict"], "regression")
+        self.assertIn("is regression", v10())

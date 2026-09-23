@@ -15,10 +15,10 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .errors import LoopSpecError
-from .ids import digest_bytes, now_iso
-from .jsonio import atomic_write_json
-from .state import StateStore
+from loop_spec.errors import LoopSpecError
+from loop_spec.ids import digest_bytes, now_iso
+from loop_spec.jsonio import atomic_write_json
+from loop_spec.state import StateStore
 
 _ASK_USER_QUESTION_MESSAGE = "questions go through loop-spec question.json"
 # The two patterns team lead named as never auto-approved, regardless of permission_mode.

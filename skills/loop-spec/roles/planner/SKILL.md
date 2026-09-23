@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Produce the PLAN product (tasks, prepare command, evidence exceptions) from the current SPEC product. Dispatched by the program as a lead or role step; not for ad-hoc use.
+description: Produce the PLAN product (tasks, prepare command, repo checks, evidence exceptions) from the current SPEC product. Dispatched by the program as a lead or role step; not for ad-hoc use.
 allowed-tools: Read, Write, Grep, Glob, Bash, WebFetch, WebSearch
 ---
 
@@ -41,8 +41,16 @@ never for installing, building, or running the plan's own verify commands.
    is usually one or two tasks.
 5. Name a `prepare` command for anything the environment needs before verify can
    run (installs, migrations, fixtures); leave it `null` when nothing is needed.
-6. Declare `exit: "ready"`, or `"spec gap"` naming exactly what SPEC is missing.
-7. Under the micro preset (`inputs.entry.payload.preset` is `micro`), one task
+6. Name the repo's own lint, typecheck and format checks in `checks`, one
+   `{"repo", "command"}` per tool that `inputs.probes.repoChecks[<repo>]` lists (the
+   program read those from the repo's manifests at the base commit). Write a plain argv
+   command whose output has one diagnostic per line: `uv run ruff check --output-format
+   concise`, `uv run mypy`, `npx tsc --noEmit --pretty false`, `uv run ruff format
+   --check`; any other command (such as `npm run lint`) is compared by its output lines.
+   The program runs each check at base, after every task, and at VERIFY's head; a new
+   diagnostic sends the task back. Leave `checks` out when the repo configures none.
+7. Declare `exit: "ready"`, or `"spec gap"` naming exactly what SPEC is missing.
+8. Under the micro preset (`inputs.entry.payload.preset` is `micro`), one task
    unless the change spans repos; no `prepare` unless the repo needs it.
 
 ## Engineering principles
@@ -81,6 +89,7 @@ One task for that SPEC. `inputsDigest` and `boundTo` copy the values your inputs
   "boundTo": {"requirements": "sha256:9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e9c1e", "plan": null},
   "tasks": [{"id": "T-1", "title": "Add lerp with its tests", "dependsOn": [], "files": ["calc/__init__.py", "tests/test_lerp.py"], "repo": "calc", "verify": "/work/calc/.venv/bin/python -m pytest -q tests/test_lerp.py", "criteria": ["AC-1"], "featureAdded": "tests/test_lerp.py", "mustFlip": false}],
   "prepare": null,
+  "checks": [],
   "evidenceExceptions": []
 }
 ```

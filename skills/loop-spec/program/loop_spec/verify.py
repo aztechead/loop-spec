@@ -12,18 +12,19 @@ import copy
 import re
 from pathlib import Path
 
-from . import baseline as baseline_module
-from . import ledger as ledger_module
-from . import probes as probes_module
-from . import repo as repo_module
-from . import steps as steps_module
-from .contract import resolve_role, validate_request
-from .errors import LoopSpecError
-from .events import emit
-from .execute import IssueStep, Product
-from .ids import new_id
-from .paths import ensure_results_dir
-from .roles import compose_prompt, load_role, resolve_model
+from loop_spec import baseline as baseline_module
+from loop_spec import ledger as ledger_module
+from loop_spec import probes as probes_module
+from loop_spec import repo as repo_module
+from loop_spec import repo_checks
+from loop_spec import steps as steps_module
+from loop_spec.contract import resolve_role, validate_request
+from loop_spec.errors import LoopSpecError
+from loop_spec.events import emit
+from loop_spec.execute import IssueStep, Product
+from loop_spec.ids import new_id
+from loop_spec.paths import ensure_results_dir
+from loop_spec.roles import compose_prompt, load_role, resolve_model
 
 _DIFF_CAP = 200_000  # ponytail: same flat cap as execute.py's review diff
 
@@ -244,6 +245,13 @@ def _verifier_request(store, paths, ctx, verify_state: dict) -> dict:
         "evidenceExceptions": plan_product.get("evidenceExceptions", []),
         "baseline": store.state.get("baseline"), "environmentHealth": store.state.get("environmentHealth"),
     }
+    check_rows = repo_checks.ensure_check_runs(store, paths)
+    if check_rows:
+        # 7.1.0: facts, not work for the verifier: the program ran each repo check at
+        # the head; a regression becomes a remediation whatever the verdicts say.
+        inputs["repoChecks"] = [{"repo": r["repo"], "command": r["command"], "head": r["head"],
+                                 "verdict": r["comparison"]["verdict"], "detail": r["comparison"]["detail"],
+                                 "newIdentities": r["comparison"]["newIdentities"][:20]} for r in check_rows]
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=cwd, phase="verify")
     request = {
         "kind": "role", "role": "verifier", "phase": "verify", "cwd": str(cwd),
@@ -397,6 +405,8 @@ def _final_product(store, paths, ctx, verify_state: dict) -> dict:
             emit(paths, "verify_critical_remediation",
                  {"findings": critical_ids, "summary": f"open Critical finding(s) {', '.join(critical_ids)} routed to EXECUTE"},
                  phase="verify", attempt_id=ctx["attempt"]["id"])
+    if exit_ in ("passed", "implementation gap"):
+        exit_ = _check_remediations(store, paths, ctx, plan_product, verifier_result, remediation_tasks, exit_)
     if (verifier_result["intentGap"] or verifier_result["planGap"]) and not any_not_pass:
         emit(paths, "verify_gap_flag_ignored",
              {"planGap": verifier_result["planGap"], "intentGap": verifier_result["intentGap"]},
@@ -408,6 +418,41 @@ def _final_product(store, paths, ctx, verify_state: dict) -> dict:
         "verdicts": verdicts_out, "findings": findings_out, "remediationTasks": remediation_tasks,
         "reviewedRanges": [verify_state["ranges"][name] for name in verify_state["reviewers"]],
     }
+
+
+def _check_remediations(store, paths, ctx, plan_product: dict, verifier_result: dict,
+                        remediation_tasks: list, exit_: str) -> str:
+    """7.1.0: a repo check the program ran at the verified head that shows a new
+    diagnostic becomes one remediation, owned like LF-64's (the plan task whose files
+    hold the diagnostic, else the repo's last task); a check that cannot be compared
+    with its baseline is PLAN's to fix."""
+    for row in repo_checks.ensure_check_runs(store, paths):
+        comparison = baseline_module.Comparison.from_dict(row["comparison"])
+        if comparison.verdict == "no-regression":
+            continue
+        if comparison.verdict == "baseline-error":
+            emit(paths, "check_baseline_error", {"repo": row["repo"], "command": row["command"],
+                 "summary": f"repo check {row['command']!r} cannot be compared with its baseline: {comparison.detail}"},
+                 phase="verify", attempt_id=ctx["attempt"]["id"])
+            exit_ = "plan gap"
+            continue
+        run = baseline_module.CommandRun.from_dict(row["run"])
+        paths_hit = sorted({i.split(": ", 1)[0] for i in comparison.new_identities if i in run.failure_identities})
+        repo_tasks = [t for t in plan_product["tasks"] if t["repo"] == row["repo"]]
+        owners = [t for t in repo_tasks if set(t["files"]) & set(paths_hit)] or repo_tasks[-1:]
+        shown = "; ".join(baseline_module.describe_failure(comparison, run, limit=3))
+        remediation_tasks.append({
+            "id": f"R-{len(verifier_result['verdicts']) + len(remediation_tasks) + 1}",
+            "title": f"repo check `{row['command']}` regressed at {row['head'][:12]}: {shown}",
+            "dependsOn": [], "files": paths_hit, "repo": row["repo"], "verify": "",
+            "criteria": sorted({c for t in owners for c in t["criteria"]}), "featureAdded": None, "mustFlip": False,
+        })
+        if exit_ == "passed":
+            exit_ = "implementation gap"
+        emit(paths, "verify_check_remediation", {"repo": row["repo"], "command": row["command"],
+             "summary": f"repo check {row['command']!r} regressed; routed to EXECUTE"},
+             phase="verify", attempt_id=ctx["attempt"]["id"])
+    return exit_
 
 
 def _requeue_review(store, verify_state: dict, repo_name: str, reason: str) -> None:

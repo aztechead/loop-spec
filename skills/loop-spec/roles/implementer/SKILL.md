@@ -20,9 +20,15 @@ it.
 4. Implement the smallest change that makes the test pass. Never weaken an
    existing assertion to make it pass instead. When the run's inputs mark this a
    minimal-diff task, add no new broad assertions and keep the smallest possible
-   diff.
+   diff. When the retry reason states as a fact that a failing test file was added
+   after its criterion last passed, first decide whether that test or the
+   implementation contradicts the approved criteria; change the test only where it
+   contradicts an approved criterion, and say in your result which one you changed.
 5. Run the task's own verify command and capture its real output; do not report a
-   result you have not actually observed.
+   result you have not actually observed. Then run each command in `inputs.checks`
+   (the repo's lint, typecheck and format checks) and fix every diagnostic your
+   change introduced; leave diagnostics that were already there. The program runs
+   the same commands after you and sends the task back on a new one.
 6. For a test that names a guard, a branch, or a condition: remove or invert the
    guard, run the test, confirm it now fails, then restore the guard. That failing
    output is the only proof the test would catch the guard's removal.

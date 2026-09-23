@@ -14,13 +14,14 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import baseline as baseline_module
-from . import budget as budget_module
-from . import ledger as ledger_module
-from . import repo as repo_module
-from .contract import load_config
-from .ids import digest
-from .jsonio import read_json, render_json
+from loop_spec import baseline as baseline_module
+from loop_spec import budget as budget_module
+from loop_spec import ledger as ledger_module
+from loop_spec import repo as repo_module
+from loop_spec import repo_checks
+from loop_spec.contract import load_config
+from loop_spec.ids import digest
+from loop_spec.jsonio import read_json, render_json
 
 RETRY_LIMIT_DEFAULT = 3
 
@@ -79,7 +80,7 @@ ROUTES: dict[str, dict[str, dict]] = {
         "plan gap": {"requires": ["E1", "T1"], "next": ("plan", "remediation"), "backward": True},
     },
     "verify": {
-        "passed": {"requires": ["V1", "V2", "V3", "V4", "V5", "V7", "V8"], "next": ("iterate", "fresh"), "backward": False},
+        "passed": {"requires": ["V1", "V2", "V3", "V4", "V5", "V7", "V8", "V10"], "next": ("iterate", "fresh"), "backward": False},
         "implementation gap": {"requires": ["V1", "V2", "V8", "T1"], "next": ("execute", "remediation"), "backward": True},
         "plan gap": {"requires": ["V1", "V2", "V8", "T1"], "next": ("plan", "remediation"), "backward": True},
         "intent gap": {"requires": ["V1", "V2", "V8", "T1"], "next": ("spec", "remediation"), "backward": True},
@@ -280,7 +281,7 @@ class Boundary:
     # -- shared helpers ------------------------------------------------------
 
     def _validates(self) -> list[str]:
-        from .schema import load_schema, validate
+        from loop_spec.schema import load_schema, validate
         return validate(self.product, load_schema(self.phase))
 
     def _bound(self) -> str | None:
@@ -353,6 +354,9 @@ class Boundary:
         for task in self.product["tasks"]:
             if why := baseline_module.shell_syntax(task["verify"]):
                 return f"task {task['id']}: verify command {why}; commands run as argv with no shell"
+        for check in self.product.get("checks") or []:
+            if why := baseline_module.shell_syntax(check["command"]):
+                return f"check {check['command']!r}: {why}; commands run as argv with no shell"
         return None
 
     def _p3(self) -> str | None:
@@ -375,6 +379,13 @@ class Boundary:
             run = entry.get("run") or {}
             if run.get("errorClass") is not None or run.get("exitStatus") == 127:
                 return f"task {task['id']}: baseline run for its verify command failed to execute"
+        for check in self.product.get("checks") or []:
+            repo_dict = baseline_module.repo_baseline_dict(baseline_state, check["repo"], repos)
+            entry = (repo_dict or {}).get("entries", {}).get(check["command"])
+            if entry is None or entry.get("status") != "ran" or entry.get("run") is None:
+                return f"check {check['command']!r} in {check['repo']}: no baseline run"
+            if entry["run"].get("errorClass") is not None or entry["run"].get("exitStatus") == 127:
+                return f"check {check['command']!r} in {check['repo']}: its baseline run failed to execute"
         return None
 
     def _p4(self) -> str | None:
@@ -441,6 +452,21 @@ class Boundary:
         for task in self.product["tasks"]:
             if task["repo"] not in repos:
                 return f"task {task['id']} names an unknown repo {task['repo']!r}"
+        # 7.1.0: a repo check runs in a repo some task changes, once per (repo, command),
+        # and never shares a command with a featureAdded task there (the baseline keys a
+        # command once: it cannot both run at base and have no base run).
+        task_repos = {t["repo"] for t in self.product["tasks"]}
+        feature_added = {(t["repo"], t["verify"]) for t in self.product["tasks"] if t.get("featureAdded")}
+        seen = set()
+        for check in self.product.get("checks") or []:
+            key = (check["repo"], check["command"])
+            if check["repo"] not in task_repos:
+                return f"check {check['command']!r} names repo {check['repo']!r}, which no task changes"
+            if key in seen:
+                return f"check {check['command']!r} is listed twice for repo {check['repo']!r}"
+            if key in feature_added:
+                return f"check {check['command']!r} is also a featureAdded task's verify command; use a different command for the check"
+            seen.add(key)
         return None
 
     def _p7(self) -> str | None:
@@ -842,6 +868,21 @@ class Boundary:
                 return f"criterion {verdict['criterion']}: offline cause claimed with no stand-in tried"
         return None
 
+    def _v10(self) -> str | None:
+        # 7.1.0: every plan repo check ran, by the program, at its repo's verified head
+        # against the current plan and baseline, with no new diagnostic.
+        records = self.store.state.get("checkRuns") or {}
+        for check in repo_checks.plan_checks(self.store):
+            key = repo_checks.current_key(self.store, check["repo"])
+            record = (records.get(check["repo"]) or {}).get(check["command"])
+            if key is None or record is None or any(record.get(k) != v for k, v in key.items()):
+                return f"check {check['command']!r} in {check['repo']}: no program run at the verified head"
+            comparison = record["comparison"]
+            if comparison["verdict"] != "no-regression":
+                return (f"check {check['command']!r} in {check['repo']} is {comparison['verdict']} at "
+                        f"{key['head'][:12]}: {comparison['detail']}")
+        return None
+
     # -- I: ITERATE ----------------------------------------------------------
 
     def _i1(self) -> str | None:
@@ -922,9 +963,27 @@ class Boundary:
                 return f"repo {entry['repo']} is not a known repo"
             remote_sha = repo_module.remote_head(Path(repo_info["path"]), "origin", repo_info["featureBranch"])
             expected_head = heads.get(entry["repo"], entry["deliveredSha"])
-            if remote_sha != entry["deliveredSha"] or entry["deliveredSha"] != expected_head:
-                return f"repo {entry['repo']}: remote head, deliveredSha, and EXECUTE head do not all match"
+            if entry["deliveredSha"] != expected_head:
+                return f"repo {entry['repo']}: deliveredSha is not the EXECUTE head"
+            if self._observed_head(entry, repo_info) != remote_sha:
+                return f"repo {entry['repo']}: the remote head is neither the verified SHA nor its accepted extension"
         return None
+
+    def _observed_head(self, entry: dict, repo_info: dict) -> str | None:
+        """The one head D1 and D2 both hold a delivered repo to: the verified SHA, or
+        (7.1.0) the head of an accepted extension, recomputed now and equal in every
+        recorded fact to what the product claims."""
+        accepted = entry.get("acceptedRemote")
+        if accepted is None:
+            return entry["deliveredSha"]
+        globs = (load_config(self.project_root).get("deliver") or {}).get("acceptRemotePaths") or []
+        execute_repo = ((self.store.state.get("execute") or {}).get("repos") or {}).get(entry["repo"])
+        where = Path(execute_repo["worktree"]) if execute_repo else Path(repo_info["path"])
+        ext = repo_module.remote_extension(where, repo_info["featureBranch"], entry["deliveredSha"], repo_info["baseSha"], globs)
+        if ext["state"] != "extension" or ext["refused"] or \
+                {k: ext[k] for k in ("head", "commits", "paths")} != accepted:
+            return None
+        return ext["head"]
 
     def _d2(self) -> str | None:
         import json as _json
@@ -940,8 +999,9 @@ class Boundary:
                 return f"repo {entry['repo']}: gh pr view failed: {err.strip() or code}"
             data = _json.loads(out)
             base = load_config(self.project_root).get("deliver", {}).get("base") or repo_module.default_branch(Path(repo_info["path"]))
+            observed = entry["deliveredSha"] if entry.get("acceptedRemote") is None else entry["acceptedRemote"]["head"]
             if data.get("state") != "OPEN" or data.get("headRefName") != entry["pr"]["headRef"] or \
-               data.get("headRefOid") != entry["deliveredSha"] or data.get("baseRefName") != base:
+               data.get("headRefOid") != observed or entry["pr"]["headSha"] != observed or data.get("baseRefName") != base:
                 return f"repo {entry['repo']}: PR does not match the delivered identity"
         return None
 

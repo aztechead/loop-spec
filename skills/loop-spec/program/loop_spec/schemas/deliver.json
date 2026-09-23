@@ -94,7 +94,7 @@
             ]
           },
           "publishedSha": {
-            "description": "Set on a failed row whose branch this or an earlier DELIVER attempt pushed: the SHA on the remote branch.",
+            "description": "Set on a failed row whose branch this or an earlier DELIVER attempt pushed, or observed on the remote as an accepted extension: the SHA on the remote branch.",
             "type": [
               "string",
               "null"
@@ -119,6 +119,53 @@
               "failed",
               "skipped"
             ]
+          },
+          "acceptedRemote": {
+            "description": "7.1.0: commits after the verified SHA on the remote branch, accepted under deliver.acceptRemotePaths; deliveredSha stays the verified SHA.",
+            "type": "object",
+            "required": [
+              "head",
+              "commits",
+              "paths"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "head": {
+                "type": "string"
+              },
+              "commits": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "sha",
+                    "subject",
+                    "paths"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "sha": {
+                      "type": "string"
+                    },
+                    "subject": {
+                      "type": "string"
+                    },
+                    "paths": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }

@@ -15,19 +15,19 @@ import os
 import re
 from pathlib import Path
 
-from . import baseline as baseline_module
-from . import probes as probes_module
-from . import repo as repo_module
-from . import steps as steps_module
-from .budget import has_room
-from .contract import resolve_role, validate_request
-from .errors import LoopSpecError
-from .events import emit
-from .ids import new_id, now_iso
-from .jsonio import read_json
-from .paths import ensure_results_dir
-from .postconditions import adopted_commits, close_out_view, close_outs, retry_limit
-from .roles import compose_prompt, load_role, resolve_model
+from loop_spec import baseline as baseline_module
+from loop_spec import probes as probes_module
+from loop_spec import repo as repo_module
+from loop_spec import steps as steps_module
+from loop_spec.budget import has_room
+from loop_spec.contract import resolve_role, validate_request
+from loop_spec.errors import LoopSpecError
+from loop_spec.events import emit
+from loop_spec.ids import new_id, now_iso
+from loop_spec.jsonio import read_json
+from loop_spec.paths import ensure_results_dir
+from loop_spec.postconditions import adopted_commits, close_out_view, close_outs, retry_limit
+from loop_spec.roles import compose_prompt, load_role, resolve_model
 
 _TERMINAL = {"done", "already-satisfied", "removed", "blocked", "planGap", "adopted"}
 _DIFF_CAP = 200_000  # ponytail: a flat cap, raise it if a real diff gets truncated in practice
@@ -186,14 +186,66 @@ def _retry_or_block(execute_state: dict, task_id: str, task_state: dict, reason_
         task_state["reason"] = reason_text
 
 
-def _route_verify_comparison(execute_state: dict, task_id: str, task_state: dict, comparison) -> None:
+def repo_checks(store, repo_name: str) -> list[str]:
+    plan = store.state["products"]["plan"]["product"]
+    return [c["command"] for c in plan.get("checks") or [] if c["repo"] == repo_name]
+
+
+def _check_regressed(store, execute_state: dict, task_id: str, task_state: dict, cwd: Path, head: str) -> bool:
+    commands = repo_checks(store, task_state["repo"])
+    if not commands:
+        return False
+    repo_baseline = baseline_module.repo_baseline_dict(store.state.get("baseline"), task_state["repo"], store.state["repos"]) or {}
+    runs = store.state.setdefault("executeCheckRuns", {}).setdefault(task_id, {})
+    for command in commands:
+        entry = (repo_baseline.get("entries") or {}).get(command)
+        if entry is None:
+            continue  # P3 guarantees one; a baseline recaptured without it is VERIFY's to catch
+        run = baseline_module.run_command(command, cwd, head)
+        comparison = baseline_module.compare_to_baseline(baseline_module.BaselineEntry.from_dict(entry), run)
+        runs[command] = {"head": head, "run": run.to_dict(), "comparison": comparison.to_dict()}
+        if comparison.verdict != "no-regression":
+            _route_verify_comparison(execute_state, task_id, task_state, comparison, run, label="repo check")
+            return True
+    return False
+
+
+_JS_TEST_FILE = re.compile(r"\.(?:test|spec)\.[cm]?[jt]sx?$")
+
+
+def _failing_test_provenance(store, verify_attempt: str, criteria: list[str], repo_name: str, head: str) -> dict | None:
+    """7.1.0: the program's own observation of a failing criterion (never the
+    verifier's claim), matched to this rewind and head, against where it last passed."""
+    for criterion in criteria:
+        observation = (store.state.get("failureObservations") or {}).get(criterion)
+        passed = (store.state.get("criterionPasses") or {}).get(criterion)
+        if not observation or not passed or observation["attemptId"] != verify_attempt or \
+                observation["sha"] != head or observation["repo"] != repo_name:
+            continue
+        if observation["runner"] == "pytest":
+            failing = {i.split("::", 1)[0] for i in observation["failureIdentities"]}
+        elif observation["runner"] in ("vitest", "jest"):
+            failing = {i.split(" > ", 1)[0] for i in observation["failureIdentities"]
+                       if _JS_TEST_FILE.search(i.split(" > ", 1)[0])}
+        else:
+            continue  # go and cargo identities name packages and symbols, not files
+        added = set(repo_module.files_added_by(Path(store.state["repos"][repo_name]["path"]), passed["sha"], head))
+        files = sorted(failing & added)
+        if files:
+            return {"criterion": criterion, "files": files, "passSha": passed["sha"], "head": head}
+    return None
+
+
+def _route_verify_comparison(execute_state: dict, task_id: str, task_state: dict, comparison, run,
+                              label: str = "verify") -> None:
     """`baseline-error` and a `mustFlip-failed` baseline that never failed are PLAN's
     own mistake (see `_MUST_FLIP_BASELINE_DETAIL` above): route straight to plan gap,
     spending none of the task's retry budget on an outcome no retry can change. Every
     other failing verdict (`regression`, `featureAdded-failed`, a `mustFlip-failed`
     whose reproduction still fails at the candidate) is still the implementer's to fix
     and keeps the retry-then-block path."""
-    reason_text = f"the verify re-run is {comparison.verdict}: {comparison.detail}"
+    reason_text = "\n".join([f"the {label} re-run of `{run.command}` is {comparison.verdict}: {comparison.detail}",
+                              *baseline_module.describe_failure(comparison, run)])
     is_plan_defect = comparison.verdict == "baseline-error" or (
         comparison.verdict == "mustFlip-failed" and comparison.detail == _MUST_FLIP_BASELINE_DETAIL
     )
@@ -420,6 +472,7 @@ def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, tas
         "criteria": [c for c in spec["criteria"] if c["id"] in plan_task["criteria"]],
         "probes": ctx.get("probes", {}),
         "minimalDiff": not has_room(store),
+        "checks": repo_checks(store, task_state["repo"]),
     }
     if task_state.get("closeOut"):
         inputs["closeOut"] = close_out_view(close_outs(store)[task_id])
@@ -872,7 +925,9 @@ def _handle_rewind(store, paths, ctx, execute_state: dict) -> None:
     execute_state["handledRewinds"].append(rewind["attemptId"])
 
     plan_tasks = _plan_tasks(store)
-    cause_by_criterion = {v["criterion"]: v.get("cause") for v in rewind.get("verdicts", [])}
+    # Only a failing verdict makes a criterion "failing"; a remediation whose criteria all
+    # passed (an open Critical finding, LF-64, or a regressed repo check, 7.1.0) says so.
+    cause_by_criterion = {v["criterion"]: v.get("cause") for v in rewind.get("verdicts", []) if v.get("verdict") == "fail"}
     reopened: set[str] = set()  # one re-open per task per rewind, however many criteria it owns
 
     for rem in rewind["remediationTasks"]:
@@ -904,13 +959,23 @@ def _handle_rewind(store, paths, ctx, execute_state: dict) -> None:
             files_text = ", ".join(rem.get("files") or []) or "(none named)"
             feature_head = execute_state["repos"][task_state["repo"]]["head"]
             if cause is None and not any(c in cause_by_criterion for c in rem["criteria"]):
-                # LF-64: a remediation for an open Critical review finding; no criterion failed.
-                reason = (f"VERIFY review left a Critical finding open at {feature_head[:12]}. "
-                          f"Remediation {rem.get('id')}: {rem.get('title')}; files: {files_text}")
+                # No criterion failed: an open Critical finding (LF-64) or a regressed repo check.
+                reason = f"VERIFY remediation {rem.get('id')}: {rem.get('title')} at {feature_head[:12]}; files: {files_text}"
             else:
                 reason = (f"VERIFY found {', '.join(rem['criteria'])} failing at {feature_head[:12]}: {cause or 'no cause recorded'}. "
                           f"Remediation {rem.get('id')}: {rem.get('title')}; files: {files_text}; "
                           f"VERIFY ran: {rem.get('verify') or '(no command)'}")
+                provenance = _failing_test_provenance(store, rewind["attemptId"], rem["criteria"], task_state["repo"], feature_head)
+                if provenance is not None:
+                    task_state["provenance"] = provenance
+                    reason += (f"\nFact: {', '.join(provenance['files'])} were added after {provenance['criterion']} last "
+                               f"passed at {provenance['passSha'][:12]} and now fail. Decide whether that test or the "
+                               "implementation contradicts the approved criteria; change the test only where it "
+                               "contradicts an approved criterion, never weaken an assertion a criterion requires, "
+                               "and say in your result which you changed.")
+                    emit(paths, "failing_test_added_after_pass", {"task": tid, **provenance,
+                         "summary": f"{tid}: {', '.join(provenance['files'])} added after {provenance['criterion']} passed"},
+                         phase="execute", attempt_id=attempt_id)
             if tid in reopened:
                 task_state["reason"] = f"{task_state['reason']}\n{reason}"
                 continue
@@ -1336,8 +1401,14 @@ def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record:
         store.state.setdefault("executeRuns", {})[task_id] = {"run": candidate.to_dict(), "comparison": comparison.to_dict()}
 
         if comparison.verdict not in ("no-regression", "featureAdded-ok", "mustFlip-ok"):
-            _route_verify_comparison(execute_state, task_id, task_state, comparison)
+            _route_verify_comparison(execute_state, task_id, task_state, comparison, candidate)
             return
+
+    # 7.1.0: the plan's repo checks (lint, typecheck) at this task's head, close-outs
+    # included, so a new diagnostic goes back to the implementer minutes after the
+    # task. Early feedback only: VERIFY's check runs at the final head are the gate.
+    if _check_regressed(store, execute_state, task_id, task_state, run_cwd, task_head):
+        return
 
     feature_worktree = Path(execute_state["repos"][task_state["repo"]]["worktree"])
     feature_head = execute_state["repos"][task_state["repo"]]["head"]

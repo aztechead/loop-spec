@@ -11,10 +11,10 @@ import os
 import sys
 from pathlib import Path
 
-from .errors import LoopSpecError
-from .ids import now_iso
-from .jsonio import append_jsonl, read_json
-from .paths import FeaturePaths
+from loop_spec.errors import LoopSpecError
+from loop_spec.ids import now_iso
+from loop_spec.jsonio import append_jsonl, read_json
+from loop_spec.paths import FeaturePaths
 
 # The program reserves these names for its own lifecycle events; an implementation
 # emitting one of them would let a phase impersonate a controller transition.

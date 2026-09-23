@@ -6,8 +6,8 @@ fresh attempt never buys a run more rewinds than the operator configured.
 """
 import os
 
-from .errors import LoopSpecError
-from .ids import now_iso
+from loop_spec.errors import LoopSpecError
+from loop_spec.ids import now_iso
 
 
 class BudgetExhausted(LoopSpecError):

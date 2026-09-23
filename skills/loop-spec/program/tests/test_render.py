@@ -79,3 +79,20 @@ class RenderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CriticSectionTests(unittest.TestCase):
+    def test_rejected_critical_findings_of_the_delivered_plan_are_listed(self):
+        with tempfile.TemporaryDirectory() as t:
+            store = _store(Path(t))
+            store.state["revisions"]["plan"] = "sha256:plan"
+            store.state["critic"] = {"planRevision": "sha256:plan", "findings": [
+                {"id": "F-1", "location": "T-1", "cause": "verify runs one file.", "severity": "Critical",
+                 "disposition": "rejected", "reason": "VERIFY runs the suite"},
+                {"id": "F-2", "location": "T-1", "cause": "minor.", "severity": "Minor", "disposition": "rejected", "reason": "x"},
+            ]}
+            body = pr_body(store)
+            self.assertIn("F-1 at T-1: verify runs one file. Rejected: VERIFY runs the suite", body)
+            self.assertNotIn("F-2", body)
+            store.state["critic"]["planRevision"] = "sha256:older"
+            self.assertNotIn("### Plan critic", pr_body(store))

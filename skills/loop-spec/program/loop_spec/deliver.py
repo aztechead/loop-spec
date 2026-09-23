@@ -12,12 +12,12 @@ import re
 import tempfile
 from pathlib import Path
 
-from . import render
-from . import repo as repo_module
-from .contract import load_config
-from .errors import LoopSpecError
-from .execute import Pause, Product  # noqa: F401 -- Pause kept for interface symmetry
-from .ids import now_iso
+from loop_spec import render
+from loop_spec import repo as repo_module
+from loop_spec.contract import load_config
+from loop_spec.errors import LoopSpecError
+from loop_spec.execute import Pause, Product  # noqa: F401 -- Pause kept for interface symmetry
+from loop_spec.ids import now_iso
 
 
 def _touched_repos(store) -> dict:
@@ -40,38 +40,46 @@ def pr_title(title: str, limit: int = 70) -> str:
 
 
 def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: str,
-                   draft: bool, title: str, body: str) -> tuple[dict | None, str | None]:
+                   draft: bool, title: str, body: str) -> tuple[dict | None, str | None, list[str]]:
     branch = repo_info["featureBranch"]
     code, out, err = repo_module.run_gh(worktree, "pr", "list", "--head", branch, "--state", "open",
                                          "--json", "number,url,headRefOid,baseRefName")
     if code != 0:
-        return None, f"gh pr list failed: {err.strip()}"
+        return None, f"gh pr list failed: {err.strip()}", []
 
-    if not json.loads(out):
+    caveats = []
+    existing = json.loads(out)
+    # LF-48: the body file lives outside the worktree; an untracked file inside it
+    # made the feature checkout "dirty" and terminal cleanup kept it as backlog.
+    body_path = Path(tempfile.mkstemp(prefix="loop-spec-pr-body-", suffix=".md")[1])
+    body_path.write_text(body)
+    if existing:
+        # 7.1.0: a re-entry or a revise run refreshes the body it rendered; a failed
+        # edit leaves the old body and says so, it never fails the delivery.
+        code, _, err = repo_module.run_gh(worktree, "pr", "edit", str(existing[0]["number"]), "--body-file", str(body_path))
+        if code != 0:
+            caveats.append(f"the PR body was not updated: gh pr edit failed: {err.strip()}")
+    else:
         # A crash-recovery marker, not a control-flow gate: `gh pr list` above already
         # reconciles a lost create response on its own, so nothing reads this back.
         store.state.setdefault("deliverCreating", {})[repo_name] = {"at": now_iso(), "branch": branch}
         store.save()
-        # LF-48: the body file lives outside the worktree; an untracked file inside it
-        # made the feature checkout "dirty" and terminal cleanup kept it as backlog.
-        body_path = Path(tempfile.mkstemp(prefix="loop-spec-pr-body-", suffix=".md")[1])
-        body_path.write_text(body)
         args = ["pr", "create", "--base", base, "--head", branch, "--title", pr_title(title), "--body-file", str(body_path)]
         if draft:
             args.append("--draft")
         code, _, err = repo_module.run_gh(worktree, *args)
         if code != 0:
-            return None, f"gh pr create failed: {err.strip()}"
+            return None, f"gh pr create failed: {err.strip()}", caveats
         store.state["deliverCreating"].pop(repo_name, None)
         store.save()
 
     code, out, err = repo_module.run_gh(worktree, "pr", "view", branch,
                                          "--json", "number,url,headRefName,headRefOid,baseRefName")
     if code != 0:
-        return None, f"gh pr view failed: {err.strip()}"
+        return None, f"gh pr view failed: {err.strip()}", caveats
     data = json.loads(out)
     return {"number": data["number"], "url": data["url"], "headRef": data["headRefName"],
-            "headSha": data["headRefOid"], "base": data["baseRefName"]}, None
+            "headSha": data["headRefOid"], "base": data["baseRefName"]}, None, caveats
 
 
 def _push_repair(stderr: str) -> str:
@@ -80,6 +88,22 @@ def _push_repair(stderr: str) -> str:
     if re.search(r"non-fast-forward|fetch first", stderr):
         return "the remote branch has commits the verified SHA lacks; fetch, reconcile, and re-enter (never force)"
     return "check origin's push URL, network, and access, then re-enter (never force)"
+
+
+def _accept_extension(worktree: Path, repo_info: dict, verified_sha: str, globs: list[str]) -> tuple[dict | None, str | None]:
+    """(accepted, refusal): an allowed extension, or the reason this repo cannot be
+    delivered; (None, None) when the remote holds no extension (push as usual)."""
+    ext = repo_module.remote_extension(worktree, repo_info["featureBranch"], verified_sha, repo_info["baseSha"], globs)
+    if ext["state"] == "error":
+        return None, (f"could not read origin/{repo_info['featureBranch']}: {ext['why']}; "
+                      "repair: check origin's push URL, network, and access, then re-enter (never force)")
+    if ext["state"] != "extension":
+        return None, None
+    if ext["refused"]:
+        return None, (f"the remote branch has commits after the verified SHA that touch {', '.join(ext['refused'])}; "
+                      "repair: deliver.acceptRemotePaths allows only paths the verified change never touches; "
+                      "remove those commits from the branch or widen the list, then re-enter (never force)")
+    return {k: ext[k] for k in ("head", "commits", "paths")}, None
 
 
 def _published(store, repo_name: str, row: dict) -> dict:
@@ -92,16 +116,29 @@ def _published(store, repo_name: str, row: dict) -> dict:
     # The PR is as its own attempt last saw it, not re-verified against the newer push.
     pr_note = (f"; PR #{pr['number']} last seen at head {(pr.get('headSha') or '?')[:12]} "
                f"(attempt {earlier.get('prAttemptId', earlier['attemptId'])})") if pr else ""
-    return {**row, "publishedSha": earlier["sha"], "pr": row["pr"] or pr,
-            "caveats": row["caveats"] + [f"published: {earlier['sha'][:12]} (attempt {earlier['attemptId']}){pr_note}"]}
+    how = "observed on the remote (no push)" if earlier.get("observed") else "published"
+    caveats = row["caveats"] + [f"{how}: {earlier['sha'][:12]} (attempt {earlier['attemptId']}){pr_note}"]
+    if earlier.get("acceptedRemote"):
+        # Historical: what an earlier attempt accepted, not re-validated here.
+        caveats.append("previously accepted remote commits: " + _accepted_text(earlier["acceptedRemote"]))
+    return {**row, "publishedSha": earlier["sha"], "pr": row["pr"] or pr, "caveats": caveats}
 
 
-def _record_published(store, repo_name: str, sha: str, pr: dict | None, attempt_id: str) -> None:
+def _accepted_text(accepted: dict) -> str:
+    commits = ", ".join(f"{c['sha'][:12]} ({c['subject']})" for c in accepted["commits"])
+    return f"{commits} touching {', '.join(accepted['paths'])}, head {accepted['head'][:12]}"
+
+
+def _record_published(store, repo_name: str, sha: str, pr: dict | None, attempt_id: str,
+                      accepted: dict | None = None) -> None:
     # Cumulative: a push with no PR yet (pr=None) keeps the PR an earlier attempt recorded.
     published = store.state.setdefault("deliverPublished", {})
     earlier = published.get(repo_name) or {}
     record = {"sha": sha, "attemptId": attempt_id, "at": now_iso(),
-              "pr": earlier.get("pr"), "prAttemptId": earlier.get("prAttemptId", earlier.get("attemptId"))}
+              "pr": earlier.get("pr"), "prAttemptId": earlier.get("prAttemptId", earlier.get("attemptId")),
+              "acceptedRemote": earlier.get("acceptedRemote"), "observed": earlier.get("observed", False)}
+    if accepted is not None:
+        record.update(acceptedRemote=accepted, observed=True)
     if pr is not None:
         record.update(pr=pr, prAttemptId=attempt_id)
     published[repo_name] = record
@@ -111,6 +148,7 @@ def _record_published(store, repo_name: str, sha: str, pr: dict | None, attempt_
 def run(store, paths, ctx):
     project_root = Path(ctx["paths"]["projectRoot"])
     config = load_config(project_root)
+    globs = (config.get("deliver") or {}).get("acceptRemotePaths") or []
     iterate_exit = store.state["products"]["iterate"]["exit"]
     entry_payload = (ctx.get("entry") or {}).get("payload") or {}
     draft = bool(entry_payload.get("draft")) or iterate_exit == "converged with caveats"
@@ -164,29 +202,61 @@ def run(store, paths, ctx):
             repos_out.append(_published(store, repo_name, {"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"}))
             continue
 
-        # Push the immutable, verified SHA to the ref by value, not the mutable
-        # branch name -- nothing else in this program reads the upstream tracking
-        # config `-u` used to set, so dropping it costs no other caller anything.
-        push = repo_module._git(worktree, "push", "origin", f"{verified_sha}:refs/heads/{repo_info['featureBranch']}")
-        if push.returncode != 0:
-            # LF-58: one repo's rejected push is that repo's failed row; the others
-            # are still attempted, so a workspace can deliver partially.
-            stderr = push.stderr.strip()
-            reason = f"push rejected: {stderr}; repair: {_push_repair(stderr)}"
-            repos_out.append(_published(store, repo_name, {"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"}))
-            continue
-        _record_published(store, repo_name, verified_sha, None, ctx["attempt"]["id"])
+        def failed(reason: str) -> dict:
+            return _published(store, repo_name, {"repo": repo_name, "pr": None, "deliveredSha": None,
+                                                 "caveats": [reason], "state": "failed"})
 
-        pr, error = _reconcile_pr(store, repo_name, worktree, repo_info, repo_info["defaultBranch"], draft,
-                                   spec_product["goal"], render.pr_body(store))
+        # 7.1.0: with deliver.acceptRemotePaths set, commits someone else put on the
+        # branch after the verified SHA (a changelog bot) are accepted when every path
+        # they touch is allowed and none is part of the verified change; the verified
+        # SHA is still what was delivered, the extension is recorded beside it.
+        accepted, refusal = None, None
+        if globs:
+            accepted, refusal = _accept_extension(worktree, repo_info, verified_sha, globs)
+            if refusal is not None:
+                repos_out.append(failed(refusal))
+                continue
+        if accepted is None:
+            # Push the immutable, verified SHA to the ref by value, not the mutable
+            # branch name -- nothing else in this program reads the upstream tracking
+            # config `-u` used to set, so dropping it costs no other caller anything.
+            push = repo_module._git(worktree, "push", "origin", f"{verified_sha}:refs/heads/{repo_info['featureBranch']}")
+            if push.returncode != 0 and globs:
+                # A bot may have pushed between the fetch and the push: look once more.
+                accepted, refusal = _accept_extension(worktree, repo_info, verified_sha, globs)
+            if accepted is None and push.returncode != 0:
+                # LF-58: one repo's rejected push is that repo's failed row; the others
+                # are still attempted, so a workspace can deliver partially.
+                stderr = push.stderr.strip()
+                repos_out.append(failed(refusal or f"push rejected: {stderr}; repair: {_push_repair(stderr)}"))
+                continue
+        # Recorded before the PR step, so a failure there keeps what is on the remote.
+        _record_published(store, repo_name, verified_sha, None, ctx["attempt"]["id"], accepted)
+        action = (f"observed {accepted['head'][:12]} (the verified {verified_sha[:12]} plus accepted commits) "
+                  f"on {repo_info['featureBranch']}, no push") if accepted else \
+                 f"pushed {verified_sha[:12]} to {repo_info['featureBranch']}"
+
+        pr, error, pr_caveats = _reconcile_pr(store, repo_name, worktree, repo_info, repo_info["defaultBranch"], draft,
+                                               spec_product["goal"], render.pr_body(store))
         if error:
             # The branch IS on the remote: record what was published and where it stopped.
-            reason = f"pushed {verified_sha[:12]} to {repo_info['featureBranch']}; the PR step failed: {error}"
-            repos_out.append(_published(store, repo_name, {"repo": repo_name, "pr": None, "deliveredSha": None,
-                                                            "caveats": [reason], "state": "failed"}))
+            repos_out.append(failed(f"{action}; the PR step failed: {error}"))
             continue
-        _record_published(store, repo_name, verified_sha, pr, ctx["attempt"]["id"])
-        repos_out.append({"repo": repo_name, "pr": pr, "deliveredSha": touched[repo_name], "caveats": [], "state": "delivered"})
+        if globs and pr["headSha"] != (accepted or {}).get("head", verified_sha):
+            # The PR names another head than the one observed: accept it only as the
+            # same allowed extension, observed at exactly that head.
+            later, refusal = _accept_extension(worktree, repo_info, verified_sha, globs)
+            if later is None or later["head"] != pr["headSha"]:
+                repos_out.append(failed(refusal or f"{action}; the PR head moved to {pr['headSha'][:12]}, "
+                                                   "which is not an accepted extension of the verified SHA"))
+                continue
+            accepted = later
+        _record_published(store, repo_name, verified_sha, pr, ctx["attempt"]["id"], accepted)
+        row = {"repo": repo_name, "pr": pr, "deliveredSha": touched[repo_name], "caveats": list(pr_caveats), "state": "delivered"}
+        if accepted:
+            row["acceptedRemote"] = accepted
+            row["caveats"].append("accepted remote commits under deliver.acceptRemotePaths: " + _accepted_text(accepted))
+        repos_out.append(row)
 
     # Mixed is partial; nothing delivered is blocked (the rows name why); an
     # untouched (skipped) repo never makes a delivery partial.

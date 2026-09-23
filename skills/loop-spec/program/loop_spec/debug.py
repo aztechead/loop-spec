@@ -8,15 +8,15 @@ calls `record_base_runs` (B1/B2 read them).
 """
 from pathlib import Path
 
-from . import baseline as baseline_module
-from . import external
-from . import repo as repo_module
-from .contract import resolve_role, validate_request
-from .errors import LoopSpecError
-from .execute import IssueStep, Product
-from .paths import ensure_results_dir
-from .roles import compose_prompt, load_role, resolve_model
-from .schema import load_schema
+from loop_spec import baseline as baseline_module
+from loop_spec import external
+from loop_spec import repo as repo_module
+from loop_spec.contract import resolve_role, validate_request
+from loop_spec.errors import LoopSpecError
+from loop_spec.execute import IssueStep, Product
+from loop_spec.paths import ensure_results_dir
+from loop_spec.roles import compose_prompt, load_role, repo_map, resolve_model
+from loop_spec.schema import load_schema
 
 
 def _debugger_request(store, paths, ctx) -> dict:
@@ -33,6 +33,7 @@ def _debugger_request(store, paths, ctx) -> dict:
     inputs = {
         "request": ctx["request"]["text"], "state": ctx.get("state", {}), "entry": ctx.get("entry", {}),
         "answers": ctx.get("answers", {}), "probes": ctx.get("probes", {}),
+        "repos": repo_map(store.state["repos"]),
     }
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=cwd, phase="debug")
     request = {

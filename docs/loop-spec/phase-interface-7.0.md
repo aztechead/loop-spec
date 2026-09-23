@@ -134,10 +134,10 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 |---|---|---|
 | P1 | product validates; bound to the current requirements revision | every exit |
 | P2 | every criterion id in the requirements revision is covered by at least one task | `ready` |
-| P3 | every verify command and the prepare command pass the plain-argv format check (Commands, above), checked before any baseline command runs; and every verify command either ran at the base SHA from a bare worktree root during baseline capture, or is declared `featureAdded` with a target path that does not exist at base | `ready` |
+| P3 | every verify command, every repo check command, and the prepare command pass the plain-argv format check (Commands, above), checked before any baseline command runs; every verify command either ran at the base SHA from a bare worktree root during baseline capture, or is declared `featureAdded` with a target path that does not exist at base; every repo check (`checks`) ran at the base SHA without an execution error | `ready` |
 | P4 | the baseline is captured (section 11) with the prepare command applied; environment health recorded once per failing command | `ready` |
 | P5 | the task graph is acyclic and every `dependsOn` names a task in the plan | `ready` |
-| P6 | workspace resolved once and the repo list stored in state; every task names a repo in it | `ready` |
+| P6 | workspace resolved once and the repo list stored in state; every task names a repo in it; every repo check names a repo some task changes, appears once per repo, and is not a `featureAdded` task's verify command in that repo | `ready` |
 | P7 | the critic pass ran and every Critical finding is closed as `fixed` with the critic re-run once on the corrected product, or `rejected` with a stated reason recorded in state; `deferred` is not a disposition for Critical; a Critical finding still open after the one re-run exits `spec gap` or asks a question, whose default is the critic's own recommendation (`spec gap` if any open Critical recommends it, else every finding's stated `reject` reason; no default when any finding carries no recommendation), so an answer policy can close it. The critic judges on the plan, the requirements, and each task's baseline facts; a change to any of them re-issues it | `ready` |
 
 | Exit | Requires | Route |
@@ -162,7 +162,7 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 | E4 | every commit in `base..head` maps to exactly one `done` or `adopted` task; in a revise run the adopted PR's own commits count as mapped by the adoption; merge commits the program records during integration are not task commits and are excluded from `base..head` on both sides | `integrated` |
 | E5 | every `done` or `adopted` task has a review record whose reviewed range covers all of that task's commits; for an `adopted` task the record comes from a full review step the program ran over the adopted range at entry, never from the PR's own history | `integrated` |
 | E6 | every such review record's evidence level meets the accepted class for review steps; otherwise the task is listed in `unreviewed`. An `already-satisfied` close-out needs the same, plus a passing review of the empty range at the head the product exits on, whose attested prompt carries this close-out as its `closeOut` input | `integrated` |
-| E7 | each task's verify command produced no new failure identity against its baseline; a `featureAdded` command had a meaningful first success (exit zero, at least one parsed identity where a parser exists) that became its task-local baseline; a `mustFlip` command failed at baseline with the recorded digest and passes at integration; a registered close-out has no verify command and is exempt | `integrated` |
+| E7 | each task's verify command produced no new failure identity against its baseline; a `featureAdded` command had a meaningful first success (exit zero, at least one parsed test identity where a test-runner parser exists) that became its task-local baseline; a `mustFlip` command failed at baseline with the recorded digest and passes at integration; a registered close-out has no verify command and is exempt | `integrated` |
 | E8 | the feature head is reachable from base and was not moved out of band | `integrated`, `no change` |
 | E9 | `base..head` is empty and every task is `already-satisfied` or `removed` | `no change`; forbids `integrated` |
 | E10 | a rejected step was re-issued with its reason up to the per-step retry limit before `blocked` is claimed | `blocked` |
@@ -211,6 +211,7 @@ on such a task refuses the run.
 | V7 | every verdict is `pass` and the review policy holds per repo: first and final passes saw that repo's full diff, other passes the delta since its last reviewed SHA, no Critical finding open; evaluated over the ledger with the product's valid same-finding closures applied | `passed` |
 | V8 | a finding on cleared code carries a typed `supersedes` naming a finding id or a reviewed-range id; a finding that repeats an open ledger finding by its id, in the same repo and file, is carried forward and needs no `supersedes`; repeating a closed finding is an echo the product drops; reopening one is a new finding with an explicit `supersedes` | every exit |
 | V9 | `blocked` for an offline-unavailable dependency was claimed only after a stand-in was tried | `blocked` |
+| V10 | every repo check the plan names ran by the program at its repo's verified head, against the current plan revision and baseline, with no new failure identity against its baseline (the program runs them before this check for every implementation) | `passed` |
 
 A full diff (V7) is the whole reviewed range. Every diff a review, judge or revise
 step receives leaves out package-manager lockfile content (`repo.LOCKFILES`) and
@@ -218,8 +219,8 @@ names each changed lockfile in a trailing `--stat` block.
 
 | Exit | Requires | Route |
 |---|---|---|
-| `passed` | V1 to V5, V7, V8 | ITERATE |
-| `implementation gap` | V1, V2, V8, T1; at least one `fail` with remediation tasks, or every verdict `pass` with a Critical finding open, remediated by one task per finding | EXECUTE, `remediation` |
+| `passed` | V1 to V5, V7, V8, V10 | ITERATE |
+| `implementation gap` | V1, V2, V8, T1; at least one `fail` with remediation tasks, or every verdict `pass` with a Critical finding open or a program repo-check run regressed, remediated by one task per finding or check | EXECUTE, `remediation` |
 | `plan gap` | V1, V2, V8, T1 | PLAN, `remediation` |
 | `intent gap` | V1, V2, V8, T1 | SPEC, `remediation` |
 | `evidence incomplete` | V1, T1 | VERIFY re-entry, new attempt |
@@ -279,8 +280,8 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 
 | Id | Postcondition | Gates |
 |---|---|---|
-| D1 | per touched repo, the remote head ref's SHA equals the verified SHA | `delivered` |
-| D2 | per touched repo, the PR is open, its head ref and SHA match, and its base target matches configuration | `delivered` |
+| D1 | per touched repo, `deliveredSha` is the verified (EXECUTE) head, and the remote head ref's SHA is either that SHA or, with `deliver.acceptRemotePaths` configured, the head of an accepted extension: commits after the verified SHA, every path they touch in any commit matching the list and none changed by the verified change (base..verified), recomputed now and equal to the row's `acceptedRemote` | `delivered` |
+| D2 | per touched repo, the PR is open, its head ref matches, its head SHA (observed and in the product) is the head D1 observed, and its base target matches configuration | `delivered` |
 | D3 | required checks satisfy the configured readiness policy (6.9's exact-SHA and required-check behavior) | `delivered` |
 | D4 | a retried creation was reconciled by identity against existing remote state; no duplicate PR | every exit |
 | D5 | partial publication is recorded per repo and never reported as all delivered | `partially delivered` |

@@ -2317,3 +2317,75 @@ class RefusedEvidenceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CompatibilityTests(unittest.TestCase):
+    """7.1.0: a run whose baseline was captured under other comparison rules is refused
+    before any command writes to it; a run with no baseline is never refused."""
+
+    def _run_with_baseline(self, tmp: Path, version):
+        repo_dir = _init_repo(tmp)
+        home = tmp / "home"
+        paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "old"))
+        store = StateStore.create(paths, {"id": "run-1", "entry": "cycle", "createdAt": "2026-01-01T00:00:00+00:00",
+                                          "slug": "old", "repoId": repo_id(repo_dir), "cycleType": "cycle"}, "old request")
+        if version is not None:
+            store.state["baseline"] = {"planRevision": "sha256:x", "repos": {"repo": {"normalizationVersion": version}}}
+        store.save()
+        return repo_dir, home, paths
+
+    def test_submit_and_answer_refused_before_any_write(self):
+        from loop_spec import cli
+        with tempfile.TemporaryDirectory() as t:
+            repo_dir, home, paths = self._run_with_baseline(Path(t), 1)
+            before = paths.state_json.read_bytes()
+            common = ["--project-root", str(repo_dir), "--state-home", str(home), "--slug", "old"]
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(cli.main(["submit", *common, "--step", "step-x"]), 1)
+                self.assertEqual(cli.main(["answer", *common, "--question", "q-1", "--answer", "stop"]), 1)
+            self.assertIn("comparison rules v1", err.getvalue())
+            self.assertEqual(paths.state_json.read_bytes(), before)
+
+    def test_baseline_free_run_is_compatible(self):
+        with tempfile.TemporaryDirectory() as t:
+            _, _, paths = self._run_with_baseline(Path(t), None)
+            controller.check_compatible(StateStore.open(paths))  # no raise
+
+
+class PhaseProbesTests(unittest.TestCase):
+    """7.1.0: PLAN, DEBUG and REVISE get repo-check facts per repo; other phases none."""
+
+    def test_plan_gets_facts_per_repo_and_revise_reads_the_adopted_head(self):
+        state = {"repos": {"repo": {"path": "/r", "baseSha": "b" * 40}}}
+        with patch("loop_spec.controller.probes_module.repo_checks_probe", side_effect=lambda p, sha: [sha]) as probe:
+            self.assertEqual(controller._phase_probes(state, "spec"), {})
+            self.assertEqual(controller._phase_probes(state, "plan"), {"repoChecks": {"repo": ["b" * 40]}})
+            state["adoption"] = {"repo": "repo", "headSha": "h" * 40}
+            self.assertEqual(controller._phase_probes(state, "revise"), {"repoChecks": {"repo": ["h" * 40]}})
+        self.assertEqual(probe.call_count, 2)
+
+
+class FailureObservationTests(unittest.TestCase):
+    """7.1.0: a failing criterion with a recorded pass is re-run by the program at the
+    head; an unmet condition skips it (with an event) and never blocks VERIFY."""
+
+    def setUp(self):
+        from tests.test_postconditions import PostconditionsTests
+        PostconditionsTests.setUp(self)
+        self.store.state["revisions"]["requirements"] = "sha256:req"
+        self.store.state["products"]["plan"] = {"exit": "ready", "product": self.plan_product}
+        self.store.state["products"]["execute"] = {"exit": "integrated", "product": self.execute_product}
+        self.store.state["criterionPasses"] = {"AC-1": {"repo": "repo", "sha": self.base_sha, "command": "x",
+                                                        "requirementsRevision": "sha256:req", "attemptId": "v-1"}}
+        self.product = {"verdicts": [{"criterion": "AC-1", "verdict": "fail", "cause": "boom",
+                                      "evidence": {"command": "git log --oneline -1", "repo": "repo", "sha": "claimed"}}]}
+
+    def test_runs_at_the_program_head_and_skips_on_changed_requirements(self):
+        controller._observe_failures(self.store, self.paths, self.product, "v-2")
+        observation = self.store.state["failureObservations"]["AC-1"]
+        self.assertEqual((observation["sha"], observation["attemptId"]), (self.sha_b, "v-2"))
+        self.store.state["revisions"]["requirements"] = "sha256:changed"
+        self.store.state["failureObservations"] = {}
+        controller._observe_failures(self.store, self.paths, self.product, "v-3")
+        self.assertEqual(self.store.state["failureObservations"], {})
+        self.assertIn("failure_observation_skipped", self.paths.events_jsonl.read_text())

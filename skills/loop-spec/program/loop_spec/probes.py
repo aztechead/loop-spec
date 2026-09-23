@@ -23,11 +23,12 @@ import hashlib
 import json
 import os
 import re
+import tomllib
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import repo as repo_module
+from loop_spec import repo as repo_module
 
 
 def _resolve_all(root: Path, files: list[str]) -> list[str]:
@@ -1844,6 +1845,44 @@ def doc_tells(root: Path, files: list[str]) -> list[dict]:
 # Aggregators (roadmap 8 / M2 wiring): PLAN gets a snapshot of the touched files,
 # EXECUTE/VERIFY get a delta over a git range.
 # =============================================================================
+
+
+_CHECK_FILES = {
+    "ruff.toml": "ruff", ".ruff.toml": "ruff", "mypy.ini": "mypy", ".mypy.ini": "mypy",
+    "pyrightconfig.json": "pyright", "tsconfig.json": "tsc", ".flake8": "flake8",
+}
+_PYPROJECT_TOOLS = ("ruff", "mypy", "pyright")
+_PACKAGE_SCRIPTS = ("lint", "typecheck", "type-check", "format:check")
+
+
+def repo_checks_probe(repo: Path, sha: str) -> list[dict]:
+    """Which lint/typecheck/format tools a repo configures at `sha`, read from git
+    objects (never the working tree, which may be on another branch). Facts for the
+    planner, which chooses the commands; nothing here decides a command."""
+    listing = repo_module._git(repo, "ls-tree", "--name-only", "-z", sha)
+    if listing.returncode != 0:
+        return []
+    names = set(listing.stdout.split("\0"))
+    facts = [{"tool": tool, "source": name, "sha": sha} for name, tool in sorted(_CHECK_FILES.items()) if name in names]
+
+    def read(name: str) -> str | None:
+        shown = repo_module._git(repo, "show", f"{sha}:{name}")
+        return shown.stdout if shown.returncode == 0 else None
+
+    if "pyproject.toml" in names and (text := read("pyproject.toml")) is not None:
+        try:
+            tool_table = tomllib.loads(text).get("tool") or {}
+        except tomllib.TOMLDecodeError:
+            tool_table = {}
+        facts += [{"tool": t, "source": f"pyproject.toml [tool.{t}]", "sha": sha} for t in _PYPROJECT_TOOLS if t in tool_table]
+    if "package.json" in names and (text := read("package.json")) is not None:
+        try:
+            scripts = json.loads(text).get("scripts") or {}
+        except (ValueError, AttributeError):
+            scripts = {}
+        facts += [{"tool": f"npm run {n}", "source": f"package.json scripts.{n}: {scripts[n]}", "sha": sha}
+                  for n in _PACKAGE_SCRIPTS if isinstance(scripts, dict) and n in scripts]
+    return facts
 
 
 def plan_probes(root: Path, files: list[str]) -> dict:

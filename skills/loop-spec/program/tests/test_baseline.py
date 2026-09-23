@@ -8,14 +8,17 @@ from pathlib import Path
 from loop_spec.baseline import (
     BaselineEntry,
     CommandRun,
+    Comparison,
     _count_tests_ran,
     capture_baseline,
     compare_to_baseline,
+    describe_failure,
     detect_runner,
     evidence_matches,
     fingerprints,
     normalize_output,
     parse_cargo_test,
+    parse_diagnostics,
     parse_go_test,
     parse_pytest,
     parse_vitest_jest,
@@ -126,7 +129,7 @@ class NormalizeTests(unittest.TestCase):
         self.assertEqual(normalized[3], "done in <TIME> and <TIME>")
         self.assertEqual(normalized[4], "pid=<N> port: <N>")
         self.assertEqual(normalized[5], "big number <N> here")
-        self.assertEqual(normalized[6], "3 failed, 1 passed")
+        self.assertEqual(normalized[6], "<N> failed, <N> passed")  # a whole summary line
         self.assertEqual(normalized[7], "Error 404 not found")
 
 
@@ -411,3 +414,74 @@ class CaptureBaselineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RepoCheckOutputTests(unittest.TestCase):
+    """7.1.0: repo checks (lint/typecheck/format) parse to "<path>: <message>"."""
+
+    def test_detects_check_tools_behind_runners(self):
+        self.assertEqual(detect_runner("uv run ruff check --output-format concise"), "diagnostics")
+        self.assertEqual(detect_runner("uv run mypy"), "diagnostics")
+        self.assertEqual(detect_runner("npx tsc --noEmit --pretty false"), "diagnostics")
+        self.assertIsNone(detect_runner("npm run lint"))  # a wrapper uses fingerprints
+
+    def test_parses_each_supported_shape_without_line_numbers(self):
+        text = (
+            "/work/app/pkg/a.py:1:8: F401 [*] `os` imported but unused\n"
+            "pkg/b.py:3: error: Incompatible return value type  [return-value]\n"
+            "src/c.ts(4,5): error TS2322: Type 'string' is not assignable to type 'number'.\n"
+            "Would reformat: pkg/d.py\n"
+            "Found 3 errors.\n"
+        )
+        self.assertEqual(parse_diagnostics(text, "/work/app"), [
+            "pkg/a.py: F401 [*] `os` imported but unused",
+            "pkg/b.py: error: Incompatible return value type [return-value]",
+            "pkg/d.py: would reformat",
+            "src/c.ts: error TS2322: Type 'string' is not assignable to type 'number'.",
+        ])
+
+    def test_feature_added_check_needs_no_test_count(self):
+        run = CompareToBaselineTests._cr(None, exit_status=0, runner="diagnostics", tests_ran=0)
+        entry = BaselineEntry(command="cmd", task="T-1", status="no-baseline", run=None)
+        self.assertEqual(compare_to_baseline(entry, run, feature_added=True).verdict, "featureAdded-ok")
+
+
+class SummaryCountTests(unittest.TestCase):
+    """7.1.0: a changed count on a whole summary line is not a new fingerprint; digits
+    anywhere else still are."""
+
+    def test_summary_shapes_are_count_free(self):
+        for before, after in [
+            ("9 failed | 690 passed", "9 failed | 691 passed"),
+            ("== 3 failed, 12 passed in 0.41s ==", "== 3 failed, 13 passed in 0.52s =="),
+            ("FAILED (failures=1, errors=2)", "FAILED (failures=1, errors=3)"),
+            ("Tests:       2 failed, 7 passed, 9 total", "Tests:       2 failed, 8 passed, 10 total"),
+        ]:
+            self.assertEqual(fingerprints(before, Path("/r")), fingerprints(after, Path("/r")), before)
+
+    def test_other_numbers_survive(self):
+        self.assertNotEqual(fingerprints("AssertionError: expected 1 errors", Path("/r")),
+                            fingerprints("AssertionError: expected 2 errors", Path("/r")))
+
+    def test_mixed_normalization_versions_are_not_compared(self):
+        base = CompareToBaselineTests._cr(None, exit_status=1, fingerprints_=["fp1"])
+        candidate = CompareToBaselineTests._cr(None, exit_status=1, fingerprints_=["fp1"])
+        candidate.normalization_version = 2
+        entry = BaselineEntry(command="cmd", task="T-1", status="ran", run=base)
+        self.assertEqual(compare_to_baseline(entry, candidate).verdict, "baseline-error")
+
+
+class DescribeFailureTests(unittest.TestCase):
+    """7.1.0: a retry reason carries readable failure lines."""
+
+    def test_fallback_lines_and_tail(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "out.sh").write_text("echo 'setup ok'; echo 'boom: disk error' ; exit 1\n")
+            run = _run("sh out.sh", d)
+        self.assertEqual(run.tail, ["setup ok", "boom: disk error"])
+        new_hash = next(h for h, line in run.fingerprint_lines.items() if line == "boom: disk error")
+        regression = Comparison("regression", [new_hash], "new")
+        self.assertEqual(describe_failure(regression, run), ["boom: disk error"])
+        no_ids = Comparison("mustFlip-failed", [], "still fails")
+        self.assertEqual(describe_failure(no_ids, run), ["setup ok", "boom: disk error"])
+        self.assertEqual(CommandRun.from_dict({**run.to_dict(), "fingerprintLines": None, "tail": None}).tail, [])

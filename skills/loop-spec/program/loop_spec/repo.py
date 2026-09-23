@@ -7,6 +7,7 @@ an existing PR to resume instead of a fresh branch, and `check_credentials` for 
 DELIVER precondition. Every function here reports a fact or fails safe; none of them
 choose a phase route (that is `postconditions.py`/`controller.py`).
 """
+import fnmatch
 import json
 import re
 import shutil
@@ -15,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .errors import LoopSpecError
+from loop_spec.errors import LoopSpecError
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -331,6 +332,44 @@ def remote_head(repo: Path, remote: str, branch: str) -> str | None:
     if proc.returncode != 0 or not proc.stdout.strip():
         return None
     return proc.stdout.split()[0]
+
+
+def _nul_paths(text: str) -> list[str]:
+    return [p for p in text.lstrip("\n").split("\0") if p]
+
+
+def remote_extension(repo: Path, branch: str, verified: str, base: str, globs: list[str]) -> dict:
+    """What origin's `branch` holds relative to the verified SHA (7.1.0). `state` is
+    `absent`, `equal`, `diverged` (the remote head does not descend from `verified`),
+    `extension` (it does) or `error` (the fetch failed). For an extension, `commits` are
+    every commit in verified..head with every path each one touches in any parent's
+    diff (renames as both sides), and `refused` names each path outside `globs` or
+    changed by the verified change itself (base..verified, final tree)."""
+    fetch = _git(repo, "fetch", "--no-tags", "origin", f"refs/heads/{branch}")
+    if fetch.returncode != 0:
+        if "couldn't find remote ref" in fetch.stderr:
+            return {"state": "absent"}
+        return {"state": "error", "why": fetch.stderr.strip() or "git fetch failed"}
+    head = run_git(repo, "rev-parse", "FETCH_HEAD").strip()
+    if head == verified:
+        return {"state": "equal", "head": head}
+    if not is_ancestor(repo, verified, head):
+        return {"state": "diverged", "head": head}
+    protected = set(_nul_paths(run_git(repo, "diff", "--name-only", "-z", "--no-renames", base, verified)))
+    log = run_git(repo, "log", "-z", "--no-renames", "-m", "--name-only", "--format=%x01%H%x02%s", f"{verified}..{head}")
+    commits: dict[str, dict] = {}
+    for chunk in log.split("\x01"):
+        if not chunk:
+            continue
+        header, _, rest = chunk.partition("\0")
+        sha, _, subject = header.partition("\x02")
+        entry = commits.setdefault(sha, {"sha": sha, "subject": subject, "paths": []})
+        for path in _nul_paths(rest):
+            if path not in entry["paths"]:
+                entry["paths"].append(path)
+    paths = sorted({p for c in commits.values() for p in c["paths"]})
+    refused = [p for p in paths if p in protected or not any(fnmatch.fnmatchcase(p, g) for g in globs)]
+    return {"state": "extension", "head": head, "commits": list(commits.values()), "paths": paths, "refused": refused}
 
 
 def origin_url(repo: Path) -> str | None:

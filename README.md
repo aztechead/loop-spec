@@ -4,7 +4,7 @@ For a developer installing loop-spec in Claude Code, or embedding it in a Python
 app on the Claude Agent SDK. Use this guide to install it, run an entry, and read
 a result.
 
-Current version: 7.0.7
+Current version: 7.1.0
 
 ## Contents
 
@@ -144,6 +144,7 @@ environment variables take precedence over it.
 | `phases.<phase>` (config) | bind a phase to `"external"` instead of its default implementation |
 | `roles.<role>` (config), `LOOP_SPEC_ROLE_<ROLE>` | bind a role to a skill other than the bundled default |
 | `deliver.readiness` (config) | `"checks"` waits on required PR checks before DELIVER finishes |
+| `deliver.acceptRemotePaths` (config) | path globs, e.g. `["CHANGELOG.md"]`: accept a bot's commits on the PR branch that touch only these paths and none of the verified change |
 | `LOOP_SPEC_HOME` | state home root; default `~/.loop-spec` |
 | `LOOP_SPEC_MODEL_<ROLE>` | model for every dispatch of that role, e.g. `LOOP_SPEC_MODEL_CODE_REVIEWER=haiku` |
 | `LOOP_SPEC_REWIND_BUDGET` | how many backward transitions one run may spend; default 2 |

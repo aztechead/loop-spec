@@ -10,14 +10,14 @@ import os
 import sys
 from pathlib import Path
 
-from . import VERSION, attest, contract, controller, questions, steps
-from .errors import LoopSpecError
-from .events import emit as emit_event
-from .events import marker_next, marker_wait
-from .jsonio import read_json
-from .paths import FeaturePaths, feature_dir, repo_id, state_home
-from .postconditions import retry_limit
-from .state import StateStore
+from loop_spec import VERSION, attest, contract, controller, questions, steps
+from loop_spec.errors import LoopSpecError
+from loop_spec.events import emit as emit_event
+from loop_spec.events import marker_next, marker_wait
+from loop_spec.jsonio import read_json
+from loop_spec.paths import FeaturePaths, feature_dir, repo_id, state_home
+from loop_spec.postconditions import retry_limit
+from loop_spec.state import StateStore
 
 # Full-cycle and single-phase controller entries: same later-wave behavior for now.
 _CONTROLLER_ENTRIES = ("cycle", "micro", "debug", "revise",
@@ -168,7 +168,9 @@ def _open_store(args: argparse.Namespace) -> tuple[StateStore, FeaturePaths]:
     if not args.slug:
         raise LoopSpecError("--slug is required", repair="pass --slug <slug>, see `loop-spec status`")
     paths = _feature_paths(args, args.slug)
-    return StateStore.open(paths), paths
+    store = StateStore.open(paths)
+    controller.check_compatible(store)  # before submit or answer writes anything (7.1.0)
+    return store, paths
 
 
 def _print_next(paths: FeaturePaths, next_) -> None:

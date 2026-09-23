@@ -143,11 +143,11 @@ postconditions for it hold.
 | Phase | Product | Preconditions | Postconditions the program checks | Exits |
 |---|---|---|---|---|
 | SPEC | goal, boundaries, acceptance criteria with ids, decisions, open questions | request text | an approval record exists that was produced from a human or policy answer to a question naming the proposed requirements revision; the record references the question id; the product's own fields cannot create it | approved, needs answer |
-| PLAN | tasks with id, dependencies, files, repo, verify command, criteria covered; prepare command | approved requirements revision | every criterion id is covered by at least one task; every verify command either runs at the base SHA from a bare worktree root, or is declared `feature-added` with a target path that does not exist at base and is validated at that task's first integration; baseline captured (section 11); plan bound to the requirements revision | ready, spec gap |
+| PLAN | tasks with id, dependencies, files, repo, verify command, criteria covered; prepare command; optional repo checks (lint, typecheck, format check) per repo, chosen from the program's repo-check facts | approved requirements revision | every criterion id is covered by at least one task; every verify command either runs at the base SHA from a bare worktree root, or is declared `feature-added` with a target path that does not exist at base and is validated at that task's first integration; baseline captured (section 11); plan bound to the requirements revision | ready, spec gap |
 | EXECUTE | per-task disposition of `done`, `already-satisfied` with evidence, `removed` by an approved plan amendment, or `adopted` for the one range task a `revise` entry creates; commits per task; unresolved issues | PLAN at the current requirements revision; baseline | every required task has an accepted disposition, and dependencies are complete before dependents; every commit in `base..head` maps to a `done` or `adopted` task; every `done` task has a review record whose reviewed range covers all of that task's commits and whose execution evidence level meets the accepted class for review steps (section 5); each task's verify command produced no new failure identity against its baseline, or, for a `feature-added` command, a meaningful first success as defined in section 11; feature head is reachable from base; the product binds to the plan and requirements revisions per repo; an empty range exits `no-change` and can never exit `integrated` | integrated, no change, blocked, plan gap |
-| VERIFY | per-criterion verdict of `pass`, `fail`, or `blocked`, each with evidence of command, SHA, exit status, parsed failure identities, and raw output digest; findings with dispositions; remediation tasks; reviewed range | an EXECUTE exit of `integrated` or `no-change`, at the current revisions; the verified head is the integrated head, or base for `no-change` | every criterion id in the requirements revision has exactly one verdict; every evidence SHA equals the verified head; the program re-runs every cited command in a clean checkout of that SHA that it creates itself, with the prepare fixtures applied, and compares command identity, exit status, parsed failure identities, and the output digest after the versioned normalization of section 11, keeping the raw digest for provenance only; a criterion may skip the re-run only under an exception approved outside the implementation, either declared in the PLAN product and approved with it or granted by an operator answer to a question at VERIFY time, and never by a flag the implementation sets on its own; its verdict is then recorded at assurance `claimed` and the result lists it under `weakenedAssurance`; a `blocked` verdict cites a cause the program itself observed, in the baseline record or in that re-run; `passed` requires every verdict `pass` and the review policy in section 10 satisfied; a finding on cleared code carries a typed `supersedes` reference | passed, implementation gap, plan gap, intent gap, evidence incomplete, blocked |
+| VERIFY | per-criterion verdict of `pass`, `fail`, or `blocked`, each with evidence of command, SHA, exit status, parsed failure identities, and raw output digest; findings with dispositions; remediation tasks; reviewed range | an EXECUTE exit of `integrated` or `no-change`, at the current revisions; the verified head is the integrated head, or base for `no-change` | every criterion id in the requirements revision has exactly one verdict; every evidence SHA equals the verified head; the program re-runs every cited command in a clean checkout of that SHA that it creates itself, with the prepare fixtures applied, and compares command identity, exit status, parsed failure identities, and the output digest after the versioned normalization of section 11, keeping the raw digest for provenance only; a criterion may skip the re-run only under an exception approved outside the implementation, either declared in the PLAN product and approved with it or granted by an operator answer to a question at VERIFY time, and never by a flag the implementation sets on its own; its verdict is then recorded at assurance `claimed` and the result lists it under `weakenedAssurance`; a `blocked` verdict cites a cause the program itself observed, in the baseline record or in that re-run; `passed` requires every verdict `pass`, the review policy in section 10 satisfied, and every repo check the plan names run by the program at the verified head with no new failure identity (a regressed check is a remediation); a finding on cleared code carries a typed `supersedes` reference | passed, implementation gap, plan gap, intent gap, evidence incomplete, blocked |
 | ITERATE | goal verdict against the original request; gaps; route | VERIFY passed at the current revisions, including the `no-change` head | the verdict binds the integrated SHA, the requirements revision, and the plan revision; a gap routes to SPEC, PLAN, EXECUTE, or VERIFY for missing evidence, and the rewind counter advances | converged, converged with caveats, rewind, escalated |
-| DELIVER | per-repo PR identity, delivered SHA, caveats | ITERATE `converged` or `converged with caveats`; or `escalated` when the operator policy allows partial delivery as a draft; a `no-change` head that ITERATE converged terminates here without a PR | per touched repo: the remote head ref's SHA equals the verified SHA; the PR is open, its head ref and SHA match, and its base target matches configuration; required checks satisfy the configured readiness policy, carrying 6.9's exact-SHA and required-check behavior; a retried creation is reconciled by identity, never duplicated; partial publication is recorded per repo and never reported as all delivered; a `no-change` result opens no PR and says so | delivered, partially delivered, delivery blocked |
+| DELIVER | per-repo PR identity, delivered SHA, caveats | ITERATE `converged` or `converged with caveats`; or `escalated` when the operator policy allows partial delivery as a draft; a `no-change` head that ITERATE converged terminates here without a PR | per touched repo: the delivered SHA is the verified SHA, and the remote head ref's SHA equals it or, under the opt-in `deliver.acceptRemotePaths`, is the head of an accepted extension (commits after it, such as a changelog bot's, touching only allowed paths the verified change never touches; recorded beside the delivered SHA, never merged or rewritten); the PR is open, its head ref matches, its head SHA is that same observed head, and its base target matches configuration; required checks satisfy the configured readiness policy, carrying 6.9's exact-SHA and required-check behavior; a retried creation is reconciled by identity, never duplicated; partial publication is recorded per repo and never reported as all delivered; a `no-change` result opens no PR and says so | delivered, partially delivered, delivery blocked |
 | debug | reproduction as command plus failure digest; diagnosis; a compact SPEC and PLAN whose one repair task carries the reproduction as a `mustFlip` verify command | error report | the program ran the reproduction at base in a clean checkout and it failed, and that digest is the `mustFlip` baseline; a changed reproduction needs a stated reason and both runs are recorded; no reproduction exits `blocked reproduction`; the repair then goes through EXECUTE, where E7 proves the flip, and VERIFY, ITERATE, and DELIVER follow | reproduced, blocked reproduction, then as EXECUTE onward |
 
 The no-change path, made explicit. When the plan's tasks are all `already-satisfied`
@@ -554,11 +554,13 @@ integrator on either side.
   found the September report's loop intact under a remediation route the budget did
   not count). The review and verify contracts tell the roles what the budget is for:
   show-stoppers and outright incorrect implementations; the PR review catches the
-  rest. When a previously passing criterion fails and `git log --diff-filter=A`
-  shows the failing test file was added by a remediation commit, the route first
-  decides whether the test or the implementation violates the approved behavior.
-  Provenance identifies the case and never authorizes weakening an assertion on its
-  own. Past the budget, remediation is restricted to minimal diffs and new broad
+  rest. When a criterion that passed at an accepted VERIFY now fails, the program
+  re-runs its evidence at the head and checks whether a failing test file
+  (pytest, vitest or jest identities) was added after that pass
+  (`git log --diff-filter=A`); the remediation then states that as a fact and the
+  implementer first decides whether the test or the implementation contradicts the
+  approved criteria. Provenance identifies the case and never authorizes weakening an
+  assertion on its own. Past the budget, remediation is restricted to minimal diffs and new broad
   assertions are forbidden by the implement role's input flags.
 - Four terminal results. `converged`. `converged-with-caveats`: acceptance and ITERATE
   passed, non-Critical findings remain, delivered as a draft PR that lists them. Both
@@ -575,29 +577,39 @@ integrator on either side.
 
 - The baseline is captured once, after PLAN and before EXECUTE, at the base SHA, in a
   throwaway worktree: every verify command the plan declares, except those marked
-  `feature-added`, plus detected repo checks from the manifests present. This also proves each plan command runs from a bare
+  `feature-added`, plus the repo checks the PLAN product names. The program reports
+  which lint, typecheck and format tools each repo's manifests configure (read from
+  git objects at the base commit); the planner chooses the commands. A check re-runs
+  at every task integration (a new diagnostic sends the task back) and, as the gate,
+  at VERIFY's head (V10). This also proves each plan command runs from a bare
   worktree root, which retires the report's item 9.
 - Failures are keyed on test identity. Per-runner parsers for pytest, vitest and jest,
-  go test, and cargo test extract file plus test name. A normalized fingerprint, with
-  paths, durations, counts, PIDs, and timestamps stripped under a versioned
-  normalization rule, is the fallback for unknown output. A summary banner that
+  go test, and cargo test extract file plus test name; a diagnostics parser for ruff
+  (concise output), mypy, flake8, tsc (`--pretty false`) and `ruff format --check`
+  extracts file plus message. A normalized fingerprint, with paths, durations, PIDs,
+  timestamps, and the counts on a whole summary line stripped under a versioned
+  normalization rule (v2 since 7.1.0), is the fallback for unknown output; a run is
+  never resumed on a program whose rule version differs from its baseline's. A summary banner that
   changes because a passing test was added cannot register as a regression. The same
   parsers and the same normalization rule are what VERIFY's evidence comparison uses
   (section 4), so an elapsed time or a temporary path can never reject a valid
   verification; the raw output digest is kept for provenance and is not compared.
 - A command the plan declares `feature-added` has no run at base. The baseline records
   it as `no-baseline`. At the owning task's first integration the command must run and
-  succeed meaningfully: exit zero, and at least one parsed test identity where a parser
-  exists. That first run becomes the command's task-local baseline for every later
+  succeed meaningfully: exit zero, and at least one parsed test identity where a
+  test-runner parser exists (the diagnostics parser counts no tests). That first run becomes the command's task-local baseline for every later
   comparison. Absence at base is neither failure evidence nor automatic tolerance.
 - Environment health is part of the baseline. A command that cannot collect at all is
   recorded once with its error class. The verifier and the integrator read the same
   record, so a pre-existing failure is litigated zero times instead of eight.
-- An optional `prepare` command from the repo config runs before the baseline. This is
-  the environment-preparation hook the July and September reports both asked for.
-- Integration reason codes distinguish `verify-failed`,
-  `verify-failed-at-baseline-too`, `already-integrated` (the commit is an ancestor of
-  the feature head and is published normally), and `zero-commit`.
+- An optional `prepare` command, named in the PLAN product, runs before the baseline
+  and before every re-run. This is the environment-preparation hook the July and
+  September reports both asked for.
+- Integration records a comparison verdict per command: `no-regression`,
+  `regression`, `featureAdded-ok` or `featureAdded-failed`, `mustFlip-ok` or
+  `mustFlip-failed`, and `baseline-error` (a plan defect, routed to PLAN). A task
+  already satisfied at the head is decided by git, not by a zero-commit claim, and a
+  re-review of an integrated task keeps its commits.
 
 ## 12. State and artifacts
 

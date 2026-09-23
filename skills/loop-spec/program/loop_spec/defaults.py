@@ -7,11 +7,11 @@ yet, so `contract.py` still raises "lands at M3/M4/M5" for those.
 """
 from pathlib import Path
 
-from . import external
-from .jsonio import atomic_write_json, read_json
-from .paths import FeaturePaths, ensure_results_dir
-from .roles import compose_prompt, load_role, resolve_model
-from .schema import load_schema, validate
+from loop_spec import external
+from loop_spec.jsonio import atomic_write_json, read_json
+from loop_spec.paths import FeaturePaths, ensure_results_dir
+from loop_spec.roles import compose_prompt, load_role, repo_map, resolve_model
+from loop_spec.schema import load_schema, validate
 
 
 def run_lead_phase(phase: str, role_name: str, context_path: Path, product_path: Path) -> int:
@@ -32,7 +32,7 @@ def run_lead_phase(phase: str, role_name: str, context_path: Path, product_path:
             atomic_write_json(product_path, result)
             return 0
 
-    from .contract import resolve_role  # local: contract.invoke calls into this module
+    from loop_spec.contract import resolve_role  # local: contract.invoke calls into this module
 
     binding = resolve_role(project_root, role_name)
     role = load_role(role_name, project_root, binding)
@@ -56,6 +56,7 @@ def run_lead_phase(phase: str, role_name: str, context_path: Path, product_path:
         "answers": context.get("answers", {}),
         "probes": context.get("probes", {}),
         "inputsDigest": context["inputs"]["digest"],
+        **({"repos": repo_map(repos)} if phase == "plan" else {}),
         "revisions": {
             "requirements": state.get("requirementsRevision"),
             "plan": state.get("planRevision"),

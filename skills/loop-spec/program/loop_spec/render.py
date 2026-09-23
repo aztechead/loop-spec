@@ -6,7 +6,7 @@ here is committed to the consumer's repository (the audit's R8: a docs commit af
 VERIFY would push a head that is not the verified SHA). Every function reads
 `store.state["products"]` and the ledger; none of them mutate anything.
 """
-from . import VERSION
+from loop_spec import VERSION
 
 
 def spec_md(store) -> str:
@@ -68,6 +68,17 @@ def pr_body(store) -> str:
         lines += ["### Findings", "", "| ID | Severity | Disposition | Cause |", "| --- | --- | --- | --- |"]
         lines += [f"| {f['id']} | {f['severity']} | {f['disposition']} | {f['cause']} |" for f in findings]
         lines.append("")
+
+    # 7.1.0: a Critical PLAN-critic finding the run rejected is a decision a reviewer
+    # should see; only the accepted plan's own critic pass counts.
+    critic = store.state.get("critic") or {}
+    if critic.get("planRevision") is not None and critic.get("planRevision") == store.state["revisions"].get("plan"):
+        rejected = [f for f in critic.get("findings", []) if f.get("severity") == "Critical" and f.get("disposition") == "rejected"]
+        if rejected:
+            lines += ["### Plan critic", "", "Critical findings on the delivered plan that the run rejected, with the reason:", ""]
+            lines += [f"- {f['id']} at {f['location']}: {f['cause']} Rejected: {f.get('reason') or '(no reason recorded)'}"
+                      for f in rejected]
+            lines.append("")
 
     open_findings = [f["id"] for f in findings if f["disposition"] == "open"]
     iterate_product = (store.state["products"].get("iterate") or {}).get("product") or {}

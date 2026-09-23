@@ -246,6 +246,28 @@
               }
             }
           }
+        },
+        "checks": {
+          "description": "7.1.0: repo-wide checks (lint, typecheck, format check) the program baselines and re-runs at integration and at VERIFY's head. Optional; absent means none.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "repo",
+              "command"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "repo": {
+                "type": "string",
+                "minLength": 1
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
         }
       }
     }

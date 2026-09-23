@@ -147,13 +147,24 @@ class DeliverTests(unittest.TestCase):
                                         "headRefOid": self.head_sha, "baseRefName": "main"}]), ""
             if args[:2] == ("pr", "view"):
                 return 0, PR_VIEW_JSON, ""
+            if args[:2] == ("pr", "edit"):
+                return edit_result
             raise AssertionError(f"unexpected gh call: {args}")
 
+        edit_result = (0, "", "")
         with patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh):
             action = deliver.run(self.store, self.paths, self.ctx)
 
         self.assertEqual(action.product["repos"][0]["state"], "delivered")
         self.assertFalse(any(c[:2] == ("pr", "create") for c in calls))
+        # 7.1.0: the existing PR's body is refreshed; a failed edit is a caveat only.
+        self.assertTrue(any(c[:3] == ("pr", "edit", "42") for c in calls))
+        edit_result = (1, "", "HTTP 403")
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh):
+            action = deliver.run(self.store, self.paths, self.ctx)
+        row = action.product["repos"][0]
+        self.assertEqual((row["state"], row["pr"]["number"]), ("delivered", 42))
+        self.assertIn("PR body was not updated", row["caveats"][0])
 
     def test_failed_credential_check_blocks_delivery(self):
         check = self.store.state["credentialChecks"]["repo"]
@@ -378,3 +389,143 @@ class PrTitleTests(unittest.TestCase):
         self.assertTrue(title.startswith(cut[:-3]))
         self.assertEqual(title[len(cut) - 3], " ")
         self.assertEqual(deliver.pr_title("short"), "short")
+
+
+class AcceptedRemoteTests(DeliverTests.__bases__[0]):
+    """7.1.0: deliver.acceptRemotePaths lets DELIVER accept commits someone else put
+    on the branch after the verified SHA, when they touch only allowed paths that the
+    verified change never touches. The verified SHA stays the delivered one."""
+
+    def setUp(self):
+        DeliverTests.setUp(self)
+        self.addCleanup(self._tmp.cleanup)
+        (self.repo / ".loop-spec").mkdir()
+        (self.repo / ".loop-spec" / "config.json").write_text(
+            json.dumps({"deliver": {"acceptRemotePaths": ["CHANGELOG.md"]}}))
+        _git(self.repo, "push", "-q", "origin", f"{self.head_sha}:refs/heads/feature")
+
+    def _bot_commit(self, filename):
+        bot = self.tmp / "bot"
+        _git(self.tmp, "clone", "-q", "-b", "feature", str(self.remote), str(bot))
+        _git(bot, "config", "user.name", "bot")
+        _git(bot, "config", "user.email", "bot@example.com")
+        Path(bot, filename).write_text("written by the bot\n")
+        _git(bot, "add", filename)
+        _git(bot, "commit", "-q", "-m", f"bot: touch {filename}")
+        _git(bot, "push", "-q", "origin", "feature")
+        return _head(bot)
+
+    def _gh(self, head, create=(0, "https://x/pull/42\n", "")):
+        view = json.dumps({"number": 42, "url": "https://x/pull/42", "headRefName": "feature",
+                           "headRefOid": head, "baseRefName": "main"})
+
+        def fake_run_gh(repo, *args):
+            if args[:2] == ("pr", "list"):
+                return 0, "[]", ""
+            if args[:2] == ("pr", "create"):
+                return create
+            if args[:2] == ("pr", "view"):
+                return 0, view, ""
+            raise AssertionError(f"unexpected gh call: {args}")
+        return fake_run_gh
+
+    def _boundary(self, product):
+        from loop_spec import postconditions
+        return postconditions.Boundary(self.store, self.paths, phase="deliver", product=product,
+                                       exit=product["exit"], project_root=self.repo)
+
+    def test_an_allowed_bot_commit_is_accepted_without_a_push_and_d1_d2_hold(self):
+        bot_head = self._bot_commit("CHANGELOG.md")
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=self._gh(bot_head)):
+            action = deliver.run(self.store, self.paths, self.ctx)
+        row = action.product["repos"][0]
+        self.assertEqual((action.product["exit"], row["deliveredSha"]), ("delivered", self.head_sha))
+        self.assertEqual(row["acceptedRemote"]["head"], bot_head)
+        self.assertEqual(row["acceptedRemote"]["paths"], ["CHANGELOG.md"])
+        self.assertEqual(_head(self.remote, "feature"), bot_head)  # nothing was pushed over it
+        self.assertEqual(validate(action.product, load_schema("deliver")), [])
+        boundary = self._boundary(action.product)
+        self.assertIsNone(boundary._d1())
+        with patch("loop_spec.postconditions.repo_module.run_gh",
+                   return_value=(0, json.dumps({"state": "OPEN", "headRefName": "feature",
+                                                "headRefOid": bot_head, "baseRefName": "main"}), "")):
+            self.assertIsNone(boundary._d2())
+        # A PR that names the verified SHA while the remote holds the extension is one
+        # head too few: D2 holds both to the head D1 observed.
+        with patch("loop_spec.postconditions.repo_module.run_gh",
+                   return_value=(0, json.dumps({"state": "OPEN", "headRefName": "feature",
+                                                "headRefOid": self.head_sha, "baseRefName": "main"}), "")):
+            self.assertIsNotNone(boundary._d2())
+        # An invented path in the recorded extension no longer matches what D1 recomputes.
+        forged = json.loads(json.dumps(action.product))
+        forged["repos"][0]["acceptedRemote"]["paths"] = ["CHANGELOG.md", "b.py"]
+        self.assertIsNotNone(self._boundary(forged)._d1())
+
+    def test_a_bot_push_between_the_fetch_and_the_push_is_rechecked_once(self):
+        bot_head = self._bot_commit("CHANGELOG.md")
+        real = deliver._accept_extension
+        calls = []
+
+        def first_sees_nothing(*args):
+            calls.append(args)
+            return (None, None) if len(calls) == 1 else real(*args)
+        with patch("loop_spec.deliver._accept_extension", side_effect=first_sees_nothing), \
+             patch("loop_spec.deliver.repo_module.run_gh", side_effect=self._gh(bot_head)):
+            action = deliver.run(self.store, self.paths, self.ctx)
+        row = action.product["repos"][0]
+        self.assertEqual((row["state"], row["acceptedRemote"]["head"], len(calls)), ("delivered", bot_head, 2))
+
+    def test_a_bot_commit_on_a_verified_path_is_refused(self):
+        self._bot_commit("b.py")
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=self._gh("x")):
+            action = deliver.run(self.store, self.paths, self.ctx)
+        row = action.product["repos"][0]
+        self.assertEqual((action.product["exit"], row["state"]), ("delivery blocked", "failed"))
+        self.assertIn("touch b.py", row["caveats"][0])
+
+    def test_accepted_extension_is_kept_when_the_pr_step_then_fails(self):
+        self._bot_commit("CHANGELOG.md")
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=self._gh("x", create=(1, "", "boom"))):
+            action = deliver.run(self.store, self.paths, self.ctx)
+        row = action.product["repos"][0]
+        self.assertEqual(row["state"], "failed")
+        self.assertIn("no push", row["caveats"][0])
+        published = self.store.state["deliverPublished"]["repo"]
+        self.assertEqual((published["observed"], published["acceptedRemote"]["paths"]), (True, ["CHANGELOG.md"]))
+
+    def test_without_the_config_key_a_bot_commit_still_blocks(self):
+        (self.repo / ".loop-spec" / "config.json").write_text("{}")
+        self._bot_commit("CHANGELOG.md")
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=self._gh("x")):
+            action = deliver.run(self.store, self.paths, self.ctx)
+        self.assertIn("push rejected", action.product["repos"][0]["caveats"][0])
+
+
+class RemoteExtensionTests(unittest.TestCase):
+    """repo.remote_extension reads every path of every extension commit, NUL-safe."""
+
+    def test_touched_then_restored_and_renamed_paths_all_count(self):
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            remote = tmp / "r.git"
+            remote.mkdir()
+            _git(remote, "init", "-q", "--bare", "-b", "main")
+            work = tmp / "w"
+            work.mkdir()
+            _init_repo(work)
+            _commit(work, "a.py", "base")
+            base = _head(work)
+            _commit(work, "b c.py", "verified")
+            verified = _head(work)
+            _git(work, "remote", "add", "origin", str(remote))
+            (work / "b c.py").write_text("changed\n")
+            _git(work, "commit", "-qam", "bot touches")
+            _git(work, "revert", "--no-edit", "HEAD")
+            _git(work, "mv", "a.py", "CHANGELOG.md")
+            _git(work, "commit", "-qm", "bot renames")
+            _git(work, "push", "-q", "origin", "HEAD:refs/heads/feature")
+            ext = repo_module.remote_extension(work, "feature", verified, base, ["CHANGELOG.md"])
+        self.assertEqual(ext["state"], "extension")
+        self.assertEqual(ext["paths"], ["CHANGELOG.md", "a.py", "b c.py"])
+        self.assertEqual(ext["refused"], ["a.py", "b c.py"])
+        self.assertEqual(len(ext["commits"]), 3)

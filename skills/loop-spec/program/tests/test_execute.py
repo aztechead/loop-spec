@@ -290,12 +290,13 @@ class ExecuteLifecycleTests(unittest.TestCase):
                         "dependsOn": [], "files": ["T-1.txt"], "repo": "repo", "verify": "", "criteria": ["AC-1"],
                         "featureAdded": None, "mustFlip": False}
         ctx2 = self._rewind_ctx("attempt-2", remediation)
-        ctx2["entry"]["payload"]["rewind"]["verdicts"] = []
+        # A passing verdict for the owner's criterion is not a failing criterion (7.1.0).
+        ctx2["entry"]["payload"]["rewind"]["verdicts"] = [{"criterion": "AC-1", "verdict": "pass", "cause": None}]
 
         action = step(self.store, self.paths, ctx2)
         self.assertIsInstance(action, IssueStep)
         self.assertEqual(action.request["cwd"], self.store.state["execute"]["tasks"]["T-1"]["worktree"])
-        self.assertIn("left a Critical finding open", action.request["reason"])
+        self.assertIn("VERIFY remediation R-2: fix Critical finding F-1", action.request["reason"])
         self.assertIn("PATCH stores null", action.request["reason"])
         self.assertNotIn("failing", action.request["reason"])
         self.assertEqual(self.store.state["execute"]["tasks"]["T-2"]["status"], "done")
@@ -538,7 +539,7 @@ class ExecuteLifecycleTests(unittest.TestCase):
 
         action = self._assert_routed_to_plan_gap("T-1")
         self.assertEqual(action.product["issues"], [
-            {"task": "T-1", "text": "the verify re-run is mustFlip-failed: reproduction did not fail at base"},
+            {"task": "T-1", "text": "the verify re-run of `sh verify.sh` is mustFlip-failed: reproduction did not fail at base"},
         ])
 
     def test_missing_baseline_routes_to_plan_gap(self):
@@ -550,6 +551,33 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self._implement_and_review("T-1", "T-1.txt")
 
         self._assert_routed_to_plan_gap("T-1")
+
+    def test_a_repo_check_regression_at_integration_sends_the_task_back_with_the_diagnostic(self):
+        # 7.1.0: the plan's repo checks run at the task head after its verify command;
+        # a new diagnostic is a retry whose reason quotes it, and the implementer's
+        # next prompt carries the check commands.
+        check = "git grep -n TODO"
+        self.store.state["products"]["plan"]["product"]["checks"] = [{"repo": "repo", "command": check}]
+        entry = BaselineEntry(command=check, task=None, status="ran", run=run_command(check, self.repo, self.base_sha))
+        self.store.state["baseline"]["entries"][check] = entry.to_dict()
+        self.store.save()
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIn("git grep -n TODO", action.request["prompt"])
+        worktree = action.request["cwd"]
+        Path(worktree, "a.txt").write_text("TODO: this fails the check\n")
+        _git(worktree, "add", "a.txt")
+        _git(worktree, "commit", "-q", "-m", "implement T-1")
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-1"},
+                  {"taskId": "T-1", "commits": [_head(worktree)], "summary": "did T-1",
+                   "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []})
+        action = step(self.store, self.paths, self.ctx)
+        task_head = _head(worktree)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-1"},
+                  self._pass_review(task_head, self.base_sha, task_head))
+        task = self.store.state["execute"]["tasks"]["T-1"]
+        self.assertNotEqual(task["status"], "done")
+        self.assertIn("repo check re-run of `git grep -n TODO` is regression", task["reason"])
+        self.assertIn("a.txt:<LINE>:TODO: this fails the check", task["reason"])
 
     def test_regression_still_retries_before_blocking(self):
         # A genuine regression (unlike mustFlip-failed/baseline-error above) is the
@@ -1329,3 +1357,28 @@ class AdoptedTaskTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FailingTestProvenanceTests(unittest.TestCase):
+    """7.1.0: the program's own observation of a failing criterion, against where it
+    last passed, names a failing test file added since (a fact, never a verdict)."""
+
+    def test_names_a_failing_test_file_added_after_the_pass(self):
+        from loop_spec.execute import _failing_test_provenance
+        with tempfile.TemporaryDirectory() as t:
+            repo = Path(t)
+            _init_repo(repo)
+            passed = _head(repo)
+            _commit(repo, "tests_new.py", "a close-out adds a test")
+            head = _head(repo)
+            store = StateStore.create(FeaturePaths(root=repo / ".run"), {"id": "run-1"}, "x")
+            store.state["repos"] = {"repo": {"path": str(repo)}}
+            store.state["criterionPasses"] = {"AC-1": {"repo": "repo", "sha": passed}}
+            observation = {"repo": "repo", "sha": head, "attemptId": "v-2", "runner": "pytest",
+                           "failureIdentities": ["tests_new.py::test_x", "tests_old.py::test_y"]}
+            store.state["failureObservations"] = {"AC-1": observation}
+            found = _failing_test_provenance(store, "v-2", ["AC-1"], "repo", head)
+            self.assertEqual((found["files"], found["passSha"]), (["tests_new.py"], passed))
+            self.assertIsNone(_failing_test_provenance(store, "v-1", ["AC-1"], "repo", head))  # another VERIFY
+            observation["runner"] = "cargo"
+            self.assertIsNone(_failing_test_provenance(store, "v-2", ["AC-1"], "repo", head))  # no file paths

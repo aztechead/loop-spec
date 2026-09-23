@@ -12,8 +12,8 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import repo as repo_module
-from .ids import digest_bytes
+from loop_spec import repo as repo_module
+from loop_spec.ids import digest_bytes
 
 
 def state_home(explicit: str | None = None) -> Path:

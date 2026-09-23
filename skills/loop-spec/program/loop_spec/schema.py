@@ -9,8 +9,8 @@ implementation's malformed product should report all its problems at once.
 import re
 from pathlib import Path
 
-from .errors import LoopSpecError
-from .jsonio import read_json
+from loop_spec.errors import LoopSpecError
+from loop_spec.jsonio import read_json
 
 _SCHEMAS_DIR = Path(__file__).resolve().parent / "schemas"
 

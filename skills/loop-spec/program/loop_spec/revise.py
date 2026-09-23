@@ -11,12 +11,12 @@ own `run_entry("revise", pr=...)` populates.
 import json
 from pathlib import Path
 
-from . import repo as repo_module
-from .contract import resolve_role, validate_request
-from .errors import LoopSpecError
-from .execute import IssueStep, Product
-from .paths import ensure_results_dir
-from .roles import compose_prompt, load_role, resolve_model
+from loop_spec import repo as repo_module
+from loop_spec.contract import resolve_role, validate_request
+from loop_spec.errors import LoopSpecError
+from loop_spec.execute import IssueStep, Product
+from loop_spec.paths import ensure_results_dir
+from loop_spec.roles import compose_prompt, load_role, repo_map, resolve_model
 
 _DIFF_CAP = 200_000  # ponytail: same flat cap as execute.py's review diff
 
@@ -78,6 +78,8 @@ def _reviser_request(store, paths, ctx) -> dict:
         # its state home (controller._find_delivering_run_products); null when no
         # prior run matched this PR, so the reviser derives from the PR body/diff.
         "prior": store.state["revise"].get("prior"),
+        "repos": repo_map(store.state["repos"]),
+        "probes": ctx.get("probes", {}),
     }
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=repo_path, phase="revise")
     request = {

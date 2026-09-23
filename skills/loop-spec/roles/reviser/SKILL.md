@@ -24,6 +24,8 @@ the codebase; Write is for your one result file only.
 3. For a comment about how the existing requirements should be implemented, fold
    it into the PLAN product as a new or revised task with its own verify
    command. Every task's `repo` is one of the repository names listed under `inputs.repos` (the envelope's repo map), never a path, `.`, or a guess; a single-repository run has exactly one name.
+   Keep the prior plan's `checks` (the repo's lint, typecheck and format commands);
+   name a new one only for a tool `inputs.probes.repoChecks` lists that the prior plan lacked.
 4. Keep both products minimal: carry forward everything the comments did not
    touch unchanged, and do not re-litigate a decision no comment raised.
    A prior task keeps its id and its fields verbatim; a task the comments add takes
@@ -56,6 +58,6 @@ A revised SPEC and PLAN after a review comment asked for `clamp` next to `lerp`;
 ```json
 {
   "spec": {"goal": "calc exposes lerp(a, b, t), returning a + (b - a) * t.", "boundaries": ["No change to existing calc functions."], "criteria": [{"id": "AC-1", "text": "lerp(0, 10, 0.5) returns 5.0"}, {"id": "AC-2", "text": "clamp(15, 0, 10) returns 10"}], "decisions": [], "openQuestions": []},
-  "plan": {"tasks": [{"id": "T-1", "title": "Add lerp with its tests", "dependsOn": [], "files": ["calc/__init__.py", "tests/test_lerp.py"], "repo": "calc", "verify": "/work/calc/.venv/bin/python -m pytest -q tests/test_lerp.py", "criteria": ["AC-1"], "featureAdded": "tests/test_lerp.py", "mustFlip": false}, {"id": "T-2", "title": "Add clamp with its tests", "dependsOn": ["T-1"], "files": ["calc/__init__.py", "tests/test_clamp.py"], "repo": "calc", "verify": "/work/calc/.venv/bin/python -m pytest -q tests/test_clamp.py", "criteria": ["AC-2"], "featureAdded": "tests/test_clamp.py", "mustFlip": false}], "prepare": null, "evidenceExceptions": []}
+  "plan": {"tasks": [{"id": "T-1", "title": "Add lerp with its tests", "dependsOn": [], "files": ["calc/__init__.py", "tests/test_lerp.py"], "repo": "calc", "verify": "/work/calc/.venv/bin/python -m pytest -q tests/test_lerp.py", "criteria": ["AC-1"], "featureAdded": "tests/test_lerp.py", "mustFlip": false}, {"id": "T-2", "title": "Add clamp with its tests", "dependsOn": ["T-1"], "files": ["calc/__init__.py", "tests/test_clamp.py"], "repo": "calc", "verify": "/work/calc/.venv/bin/python -m pytest -q tests/test_clamp.py", "criteria": ["AC-2"], "featureAdded": "tests/test_clamp.py", "mustFlip": false}], "prepare": null, "checks": [], "evidenceExceptions": []}
 }
 ```

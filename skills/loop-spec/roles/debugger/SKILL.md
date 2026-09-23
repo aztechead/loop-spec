@@ -25,6 +25,8 @@ repair to EXECUTE as a compact SPEC and PLAN, not as a diff of your own.
    the diagnosis (which side is wrong and why), and a compact SPEC and PLAN whose
    single task carries the repair — `mustFlip: true`, `verify` set to the
    reproduction command. EXECUTE implements it; you never do. Every task's `repo` is one of the repository names listed under `inputs.repos` (the envelope's repo map), never a path, `.`, or a guess; a single-repository run has exactly one name.
+   Name the repo's lint, typecheck and format commands in `checks` for each tool
+   `inputs.probes.repoChecks` lists, one diagnostic per output line, or leave it out.
 4. **If you edited a file while investigating, revert it and say so.** A
    reproduction script or a throwaway note outside the checkout is fine; a change
    to a tracked file is not, however small, and must not reach your product.
@@ -69,6 +71,6 @@ A reproduced bug whose repair is one `mustFlip` task. `original` is null because
   "original": null,
   "diagnosis": "lerp computes a + b * t, not a + (b - a) * t, so lerp(2, 4, 1) returns 6; the function is wrong, the test is right.",
   "spec": {"goal": "lerp returns b at t = 1.", "boundaries": ["No change to existing calc functions."], "criteria": [{"id": "AC-1", "text": "lerp(2, 4, 1) returns 4"}], "decisions": [], "openQuestions": []},
-  "plan": {"tasks": [{"id": "T-1", "title": "Fix lerp's formula", "dependsOn": [], "files": ["calc/__init__.py"], "repo": "calc", "verify": "/work/calc/.venv/bin/python -m pytest -q tests/test_lerp.py::test_endpoints", "criteria": ["AC-1"], "featureAdded": null, "mustFlip": true}], "prepare": null, "evidenceExceptions": []}
+  "plan": {"tasks": [{"id": "T-1", "title": "Fix lerp's formula", "dependsOn": [], "files": ["calc/__init__.py"], "repo": "calc", "verify": "/work/calc/.venv/bin/python -m pytest -q tests/test_lerp.py::test_endpoints", "criteria": ["AC-1"], "featureAdded": null, "mustFlip": true}], "prepare": null, "checks": [], "evidenceExceptions": []}
 }
 ```

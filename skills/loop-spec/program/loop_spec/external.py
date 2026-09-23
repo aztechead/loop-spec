@@ -9,8 +9,8 @@ than re-transcribing docs/loop-spec/phase-interface-7.0.md a second time.
 """
 from pathlib import Path
 
-from .jsonio import atomic_write_json, read_json
-from .schema import load_schema, validate
+from loop_spec.jsonio import atomic_write_json, read_json
+from loop_spec.schema import load_schema, validate
 
 PHASE_EXITS: dict[str, list[str]] = {
     "spec": ["approved", "needs answer"],
@@ -26,7 +26,7 @@ PHASE_POSTCONDITIONS: dict[str, list[str]] = {
     "spec": ["S1", "S2", "S3"],
     "plan": ["P1", "P2", "P3", "P4", "P5", "P6", "P7"],
     "execute": ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11"],
-    "verify": ["V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9"],
+    "verify": ["V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10"],
     "iterate": ["I1", "I2", "I3", "I4", "I5", "I6"],
     "deliver": ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"],
     "debug": ["B1", "B2", "B3"],
@@ -40,10 +40,10 @@ POSTCONDITION_TEXT: dict[str, str] = {
     "S3": "the product's own fields did not create the approval record; only the program writes it",
     "P1": "product validates; bound to the current requirements revision",
     "P2": "every criterion id in the requirements revision is covered by at least one task",
-    "P3": "every verify command and the prepare command pass the plain-argv format check (commands run as argv with no shell), checked before any baseline command runs; and every verify command either ran at the base SHA from a bare worktree root during baseline capture, or is declared featureAdded with a target path that does not exist at base",
+    "P3": "every verify command, every repo check command, and the prepare command pass the plain-argv format check (commands run as argv with no shell), checked before any baseline command runs; every verify command either ran at the base SHA from a bare worktree root during baseline capture, or is declared featureAdded with a target path that does not exist at base; every repo check ran at the base SHA without an execution error",
     "P4": "the baseline is captured (section 11) with the prepare command applied; environment health recorded once per failing command",
     "P5": "the task graph is acyclic and every dependsOn names a task in the plan",
-    "P6": "workspace resolved once and the repo list stored in state; every task names a repo in it",
+    "P6": "workspace resolved once and the repo list stored in state; every task names a repo in it; every repo check names a repo some task changes, appears once per repo, and is not a featureAdded task's verify command in that repo",
     "P7": "the critic pass ran and every Critical finding is closed as fixed with the critic re-run once on the corrected product, or rejected with a stated reason recorded in state; deferred is not a disposition for Critical; a Critical finding still open after the one re-run exits spec gap or asks a question, whose default is the critic's own recommendation (spec gap if any open Critical recommends it, else every finding's stated reject reason; no default when any finding carries no recommendation), so an answer policy can close it. The critic judges on the plan, the requirements, and each task's baseline facts; a change to any of them re-issues it",
     "E1": "product validates; bound to the plan and requirements revisions per repo",
     "E2": "every required task has an accepted disposition; every registered close-out appears exactly once as done (with commits) or already-satisfied (with none), a closed one with the same disposition and commits as its closure and, if done, the review its closure accepted; no id appears twice and no C-n id is unregistered",
@@ -51,7 +51,7 @@ POSTCONDITION_TEXT: dict[str, str] = {
     "E4": "every commit in base..head maps to exactly one done or adopted task (an adopted PR's own commits count as mapped); a merge commit the program recorded while integrating two same-wave siblings is not a task commit and is excluded from base..head on both sides of the comparison",
     "E5": "every done or adopted task has a review record whose reviewed range covers all of that task's commits; for an adopted task the record comes from a full review step the program ran over the adopted range at entry, never from the PR's own history",
     "E6": "every such review record's evidence level meets the accepted class for review steps; otherwise the task is listed in unreviewed. An already-satisfied close-out needs the same, plus a passing review of the empty range at the head the product exits on, whose attested prompt carries this close-out as its closeOut input",
-    "E7": "each task's verify command produced no new failure identity against its baseline; a featureAdded command had a meaningful first success (exit zero, at least one parsed identity where a parser exists) that became its task-local baseline; a mustFlip command failed at baseline with the recorded digest and passes at integration; a registered close-out has no verify command and is exempt",
+    "E7": "each task's verify command produced no new failure identity against its baseline; a featureAdded command had a meaningful first success (exit zero, at least one parsed test identity where a test-runner parser exists) that became its task-local baseline; a mustFlip command failed at baseline with the recorded digest and passes at integration; a registered close-out has no verify command and is exempt",
     "E8": "the feature head is reachable from base and was not moved out of band",
     "E9": "base..head is empty and every task is already-satisfied or removed",
     "E10": "a rejected step was re-issued with its reason up to the per-step retry limit before blocked is claimed",
@@ -65,14 +65,15 @@ POSTCONDITION_TEXT: dict[str, str] = {
     "V7": "every verdict is pass and the review policy holds per repo: first and final passes saw that repo's full diff, other passes the delta since its last reviewed SHA, no Critical finding open",
     "V8": "a finding on cleared code carries a typed supersedes naming a finding id or a reviewed-range id",
     "V9": "blocked for an offline-unavailable dependency was claimed only after a stand-in was tried",
+    "V10": "every repo check the plan names ran by the program at its repo's verified head, against the current plan revision and baseline, with no new failure identity against its baseline",
     "I1": "product validates; the verdict binds every repo's integrated SHA (boundShas), the requirements revision, and the plan revision",
     "I2": "every gap names a target of SPEC, PLAN, EXECUTE, or VERIFY; an EXECUTE gap names a repo of this run, or omits it only when the run has one repo",
     "I3": "T1 holds for this rewind",
     "I4": "a rewind is needed and T1 refuses it, or the verdict is unmet and the judge names no gap any route can close",
     "I5": "VERIFY passed at this SHA and no open gap against the original goal; the shared convergence predicate",
     "I6": "no Critical finding open; the caveats list contains only accepted non-Critical review findings, each with a recorded disposition, and nothing else",
-    "D1": "per touched repo, the remote head ref's SHA equals the verified SHA",
-    "D2": "per touched repo, the PR is open, its head ref and SHA match, and its base target matches configuration",
+    "D1": "per touched repo, deliveredSha is the verified (EXECUTE) head, and the remote head ref's SHA is either that SHA or, with deliver.acceptRemotePaths configured, the head of an accepted extension: commits after the verified SHA, every path they touch in any commit matching the list and none changed by the verified change (base..verified), recomputed now and equal to the row's acceptedRemote",
+    "D2": "per touched repo, the PR is open, its head ref matches, its head SHA (observed and in the product) is the head D1 observed, and its base target matches configuration",
     "D3": "required checks satisfy the configured readiness policy (6.9's exact-SHA and required-check behavior)",
     "D4": "a retried creation was reconciled by identity against existing remote state; no duplicate PR",
     "D5": "partial publication is recorded per repo and never reported as all delivered",

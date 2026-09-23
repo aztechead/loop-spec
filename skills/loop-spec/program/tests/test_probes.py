@@ -215,3 +215,28 @@ class DiffProbesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RepoChecksProbeTests(unittest.TestCase):
+    """7.1.0: configured check tools, read from git objects at a commit."""
+
+    def test_reads_manifests_at_the_commit_not_the_working_tree(self):
+        import json as _json
+        import subprocess as _sp
+        import tempfile as _tf
+        from loop_spec.probes import repo_checks_probe
+        with _tf.TemporaryDirectory() as t:
+            repo = Path(t)
+            run = lambda *a: _sp.run(["git", *a], cwd=repo, check=True, capture_output=True)  # noqa: E731
+            run("init", "-q", "-b", "main")
+            run("config", "user.email", "t@example.com")
+            run("config", "user.name", "T")
+            (repo / "pyproject.toml").write_text("[tool.ruff]\nline-length = 100\n[tool.pytest.ini_options]\n")
+            (repo / "package.json").write_text(_json.dumps({"scripts": {"lint": "eslint .", "test": "vitest"}}))
+            run("add", ".")
+            run("commit", "-qm", "seed")
+            sha = _sp.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+            (repo / "mypy.ini").write_text("[mypy]\n")  # untracked: not at the commit
+            facts = repo_checks_probe(repo, sha)
+        self.assertEqual([f["tool"] for f in facts], ["ruff", "npm run lint"])
+        self.assertTrue(all(f["sha"] == sha for f in facts))

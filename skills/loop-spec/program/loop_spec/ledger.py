@@ -9,9 +9,9 @@ ledger to check one.
 """
 from pathlib import Path
 
-from . import repo as repo_module
-from .errors import LoopSpecError
-from .ids import new_id, now_iso
+from loop_spec import repo as repo_module
+from loop_spec.errors import LoopSpecError
+from loop_spec.ids import new_id, now_iso
 
 _CLOSING = {"fixed", "rejected"}
 

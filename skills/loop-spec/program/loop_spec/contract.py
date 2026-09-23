@@ -11,10 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from . import external
-from .errors import LoopSpecError
-from .jsonio import atomic_write_json, read_json
-from .schema import load_schema, validate, validate_or_raise
+from loop_spec import external
+from loop_spec.errors import LoopSpecError
+from loop_spec.jsonio import atomic_write_json, read_json
+from loop_spec.schema import load_schema, validate, validate_or_raise
 
 # The two fields each request kind's schema declares that only the program may mint;
 # an implementation's step/question request omits them (it cannot allocate ids), so
@@ -48,6 +48,10 @@ def load_config(project_root: Path) -> dict:
         if value is not None and value != "unattested":
             raise LoopSpecError(f"{path}: evidence.{family}.accept is {value!r}; the only value is \"unattested\"",
                                 repair=f"set evidence.{family}.accept to \"unattested\" or remove it")
+    accept = (config.get("deliver") or {}).get("acceptRemotePaths")
+    if accept is not None and not (isinstance(accept, list) and all(isinstance(g, str) and g for g in accept)):
+        raise LoopSpecError(f"{path}: deliver.acceptRemotePaths is {accept!r}; it is a list of path globs",
+                            repair='set it to a list such as ["CHANGELOG.md"], or remove it')
     return config
 
 
@@ -171,7 +175,7 @@ def _run_default_stepped(module, store, paths, attempt_dir: Path, product_path: 
     # contract, so this dispatcher stays here rather than in each module (their own
     # docstrings say wiring them in is not their job). All four import IssueStep/
     # Product/Pause from execute.py, so one isinstance check covers every module.
-    from . import execute as execute_module
+    from loop_spec import execute as execute_module
     ctx = read_json(attempt_dir / "context.json")
     outcome = module.step(store, paths, ctx)
     for name in _STEP_SHAPE_FILES:
@@ -197,8 +201,8 @@ def _run_default_deliver(store, paths, attempt_dir: Path, product_path: Path) ->
     # Pause, never an IssueStep (its own docstring: an out-of-band remote move maps
     # to a "delivery blocked" product exit, not a raw pause -- no scenario uses Pause
     # today, but the branch stays so a future one need not touch this dispatcher).
-    from . import deliver as deliver_module
-    from . import execute as execute_module
+    from loop_spec import deliver as deliver_module
+    from loop_spec import execute as execute_module
     ctx = read_json(attempt_dir / "context.json")
     outcome = deliver_module.run(store, paths, ctx)
     if isinstance(outcome, execute_module.Product):
@@ -223,11 +227,11 @@ def invoke(paths, *, phase: str, attempt_id: str, implementation: str, program_l
             if store is None:
                 raise LoopSpecError(f"{phase}'s default implementation needs the live state store",
                                      repair="call contract.invoke(..., store=store) from the controller")
-            from . import debug as debug_module
-            from . import execute as execute_module
-            from . import iterate as iterate_module
-            from . import revise as revise_module
-            from . import verify as verify_module
+            from loop_spec import debug as debug_module
+            from loop_spec import execute as execute_module
+            from loop_spec import iterate as iterate_module
+            from loop_spec import revise as revise_module
+            from loop_spec import verify as verify_module
             module = {"execute": execute_module, "verify": verify_module, "iterate": iterate_module,
                       "debug": debug_module, "revise": revise_module}[phase]
             code, stepped_kind = _run_default_stepped(module, store, paths, attempt_dir, product_path)
@@ -237,7 +241,7 @@ def invoke(paths, *, phase: str, attempt_id: str, implementation: str, program_l
                                      repair="call contract.invoke(..., store=store) from the controller")
             code = _run_default_deliver(store, paths, attempt_dir, product_path)
         elif phase in _DEFAULT_ROLE_BY_PHASE:
-            from . import defaults  # local: defaults.py calls back into resolve_role
+            from loop_spec import defaults  # local: defaults.py calls back into resolve_role
             code = defaults.run_lead_phase(phase, _DEFAULT_ROLE_BY_PHASE[phase], attempt_dir / "context.json", product_path)
         else:
             raise LoopSpecError(f"no default implementation for {phase}", repair='bind "external" in .loop-spec/config.json')

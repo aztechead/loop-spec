@@ -15,10 +15,10 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from .contract import load_config
-from .errors import LoopSpecError
-from .ids import digest_bytes
-from .jsonio import render_json
+from loop_spec.contract import load_config
+from loop_spec.errors import LoopSpecError
+from loop_spec.ids import digest_bytes
+from loop_spec.jsonio import render_json
 
 ROLE_NAMES = ["spec-writer", "planner", "plan-critic", "implementer", "code-reviewer", "verifier", "iterate-judge", "debugger"]
 
@@ -189,6 +189,12 @@ CONTRACTS: dict[str, str] = {
     ),
     "reviser": REPO_NAME_RULE,
 }
+
+
+def repo_map(repos) -> dict:
+    """`inputs.repos` for a role that writes a PLAN: each repo's name, path and base."""
+    items = repos.items() if isinstance(repos, dict) else ((r.get("name"), r) for r in repos)
+    return {name: {"path": info["path"], "baseSha": info.get("baseSha")} for name, info in items}
 
 
 def compose_prompt(role: Role, *, inputs: dict, result_path: Path, cwd: Path, phase: str) -> str:
