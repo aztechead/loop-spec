@@ -1,0 +1,93 @@
+{
+  "autonomous": true,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "feat/add-unitkit-temperature-py-with-celsius",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": false,
+  "createdAt": "2026-09-23T18:37:00+00:00",
+  "cycleType": "full",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [
+          "pushed 5740381832a8 to feat/add-unitkit-temperature-py-with-celsius; the PR step failed: gh pr list failed: none of the git remotes configured for this repository point to a known GitHub host. To tell gh about a new GitHub host, please use `gh auth login`",
+          "published: 5740381832a8 (attempt attempt-7e4eaf9daabe)"
+        ],
+        "deliveredSha": null,
+        "pr": null,
+        "publishedSha": "5740381832a878087e5d43d05e85a91b52a69848",
+        "repo": "checks-cli",
+        "state": "failed"
+      }
+    ]
+  },
+  "eligibleTargets": [
+    {
+      "branch": "feat/add-unitkit-temperature-py-with-celsius",
+      "targetSha": "5740381832a878087e5d43d05e85a91b52a69848"
+    }
+  ],
+  "feature_title": "Add unitkit/temperature.py with celsius_to_fahrenheit(c) and fahrenheit_to_celsius(f), both taking and returning float, tested in tests/test_temperature.py; verified by uv run pytest -q.",
+  "finishedAt": "2026-09-23T18:46:37+00:00",
+  "hostVersions": {
+    "claude": "2.1.280 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": false,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 0
+  },
+  "loopSpecVersion": "7.1.0",
+  "noChangeReason": null,
+  "outcome": "escalated",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [
+    "question-2beea84feddf",
+    "question-e356f5375037"
+  ],
+  "prUrl": null,
+  "prs": [],
+  "reason": "deliver paused; operator chose 'stop'",
+  "result": "escalated",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-95966bc05034"
+    }
+  },
+  "rewinds": 0,
+  "schema": 1,
+  "slug": "add-unitkit-temperature-py-with-celsius",
+  "status": "escalated",
+  "summary": "full escalated at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": "5740381832a878087e5d43d05e85a91b52a69848",
+  "warnings": [],
+  "weakenedAssurance": [],
+  "workDelivered": false
+}

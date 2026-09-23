@@ -1,0 +1,1161 @@
+{
+  "approval": {
+    "at": "2026-09-23T18:37:40+00:00",
+    "by": "policy",
+    "questionId": "question-2beea84feddf",
+    "revision": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224",
+    "writer": "program"
+  },
+  "attempts": [
+    {
+      "entry": "fresh",
+      "id": "attempt-2f9a92f91dc3",
+      "phase": "spec",
+      "startedAt": "2026-09-23T18:37:00+00:00"
+    },
+    {
+      "entry": "fresh",
+      "id": "attempt-e71a639a1abd",
+      "phase": "plan",
+      "startedAt": "2026-09-23T18:37:40+00:00"
+    },
+    {
+      "entry": "fresh",
+      "id": "attempt-c438f593ac70",
+      "phase": "execute",
+      "startedAt": "2026-09-23T18:40:19+00:00"
+    },
+    {
+      "entry": "fresh",
+      "id": "attempt-2d0e16244ec1",
+      "phase": "verify",
+      "startedAt": "2026-09-23T18:42:27+00:00"
+    },
+    {
+      "entry": "fresh",
+      "id": "attempt-7ad5a3d193af",
+      "phase": "iterate",
+      "startedAt": "2026-09-23T18:45:53+00:00"
+    },
+    {
+      "entry": "fresh",
+      "id": "attempt-7e4eaf9daabe",
+      "phase": "deliver",
+      "startedAt": "2026-09-23T18:46:36+00:00"
+    }
+  ],
+  "baseline": {
+    "planRevision": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+    "repos": {
+      "checks-cli": {
+        "baseSha": "f14c1b065847982e0e41dfec4799c466b50b969f",
+        "capturedAt": "2026-09-23T18:38:13+00:00",
+        "entries": {
+          "uv run mypy": {
+            "command": "uv run mypy",
+            "run": {
+              "command": "uv run mypy",
+              "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/baseline-f14c1b065847",
+              "elapsedSeconds": 3.0868779590236954,
+              "errorClass": null,
+              "exitStatus": 0,
+              "failureIdentities": [],
+              "fingerprintLines": {
+                "115d386b567d3686": "Success: no issues found in 2 source files"
+              },
+              "fingerprints": [
+                "115d386b567d3686"
+              ],
+              "logPath": null,
+              "normalizationVersion": 2,
+              "normalizedDigest": "sha256:115d386b567d3686b1ff3e97429e2d4813021a66d446edef11aae44bbe144b00",
+              "omittedLines": 0,
+              "outputDigest": "sha256:f9b031e5c45aa702cd4fef028d465551cb20a2c4698e0913c7b00766b20ac4d8",
+              "runner": "diagnostics",
+              "sha": "f14c1b065847982e0e41dfec4799c466b50b969f",
+              "startedAt": "2026-09-23T18:38:10+00:00",
+              "tail": [
+                "Success: no issues found in 2 source files"
+              ],
+              "testsRan": 0
+            },
+            "status": "ran",
+            "task": null
+          },
+          "uv run pytest -q tests/test_temperature.py": {
+            "command": "uv run pytest -q tests/test_temperature.py",
+            "run": null,
+            "status": "no-baseline",
+            "task": "T-1"
+          },
+          "uv run ruff check --output-format concise": {
+            "command": "uv run ruff check --output-format concise",
+            "run": {
+              "command": "uv run ruff check --output-format concise",
+              "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/baseline-f14c1b065847",
+              "elapsedSeconds": 1.9261765840346925,
+              "errorClass": null,
+              "exitStatus": 0,
+              "failureIdentities": [],
+              "fingerprintLines": {
+                "f0d0b1081d9d3ebb": "All checks passed!"
+              },
+              "fingerprints": [
+                "f0d0b1081d9d3ebb"
+              ],
+              "logPath": null,
+              "normalizationVersion": 2,
+              "normalizedDigest": "sha256:d0d61cc76ecf660f211cfb5d1b7d86dfc110f9af1aabd1aa0e18cd39427dcb76",
+              "omittedLines": 0,
+              "outputDigest": "sha256:02d8db75f815137febd7af4e873e6f8b2b61565dedf3313d7aa66d8217217b6d",
+              "runner": "diagnostics",
+              "sha": "f14c1b065847982e0e41dfec4799c466b50b969f",
+              "startedAt": "2026-09-23T18:38:08+00:00",
+              "tail": [
+                "Using CPython 3.14.7",
+                "Creating virtual environment at: .venv",
+                "Building unitkit @ file://<ROOT>",
+                "Built unitkit @ file://<ROOT>",
+                "Installed 13 packages in <TIME>",
+                "All checks passed!"
+              ],
+              "testsRan": 0
+            },
+            "status": "ran",
+            "task": null
+          }
+        },
+        "normalizationVersion": 2,
+        "prepare": null,
+        "prepareRun": null,
+        "repo": "checks-cli"
+      }
+    }
+  },
+  "budget": {
+    "limit": 2,
+    "spent": 0,
+    "transitions": []
+  },
+  "checkRuns": {
+    "checks-cli": {
+      "uv run mypy": {
+        "baselineCapturedAt": "2026-09-23T18:38:13+00:00",
+        "comparison": {
+          "detail": "no new failure identity versus base; exit status alone never decides",
+          "newIdentities": [],
+          "verdict": "no-regression"
+        },
+        "head": "5740381832a878087e5d43d05e85a91b52a69848",
+        "planRevision": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+        "run": {
+          "command": "uv run mypy",
+          "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/check-checks-cli-5740381832a8-8c545a20",
+          "elapsedSeconds": 2.856746250006836,
+          "errorClass": null,
+          "exitStatus": 0,
+          "failureIdentities": [],
+          "fingerprintLines": {
+            "0d5df800aa8c4508": "Success: no issues found in 3 source files"
+          },
+          "fingerprints": [
+            "0d5df800aa8c4508"
+          ],
+          "logPath": null,
+          "normalizationVersion": 2,
+          "normalizedDigest": "sha256:0d5df800aa8c450800a684a6360e69386ee7ad648f26f0243f997cac5d40cbcd",
+          "omittedLines": 0,
+          "outputDigest": "sha256:8228fcc5ce46d42d01caf3cd941f4e9c5f2bcc372bb5b147a2f0572d2dd675a8",
+          "runner": "diagnostics",
+          "sha": "5740381832a878087e5d43d05e85a91b52a69848",
+          "startedAt": "2026-09-23T18:42:28+00:00",
+          "tail": [
+            "Success: no issues found in 3 source files"
+          ],
+          "testsRan": 0
+        }
+      },
+      "uv run ruff check --output-format concise": {
+        "baselineCapturedAt": "2026-09-23T18:38:13+00:00",
+        "comparison": {
+          "detail": "no new failure identity versus base; exit status alone never decides",
+          "newIdentities": [],
+          "verdict": "no-regression"
+        },
+        "head": "5740381832a878087e5d43d05e85a91b52a69848",
+        "planRevision": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+        "run": {
+          "command": "uv run ruff check --output-format concise",
+          "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/check-checks-cli-5740381832a8-8c545a20",
+          "elapsedSeconds": 1.044211375003215,
+          "errorClass": null,
+          "exitStatus": 0,
+          "failureIdentities": [],
+          "fingerprintLines": {
+            "f0d0b1081d9d3ebb": "All checks passed!"
+          },
+          "fingerprints": [
+            "f0d0b1081d9d3ebb"
+          ],
+          "logPath": null,
+          "normalizationVersion": 2,
+          "normalizedDigest": "sha256:d0d61cc76ecf660f211cfb5d1b7d86dfc110f9af1aabd1aa0e18cd39427dcb76",
+          "omittedLines": 0,
+          "outputDigest": "sha256:90d8b6f898989896faccfeacb5db216ab675b4e16ae8e74eeda2604e6a51f2ed",
+          "runner": "diagnostics",
+          "sha": "5740381832a878087e5d43d05e85a91b52a69848",
+          "startedAt": "2026-09-23T18:42:27+00:00",
+          "tail": [
+            "Using CPython 3.14.7",
+            "Creating virtual environment at: .venv",
+            "Building unitkit @ file://<ROOT>",
+            "Built unitkit @ file://<ROOT>",
+            "Installed 13 packages in <TIME>",
+            "All checks passed!"
+          ],
+          "testsRan": 0
+        }
+      }
+    }
+  },
+  "credentialChecks": {
+    "checks-cli": {
+      "checked": [
+        "git ls-remote --exit-code origin HEAD",
+        "gh auth status"
+      ],
+      "failedCommand": null,
+      "gh_ok": true,
+      "git_ok": true,
+      "repair": null
+    }
+  },
+  "criterionPasses": {
+    "AC-1": {
+      "attemptId": "attempt-2d0e16244ec1",
+      "command": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/verify-5740381832a8/.venv/bin/python /tmp/check_ac1.py",
+      "repo": "checks-cli",
+      "requirementsRevision": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224",
+      "sha": "5740381832a878087e5d43d05e85a91b52a69848"
+    },
+    "AC-2": {
+      "attemptId": "attempt-2d0e16244ec1",
+      "command": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/verify-5740381832a8/.venv/bin/python /tmp/check_ac2.py",
+      "repo": "checks-cli",
+      "requirementsRevision": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224",
+      "sha": "5740381832a878087e5d43d05e85a91b52a69848"
+    },
+    "AC-3": {
+      "attemptId": "attempt-2d0e16244ec1",
+      "command": "uv run pytest -q tests/test_temperature.py",
+      "repo": "checks-cli",
+      "requirementsRevision": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224",
+      "sha": "5740381832a878087e5d43d05e85a91b52a69848"
+    }
+  },
+  "critic": {
+    "findings": [],
+    "inputsIdentity": "sha256:cd063039537cbaeb2fa27034613b984c7dd9f508fc10b4c4b491683930206115",
+    "passes": 1,
+    "planRevision": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+    "stepId": "step-83f5ace6aaca"
+  },
+  "deliverAttempts": {},
+  "deliverPublished": {
+    "checks-cli": {
+      "acceptedRemote": null,
+      "at": "2026-09-23T18:46:37+00:00",
+      "attemptId": "attempt-7e4eaf9daabe",
+      "observed": false,
+      "pr": null,
+      "prAttemptId": null,
+      "sha": "5740381832a878087e5d43d05e85a91b52a69848"
+    }
+  },
+  "environmentHealth": {
+    "checks-cli": {}
+  },
+  "execute": {
+    "handledRejections": [],
+    "handledRewinds": [],
+    "issues": [],
+    "repos": {
+      "checks-cli": {
+        "defaultHead": "f14c1b065847982e0e41dfec4799c466b50b969f",
+        "head": "5740381832a878087e5d43d05e85a91b52a69848",
+        "worktree": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/worktrees/feature/checks-cli"
+      }
+    },
+    "tasks": {
+      "T-1": {
+        "baseLayers": 0,
+        "branch": "task/add-unitkit-temperature-py-with-celsius/T-1",
+        "commits": [
+          "5740381832a878087e5d43d05e85a91b52a69848"
+        ],
+        "evidence": null,
+        "forkedFrom": "f14c1b065847982e0e41dfec4799c466b50b969f",
+        "generation": 0,
+        "implementSteps": [
+          "step-e18ab77b53b3"
+        ],
+        "integratedFrom": "f14c1b065847982e0e41dfec4799c466b50b969f",
+        "integratedTo": "5740381832a878087e5d43d05e85a91b52a69848",
+        "plan": {
+          "criteria": [
+            "AC-1",
+            "AC-2",
+            "AC-3"
+          ],
+          "dependsOn": [],
+          "featureAdded": "tests/test_temperature.py",
+          "files": [
+            "unitkit/temperature.py",
+            "tests/test_temperature.py"
+          ],
+          "mustFlip": false,
+          "repo": "checks-cli",
+          "title": "Add unitkit/temperature.py with celsius/fahrenheit conversions and tests",
+          "verify": "uv run pytest -q tests/test_temperature.py"
+        },
+        "probes": {
+          "commentTells": [],
+          "docTells": [],
+          "duplication": [],
+          "failureTells": [],
+          "houseStyleCompare": [],
+          "indirection": {
+            "delta": 0,
+            "findings": [],
+            "layers": 0
+          }
+        },
+        "reason": null,
+        "remediations": [],
+        "repo": "checks-cli",
+        "retries": 0,
+        "review": {
+          "findings": [],
+          "reviewedRange": {
+            "from": "f14c1b065847982e0e41dfec4799c466b50b969f",
+            "to": "5740381832a878087e5d43d05e85a91b52a69848"
+          },
+          "securityDispositions": [],
+          "verdict": "pass"
+        },
+        "reviewFrom": "f14c1b065847982e0e41dfec4799c466b50b969f",
+        "reviewSteps": [
+          "step-95966bc05034"
+        ],
+        "status": "done",
+        "worktree": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/worktrees/T-1"
+      }
+    },
+    "waves": [
+      [
+        "T-1"
+      ]
+    ]
+  },
+  "executeCheckRuns": {
+    "T-1": {
+      "uv run mypy": {
+        "comparison": {
+          "detail": "no new failure identity versus base; exit status alone never decides",
+          "newIdentities": [],
+          "verdict": "no-regression"
+        },
+        "head": "5740381832a878087e5d43d05e85a91b52a69848",
+        "run": {
+          "command": "uv run mypy",
+          "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/worktrees/T-1",
+          "elapsedSeconds": 0.1731907090288587,
+          "errorClass": null,
+          "exitStatus": 0,
+          "failureIdentities": [],
+          "fingerprintLines": {
+            "0d5df800aa8c4508": "Success: no issues found in 3 source files"
+          },
+          "fingerprints": [
+            "0d5df800aa8c4508"
+          ],
+          "logPath": null,
+          "normalizationVersion": 2,
+          "normalizedDigest": "sha256:0d5df800aa8c450800a684a6360e69386ee7ad648f26f0243f997cac5d40cbcd",
+          "omittedLines": 0,
+          "outputDigest": "sha256:8228fcc5ce46d42d01caf3cd941f4e9c5f2bcc372bb5b147a2f0572d2dd675a8",
+          "runner": "diagnostics",
+          "sha": "5740381832a878087e5d43d05e85a91b52a69848",
+          "startedAt": "2026-09-23T18:42:26+00:00",
+          "tail": [
+            "Success: no issues found in 3 source files"
+          ],
+          "testsRan": 0
+        }
+      },
+      "uv run ruff check --output-format concise": {
+        "comparison": {
+          "detail": "no new failure identity versus base; exit status alone never decides",
+          "newIdentities": [],
+          "verdict": "no-regression"
+        },
+        "head": "5740381832a878087e5d43d05e85a91b52a69848",
+        "run": {
+          "command": "uv run ruff check --output-format concise",
+          "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/worktrees/T-1",
+          "elapsedSeconds": 0.06068974995287135,
+          "errorClass": null,
+          "exitStatus": 0,
+          "failureIdentities": [],
+          "fingerprintLines": {
+            "f0d0b1081d9d3ebb": "All checks passed!"
+          },
+          "fingerprints": [
+            "f0d0b1081d9d3ebb"
+          ],
+          "logPath": null,
+          "normalizationVersion": 2,
+          "normalizedDigest": "sha256:f0d0b1081d9d3ebb26c4c93543053ecdc0a58998f22c071dc4ddb26021b57645",
+          "omittedLines": 0,
+          "outputDigest": "sha256:82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+          "runner": "diagnostics",
+          "sha": "5740381832a878087e5d43d05e85a91b52a69848",
+          "startedAt": "2026-09-23T18:42:26+00:00",
+          "tail": [
+            "All checks passed!"
+          ],
+          "testsRan": 0
+        }
+      }
+    }
+  },
+  "executeRuns": {
+    "T-1": {
+      "comparison": {
+        "detail": "feature-added command passed",
+        "newIdentities": [],
+        "verdict": "featureAdded-ok"
+      },
+      "run": {
+        "command": "uv run pytest -q tests/test_temperature.py",
+        "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/worktrees/T-1",
+        "elapsedSeconds": 0.31429779197787866,
+        "errorClass": null,
+        "exitStatus": 0,
+        "failureIdentities": [],
+        "fingerprintLines": {
+          "2ed23049e3341e6f": "<N> passed in <TIME>"
+        },
+        "fingerprints": [
+          "2ed23049e3341e6f"
+        ],
+        "logPath": null,
+        "normalizationVersion": 2,
+        "normalizedDigest": "sha256:fbdc9e811b7d90446423dfbe2eda26fa6cfa3469be628e7eba96a9fedc06d54b",
+        "omittedLines": 0,
+        "outputDigest": "sha256:f9991bfc1c7ebd12bb16ce56e1cf3117618ca286795cd280e4f6ac597c67ff48",
+        "runner": "pytest",
+        "sha": "5740381832a878087e5d43d05e85a91b52a69848",
+        "startedAt": "2026-09-23T18:42:26+00:00",
+        "tail": [
+          ".. [100%]",
+          "<N> passed in <TIME>"
+        ],
+        "testsRan": 1
+      }
+    }
+  },
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterate": {
+    "boundShas": {
+      "checks-cli": "5740381832a878087e5d43d05e85a91b52a69848"
+    },
+    "inputs": {
+      "heads": {
+        "checks-cli": "5740381832a878087e5d43d05e85a91b52a69848"
+      },
+      "plan": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+      "requirements": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224",
+      "verifyAttempt": "attempt-2d0e16244ec1"
+    },
+    "judge": {
+      "caveats": [],
+      "gaps": [],
+      "verdict": "met"
+    },
+    "judgeStep": "step-5b114caa6c9a",
+    "priorGaps": []
+  },
+  "ledger": {
+    "findings": [],
+    "reviewedRanges": [
+      {
+        "byStep": "step-b340fb13f91a",
+        "from": "f14c1b065847982e0e41dfec4799c466b50b969f",
+        "full": true,
+        "id": "range-f13e643c386d",
+        "repo": "checks-cli",
+        "sha": "5740381832a878087e5d43d05e85a91b52a69848",
+        "to": "5740381832a878087e5d43d05e85a91b52a69848"
+      }
+    ],
+    "reviews": []
+  },
+  "loopSpecVersion": "7.1.0",
+  "phase": {
+    "attemptId": null,
+    "blockedQuestionId": null,
+    "credentialsCheckedForAttempt": "attempt-7e4eaf9daabe",
+    "criticStepId": "step-83f5ace6aaca",
+    "criticStepIdentity": "sha256:cd063039537cbaeb2fa27034613b984c7dd9f508fc10b4c4b491683930206115",
+    "criticStepRevision": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+    "current": "deliver",
+    "entry": "remediation",
+    "entryPayload": null,
+    "lastStepId": "step-5b114caa6c9a",
+    "pending": null,
+    "provisional": null,
+    "retries": 0
+  },
+  "products": {
+    "debug": null,
+    "deliver": {
+      "attemptId": "attempt-7e4eaf9daabe",
+      "boundTo": {
+        "plan": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+        "requirements": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224"
+      },
+      "evidenceLevel": "unattested",
+      "exit": "delivery blocked",
+      "inputsDigest": "sha256:b044865efb5bc1dc21ea9531cefcc25cc4f8963b3c229e8b1ec48098aff9d7d5",
+      "product": {
+        "boundTo": {
+          "plan": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+          "requirements": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224"
+        },
+        "exit": "delivery blocked",
+        "inputsDigest": "sha256:b044865efb5bc1dc21ea9531cefcc25cc4f8963b3c229e8b1ec48098aff9d7d5",
+        "repos": [
+          {
+            "caveats": [
+              "pushed 5740381832a8 to feat/add-unitkit-temperature-py-with-celsius; the PR step failed: gh pr list failed: none of the git remotes configured for this repository point to a known GitHub host. To tell gh about a new GitHub host, please use `gh auth login`",
+              "published: 5740381832a8 (attempt attempt-7e4eaf9daabe)"
+            ],
+            "deliveredSha": null,
+            "pr": null,
+            "publishedSha": "5740381832a878087e5d43d05e85a91b52a69848",
+            "repo": "checks-cli",
+            "state": "failed"
+          }
+        ]
+      },
+      "receivedAt": "2026-09-23T18:46:37+00:00"
+    },
+    "execute": {
+      "attemptId": "attempt-c438f593ac70",
+      "boundTo": {
+        "plan": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+        "requirements": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224"
+      },
+      "evidenceLevel": "unattested",
+      "exit": "integrated",
+      "inputsDigest": "sha256:8389303d1fc2b6c3682a816cda0acf8c8ccc3728d2182481d714cc38216ab67e",
+      "product": {
+        "boundTo": {
+          "plan": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+          "requirements": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224"
+        },
+        "exit": "integrated",
+        "heads": {
+          "checks-cli": "5740381832a878087e5d43d05e85a91b52a69848"
+        },
+        "inputsDigest": "sha256:8389303d1fc2b6c3682a816cda0acf8c8ccc3728d2182481d714cc38216ab67e",
+        "issues": [],
+        "tasks": [
+          {
+            "commits": [
+              "5740381832a878087e5d43d05e85a91b52a69848"
+            ],
+            "disposition": "done",
+            "evidence": null,
+            "id": "T-1",
+            "review": {
+              "findings": [],
+              "reviewedRange": {
+                "from": "f14c1b065847982e0e41dfec4799c466b50b969f",
+                "to": "5740381832a878087e5d43d05e85a91b52a69848"
+              },
+              "securityDispositions": [],
+              "verdict": "pass"
+            }
+          }
+        ]
+      },
+      "receivedAt": "2026-09-23T18:42:27+00:00"
+    },
+    "iterate": {
+      "attemptId": "attempt-7ad5a3d193af",
+      "boundTo": {
+        "plan": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+        "requirements": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224"
+      },
+      "evidenceLevel": "unattested",
+      "exit": "converged",
+      "inputsDigest": "sha256:964028af8324dec74828dfcb72678fcb3f8e7d1134144adf194e7dca2b48c888",
+      "product": {
+        "boundShas": {
+          "checks-cli": "5740381832a878087e5d43d05e85a91b52a69848"
+        },
+        "boundTo": {
+          "plan": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+          "requirements": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224"
+        },
+        "caveats": [],
+        "exit": "converged",
+        "gaps": [],
+        "inputsDigest": "sha256:964028af8324dec74828dfcb72678fcb3f8e7d1134144adf194e7dca2b48c888",
+        "verdict": "met"
+      },
+      "receivedAt": "2026-09-23T18:46:36+00:00"
+    },
+    "plan": {
+      "attemptId": "attempt-e71a639a1abd",
+      "boundTo": {
+        "plan": null,
+        "requirements": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224"
+      },
+      "evidenceLevel": "unattested",
+      "exit": "ready",
+      "inputsDigest": "sha256:0d1dc875fdf82d65514b427c0306622ddb683b0242247746b4afefd4cb76ecb4",
+      "product": {
+        "boundTo": {
+          "plan": null,
+          "requirements": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224"
+        },
+        "checks": [
+          {
+            "command": "uv run ruff check --output-format concise",
+            "repo": "checks-cli"
+          },
+          {
+            "command": "uv run mypy",
+            "repo": "checks-cli"
+          }
+        ],
+        "evidenceExceptions": [],
+        "exit": "ready",
+        "inputsDigest": "sha256:0d1dc875fdf82d65514b427c0306622ddb683b0242247746b4afefd4cb76ecb4",
+        "prepare": null,
+        "tasks": [
+          {
+            "criteria": [
+              "AC-1",
+              "AC-2",
+              "AC-3"
+            ],
+            "dependsOn": [],
+            "featureAdded": "tests/test_temperature.py",
+            "files": [
+              "unitkit/temperature.py",
+              "tests/test_temperature.py"
+            ],
+            "id": "T-1",
+            "mustFlip": false,
+            "repo": "checks-cli",
+            "title": "Add unitkit/temperature.py with celsius/fahrenheit conversions and tests",
+            "verify": "uv run pytest -q tests/test_temperature.py"
+          }
+        ]
+      },
+      "receivedAt": "2026-09-23T18:40:19+00:00"
+    },
+    "spec": {
+      "attemptId": "attempt-2f9a92f91dc3",
+      "boundTo": {
+        "plan": null,
+        "requirements": null
+      },
+      "evidenceLevel": "unattested",
+      "exit": "approved",
+      "inputsDigest": "sha256:d6b56d41437b2bb663c0b74bfa00eaa31bb644c950a5aff00954d96a7f088802",
+      "product": {
+        "boundTo": {
+          "plan": null,
+          "requirements": null
+        },
+        "boundaries": [
+          "No change to existing unitkit modules (length.py, __init__.py) or their public behavior.",
+          "No new public functions beyond celsius_to_fahrenheit and fahrenheit_to_celsius in unitkit/temperature.py."
+        ],
+        "criteria": [
+          {
+            "id": "AC-1",
+            "text": "unitkit/temperature.py defines celsius_to_fahrenheit(c: float) -> float that returns c * 9/5 + 32; celsius_to_fahrenheit(0) == 32 and celsius_to_fahrenheit(100) == 212."
+          },
+          {
+            "id": "AC-2",
+            "text": "unitkit/temperature.py defines fahrenheit_to_celsius(f: float) -> float that returns (f - 32) * 5/9; fahrenheit_to_celsius(32) == 0 and fahrenheit_to_celsius(212) == 100."
+          },
+          {
+            "id": "AC-3",
+            "text": "uv run pytest -q exits 0 with tests/test_temperature.py covering both functions."
+          }
+        ],
+        "decisions": [
+          {
+            "id": "D-1",
+            "text": "Followed the existing unitkit/length.py pattern (module docstring, plain function, float type hints) for temperature.py rather than introducing a new style."
+          }
+        ],
+        "exit": "approved",
+        "goal": "unitkit gains a temperature module exposing celsius_to_fahrenheit(c: float) -> float and fahrenheit_to_celsius(f: float) -> float, tested in tests/test_temperature.py.",
+        "inputsDigest": "sha256:d6b56d41437b2bb663c0b74bfa00eaa31bb644c950a5aff00954d96a7f088802",
+        "openQuestions": []
+      },
+      "receivedAt": "2026-09-23T18:37:40+00:00"
+    },
+    "verify": {
+      "attemptId": "attempt-2d0e16244ec1",
+      "boundTo": {
+        "plan": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+        "requirements": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224"
+      },
+      "evidenceLevel": "unattested",
+      "exit": "passed",
+      "inputsDigest": "sha256:ac83d0650d629f1174a732fc409252c906d2e1c9271277b61e12f643f34f9dc9",
+      "product": {
+        "boundTo": {
+          "plan": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+          "requirements": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224"
+        },
+        "exit": "passed",
+        "findings": [],
+        "inputsDigest": "sha256:ac83d0650d629f1174a732fc409252c906d2e1c9271277b61e12f643f34f9dc9",
+        "remediationTasks": [],
+        "reviewedRanges": [
+          {
+            "from": "f14c1b065847982e0e41dfec4799c466b50b969f",
+            "full": true,
+            "repo": "checks-cli",
+            "to": "5740381832a878087e5d43d05e85a91b52a69848"
+          }
+        ],
+        "verdicts": [
+          {
+            "cause": null,
+            "criterion": "AC-1",
+            "evidence": {
+              "command": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/verify-5740381832a8/.venv/bin/python /tmp/check_ac1.py",
+              "exitStatus": 0,
+              "failureIdentities": [],
+              "outputDigest": "sha256:a9ac0c3ac83c40e1b4c3416066d63d324ee9f8c144641dfeed72d140b6557245",
+              "repo": "checks-cli",
+              "sha": "5740381832a878087e5d43d05e85a91b52a69848"
+            },
+            "verdict": "pass"
+          },
+          {
+            "cause": null,
+            "criterion": "AC-2",
+            "evidence": {
+              "command": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/verify-5740381832a8/.venv/bin/python /tmp/check_ac2.py",
+              "exitStatus": 0,
+              "failureIdentities": [],
+              "outputDigest": "sha256:a9ac0c3ac83c40e1b4c3416066d63d324ee9f8c144641dfeed72d140b6557245",
+              "repo": "checks-cli",
+              "sha": "5740381832a878087e5d43d05e85a91b52a69848"
+            },
+            "verdict": "pass"
+          },
+          {
+            "cause": null,
+            "criterion": "AC-3",
+            "evidence": {
+              "command": "uv run pytest -q tests/test_temperature.py",
+              "exitStatus": 0,
+              "failureIdentities": [],
+              "outputDigest": "sha256:f9991bfc1c7ebd12bb16ce56e1cf3117618ca286795cd280e4f6ac597c67ff48",
+              "repo": "checks-cli",
+              "sha": "5740381832a878087e5d43d05e85a91b52a69848"
+            },
+            "verdict": "pass"
+          }
+        ]
+      },
+      "receivedAt": "2026-09-23T18:45:53+00:00"
+    }
+  },
+  "questions": {
+    "answered": {
+      "question-2beea84feddf": {
+        "answeredAt": "2026-09-23T18:37:40+00:00",
+        "attempt": "attempt-2f9a92f91dc3",
+        "by": "policy",
+        "phase": "spec",
+        "scope": "run",
+        "value": "approve"
+      },
+      "question-e356f5375037": {
+        "answeredAt": "2026-09-23T18:46:37+00:00",
+        "attempt": "attempt-7e4eaf9daabe",
+        "by": "policy",
+        "phase": "deliver",
+        "scope": "run",
+        "value": "stop"
+      }
+    },
+    "open": null,
+    "policy": "default",
+    "policyAnswered": [
+      "question-2beea84feddf",
+      "question-e356f5375037"
+    ],
+    "retired": [
+      "question-2beea84feddf",
+      "question-e356f5375037"
+    ]
+  },
+  "repos": {
+    "checks-cli": {
+      "baseSha": "f14c1b065847982e0e41dfec4799c466b50b969f",
+      "defaultBranch": "main",
+      "featureBranch": "feat/add-unitkit-temperature-py-with-celsius",
+      "lastKnownHead": "f14c1b065847982e0e41dfec4799c466b50b969f",
+      "path": "/private/tmp/claude-501/-Users-aztechead-Projects-loop-spec/6e2f67fb-eafb-453e-83e3-f886b4b610cc/scratchpad/proj/checks-cli"
+    }
+  },
+  "request": {
+    "digest": "sha256:4b48cb6b6beede78b4c9c2fdb12d4e5e6007a6d79c846d17f7688668293c430c",
+    "text": "Add unitkit/temperature.py with celsius_to_fahrenheit(c) and fahrenheit_to_celsius(f), both taking and returning float, tested in tests/test_temperature.py; verified by uv run pytest -q."
+  },
+  "result": {
+    "classification": "escalated",
+    "path": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/result.json",
+    "writtenAt": "2026-09-23T18:46:37+00:00"
+  },
+  "revisions": {
+    "plan": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+    "requirements": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224"
+  },
+  "run": {
+    "createdAt": "2026-09-23T18:37:00+00:00",
+    "cycleType": "full",
+    "entry": "cycle",
+    "id": "run-3025da9510d7",
+    "repoId": "bb5ffda5c5eee554",
+    "slug": "add-unitkit-temperature-py-with-celsius"
+  },
+  "schema": 1,
+  "steps": {
+    "open": [],
+    "quarantined": [],
+    "retired": [
+      "step-f4fd55f20456",
+      "step-79fb318f4427",
+      "step-83f5ace6aaca",
+      "step-e18ab77b53b3",
+      "step-95966bc05034",
+      "step-4c8b65bf5d74",
+      "step-b340fb13f91a",
+      "step-5b114caa6c9a"
+    ],
+    "submissions": {
+      "step-4c8b65bf5d74": {
+        "attestation": {
+          "ok": true,
+          "reason": "opening was the bootstrap; every line was read before any work"
+        },
+        "digest": "sha256:9ba4d67e3ea390ba800845b2ff72e7ac6f94162dc2682f34da4f41cc2887a55b",
+        "dispatch": "step-4c8b65bf5d74",
+        "evidenceLevel": "host-attested",
+        "submittedAt": "2026-09-23T18:44:58+00:00"
+      },
+      "step-5b114caa6c9a": {
+        "attestation": {
+          "ok": true,
+          "reason": "opening was the bootstrap; every line was read before any work"
+        },
+        "digest": "sha256:af031e40e78df312848680c9daf50d7044b7440cef09c2f5934fc71dd796b97c",
+        "dispatch": "step-5b114caa6c9a",
+        "evidenceLevel": "host-attested",
+        "submittedAt": "2026-09-23T18:46:36+00:00"
+      },
+      "step-79fb318f4427": {
+        "attestation": null,
+        "digest": "sha256:6bc3a525f6abaaeea3997607859766bd47bce698dcfddc792081c706f0532b4e",
+        "dispatch": null,
+        "evidenceLevel": "unattested",
+        "submittedAt": "2026-09-23T18:38:08+00:00"
+      },
+      "step-83f5ace6aaca": {
+        "attestation": {
+          "ok": true,
+          "reason": "opening was the bootstrap; every line was read before any work"
+        },
+        "digest": "sha256:b8adad3852f196db84ad05c2affa3855c7e15d1c9d24c62c8d32165e34a82c39",
+        "dispatch": "step-83f5ace6aaca",
+        "evidenceLevel": "host-attested",
+        "submittedAt": "2026-09-23T18:40:19+00:00"
+      },
+      "step-95966bc05034": {
+        "attestation": {
+          "ok": true,
+          "reason": "opening was the bootstrap; every line was read before any work"
+        },
+        "digest": "sha256:c51017842535984bc556f2a557082b7d4298495a47d1debc9bc2649bc663f079",
+        "dispatch": "step-95966bc05034",
+        "evidenceLevel": "host-attested",
+        "submittedAt": "2026-09-23T18:42:26+00:00"
+      },
+      "step-b340fb13f91a": {
+        "attestation": {
+          "ok": true,
+          "reason": "opening was the bootstrap; every line was read before any work"
+        },
+        "digest": "sha256:c51017842535984bc556f2a557082b7d4298495a47d1debc9bc2649bc663f079",
+        "dispatch": "step-b340fb13f91a",
+        "evidenceLevel": "host-attested",
+        "submittedAt": "2026-09-23T18:45:52+00:00"
+      },
+      "step-e18ab77b53b3": {
+        "attestation": {
+          "ok": true,
+          "reason": "opening was the bootstrap; every line was read before any work"
+        },
+        "digest": "sha256:666e2e2135c0015ce0753bcac3a04f0a39aa37fda07e8120c6531ffbb346a86a",
+        "dispatch": "step-e18ab77b53b3",
+        "evidenceLevel": "host-attested",
+        "submittedAt": "2026-09-23T18:41:31+00:00"
+      },
+      "step-f4fd55f20456": {
+        "attestation": null,
+        "digest": "sha256:5c4cbcd127ceb2920b7d580227c6e29a9a132e6058f3467a076770d1fb22ccae",
+        "dispatch": null,
+        "evidenceLevel": "unattested",
+        "submittedAt": "2026-09-23T18:37:40+00:00"
+      }
+    }
+  },
+  "verify": {
+    "checkouts": {
+      "checks-cli": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/verify-5740381832a8"
+    },
+    "handledRejections": [],
+    "heads": {
+      "checks-cli": "5740381832a878087e5d43d05e85a91b52a69848"
+    },
+    "inputs": {
+      "heads": {
+        "checks-cli": "5740381832a878087e5d43d05e85a91b52a69848"
+      },
+      "plan": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+      "requirements": "sha256:9c49a9b87e35ca6c418ab1b7e32d89a25cc725d7d3c97f9c61b9d79ad51c5224"
+    },
+    "pass": 1,
+    "pendingReviews": [],
+    "phase": "done",
+    "planRevision": "sha256:dcf7d0d3f3f0db573298ae464d7410a18edf27ebc85a98a377856bfe1a47af62",
+    "rangeProbes": {
+      "checks-cli": {
+        "commentTells": [],
+        "docTells": [],
+        "duplication": [],
+        "failureTells": [],
+        "houseStyleCompare": [],
+        "indirection": {
+          "delta": 0,
+          "findings": [],
+          "layers": 0
+        }
+      }
+    },
+    "ranges": {
+      "checks-cli": {
+        "from": "f14c1b065847982e0e41dfec4799c466b50b969f",
+        "full": true,
+        "repo": "checks-cli",
+        "to": "5740381832a878087e5d43d05e85a91b52a69848"
+      }
+    },
+    "reason": null,
+    "reused": {},
+    "reviewerReasons": {},
+    "reviewerSteps": {
+      "checks-cli": "step-b340fb13f91a"
+    },
+    "reviewers": {
+      "checks-cli": {
+        "findings": [],
+        "reviewedRange": {
+          "from": "f14c1b065847982e0e41dfec4799c466b50b969f",
+          "to": "5740381832a878087e5d43d05e85a91b52a69848"
+        },
+        "securityDispositions": [],
+        "sha": "5740381832a878087e5d43d05e85a91b52a69848",
+        "verdict": "pass"
+      }
+    },
+    "verifier": {
+      "intentGap": false,
+      "planGap": false,
+      "verdicts": [
+        {
+          "cause": null,
+          "criterion": "AC-1",
+          "evidence": {
+            "command": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/verify-5740381832a8/.venv/bin/python /tmp/check_ac1.py",
+            "exitStatus": 0,
+            "failureIdentities": [],
+            "outputDigest": "sha256:a9ac0c3ac83c40e1b4c3416066d63d324ee9f8c144641dfeed72d140b6557245",
+            "repo": "checks-cli",
+            "sha": "5740381832a878087e5d43d05e85a91b52a69848"
+          },
+          "remediation": null,
+          "verdict": "pass"
+        },
+        {
+          "cause": null,
+          "criterion": "AC-2",
+          "evidence": {
+            "command": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/verify-5740381832a8/.venv/bin/python /tmp/check_ac2.py",
+            "exitStatus": 0,
+            "failureIdentities": [],
+            "outputDigest": "sha256:a9ac0c3ac83c40e1b4c3416066d63d324ee9f8c144641dfeed72d140b6557245",
+            "repo": "checks-cli",
+            "sha": "5740381832a878087e5d43d05e85a91b52a69848"
+          },
+          "remediation": null,
+          "verdict": "pass"
+        },
+        {
+          "cause": null,
+          "criterion": "AC-3",
+          "evidence": {
+            "command": "uv run pytest -q tests/test_temperature.py",
+            "exitStatus": 0,
+            "failureIdentities": [],
+            "outputDigest": "sha256:f9991bfc1c7ebd12bb16ce56e1cf3117618ca286795cd280e4f6ac597c67ff48",
+            "repo": "checks-cli",
+            "sha": "5740381832a878087e5d43d05e85a91b52a69848"
+          },
+          "remediation": null,
+          "verdict": "pass"
+        }
+      ]
+    },
+    "verifierStep": "step-4c8b65bf5d74"
+  },
+  "verifyRuns": {
+    "AC-1": {
+      "matched": true,
+      "reason": "",
+      "repo": "checks-cli",
+      "rerun": {
+        "command": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/verify-5740381832a8/.venv/bin/python /tmp/check_ac1.py",
+        "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/verify-AC-1-5740381832a8",
+        "elapsedSeconds": 0.021358500001952052,
+        "errorClass": null,
+        "exitStatus": 0,
+        "failureIdentities": [],
+        "fingerprintLines": {
+          "3cbc87c7681f34db": "True"
+        },
+        "fingerprints": [
+          "3cbc87c7681f34db"
+        ],
+        "logPath": null,
+        "normalizationVersion": 2,
+        "normalizedDigest": "sha256:3cbc87c7681f34db4617feaa2c8801931bc5e42d8d0f560e756dd4cd92885f18",
+        "omittedLines": 0,
+        "outputDigest": "sha256:a9ac0c3ac83c40e1b4c3416066d63d324ee9f8c144641dfeed72d140b6557245",
+        "runner": null,
+        "sha": "5740381832a878087e5d43d05e85a91b52a69848",
+        "startedAt": "2026-09-23T18:45:52+00:00",
+        "tail": [
+          "True"
+        ],
+        "testsRan": 0
+      }
+    },
+    "AC-2": {
+      "matched": true,
+      "reason": "",
+      "repo": "checks-cli",
+      "rerun": {
+        "command": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/verify-5740381832a8/.venv/bin/python /tmp/check_ac2.py",
+        "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/verify-AC-2-5740381832a8",
+        "elapsedSeconds": 0.022172875003889203,
+        "errorClass": null,
+        "exitStatus": 0,
+        "failureIdentities": [],
+        "fingerprintLines": {
+          "3cbc87c7681f34db": "True"
+        },
+        "fingerprints": [
+          "3cbc87c7681f34db"
+        ],
+        "logPath": null,
+        "normalizationVersion": 2,
+        "normalizedDigest": "sha256:3cbc87c7681f34db4617feaa2c8801931bc5e42d8d0f560e756dd4cd92885f18",
+        "omittedLines": 0,
+        "outputDigest": "sha256:a9ac0c3ac83c40e1b4c3416066d63d324ee9f8c144641dfeed72d140b6557245",
+        "runner": null,
+        "sha": "5740381832a878087e5d43d05e85a91b52a69848",
+        "startedAt": "2026-09-23T18:45:52+00:00",
+        "tail": [
+          "True"
+        ],
+        "testsRan": 0
+      }
+    },
+    "AC-3": {
+      "matched": true,
+      "reason": "",
+      "repo": "checks-cli",
+      "rerun": {
+        "command": "uv run pytest -q tests/test_temperature.py",
+        "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-unitkit-temperature-py-with-celsius/checkouts/verify-AC-3-5740381832a8",
+        "elapsedSeconds": 1.1313937910017557,
+        "errorClass": null,
+        "exitStatus": 0,
+        "failureIdentities": [],
+        "fingerprintLines": {
+          "2ed23049e3341e6f": "<N> passed in <TIME>"
+        },
+        "fingerprints": [
+          "2ed23049e3341e6f"
+        ],
+        "logPath": null,
+        "normalizationVersion": 2,
+        "normalizedDigest": "sha256:4993cc72ce09cc74751cdc706cbae649a77c13544bca50b167db4e54442b8fa1",
+        "omittedLines": 0,
+        "outputDigest": "sha256:770f121193c80e5831a4c914890d61efcf7302811de395e1c8969f84e88382af",
+        "runner": "pytest",
+        "sha": "5740381832a878087e5d43d05e85a91b52a69848",
+        "startedAt": "2026-09-23T18:45:52+00:00",
+        "tail": [
+          "Using CPython 3.14.7",
+          "Creating virtual environment at: .venv",
+          "Building unitkit @ file://<ROOT>",
+          "Built unitkit @ file://<ROOT>",
+          "Installed 13 packages in <TIME>",
+          ".. [100%]",
+          "<N> passed in <TIME>"
+        ],
+        "testsRan": 1
+      }
+    }
+  }
+}

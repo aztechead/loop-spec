@@ -1,0 +1,2 @@
+{"deliver": {"readiness": "checks", "acceptRemotePaths": ["CHANGELOG.md"]}}  # first DELIVER attempts
+{"deliver": {"acceptRemotePaths": ["CHANGELOG.md"]}}  # after the operator pushed bddadd9 (CHANGELOG.md only) and before fix-and-re-enter

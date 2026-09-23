@@ -1,0 +1,1 @@
+Add unitkit/temperature.py with celsius_to_fahrenheit(c) and fahrenheit_to_celsius(f), both taking and returning float, tested in tests/test_temperature.py; verified by uv run pytest -q.

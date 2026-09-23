@@ -1,0 +1,1 @@
+Add subtract(a, b) returning a - b to calc/__init__.py, tested in tests/test_subtract.py; verified by /private/tmp/claude-501/-Users-aztechead-Projects-loop-spec/aa3a1338-0fde-4f0c-a27e-945117d04f37/scratchpad/venv/bin/python -m pytest -q tests/test_subtract.py.

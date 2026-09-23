@@ -1,0 +1,2 @@
+first attempts: {"deliver": {"readiness": "checks", "acceptRemotePaths": ["CHANGELOG.md"]}}
+after the operator pushed 70aa279 (calc/__init__.py) and before fix-and-re-enter: {"deliver": {"acceptRemotePaths": ["CHANGELOG.md"]}}
