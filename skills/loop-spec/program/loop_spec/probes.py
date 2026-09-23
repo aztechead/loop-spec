@@ -1,7 +1,7 @@
 """Deterministic probes: facts about a change, ported from the M0-era lib/*.sh tools.
 
 Use `plan_probes` at PLAN entry (house style, duplication, indirection, security
-signals, dependency-doc grounding) and `diff_probes`/`range_probes` at EXECUTE/VERIFY
+signals, the dependencies the named files import) and `diff_probes`/`range_probes` at EXECUTE/VERIFY
 (comment/failure/doc tells, indirection delta, duplication, house-style deviation) to
 hand a phase measured facts instead of judgment calls a fresh context cannot make
 reliably. Every probe here fails safe (an unreadable or unknown-language input shrinks
@@ -13,7 +13,7 @@ files whole, so the line-level "added lines only" filtering the shell diff mode 
 via diff-added-lines.py is not needed here and was not ported.
 
 simplicity: several small ported helpers (a line's shape, a window's digest, one
-ecosystem's URL template, one fetch call, ...) read as single-caller wrappers to
+...) read as single-caller wrappers to
 indirection-scan, because dropping "diff" mode above removed what was each one's
 SECOND caller in its original script; the name still earns its place as a unit a
 reader can check against the original tool. Not a ceiling to raise later -- this is
@@ -24,8 +24,6 @@ import json
 import os
 import re
 import tomllib
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 from loop_spec import repo as repo_module
@@ -1015,10 +1013,10 @@ def security_signal(root: Path, files: list[str]) -> list[dict]:
     skipping a file with none. Two strong terms escalate alone; a weak term (token,
     migration, deletion) needs a second, distinct weak term in the SAME file."""
     findings = []
-    for path in _resolve_all(root, files):
+    for name, path in zip(files, _resolve_all(root, files)):
         result = _sec_scan_file(path)
         if result:
-            findings.append({"file": path, "signal": result["signal"], "reason": result["reason"]})
+            findings.append({"file": name, "signal": result["signal"], "reason": result["reason"]})
     return findings
 
 
@@ -1180,102 +1178,6 @@ def doc_deps(root: Path, files: list[str]) -> list[dict]:
         {"package": name, "manifest": info["manifest"], "importedBy": sorted(info["importedBy"])}
         for name, info in sorted(hits.items())
     ]
-
-
-# =============================================================================
-# docs-probe: current version/docs link for a dependency, from a live registry.
-# Reduced port of lib/docs-probe.py's version/homepage/docs resolution (its
-# llms.txt/README text-selection pipeline is not part of this wave's signature
-# and was not ported -- see the report).
-# =============================================================================
-
-_DP_SOURCES = {
-    "pypi": {
-        "url": "https://pypi.org/pypi/{name}/json",
-        "parse": lambda d: {
-            "version": d.get("info", {}).get("version"),
-            "homepage": d.get("info", {}).get("home_page"),
-            "docs": next((v for k, v in (d.get("info", {}).get("project_urls") or {}).items()
-                          if "documentation" in k.lower() or "docs" in k.lower()), None),
-        },
-    },
-    "npm": {
-        "url": "https://registry.npmjs.org/{name}",
-        "parse": lambda d: {
-            "version": (d.get("dist-tags") or {}).get("latest") or d.get("version"),
-            "homepage": d.get("homepage"),
-            "docs": None,
-        },
-    },
-    "crates": {
-        "url": "https://crates.io/api/v1/crates/{name}",
-        "parse": lambda d: {
-            "version": (d.get("crate") or {}).get("max_stable_version"),
-            "homepage": (d.get("crate") or {}).get("homepage"),
-            "docs": (d.get("crate") or {}).get("documentation"),
-        },
-    },
-    "rubygems": {
-        "url": "https://rubygems.org/api/v1/gems/{name}.json",
-        "parse": lambda d: {"version": d.get("version"), "homepage": d.get("homepage_uri"), "docs": d.get("documentation_uri")},
-    },
-    "go": {
-        "url": "https://proxy.golang.org/{name}/@latest",
-        "parse": lambda d: {"version": d.get("Version"), "homepage": None, "docs": None},
-    },
-}
-_DP_MANIFEST_ECOSYSTEM = {
-    "pyproject.toml": "pypi", "requirements.txt": "pypi", "setup.py": "pypi", "setup.cfg": "pypi", "Pipfile": "pypi",
-    "package.json": "npm",
-    "Cargo.toml": "crates",
-    "Gemfile": "rubygems",
-    "go.mod": "go",
-}
-
-
-def _dp_ecosystem_for_manifest(manifest):
-    if not manifest:
-        return "pypi"
-    return _DP_MANIFEST_ECOSYSTEM.get(os.path.basename(manifest), "pypi")
-
-
-def _dp_urllib_fetch(url, timeout):
-    with urllib.request.urlopen(url, timeout=timeout) as response:
-        return response.read().decode("utf-8", errors="replace")
-
-
-def docs_probe(deps: list[dict], *, timeout: float = 5.0, fetch=None) -> list[dict]:
-    """Current version and doc/homepage link for each dependency `doc_deps` named,
-    from its registry (inferred from the manifest that declared it). `fetch(url,
-    timeout)` is injectable for tests; any failure -- network, timeout, malformed
-    response -- is recorded as an "unavailable" entry and never raised."""
-    fetch = fetch or _dp_urllib_fetch
-    results = []
-    for dep in deps:
-        name = dep["package"] if isinstance(dep, dict) else dep
-        manifest = dep.get("manifest") if isinstance(dep, dict) else None
-        eco = _dp_ecosystem_for_manifest(manifest)
-        source = _DP_SOURCES.get(eco, _DP_SOURCES["pypi"])
-        url = source["url"].format(name=name)
-        try:
-            body = fetch(url, timeout)
-        except Exception as exc:  # noqa: BLE001 -- any fetch failure is data, never raised
-            results.append({"package": name, "status": "unavailable", "reason": str(exc)})
-            continue
-        try:
-            record = source["parse"](json.loads(body))
-        except (TypeError, ValueError, AttributeError) as exc:
-            results.append({"package": name, "status": "unavailable", "reason": "malformed response: {}".format(exc)})
-            continue
-        if not record.get("version"):
-            results.append({"package": name, "status": "unavailable", "reason": "no version in response"})
-            continue
-        results.append({
-            "package": name, "status": "resolved", "ecosystem": eco,
-            "version": record["version"], "homepage": record.get("homepage"), "docs": record.get("docs"),
-            "source": url,
-        })
-    return results
 
 
 # =============================================================================
@@ -1887,17 +1789,53 @@ def repo_checks_probe(repo: Path, sha: str) -> list[dict]:
 
 def plan_probes(root: Path, files: list[str]) -> dict:
     """Everything a PLAN implementation needs about the files a request names:
-    house style, duplication, indirection, security signals, and dependency-doc
-    grounding, in one call."""
-    deps = doc_deps(root, files)
-    return {
+    house style, duplication, indirection, security signals, and the third-party
+    dependencies those files import, in one call. Offline: the planner fetches a
+    dependency's docs itself."""
+    return _relativize({
         "houseStyle": house_style_probe(root, files),
         "duplication": duplication_scan(root, files),
         "indirection": indirection_scan(root, files),
         "securitySignals": security_signal(root, files),
-        "deps": deps,
-        "docs": docs_probe(deps),
-    }
+        "deps": doc_deps(root, files),
+    }, root)
+
+
+def _relativize(obj, root: Path):
+    """Every string in `obj` under `root` (as given or resolved) made root-relative,
+    so a probe run in a checkout that is then removed names repo paths."""
+    prefixes = {str(root).rstrip(os.sep) + os.sep, os.path.realpath(root).rstrip(os.sep) + os.sep}
+    if isinstance(obj, dict):
+        return {k: _relativize(v, root) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_relativize(v, root) for v in obj]
+    if isinstance(obj, str):
+        for prefix in prefixes:
+            if obj.startswith(prefix):
+                return obj[len(prefix):]
+    return obj
+
+
+_PATH_CHARS = r"[\w./-]"
+_NAMED_FILES_CAP = 20
+
+
+def named_files(repo_path: Path, sha: str, texts: list[str]) -> list[str]:
+    """Tracked files at `sha` that `texts` name: the full repo-relative path, or a
+    basename with a dot that is unique in that tree, with no path character
+    ([A-Za-z0-9_./-]) on either side. Sorted, then capped."""
+    tracked = [line for line in repo_module.run_git(repo_path, "ls-tree", "-r", "--name-only", sha).splitlines() if line]
+    text = "\n".join(texts)
+    basenames: dict[str, list[str]] = {}
+    for path in tracked:
+        basenames.setdefault(os.path.basename(path), []).append(path)
+
+    def named(token):
+        return re.search(rf"(?<!{_PATH_CHARS}){re.escape(token)}(?!{_PATH_CHARS})", text) is not None
+
+    hits = {path for path in tracked if named(path)}
+    hits |= {paths[0] for base, paths in basenames.items() if "." in base and len(paths) == 1 and named(base)}
+    return sorted(hits)[:_NAMED_FILES_CAP]
 
 
 def _diff_touched_files(repo_path: Path, base_sha: str, head_sha: str) -> list[str]:
@@ -1921,6 +1859,7 @@ def _range_style_probes(path: Path, base_sha: str, head_sha: str, base_layers: i
         "duplication": duplication_scan(path, files),
         "houseStyleCompare": house_style_compare(path, files),
         "docTells": doc_tells(path, md_files),
+        "securitySignals": security_signal(path, files),
     }
 
 

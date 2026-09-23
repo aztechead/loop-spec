@@ -10,12 +10,12 @@ from loop_spec.probes import (
     diff_probes,
     doc_deps,
     doc_tells,
-    docs_probe,
     duplication_scan,
     failure_tells,
     house_style_compare,
     house_style_probe,
     indirection_scan,
+    named_files,
     plan_probes,
     security_signal,
 )
@@ -80,6 +80,7 @@ class SecuritySignalTests(unittest.TestCase):
             _write(root, "auth.md", "Use auth middleware.\n")
             findings = security_signal(root, ["auth.md"])
             self.assertEqual(findings[0]["signal"], "auth")
+            self.assertEqual(findings[0]["file"], "auth.md")
 
     def test_single_weak_term_does_not_fire(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -107,28 +108,6 @@ class DocDepsTests(unittest.TestCase):
             self.assertEqual(result[0]["package"], "requests")
             self.assertTrue(result[0]["manifest"].endswith("requirements.txt"))
             self.assertTrue(result[0]["importedBy"][0].endswith("src/a.py"))
-
-
-class DocsProbeTests(unittest.TestCase):
-    def test_resolved_from_fake_fetch(self):
-        deps = [{"package": "requests", "manifest": "/x/requirements.txt", "importedBy": ["/x/a.py"]}]
-
-        def fake_fetch(url, timeout):
-            return json.dumps({"info": {"version": "2.31.0", "home_page": "", "project_urls": {}}})
-
-        results = docs_probe(deps, fetch=fake_fetch)
-        self.assertEqual(results[0]["status"], "resolved")
-        self.assertEqual(results[0]["version"], "2.31.0")
-
-    def test_raising_fetch_is_unavailable_never_raises(self):
-        deps = [{"package": "requests", "manifest": "/x/requirements.txt", "importedBy": ["/x/a.py"]}]
-
-        def raising_fetch(url, timeout):
-            raise RuntimeError("no network")
-
-        results = docs_probe(deps, fetch=raising_fetch)
-        self.assertEqual(results[0]["status"], "unavailable")
-        self.assertEqual(results[0]["reason"], "no network")
 
 
 class CommentTellsTests(unittest.TestCase):
@@ -181,8 +160,22 @@ class PlanProbesTests(unittest.TestCase):
             _write(root, "a.py", "def alpha():\n    return 1\n")
             result = plan_probes(root, ["a.py"])
             self.assertEqual(
-                set(result), {"houseStyle", "duplication", "indirection", "securitySignals", "deps", "docs"}
+                set(result), {"houseStyle", "duplication", "indirection", "securitySignals", "deps"}
             )
+
+
+class NamedFilesTests(unittest.TestCase):
+    def test_full_path_and_unique_basename_named_ambiguous_and_untracked_not(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _git(tmp, "init", "-q", "-b", "main")
+            for name in ("src/app/cli.py", "src/app/util.py", "lib/util.py", "docs/guide.md"):
+                _write(Path(tmp), name, "x = 1\n")
+            _git(tmp, "add", ".")
+            _git(tmp, "-c", "user.name=T", "-c", "user.email=t@e", "commit", "-q", "-m", "base")
+            _write(Path(tmp), "notes.txt", "untracked\n")
+            sha = subprocess.run(["git", "-C", tmp, "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+            texts = ["Fix cli.py and docs/guide.md, not util.py; see notes.txt or xdocs/guide.mdx."]
+            self.assertEqual(named_files(Path(tmp), sha, texts), ["docs/guide.md", "src/app/cli.py"])
 
 
 class DiffProbesTests(unittest.TestCase):
@@ -199,7 +192,8 @@ class DiffProbesTests(unittest.TestCase):
             ).stdout.strip()
 
             _write(Path(tmp), "a.py", "def _helper(x):\n    return x + 1\n\n\ndef main():\n    return _helper(1)\n")
-            _git(tmp, "add", "a.py")
+            _write(Path(tmp), "auth.md", "Use auth middleware.\n")
+            _git(tmp, "add", "a.py", "auth.md")
             _git(tmp, "commit", "-q", "-m", "head")
             head_sha = subprocess.run(
                 ["git", "-C", tmp, "rev-parse", "HEAD"], check=True, capture_output=True, text=True
@@ -208,8 +202,10 @@ class DiffProbesTests(unittest.TestCase):
             result = diff_probes(Path(tmp), base_sha, head_sha, base_layers=0)
             self.assertEqual(
                 set(result),
-                {"commentTells", "failureTells", "indirection", "duplication", "houseStyleCompare", "docTells"},
+                {"commentTells", "failureTells", "indirection", "duplication", "houseStyleCompare", "docTells",
+                 "securitySignals"},
             )
+            self.assertEqual([s["file"] for s in result["securitySignals"]], ["auth.md"])
             self.assertEqual(result["indirection"]["delta"], result["indirection"]["layers"])
 
 

@@ -53,7 +53,8 @@ def _judge_request(store, paths, ctx, heads: dict[str, str]) -> dict:
 
     if touched:
         first_repo = touched[0]
-        cwd = Path(paths.checkouts_dir) / f"verify-{heads[first_repo][:12]}"
+        checkout = ((store.state.get("verify") or {}).get("checkouts") or {}).get(first_repo)
+        cwd = Path(checkout) if checkout else Path(paths.checkouts_dir) / "verify-missing"
         if not cwd.is_dir():
             raise LoopSpecError(
                 f"no verify checkout at {cwd}",

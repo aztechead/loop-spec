@@ -18,9 +18,9 @@ Read-only over the codebase; Write is for your one result file only.
    always a Critical finding.
 3. Scan for a shortcut that fakes quality: a suppressed diagnostic, a weakened or
    deleted assertion, a stub standing in for required logic — each is Critical.
-4. For every file the range touches that the program flagged with a security
-   signal, record exactly one disposition (fixed, accepted, or a reason it does
-   not apply).
+4. For every entry in the probe findings' `securitySignals` (`inputs.probes` in
+   EXECUTE, `inputs.rangeProbes` in VERIFY), record exactly one disposition whose
+   `signal` is that entry's `file` (fixed, accepted, or a reason it does not apply).
 5. A finding on code a prior pass already cleared must name what it supersedes
    (an earlier finding id, or the earlier reviewed range) rather than repeating it
    as new. An open ledger finding you still see is repeated with its id and

@@ -521,14 +521,12 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
     if len(diff) > _DIFF_CAP:
         diff = diff[:_DIFF_CAP] + "\n...(truncated)"
 
-    signals = (ctx.get("probes") or {}).get("securitySignals") or []
     inputs = {
         "task": plan_task,
         "range": {"from": review_from, "to": task_head},
         "diff": diff,
         "probes": task_state["probes"],
         "ledger": store.state.get("ledger", {}),
-        "securitySignals": [s for s in signals if s.get("file") in plan_task["files"]],
     }
     if task_state.get("closeOut"):
         # E6 finds this exact input in the attested prompt: the review is for this obligation.
@@ -581,7 +579,6 @@ def _wave_review_request(store, paths, ctx, task_ids: list[str]) -> dict:
     project_root = Path(ctx["paths"]["projectRoot"])
     role = load_role("code-reviewer", project_root, resolve_role(project_root, "code-reviewer"))
     execute_state = store.state["execute"]
-    signals = (ctx.get("probes") or {}).get("securitySignals") or []
     ensure_results_dir(paths)
     result_path = paths.results_dir / f"wave-{'_'.join(task_ids)}-review-{new_id('step').split('-', 1)[1]}.json"
     entries, first_cwd = [], None
@@ -598,8 +595,7 @@ def _wave_review_request(store, paths, ctx, task_ids: list[str]) -> dict:
         if len(diff) > _DIFF_CAP:
             diff = diff[:_DIFF_CAP] + "\n...(truncated)"
         entry = {"task": plan_task, "cwd": str(review_cwd), "range": {"from": review_from, "to": task_head},
-                 "diff": diff, "probes": task_state["probes"],
-                 "securitySignals": [s for s in signals if s.get("file") in plan_task["files"]]}
+                 "diff": diff, "probes": task_state["probes"]}
         if task_state.get("reason"):
             entry["reason"] = task_state["reason"]
         entries.append(entry)

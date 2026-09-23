@@ -189,14 +189,6 @@ def task_repos(store) -> dict[str, str]:
     return repos
 
 
-def commit_files(repo_path: Path, commits: list[str]) -> set[str]:
-    """The paths `commits` changed; a close-out has no PLAN file list to stand in for them."""
-    if not commits:
-        return set()
-    out = repo_module.run_git(repo_path, "show", "--name-only", "--format=", *commits)
-    return {line for line in out.splitlines() if line.strip()}
-
-
 def resolved_exceptions(store) -> set[str]:
     """The criteria VERIFY may skip re-running and re-checking, from PLAN's own
     declared exceptions plus any the operator approved this attempt. Shared by
@@ -722,23 +714,14 @@ class Boundary:
         return None
 
     def _e11(self) -> str | None:
-        signals = (self.store.state.get("probes") or {}).get("securitySignals") or []
-        if not signals:
-            return None  # M2+: probes.securitySignals is empty at M1, so this always holds.
-        # "files" lives on the PLAN task, not the EXECUTE task, same as _e5's repo lookup.
-        plan_tasks = {t["id"]: t for t in self.store.state["products"]["plan"]["product"]["tasks"]}
-        registry = close_outs(self.store)
+        # 7.1.1: the signals are the ones the program probed on the task's own diff
+        # (execute.py stores them with the review-time probes, close-outs included).
+        task_states = (self.store.state.get("execute") or {}).get("tasks") or {}
         for task in self.product["tasks"]:
-            if task["id"] in registry:
-                repo_path = Path(self._repo_entries()[registry[task["id"]]["repo"]]["path"])
-                files = commit_files(repo_path, task["commits"])
-            else:
-                files = set(plan_tasks.get(task["id"], {}).get("files", []))
-            touched = files & set(signals)
-            if not touched:
-                continue
+            probes = task_states.get(task["id"], {}).get("probes") or {}
+            flagged = {signal["file"] for signal in probes.get("securitySignals") or []}
             covered = {d["signal"] for d in (task.get("review") or {}).get("securityDispositions", [])}
-            if not touched.issubset(covered):
+            if not flagged <= covered:
                 return f"task {task['id']} touches a security signal with no disposition"
         return None
 

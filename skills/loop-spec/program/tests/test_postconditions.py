@@ -408,9 +408,9 @@ class PostconditionsTests(unittest.TestCase):
         self.assertIsNotNone(self._boundary("execute", blocked, "blocked")._e10())
 
     def test_e11(self):
-        # M1: probes.securitySignals is empty, so E11 always holds until a signal exists.
         self.assertIsNone(self._boundary("execute", self.execute_product, "integrated")._e11())
-        self.store.state["probes"] = {"securitySignals": ["a.txt"]}
+        self.store.state["execute"] = {"tasks": {"T-1": {"probes": {"securitySignals": [
+            {"file": "a.txt", "signal": "auth", "reason": "strong term"}]}}}}
         self.assertIsNotNone(self._boundary("execute", self.execute_product, "integrated")._e11())  # T-1 touches a.txt with no disposition
         fixed = copy.deepcopy(self.execute_product)
         fixed["tasks"][0]["review"]["securityDispositions"] = [{"signal": "a.txt", "disposition": "accepted", "reason": "reviewed"}]

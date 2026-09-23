@@ -26,7 +26,7 @@ code at M1; this page fixes the shape they must have.
 | `repos` | repository or workspace map, per-repo base SHA, feature branch, worktree root |
 | `paths` | state directory; paths the implementation may write to |
 | `answers` | answers recorded against question ids from this attempt, each with scope `question` or `run`; the run's answer policy when a `run`-scoped answer or `--answer-policy` set one |
-| `probes` | program probe output for this phase: at PLAN the neighbourhood conventions, existing helpers, base layer count, security signals, and dependency docs per named file; per EXECUTE task the diff-mode findings; at VERIFY the whole-range findings |
+| `probes` | program probe output for this phase: at PLAN, DEBUG and REVISE the repo checks per repo, and at PLAN also, per repo, the tracked files the request or SPEC product names with their neighbourhood conventions, existing helpers, layer count, security signals, and imported third-party dependencies, read at the base commit; per EXECUTE task the diff-mode findings and security signals; at VERIFY the whole-range findings and security signals |
 
 ### Process contract
 
@@ -125,7 +125,7 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 
 | | |
 |---|---|
-| Inputs | approved SPEC product; program probes on the files the request names; on `rewind` or `remediation`, the plan-gap findings |
+| Inputs | approved SPEC product; program probes on the files the request or SPEC product names; on `rewind` or `remediation`, the plan-gap findings |
 | Product | `tasks[]` each with `id`, `dependsOn`, `files`, `repo`, `verify` command, `criteria` covered, optional `featureAdded` target path; `prepare` command; declared evidence exceptions |
 | Preconditions | requirements revision approved and current |
 | Runs in | the lead session; then one light critic pass over the drafted product for Critical misses only, before submit |
@@ -166,7 +166,7 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 | E8 | the feature head is reachable from base and was not moved out of band | `integrated`, `no change` |
 | E9 | `base..head` is empty and every task is `already-satisfied` or `removed` | `no change`; forbids `integrated` |
 | E10 | a rejected step was re-issued with its reason up to the per-step retry limit before `blocked` is claimed | `blocked` |
-| E11 | for a task touching a file with a security signal, the review record carries a disposition per signal; a close-out's files are the paths its commits changed | `integrated` |
+| E11 | for a task whose probed diff touches a file with a security signal, the review record carries a disposition naming that file | `integrated` |
 
 | Exit | Requires | Route |
 |---|---|---|

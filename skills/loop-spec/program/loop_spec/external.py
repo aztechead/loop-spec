@@ -55,7 +55,7 @@ POSTCONDITION_TEXT: dict[str, str] = {
     "E8": "the feature head is reachable from base and was not moved out of band",
     "E9": "base..head is empty and every task is already-satisfied or removed",
     "E10": "a rejected step was re-issued with its reason up to the per-step retry limit before blocked is claimed",
-    "E11": "for a task touching a file with a security signal, the review record carries a disposition per signal; a close-out's files are the paths its commits changed",
+    "E11": "for a task whose probed diff touches a file with a security signal, the review record carries a disposition naming that file",
     "V1": "product validates; bound to both revisions",
     "V2": "every criterion id in the requirements revision has exactly one verdict",
     "V3": "every evidence SHA equals the verified head of its repo",

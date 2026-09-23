@@ -72,6 +72,7 @@ class IterateTests(unittest.TestCase):
         self.store.state["products"]["verify"] = {"exit": "passed", "product": {"verdicts": []}}
         self.checkout = self.paths.checkouts_dir / f"verify-{self.head_sha[:12]}"
         self.checkout.mkdir(parents=True)
+        self.store.state["verify"] = {"checkouts": {"repo": str(self.checkout)}}
         self.store.save()
 
         self.ctx = {"attempt": {"id": "attempt-1"}, "inputs": {"digest": "sha256:" + "a" * 64},
@@ -185,7 +186,6 @@ class IterateTests(unittest.TestCase):
         _git(self.repo, "commit", "-q", "-m", "second")
         new_head = _head(self.repo)
         self.store.state["products"]["execute"]["product"]["heads"]["repo"] = new_head
-        (self.paths.checkouts_dir / f"verify-{new_head[:12]}").mkdir(parents=True, exist_ok=True)
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, IssueStep)
 
@@ -205,7 +205,6 @@ class IterateTests(unittest.TestCase):
         from loop_spec import steps as steps_module
         head = self._commit_hex_file(self.repo)
         self.store.state["products"]["execute"]["product"]["heads"]["repo"] = head
-        (self.paths.checkouts_dir / f"verify-{head[:12]}").mkdir(parents=True, exist_ok=True)
         request = step(self.store, self.paths, self.ctx).request
         self.assertIn("diff", self._headings(request["prompt"]))
         self.assertNotIn("diffs", self._headings(request["prompt"]))

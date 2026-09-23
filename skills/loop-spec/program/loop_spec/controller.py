@@ -6,6 +6,7 @@ question result. This module is the ONLY place that transitions a phase, spends 
 T1 rewind budget, writes the SPEC approval record, or writes a terminal result;
 `postconditions.py` only answers whether a claimed exit's requirements hold.
 """
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -427,16 +428,39 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
             return waiting
 
 
-def _phase_probes(state: dict, phase: str) -> dict:
+def _phase_probes(state: dict, phase: str, checkouts_dir: Path) -> dict:
     """7.1.0: the phases that write a PLAN get the repo-checks facts for each repo, read
-    at the tree that plan will run against (a revise run's adopted repo at the PR head)."""
+    at the tree that plan will run against (a revise run's adopted repo at the PR head).
+    7.1.1: PLAN also gets the fact probes over the files the request or the SPEC product
+    names, per repo, run in a clean checkout at that same commit."""
     if phase not in ("plan", "debug", "revise"):
         return {}
     adoption = state.get("adoption") or {}
-    return {"repoChecks": {
-        name: probes_module.repo_checks_probe(Path(info["path"]), adoption["headSha"] if adoption.get("repo") == name else info["baseSha"])
-        for name, info in state["repos"].items()
+    shas = {name: adoption["headSha"] if adoption.get("repo") == name else info["baseSha"]
+            for name, info in state["repos"].items()}
+    probes = {"repoChecks": {
+        name: probes_module.repo_checks_probe(Path(info["path"]), shas[name]) for name, info in state["repos"].items()
     }}
+    if phase != "plan":
+        return probes
+    spec = ((state.get("products") or {}).get("spec") or {}).get("product") or {}
+    texts = [state["request"]["text"], spec.get("goal", ""), *spec.get("boundaries", []),
+             *(item["text"] for key in ("criteria", "decisions") for item in spec.get(key, []))]
+    named = {}
+    for name, info in state["repos"].items():
+        repo_path = Path(info["path"])
+        files = probes_module.named_files(repo_path, shas[name], texts)
+        if not files:
+            continue
+        checkout = Path(checkouts_dir) / f"plan-probes-{name}-{shas[name][:12]}-{uuid.uuid4().hex[:8]}"
+        repo_module.clean_checkout(repo_path, shas[name], checkout)
+        try:
+            named[name] = {"files": files, **probes_module.plan_probes(checkout, files)}
+        finally:
+            repo_module.remove_worktree(repo_path, checkout, force=True)
+    if named:
+        probes["named"] = named
+    return probes
 
 
 def build_envelope(store: StateStore, paths: FeaturePaths, phase: str, attempt_id: str, project_root: Path) -> dict:
@@ -480,7 +504,7 @@ def build_envelope(store: StateStore, paths: FeaturePaths, phase: str, attempt_i
             "projectRoot": str(project_root),
         },
         "answers": questions.answers_for_context(store, attempt_id),
-        "probes": _phase_probes(state, phase),
+        "probes": _phase_probes(state, phase, paths.checkouts_dir),
     }
 
 
@@ -1545,7 +1569,7 @@ def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: 
     result_path = paths.results_dir / f"adopted-review-{attempt_id}.json"
     inputs = {
         "range": {"from": adoption["baseSha"], "to": adoption["headSha"], "full": True}, "diff": diff,
-        "ledger": {"reviewedRanges": [], "openFindings": []}, "rangeProbes": {}, "securitySignals": [], "full": True,
+        "ledger": {"reviewedRanges": [], "openFindings": []}, "rangeProbes": {}, "full": True,
     }
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=checkout, phase="execute")
     record = steps.issue(

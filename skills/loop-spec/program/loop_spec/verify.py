@@ -9,6 +9,7 @@ controller's dispatch is another agent's change. Module state lives under
 never writes the ledger itself.
 """
 import copy
+import hashlib
 import re
 from pathlib import Path
 
@@ -111,14 +112,19 @@ def _handle_rejection(store, paths, ctx, verify_state: dict) -> None:
     store.save()
 
 
-def _verify_checkout(repo_path: Path, head: str, prepare: str | None, checkouts_dir: Path, suffix: str = "") -> Path:
-    dest = Path(checkouts_dir) / f"verify-{head[:12]}{suffix}"
+def _verify_checkout(repo_path: Path, repo_name: str, head: str, prepare: str | None, checkouts_dir: Path,
+                     suffix: str = "") -> Path:
+    # 7.1.1: keyed by repo and prepare too, so workspace repos at one SHA, or a changed
+    # prepare at an unchanged head, never share a tree; a failed prepare leaves none.
+    prepare_key = hashlib.sha256((prepare or "").encode()).hexdigest()[:8]
+    dest = Path(checkouts_dir) / f"verify-{repo_name}-{head[:12]}-{prepare_key}{suffix}"
     if dest.is_dir():
         return dest
     repo_module.clean_checkout(repo_path, head, dest)
     if prepare:
         prepare_run = baseline_module.run_command(prepare, dest, head)
         if prepare_run.exit_status != 0:
+            repo_module.remove_worktree(repo_path, dest, force=True)
             raise LoopSpecError(
                 f"prepare command failed at {head}: {prepare}",
                 repair=f"run `{prepare}` by hand in {dest} against {head} and fix it",
@@ -194,7 +200,7 @@ def _init(store, paths, ctx) -> dict:
             range_from = repo_info["baseSha"] if repo_full else prior["to"]
             ranges[name] = {"repo": name, "from": range_from, "to": head, "full": repo_full}
             pending_reviews.append(name)
-        checkouts[name] = str(_verify_checkout(repo_path, head, plan_product.get("prepare"), paths.checkouts_dir))
+        checkouts[name] = str(_verify_checkout(repo_path, name, head, plan_product.get("prepare"), paths.checkouts_dir))
         files = sorted(files_by_repo.get(name, set()))
         base_layers = _base_layers(repo_path, repo_info["baseSha"], files, paths.checkouts_dir)
         range_probes[name] = probes_module.range_probes(repo_path, repo_info["baseSha"], head, base_layers)
@@ -284,13 +290,12 @@ def _reviewer_request(store, paths, ctx, verify_state: dict, repo_name: str) -> 
         diff = diff[:_DIFF_CAP] + "\n...(truncated)"
 
     ledger = store.state.get("ledger", {})
-    signals = (ctx.get("probes") or {}).get("securitySignals") or []
     inputs = {
         "repo": repo_name, "range": range_, "diff": diff,
         "ledger": {"reviewedRanges": [e for e in ledger.get("reviewedRanges", []) if e.get("repo") == repo_name],
                    "openFindings": [f for f in ledger.get("findings", [])
                                      if f["disposition"] == "open" and f.get("repo") == repo_name]},
-        "rangeProbes": verify_state["rangeProbes"][repo_name], "securitySignals": signals, "full": range_["full"],
+        "rangeProbes": verify_state["rangeProbes"][repo_name], "full": range_["full"],
     }
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=cwd, phase="verify")
     # simplicity: this build-validate-raise shape repeats iterate.py's own request
@@ -555,6 +560,6 @@ def on_step_refused(store, paths, step_id: str, refused: dict) -> None:
     head = verify_state["heads"][repo_name]
     plan_product = store.state["products"]["plan"]["product"]
     verify_state["checkouts"][repo_name] = str(_verify_checkout(
-        Path(store.state["repos"][repo_name]["path"]), head, plan_product.get("prepare"), paths.checkouts_dir,
+        Path(store.state["repos"][repo_name]["path"]), repo_name, head, plan_product.get("prepare"), paths.checkouts_dir,
         suffix=f"-{step_id}"))
     _requeue_review(store, verify_state, repo_name, f"review step {step_id} refused: {refused['reason']}")

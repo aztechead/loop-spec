@@ -408,6 +408,26 @@ class VerifyTests(unittest.TestCase):
         self.assertEqual(self.store.state["verify"]["verifier"], sentinel)
 
 
+class VerifyCheckoutTests(unittest.TestCase):
+    """7.1.1: a verify checkout is keyed by repo, head and prepare; a failed prepare leaves none."""
+
+    def test_repo_and_prepare_key_the_checkout_and_a_failed_prepare_is_removed(self):
+        from loop_spec.verify import _verify_checkout
+        with tempfile.TemporaryDirectory() as t:
+            repo, checkouts = Path(t) / "repo", Path(t) / "checkouts"
+            repo.mkdir()
+            _git(repo, "init", "-q", "-b", "main")
+            _git(repo, "-c", "user.name=T", "-c", "user.email=t@e", "commit", "-q", "--allow-empty", "-m", "base")
+            head = _head(repo)
+            a = _verify_checkout(repo, "a", head, None, checkouts)
+            self.assertNotEqual(a, _verify_checkout(repo, "b", head, None, checkouts))
+            self.assertNotEqual(a, _verify_checkout(repo, "a", head, "true", checkouts))
+            self.assertEqual(a, _verify_checkout(repo, "a", head, None, checkouts))
+            with self.assertRaises(LoopSpecError):
+                _verify_checkout(repo, "a", head, "false", checkouts)
+            self.assertEqual(len(list(checkouts.iterdir())), 3)
+
+
 class WorkspaceVerifyTests(unittest.TestCase):
     """LF-28: a workspace run with two touched repos -- one clean checkout and one
     reviewer step per repo, evidence and findings naming the repo they belong to,

@@ -4,6 +4,22 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.1.1] - 2026-09-23
+
+- PLAN gets the fact probes it was promised: for each repo, the tracked files the
+  request or SPEC product names (full path, or a unique basename), probed for house
+  style, duplication, indirection, security signals and imported dependencies in a
+  clean checkout at the base commit (the adopted head for an adopted repo). The program
+  no longer fetches dependency docs; `docs_probe` is removed and the planner fetches
+  docs itself.
+- Security signals are computed with the review-time probes over each task's diff and
+  over VERIFY's range, as repo-relative paths; the reviewer dispositions each by file
+  and E11 checks them. They were never produced before, so E11 always held.
+- The VERIFY checkout is keyed by repo, head and prepare command
+  (`verify-<repo>-<head12>-<prepare8>`): workspace repos at one SHA no longer share a
+  tree, a changed prepare gets a fresh one, and a failed prepare leaves none behind.
+  ITERATE finds it through VERIFY's state.
+
 ## [7.1.0] - 2026-09-23
 
 From the 6.9.x upstream and improvement reports, checked against 7.0.7 (the items 7.x

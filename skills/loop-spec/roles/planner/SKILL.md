@@ -13,10 +13,13 @@ never for installing, building, or running the plan's own verify commands.
 
 ## Procedure
 
-1. Read the SPEC product, the run's state, and any probe results the program gave
-   you (dependency-doc grounding, security signals, house style, duplication,
-   indirection) before reading anything yourself; the probes already answer what a
-   fresh scan would only re-derive.
+1. Read the SPEC product, the run's state, and the probe results the program gave
+   you before reading anything yourself: `inputs.probes.repoChecks`, and, for each
+   repo whose files the request or SPEC names, `inputs.probes.named.<repo>` (those
+   `files` with their house style, duplication, indirection, security signals, and
+   the third-party `deps` they import). The probes already answer what a fresh scan
+   would only re-derive. When a task uses a listed dependency's API, fetch its
+   current docs yourself.
 2. Map every criterion to at least one task; a criterion no task covers is a gap.
    A criterion about the whole suite or the whole change (such as "the full test
    suite passes") is covered by any task whose `verify` runs that suite; VERIFY

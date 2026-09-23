@@ -2356,13 +2356,34 @@ class PhaseProbesTests(unittest.TestCase):
     """7.1.0: PLAN, DEBUG and REVISE get repo-check facts per repo; other phases none."""
 
     def test_plan_gets_facts_per_repo_and_revise_reads_the_adopted_head(self):
-        state = {"repos": {"repo": {"path": "/r", "baseSha": "b" * 40}}}
-        with patch("loop_spec.controller.probes_module.repo_checks_probe", side_effect=lambda p, sha: [sha]) as probe:
-            self.assertEqual(controller._phase_probes(state, "spec"), {})
-            self.assertEqual(controller._phase_probes(state, "plan"), {"repoChecks": {"repo": ["b" * 40]}})
+        state = {"repos": {"repo": {"path": "/r", "baseSha": "b" * 40}}, "request": {"text": "x"}}
+        with patch("loop_spec.controller.probes_module.repo_checks_probe", side_effect=lambda p, sha: [sha]) as probe, \
+                patch("loop_spec.controller.probes_module.named_files", return_value=[]):
+            self.assertEqual(controller._phase_probes(state, "spec", Path("/c")), {})
+            self.assertEqual(controller._phase_probes(state, "plan", Path("/c")), {"repoChecks": {"repo": ["b" * 40]}})
             state["adoption"] = {"repo": "repo", "headSha": "h" * 40}
-            self.assertEqual(controller._phase_probes(state, "revise"), {"repoChecks": {"repo": ["h" * 40]}})
+            self.assertEqual(controller._phase_probes(state, "revise", Path("/c")), {"repoChecks": {"repo": ["h" * 40]}})
         self.assertEqual(probe.call_count, 2)
+
+    def test_plan_probes_the_named_files_at_the_base_commit(self):
+        """7.1.1: repo-relative facts from a checkout at the base, removed afterwards."""
+        with tempfile.TemporaryDirectory() as t:
+            repo, checkouts = Path(t) / "repo", Path(t) / "checkouts"
+            repo.mkdir()
+            run = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True, text=True).stdout.strip()
+            run("init", "-q", "-b", "main")
+            (repo / "auth.py").write_text("def login(): pass  # auth\n")
+            run("add", ".")
+            run("-c", "user.name=T", "-c", "user.email=t@e", "commit", "-q", "-m", "base")
+            (repo / "auth.py").write_text("changed after base\n")
+            state = {"repos": {"repo": {"path": str(repo), "baseSha": run("rev-parse", "HEAD")}},
+                     "request": {"text": "harden auth.py"}}
+            probes = controller._phase_probes(state, "plan", checkouts)
+            self.assertEqual(probes["named"]["repo"]["files"], ["auth.py"])
+            self.assertEqual([s["file"] for s in probes["named"]["repo"]["securitySignals"]], ["auth.py"])
+            self.assertEqual(list(checkouts.iterdir()), [])
+            state["request"]["text"] = "nothing named"
+            self.assertNotIn("named", controller._phase_probes(state, "plan", checkouts))
 
 
 class FailureObservationTests(unittest.TestCase):
