@@ -108,6 +108,8 @@ check "delta refuses a reply without the nonce" "1" "$rc"
 rc=0; { nonce; printf 'The fixes are already in the artifact.\n'; } | bash "$STEP" delta --feature-dir "$FD" --reply - >/dev/null 2>&1 || rc=$?
 check "delta refuses a reply with no DELTA header" "1" "$rc"
 check "a refused reply spends no round" "1" "$(feat '.currentGate.round')"
+rc=0; { printf 'NONCE: not-the-token\nDELTA-VERIFIED: x\n'; } | bash "$STEP" delta --feature-dir "$FD" --reply - >/dev/null 2>&1 || rc=$?
+check "delta refuses a reply with a different token" "1" "$rc"
 
 # --- delta with survivors: unaddressed kept, out-of-scope dropped, FLAG added ---
 printf 'FLAG [feasibility] task-002 has no verifyCommand\n' > "$WORK/flags.txt"
@@ -145,7 +147,8 @@ printf '[major] Gap: no schema\n' | bash "$STEP" fail --feature-dir "$FD" --fix-
 printf '# Plan\n\n## Tasks\n\n- T1: add the endpoint with a retry budget of 3\n- T2: write the CSV with the schema in lib/schema.py\n' > "$ART"
 append_tasks
 bash "$STEP" revised --feature-dir "$FD" >/dev/null
-out="$({ nonce; printf 'DELTA-VERIFIED: both addressed\n'; } | bash "$STEP" delta --feature-dir "$FD" --reply -)"
+# A relay can put a header above the reply; the token line still proves its origin.
+out="$({ printf 'Relayed from challenger-1:\n'; nonce; printf 'DELTA-VERIFIED: both addressed\n'; } | bash "$STEP" delta --feature-dir "$FD" --reply -)"
 check "verified delta answers verified" "true" "$(jq -r '.verified' <<<"$out")"
 check "verified delta appends the delta-verified pass entry" "delta-verified" "$(feat '.gateHistory[-1].convergence')"
 check "verified delta closes the gate" "null" "$(feat '.currentGate.phase')"

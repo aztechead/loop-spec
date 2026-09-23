@@ -36,8 +36,8 @@
 #       stays in the file for the challenger to Read, never in the lead's context. Mints
 #       a fresh nonce into the delta packet; a reply to an older packet no longer passes.
 #   critique-step.sh delta    --feature-dir DIR --reply <path|-> [--flags <path>]
-#       Refuses a reply whose first line is not the packet's `NONCE: <token>` or that
-#       has no DELTA-VERIFIED:/DELTA-FINDINGS: line, and a round past the ceiling.
+#       Refuses a reply with no line equal to the packet's `NONCE: <token>` or no
+#       DELTA-VERIFIED:/DELTA-FINDINGS: line, and a round past the ceiling.
 #       Round N: writes the delta gate-log, counts the round, emits gate_round, runs
 #       lib/delta-findings-lint.sh over the reply (DROP lines land in the gate-log),
 #       and adds every non-empty line of --flags (a re-run mechanical gate's FLAG lines)
@@ -278,8 +278,10 @@ case "$cmd" in
     [[ -f "$delta_diff" ]] || die "$delta_diff missing: run 'revised' before the delta brief goes out"
     nonce="$(jq -r '.nonce // empty' "$state")"
     [[ -n "$nonce" ]] || die "no delta packet is outstanding; run 'revised' and dispatch the challenger on its packet"
-    [[ "$(sed '/^[[:space:]]*$/d' "$src" | head -1)" == "NONCE: $nonce" ]] \
-      || die "the reply does not start with the packet's 'NONCE: <token>' line; pass the challenger's reply verbatim, never the lead's own text"
+    # Any line, not only the first: a relayed reply can gain a header above it, and a
+    # refusal there costs a whole challenger re-dispatch; the token is what proves origin.
+    grep -qFx "NONCE: $nonce" "$src" \
+      || die "the reply has no line 'NONCE: <token>' matching the packet; pass the challenger's reply verbatim, never the lead's own text"
     grep -qE '^[[:space:]]*(DELTA-VERIFIED|DELTA-FINDINGS):' "$src" \
       || die "the reply has no DELTA-VERIFIED: or DELTA-FINDINGS: line; pass the challenger's report verbatim"
     # The budget was enforced only in `fail`, so a revised-delta loop that skipped it ran

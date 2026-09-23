@@ -48,7 +48,7 @@ Exit 20 means a suite regression: class `suite-regression`, one remediation task
 Exit 21 means an infrastructure failure: route `escalate`. Never classify setup repair as implementation work.
 Proceed only for `route=continue`.
 On `route=remediate`, return with `next --returned-from verify`; no VERIFICATION.md is written.
-A repeat call on the same HEAD and commands returns the stored result (`.verify.cached`) without re-running the suite.
+A repeat call on an unchanged clean tree (same HEADs, commands, baseline, and mode) returns the stored result (`.verify.cached`) without re-running the suite.
 To test whether a failure predates the change, run the command in a temporary worktree at `git merge-base HEAD <base>`. Never use `git stash`: it compares against the feature branch, not the base.
 Never run a gate or its commands under `env -i` or a trimmed environment. An environment-caused failure is an infrastructure finding (route `escalate`, exit 21), not a pass.
 

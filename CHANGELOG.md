@@ -20,7 +20,7 @@ because a pre-team suite regression could not reach EXECUTE.
 - A suite-regression task created without a verification baseline now lists the
   failing commands and their failure lines as acceptance criteria. Before, it only
   said "pass as before the change".
-- `critique delta` rejects a reply unless its first line is the packet's
+- `critique delta` rejects a reply that has no line equal to the packet's
   `NONCE: <token>`, and rejects a reply with no `DELTA-VERIFIED:` or
   `DELTA-FINDINGS:` line. It also rejects a second reply to the same packet and any
   round past the ceiling. `critique revised` puts a new token in each delta packet.

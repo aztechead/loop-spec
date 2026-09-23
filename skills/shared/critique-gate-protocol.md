@@ -142,7 +142,7 @@ well. Never AskUserQuestion as a wait. Hand the reply to
 `critique delta --reply -` (PLAN adds `--flags` with the re-run gate's FLAG lines): it
 writes the round's gate-log with the lint's `DROP` lines, counts the round, emits the
 event, and answers `{verified, survivors[]}`. Pass the challenger's reply verbatim:
-`delta` refuses (exit 1, no round counted) a reply whose first line is not the packet's
+`delta` refuses (exit 1, no round counted) a reply with no line equal to the packet's
 `NONCE: <token>`, one with no `DELTA-VERIFIED:`/`DELTA-FINDINGS:` line, a second reply to
 the same packet, and a round past the ceiling. A second `revised` mints a new token, so
 re-dispatch the challenger on the new packet.
