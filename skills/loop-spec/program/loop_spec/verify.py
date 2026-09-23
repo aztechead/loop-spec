@@ -478,8 +478,14 @@ def on_submit(store, paths, step, result: dict) -> None:
         verify_state["verifierStep"] = step["stepAttemptId"]
         verify_state["phase"] = "reviewing" if verify_state["pendingReviews"] else "done"
     elif step["role"] == "code-reviewer":
-        repo_name = next(name for name in verify_state["pendingReviews"]
-                          if verify_state["checkouts"][name] == step["cwd"])
+        repo_name = next((name for name in verify_state["pendingReviews"]
+                          if verify_state["checkouts"][name] == step["cwd"]), None)
+        if repo_name is None:
+            raise LoopSpecError(
+                f"verify got a code-review submission from {step['cwd']}, which matches no pending review checkout "
+                f"({', '.join(verify_state['checkouts'][n] for n in verify_state['pendingReviews']) or 'none pending'})",
+                repair="the submitted review's cwd matches no pending VERIFY checkout; check `loop-spec status`",
+            )
         verify_state["pendingReviews"].remove(repo_name)
         verify_state["reviewers"][repo_name] = result
         verify_state["reviewerSteps"][repo_name] = step["stepAttemptId"]

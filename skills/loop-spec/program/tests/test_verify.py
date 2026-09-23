@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from loop_spec.errors import LoopSpecError
 from loop_spec.execute import IssueStep, Product
 from loop_spec.paths import FeaturePaths
 from loop_spec.state import StateStore
@@ -257,6 +258,18 @@ class VerifyTests(unittest.TestCase):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]), reviewer_findings=[finding])
         self.assertEqual(product["exit"], "passed")
         self.assertEqual(product["remediationTasks"], [])
+
+    def test_a_review_from_an_unknown_checkout_is_a_named_error(self):
+        # LF-67: was a bare StopIteration out of on_submit.
+        action = step(self.store, self.paths, self.ctx)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "v-step"},
+                  _verifier_result([_verdict("AC-1", "pass")]))
+        action = step(self.store, self.paths, self.ctx)
+        with self.assertRaises(LoopSpecError) as caught:
+            on_submit(self.store, self.paths, action.request | {"stepAttemptId": "r-step", "cwd": "/elsewhere"},
+                      {"sha": self.head_sha, "reviewedRange": {"from": self.base_sha, "to": self.head_sha},
+                       "verdict": "pass", "findings": [], "securityDispositions": []})
+        self.assertIn("/elsewhere", str(caught.exception))
 
     def test_a_blocked_verdict_exits_blocked(self):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "blocked")]))
