@@ -12,6 +12,7 @@ import sys
 from feature_read import load_state
 from feature_write import main as write_feature, publish
 from verify_command import validate as validate_command
+from loop_log import logger, stdout_log
 
 
 def normalize_task(raw, default_verify, index):
@@ -136,11 +137,11 @@ if __name__ == "__main__":
         if len(sys.argv) != 3:
             raise ValueError("usage: execute_remediation.py <feature-dir> <tasks-path> | --normalize <default-verify>")
         if sys.argv[1] == "--normalize":
-            print(json.dumps(normalize_queue(json.load(sys.stdin), sys.argv[2])))
+            stdout_log.info(json.dumps(normalize_queue(json.load(sys.stdin), sys.argv[2])))
         else:
-            print(json.dumps({"registered": register(*sys.argv[1:])}))
+            stdout_log.info(json.dumps({"registered": register(*sys.argv[1:])}))
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         message = "execute-prepare: remediation intake failed: {}".format(exc)
-        print(message, file=sys.stderr)
-        print(json.dumps({"registered": 0, "error": message}))
+        logger.error(message)
+        stdout_log.info(json.dumps({"registered": 0, "error": message}))
         sys.exit(1)

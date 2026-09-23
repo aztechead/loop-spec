@@ -17,6 +17,7 @@ import json
 import os
 import re
 import sys
+from loop_log import logger, stdout_log
 
 PY_FROM = re.compile(r"^\s*from\s+([A-Za-z_][\w.]*)\s+import")
 PY_IMPORT = re.compile(r"^\s*import\s+(.+)$")
@@ -216,7 +217,7 @@ def dep_pattern(dep):
 
 def cmd_scan(files):
     deps, reason = resolve_deps(files)
-    print("ANSWER=%s REASON=%s" % (",".join(deps) if deps else "none", reason))
+    stdout_log.info("ANSWER=%s REASON=%s" % (",".join(deps) if deps else "none", reason))
     return 0
 
 
@@ -228,17 +229,17 @@ def cmd_gate(tasks_path, artifact):
     except (OSError, ValueError, AttributeError, TypeError) as exc:
         # The tasks sidecar has its own gates (artifact-lint, phase-exit's
         # missing-file FLAG); an unreadable one here means no provable demand.
-        print("doc-deps: ok (tasks unreadable, nothing to demand: %s)" % exc)
+        stdout_log.info("doc-deps: ok (tasks unreadable, nothing to demand: %s)" % exc)
         return 0
     deps, reason = resolve_deps(files)
     if not deps:
-        print("doc-deps: ok (%s)" % reason)
+        stdout_log.info("doc-deps: ok (%s)" % reason)
         return 0
     text = read_text(artifact)
     if text is None:
-        print("FLAG %s:0: artifact not readable, so dependency grounding for %s cannot be checked"
+        stdout_log.info("FLAG %s:0: artifact not readable, so dependency grounding for %s cannot be checked"
               % (artifact, ", ".join(deps)))
-        print("doc-deps: 1 FLAG(s)")
+        stdout_log.info("doc-deps: 1 FLAG(s)")
         return 1
     section = grounding_text(text)
     flags = 0
@@ -246,14 +247,14 @@ def cmd_gate(tasks_path, artifact):
         if section is not None and dep_pattern(dep).search(section):
             continue
         flags += 1
-        print("FLAG %s:0: dependency '%s' is imported by planned files but has no bullet in "
+        stdout_log.info("FLAG %s:0: dependency '%s' is imported by planned files but has no bullet in "
               "## Grounding -- fetch its current docs and cite an EVID-NNN entry, or add "
               "'- ASSUMPTION: <claim> | verify: <command>' (skills/shared/grounding-protocol.md, "
               "Current documentation)" % (artifact, dep))
     if flags:
-        print("doc-deps: %d FLAG(s) (%s)" % (flags, reason))
+        stdout_log.info("doc-deps: %d FLAG(s) (%s)" % (flags, reason))
         return 1
-    print("doc-deps: ok (%d dependenc%s covered)" % (len(deps), "y" if len(deps) == 1 else "ies"))
+    stdout_log.info("doc-deps: ok (%d dependenc%s covered)" % (len(deps), "y" if len(deps) == 1 else "ies"))
     return 0
 
 
@@ -262,8 +263,7 @@ def main(argv):
         return cmd_scan(argv[1:])
     if len(argv) == 5 and argv[0] == "gate" and argv[1] == "--tasks" and argv[3] == "--artifact":
         return cmd_gate(argv[2], argv[4])
-    print("usage: doc-deps.py scan <file...> | gate --tasks <tasks.json> --artifact <PLAN.md>",
-          file=sys.stderr)
+    logger.error("usage: doc-deps.py scan <file...> | gate --tasks <tasks.json> --artifact <PLAN.md>")
     return 2
 
 

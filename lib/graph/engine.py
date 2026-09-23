@@ -26,6 +26,8 @@ from paths import repo_path  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import feature_read  # noqa: E402
 from state_reads import unsatisfied_reads  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from loop_log import logger, stdout_log
 
 graph_path = feature_dir = repo_root = script_dir = completed_node = ""
 dry_run = resume = step_mode = False
@@ -293,8 +295,7 @@ def checkpoint(node_id, edge_label, effort, status="completed"):
         "--loop-counts", json.dumps(loop_counts),
     ], stdout=subprocess.DEVNULL)
     if result.returncode:
-        print("run.sh: checkpoint publication failed at %s; refusing to advance" % node_id,
-              file=sys.stderr)
+        logger.error("run.sh: checkpoint publication failed at %s; refusing to advance" % node_id)
         raise EngineExit(1)
 
 
@@ -531,11 +532,10 @@ def publish_result(status, summary):
     try:
         rc = subprocess.call(cmd, stdout=sys.stderr)
     except Exception as exc:
-        print("run.sh: TERMINAL RESULT NOT PUBLISHED (%s)" % exc, file=sys.stderr)
+        logger.error("run.sh: TERMINAL RESULT NOT PUBLISHED (%s)" % exc)
         return 1
     if rc != 0:
-        print("run.sh: TERMINAL RESULT NOT PUBLISHED (cycle-result.sh write rc=%s)" % rc,
-              file=sys.stderr)
+        logger.error("run.sh: TERMINAL RESULT NOT PUBLISHED (cycle-result.sh write rc=%s)" % rc)
     return rc
 
 
@@ -624,9 +624,9 @@ def process_node(current, admitting, defer_agent_routing):
         ok, err = assert_reads(current)
         if not ok:
             publish_result("failed", "state contract violation at node %s" % current)
-            print("run.sh: state.sh assert-reads failed for node %s" % current, file=sys.stderr)
+            logger.error("run.sh: state.sh assert-reads failed for node %s" % current)
             if err:
-                print(err, file=sys.stderr, end="")
+                logger.error((err).rstrip("\n"))
             raise EngineExit(1)
 
     effort, effort_reason = (node.get("effort") or "system2", "dry-run") if dry_run \
@@ -647,11 +647,11 @@ def process_node(current, admitting, defer_agent_routing):
                 ["bash", fw, "set", feature_dir, "currentPhase", json.dumps(current)],
                 stdout=subprocess.DEVNULL)
             if write_rc:
-                print("run.sh: cannot persist phase %s; refusing dispatch" % current, file=sys.stderr)
+                logger.error("run.sh: cannot persist phase %s; refusing dispatch" % current)
                 raise EngineExit(1)
 
     if not step_mode:
-        print("%s\t%s\t%s\t%s" % (current, admitting, kind, label))
+        stdout_log.info("%s\t%s\t%s\t%s" % (current, admitting, kind, label))
 
     # Human admit gate (contract sec 4): admitted -> pause; unresolved or not
     # admitted -> skip (never dispatched either way — a human node has no body).
@@ -680,7 +680,7 @@ def process_node(current, admitting, defer_agent_routing):
                        "human-admit-unresolved:%s" % (admit_reason or "no-admit"), effort)
             checkpoint(current, admitting, effort, "failed")
             publish_result("failed", detail)
-            print("run.sh: %s" % detail, file=sys.stderr)
+            logger.error("run.sh: %s" % detail)
             raise EngineExit(1)
         if admitted and not dry_run:
             emit_trace(current, admitting, admit_probe, admit_reason, effort)
@@ -693,7 +693,7 @@ def process_node(current, admitting, defer_agent_routing):
                            "effort": effort, "nextEdge": admitting, "terminal": False,
                            "paused": True}
             if not step_mode:
-                print("run.sh: paused at human node %s" % current, file=sys.stderr)
+                logger.info("run.sh: paused at human node %s" % current)
             return {"status": "paused", "descriptor": descriptor, "next": None}
         # Resolved and not admitted: skip, fall through to ordinary routing
         # exactly like any other node — `auto` and `review-only` answer
@@ -716,15 +716,15 @@ def process_node(current, admitting, defer_agent_routing):
                 emit_trace(current, admitting, body, "gate-failed:%d %s" % (dispatch_rc, conflict_line), effort)
                 checkpoint(current, admitting, effort, "failed")
                 publish_result("failed", "gate %s" % detail)
-                print("run.sh: gate %s" % detail, file=sys.stderr)
+                logger.error("run.sh: gate %s" % detail)
                 # The body's own diagnostic is what tells a reader whether the
                 # gate found signals or could not run at all.
                 if dispatch_out:
-                    print(dispatch_out, file=sys.stderr)
+                    logger.error(dispatch_out)
                 raise EngineExit(1)
-            print("run.sh: function body %s" % detail, file=sys.stderr)
+            logger.error("run.sh: function body %s" % detail)
             if dispatch_out:
-                print(dispatch_out, file=sys.stderr)
+                logger.error(dispatch_out)
             checkpoint(current, admitting, effort, "failed")
             publish_result("failed", "function body %s" % detail)
             raise EngineExit(1)
@@ -773,7 +773,7 @@ def resolve_start():
     latest = latest_checkpoint()
     counts = latest.get("loopCounts", {})
     if not isinstance(counts, dict) or any(type(value) is not int or value < 0 for value in counts.values()):
-        print("run.sh: checkpoint loopCounts is invalid; refusing to reset retry budgets", file=sys.stderr)
+        logger.error("run.sh: checkpoint loopCounts is invalid; refusing to reset retry budgets")
         raise EngineExit(1)
     loop_counts.update(counts)
     # 1. Pause record -> successor of the paused node; delete the pause record
@@ -799,8 +799,7 @@ def resolve_start():
     if completed_node:
         last_node = latest.get("node")
         if last_node != completed_node or nodes.get(last_node, {}).get("kind") != "agent":
-            print("run.sh: completion %s does not match pending agent %s" % (completed_node, last_node),
-                  file=sys.stderr)
+            logger.error("run.sh: completion %s does not match pending agent %s" % (completed_node, last_node))
             raise EngineExit(1)
         checkpoint(last_node, latest.get("edge", "returned"), latest.get("effort"), "completed")
         latest["status"] = "completed"
@@ -838,7 +837,7 @@ def _abort(abort):
     else:
         diag = "run.sh: no route satisfied at node %r and no routeDefault declared\n%s" % (
             abort.node_id, abort.diagnostics)
-    print(diag, file=sys.stderr)
+    logger.error(diag)
     publish_result("failed", "%s at node %s" % (abort.reason, abort.node_id))
     raise EngineExit(5)
 
@@ -877,7 +876,7 @@ def traverse():
     except RouteAbort as abort:
         _abort(abort)
     if steps >= max_steps:
-        print("run.sh: step ceiling exceeded (possible unbounded traversal)", file=sys.stderr)
+        logger.error("run.sh: step ceiling exceeded (possible unbounded traversal)")
         return 1
     return 0
 
@@ -889,7 +888,7 @@ def main(argv):
     try:
         if step_mode:
             code, descriptor = step_once()
-            print(json.dumps(descriptor))
+            stdout_log.info(json.dumps(descriptor))
             return code
         return traverse()
     except EngineExit as exc:

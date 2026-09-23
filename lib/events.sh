@@ -154,7 +154,7 @@ _phase_end_attempt() {
 
 _phase_verdict() {
   local phase="$1" next="$2" phase_rank=0 next_rank=0
-  case "$next" in completed|done) printf '%s' "completed"; return ;; esac
+  case "$next" in completed|done) printf '%s' "completed"; return ;; escalated) printf '%s' "escalated"; return ;; esac
   if [[ -z "$next" || "$next" == "$phase" ]]; then
     printf '%s' "blocked"
     return

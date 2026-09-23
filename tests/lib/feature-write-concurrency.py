@@ -59,6 +59,8 @@ class FeatureWriteTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_failed_replacement_keeps_current_state_and_backup(self):
+        # lib/ is the module's import root (loop_log), as it is when feature-write.sh runs it.
+        sys.path.insert(0, str(Path(WRITER).parent))
         spec = importlib.util.spec_from_file_location("feature_write", Path(WRITER).with_name("feature_write.py"))
         writer = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(writer)

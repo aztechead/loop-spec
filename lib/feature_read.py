@@ -48,6 +48,7 @@ import os
 import re
 import subprocess
 import sys
+from loop_log import logger, stdout_log
 
 SCHEMA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "graph", "schema.json")
 PATH_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*|\[[0-9]+\])*$")
@@ -112,7 +113,7 @@ def descend(state, path):
 
 def main(argv):
     if argv == ["--keys"]:
-        print("\n".join(state_keys()))
+        stdout_log.info("\n".join(state_keys()))
         return 0
     if len(argv) in (2, 3) and argv[1] in ("--all", "--strays") and argv[2:] in ([], ["--drop-strays"]):
         keys = state_keys()
@@ -121,12 +122,12 @@ def main(argv):
         if argv[1] == "--all" and strays and argv[2:] != ["--drop-strays"]:
             # A key a writer set that the reader would not show is the silent failure a
             # dashboard reading null cannot tell from an unset value.
-            print("feature_read.py: %s carries keys graph/schema.json does not declare: %s "
+            logger.error("feature_read.py: %s carries keys graph/schema.json does not declare: %s "
                   "(declare them in the stateKey enum, or pass --drop-strays to project without them)"
-                  % (argv[0], ", ".join(strays)), file=sys.stderr)
+                  % (argv[0], ", ".join(strays)))
             return 1
         wanted = (lambda k: k in keys) if argv[1] == "--all" else (lambda k: k not in keys)
-        print(json.dumps({k: v for k, v in state.items() if wanted(k)}, ensure_ascii=False, separators=(",", ":")))
+        stdout_log.info(json.dumps({k: v for k, v in state.items() if wanted(k)}, ensure_ascii=False, separators=(",", ":")))
         return 0
     raw = False
     compact = False
@@ -212,13 +213,13 @@ def main(argv):
         return 0
     if raw:
         if value is None:
-            print("")
+            stdout_log.info("")
         elif isinstance(value, str):
-            print(value)
+            stdout_log.info(value)
         else:
-            print(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+            stdout_log.info(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
     else:
-        print(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+        stdout_log.info(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
     return 0
 
 
@@ -226,8 +227,8 @@ if __name__ == "__main__":
     try:
         sys.exit(main(sys.argv[1:]))
     except ValueError as exc:
-        print("feature-read: {}".format(exc), file=sys.stderr)
+        logger.error("feature-read: {}".format(exc))
         sys.exit(1)
     except IOError as exc:
-        print("feature-read: {}".format(exc), file=sys.stderr)
+        logger.error("feature-read: {}".format(exc))
         sys.exit(2)

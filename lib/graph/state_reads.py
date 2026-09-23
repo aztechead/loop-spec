@@ -3,6 +3,10 @@
 
 import json
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from loop_log import logger, stdout_log
 
 RELOCATED = ("branch", "baseSha", "baseBranch")
 
@@ -39,6 +43,6 @@ if __name__ == "__main__":
     try:
         missing = unsatisfied_reads(json.loads(sys.argv[1]), json.loads(sys.argv[2]))
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        print("state_reads.py: %s" % exc, file=sys.stderr)
+        logger.error("state_reads.py: %s" % exc)
         raise SystemExit(1)
-    print("\n".join(missing))
+    stdout_log.info("\n".join(missing))

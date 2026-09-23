@@ -211,7 +211,11 @@ check "resume: DISCUSS-fold moves currentPhase to spec" "spec" "$(jq -r '.curren
 # --- finish / escalate -----------------------------------------------------------
 ec=0; drv finish --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
 check "finish: no delivery sidecar is delivery-incomplete" "1" "$ec"
-out="$(cd "$REPO" && drv escalate --feature-dir "$FD" --reason "iteration limit" 2>/dev/null)"
+out="$(cd "$REPO" && drv escalate --feature-dir "$FD" --reason "iteration limit" 2>"$WORK/escalate.err")"
+# A log reader sees every phase close and the run's result, on the phase markers' stream.
+last_marker() { jq -rs '[.[] | select(.event == "phase_start" or .event == "phase_end")] | last | "\(.event) \(.phase) \(.verdict // "")"' "$1/events.jsonl"; }
+check "escalate: the open phase is closed as escalated" "phase_end escalated" "$(last_marker "$FD" | awk '{print $1, $3}')"
+check "escalate: the result marker reaches the log" "1" "$(grep -c '^LOOP_SPEC_RESULT {' "$WORK/escalate.err")"
 check "escalate: result is escalated" "escalated" "$(jq -r '.status' "$FD/result.json")"
 check "escalate: team state cleared" "null" "$(jq -r '.currentTeamName' "$FD/feature.json")"
 check "escalate: in-place feature exits no worktree" "false" "$(jq -r '.exitWorktree' <<<"$out")"
@@ -273,7 +277,11 @@ ec=0; out="$(cd "$REPO10" && drv decline --dir "$REPO10" --reason "a harness err
 check "decline: refused once a feature has begun in the checkout" "1" "$ec"
 check "decline: the refusal names the feature and the way out" "1" "$(grep -c 'has begun (phase .*); a run past begin finishes through the cycle or escalates' <<<"$out")"
 printf '{"status":"pushed-no-pr","nextPhase":"completed","targets":[{"name":"finish-report","targetSha":"0123456789abcdef0123","prUrl":null,"errorCode":null}],"feedback":null}\n' > "$FD10/delivery.json"
-out="$(cd "$REPO10" && drv finish --feature-dir "$FD10" --completed 1 2>/dev/null)"
+bash "$REPO_ROOT/lib/events.sh" emit "$FD10" phase_start --phase deliver >/dev/null 2>&1
+out="$(cd "$REPO10" && drv finish --feature-dir "$FD10" --completed 1 2>"$WORK/finish.err")"
+check "finish: DELIVER closes as completed" "phase_end deliver completed" "$(last_marker "$FD10")"
+check "finish: the DELIVER close marker reaches the log" "1" "$(grep -c '^LOOP_SPEC_PHASE_END {.*"phase":"deliver"' "$WORK/finish.err")"
+check "finish: the result marker reaches the log once" "1" "$(grep -c '^LOOP_SPEC_RESULT {' "$WORK/finish.err")"
 check "finish: the report opens with the outcome" "1" "$(jq -r '.report' <<<"$out" | head -1 | grep -c 'pushed to the remote')"
 check "finish: one line per target with its SHA" "1" "$(jq -r '.report' <<<"$out" | grep -c '^- finish-report, sha 0123456789ab$')"
 check "finish: the report ends with the backlog count" "1" "$(jq -r '.report' <<<"$out" | tail -1 | grep -c '^backlog entries remaining: [0-9]')"

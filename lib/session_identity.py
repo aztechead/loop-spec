@@ -4,6 +4,7 @@
 import json
 import os
 import sys
+from loop_log import stdout_log
 
 
 def resolve_session_id(env=None, payload=None):
@@ -21,4 +22,4 @@ if __name__ == "__main__":
         payload = json.loads(os.environ.get("LOOP_SPEC_IDENTITY_INPUT") or "{}")
     except ValueError:
         payload = {}
-    print(resolve_session_id(payload=payload))
+    stdout_log.info(resolve_session_id(payload=payload))

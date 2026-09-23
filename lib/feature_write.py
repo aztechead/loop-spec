@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from loop_log import logger
 
 
 def retired(state, approved):
@@ -166,8 +167,8 @@ if __name__ == "__main__":
     try:
         sys.exit(main(sys.argv[1:]))
     except ValueError as exc:
-        print("feature-write: {}".format(exc), file=sys.stderr)
+        logger.error("feature-write: {}".format(exc))
         sys.exit(1)
     except OSError as exc:
-        print("feature-write: I/O failure: {}".format(exc), file=sys.stderr)
+        logger.error("feature-write: I/O failure: {}".format(exc))
         sys.exit(2)

@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+from loop_log import logger, stdout_log
 
 MARKDOWN = (".md", ".markdown")
 # A changelog records what WAS true at each release; a path it names is history,
@@ -282,23 +283,23 @@ def main(argv):
         if text is None:
             if keep is not None:
                 continue        # deleted or renamed by the change; nothing to read
-            print("doc-tells: cannot read {}".format(path), file=sys.stderr)
+            logger.error("doc-tells: cannot read {}".format(path))
             return 2
         scanned += 1
         root = repo_root_of(os.path.dirname(os.path.abspath(path)) or ".")
         for lineno, tell, detail in scan(path, text, root):
             if keep is not None and lineno not in keep[path]:
                 continue
-            print("{}:{}: tell={}: {}".format(path, lineno, tell, detail))
+            stdout_log.info("{}:{}: tell={}: {}".format(path, lineno, tell, detail))
             total += 1
 
     reason = "{} file(s)".format(scanned)
     if skipped:
         reason += ", {} skipped (not markdown, or a changelog)".format(skipped)
     if total:
-        print("doc-tells: {} finding(s) ({})".format(total, reason))
+        stdout_log.info("doc-tells: {} finding(s) ({})".format(total, reason))
         return 1
-    print("doc-tells: clean ({})".format(reason))
+    stdout_log.info("doc-tells: clean ({})".format(reason))
     return 0
 
 
