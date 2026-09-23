@@ -6,7 +6,7 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [7.0.3] - 2026-09-22
 
-Eight defects found by the 7.0.2 and 7.0.3 live runs (LF-54 to LF-61), each fixed at its root
+Nine defects found by the 7.0.2 and 7.0.3 live runs (LF-54 to LF-62), each fixed at its root
 with module tests and shown live in `docs/loop-spec/live-runs-7.0.md`:
 
 - LF-54: the PLAN critic gets each task's baseline facts (ran or not, failing
@@ -43,6 +43,11 @@ with module tests and shown live in `docs/loop-spec/live-runs-7.0.md`:
   short or over-limit read, and when to stop. A prompt line over the supported
   budget stops the step before anything is written. Attestation still requires
   every line.
+- LF-62: under `--answer-policy default`, the PLAN critic's second-pass question is
+  answered with the critic's recommendation. Until now, only callers that remembered
+  to resolve the policy applied it. `questions.ask` now applies the policy for every
+  question. The critic question, its answer and its link are saved together, so a
+  crash cannot separate them.
 
 Each role skill also carries one brief, schema-valid result example.
 

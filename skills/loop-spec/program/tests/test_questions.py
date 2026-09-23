@@ -56,13 +56,31 @@ class QuestionsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             store, paths = self._store(tmp)
             store.state["questions"]["policy"] = "default"
-            record = self._ask(store, paths, default_value="approve")
-            resolved = questions.resolve_policy_answer(store, paths, record)
-            self.assertIsNotNone(resolved)
-            self.assertEqual(resolved["value"], "approve")
-            self.assertEqual(resolved["by"], "policy")
-            self.assertIn(record["questionId"], store.state["questions"]["policyAnswered"])
+            record = self._ask(store, paths, default_value="approve")  # LF-62: ask applies the policy itself
+            resolved = store.state["questions"]["answered"][record["questionId"]]
+            self.assertEqual((resolved["value"], resolved["by"]), ("approve", "policy"))
+            self.assertEqual(store.state["questions"]["policyAnswered"], [record["questionId"]])
             self.assertIsNone(store.state["questions"]["open"])
+
+    def test_without_the_default_policy_a_defaulted_question_stays_open(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._ask(store, paths, default_value="approve")
+            self.assertEqual(store.state["questions"]["open"]["questionId"], record["questionId"])
+            self.assertEqual(store.state["questions"]["policyAnswered"], [])
+
+    def test_a_deferred_ask_writes_no_state_even_when_the_policy_answers(self):
+        # LF-62: save=False defers the policy answer too; the caller links and saves once.
+        from loop_spec.state import StateStore
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            store.state["questions"]["policy"] = "default"
+            store.save()
+            record = questions.ask(store, paths, phase="plan", attempt_id="a-1", text="?", kind="text",
+                                   options=[], default_value="spec gap", payload=None, save=False)
+            on_disk = StateStore.open(paths).state["questions"]
+            self.assertEqual((on_disk["open"], on_disk["answered"], on_disk["policyAnswered"]), (None, {}, []))
+            self.assertEqual(store.state["questions"]["answered"][record["questionId"]]["by"], "policy")
 
     def test_policy_leaves_an_undefaulted_question_open(self):
         with tempfile.TemporaryDirectory() as tmp:

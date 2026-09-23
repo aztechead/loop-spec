@@ -526,11 +526,10 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
         return Next(kind="wait", path=outcome.path, slug=store.state["run"]["slug"])
     if outcome.kind == "question":
         request = read_json(outcome.path)
-        record = questions.ask(
+        questions.ask(
             store, paths, phase=phase, attempt_id=attempt_id, text=request["text"], kind=request["kind"],
             options=request["options"], default_value=request.get("defaultValue"), payload=request.get("payload"),
         )
-        questions.resolve_policy_answer(store, paths, record)
         return
     if outcome.kind == "error":
         _finish_run(store, paths, "failed", reason=outcome.stderr)
@@ -704,13 +703,12 @@ def _handle_spec_approval(store: StateStore, paths: FeaturePaths, attempt_id: st
         store.state["phase"]["provisional"] = product
         store.state["phase"]["pending"] = "approval"
         store.save()
-        record = questions.ask(
+        questions.ask(
             store, paths, phase="spec", attempt_id=attempt_id,
             text=f"Approve these requirements (revision {revision})?", kind="approval",
             options=[{"value": "approve", "label": "Approve"}, {"value": "reject", "label": "Reject"}, {"value": "revise", "label": "Revise"}],
             default_value="approve", payload={"revision": revision},
         )
-        questions.resolve_policy_answer(store, paths, record)
         return "pending"
 
     question_id, answer_record = answered
@@ -875,10 +873,10 @@ def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, pro
                              "stepId": store.state["phase"]["criticStepId"]}
     store.state["phase"]["pending"] = None
     store.state["phase"]["provisional"] = None
-    store.save()
 
     open_critical = [f for f in findings if f.get("severity") == "Critical" and f.get("disposition") == "open"]
     if not open_critical:
+        store.save()
         return "ready"
     if passes >= 2:
         # P7's second branch: a Critical still open after the one re-run asks a
@@ -895,8 +893,10 @@ def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, pro
                   + (f"Recommended: {recommended}. " if recommended else "")
                   + "Answer with your reason to reject and close, or 'spec gap' to send this back to SPEC."),
             kind="text", options=[{"value": "spec gap", "label": "Spec gap"}],
-            default_value=recommended, payload={"findings": open_critical},
+            default_value=recommended, payload={"findings": open_critical}, save=False,
         )
+        # LF-62: the judgment, the question, its policy answer (if any) and this link
+        # are one state write, so a resume never finds one without the others.
         store.state["phase"]["criticQuestionId"] = record["questionId"]
         store.save()
         return "pending"

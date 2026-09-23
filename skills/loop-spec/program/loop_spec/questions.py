@@ -1,10 +1,10 @@
 """Ask/answer questions and the run's default-answer policy.
 
 Use `ask` to open a question against a run (only one may be open at a time),
-`answer` to record a human's response, and `resolve_policy_answer` for the
-controller to try the run's default policy right after `ask` before surfacing it
-to a person. This module records facts and enforces the one-open-question and
-retired-id identity rules; it never decides what to ask or what a route does next.
+`answer` to record a human's response; `ask` itself applies the run's default
+policy (`resolve_policy_answer`) before a question is surfaced to a person. This
+module records facts and enforces the one-open-question and retired-id identity
+rules; it never decides what to ask or what a route does next.
 """
 from .errors import LoopSpecError
 from .events import emit, marker_question
@@ -15,8 +15,11 @@ from .schema import validate_or_raise
 
 def ask(store, paths, *, phase: str, attempt_id: str, text: str, kind: str,
         options: list[dict], default_value: str | None, payload: dict | None, save: bool = True) -> dict:
-    # save=False: the caller links the question id into its own state and saves both
-    # at once (LF-60), so a crash never leaves an open question nothing points at.
+    """Open a question and, under the run's default policy, answer it with its offered
+    default at once (LF-62: one place, so no caller can forget). save=False defers
+    every state write, the policy answer's included, to the caller, which links the
+    question id into its own state and saves once (LF-60, LF-62): a crash never leaves
+    a question, or its answer, that nothing points at."""
     open_question = store.state["questions"]["open"]
     if open_question is not None:
         raise LoopSpecError(
@@ -41,12 +44,14 @@ def ask(store, paths, *, phase: str, attempt_id: str, text: str, kind: str,
     }
     emit(paths, "question", {"questionId": question_id, "summary": text}, phase=phase, attempt_id=attempt_id, source="program")
     marker_question(paths, question_id)
+    resolve_policy_answer(store, paths, record, save=False)
     if save:
         store.save()
     return record
 
 
-def answer(store, paths, *, question_id: str, value: str, scope: str = "question", by: str = "human") -> dict:
+def answer(store, paths, *, question_id: str, value: str, scope: str = "question", by: str = "human",
+           save: bool = True) -> dict:
     if question_id in store.state["questions"]["retired"]:
         raise LoopSpecError(
             f"question {question_id} is retired",
@@ -77,20 +82,22 @@ def answer(store, paths, *, question_id: str, value: str, scope: str = "question
     store.state["questions"]["open"] = None
     if scope == "run":
         store.state["questions"]["policy"] = "default"
-    store.save()
+    if save:
+        store.save()
     return state_record
 
 
-def resolve_policy_answer(store, paths, question: dict) -> dict | None:
+def resolve_policy_answer(store, paths, question: dict, save: bool = True) -> dict | None:
     if store.state["questions"]["policy"] != "default":
         return None
     default_value = question.get("defaultValue")
     if default_value is None:
         # A policy cannot invent an answer the question never offered.
         return None
-    record = answer(store, paths, question_id=question["questionId"], value=default_value, scope="run", by="policy")
+    record = answer(store, paths, question_id=question["questionId"], value=default_value, scope="run", by="policy", save=False)
     store.state["questions"]["policyAnswered"].append(question["questionId"])
-    store.save()
+    if save:
+        store.save()
     return record
 
 

@@ -591,6 +591,74 @@ class PlanCriticTests(_QuietStdout):
                 self.assertEqual(store.state["phase"]["current"], "execute")
                 self.assertEqual(store.state["critic"]["passes"], 2)
 
+    def _second_pass_critic(self, tmp: Path, recommendation, policy: str | None = "default", crash_after_ask=False):
+        """LF-62: the real path. PLAN (external) gets a Critical on both critic passes;
+        the second pass asks the blocked question, and continue_run consumes it."""
+        repo_dir = _init_repo(tmp)
+        markers = io.StringIO()
+        with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+            next_, spec_product, paths, repo_name = _start_greeting_run(repo_dir, tmp / "home", markers)
+            next_, plan_product = _submit_greeting_plan(paths, repo_dir, markers, read_json(next_.path), repo_name, spec_product)
+            finding = {"id": "F-1", "location": "greet.py:1", "cause": "the verify command cannot fail", "severity": "Critical"}
+            critic = read_json(next_.path)
+            atomic_write_json(Path(critic["resultPath"]), {"findings": [finding]})
+            next_ = _submit_and_continue(paths, repo_dir, markers, critic["stepAttemptId"])
+            step = read_json(next_.path)
+            atomic_write_json(Path(step["resultPath"]), dict(plan_product, criticResponses=[
+                {"findingId": "F-1", "disposition": "fixed", "reason": None}]))
+            next_ = _submit_and_continue(paths, repo_dir, markers, step["stepAttemptId"])
+            store = _open(paths)
+            store.state["questions"]["policy"] = policy
+            store.save()
+            critic_2 = read_json(next_.path)
+            atomic_write_json(Path(critic_2["resultPath"]), {"findings": [dict(finding, recommendation=recommendation) if recommendation else finding]})
+            store = _open(paths)
+            steps.submit(store, paths, step_id=critic_2["stepAttemptId"], dispatch_name=None, host=None)
+            if crash_after_ask:
+                real_ask = questions.ask
+                def ask_then_crash(*a, **kw):
+                    real_ask(*a, **kw)
+                    raise RuntimeError("crash before the critic links its question")
+                with patch.object(controller.questions, "ask", side_effect=ask_then_crash), self.assertRaises(RuntimeError):
+                    controller.continue_run(store, paths, project_root=repo_dir)
+                store = _open(paths)  # what a resume finds on disk
+            with contextlib.redirect_stdout(markers):
+                next_ = controller.continue_run(store, paths, project_root=repo_dir)
+            return _open(paths), next_
+
+    def test_the_default_policy_takes_a_spec_gap_recommendation_through_continue_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, _ = self._second_pass_critic(Path(tmp), {"action": "spec gap", "reason": "AC-2 is untestable"})
+            critic_questions = [q for q, r in store.state["questions"]["answered"].items() if r["phase"] == "plan"]
+            self.assertEqual(len(critic_questions), 1)
+            self.assertEqual(store.state["questions"]["answered"][critic_questions[0]]["by"], "policy")
+            self.assertEqual(store.state["questions"]["policyAnswered"].count(critic_questions[0]), 1)
+            self.assertEqual(store.state["phase"]["current"], "spec")  # the backward route
+            self.assertEqual(store.state["budget"]["spent"], 1)
+            self.assertIsNone(store.state["phase"]["criticQuestionId"])
+
+    def test_the_default_policy_closes_findings_with_the_recommended_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, _ = self._second_pass_critic(Path(tmp), {"action": "reject", "reason": "base facts cover it"})
+            self.assertEqual(store.state["phase"]["current"], "execute")
+            closed = store.state["critic"]["findings"][0]
+            self.assertEqual((closed["id"], closed["disposition"], closed["reason"]), ("F-1", "rejected", "F-1: base facts cover it"))
+
+    def test_the_critic_question_stays_open_without_a_default_or_the_policy(self):
+        for recommendation, policy in ((None, "default"), ({"action": "spec gap", "reason": "AC-2 is untestable"}, None)):
+            with self.subTest(policy=policy), tempfile.TemporaryDirectory() as tmp:
+                store, next_ = self._second_pass_critic(Path(tmp), recommendation, policy=policy)
+                self.assertEqual(next_.kind, "question")
+                self.assertEqual(store.state["questions"]["open"]["questionId"], store.state["phase"]["criticQuestionId"])
+
+    def test_a_crash_before_linking_the_critic_question_recovers_to_one_answered_question(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, _ = self._second_pass_critic(Path(tmp), {"action": "spec gap", "reason": "AC-2 is untestable"}, crash_after_ask=True)
+            critic_questions = [q for q, r in store.state["questions"]["answered"].items() if r["phase"] == "plan"]
+            self.assertEqual(len(critic_questions), 1)
+            self.assertEqual(store.state["questions"]["policyAnswered"].count(critic_questions[0]), 1)
+            self.assertEqual(store.state["phase"]["current"], "spec")
+
     def test_critic_step_prompt_carries_role_body_and_schema(self):
         # LF-32: the critic step goes through roles.compose_prompt/load_role like
         # every other role step, instead of a hand-written prompt and inline schema.
@@ -2003,7 +2071,7 @@ class CriticFactsAndDefaultTests(unittest.TestCase):
             record = questions.ask(store, paths, phase="plan", attempt_id="a-1", text="blocked", kind="text",
                                    options=[{"value": "spec gap", "label": "Spec gap"}],
                                    default_value=controller._critic_default([finding]), payload=None)
-            answered = questions.resolve_policy_answer(store, paths, record)
+            answered = store.state["questions"]["answered"][record["questionId"]]  # LF-62: ask applied the policy
             self.assertEqual((answered["by"], answered["value"]), ("policy", "F-1: failure identities are compared with base"))
             self.assertIn(record["questionId"], store.state["questions"]["policyAnswered"])
             controller._close_critic_rejections(store, answered["value"])

@@ -194,11 +194,14 @@ A question is `schemas/question.json`: `questionId`, `attempt`, `phase`, `text`,
 Answer with `loop-spec answer --question <id> --answer <value> --slug <slug>
 [--scope question|run]` (`schemas/answer.json`: `questionId`, `value`, `scope`,
 `answeredAt`, `by`: `human` or `policy`). `--scope run` also sets the run's answer
-policy to `default`, so `questions.resolve_policy_answer` answers every later
-question that carries a `defaultValue` without asking again; the result's
-`policyAnsweredQuestions` lists every question a policy, not a person, answered. A PLAN critic question asked after the second pass carries the critic's own
-recommendation as its default (P7), so a policy can answer it; with no recommendation
-it has no default and waits for a person.
+policy to `default`. Under that policy, `questions.ask` answers every question that
+carries a `defaultValue` as soon as it opens (`questions.resolve_policy_answer`, one
+place for every caller, LF-62). The result's `policyAnsweredQuestions` lists every
+question a policy, not a person, answered. A PLAN critic question asked after the
+second pass carries the critic's own recommendation as its default (P7), so the policy
+answers it. The critic's judgment, the question, that answer and the phase's
+`criticQuestionId` link are saved in one state write. With no recommendation, the
+question has no default and waits for a person.
 
 ## Markers and console lines
 
