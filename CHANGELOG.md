@@ -4,6 +4,13 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.0.6] - 2026-09-23
+
+- LF-70: the planner keeps a test in the task of the code it tests and splits only
+  into tasks on separate files that can share a wave; a 7.0.5 run's config-app-tests
+  chain made three one-task waves and a 20-minute EXECUTE.
+- `docs/loop-spec/live-runs-7.0.md` records the six 7.0.5 timing runs.
+
 ## [7.0.5] - 2026-09-23
 
 From the 7.0.3/7.0.4 timing runs, a prompt audit, and a cost profile of those runs:

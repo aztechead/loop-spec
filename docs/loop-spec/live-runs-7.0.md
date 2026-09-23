@@ -74,6 +74,12 @@ Wall time is the launched process, start to exit. Evidence:
 | `inventory-sdk` | 7.0.3 `58639ed` | 957 s | $3.58 | 60 | 0 | `escalated` at DELIVER, verification passed |
 | `todo2-cli` | 7.0.4 `db0c744` | 1971 s | $8.12 | 93 | 1 | `escalated` at DELIVER by policy, verification passed |
 | `todo2-sdk` | 7.0.4 `db0c744` | 1094 s | $3.63 | 46 | 0 | `escalated` at DELIVER by policy, verification passed |
+| `todo3-cli` | 7.0.5 `ff43731` | 686 s | $2.82 | 52 | 0 | `escalated` at DELIVER by policy, verification passed |
+| `todo3-sdk` | 7.0.5 `ff43731` | 1755 s | $4.28 | 56 | 0 | `escalated` at DELIVER by policy, verification passed |
+| `shortener3-cli` | 7.0.5 `ff43731` | 885 s | $3.60 | 71 | 0 | `escalated` at DELIVER by policy, verification passed |
+| `shortener3-sdk` | 7.0.5 `ff43731` | 1076 s | $3.91 | 59 | 1 | `escalated` at DELIVER by policy, verification passed |
+| `inventory3-cli` | 7.0.5 `ff43731` | 1598 s | $5.51 | 68 | 2 | `escalated` at DELIVER by policy, verification passed |
+| `inventory3-sdk` | 7.0.5 `ff43731` | 903 s | $3.13 | 54 | 0 | `escalated` at DELIVER by policy, verification passed |
 
 A run with no rewind spent about 40 s in SPEC, 180 to 230 s in PLAN, 360 to 560 s in
 EXECUTE, 200 to 290 s in VERIFY and 80 to 120 s in ITERATE. Both rewinds were ITERATE
@@ -85,6 +91,18 @@ on 7.0.4 the DELIVER question was answered `stop` by policy (LF-66 live). Neithe
 7.0.4 review left a Critical open, so LF-64's route is shown by module tests only.
 `todo2-cli`'s lead once ran `cycle --request resume` instead of `--slug`, which started
 a stray run named `resume` that it abandoned after SPEC issued one step.
+
+On 7.0.5 every run reached its terminal result with no operator input (the policy
+answered the SPEC approval and DELIVER's `stop`), and every role step was
+`host-attested` on its first dispatch from `dispatch.txt`. Against 7.0.3, the four
+runs of the two tasks that finished there took 4462 s and $16.15 in total, down from
+5533 s and $19.30. `inventory3-cli` showed both new routes live: VERIFY sent an open
+Critical to EXECUTE as remediation `R-12` (LF-64), and ITERATE's gap (a pagination
+default an approved decision required) closed as close-out `C-1` in about two minutes
+(LF-68's route), with no re-plan. `shortener3-sdk`'s rewind was also an ITERATE
+close-out. `todo3-sdk`'s planner chained config, app and tests into three one-task
+waves, and its EXECUTE took 20 minutes against 5 for `todo3-cli`'s two-task plan;
+that opened LF-70 (7.0.6).
 
 ## Reading the evidence
 
