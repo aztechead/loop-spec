@@ -1,0 +1,1333 @@
+{
+  "approval": {
+    "at": "2026-09-23T20:45:40+00:00",
+    "by": "policy",
+    "questionId": "question-be6f81e0a9a2",
+    "revision": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76",
+    "writer": "program"
+  },
+  "attempts": [
+    {
+      "entry": "fresh",
+      "id": "attempt-9a62ef13f35d",
+      "phase": "spec",
+      "startedAt": "2026-09-23T20:45:14+00:00"
+    },
+    {
+      "entry": "fresh",
+      "id": "attempt-86773e8861b5",
+      "phase": "plan",
+      "startedAt": "2026-09-23T20:45:40+00:00"
+    },
+    {
+      "entry": "remediation",
+      "id": "attempt-d699539443c7",
+      "phase": "plan",
+      "startedAt": "2026-09-23T20:47:07+00:00"
+    },
+    {
+      "entry": "fresh",
+      "id": "attempt-9fa6c7f3e2f7",
+      "phase": "execute",
+      "startedAt": "2026-09-23T20:48:35+00:00"
+    },
+    {
+      "entry": "fresh",
+      "id": "attempt-c9427177324f",
+      "phase": "verify",
+      "startedAt": "2026-09-23T20:49:53+00:00"
+    },
+    {
+      "entry": "fresh",
+      "id": "attempt-c3756b8aa15e",
+      "phase": "iterate",
+      "startedAt": "2026-09-23T20:51:44+00:00"
+    },
+    {
+      "entry": "fresh",
+      "id": "attempt-ffdfb2145e4b",
+      "phase": "deliver",
+      "startedAt": "2026-09-23T20:52:16+00:00"
+    }
+  ],
+  "baseline": {
+    "planRevision": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+    "repos": {
+      "checks-cli": {
+        "baseSha": "f14c1b065847982e0e41dfec4799c466b50b969f",
+        "capturedAt": "2026-09-23T20:47:31+00:00",
+        "entries": {
+          "uv run mypy": {
+            "command": "uv run mypy",
+            "run": {
+              "command": "uv run mypy",
+              "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/checkouts/baseline-f14c1b065847",
+              "elapsedSeconds": 2.4615663329605013,
+              "errorClass": null,
+              "exitStatus": 0,
+              "failureIdentities": [],
+              "fingerprintLines": {
+                "115d386b567d3686": "Success: no issues found in 2 source files"
+              },
+              "fingerprints": [
+                "115d386b567d3686"
+              ],
+              "logPath": null,
+              "normalizationVersion": 3,
+              "normalizedDigest": "sha256:115d386b567d3686b1ff3e97429e2d4813021a66d446edef11aae44bbe144b00",
+              "omittedLines": 0,
+              "outputDigest": "sha256:f9b031e5c45aa702cd4fef028d465551cb20a2c4698e0913c7b00766b20ac4d8",
+              "runner": "diagnostics",
+              "sha": "f14c1b065847982e0e41dfec4799c466b50b969f",
+              "startedAt": "2026-09-23T20:47:29+00:00",
+              "tail": [
+                "Success: no issues found in 2 source files"
+              ],
+              "testsRan": 0
+            },
+            "status": "ran",
+            "task": null
+          },
+          "uv run pytest -q tests/test_length.py": {
+            "command": "uv run pytest -q tests/test_length.py",
+            "run": {
+              "command": "uv run pytest -q tests/test_length.py",
+              "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/checkouts/baseline-f14c1b065847",
+              "elapsedSeconds": 1.0870413330267183,
+              "errorClass": null,
+              "exitStatus": 0,
+              "failureIdentities": [],
+              "fingerprintLines": {
+                "2ed23049e3341e6f": "<N> passed in <TIME>"
+              },
+              "fingerprints": [
+                "2ed23049e3341e6f"
+              ],
+              "logPath": null,
+              "normalizationVersion": 3,
+              "normalizedDigest": "sha256:42e48386c107da6610358c5bb6fa1441c2838353087fb1cefb8eee125884088b",
+              "omittedLines": 0,
+              "outputDigest": "sha256:88e4b87c66efcce5e0f80e6b164b2589769cdfa7e89285eab20f849a73736dfc",
+              "runner": "pytest",
+              "sha": "f14c1b065847982e0e41dfec4799c466b50b969f",
+              "startedAt": "2026-09-23T20:47:27+00:00",
+              "tail": [
+                "Using CPython 3.14.7",
+                "Creating virtual environment at: .venv",
+                "Building unitkit @ file://<ROOT>",
+                "Built unitkit @ file://<ROOT>",
+                "Installed 13 packages in <TIME>",
+                ". [100%]",
+                "<N> passed in <TIME>"
+              ],
+              "testsRan": 1
+            },
+            "status": "ran",
+            "task": "T-1"
+          },
+          "uv run ruff check --output-format concise": {
+            "command": "uv run ruff check --output-format concise",
+            "run": {
+              "command": "uv run ruff check --output-format concise",
+              "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/checkouts/baseline-f14c1b065847",
+              "elapsedSeconds": 0.6427792920148931,
+              "errorClass": null,
+              "exitStatus": 0,
+              "failureIdentities": [],
+              "fingerprintLines": {
+                "f0d0b1081d9d3ebb": "All checks passed!"
+              },
+              "fingerprints": [
+                "f0d0b1081d9d3ebb"
+              ],
+              "logPath": null,
+              "normalizationVersion": 3,
+              "normalizedDigest": "sha256:f0d0b1081d9d3ebb26c4c93543053ecdc0a58998f22c071dc4ddb26021b57645",
+              "omittedLines": 0,
+              "outputDigest": "sha256:82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+              "runner": "diagnostics",
+              "sha": "f14c1b065847982e0e41dfec4799c466b50b969f",
+              "startedAt": "2026-09-23T20:47:28+00:00",
+              "tail": [
+                "All checks passed!"
+              ],
+              "testsRan": 0
+            },
+            "status": "ran",
+            "task": null
+          }
+        },
+        "normalizationVersion": 3,
+        "prepare": null,
+        "prepareRun": null,
+        "repo": "checks-cli"
+      }
+    }
+  },
+  "budget": {
+    "limit": 2,
+    "spent": 0,
+    "transitions": []
+  },
+  "checkRuns": {
+    "checks-cli": {
+      "uv run mypy": {
+        "baselineCapturedAt": "2026-09-23T20:47:31+00:00",
+        "comparison": {
+          "detail": "no new failure identity versus base; exit status alone never decides",
+          "newIdentities": [],
+          "verdict": "no-regression"
+        },
+        "head": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+        "planRevision": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+        "run": {
+          "command": "uv run mypy",
+          "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/checkouts/check-checks-cli-4aa33cbccc81-bd6ae99c",
+          "elapsedSeconds": 2.9616328749689274,
+          "errorClass": null,
+          "exitStatus": 0,
+          "failureIdentities": [],
+          "fingerprintLines": {
+            "115d386b567d3686": "Success: no issues found in 2 source files"
+          },
+          "fingerprints": [
+            "115d386b567d3686"
+          ],
+          "logPath": null,
+          "normalizationVersion": 3,
+          "normalizedDigest": "sha256:115d386b567d3686b1ff3e97429e2d4813021a66d446edef11aae44bbe144b00",
+          "omittedLines": 0,
+          "outputDigest": "sha256:f9b031e5c45aa702cd4fef028d465551cb20a2c4698e0913c7b00766b20ac4d8",
+          "runner": "diagnostics",
+          "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+          "startedAt": "2026-09-23T20:49:55+00:00",
+          "tail": [
+            "Success: no issues found in 2 source files"
+          ],
+          "testsRan": 0
+        }
+      },
+      "uv run ruff check --output-format concise": {
+        "baselineCapturedAt": "2026-09-23T20:47:31+00:00",
+        "comparison": {
+          "detail": "no new failure identity versus base; exit status alone never decides",
+          "newIdentities": [],
+          "verdict": "no-regression"
+        },
+        "head": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+        "planRevision": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+        "run": {
+          "command": "uv run ruff check --output-format concise",
+          "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/checkouts/check-checks-cli-4aa33cbccc81-bd6ae99c",
+          "elapsedSeconds": 1.05813537503127,
+          "errorClass": null,
+          "exitStatus": 0,
+          "failureIdentities": [],
+          "fingerprintLines": {
+            "f0d0b1081d9d3ebb": "All checks passed!"
+          },
+          "fingerprints": [
+            "f0d0b1081d9d3ebb"
+          ],
+          "logPath": null,
+          "normalizationVersion": 3,
+          "normalizedDigest": "sha256:d0d61cc76ecf660f211cfb5d1b7d86dfc110f9af1aabd1aa0e18cd39427dcb76",
+          "omittedLines": 0,
+          "outputDigest": "sha256:624bbc494fb35df400cb62ae5242c83e0f0b8ff7e177edc368eb5cfbd083f994",
+          "runner": "diagnostics",
+          "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+          "startedAt": "2026-09-23T20:49:54+00:00",
+          "tail": [
+            "Using CPython 3.14.7",
+            "Creating virtual environment at: .venv",
+            "Building unitkit @ file://<ROOT>",
+            "Built unitkit @ file://<ROOT>",
+            "Installed 13 packages in <TIME>",
+            "All checks passed!"
+          ],
+          "testsRan": 0
+        }
+      }
+    }
+  },
+  "credentialChecks": {
+    "checks-cli": {
+      "checked": [
+        "git ls-remote --exit-code origin HEAD",
+        "gh auth status"
+      ],
+      "failedCommand": null,
+      "gh_ok": true,
+      "git_ok": true,
+      "repair": null
+    }
+  },
+  "criterionPasses": {
+    "AC-1": {
+      "attemptId": "attempt-c9427177324f",
+      "command": "uv run pytest -q tests/test_length.py",
+      "repo": "checks-cli",
+      "requirementsRevision": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76",
+      "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+    },
+    "AC-2": {
+      "attemptId": "attempt-c9427177324f",
+      "command": "uv run pytest -q tests/test_length.py",
+      "repo": "checks-cli",
+      "requirementsRevision": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76",
+      "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+    },
+    "AC-3": {
+      "attemptId": "attempt-c9427177324f",
+      "command": "uv run pytest -q tests/test_length.py",
+      "repo": "checks-cli",
+      "requirementsRevision": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76",
+      "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+    },
+    "AC-4": {
+      "attemptId": "attempt-c9427177324f",
+      "command": "uv run pytest -q",
+      "repo": "checks-cli",
+      "requirementsRevision": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76",
+      "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+    }
+  },
+  "critic": {
+    "findings": [],
+    "inputsIdentity": "sha256:94ecbde1a4f0f67616dbce15b8d9c67bce9dd98858096f77b2afd84526d8025d",
+    "passes": 2,
+    "planRevision": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+    "stepId": "step-459b47e870ae"
+  },
+  "deliverAttempts": {},
+  "deliverPublished": {
+    "checks-cli": {
+      "acceptedRemote": null,
+      "at": "2026-09-23T20:52:16+00:00",
+      "attemptId": "attempt-ffdfb2145e4b",
+      "observed": false,
+      "pr": null,
+      "prAttemptId": null,
+      "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+    }
+  },
+  "environmentHealth": {
+    "checks-cli": {}
+  },
+  "execute": {
+    "handledRejections": [],
+    "handledRewinds": [],
+    "issues": [],
+    "repos": {
+      "checks-cli": {
+        "defaultHead": "f14c1b065847982e0e41dfec4799c466b50b969f",
+        "head": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+        "worktree": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/worktrees/feature/checks-cli"
+      }
+    },
+    "tasks": {
+      "T-1": {
+        "baseLayers": 0,
+        "branch": "task/add-yards-to-meters-yards-and-meters-to/T-1",
+        "commits": [
+          "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+        ],
+        "evidence": null,
+        "forkedFrom": "f14c1b065847982e0e41dfec4799c466b50b969f",
+        "generation": 0,
+        "implementSteps": [
+          "step-c932591225d8"
+        ],
+        "integratedFrom": "f14c1b065847982e0e41dfec4799c466b50b969f",
+        "integratedTo": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+        "plan": {
+          "criteria": [
+            "AC-1",
+            "AC-2",
+            "AC-3",
+            "AC-4"
+          ],
+          "dependsOn": [],
+          "featureAdded": null,
+          "files": [
+            "unitkit/length.py",
+            "tests/test_length.py"
+          ],
+          "mustFlip": false,
+          "repo": "checks-cli",
+          "title": "Add yards_to_meters and meters_to_yards with tests",
+          "verify": "uv run pytest -q tests/test_length.py"
+        },
+        "probes": {
+          "commentTells": [],
+          "docTells": [],
+          "duplication": [],
+          "failureTells": [],
+          "houseStyleCompare": [],
+          "indirection": {
+            "delta": 0,
+            "findings": [],
+            "layers": 0
+          },
+          "securitySignals": []
+        },
+        "reason": null,
+        "remediations": [],
+        "repo": "checks-cli",
+        "retries": 0,
+        "review": {
+          "findings": [],
+          "reviewedRange": {
+            "from": "f14c1b065847982e0e41dfec4799c466b50b969f",
+            "to": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+          },
+          "securityDispositions": [],
+          "verdict": "pass"
+        },
+        "reviewFrom": "f14c1b065847982e0e41dfec4799c466b50b969f",
+        "reviewSteps": [
+          "step-ecca49621c61"
+        ],
+        "status": "done",
+        "worktree": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/worktrees/T-1"
+      }
+    },
+    "waves": [
+      [
+        "T-1"
+      ]
+    ]
+  },
+  "executeCheckRuns": {
+    "T-1": {
+      "uv run mypy": {
+        "comparison": {
+          "detail": "no new failure identity versus base; exit status alone never decides",
+          "newIdentities": [],
+          "verdict": "no-regression"
+        },
+        "head": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+        "run": {
+          "command": "uv run mypy",
+          "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/worktrees/T-1",
+          "elapsedSeconds": 0.12457891704980284,
+          "errorClass": null,
+          "exitStatus": 0,
+          "failureIdentities": [],
+          "fingerprintLines": {
+            "115d386b567d3686": "Success: no issues found in 2 source files"
+          },
+          "fingerprints": [
+            "115d386b567d3686"
+          ],
+          "logPath": null,
+          "normalizationVersion": 3,
+          "normalizedDigest": "sha256:115d386b567d3686b1ff3e97429e2d4813021a66d446edef11aae44bbe144b00",
+          "omittedLines": 0,
+          "outputDigest": "sha256:f9b031e5c45aa702cd4fef028d465551cb20a2c4698e0913c7b00766b20ac4d8",
+          "runner": "diagnostics",
+          "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+          "startedAt": "2026-09-23T20:49:53+00:00",
+          "tail": [
+            "Success: no issues found in 2 source files"
+          ],
+          "testsRan": 0
+        }
+      },
+      "uv run ruff check --output-format concise": {
+        "comparison": {
+          "detail": "no new failure identity versus base; exit status alone never decides",
+          "newIdentities": [],
+          "verdict": "no-regression"
+        },
+        "head": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+        "run": {
+          "command": "uv run ruff check --output-format concise",
+          "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/worktrees/T-1",
+          "elapsedSeconds": 0.03537241701269522,
+          "errorClass": null,
+          "exitStatus": 0,
+          "failureIdentities": [],
+          "fingerprintLines": {
+            "f0d0b1081d9d3ebb": "All checks passed!"
+          },
+          "fingerprints": [
+            "f0d0b1081d9d3ebb"
+          ],
+          "logPath": null,
+          "normalizationVersion": 3,
+          "normalizedDigest": "sha256:f0d0b1081d9d3ebb26c4c93543053ecdc0a58998f22c071dc4ddb26021b57645",
+          "omittedLines": 0,
+          "outputDigest": "sha256:82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+          "runner": "diagnostics",
+          "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+          "startedAt": "2026-09-23T20:49:53+00:00",
+          "tail": [
+            "All checks passed!"
+          ],
+          "testsRan": 0
+        }
+      }
+    }
+  },
+  "executeRuns": {
+    "T-1": {
+      "comparison": {
+        "detail": "no new failure identity versus base; exit status alone never decides",
+        "newIdentities": [],
+        "verdict": "no-regression"
+      },
+      "run": {
+        "command": "uv run pytest -q tests/test_length.py",
+        "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/worktrees/T-1",
+        "elapsedSeconds": 0.17972679203376174,
+        "errorClass": null,
+        "exitStatus": 0,
+        "failureIdentities": [],
+        "fingerprintLines": {
+          "2ed23049e3341e6f": "<N> passed in <TIME>"
+        },
+        "fingerprints": [
+          "2ed23049e3341e6f"
+        ],
+        "logPath": null,
+        "normalizationVersion": 3,
+        "normalizedDigest": "sha256:a6e5ef2ec39f9dd1135015e55ca5d1416a9e6f5e9dc10d865d2e7116c28df9df",
+        "omittedLines": 0,
+        "outputDigest": "sha256:c4a9d6df9a4b4bb3d77bb4705551886b7a0446ab2005e2c6b734c882b5a3a812",
+        "runner": "pytest",
+        "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+        "startedAt": "2026-09-23T20:49:53+00:00",
+        "tail": [
+          ".... [100%]",
+          "<N> passed in <TIME>"
+        ],
+        "testsRan": 1
+      }
+    }
+  },
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterate": {
+    "boundShas": {
+      "checks-cli": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+    },
+    "inputs": {
+      "heads": {
+        "checks-cli": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+      },
+      "plan": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+      "requirements": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76",
+      "verifyAttempt": "attempt-c9427177324f"
+    },
+    "judge": {
+      "caveats": [],
+      "gaps": [],
+      "verdict": "met"
+    },
+    "judgeStep": "step-1c2080e5d19b",
+    "priorGaps": []
+  },
+  "ledger": {
+    "findings": [],
+    "reviewedRanges": [
+      {
+        "byStep": "step-d96778b2ec64",
+        "from": "f14c1b065847982e0e41dfec4799c466b50b969f",
+        "full": true,
+        "id": "range-dcfd0bd7fd1f",
+        "repo": "checks-cli",
+        "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+        "to": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+      }
+    ],
+    "reviews": []
+  },
+  "loopSpecVersion": "7.2.0",
+  "phase": {
+    "attemptId": null,
+    "blockedQuestionId": null,
+    "credentialsCheckedForAttempt": "attempt-ffdfb2145e4b",
+    "criticStepId": "step-459b47e870ae",
+    "criticStepIdentity": "sha256:94ecbde1a4f0f67616dbce15b8d9c67bce9dd98858096f77b2afd84526d8025d",
+    "criticStepRevision": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+    "current": "deliver",
+    "entry": "remediation",
+    "entryPayload": null,
+    "lastStepId": "step-1c2080e5d19b",
+    "pending": null,
+    "provisional": null,
+    "retries": 0
+  },
+  "products": {
+    "debug": null,
+    "deliver": {
+      "attemptId": "attempt-ffdfb2145e4b",
+      "boundTo": {
+        "plan": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+        "requirements": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76"
+      },
+      "evidenceLevel": "unattested",
+      "exit": "delivery blocked",
+      "inputsDigest": "sha256:dc2af394fc6d3b4a672409a73b92efc8356ede898e69ffc0601773177c56cb25",
+      "product": {
+        "boundTo": {
+          "plan": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+          "requirements": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76"
+        },
+        "exit": "delivery blocked",
+        "inputsDigest": "sha256:dc2af394fc6d3b4a672409a73b92efc8356ede898e69ffc0601773177c56cb25",
+        "repos": [
+          {
+            "caveats": [
+              "pushed 4aa33cbccc81 to feat/add-yards-to-meters-yards-and-meters-to; the PR step failed: gh pr list failed: none of the git remotes configured for this repository point to a known GitHub host. To tell gh about a new GitHub host, please use `gh auth login`",
+              "published: 4aa33cbccc81 (attempt attempt-ffdfb2145e4b)"
+            ],
+            "deliveredSha": null,
+            "pr": null,
+            "publishedSha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+            "repo": "checks-cli",
+            "state": "failed"
+          }
+        ]
+      },
+      "receivedAt": "2026-09-23T20:52:16+00:00"
+    },
+    "execute": {
+      "attemptId": "attempt-9fa6c7f3e2f7",
+      "boundTo": {
+        "plan": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+        "requirements": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76"
+      },
+      "evidenceLevel": "unattested",
+      "exit": "integrated",
+      "inputsDigest": "sha256:5ebdd19a55576334701caab9a11659330784887c86623cfb685a7ab3a92888e0",
+      "product": {
+        "boundTo": {
+          "plan": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+          "requirements": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76"
+        },
+        "exit": "integrated",
+        "heads": {
+          "checks-cli": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+        },
+        "inputsDigest": "sha256:5ebdd19a55576334701caab9a11659330784887c86623cfb685a7ab3a92888e0",
+        "issues": [],
+        "tasks": [
+          {
+            "commits": [
+              "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+            ],
+            "disposition": "done",
+            "evidence": null,
+            "id": "T-1",
+            "review": {
+              "findings": [],
+              "reviewedRange": {
+                "from": "f14c1b065847982e0e41dfec4799c466b50b969f",
+                "to": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+              },
+              "securityDispositions": [],
+              "verdict": "pass"
+            }
+          }
+        ]
+      },
+      "receivedAt": "2026-09-23T20:49:53+00:00"
+    },
+    "iterate": {
+      "attemptId": "attempt-c3756b8aa15e",
+      "boundTo": {
+        "plan": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+        "requirements": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76"
+      },
+      "evidenceLevel": "unattested",
+      "exit": "converged",
+      "inputsDigest": "sha256:045f447b87446c2b22582d396dada36149a6986d9cfc5799f5252c71b723be69",
+      "product": {
+        "boundShas": {
+          "checks-cli": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+        },
+        "boundTo": {
+          "plan": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+          "requirements": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76"
+        },
+        "caveats": [],
+        "exit": "converged",
+        "gaps": [],
+        "inputsDigest": "sha256:045f447b87446c2b22582d396dada36149a6986d9cfc5799f5252c71b723be69",
+        "verdict": "met"
+      },
+      "receivedAt": "2026-09-23T20:52:16+00:00"
+    },
+    "plan": {
+      "attemptId": "attempt-d699539443c7",
+      "boundTo": {
+        "plan": null,
+        "requirements": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76"
+      },
+      "evidenceLevel": "unattested",
+      "exit": "ready",
+      "inputsDigest": "sha256:ae50aae2372d1831206482da8255e3b6f17539f38faa2b7a542f474d4cb82290",
+      "product": {
+        "boundTo": {
+          "plan": null,
+          "requirements": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76"
+        },
+        "checks": [
+          {
+            "command": "uv run ruff check --output-format concise",
+            "repo": "checks-cli"
+          },
+          {
+            "command": "uv run mypy",
+            "repo": "checks-cli"
+          }
+        ],
+        "evidenceExceptions": [],
+        "existingCode": [
+          {
+            "cites": [
+              {
+                "lines": "1-8",
+                "path": "unitkit/length.py"
+              }
+            ],
+            "concept": "yard/meter length conversion",
+            "decision": "extend",
+            "reason": "unitkit/length.py holds feet_to_meters, the module's only length conversion; the yard conversions belong beside it, and no existing function converts yards or meters",
+            "repo": "checks-cli",
+            "tasks": [
+              "T-1"
+            ]
+          }
+        ],
+        "exit": "ready",
+        "inputsDigest": "sha256:ae50aae2372d1831206482da8255e3b6f17539f38faa2b7a542f474d4cb82290",
+        "prepare": null,
+        "tasks": [
+          {
+            "criteria": [
+              "AC-1",
+              "AC-2",
+              "AC-3",
+              "AC-4"
+            ],
+            "dependsOn": [],
+            "featureAdded": null,
+            "files": [
+              "unitkit/length.py",
+              "tests/test_length.py"
+            ],
+            "id": "T-1",
+            "mustFlip": false,
+            "repo": "checks-cli",
+            "title": "Add yards_to_meters and meters_to_yards with tests",
+            "verify": "uv run pytest -q tests/test_length.py"
+          }
+        ]
+      },
+      "receivedAt": "2026-09-23T20:48:35+00:00"
+    },
+    "spec": {
+      "attemptId": "attempt-9a62ef13f35d",
+      "boundTo": {
+        "plan": null,
+        "requirements": null
+      },
+      "evidenceLevel": "unattested",
+      "exit": "approved",
+      "inputsDigest": "sha256:255515614dd7a02ccfd6da926309d8bc1efa133847fb089e43ca44363900c353",
+      "product": {
+        "boundTo": {
+          "plan": null,
+          "requirements": null
+        },
+        "boundaries": [
+          "No change to the existing feet_to_meters function or its behavior.",
+          "No CLI, formatting, or rounding/precision handling beyond ordinary float arithmetic.",
+          "No new public modules; conversions live alongside the existing length conversion code."
+        ],
+        "criteria": [
+          {
+            "id": "AC-1",
+            "text": "yards_to_meters(1.0) returns 0.9144 (the exact international yard-to-meter factor)"
+          },
+          {
+            "id": "AC-2",
+            "text": "meters_to_yards(0.9144) returns 1.0"
+          },
+          {
+            "id": "AC-3",
+            "text": "meters_to_yards(yards_to_meters(x)) round-trips to x (within float tolerance) for a representative float x"
+          },
+          {
+            "id": "AC-4",
+            "text": "uv run pytest -q passes, including new tests covering yards_to_meters and meters_to_yards"
+          }
+        ],
+        "decisions": [
+          {
+            "id": "D-1",
+            "text": "Use 0.9144 meters per yard, the exact international yard definition, rather than an approximate or rounded factor."
+          },
+          {
+            "id": "D-2",
+            "text": "Add both functions to unitkit/length.py, matching the existing feet_to_meters function's location and style."
+          },
+          {
+            "id": "D-3",
+            "text": "Add corresponding tests to tests/test_length.py, matching the existing test file's conventions."
+          }
+        ],
+        "exit": "approved",
+        "goal": "unitkit exposes yards_to_meters(yards) and meters_to_yards(meters), each taking and returning a float, using the exact international yard conversion factor.",
+        "inputsDigest": "sha256:255515614dd7a02ccfd6da926309d8bc1efa133847fb089e43ca44363900c353",
+        "openQuestions": []
+      },
+      "receivedAt": "2026-09-23T20:45:40+00:00"
+    },
+    "verify": {
+      "attemptId": "attempt-c9427177324f",
+      "boundTo": {
+        "plan": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+        "requirements": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76"
+      },
+      "evidenceLevel": "unattested",
+      "exit": "passed",
+      "inputsDigest": "sha256:aa3cfd57e2286f23f264f46bd50dbc4726c6df7499fbc8341c09df6b59f2f55a",
+      "product": {
+        "boundTo": {
+          "plan": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+          "requirements": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76"
+        },
+        "exit": "passed",
+        "findings": [],
+        "inputsDigest": "sha256:aa3cfd57e2286f23f264f46bd50dbc4726c6df7499fbc8341c09df6b59f2f55a",
+        "remediationTasks": [],
+        "reviewedRanges": [
+          {
+            "from": "f14c1b065847982e0e41dfec4799c466b50b969f",
+            "full": true,
+            "repo": "checks-cli",
+            "to": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+          }
+        ],
+        "verdicts": [
+          {
+            "cause": null,
+            "criterion": "AC-1",
+            "evidence": {
+              "command": "uv run pytest -q tests/test_length.py",
+              "exitStatus": 0,
+              "failureIdentities": [],
+              "outputDigest": "sha256:c4a9d6df9a4b4bb3d77bb4705551886b7a0446ab2005e2c6b734c882b5a3a812",
+              "repo": "checks-cli",
+              "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+            },
+            "verdict": "pass"
+          },
+          {
+            "cause": null,
+            "criterion": "AC-2",
+            "evidence": {
+              "command": "uv run pytest -q tests/test_length.py",
+              "exitStatus": 0,
+              "failureIdentities": [],
+              "outputDigest": "sha256:c4a9d6df9a4b4bb3d77bb4705551886b7a0446ab2005e2c6b734c882b5a3a812",
+              "repo": "checks-cli",
+              "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+            },
+            "verdict": "pass"
+          },
+          {
+            "cause": null,
+            "criterion": "AC-3",
+            "evidence": {
+              "command": "uv run pytest -q tests/test_length.py",
+              "exitStatus": 0,
+              "failureIdentities": [],
+              "outputDigest": "sha256:c4a9d6df9a4b4bb3d77bb4705551886b7a0446ab2005e2c6b734c882b5a3a812",
+              "repo": "checks-cli",
+              "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+            },
+            "verdict": "pass"
+          },
+          {
+            "cause": null,
+            "criterion": "AC-4",
+            "evidence": {
+              "command": "uv run pytest -q",
+              "exitStatus": 0,
+              "failureIdentities": [],
+              "outputDigest": "sha256:c4a9d6df9a4b4bb3d77bb4705551886b7a0446ab2005e2c6b734c882b5a3a812",
+              "repo": "checks-cli",
+              "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+            },
+            "verdict": "pass"
+          }
+        ]
+      },
+      "receivedAt": "2026-09-23T20:51:44+00:00"
+    }
+  },
+  "questions": {
+    "answered": {
+      "question-be6f81e0a9a2": {
+        "answeredAt": "2026-09-23T20:45:40+00:00",
+        "attempt": "attempt-9a62ef13f35d",
+        "by": "policy",
+        "phase": "spec",
+        "scope": "run",
+        "value": "approve"
+      },
+      "question-beebbe9dcaee": {
+        "answeredAt": "2026-09-23T20:52:16+00:00",
+        "attempt": "attempt-ffdfb2145e4b",
+        "by": "policy",
+        "phase": "deliver",
+        "scope": "run",
+        "value": "stop"
+      }
+    },
+    "open": null,
+    "policy": "default",
+    "policyAnswered": [
+      "question-be6f81e0a9a2",
+      "question-beebbe9dcaee"
+    ],
+    "retired": [
+      "question-be6f81e0a9a2",
+      "question-beebbe9dcaee"
+    ]
+  },
+  "repos": {
+    "checks-cli": {
+      "baseSha": "f14c1b065847982e0e41dfec4799c466b50b969f",
+      "defaultBranch": "main",
+      "featureBranch": "feat/add-yards-to-meters-yards-and-meters-to",
+      "lastKnownHead": "f14c1b065847982e0e41dfec4799c466b50b969f",
+      "path": "/private/tmp/claude-501/-Users-aztechead-Projects-loop-spec/6e2f67fb-eafb-453e-83e3-f886b4b610cc/scratchpad/proj/checks-cli"
+    }
+  },
+  "request": {
+    "digest": "sha256:c2b2299d9f00cc38a5639fdfbd13d90997ff4abf21bffc9100cb2889a61b1aeb",
+    "text": "Add yards_to_meters(yards) and meters_to_yards(meters) conversions to unitkit, both taking and returning float, with tests; verified by uv run pytest -q."
+  },
+  "result": {
+    "classification": "escalated",
+    "path": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/result.json",
+    "writtenAt": "2026-09-23T20:52:17+00:00"
+  },
+  "revisions": {
+    "plan": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+    "requirements": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76"
+  },
+  "run": {
+    "createdAt": "2026-09-23T20:45:14+00:00",
+    "cycleType": "full",
+    "entry": "cycle",
+    "id": "run-ac46320fff16",
+    "repoId": "bb5ffda5c5eee554",
+    "slug": "add-yards-to-meters-yards-and-meters-to"
+  },
+  "schema": 1,
+  "steps": {
+    "open": [],
+    "quarantined": [],
+    "retired": [
+      "step-b182a2c8d28a",
+      "step-65c62212734c",
+      "step-3c795482c7eb",
+      "step-4da35e0f37a9",
+      "step-459b47e870ae",
+      "step-c932591225d8",
+      "step-ecca49621c61",
+      "step-760545211507",
+      "step-d96778b2ec64",
+      "step-1c2080e5d19b"
+    ],
+    "submissions": {
+      "step-1c2080e5d19b": {
+        "attestation": {
+          "ok": true,
+          "reason": "opening was the bootstrap; every line was read before any work"
+        },
+        "digest": "sha256:af031e40e78df312848680c9daf50d7044b7440cef09c2f5934fc71dd796b97c",
+        "dispatch": "step-1c2080e5d19b",
+        "evidenceLevel": "host-attested",
+        "submittedAt": "2026-09-23T20:52:16+00:00"
+      },
+      "step-3c795482c7eb": {
+        "attestation": {
+          "ok": true,
+          "reason": "opening was the bootstrap; every line was read before any work"
+        },
+        "digest": "sha256:b8adad3852f196db84ad05c2affa3855c7e15d1c9d24c62c8d32165e34a82c39",
+        "dispatch": "step-3c795482c7eb",
+        "evidenceLevel": "host-attested",
+        "submittedAt": "2026-09-23T20:47:07+00:00"
+      },
+      "step-459b47e870ae": {
+        "attestation": {
+          "ok": true,
+          "reason": "opening was the bootstrap; every line was read before any work"
+        },
+        "digest": "sha256:6e96a492bc9fa40d22212c5be0396a203f3dbd4916cf97ebe2f66b6d54fa4a9a",
+        "dispatch": "step-459b47e870ae",
+        "evidenceLevel": "host-attested",
+        "submittedAt": "2026-09-23T20:48:35+00:00"
+      },
+      "step-4da35e0f37a9": {
+        "attestation": null,
+        "digest": "sha256:5e682b7a8aa29f53e813a541b169a25811d926df84f6a455b28d630bfb1e4a6e",
+        "dispatch": null,
+        "evidenceLevel": "unattested",
+        "submittedAt": "2026-09-23T20:47:27+00:00"
+      },
+      "step-65c62212734c": {
+        "attestation": null,
+        "digest": "sha256:f36520de920a9fb002e763a12b5e01603dad4e7e2c2d4db8bc70affe198f3c73",
+        "dispatch": null,
+        "evidenceLevel": "unattested",
+        "submittedAt": "2026-09-23T20:45:58+00:00"
+      },
+      "step-760545211507": {
+        "attestation": {
+          "ok": true,
+          "reason": "opening was the bootstrap; every line was read before any work"
+        },
+        "digest": "sha256:3106e2b6e4557826084dbef58f73aa448abee37ad2912b680f76e69ffe642979",
+        "dispatch": "step-760545211507",
+        "evidenceLevel": "host-attested",
+        "submittedAt": "2026-09-23T20:50:48+00:00"
+      },
+      "step-b182a2c8d28a": {
+        "attestation": null,
+        "digest": "sha256:4df7e0fd6747c117e9af1dfd05596f8b4dce011c56bbe4267624a808f38bea41",
+        "dispatch": null,
+        "evidenceLevel": "unattested",
+        "submittedAt": "2026-09-23T20:45:40+00:00"
+      },
+      "step-c932591225d8": {
+        "attestation": {
+          "ok": true,
+          "reason": "opening was the bootstrap; every line was read before any work"
+        },
+        "digest": "sha256:0ae9584588df52310503c0ce8bdf889defcdddbd1373d6046c574f5eda1a78f9",
+        "dispatch": "step-c932591225d8",
+        "evidenceLevel": "host-attested",
+        "submittedAt": "2026-09-23T20:49:24+00:00"
+      },
+      "step-d96778b2ec64": {
+        "attestation": {
+          "ok": true,
+          "reason": "opening was the bootstrap; every line was read before any work"
+        },
+        "digest": "sha256:f4d2aed92d71f7ffb304f9792a455f02f8b4ed13390353da42c66d1c82cc07a5",
+        "dispatch": "step-d96778b2ec64",
+        "evidenceLevel": "host-attested",
+        "submittedAt": "2026-09-23T20:51:39+00:00"
+      },
+      "step-ecca49621c61": {
+        "attestation": {
+          "ok": true,
+          "reason": "opening was the bootstrap; every line was read before any work"
+        },
+        "digest": "sha256:f4d2aed92d71f7ffb304f9792a455f02f8b4ed13390353da42c66d1c82cc07a5",
+        "dispatch": "step-ecca49621c61",
+        "evidenceLevel": "host-attested",
+        "submittedAt": "2026-09-23T20:49:53+00:00"
+      }
+    }
+  },
+  "verify": {
+    "checkouts": {
+      "checks-cli": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/checkouts/verify-checks-cli-4aa33cbccc81-e3b0c442"
+    },
+    "handledRejections": [],
+    "heads": {
+      "checks-cli": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+    },
+    "inputs": {
+      "heads": {
+        "checks-cli": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+      },
+      "plan": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+      "requirements": "sha256:4d5dc0af4c023938ad06652e946b5b4e5f3b76f90544e6151a9cdf5f53943d76"
+    },
+    "pass": 1,
+    "pendingReviews": [],
+    "phase": "done",
+    "planRevision": "sha256:f732e01ef6b320e66c668ffa6726f327ae7804fe2ccdd99035043e0ae912c6f8",
+    "rangeProbes": {
+      "checks-cli": {
+        "commentTells": [],
+        "docTells": [],
+        "duplication": [],
+        "failureTells": [],
+        "houseStyleCompare": [],
+        "indirection": {
+          "delta": 0,
+          "findings": [],
+          "layers": 0
+        },
+        "securitySignals": []
+      }
+    },
+    "ranges": {
+      "checks-cli": {
+        "from": "f14c1b065847982e0e41dfec4799c466b50b969f",
+        "full": true,
+        "repo": "checks-cli",
+        "to": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+      }
+    },
+    "reason": null,
+    "reused": {},
+    "reviewerReasons": {},
+    "reviewerSteps": {
+      "checks-cli": "step-d96778b2ec64"
+    },
+    "reviewers": {
+      "checks-cli": {
+        "findings": [],
+        "reviewedRange": {
+          "from": "f14c1b065847982e0e41dfec4799c466b50b969f",
+          "to": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+        },
+        "securityDispositions": [],
+        "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+        "verdict": "pass"
+      }
+    },
+    "verifier": {
+      "intentGap": false,
+      "planGap": false,
+      "verdicts": [
+        {
+          "cause": null,
+          "criterion": "AC-1",
+          "evidence": {
+            "command": "uv run pytest -q tests/test_length.py",
+            "exitStatus": 0,
+            "failureIdentities": [],
+            "outputDigest": "sha256:c4a9d6df9a4b4bb3d77bb4705551886b7a0446ab2005e2c6b734c882b5a3a812",
+            "repo": "checks-cli",
+            "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+          },
+          "remediation": null,
+          "verdict": "pass"
+        },
+        {
+          "cause": null,
+          "criterion": "AC-2",
+          "evidence": {
+            "command": "uv run pytest -q tests/test_length.py",
+            "exitStatus": 0,
+            "failureIdentities": [],
+            "outputDigest": "sha256:c4a9d6df9a4b4bb3d77bb4705551886b7a0446ab2005e2c6b734c882b5a3a812",
+            "repo": "checks-cli",
+            "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+          },
+          "remediation": null,
+          "verdict": "pass"
+        },
+        {
+          "cause": null,
+          "criterion": "AC-3",
+          "evidence": {
+            "command": "uv run pytest -q tests/test_length.py",
+            "exitStatus": 0,
+            "failureIdentities": [],
+            "outputDigest": "sha256:c4a9d6df9a4b4bb3d77bb4705551886b7a0446ab2005e2c6b734c882b5a3a812",
+            "repo": "checks-cli",
+            "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+          },
+          "remediation": null,
+          "verdict": "pass"
+        },
+        {
+          "cause": null,
+          "criterion": "AC-4",
+          "evidence": {
+            "command": "uv run pytest -q",
+            "exitStatus": 0,
+            "failureIdentities": [],
+            "outputDigest": "sha256:c4a9d6df9a4b4bb3d77bb4705551886b7a0446ab2005e2c6b734c882b5a3a812",
+            "repo": "checks-cli",
+            "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+          },
+          "remediation": null,
+          "verdict": "pass"
+        }
+      ]
+    },
+    "verifierStep": "step-760545211507"
+  },
+  "verifyRuns": {
+    "AC-1": {
+      "matched": true,
+      "prepare": null,
+      "reason": "",
+      "repo": "checks-cli",
+      "rerun": {
+        "command": "uv run pytest -q tests/test_length.py",
+        "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/checkouts/verify-AC-1-4aa33cbccc81",
+        "elapsedSeconds": 1.1336872089887038,
+        "errorClass": null,
+        "exitStatus": 0,
+        "failureIdentities": [],
+        "fingerprintLines": {
+          "2ed23049e3341e6f": "<N> passed in <TIME>"
+        },
+        "fingerprints": [
+          "2ed23049e3341e6f"
+        ],
+        "logPath": null,
+        "normalizationVersion": 3,
+        "normalizedDigest": "sha256:b1cbbe19d64508479762c9459d38dbb20cee97cb8908a69d81cd594ef557369f",
+        "omittedLines": 0,
+        "outputDigest": "sha256:0904c348e0c0827d0dc396d5c7b5af30b847d65b5b999dc512aefef5264e2297",
+        "runner": "pytest",
+        "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+        "startedAt": "2026-09-23T20:51:39+00:00",
+        "tail": [
+          "Using CPython 3.14.7",
+          "Creating virtual environment at: .venv",
+          "Building unitkit @ file://<ROOT>",
+          "Built unitkit @ file://<ROOT>",
+          "Installed 13 packages in <TIME>",
+          ".... [100%]",
+          "<N> passed in <TIME>"
+        ],
+        "testsRan": 1
+      }
+    },
+    "AC-2": {
+      "matched": true,
+      "prepare": null,
+      "reason": "",
+      "repo": "checks-cli",
+      "rerun": {
+        "command": "uv run pytest -q tests/test_length.py",
+        "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/checkouts/verify-AC-2-4aa33cbccc81",
+        "elapsedSeconds": 1.010643416957464,
+        "errorClass": null,
+        "exitStatus": 0,
+        "failureIdentities": [],
+        "fingerprintLines": {
+          "2ed23049e3341e6f": "<N> passed in <TIME>"
+        },
+        "fingerprints": [
+          "2ed23049e3341e6f"
+        ],
+        "logPath": null,
+        "normalizationVersion": 3,
+        "normalizedDigest": "sha256:b1cbbe19d64508479762c9459d38dbb20cee97cb8908a69d81cd594ef557369f",
+        "omittedLines": 0,
+        "outputDigest": "sha256:ffdab08bb232e4013bd6d3cc430a782e8f62b594d5011356008dc47c8fc5debc",
+        "runner": "pytest",
+        "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+        "startedAt": "2026-09-23T20:51:40+00:00",
+        "tail": [
+          "Using CPython 3.14.7",
+          "Creating virtual environment at: .venv",
+          "Building unitkit @ file://<ROOT>",
+          "Built unitkit @ file://<ROOT>",
+          "Installed 13 packages in <TIME>",
+          ".... [100%]",
+          "<N> passed in <TIME>"
+        ],
+        "testsRan": 1
+      }
+    },
+    "AC-3": {
+      "matched": true,
+      "prepare": null,
+      "reason": "",
+      "repo": "checks-cli",
+      "rerun": {
+        "command": "uv run pytest -q tests/test_length.py",
+        "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/checkouts/verify-AC-3-4aa33cbccc81",
+        "elapsedSeconds": 1.038949167006649,
+        "errorClass": null,
+        "exitStatus": 0,
+        "failureIdentities": [],
+        "fingerprintLines": {
+          "2ed23049e3341e6f": "<N> passed in <TIME>"
+        },
+        "fingerprints": [
+          "2ed23049e3341e6f"
+        ],
+        "logPath": null,
+        "normalizationVersion": 3,
+        "normalizedDigest": "sha256:b1cbbe19d64508479762c9459d38dbb20cee97cb8908a69d81cd594ef557369f",
+        "omittedLines": 0,
+        "outputDigest": "sha256:65bf1f4c198b966fae2116c902c114cc599077fc1c4c2aa856bc45f47d319746",
+        "runner": "pytest",
+        "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+        "startedAt": "2026-09-23T20:51:42+00:00",
+        "tail": [
+          "Using CPython 3.14.7",
+          "Creating virtual environment at: .venv",
+          "Building unitkit @ file://<ROOT>",
+          "Built unitkit @ file://<ROOT>",
+          "Installed 13 packages in <TIME>",
+          ".... [100%]",
+          "<N> passed in <TIME>"
+        ],
+        "testsRan": 1
+      }
+    },
+    "AC-4": {
+      "matched": true,
+      "prepare": null,
+      "reason": "",
+      "repo": "checks-cli",
+      "rerun": {
+        "command": "uv run pytest -q",
+        "cwd": "/Users/aztechead/.claude/plugins/data/loop-spec-inline/bb5ffda5c5eee554/add-yards-to-meters-yards-and-meters-to/checkouts/verify-AC-4-4aa33cbccc81",
+        "elapsedSeconds": 0.9972436670213938,
+        "errorClass": null,
+        "exitStatus": 0,
+        "failureIdentities": [],
+        "fingerprintLines": {
+          "2ed23049e3341e6f": "<N> passed in <TIME>"
+        },
+        "fingerprints": [
+          "2ed23049e3341e6f"
+        ],
+        "logPath": null,
+        "normalizationVersion": 3,
+        "normalizedDigest": "sha256:b1cbbe19d64508479762c9459d38dbb20cee97cb8908a69d81cd594ef557369f",
+        "omittedLines": 0,
+        "outputDigest": "sha256:79b59d948e8c6376db967009b02554c36f52e395579f2f59a6d571c89c898c58",
+        "runner": "pytest",
+        "sha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+        "startedAt": "2026-09-23T20:51:43+00:00",
+        "tail": [
+          "Using CPython 3.14.7",
+          "Creating virtual environment at: .venv",
+          "Building unitkit @ file://<ROOT>",
+          "Built unitkit @ file://<ROOT>",
+          "Installed 13 packages in <TIME>",
+          ".... [100%]",
+          "<N> passed in <TIME>"
+        ],
+        "testsRan": 1
+      }
+    }
+  }
+}

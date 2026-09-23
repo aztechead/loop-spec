@@ -1,0 +1,93 @@
+{
+  "autonomous": true,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "feat/add-yards-to-meters-yards-and-meters-to",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": false,
+  "createdAt": "2026-09-23T20:45:14+00:00",
+  "cycleType": "full",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [
+          "pushed 4aa33cbccc81 to feat/add-yards-to-meters-yards-and-meters-to; the PR step failed: gh pr list failed: none of the git remotes configured for this repository point to a known GitHub host. To tell gh about a new GitHub host, please use `gh auth login`",
+          "published: 4aa33cbccc81 (attempt attempt-ffdfb2145e4b)"
+        ],
+        "deliveredSha": null,
+        "pr": null,
+        "publishedSha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+        "repo": "checks-cli",
+        "state": "failed"
+      }
+    ]
+  },
+  "eligibleTargets": [
+    {
+      "branch": "feat/add-yards-to-meters-yards-and-meters-to",
+      "targetSha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774"
+    }
+  ],
+  "feature_title": "Add yards_to_meters(yards) and meters_to_yards(meters) conversions to unitkit, both taking and returning float, with tests; verified by uv run pytest -q.",
+  "finishedAt": "2026-09-23T20:52:17+00:00",
+  "hostVersions": {
+    "claude": "2.1.281 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": false,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 0
+  },
+  "loopSpecVersion": "7.2.0",
+  "noChangeReason": null,
+  "outcome": "escalated",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [
+    "question-be6f81e0a9a2",
+    "question-beebbe9dcaee"
+  ],
+  "prUrl": null,
+  "prs": [],
+  "reason": "deliver paused; operator chose 'stop'",
+  "result": "escalated",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-ecca49621c61"
+    }
+  },
+  "rewinds": 0,
+  "schema": 1,
+  "slug": "add-yards-to-meters-yards-and-meters-to",
+  "status": "escalated",
+  "summary": "full escalated at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": "4aa33cbccc81500ba44e78c4e9f2d190f8b8f774",
+  "warnings": [],
+  "weakenedAssurance": [],
+  "workDelivered": false
+}

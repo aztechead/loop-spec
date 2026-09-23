@@ -1,0 +1,1 @@
+Add yards_to_meters(yards) and meters_to_yards(meters) conversions to unitkit, both taking and returning float, with tests; verified by uv run pytest -q.
