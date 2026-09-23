@@ -4,6 +4,12 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.0.7] - 2026-09-23
+
+- EXECUTE reviews a wave's ready tasks in one code-reviewer step (6.10's per-wave
+  review): the step returns one result per task, each applied as that task's own
+  review; a lone task and a close-out keep a review step of their own.
+
 ## [7.0.6] - 2026-09-23
 
 - LF-70: the planner keeps a test in the task of the code it tests and splits only
