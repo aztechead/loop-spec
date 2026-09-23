@@ -301,7 +301,8 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
 7. Loop back to step 1. EXECUTE runs no repository-wide suite of its own: every task's
    focused `verifyCommand` runs after any rebase and before publication, and the
    test/lint/typecheck comparison runs exactly once per cycle, at VERIFY Step 1.75,
-   against the fully integrated candidate.
+   against the fully integrated candidate. `LOOP_SPEC_INTEGRATE_REPO_CHECKS=1` adds the
+   project's lint and typecheck commands to each task's integration check.
 
 ## Agent dispatch convention
 

@@ -18,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/exit-gate-prelude.sh" "${1:-}"
 
 tasks="$feature_dir/tasks.json"
-extract="bash lib/plan-tasks.sh extract $docs/PLAN.md > $tasks"
+extract="bash $SCRIPT_DIR/plan-tasks.sh extract $docs/PLAN.md > $tasks"
 if [[ -f "$feature_dir/tasks.extract.err" ]]; then
   flag "[tasks] PLAN extraction failed; repair PLAN.md and rerun plan-tasks.sh extract before using the sidecar"
 fi

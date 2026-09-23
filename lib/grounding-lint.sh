@@ -15,6 +15,7 @@
 #
 # Exit codes: 0 all clear (prints 'grounding-lint: ok'), 1 any FLAG or bad invocation.
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 artifact="${1:-}"
 if [[ -z "$artifact" ]]; then
@@ -212,7 +213,7 @@ done < <(grep -oE 'EVID-[0-9]{3}' "$artifact" 2>/dev/null | sort -u)
 # ── Summary ──────────────────────────────────────────────────────────────────
 if [[ $flags -gt 0 ]]; then
   echo "grounding-lint: $flags FLAG(s) in $artifact. Fix: cite each load-bearing external fact" \
-       "via 'bash lib/evidence.sh add <ledger> \"<claim>\" \"<cmd>\" \"<output>\"' and add" \
+       "via 'bash $SCRIPT_DIR/evidence.sh add <ledger> \"<claim>\" \"<cmd>\" \"<output>\"' and add" \
        "'- EVID-NNN: text' to ## Grounding, or rewrite as '- ASSUMPTION: <claim> | verify: <cmd>'." >&2
   exit 1
 fi

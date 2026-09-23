@@ -28,7 +28,8 @@
 #   execute-step.sh integrate --feature-dir DIR --task ID
 #       Worktree mode: lib/integrate-task.sh with --cleanup. In-place mode: runs the task's
 #       verify command through lib/output-digest.sh, commits exactly task.files, and checks
-#       HEAD advanced. Either way a published task is marked done, task_end is emitted,
+#       HEAD advanced. LOOP_SPEC_INTEGRATE_REPO_CHECKS=1 appends the repository's lint and
+#       typecheck commands to the verify command. Either way a published task is marked done, task_end is emitted,
 #       and task-001 of a greenfield feature runs the command backfill.
 #       Prints {published, reason, detail, sha, blocked}.
 #   execute-step.sh add-files --feature-dir DIR --task ID <file...>
@@ -92,7 +93,7 @@ case "$role" in implementer|reviewer) ;; *) usage ;; esac
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
 prep="$feature_dir/dispatch/prepare.json"
-[[ -f "$prep" ]] || { echo "execute-step: $prep is missing; run lib/execute-prepare.sh first" >&2; exit 2; }
+[[ -f "$prep" ]] || { echo "execute-step: $prep is missing; run $SCRIPT_DIR/execute-prepare.sh first" >&2; exit 2; }
 fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 pget() { jq -r "$1" "$prep"; }
 slug="$(fget '.slug')"
@@ -101,7 +102,7 @@ sidecar="$feature_dir/tasks.json"
 # A cached preparation from another checkout is not authority to read or publish
 # that checkout's progress. Rebuild the packet before any task side effects.
 if [[ "$(pget '.sidecar')" != "$sidecar" ]]; then
-  echo "execute-step: prepared sidecar belongs to another feature location; rerun lib/execute-prepare.sh" >&2
+  echo "execute-step: prepared sidecar belongs to another feature location; rerun $SCRIPT_DIR/execute-prepare.sh" >&2
   exit 2
 fi
 # The dispatch list is the collapsed one (lib/task-batch.sh): a merged chain or batch
@@ -328,6 +329,16 @@ case "$cmd" in
       jq -cn --arg d "$command_error" '{published:false,reason:"invalid-verify-command",detail:$d,sha:null,blocked:"invalid-verify-command"}'
       exit 2
     }
+    # Opt-in because a base that already fails its linter would block every task. VERIFY
+    # found a lint closure bug, formatting, and a type error 15-25 minutes after the tasks
+    # that caused them (6.9.1 upstream report); lint and typecheck are fast next to a suite.
+    if [[ "${LOOP_SPEC_INTEGRATE_REPO_CHECKS:-0}" == 1 ]]; then
+      command_state="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -c --filter '{commands: .commands, workspace: .workspace}')" \
+        || { echo "execute-step: cannot read the repository commands for LOOP_SPEC_INTEGRATE_REPO_CHECKS" >&2; exit 2; }
+      repo_checks="$(jq -r --arg n "$repo_name" '(if $n == "" then .commands else ([.workspace.repos[]? | select(.name == $n) | .commands] | first) end) // {}
+        | [.lint, .typecheck] | map(select(type == "string" and length > 0)) | join(" && ")' <<<"$command_state")"
+      [[ -z "$repo_checks" ]] || verify_cmd="($verify_cmd) && $repo_checks"
+    fi
     if [[ "$(sget '.inPlace')" != "true" ]]; then
       worktree="$(sget '.worktree')"; branch="$(sget '.branch')"
       res="$(lib integrate-task --feature-root "$root" --feature-branch "feat/$slug" --task-worktree "$worktree" \

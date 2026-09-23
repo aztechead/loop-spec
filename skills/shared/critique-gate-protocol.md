@@ -117,8 +117,10 @@ the ceiling:
   directly when there is no spec-writer.)
 - `{answer: "close", reason, residue}`: the gate is closed with `--convergence cap-reached`,
   the open items are in `gate-logs/{gate}-residue.md`, and the phase proceeds to
-  `{next_step}` with the artifact as it stands. The residue goes nowhere else: not into
-  the artifact, not into the backlog, not to the user.
+  `{next_step}` with the artifact as it stands. Each residue item is also added to
+  feature.json `warnings`, so the PR body lists it under "Shipped with warnings" and a
+  reviewer checks any "already fixed" claim. It goes nowhere else: not into the
+  artifact, not into the backlog.
 
 A non-zero exit is a message on stderr (no open gate, a graph with no ceiling, a
 malformed override): relay it and stop.
@@ -139,7 +141,11 @@ harness resumes this turn on `TeammateIdle` from `challenger-1`, under `claude -
 well. Never AskUserQuestion as a wait. Hand the reply to
 `critique delta --reply -` (PLAN adds `--flags` with the re-run gate's FLAG lines): it
 writes the round's gate-log with the lint's `DROP` lines, counts the round, emits the
-event, and answers `{verified, survivors[]}`.
+event, and answers `{verified, survivors[]}`. Pass the challenger's reply verbatim:
+`delta` refuses (exit 1, no round counted) a reply with no line equal to the packet's
+`NONCE: <token>`, one with no `DELTA-VERIFIED:`/`DELTA-FINDINGS:` line, a second reply to
+the same packet, and a round past the ceiling. A second `revised` mints a new token, so
+re-dispatch the challenger on the new packet.
 
 - **`verified: true`**: the gate is already closed with `--convergence delta-verified`;
   proceed to `{next_step}`.

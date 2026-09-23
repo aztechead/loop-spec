@@ -452,6 +452,8 @@ run_suite "tests/execution-validation-coverage" "bash tests/execution-validation
 run_suite "tests/verification-grounding-coverage" "bash tests/verification-grounding-coverage.test.sh"
 run_suite "tests/prompt-normalize-coverage" "bash tests/prompt-normalize-coverage.test.sh"
 run_suite "tests/live-run-findings-coverage" "bash tests/live-run-findings-coverage.test.sh"
+run_suite "tests/lib-path-hints-coverage" "bash tests/lib-path-hints-coverage.test.sh"
+run_suite "lib/stuck-hint" "bash tests/lib/stuck-hint.test.sh"
 run_suite "tests/approach-selection-coverage" "bash tests/approach-selection-coverage.test.sh"
 run_suite "tests/configuration-coverage" "bash tests/configuration-coverage.test.sh"
 run_suite "tests/contract-strings"    "bash tests/contract-strings.test.sh"

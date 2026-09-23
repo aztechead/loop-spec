@@ -496,7 +496,8 @@ for directory in sorted(os.listdir(src_root)):
         "export LOOP_SPEC_SKILL_DIR=" + shlex.quote(os.path.join(src_root, source_name)),
         "export CLAUDE_SKILL_DIR=\"$LOOP_SPEC_SKILL_DIR\"",
         "[ -f \"${LOOP_SPEC_SKILL_DIR}/../../lib/harness.sh\" ] || {",
-        "  echo \"loop-spec: LOOP_SPEC_SKILL_DIR does not resolve lib/; re-run bash lib/codex-install.sh install\" >&2",
+        "  echo \"loop-spec: LOOP_SPEC_SKILL_DIR does not resolve lib/; re-run bash "
+        + shlex.quote(os.path.abspath(os.path.join(src_root, "..", "lib", "codex-install.sh"))) + " install\" >&2",
         "  exit 2",
         "}",
         "```",

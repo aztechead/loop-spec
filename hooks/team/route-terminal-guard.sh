@@ -96,20 +96,22 @@ if (( age_seconds > MAX_AGE_MIN * 60 )); then
 fi
 
 trace "deny" "$answer"
-cat >&2 <<'MESSAGE'
+# The message names commands the lead runs from the target repository, where lib/ is
+# the project's own; point them at this install's lib/.
+sed "s|{lib}|$(cd "$SCRIPT_DIR/../../lib" && pwd)|g" >&2 <<'MESSAGE'
 DENY: this autonomous run was routed but never published a terminal result, so
 .loop-spec/last-result.json does not exist. A headless caller gates success on that
 pointer and reads its absence as a failed run -- including when the work went fine.
 
 If the cycle has a phase left (feature.json.driverNext names it), publish nothing.
-Continue it: bash lib/cycle-driver.sh next --feature-dir <feature dir>
+Continue it: bash {lib}/cycle-driver.sh next --feature-dir <feature dir>
 --returned-from <that phase> --note "<what the phase produced>", then act on its
 answer. Three haiku leads ended their turn after EXECUTE and recorded "interrupted";
 the work was right and the run was not.
 
 Otherwise publish the result that matches what actually happened, then stop:
 
-  bash lib/cycle-result.sh write-terminal --result-root <repo root> \
+  bash {lib}/cycle-result.sh write-terminal --result-root <repo root> \
     --cycle-type <full|micro|debug> --status <status> --outcome <outcome> \
     --title "<title>" --converged <true|false> --summary "<what happened>"
 

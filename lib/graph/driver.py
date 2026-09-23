@@ -1509,7 +1509,16 @@ def cmd_next(argv):
         # edited after advanced to EXECUTE on the stale close (23 acceptance-lint flags
         # in PLAN.md, 6.6.2 live run). phase-exit.sh is idempotent (close_phase records a
         # phase once, commit_paths commits only a diff), so re-running is safe.
-        if returned != "deliver":
+        # VERIFY's pre-team remediate is the exception: verify-prepare queued the task and
+        # recorded the fail without a VERIFICATION.md, so the egress gates could only REDO
+        # on the missing artifact and the verify -> execute remediate edge was unreachable
+        # (6.9.1 upstream report, item 1). The agent path already ran phase-exit in
+        # verify-gate.sh, and VERIFY stays open either way.
+        cur = state(feature_dir)
+        verify_gates = [g for g in cur.get("gateHistory") or [] if isinstance(g, dict) and g.get("phase") == "verify"]
+        pre_team_remediate = returned == "verify" and bool(cur.get("pendingRemediationTasks")) and \
+            bool(verify_gates) and verify_gates[-1].get("result") == "fail"
+        if returned != "deliver" and not pre_team_remediate:
             exit_args = [returned, "--feature-dir", feature_dir]
             if returned == "iterate" and iterate_is_terminal(feature_dir):
                 exit_args.append("--terminal")
@@ -3415,6 +3424,47 @@ def _clear_pending_dispatch(argv):
             return
 
 
+def stuck_note(command, feature_dir, error):
+    """NOTE [stuck] on stderr when next/phase-begin keep answering on unchanged state."""
+    import stuck_hint
+    if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
+        return
+    feat = state(feature_dir)
+    ws = workspace_of(feat)
+    if ws is not None:
+        roots = [os.path.join(ws.get("root") or "", r.get("path") or "") for r in ws.get("repos") or []]
+    else:
+        top = run(["git", "-C", feature_dir, "rev-parse", "--show-toplevel"], quiet=True)
+        roots = [top.stdout.strip()] if top.returncode == 0 else []
+    if not roots:
+        return
+    latest = subprocess.run(["bash", str(GRAPH_DIR / "checkpoint.sh"), "latest", "--feature-dir", feature_dir],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True)
+    try:
+        node = json.loads(latest.stdout).get("node") or ""
+    except ValueError:
+        # An empty or torn ledger has no paused node to report.
+        node = ""
+    note = stuck_hint.observe(feature_dir, feat, roots, command, str(LIB_DIR / "cycle-driver.sh"),
+                              node if node.startswith("human.") else None, error)
+    if note:
+        # stderr: the first stdout line is the protocol line, and phase-begin's stdout is JSON.
+        print(note, file=sys.stderr)
+
+
+def observed(command, handler, argv):
+    """A failing call counts too: the same refusal every time is the same stall."""
+    # Resolved before the handler runs: cmd_next chdirs to the repository root.
+    feature_dir = os.path.realpath(argv[argv.index("--feature-dir") + 1]) if "--feature-dir" in argv[:-1] else ""
+    try:
+        rc = handler(argv)
+    except Die as die:
+        stuck_note(command, feature_dir, die.message or "exit %d" % die.code)
+        raise
+    stuck_note(command, feature_dir, None)
+    return rc
+
+
 def main(argv):
     _clear_pending_dispatch(argv)
     if not argv:
@@ -3440,6 +3490,8 @@ def main(argv):
     }
     if command not in handlers:
         usage()
+    if command in ("next", "phase-begin"):
+        return observed(command, handlers[command], rest)
     return handlers[command](rest)
 
 

@@ -106,9 +106,9 @@ Handle the first line of `ans` using these rules. Stop when the selected rule re
   and act on that answer with the same list.
 - `REDO phase=<p> flags=<n>` followed by `FLAG ...` lines — `next` ran the phase's exit
   gates (`lib/phase-exit.sh`) and the artifact is not ready.
-  Follow the same instruction snapshot again with the FLAG lines.
-  The phase fixes its artifact in place and returns.
+  Follow the same instruction snapshot again with the FLAG lines; the phase fixes its artifact in place and returns.
   Then call `next --returned-from <p>` again. Phase skills never run the exit themselves.
+- `NOTE [stuck] ... Next: <command>` (stderr): repeated calls changed nothing; run that command instead.
 - `HANDOFF next=<p> model=<m>` or `REWIND next=<p>` — the driver saved the next phase and closed this phase. Print
   `LOOP_SPEC_HANDOFF {"slug":..,"next":"<p>","model":"<m>"}` and stop. The caller
   re-invokes `/loop-spec:cycle`, and that invocation enters `<p>` with
