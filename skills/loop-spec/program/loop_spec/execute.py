@@ -462,7 +462,7 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
     task_head = repo_module.branch_sha(worktree, task_state["branch"])
     result_path = _result_path(paths, plan_task["id"], "review", len(task_state["reviewSteps"]) + 1)
 
-    diff = repo_module.run_git(worktree, "diff", f"{review_from}..{task_head}")
+    diff = repo_module.review_diff(worktree, f"{review_from}..{task_head}")
     if len(diff) > _DIFF_CAP:
         diff = diff[:_DIFF_CAP] + "\n...(truncated)"
 

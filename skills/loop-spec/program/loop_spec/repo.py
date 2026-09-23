@@ -35,6 +35,24 @@ def run_git(repo: Path, *args: str) -> str:
     return proc.stdout
 
 
+# Package-manager lockfiles: generated, often most of a diff's bytes (uv.lock was 90%
+# of every review prompt's diff in the 7.0.3 timing runs), and never reviewed line by
+# line. A review diff names them by --stat instead of carrying their content.
+LOCKFILES = ("uv.lock", "poetry.lock", "Pipfile.lock", "pdm.lock", "package-lock.json", "yarn.lock",
+             "pnpm-lock.yaml", "bun.lockb", "Cargo.lock", "go.sum", "Gemfile.lock", "composer.lock")
+
+
+def review_diff(repo: Path, rev_range: str) -> str:
+    """`git diff <rev_range>` for a prompt: lockfile content left out, each changed
+    lockfile named in a trailing `--stat` block so a reviewer still sees it moved."""
+    excludes = [f":(exclude,glob)**/{name}" for name in LOCKFILES]
+    diff = run_git(repo, "diff", rev_range, "--", ".", *excludes)
+    stat = run_git(repo, "diff", "--stat", rev_range, "--", *[f":(glob)**/{name}" for name in LOCKFILES])
+    if stat.strip():
+        diff += "\n# lockfile changes (content omitted):\n" + stat
+    return diff
+
+
 def exclude_path(repo_path: Path, relative: str) -> None:
     """Add `relative` to this repo's own, never-committed exclude file, once.
     `--git-path` (not a hardcoded `.git/info/exclude`) resolves to the shared

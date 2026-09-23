@@ -212,6 +212,10 @@ on such a task refuses the run.
 | V8 | a finding on cleared code carries a typed `supersedes` naming a finding id or a reviewed-range id; a finding that repeats an open ledger finding by its id, in the same repo and file, is carried forward and needs no `supersedes`; repeating a closed finding is an echo the product drops; reopening one is a new finding with an explicit `supersedes` | every exit |
 | V9 | `blocked` for an offline-unavailable dependency was claimed only after a stand-in was tried | `blocked` |
 
+A full diff (V7) is the whole reviewed range. Every diff a review, judge or revise
+step receives leaves out package-manager lockfile content (`repo.LOCKFILES`) and
+names each changed lockfile in a trailing `--stat` block.
+
 | Exit | Requires | Route |
 |---|---|---|
 | `passed` | V1 to V5, V7, V8 | ITERATE |

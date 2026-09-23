@@ -271,7 +271,7 @@ def _reviewer_request(store, paths, ctx, verify_state: dict, repo_name: str) -> 
     result_path = paths.results_dir / f"verify-{ctx['attempt']['id']}-reviewer-{repo_name}.json"
 
     range_ = verify_state["ranges"][repo_name]
-    diff = repo_module.run_git(repo_path, "diff", f"{range_['from']}..{range_['to']}")
+    diff = repo_module.review_diff(repo_path, f"{range_['from']}..{range_['to']}")
     if len(diff) > _DIFF_CAP:
         diff = diff[:_DIFF_CAP] + "\n...(truncated)"
 

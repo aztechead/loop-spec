@@ -65,7 +65,7 @@ def _reviser_request(store, paths, ctx) -> dict:
     ensure_results_dir(paths)
     result_path = paths.results_dir / f"revise-{ctx['attempt']['id']}.json"
 
-    diff = repo_module.run_git(repo_path, "diff", f"{base_sha}..{head_sha}")
+    diff = repo_module.review_diff(repo_path, f"{base_sha}..{head_sha}")
     if len(diff) > _DIFF_CAP:
         diff = diff[:_DIFF_CAP] + "\n...(truncated)"
 

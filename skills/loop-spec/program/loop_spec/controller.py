@@ -1397,7 +1397,7 @@ def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: 
         # LF-60: a refused adopted review's checkout is quarantined, never reused.
         checkout = paths.checkouts_dir / f"adopted-{adoption['headSha'][:12]}-{attempt_id}"
     repo_module.clean_checkout(repo_path, adoption["headSha"], checkout)
-    diff = repo_module.run_git(repo_path, "diff", f"{adoption['baseSha']}..{adoption['headSha']}")
+    diff = repo_module.review_diff(repo_path, f"{adoption['baseSha']}..{adoption['headSha']}")
     if len(diff) > _ADOPTED_REVIEW_DIFF_CAP:
         diff = diff[:_ADOPTED_REVIEW_DIFF_CAP] + "\n...(truncated)"
 

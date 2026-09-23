@@ -42,6 +42,28 @@ def _commit(cwd, filename, message):
     _git(cwd, "commit", "-q", "-m", message)
 
 
+class ReviewDiffTests(unittest.TestCase):
+    def test_lockfile_content_is_named_not_carried(self):
+        from loop_spec.repo import review_diff
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _init_repo(repo)
+            _commit(repo, "README", "init")
+            base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+            (repo / "app.py").write_text("x = 1\n")
+            (repo / "uv.lock").write_text("LOCKCONTENT\n" * 50)
+            (repo / "web").mkdir()
+            (repo / "web" / "package-lock.json").write_text("NESTEDLOCK\n")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-q", "-m", "change")
+            diff = review_diff(repo, f"{base}..HEAD")
+        self.assertIn("+x = 1", diff)
+        self.assertNotIn("LOCKCONTENT", diff)
+        self.assertNotIn("NESTEDLOCK", diff)
+        self.assertIn("uv.lock", diff)
+        self.assertIn("web/package-lock.json", diff)
+
+
 class DetectWorkspaceTests(unittest.TestCase):
     def test_single(self):
         with tempfile.TemporaryDirectory() as tmp:

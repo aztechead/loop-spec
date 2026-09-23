@@ -46,7 +46,7 @@ def _judge_request(store, paths, ctx, heads: dict[str, str]) -> dict:
     diff_inputs = {}
     for name in sorted(touched):
         repo_info = store.state["repos"][name]
-        diff = repo_module.run_git(Path(repo_info["path"]), "diff", f"{repo_info['baseSha']}..{heads[name]}")
+        diff = repo_module.review_diff(Path(repo_info["path"]), f"{repo_info['baseSha']}..{heads[name]}")
         if len(diff) > _DIFF_CAP:
             diff = diff[:_DIFF_CAP] + "\n...(truncated)"
         diff_inputs["diff" if len(store.state["repos"]) == 1 else f"diff:{name}"] = diff
