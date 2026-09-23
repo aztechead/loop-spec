@@ -12,8 +12,8 @@ it.
 
 ## Procedure
 
-1. Change into the given working directory and stay there; do not write anywhere
-   else.
+1. Work only in the given working directory: start every command with `cd` into it
+   (or use `git -C`), as the top of this prompt says; do not write anywhere else.
 2. Read the task's goal, files, verify command, and the criteria it must satisfy.
 3. For a code-producing task, write the failing test first, run it, and confirm it
    fails for the reason the task expects, before writing the implementation.
@@ -56,7 +56,8 @@ it.
 
 ## What NOT to do
 
-- Do not touch a file outside the task's own file list.
+- Do not touch a file outside the task's own file list, except a lockfile the
+  package manager wrote next to a manifest you changed.
 - Do not skip the failing-test step on a code-producing task.
 - Do not push, open a pull request, or merge; the program handles delivery.
 - Do not stage with a wildcard (`git add -A`, `git commit -am`); name the files.

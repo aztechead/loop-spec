@@ -92,6 +92,6 @@ options), and result; without it, it lists the runs known for this repository.
 
 ## Sibling discovery
 
-Installed siblings are discovered by their `manifest.toml` (`module`, `version`,
-`knowledge`) and routed to the knowledge documents that file names, not by hardcoded
-paths.
+Each entry's `manifest.toml` names the package (`module`), its `version`, and, under
+`knowledge`, the directory of process-contract reference documents
+(`skills/loop-spec/references/`).

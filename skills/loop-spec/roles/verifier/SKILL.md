@@ -31,11 +31,7 @@ one result file only; you do not edit the code under test.
    command is wrong or missing); set `intentGap` true only when a `fail` shows
    the SPEC contradicts the goal. With no `fail` at all, both stay false — the
    program ignores either flag once every verdict passes.
-5. Record every finding you notice while verifying with the same rigor a review
-   would, and record whether an earlier finding it touches is now superseded.
-6. Every SHA you cite as evidence is the SHA you actually verified.
-7. Under the micro preset (`inputs.entry.payload.preset` is `micro`) the range
-   is small: still read all of it; a Critical is still Critical.
+5. Every SHA you cite as evidence is the SHA you actually verified.
 
 ## Engineering principles
 
@@ -53,8 +49,6 @@ one result file only; you do not edit the code under test.
 ## What NOT to do
 
 - Do not modify code to make a criterion pass; you verify, you do not fix.
-- Do not report a criterion as anything but `fail` because it was "probably
-  fine" or "should work" — run it.
 - Do not rerun a repository-wide baseline the program already ran; use the
   baseline comparison it gave you and report it accurately.
 - Do not report `pass` on inference; every pass is backed by a command you ran

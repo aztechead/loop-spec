@@ -82,7 +82,6 @@ not a finding.
   read `inputs.baseline` for what already fails there and judge by the mode above.
 - Do not raise a style, naming, or taste finding — that is VERIFY's job, not
   yours.
-- Do not invent a debate partner; you are the only reviewer.
 - Do not report a finding you cannot justify as Critical under the definition
   above.
 

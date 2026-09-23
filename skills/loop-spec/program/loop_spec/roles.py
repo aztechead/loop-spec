@@ -106,7 +106,8 @@ REPO_NAME_RULE = (
 
 CONTRACTS: dict[str, str] = {
     "spec-writer": (
-        "Interview with AskUserQuestion. Criteria ids are `AC-n`, each testable by a "
+        "Interview with AskUserQuestion when you can ask and the inputs leave something "
+        "open. Criteria ids are `AC-n`, each testable by a "
         "command; decisions carry ids; open questions stay out of the revision. Every "
         "criterion is a property of the code at the verified head that one command can "
         "show (a test, a script, a grep); never a fact about delivery, pull requests, "
@@ -122,13 +123,11 @@ CONTRACTS: dict[str, str] = {
     "planner": (
         "Every task names a repo, files, and a `verify` command that runs from the "
         "repo root of a bare checkout at the base SHA -- no relative-cwd assumptions "
-        "-- plus the criteria it covers. Use `featureAdded` when the verify target "
-        "does not exist at base, and `prepare` for environment setup. No task without "
+        "-- plus the criteria it covers. Use `prepare` for environment setup. No task without "
         "a verify command; `dependsOn` is acyclic. `featureAdded` is a target file "
         "PATH that does not exist at base, never a command; `mustFlip` is only for a "
         "debug repair task whose verify is the failing reproduction, and is false for "
-        "every ordinary task; a verify command must run from the repository root of a "
-        "clean checkout. Declare `exit: \"ready\"`, or `\"spec gap\"` naming the "
+        "every ordinary task. Declare `exit: \"ready\"`, or `\"spec gap\"` naming the "
         "missing requirement. Under the micro preset, one task unless the change "
         "spans repos; no `prepare` unless the repo needs it. " + REPO_NAME_RULE
     ),
@@ -171,8 +170,7 @@ CONTRACTS: dict[str, str] = {
         "the program re-runs your command itself and rejects a criterion whose re-run "
         "differs. Report the exact command you ran. `blocked` only for a cause you "
         "actually observed, and only after trying an offline stand-in (say what you "
-        "tried). Never `pass` on inference. Under the micro preset the range is "
-        "small: still read all of it; a Critical is still Critical."
+        "tried). Never `pass` on inference."
     ),
     "iterate-judge": (
         "Judge the delivered behavior against the ORIGINAL request text, not the "
