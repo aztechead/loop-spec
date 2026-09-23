@@ -172,6 +172,7 @@ variables. They configure that published recipe, not plugin internals:
 | `LOOP_SPEC_CMD_TEST` | shell command; detected | Pins the project test command and wins over auto-detection in every mode. An explicitly empty value disables the test slot. |
 | `LOOP_SPEC_CMD_LINT` | shell command; detected | Pins the project lint command and wins over auto-detection in every mode. An explicitly empty value disables the lint slot. |
 | `LOOP_SPEC_CMD_TYPECHECK` | shell command; detected | Pins the project typecheck command and wins over auto-detection in every mode. An explicitly empty value disables the typecheck slot. |
+| `LOOP_SPEC_INTEGRATE_REPO_CHECKS` | `0`/`1`; `0` | `1` appends the project's lint and typecheck commands to every task's verify command at integration, so EXECUTE catches what VERIFY's comparison would find later. Leave it off when the base branch already fails its linter: every task would be refused. |
 | `LOOP_SPEC_CMD_*` | shell command; detected | Reserved command-family namespace. Only command names consumed by the installed release have an effect; unknown suffixes are ignored. |
 | `LOOP_SPEC_REGRESSION_SCAN` | `0`/`1`; `0` | `1` adds VERIFY’s advisory prior-feature regression scan. |
 | `LOOP_SPEC_RALPH_THRESHOLD` | positive integer; `3` | Consecutive no-progress VERIFY remediation rounds before escalation. |

@@ -1509,7 +1509,16 @@ def cmd_next(argv):
         # edited after advanced to EXECUTE on the stale close (23 acceptance-lint flags
         # in PLAN.md, 6.6.2 live run). phase-exit.sh is idempotent (close_phase records a
         # phase once, commit_paths commits only a diff), so re-running is safe.
-        if returned != "deliver":
+        # VERIFY's pre-team remediate is the exception: verify-prepare queued the task and
+        # recorded the fail without a VERIFICATION.md, so the egress gates could only REDO
+        # on the missing artifact and the verify -> execute remediate edge was unreachable
+        # (6.9.1 upstream report, item 1). The agent path already ran phase-exit in
+        # verify-gate.sh, and VERIFY stays open either way.
+        cur = state(feature_dir)
+        verify_gates = [g for g in cur.get("gateHistory") or [] if isinstance(g, dict) and g.get("phase") == "verify"]
+        pre_team_remediate = returned == "verify" and bool(cur.get("pendingRemediationTasks")) and \
+            bool(verify_gates) and verify_gates[-1].get("result") == "fail"
+        if returned != "deliver" and not pre_team_remediate:
             exit_args = [returned, "--feature-dir", feature_dir]
             if returned == "iterate" and iterate_is_terminal(feature_dir):
                 exit_args.append("--terminal")

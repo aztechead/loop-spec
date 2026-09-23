@@ -108,6 +108,14 @@ check "verdict rework: next attempt is counted" "2" "$(jq -r '.nextAttempt' <<<"
 out="$(bash "$STEP" verdict --feature-dir "$FD" --task task-001 --verdict rework --attempt 4)"
 check "verdict rework late: fresh upgrade" "fresh-upgrade" "$(jq -r '.action' <<<"$out")"
 
+# opt-in repository checks: the repo's lint runs with the task's verify command. The
+# failing lint stays set through the next integrate, which proves it is off by default.
+printf 'print(2)\n' > "$ROOT/a.py"
+lint_before="$(jq -c '.commands.lint // ""' "$FD/feature.json")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands.lint '"echo lint-says-no; exit 1"' >/dev/null
+ec=0; out="$(LOOP_SPEC_INTEGRATE_REPO_CHECKS=1 bash "$STEP" integrate --feature-dir "$FD" --task task-001 2>/dev/null)" || ec=$?
+check "repo checks on: a failing lint refuses integration" "verify-failed" "$(jq -r '.reason' <<<"$out")"
+
 # the implementer edits a.py in place, then the lead integrates
 printf 'print(2)\n' > "$ROOT/a.py"
 ec=0; out="$(bash "$STEP" integrate --feature-dir "$FD" --task task-001 2>/dev/null)" || ec=$?
@@ -117,6 +125,7 @@ check "integrate in place: the commit names the task" "1" "$(git -C "$ROOT" log 
 check "integrate in place: marked done" "task-001" "$(bash "$REPO_ROOT/lib/task-progress.sh" done "$FD/tasks.json")"
 check "integrate in place: task_end merged" "1" "$(grep -c '"result":"merged"' "$FD/events.jsonl")"
 check "integrate in place: verify log kept" "1" "$([[ -f "$FD/logs/verify-task-001.log" ]] && echo 1 || echo 0)"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands.lint "$lint_before" >/dev/null
 
 # a task whose implementer changed nothing
 bash "$STEP" dispatch --feature-dir "$FD" --task task-002 >/dev/null

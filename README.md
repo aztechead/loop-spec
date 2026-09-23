@@ -4,7 +4,7 @@ Spec-driven development loops for [Claude Code](https://claude.com/claude-code),
 
 Use this guide to install loop-spec, start a cycle, and find its operating reference.
 
-Current version: 6.10.0
+Current version: 6.11.0
 
 ## Contents
 
@@ -227,6 +227,7 @@ Common knobs:
 | `LOOP_SPEC_MAX_FEATURES` | `1` | Backlog / sentinel batch size (L1+ for sentinel) |
 | `LOOP_SPEC_CHECKPOINT_PR` | on | `0` disables draft checkpoint PRs |
 | `LOOP_SPEC_CMD_TEST` (and `LOOP_SPEC_CMD_*`) | detected | Pin test/lint/typecheck/prepare commands |
+| `LOOP_SPEC_INTEGRATE_REPO_CHECKS` | `0` | `1` = run the project's lint and typecheck with every task's integration check |
 | `LOOP_SPEC_HARNESS` | detected | Force `claude`, `opencode`, `adk`, or `codex` |
 | `LOOP_SPEC_ADK_AGENT_DIR` | unset | Mounted ADK agent directory (written by `lib/adk-install.sh`) |
 | `CODEX_HOME` | `~/.codex` | Codex config tree used by `lib/codex-install.sh` when `--project` is omitted |

@@ -22,25 +22,29 @@ module.loader.exec_module(driver)
 from review_routes import findings, validate
 from spec_intent import intent_digest
 
+def new_repo(temp):
+    """A committed app.py and empty feature/docs dirs; returns (root, git, base, feature, docs)."""
+    root = Path(temp)
+    env = dict(os.environ, GIT_AUTHOR_NAME="Test", GIT_AUTHOR_EMAIL="test@example.com",
+               GIT_COMMITTER_NAME="Test", GIT_COMMITTER_EMAIL="test@example.com")
+    os.environ.update({k: v for k, v in env.items() if k.startswith("GIT_")})
+    def git(*args):
+        return subprocess.check_output(["git"] + list(args), cwd=temp, env=env, text=True).strip()
+    git("init", "-q")
+    (root / "app.py").write_text("value = 1\n")
+    git("add", "app.py")
+    git("commit", "-qm", "base")
+    feature = root / ".loop-spec/features/demo"
+    docs = root / "docs/loop-spec/features/demo"
+    feature.mkdir(parents=True)
+    docs.mkdir(parents=True)
+    return root, git, git("rev-parse", "HEAD"), feature, docs
+
 for route, phase in (("bad-spec", "verify"), ("intent-gap", "verify"),
                      ("patch", "verify"), ("defer", "verify"), ("bad-spec", "oneshot")):
     with tempfile.TemporaryDirectory() as temp:
-        root = Path(temp)
-        env = dict(os.environ, GIT_AUTHOR_NAME="Test", GIT_AUTHOR_EMAIL="test@example.com",
-                   GIT_COMMITTER_NAME="Test", GIT_COMMITTER_EMAIL="test@example.com")
-        os.environ.update({k: v for k, v in env.items() if k.startswith("GIT_")})
-        def git(*args):
-            return subprocess.check_output(["git"] + list(args), cwd=temp, env=env, text=True).strip()
-        git("init", "-q")
+        root, git, base, feature, docs = new_repo(temp)
         app = root / "app.py"
-        app.write_text("value = 1\n")
-        git("add", "app.py")
-        git("commit", "-qm", "base")
-        base = git("rev-parse", "HEAD")
-        feature = root / ".loop-spec/features/demo"
-        docs = root / "docs/loop-spec/features/demo"
-        feature.mkdir(parents=True)
-        docs.mkdir(parents=True)
         spec = docs / "SPEC.md"
         text = "---\nroute: full\nunresolved_questions: []\n---\n# Demo\n## Goals\nReturn values.\n## Boundaries (what NOT to do)\nOnly this command.\n## Constraints\nUse helper A.\n"
         if phase == "oneshot":
@@ -131,6 +135,34 @@ for route, phase in (("bad-spec", "verify"), ("intent-gap", "verify"),
         else:
             assert result is None and git("rev-parse", "HEAD") == fix
         print("PASS: review route " + route + " from " + phase)
+
+# A pre-team remediate (verify-prepare queued the task, recorded the acceptance fail, and
+# wrote no VERIFICATION.md) must reach EXECUTE, not REDO on the missing artifact: the
+# 6.9.1 upstream run looped in VERIFY for 30 minutes on exactly this return.
+with tempfile.TemporaryDirectory() as temp:
+    root, git, base, feature, docs = new_repo(temp)
+    text = "---\nroute: full\nunresolved_questions: []\n---\n# Demo\n## Goals\nReturn values.\n## Boundaries (what NOT to do)\nOnly this command.\n"
+    (docs / "SPEC.md").write_text(text)
+    git("add", "docs")
+    git("commit", "-qm", "spec")
+    state = {"slug":"demo", "feature_title":"Demo", "schemaVersion":7,
+             "branch":git("branch", "--show-current"), "baseBranch":"main", "baseSha":base,
+             "currentPhase":"verify", "execStyle":"auto", "autonomous":True, "artifacts":{}, "commands":{},
+             "specApproval":{"sha256":intent_digest(text), "source":"autonomous"},
+             "completedPhases":["spec", "plan", "execute"], "warnings":[],
+             "iterate":{"used":0,"maxIterations":10}, "mergeQueue":[],
+             "pendingRemediationTasks":[{"id":"task-verify-suite-1","subject":"Fix the repository-wide suite regression",
+                                         "files":[],"verifyCommand":"","acceptanceCriteria":["x"],"blockedBy":[],"retries":0}],
+             "gateHistory":[{"phase":"verify","gate":"acceptance","attempt":1,"result":"fail","rounds":1,
+                             "convergence":"scan","findingsAddressed":[],"notes":[]}]}
+    (feature / "feature.json").write_text(json.dumps(state))
+    code, entered = driver.graph_step(str(feature), "")
+    assert code == 0 and entered["node"] == "verify", entered
+    assert not (docs / "VERIFICATION.md").exists()
+    driver.instruction_record(str(feature), "verify")
+    answer = driver.capture(driver.cmd_next, ["--feature-dir", str(feature), "--returned-from", "verify"])
+    assert answer.startswith("REWIND next=execute"), answer
+print("PASS: a pre-team remediate returns from VERIFY to EXECUTE without VERIFICATION.md")
 
 for invalid in ({"route":"bad-spec","cause":"x","section":"Goals","replacement":"different"},
                 {"route":"patch","cause":"x","surface":"public","fixCommit":"1234567"},

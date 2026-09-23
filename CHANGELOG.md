@@ -4,6 +4,45 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.11.0] - 2026-09-23
+
+Fixes from a 6.9.1 upstream report: a headless run stayed in VERIFY for 30 minutes
+because a pre-team suite regression could not reach EXECUTE.
+
+### Fixed
+
+- VERIFY's pre-team remediate now reaches EXECUTE. `verify-prepare` queues the
+  remediation task and records the acceptance fail without writing VERIFICATION.md,
+  and `next --returned-from verify` used to REDO on that missing artifact on every
+  return. With a queued task and a failed verify gate, the driver now skips the exit
+  gates and answers `REWIND next=execute`. The verify skill says to return after
+  `route=remediate`.
+- A suite-regression task created without a verification baseline now lists the
+  failing commands and their failure lines as acceptance criteria. Before, it only
+  said "pass as before the change".
+- `critique delta` rejects a reply unless its first line is the packet's
+  `NONCE: <token>`, and rejects a reply with no `DELTA-VERIFIED:` or
+  `DELTA-FINDINGS:` line. It also rejects a second reply to the same packet and any
+  round past the ceiling. `critique revised` puts a new token in each delta packet.
+  A lead could previously submit its own text, and a revised/delta loop that skipped
+  `fail` ran three rounds on a ceiling of one.
+- Findings left open when a critique closes at its ceiling are added to
+  feature.json `warnings`, so the PR body lists them under "Shipped with warnings".
+  Before, they were written only to the residue file, which nothing read.
+
+### Added
+
+- `phase-begin verify` stores its result. A repeat call on the same clean HEADs,
+  commands, baseline, and mode returns that result with `cached: true`. It does not
+  re-run the suite or record another gate entry, and it re-queues only tasks that are
+  no longer queued. An escalate result is never stored.
+- `LOOP_SPEC_INTEGRATE_REPO_CHECKS=1` adds the project's lint and typecheck commands
+  to each task's integration check, so EXECUTE catches lint and type errors that
+  VERIFY would otherwise find later. It is off by default.
+- VERIFY guidance: to check whether a failure predates the change, use a temporary
+  worktree at the merge base, never `git stash`. Never run a gate under `env -i`.
+  RULES.md: a `check:` command runs from the target repository root.
+
 ## [6.10.0] - 2026-09-23
 
 PLAN no longer writes PATTERNS.md. The planner now looks up existing code inside

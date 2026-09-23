@@ -100,10 +100,18 @@ check "revised returns a delta packet" "1" "$(jq -r '.promptFile' <<<"$out" | gr
 check "delta packet omits first-pass findings section" "1" "$(grep -c 'Delta re-verify pass' "$(jq -r '.promptFile' <<<"$out")")"
 check "delta packet omits whole-artifact read" "1" "$([[ "$(grep -Fc 'Read the artifact at' "$(jq -r '.promptFile' <<<"$out")")" == 0 ]] && echo 1 || echo 0)"
 check "resume returns the persisted packet" "1" "$(bash "$STEP" resume --feature-dir "$FD" | jq -r '.promptFile' | grep -c 'round-2-prompt.md$')"
+# Only the challenger that read the packet can echo its token (6.9.1: a lead passed its own text).
+nonce() { printf 'NONCE: %s\n' "$(jq -r '.nonce' "$FD/gate-logs/plan-critique-state.json")"; }
+check "delta packet carries the nonce line, unchanged by resume" "1" "$(grep -Fxc "$(nonce)" "$(jq -r '.promptFile' <<<"$out")")"
+rc=0; printf 'DELTA-VERIFIED: fixed already\n' | bash "$STEP" delta --feature-dir "$FD" --reply - >/dev/null 2>&1 || rc=$?
+check "delta refuses a reply without the nonce" "1" "$rc"
+rc=0; { nonce; printf 'The fixes are already in the artifact.\n'; } | bash "$STEP" delta --feature-dir "$FD" --reply - >/dev/null 2>&1 || rc=$?
+check "delta refuses a reply with no DELTA header" "1" "$rc"
+check "a refused reply spends no round" "1" "$(feat '.currentGate.round')"
 
 # --- delta with survivors: unaddressed kept, out-of-scope dropped, FLAG added ---
 printf 'FLAG [feasibility] task-002 has no verifyCommand\n' > "$WORK/flags.txt"
-out="$(printf 'DELTA-FINDINGS:\n1. unaddressed: 1 - the budget is named but never enforced\n2. [major] Gap: T2 has no schema\n' \
+out="$({ nonce; printf 'DELTA-FINDINGS:\n1. unaddressed: 1 - the budget is named but never enforced\n2. [major] Gap: T2 has no schema\n'; } \
   | bash "$STEP" delta --feature-dir "$FD" --reply - --flags "$WORK/flags.txt")"
 check "delta counts round 2" "2" "$(jq -r '.round' <<<"$out")"
 check "delta is not verified with survivors" "false" "$(jq -r '.verified' <<<"$out")"
@@ -111,6 +119,13 @@ check "delta keeps the unaddressed line and the FLAG, drops the first-pass findi
 check "delta survivors carry the FLAG line" "1" "$(jq -r '.survivors[]' <<<"$out" | grep -c '^FLAG \[feasibility\]')"
 check "delta gate-log carries the DROP line" "1" "$(grep -c 'out-of-scope' "$FD/gate-logs/plan-critique-round-2.md")"
 check "delta with survivors keeps the gate open" "plan-critique" "$(feat '.currentGate.gate')"
+survivors="$out"
+rc=0; { nonce; printf 'DELTA-VERIFIED: x\n'; } | bash "$STEP" delta --feature-dir "$FD" --reply - >/dev/null 2>&1 || rc=$?
+check "a spent nonce is refused" "1" "$rc"
+bash "$STEP" revised --feature-dir "$FD" >/dev/null
+rc=0; { nonce; printf 'DELTA-VERIFIED: x\n'; } | bash "$STEP" delta --feature-dir "$FD" --reply - >/dev/null 2>&1 || rc=$?
+check "delta refuses a round past the ceiling" "1:2" "$rc:$(feat '.currentGate.round')"
+out="$survivors"
 
 # --- fail -> close at the ceiling ---
 out="$(jq -r '.survivors[]' <<<"$out" | bash "$STEP" fail --feature-dir "$FD" --fix-list -)"
@@ -118,6 +133,7 @@ check "second fail closes at the ceiling" "close" "$(jq -r '.answer' <<<"$out")"
 check "close names the ceiling" "1" "$(jq -r '.reason' <<<"$out" | grep -c 'ceiling')"
 check "close writes the residue file" "1" "$(grep -c '^- unaddressed: 1' "$FD/gate-logs/plan-critique-residue.md")"
 check "close appends the cap-reached pass entry" "cap-reached" "$(feat '.gateHistory[-1].convergence')"
+check "close puts each residue item in the warnings" "2" "$(jq '[.warnings[] | select(startswith("critique-ceiling (plan plan-critique): unresolved: "))] | length' "$FD/feature.json")"
 check "close resets the gate" "null" "$(feat '.currentGate.phase')"
 
 # --- a clean delta passes by itself ---
@@ -129,7 +145,7 @@ printf '[major] Gap: no schema\n' | bash "$STEP" fail --feature-dir "$FD" --fix-
 printf '# Plan\n\n## Tasks\n\n- T1: add the endpoint with a retry budget of 3\n- T2: write the CSV with the schema in lib/schema.py\n' > "$ART"
 append_tasks
 bash "$STEP" revised --feature-dir "$FD" >/dev/null
-out="$(printf 'DELTA-VERIFIED: both addressed\n' | bash "$STEP" delta --feature-dir "$FD" --reply -)"
+out="$({ nonce; printf 'DELTA-VERIFIED: both addressed\n'; } | bash "$STEP" delta --feature-dir "$FD" --reply -)"
 check "verified delta answers verified" "true" "$(jq -r '.verified' <<<"$out")"
 check "verified delta appends the delta-verified pass entry" "delta-verified" "$(feat '.gateHistory[-1].convergence')"
 check "verified delta closes the gate" "null" "$(feat '.currentGate.phase')"

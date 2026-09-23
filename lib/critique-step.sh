@@ -28,12 +28,16 @@
 #       edit in directly. Otherwise appends the fail entry and asks the probe. rerun:
 #       prints {answer: "rerun", reason, fixList} with fixList numbered for the author.
 #       close: writes gate-logs/<gate>-residue.md, appends the cap-reached pass entry,
+#       adds each item to feature.json warnings (the PR body's "Shipped with warnings"),
 #       and prints {answer: "close", reason, residue}.
 #   critique-step.sh revised  --feature-dir DIR
 #       After the author's revision: diffs the snapshot against the artifact into
 #       gate-logs/<gate>-delta.diff. Prints {diffPath, changed, lines, fixList}; the diff
-#       stays in the file for the challenger to Read, never in the lead's context.
+#       stays in the file for the challenger to Read, never in the lead's context. Mints
+#       a fresh nonce into the delta packet; a reply to an older packet no longer passes.
 #   critique-step.sh delta    --feature-dir DIR --reply <path|-> [--flags <path>]
+#       Refuses a reply whose first line is not the packet's `NONCE: <token>` or that
+#       has no DELTA-VERIFIED:/DELTA-FINDINGS: line, and a round past the ceiling.
 #       Round N: writes the delta gate-log, counts the round, emits gate_round, runs
 #       lib/delta-findings-lint.sh over the reply (DROP lines land in the gate-log),
 #       and adds every non-empty line of --flags (a re-run mechanical gate's FLAG lines)
@@ -82,7 +86,8 @@ slurp() {
 stdin_tmp=""
 packet_tmp=""
 structure_tasks=""
-trap '[[ -z "$structure_tasks" ]] || rm -f "$structure_tasks"; [[ -n "$stdin_tmp" ]] && rm -f "$stdin_tmp"; [[ -n "$packet_tmp" ]] && rm -f "$packet_tmp"' EXIT
+reply_body=""
+trap '[[ -z "$reply_body" ]] || rm -f "$reply_body"; [[ -z "$structure_tasks" ]] || rm -f "$structure_tasks"; [[ -n "$stdin_tmp" ]] && rm -f "$stdin_tmp"; [[ -n "$packet_tmp" ]] && rm -f "$packet_tmp"' EXIT
 
 # The open gate and the artifact it guards; every step after open reads both here.
 load_state() {
@@ -141,6 +146,15 @@ prompt_packet() {
       --slug "$slug" --phase "$phase" --artifact "$artifact" --spec "$spec_path" --evidence "$evidence_path" --diff "$delta_diff" \
       --fix-list "$fixlist" --transport "$transport" --output "$destination" \
       || die "could not render immutable critique packet: $destination"
+    # `delta` accepted any text as the reply, and a 6.9.1 lead submitted its own; only the
+    # challenger that read this packet can echo the token.
+    local nonce
+    nonce="$(jq -r '.nonce // empty' "$state")"
+    if [[ -z "$nonce" ]]; then
+      nonce="$(python3 -c 'import secrets; print(secrets.token_hex(8))')"
+      jq --arg n "$nonce" '.nonce=$n' "$state" > "$state.tmp" && mv "$state.tmp" "$state" || die "cannot record the delta nonce in $state"
+    fi
+    printf '\nBegin your reply with this exact line, before the DELTA-VERIFIED: or DELTA-FINDINGS: report:\n\nNONCE: %s\n' "$nonce" >> "$destination"
   else
     python3 "$SCRIPT_DIR/critique_prompt.py" --template "$template" --kind "$kind" \
       --slug "$slug" --phase "$phase" --artifact "$artifact" --spec "$spec_path" --evidence "$evidence_path" \
@@ -235,6 +249,10 @@ case "$cmd" in
       # majors still open and nothing said so at the phase boundary. Name the count
       # and the residue path so an operator sees what shipped unresolved.
       echo "NOTE [critique] $(jq 'length' <<<"$items") finding(s) unresolved at the ceiling: $residue" >&2
+      # The residue file was write-only, so "already fixed in the artifact" went unchecked
+      # to the PR (6.9.1 upstream report); a warning puts each item in front of the reviewer.
+      while IFS= read -r w; do lib feature-write append "$feature_dir" warnings "$w" >/dev/null || exit 1
+      done < <(jq -c --arg p "$phase $gate_name" '.[] | "critique-ceiling (\($p)): unresolved: \(.)"' <<<"$items")
       jq -n --arg r "$reason" --arg p "$residue" '{answer:"close", reason:$r, residue:$p}'
     fi
     ;;
@@ -249,6 +267,7 @@ case "$cmd" in
       [.gateHistory[]? | select(.phase == $p and .gate == $g and .result == "fail")] | last
       | (.findingsAddressed // []) | to_entries[] | "\(.key + 1). \(.value)"' -- --arg p "$phase" --arg g "$gate_name")"
     prompt_file="$logs/$gate_name-round-$((round + 1))-prompt.md"
+    jq '.nonce=null' "$state" > "$state.tmp" && mv "$state.tmp" "$state"
     prompt_packet delta "$prompt_file"
     jq --arg p "$prompt_file" '.promptFile=$p | .kind="delta"' "$state" > "$state.tmp" && mv "$state.tmp" "$state"
     jq -n --arg d "$delta_diff" --argjson c "$changed" --argjson n "$(wc -l < "$delta_diff")" --arg f "$fixlist" --arg p "$prompt_file" \
@@ -257,7 +276,21 @@ case "$cmd" in
   delta)
     load_state; [[ -n "$reply" ]] || usage; src="$(slurp "$reply")"
     [[ -f "$delta_diff" ]] || die "$delta_diff missing: run 'revised' before the delta brief goes out"
+    nonce="$(jq -r '.nonce // empty' "$state")"
+    [[ -n "$nonce" ]] || die "no delta packet is outstanding; run 'revised' and dispatch the challenger on its packet"
+    [[ "$(sed '/^[[:space:]]*$/d' "$src" | head -1)" == "NONCE: $nonce" ]] \
+      || die "the reply does not start with the packet's 'NONCE: <token>' line; pass the challenger's reply verbatim, never the lead's own text"
+    grep -qE '^[[:space:]]*(DELTA-VERIFIED|DELTA-FINDINGS):' "$src" \
+      || die "the reply has no DELTA-VERIFIED: or DELTA-FINDINGS: line; pass the challenger's report verbatim"
+    # The budget was enforced only in `fail`, so a revised-delta loop that skipped it ran
+    # three rounds on a ceiling of one (6.9.1 upstream report).
+    answer="$(gate next --feature-dir "$feature_dir")" || exit 1
+    [[ "$answer" != ANSWER=close* ]] || die "no delta round left (${answer#*REASON=}); call 'fail' with the open findings to close the gate"
     n="$(gate round --feature-dir "$feature_dir")" || exit 1
+    jq '.nonce=null' "$state" > "$state.tmp" && mv "$state.tmp" "$state"
+    reply_body="$(mktemp "${TMPDIR:-/tmp}/critique-step-reply.XXXXXX")"
+    grep -vFx "NONCE: $nonce" "$src" > "$reply_body" || true
+    src="$reply_body"
     log="$logs/$gate_name-round-$n.md"
     { printf '# %s Round %s (delta re-verify)\n\n## challenger-1\n' "$gate_name" "$n"; cat "$src"; } > "$log"
     lint_err="$(mktemp "${TMPDIR:-/tmp}/critique-step-lint.XXXXXX")"

@@ -28,7 +28,8 @@
 #   execute-step.sh integrate --feature-dir DIR --task ID
 #       Worktree mode: lib/integrate-task.sh with --cleanup. In-place mode: runs the task's
 #       verify command through lib/output-digest.sh, commits exactly task.files, and checks
-#       HEAD advanced. Either way a published task is marked done, task_end is emitted,
+#       HEAD advanced. LOOP_SPEC_INTEGRATE_REPO_CHECKS=1 appends the repository's lint and
+#       typecheck commands to the verify command. Either way a published task is marked done, task_end is emitted,
 #       and task-001 of a greenfield feature runs the command backfill.
 #       Prints {published, reason, detail, sha, blocked}.
 #   execute-step.sh add-files --feature-dir DIR --task ID <file...>
@@ -328,6 +329,16 @@ case "$cmd" in
       jq -cn --arg d "$command_error" '{published:false,reason:"invalid-verify-command",detail:$d,sha:null,blocked:"invalid-verify-command"}'
       exit 2
     }
+    # Opt-in because a base that already fails its linter would block every task. VERIFY
+    # found a lint closure bug, formatting, and a type error 15-25 minutes after the tasks
+    # that caused them (6.9.1 upstream report); lint and typecheck are fast next to a suite.
+    if [[ "${LOOP_SPEC_INTEGRATE_REPO_CHECKS:-0}" == 1 ]]; then
+      command_state="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -c --filter '{commands: .commands, workspace: .workspace}')" \
+        || { echo "execute-step: cannot read the repository commands for LOOP_SPEC_INTEGRATE_REPO_CHECKS" >&2; exit 2; }
+      repo_checks="$(jq -r --arg n "$repo_name" '(if $n == "" then .commands else ([.workspace.repos[]? | select(.name == $n) | .commands] | first) end) // {}
+        | [.lint, .typecheck] | map(select(type == "string" and length > 0)) | join(" && ")' <<<"$command_state")"
+      [[ -z "$repo_checks" ]] || verify_cmd="($verify_cmd) && $repo_checks"
+    fi
     if [[ "$(sget '.inPlace')" != "true" ]]; then
       worktree="$(sget '.worktree')"; branch="$(sget '.branch')"
       res="$(lib integrate-task --feature-root "$root" --feature-branch "feat/$slug" --task-worktree "$worktree" \

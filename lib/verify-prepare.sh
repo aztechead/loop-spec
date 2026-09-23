@@ -22,6 +22,10 @@
 # to pendingRemediationTasks[], the acceptance gate records a fail entry through
 # lib/graph/gate.sh, a verify_failure event is emitted, and the team fields are cleared.
 #
+# A repeat call on the same clean HEADs, commands, baseline, and mode replays the stored
+# answer with cached:true: no scan or suite re-runs and no second gate entry; only tasks
+# missing from the queue are re-queued. An escalate answer is never stored.
+#
 # Exit: 0 continue; 1 remediate; 21 escalate (infrastructure); 2 bad invocation.
 set -euo pipefail
 
@@ -42,6 +46,33 @@ mode="$(python3 -c '
 import json, re, sys
 print(json.dumps({m.group(1): m.group(2) for m in re.finditer(r"(\w+)=(.*?)(?=\s+\w+=|$)", sys.argv[1].strip())}))' "$mode_line")"
 want() { [[ "$(jq -r --arg k "$1" '.[$k] // "run"' <<<"$mode")" == "run" ]]; }
+
+# The suite takes minutes, and the 6.9.1 upstream run called this eight times in 25
+# minutes, four on an unchanged tree, each appending another acceptance fail. The
+# comparison already refuses a dirty tree, so clean HEADs plus what shapes the answer
+# are the whole key; a dirty tree gets no key and runs as before.
+top="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null || true)"
+cache=""; key=""
+if [[ -n "$top" ]]; then
+  cache="$(git -C "$top" rev-parse --git-path "loop-spec/validation/$(fget '.slug')/verify-prepare.json")"
+  [[ "$cache" == /* ]] || cache="$top/$cache"
+  key="$({ fget '[.commands, .verificationBaseline, .workspace] | tojson'
+           printf '%s\n' "$mode_line" "${LOOP_SPEC_INTEGRATION_CANDIDATE:-}"
+           while IFS= read -r r; do
+             [[ -z "$(git -C "$r" status --porcelain 2>/dev/null)" ]] || exit 1
+             git -C "$r" rev-parse HEAD
+           done < <(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter \
+             'if .workspace == null then $top else (.workspace.root as $w | .workspace.repos[] | $w + "/" + .path) end' -- --arg top "$top")
+         } | git hash-object --stdin)" || key=""
+fi
+if [[ -n "$key" && -f "$cache" ]] && jq -e --arg k "$key" '.key == $k' "$cache" >/dev/null 2>&1; then
+  out="$(jq -c '.output | .cached = true' "$cache")"
+  queued="$(fget '.pendingRemediationTasks // [] | tojson')"
+  while IFS= read -r t; do [[ -n "$t" ]] && lib feature-write append "$feature_dir" pendingRemediationTasks "$t" >/dev/null
+  done < <(jq -c --argjson q "$queued" '($q | map(.id)) as $ids | .remediationTasks[] | select(.id as $id | $ids | index($id) | not)' <<<"$out")
+  printf '%s\n' "$out"
+  exit "$(jq -r '.exit' "$cache")"
+fi
 
 scan() {
   # scan NAME SCRIPT -> {ran, ok, signals[]}; signals are the scan's "file:line: signal" lines.
@@ -86,8 +117,12 @@ elif [[ "$(jq -r '.rc' <<<"$validation")" == "20" ]]; then
   route=remediate; class=suite-regression
   # The added lines are what the comparison counts as a regression; without them the
   # implementer could only fix every pre-existing failure or delete tests (6.9.0 run).
-  added="$(jq -c '[.result.targets[]?.comparison.commands[]?.addedLines[]?] | .[:10]
-    | map("this failure no longer appears: " + .)' <<<"$validation")"
+  # With no baseline every failing line is new, and the comparison carries no addedLines,
+  # so the failing commands and their fingerprint lines stand in (6.9.1 upstream report).
+  added="$(jq -c '[.result.targets[]?.comparison // empty
+      | if .baselineMissing then (.commands[]? | select(.status == "fail")
+          | ("`" + .command + "` exits 0"), ((.fingerprintLines // {})[] | "this failure no longer appears: " + .))
+        else (.commands[]?.addedLines[]? | "this failure no longer appears: " + .) end] | .[:10]' <<<"$validation")"
   tasks="$(jq -cn --argjson t "$(task task-verify-suite-1 "Fix the repository-wide suite regression" "the repository-wide test, lint, and typecheck commands pass as before the change")" \
     --argjson added "$added" '[$t | .acceptanceCriteria += $added]')"
 fi
@@ -102,7 +137,14 @@ if [[ "$route" == "remediate" ]]; then
   lib feature-write set "$feature_dir" currentTeamName null >/dev/null; lib feature-write set "$feature_dir" currentTeammates '[]' >/dev/null
 fi
 
-jq -cn --argjson m "$mode" --argjson p "$placeholder" --argjson t "$tamper" --argjson v "$validation" --argjson r "$regression" \
+out="$(jq -cn --argjson m "$mode" --argjson p "$placeholder" --argjson t "$tamper" --argjson v "$validation" --argjson r "$regression" \
   --arg route "$route" --argjson class "$( [[ "$class" == null ]] && echo null || jq -Rn --arg c "$class" '$c' )" --argjson tasks "$tasks" \
-  '{mode:$m, placeholder:$p, tamper:$t, validation:$v, regression:$r, route:$route, class:$class, remediationTasks:$tasks}'
-case "$route" in continue) exit 0 ;; remediate) exit 1 ;; escalate) exit 21 ;; esac
+  '{mode:$m, placeholder:$p, tamper:$t, validation:$v, regression:$r, route:$route, class:$class, remediationTasks:$tasks, cached:false}')"
+case "$route" in continue) rc=0 ;; remediate) rc=1 ;; escalate) rc=21 ;; esac
+# An infrastructure failure can clear without a commit, so only a verdict is replayed.
+if [[ -n "$key" && "$route" != escalate ]]; then
+  mkdir -p "$(dirname "$cache")" && jq -cn --arg k "$key" --argjson o "$out" --argjson e "$rc" '{key:$k, output:$o, exit:$e}' > "$cache" \
+    || echo "verify-prepare: could not store the result at $cache; the next call re-runs the suite" >&2
+fi
+printf '%s\n' "$out"
+exit "$rc"

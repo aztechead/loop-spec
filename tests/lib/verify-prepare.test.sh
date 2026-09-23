@@ -73,6 +73,28 @@ check "suite-regression: the task names the added failure line" \
   "suite-regression:this failure no longer appears: $new_failure" \
   "$(jq -r '"\(.class):\(.remediationTasks[0].acceptanceCriteria[-1])"' <<<"$out")"
 
+# --- no baseline: the failing command and its lines are the criteria ------------------
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" verificationBaseline null >/dev/null
+out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
+check "no baseline: the task names the failing command" "true" \
+  "$(jq -r --arg c "\`$red_test\` exits 0" '.remediationTasks[0].acceptanceCriteria | index($c) != null' <<<"$out")"
+check "no baseline: the task names the failing line" "true" \
+  "$(jq -r --arg c "this failure no longer appears: $new_failure" '.remediationTasks[0].acceptanceCriteria | index($c) != null' <<<"$out")"
+
+# --- a repeat call on the same clean tree replays instead of re-running -----------------
+fails="$(jq '[.gateHistory[] | select(.phase == "verify" and .result == "fail")] | length' "$FD/feature.json")"
+queued="$(jq '.pendingRemediationTasks | length' "$FD/feature.json")"
+ec=0; again="$(bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)" || ec=$?
+check "replay: the answer is marked cached" "true" "$(jq -r '.cached' <<<"$again")"
+check "replay: the route and exit are the stored ones" "remediate:1" "$(jq -r '.route' <<<"$again"):$ec"
+check "replay: no second acceptance fail" "$fails" "$(jq '[.gateHistory[] | select(.phase == "verify" and .result == "fail")] | length' "$FD/feature.json")"
+check "replay: no duplicate task" "$queued" "$(jq '.pendingRemediationTasks | length' "$FD/feature.json")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks '[]' >/dev/null
+bash "$SCRIPT" run --feature-dir "$FD" >/dev/null 2>&1
+check "replay: a consumed task is queued again" "task-verify-suite-1" "$(jq -r '.pendingRemediationTasks[0].id' "$FD/feature.json")"
+git -C "$REPO" commit -q --allow-empty -m "chore: new head"
+check "replay: a new HEAD re-runs" "false" "$(bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null | jq -r '.cached')"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1
