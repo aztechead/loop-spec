@@ -4,6 +4,40 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.4.0] - 2026-09-24
+
+The four follow-ups from 7.3.0, plus per-role effort for dispatched workers.
+
+- PLAN reads an adopted PR's code at the PR head. The planner, plan critic and reviser
+  get each repo's `startSha` (the PR head when a run continues a PR, else the base)
+  beside `baseSha`, where the baseline, `featureAdded` and repo checks still run. A
+  micro run naming a PR that already had the function planned "Add square(x)"; it now
+  plans an edit to the existing one.
+- A second `revise --pr <n>` after a finished round starts a new run, `revise-<n>-2`,
+  instead of returning the old result and never reading the new comments. The reviser
+  gets the latest finished run's products, and each comment's `createdAt` with a cutoff
+  at the prior revise run's start. A revise run now fetches its comments on its first
+  step, so a `gh` failure there leaves a run that the next `revise --pr` resumes.
+- The core reads phase products, never a plug-in's state (D4). EXECUTE publishes each
+  task's step ids and security signals and each issue's retry count; VERIFY publishes
+  each range's review step and its checkouts; the debug reproduction re-run is core
+  evidence (`debugRuns`); a revise run's prior products are `adoption.prior`; the PR
+  facts an `auto` run routes on are `routeFacts`. Evidence fields are read only when
+  the phase ran its default implementation. `tests/test_architecture.py` fails on any
+  core import of a plug-in and on any read of another module's state bucket.
+- `state.json` gains `stateFormat` 2. A run started before 7.4.0 that has not finished
+  is refused on resume (finish it on 7.3.x, or start a new run with `--slug`); a
+  finished one still reads.
+- The runner protocol lives once, in `skills/loop-spec/references/runner.md` (D5). Each
+  entry stub runs its start command and cites it; `LOOP_SPEC_NEXT` and
+  `LOOP_SPEC_WAIT` carry the launcher, state home and project root its commands need.
+- Per-role effort: `roles.<role>.effort` or `LOOP_SPEC_EFFORT_<ROLE>` (`low`, `medium`,
+  `high`, `xhigh`, `max`). The Agent tool takes no per-call effort, so a role step with
+  one is dispatched as the plugin's `loop-spec:worker-<level>` agent
+  (`agents/worker-<level>.md`, `effort:` frontmatter), and it attests only when the
+  transcript's `.meta.json` names that agent type. The SDK runner passes the effort to
+  `ClaudeAgentOptions.effort`. A step the lead runs itself keeps the session's effort.
+
 ## [7.3.0] - 2026-09-24
 
 The 2026-09-23 upstream report on three autonomous runs (6.11.1), done in v7 terms,
