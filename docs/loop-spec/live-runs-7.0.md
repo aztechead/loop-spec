@@ -9,7 +9,7 @@ runs already made; it does not describe how to run one.
 
 | Component | Version |
 |---|---|
-| Claude Code | 2.1.278 |
+| Claude Code | 2.1.278 to 2.1.282: the `existing-code`, `ea-*` and `v74-*` runs used 2.1.281 or 2.1.282, the earlier runs 2.1.278 to 2.1.280 |
 | Model | sonnet |
 | Python | 3.13.2 |
 
