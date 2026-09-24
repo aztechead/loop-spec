@@ -1,0 +1,99 @@
+{
+  "autonomous": true,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "v742-quadruple",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": true,
+  "createdAt": "2026-09-24T20:59:11+00:00",
+  "cycleType": "micro",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [],
+        "deliveredSha": null,
+        "pr": {
+          "base": "main",
+          "headRef": "v742-quadruple",
+          "headSha": "6d5d315ef9e51136c2543b84e338e96a88f9f9e9",
+          "number": 30,
+          "url": "https://github.com/aztechead/loop-spec-live-7/pull/30"
+        },
+        "repo": "c2",
+        "state": "skipped"
+      }
+    ]
+  },
+  "eligibleTargets": [
+    {
+      "branch": "v742-quadruple",
+      "targetSha": "6d5d315ef9e51136c2543b84e338e96a88f9f9e9"
+    }
+  ],
+  "feature_title": "Add quadruple(x) to calc, returning 4 * x, with a docstring, a test and a CHANGELOG line, on https://github.com/aztechead/loop-spec-live-7/pull/30",
+  "finishedAt": "2026-09-24T21:06:51+00:00",
+  "hostVersions": {
+    "claude": "2.1.282 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": true,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "direct": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "route": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 0
+  },
+  "loopSpecVersion": "7.4.1",
+  "noChangeReason": "already-satisfied",
+  "outcome": "no-change-needed",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [
+    "question-74c330d1f396"
+  ],
+  "prUrl": "https://github.com/aztechead/loop-spec-live-7/pull/30",
+  "prs": [
+    {
+      "number": 30,
+      "repo": "c2",
+      "url": "https://github.com/aztechead/loop-spec-live-7/pull/30"
+    }
+  ],
+  "reason": null,
+  "result": "no-change",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {},
+  "rewinds": 0,
+  "schema": 1,
+  "slug": "add-quadruple-calc-headless",
+  "status": "completed",
+  "summary": "micro no-change at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": "6d5d315ef9e51136c2543b84e338e96a88f9f9e9",
+  "warnings": [
+    "quadruple() carries a docstring but its neighbors add() and negate() in the same file do not, so the new function breaks the file's existing no-docstring convention"
+  ],
+  "weakenedAssurance": [],
+  "workDelivered": false
+}
