@@ -697,6 +697,25 @@ class PlanCriticTests(_QuietStdout):
                 attempt = store.state["phase"]["attemptId"]
                 self.assertEqual(Path(critic_step["resultPath"]).name, f"plan-critic-{attempt}.json")
 
+    def test_critic_step_carries_effort_when_plan_runs_default(self):
+        # F5: under _EXTERNAL_ENV the critic is external and gets no effort; with
+        # PLAN at its default implementation the critic is a role step and carries it.
+        env = {k: v for k, v in _EXTERNAL_ENV.items() if k != "LOOP_SPEC_PHASE_PLAN"}
+        env["LOOP_SPEC_EFFORT_PLAN_CRITIC"] = "high"
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            markers = io.StringIO()
+
+            with patch.dict("os.environ", env, clear=False):
+                next_, spec_product, paths, repo_name = _start_greeting_run(repo_dir, home, markers)
+                step = read_json(next_.path)
+                next_, _ = _submit_greeting_plan(paths, repo_dir, markers, step, repo_name, spec_product)
+                critic_step = read_json(next_.path)
+                self.assertEqual(critic_step["role"], "plan-critic")
+                self.assertEqual(critic_step["effort"], "high")
+
     def test_critic_result_in_review_tool_shape_is_rejected(self):
         # LF-32: the plan-critic worker wrote a review-tool-shaped result (the bug
         # this finding is about); submit must reject it naming what the schema wants.
