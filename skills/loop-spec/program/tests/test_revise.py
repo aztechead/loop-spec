@@ -4,6 +4,7 @@ No test calls the real `gh` or the network: gaps_from_pr tests patch
 `loop_spec.repo.run_gh`; the step tests supply a fake `store.state["adoption"]`
 directly rather than adopting a real PR (that adoption is the controller's job).
 """
+import json
 import subprocess
 import tempfile
 import unittest
@@ -40,8 +41,8 @@ class GapsFromPrTests(unittest.TestCase):
         view_json = ('{"comments": [{"author": {"login": "alice"}, "body": "please add a test", '
                      '"url": "https://x/1", "createdAt": "2026-09-24T10:00:00Z"}], '
                      '"reviews": [{"author": {"login": "bob"}, "body": "", "url": "https://x/2"}]}')
-        inline_json = ('[{"user": {"login": "carol"}, "body": "off by one here", "path": "a.py", "line": 12, '
-                        '"html_url": "https://x/3", "created_at": "2026-09-24T11:00:00Z"}]')
+        inline_json = ('[[{"user": {"login": "carol"}, "body": "off by one here", "path": "a.py", "line": 12, '
+                        '"html_url": "https://x/3", "created_at": "2026-09-24T11:00:00Z"}]]')
 
         def fake_run_gh(repo, *args):
             if args[:2] == ("pr", "view"):
@@ -60,6 +61,26 @@ class GapsFromPrTests(unittest.TestCase):
         self.assertEqual(gaps[1]["line"], 12)
         # F2: a second revise round tells old comments from new by this.
         self.assertEqual([g["createdAt"] for g in gaps], ["2026-09-24T10:00:00Z", "2026-09-24T11:00:00Z"])
+
+    def test_inline_comments_from_every_page(self):
+        # gh api --paginate --slurp returns one array per page; the REST default page is 30.
+        pages = [[{"user": {"login": "u"}, "body": f"c{i}", "path": "a.py", "line": i} for i in range(30)],
+                 [{"user": {"login": "u"}, "body": "c30", "path": "a.py", "line": 30}]]
+        calls = []
+
+        def fake_run_gh(repo, *args):
+            calls.append(args)
+            if args[:2] == ("pr", "view"):
+                return 0, '{"comments": [], "reviews": []}', ""
+            return 0, json.dumps(pages), ""
+
+        with patch("loop_spec.revise.repo_module.run_gh", side_effect=fake_run_gh):
+            gaps = gaps_from_pr(Path("/fake/repo"), 7)
+
+        self.assertEqual(len(gaps), 31)
+        self.assertEqual(gaps[-1]["body"], "c30")
+        self.assertIn("--paginate", calls[1])
+        self.assertIn("--slurp", calls[1])
 
     def test_gh_pr_view_failure_raises(self):
         with patch("loop_spec.revise.repo_module.run_gh", return_value=(1, "", "not found")):

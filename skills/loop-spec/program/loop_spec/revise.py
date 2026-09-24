@@ -37,10 +37,12 @@ def gaps_from_pr(repo_path: Path, number: int) -> list[dict]:
                      "body": body, "path": None, "line": None, "url": comment.get("url"),
                      "createdAt": comment.get("createdAt") or comment.get("submittedAt")})
 
-    code, out, err = repo_module.run_gh(repo_path, "api", f"repos/{{owner}}/{{repo}}/pulls/{number}/comments")
+    # The REST default page is 30 comments; --slurp wraps every page's array in one array.
+    code, out, err = repo_module.run_gh(repo_path, "api", "--paginate", "--slurp",
+                                        f"repos/{{owner}}/{{repo}}/pulls/{number}/comments")
     if code != 0:
         raise LoopSpecError(f"gh api pull comments failed for PR #{number}: {err.strip()}", repair="check gh auth")
-    for inline in json.loads(out):
+    for inline in (comment for page in json.loads(out) for comment in page):
         body = (inline.get("body") or "").strip()
         if not body:
             continue
