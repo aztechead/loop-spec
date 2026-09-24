@@ -26,6 +26,10 @@ the codebase; Write is for your one result file only.
    command. Every task's `repo` is one of the repository names listed under `inputs.repos` (the envelope's repo map), never a path, `.`, or a guess; a single-repository run has exactly one name.
    Keep the prior plan's `checks` (the repo's lint, typecheck and format commands);
    name a new one only for a tool `inputs.probes.repoChecks` lists that the prior plan lacked.
+   Give each file one owning task, and fold every small gap on that file into it: the
+   program runs independent tasks in parallel waves, and every task adds an implement
+   step and a review step. A `dependsOn` is only for a task that needs another task's
+   result, never to order two tasks that could run in the same wave.
 4. Keep both products minimal: carry forward everything the comments did not
    touch unchanged, and do not re-litigate a decision no comment raised.
    A prior task keeps its id and its fields verbatim; a task the comments add takes

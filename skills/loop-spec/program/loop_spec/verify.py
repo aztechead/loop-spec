@@ -203,7 +203,8 @@ def _init(store, paths, ctx) -> dict:
         checkouts[name] = str(_verify_checkout(repo_path, name, head, plan_product.get("prepare"), paths.checkouts_dir))
         files = sorted(files_by_repo.get(name, set()))
         base_layers = _base_layers(repo_path, repo_info["baseSha"], files, paths.checkouts_dir)
-        range_probes[name] = probes_module.range_probes(repo_path, repo_info["baseSha"], head, base_layers)
+        # 7.3.0: the verify checkout at head, not the operator's checkout: the probes read files at `head`.
+        range_probes[name] = probes_module.range_probes(Path(checkouts[name]), repo_info["baseSha"], head, base_layers)
 
     verify_state = {
         "planRevision": store.state["revisions"]["plan"], "heads": heads,

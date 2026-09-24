@@ -15,6 +15,7 @@ from loop_spec.repo import (
     create_feature_branch,
     detect_workspace,
     exclude_path,
+    fetch_pr_head,
     files_added_by,
     find_pr_reference,
     head_sha,
@@ -280,6 +281,51 @@ class HistoryTests(unittest.TestCase):
             _commit(tmp, "b.txt", "c2")
             head = head_sha(Path(tmp))
             self.assertEqual(sorted(files_added_by(Path(tmp), base, head)), ["b.txt"])
+
+
+class FetchPrHeadTests(unittest.TestCase):
+    """A fresh --depth=1 --single-branch clone of the base can adopt a PR (EA-runs item 9)."""
+
+    def _origin_with_pr(self, tmp: Path) -> tuple[Path, str]:
+        work = tmp / "work"
+        work.mkdir()
+        _init_repo(work)
+        for n in range(3):
+            _commit(work, f"base{n}.txt", f"base {n}")
+        _git(work, "checkout", "-q", "-b", "feat/pr")
+        _commit(work, "pr.txt", "the PR")
+        pr_head = head_sha(work)
+        _git(work, "checkout", "-q", "main")
+        _commit(work, "later.txt", "main moves on")
+        origin = tmp / "origin.git"
+        _git(tmp, "clone", "-q", "--bare", str(work), str(origin))
+        return origin, pr_head
+
+    def test_a_shallow_single_branch_clone_gets_the_pr_branch_and_a_merge_base(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            origin, pr_head = self._origin_with_pr(tmp)
+            clone = tmp / "clone"
+            # file://, not a path: a local-path clone ignores --depth.
+            _git(tmp, "clone", "-q", "--depth=1", "--single-branch", "--branch", "main", origin.as_uri(), str(clone))
+            fetch_pr_head(clone, "feat/pr", "main", pr_head, managed_root=tmp / "home")
+            shallow = subprocess.run(["git", "rev-parse", "--is-shallow-repository"], cwd=clone,
+                                     capture_output=True, text=True).stdout.strip()
+            self.assertEqual(shallow, "false")
+            self.assertEqual(head_sha(clone, "refs/heads/feat/pr"), pr_head)
+            merge_base = subprocess.run(["git", "merge-base", "refs/remotes/origin/main", pr_head], cwd=clone,
+                                        capture_output=True, text=True)
+            self.assertEqual(merge_base.returncode, 0)
+
+    def test_the_pr_branch_checked_out_is_refused_with_a_detach_repair(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            origin, pr_head = self._origin_with_pr(tmp)
+            clone = tmp / "clone"
+            _git(tmp, "clone", "-q", "--branch", "feat/pr", origin.as_uri(), str(clone))
+            with self.assertRaises(LoopSpecError) as caught:
+                fetch_pr_head(clone, "feat/pr", "main", pr_head, managed_root=tmp / "home")
+            self.assertIn("checkout --detach", caught.exception.repair)
 
 
 class FindPrReferenceTests(unittest.TestCase):

@@ -372,6 +372,54 @@ def remote_extension(repo: Path, branch: str, verified: str, base: str, globs: l
     return {"state": "extension", "head": head, "commits": list(commits.values()), "paths": paths, "refused": refused}
 
 
+def _worktree_holding(repo: Path, branch: str) -> Path | None:
+    """The worktree that has `branch` checked out, if any (the main one included)."""
+    current = None
+    for line in run_git(repo, "worktree", "list", "--porcelain").splitlines():
+        if line.startswith("worktree "):
+            current = Path(line[len("worktree "):])
+        elif line == f"branch refs/heads/{branch}":
+            return current
+    return None
+
+
+def fetch_pr_head(repo: Path, head_ref: str, base_ref: str, head_sha: str, *, managed_root: Path) -> None:
+    """Make an adopted PR's head usable from `repo`, including a fresh `--depth=1
+    --single-branch` clone: fetch both branches into explicit remote-tracking refs
+    (unshallowing a shallow clone so merge-base can see the fork point), then point a
+    local `head_ref` branch at `head_sha`. Refuses instead of moving a branch someone
+    has checked out or has commits on. `managed_root` is the state home: a worktree
+    under it is a stale run's, safe to remove."""
+    shallow = run_git(repo, "rev-parse", "--is-shallow-repository").strip() == "true"
+    # ponytail: a full unshallow; a --deepen loop if a huge repository makes it slow.
+    fetch = _git(repo, "fetch", "--no-tags", *(["--unshallow"] if shallow else []), "origin",
+                 f"+refs/heads/{base_ref}:refs/remotes/origin/{base_ref}",
+                 f"+refs/heads/{head_ref}:refs/remotes/origin/{head_ref}")
+    if fetch.returncode != 0:
+        raise LoopSpecError(f"could not fetch the PR's branches {head_ref} and {base_ref}: {fetch.stderr.strip()}",
+                             repair="check the origin remote and git credentials, then re-run")
+    fetched = run_git(repo, "rev-parse", f"refs/remotes/origin/{head_ref}").strip()
+    if fetched != head_sha:
+        raise LoopSpecError(f"the PR head {head_ref} moved during adoption: gh reported {head_sha[:12]}, origin has {fetched[:12]}",
+                             repair="re-run the entry to adopt the new head")
+    holder = _worktree_holding(repo, head_ref)
+    if holder is not None:
+        managed = Path(managed_root).resolve() in holder.resolve().parents
+        raise LoopSpecError(
+            f"branch {head_ref} is checked out in {holder}; the run needs its own worktree of it",
+            repair=f"git worktree remove {holder}" if managed else f"git -C {holder} checkout --detach",
+        )
+    local = branch_sha(repo, f"refs/heads/{head_ref}")
+    if local is None:
+        run_git(repo, "branch", head_ref, head_sha)
+    elif local != head_sha:
+        if is_ancestor(repo, local, head_sha):
+            raise LoopSpecError(f"local branch {head_ref} is at {local[:12]}, behind the PR head {head_sha[:12]}",
+                                 repair=f"git -C {repo} branch -f {head_ref} origin/{head_ref}")
+        raise LoopSpecError(f"local branch {head_ref} ({local[:12]}) has commits the PR head {head_sha[:12]} lacks",
+                             repair=f"push {head_ref} to the PR or rename it, then re-run")
+
+
 def origin_url(repo: Path) -> str | None:
     proc = _git(repo, "remote", "get-url", "origin")
     if proc.returncode != 0:

@@ -581,11 +581,12 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertIn("greet() already formats names", action.request["prompt"])
         self.assertNotIn("nothing writes rows", action.request["prompt"])
 
-    def test_a_repo_check_regression_at_integration_sends_the_task_back_with_the_diagnostic(self):
-        # 7.1.0: the plan's repo checks run at the task head after its verify command;
-        # a new diagnostic is a retry whose reason quotes it, and the implementer's
-        # next prompt carries the check commands.
-        check = "git grep -n TODO"
+    def test_a_repo_check_regression_at_implement_submit_retries_before_any_review(self):
+        # 7.3.0 (EA-runs item 3): the plan's repo checks run at the task head as soon as
+        # the implementer submits; a new diagnostic is a retry whose reason quotes it,
+        # no review step is issued for the failing candidate, and a check that writes
+        # files leaves the worktree clean for the retry.
+        check = "sh -c 'touch check-cache.txt; git grep -n TODO'"
         self.store.state["products"]["plan"]["product"]["checks"] = [{"repo": "repo", "command": check}]
         entry = BaselineEntry(command=check, task=None, status="ran", run=run_command(check, self.repo, self.base_sha))
         self.store.state["baseline"]["entries"][check] = entry.to_dict()
@@ -599,14 +600,13 @@ class ExecuteLifecycleTests(unittest.TestCase):
         on_submit(self.store, self.paths, action.request | {"stepAttemptId": "impl-1"},
                   {"taskId": "T-1", "commits": [_head(worktree)], "summary": "did T-1",
                    "verifyRun": {"command": "sh verify.sh", "exitStatus": 0}, "issues": []})
-        action = step(self.store, self.paths, self.ctx)
-        task_head = _head(worktree)
-        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "rev-1"},
-                  self._pass_review(task_head, self.base_sha, task_head))
         task = self.store.state["execute"]["tasks"]["T-1"]
-        self.assertNotEqual(task["status"], "done")
-        self.assertIn("repo check re-run of `git grep -n TODO` is regression", task["reason"])
+        self.assertEqual(task["reviewSteps"], [])
+        self.assertIn("repo check re-run of", task["reason"])
         self.assertIn("a.txt:<LINE>:TODO: this fails the check", task["reason"])
+        self.assertFalse(Path(worktree, "check-cache.txt").exists())
+        action = step(self.store, self.paths, self.ctx)
+        self.assertEqual(action.request["role"], "implementer")
 
     def test_regression_still_retries_before_blocking(self):
         # A genuine regression (unlike mustFlip-failed/baseline-error above) is the

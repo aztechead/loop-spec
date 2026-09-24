@@ -213,6 +213,10 @@ class DeliverTests(unittest.TestCase):
         self.assertEqual(entry["state"], "failed")
         self.assertIsNone(entry["pr"])
         self.assertIn("feature branch moved after VERIFY", entry["caveats"][0])
+        # EA-runs item 2: the caveat keeps the commits (a rescue branch), never a hard reset.
+        self.assertIn("branch loop-spec-rescue-", entry["caveats"][0])
+        self.assertIn("reset --keep", entry["caveats"][0])
+        self.assertNotIn("--hard", entry["caveats"][0])
         self.assertEqual(action.product["exit"], "delivery blocked")  # LF-58: nothing delivered
         self.assertIsNone(repo_module.branch_sha(self.remote, "feature"))  # never pushed at all
 

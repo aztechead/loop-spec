@@ -42,6 +42,11 @@ never for installing, building, or running the plan's own verify commands.
    separate files and can run in the same wave (the program runs up to three at
    once); every task adds an implement step and a review step, so a small service
    is usually one or two tasks.
+   When the repository keeps a changelog at its root and its own instructions
+   (`CLAUDE.md`, `CONTRIBUTING*`) ask for an entry per change, one task owns the
+   changelog and adds that entry, so the entry is part of the verified change; nothing
+   may commit after VERIFY. It needs no `dependsOn`, and its verify command is the
+   repo's changelog check if it has one, else a command another task already verifies with.
 5. Name a `prepare` command for anything the environment needs before verify can
    run (installs, migrations, fixtures); leave it `null` when nothing is needed.
 6. Name the repo's own lint, typecheck and format checks in `checks`, one

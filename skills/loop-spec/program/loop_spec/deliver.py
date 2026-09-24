@@ -30,6 +30,21 @@ def _touched_repos(store) -> dict:
     return touched
 
 
+def _moved_branch_reason(repo: Path, worktree: Path, branch: str, local_sha: str | None, verified_sha: str) -> str:
+    """EA-runs item 2: say how to keep commits made after VERIFY. Resetting past the
+    verified SHA to clear this drops them; a rescue branch keeps them, and revise
+    gates them once the PR exists. This row is written before the exit is known, so
+    both the paused and the terminal case are named."""
+    head = f"feature branch moved after VERIFY: local {(local_sha or 'missing')[:12]} vs verified {verified_sha[:12]}"
+    if local_sha is None:
+        return f"{head}; the branch is missing, so there is nothing to rescue"
+    rescue = f"loop-spec-rescue-{local_sha[:8]}"
+    return (f"{head}. Keep those commits (a hard reset drops them): `git -C {repo} branch {rescue} {local_sha}`. "
+            f"If DELIVER is paused: `git -C {worktree} reset --keep {verified_sha}`, then re-enter DELIVER. "
+            f"Once the PR is open: `git -C {repo} push origin {rescue}:{branch}`, then `loop-spec revise --pr <number>` "
+            f"to verify them")
+
+
 def pr_title(title: str, limit: int = 70) -> str:
     # GitHub shows about 70 characters of a title; a cut mid-word read as a typo
     # in the live debug run (LF-36), so cut at the last word boundary that fits. A goal
@@ -199,8 +214,8 @@ def run(store, paths, ctx):
         verified_sha = touched[repo_name]
         local_sha = repo_module.branch_sha(worktree, repo_info["featureBranch"])
         if local_sha != verified_sha:
-            reason = (f"feature branch moved after VERIFY: local {(local_sha or 'missing')[:12]} "
-                      f"vs verified {verified_sha[:12]}")
+            reason = _moved_branch_reason(Path(repo_info["path"]), worktree, repo_info["featureBranch"],
+                                          local_sha, verified_sha)
             repos_out.append(_published(store, repo_name, {"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"}))
             continue
 

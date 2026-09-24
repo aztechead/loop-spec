@@ -134,7 +134,7 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
         }
         store = StateStore.create(paths, run_fields, request_text)
         store.state["phase"]["current"] = initial_phase
-        _resolve_repos(store, project_root, slug, request_text)
+        _resolve_repos(store, project_root, slug, repo_module.find_pr_reference(request_text), home)
         _resolve_implementations(store, project_root)
         if answer_policy == "default":
             store.state["questions"]["policy"] = "default"
@@ -150,8 +150,11 @@ def _find_run_by_adoption_number(home: Path, rid: str, number: int, project_root
         candidate = FeaturePaths(root=slug_dir, project_root=project_root)
         if not candidate.state_json.exists():
             continue
-        adoption = StateStore.open(candidate).state.get("adoption")
-        if adoption is not None and adoption.get("number") == number:
+        state = StateStore.open(candidate).state
+        adoption = state.get("adoption")
+        # Only a revise run is keyed by its PR: a cycle or micro run that adopted the
+        # same PR is a different piece of work, never the one `revise --pr` resumes.
+        if state["run"].get("cycleType") == "revise" and adoption is not None and adoption.get("number") == number:
             return slug_dir.name
     return None
 
@@ -228,18 +231,12 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
         return continue_run(store, paths, project_root=project_root)
     _clear_stale_last_result(paths, slug)
 
-    base_sha = repo_module.run_git(repo_path, "merge-base", adoption.base_branch, adoption.head_sha).strip()
+    repo_entry, adoption_record = _adopt(repo_name, repo_path, adoption, home)
     request_text = f"revise PR #{adoption.number}: {adoption.url}"
     run_fields = {"id": new_id("run"), "entry": "revise", "createdAt": now_iso(), "slug": slug, "repoId": rid, "cycleType": "revise"}
     store = StateStore.create(paths, run_fields, request_text)
-    store.state["repos"] = {repo_name: {
-        "path": str(repo_path), "baseSha": base_sha, "featureBranch": adoption.branch,
-        "defaultBranch": adoption.base_branch, "lastKnownHead": adoption.head_sha,
-    }}
-    store.state["adoption"] = {
-        "repo": repo_name, "number": adoption.number, "url": adoption.url, "headRef": adoption.branch,
-        "baseBranch": adoption.base_branch, "baseSha": base_sha, "headSha": adoption.head_sha,
-    }
+    store.state["repos"] = {repo_name: repo_entry}
+    store.state["adoption"] = adoption_record
     store.state["revise"] = {
         "gaps": revise_module.gaps_from_pr(repo_path, adoption.number), "product": None,
         "prior": _find_delivering_run_products(home, rid, adoption.url, project_root),
@@ -289,34 +286,49 @@ def _clear_stale_last_result(paths: FeaturePaths, slug: str) -> None:
             paths.last_result_json.unlink()
 
 
-def _resolve_repos(store: StateStore, project_root: Path, slug: str, request_text: str) -> None:
+def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, home: Path) -> None:
+    """Every repo gets a fresh feature branch at its head, except the one that adopts
+    `pr_ref` (a PR the request names), which continues that PR's branch (`_adopt`)."""
     workspace = repo_module.detect_workspace(project_root)
     if workspace.mode == "none":
         workspace.repos = [repo_module.init_in_place(project_root)]
 
-    pr_ref = repo_module.find_pr_reference(request_text)
     repos: dict = {}
     adoption = None
     for entry in workspace.repos:
-        base_sha = repo_module.head_sha(entry.path)
-        feature_branch = f"feat/{slug}"
-        default_branch = repo_module.default_branch(entry.path)
         if pr_ref is not None and adoption is None:
             candidate = repo_module.adopt_pr(entry.path, pr_ref)
             if candidate.adopt:
-                adoption = candidate
-                feature_branch = candidate.branch
-                base_sha = repo_module.run_git(entry.path, "merge-base", default_branch, candidate.head_sha).strip()
+                repos[entry.name], adoption = _adopt(entry.name, entry.path, candidate, home)
+                continue
+        base_sha = repo_module.head_sha(entry.path)
         repos[entry.name] = {
-            "path": str(entry.path), "baseSha": base_sha, "featureBranch": feature_branch,
-            "defaultBranch": default_branch, "lastKnownHead": base_sha,
+            "path": str(entry.path), "baseSha": base_sha, "featureBranch": f"feat/{slug}",
+            "defaultBranch": repo_module.default_branch(entry.path), "lastKnownHead": base_sha,
         }
     store.state["repos"] = repos
+    store.state.pop("adoption", None)
     if adoption is not None:
-        store.state["adoption"] = {
-            "number": adoption.number, "url": adoption.url, "branch": adoption.branch,
-            "baseBranch": adoption.base_branch, "headSha": adoption.head_sha, "reason": adoption.reason,
-        }
+        store.state["adoption"] = adoption
+
+
+def _adopt(repo_name: str, repo_path: Path, candidate, home: Path) -> tuple[dict, dict]:
+    """The one way a run takes over an open PR (cycle, micro, revise): fetch its head
+    into this checkout, base the run on the merge-base with the PR's base branch, and
+    continue on the PR's own branch from its current head."""
+    repo_module.fetch_pr_head(repo_path, candidate.branch, candidate.base_branch, candidate.head_sha, managed_root=home)
+    base_sha = repo_module.run_git(repo_path, "merge-base", f"refs/remotes/origin/{candidate.base_branch}",
+                                   candidate.head_sha).strip()
+    repo_entry = {
+        "path": str(repo_path), "baseSha": base_sha, "featureBranch": candidate.branch,
+        "defaultBranch": candidate.base_branch, "lastKnownHead": candidate.head_sha,
+    }
+    adoption = {
+        "repo": repo_name, "number": candidate.number, "url": candidate.url, "headRef": candidate.branch,
+        "baseBranch": candidate.base_branch, "baseSha": base_sha, "headSha": candidate.head_sha,
+        "reason": candidate.reason,
+    }
+    return repo_entry, adoption
 
 
 def _resolve_implementations(store: StateStore, project_root: Path) -> None:

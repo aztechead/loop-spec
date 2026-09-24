@@ -213,6 +213,47 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class ChangeSecuritySignalTests(unittest.TestCase):
+    """7.3.0 (EA-runs item 6): review-time security signals read the change, not the
+    whole file, so an old term in a changelog does not flag every edit to it."""
+
+    def _repo(self, tmp: str, content: str) -> str:
+        _git(tmp, "init", "-q", "-b", "main")
+        _git(tmp, "config", "user.name", "Test")
+        _git(tmp, "config", "user.email", "test@example.com")
+        _write(Path(tmp), "CHANGELOG.md", content)
+        _git(tmp, "add", "CHANGELOG.md")
+        _git(tmp, "commit", "-q", "-m", "base")
+        return subprocess.run(["git", "-C", tmp, "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+
+    def _commit(self, tmp: str, content: str) -> str:
+        _write(Path(tmp), "CHANGELOG.md", content)
+        _git(tmp, "commit", "-q", "-am", "head")
+        return subprocess.run(["git", "-C", tmp, "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+
+    def test_an_old_term_is_ignored_and_an_added_one_is_flagged_at_its_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old = "# Changelog\n\n## 1.0\n- rotate credentials nightly\n"
+            base = self._repo(tmp, old)
+            head = self._commit(tmp, "# Changelog\n\n## 1.1\n- faster startup\n\n## 1.0\n- rotate credentials nightly\n")
+            self.assertEqual(diff_probes(Path(tmp), base, head, base_layers=0)["securitySignals"], [])
+            head2 = self._commit(tmp, "# Changelog\n\n## 1.1\n- store the api secret in the vault\n\n## 1.0\n- rotate credentials nightly\n")
+            signals = diff_probes(Path(tmp), head, head2, base_layers=0)["securitySignals"]
+            self.assertEqual(signals, [{"file": "CHANGELOG.md", "signal": "secret", "reason": "term=secret at line 4"}])
+
+    def test_a_removed_permission_line_is_flagged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = self._repo(tmp, "def handler(user):\n    check(user, permission='admin')\n    return 1\n")
+            head = self._commit(tmp, "def handler(user):\n    return 1\n")
+            signals = diff_probes(Path(tmp), base, head, base_layers=0)["securitySignals"]
+            self.assertEqual(signals[0]["reason"], "term=permission at removed line 2")
+
+    def test_hunk_headers_with_omitted_and_zero_counts(self):
+        from loop_spec.probes import _HUNK
+        self.assertEqual(_HUNK.match("@@ -4,0 +4 @@").groups(), ("4", "0", "4", None))
+        self.assertEqual(_HUNK.match("@@ -2 +1,0 @@").groups(), ("2", None, "1", "0"))
+
+
 class RepoChecksProbeTests(unittest.TestCase):
     """7.1.0: configured check tools, read from git objects at a commit."""
 

@@ -967,45 +967,91 @@ def _sec_suppressed(clause, in_non_goal):
     return None
 
 
-def _sec_scan_file(path):
+def _sec_scan_lines(numbered, only=None, where="line"):
+    """The first signal in `numbered` ((number, text) pairs). With `only`, a term counts
+    on a line in it and nowhere else, while headings are still tracked on every line so
+    a non-goal section keeps its context (7.3.0: the change, not the whole file)."""
     non_goal_level = 0
     first_weak = None
     weak_names = set()
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as handle:
-            for number, line in enumerate(handle, 1):
-                heading = _SEC_ANY_HEADING.match(line)
-                if heading:
-                    level = len(heading.group(1))
-                    if _SEC_NON_GOAL_HEADING.match(line):
-                        non_goal_level = level
-                    elif non_goal_level and level <= non_goal_level:
-                        non_goal_level = 0
-                for clause in _SEC_CLAUSE_SPLIT.split(line):
-                    why = _sec_suppressed(clause, non_goal_level > 0)
-                    strong_hit = False
-                    for name, pattern in _SEC_STRONG:
-                        if pattern.search(clause):
-                            strong_hit = True
-                            if why:
-                                break
-                            return {"signal": name, "reason": "term={} at line {}".format(name, number)}
-                    if strong_hit:
+    for number, line in numbered:
+        heading = _SEC_ANY_HEADING.match(line)
+        if heading:
+            level = len(heading.group(1))
+            if _SEC_NON_GOAL_HEADING.match(line):
+                non_goal_level = level
+            elif non_goal_level and level <= non_goal_level:
+                non_goal_level = 0
+        if only is not None and number not in only:
+            continue
+        for clause in _SEC_CLAUSE_SPLIT.split(line):
+            why = _sec_suppressed(clause, non_goal_level > 0)
+            strong_hit = False
+            for name, pattern in _SEC_STRONG:
+                if pattern.search(clause):
+                    strong_hit = True
+                    if why:
+                        break
+                    return {"signal": name, "reason": "term={} at {} {}".format(name, where, number)}
+            if strong_hit:
+                continue
+            for name, pattern in _SEC_WEAK:
+                if pattern.search(clause):
+                    if why:
                         continue
-                    for name, pattern in _SEC_WEAK:
-                        if pattern.search(clause):
-                            if why:
-                                continue
-                            if first_weak is None:
-                                first_weak = (number, name)
-                            weak_names.add(name)
-    except OSError:
-        return None
+                    if first_weak is None:
+                        first_weak = (number, name)
+                    weak_names.add(name)
     if first_weak is not None and len(weak_names) >= 2:
         number, name = first_weak
         corroborators = ", ".join(sorted(weak_names - {name}))
-        return {"signal": name, "reason": "term={} at line {} (corroborated by: {})".format(name, number, corroborators)}
+        return {"signal": name, "reason": "term={} at {} {} (corroborated by: {})".format(name, where, number, corroborators)}
     return None
+
+
+def _sec_scan_file(path, only=None):
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            return _sec_scan_lines(enumerate(handle, 1), only)
+    except OSError:
+        return None
+
+
+_HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+
+
+def _diff_lines(root: Path, base_sha: str, head_sha: str, name: str) -> tuple[set, list]:
+    """(added line numbers at head, removed (number at base, text) pairs) for one file,
+    from its own -U0 diff: only `@@` headers and the lines after them are read, never a
+    file-name header, so quoting and prefix settings cannot mislead it."""
+    out = repo_module.run_git(root, "diff", "-U0", "--no-renames", "--no-color", "--no-ext-diff",
+                              "{}..{}".format(base_sha, head_sha), "--", name)
+    added, removed, old_line, in_hunk = set(), [], 0, False
+    for line in out.splitlines():
+        hunk = _HUNK.match(line)
+        if hunk:
+            in_hunk = True
+            old_line = int(hunk.group(1))
+            start, count = int(hunk.group(3)), int(hunk.group(4) or 1)
+            added.update(range(start, start + count))
+        elif in_hunk and line.startswith("-"):
+            removed.append((old_line, line[1:]))
+            old_line += 1
+    return added, removed
+
+
+def _change_security_signals(root: Path, base_sha: str, head_sha: str, names: list[str]) -> list[dict]:
+    """security_signal over the change only: added lines of each file at head, then its
+    removed lines (deleting a permission check is a security change too)."""
+    findings = []
+    for name in names:
+        added, removed = _diff_lines(root, base_sha, head_sha, name)
+        result = _sec_scan_file(root / name, only=added) if added and (root / name).is_file() else None
+        if result is None and removed:
+            result = _sec_scan_lines(removed, where="removed line")
+        if result:
+            findings.append({"file": name, "signal": result["signal"], "reason": result["reason"]})
+    return findings
 
 
 def security_signal(root: Path, files: list[str]) -> list[dict]:
@@ -1845,7 +1891,8 @@ def _diff_touched_files(repo_path: Path, base_sha: str, head_sha: str) -> list[s
 
 def _range_style_probes(path: Path, base_sha: str, head_sha: str, base_layers: int) -> dict:
     path = Path(path)
-    files = [f for f in _diff_touched_files(path, base_sha, head_sha) if (path / f).is_file()]
+    touched = _diff_touched_files(path, base_sha, head_sha)
+    files = [f for f in touched if (path / f).is_file()]
     md_files = [f for f in files if f.lower().endswith(_DT_MARKDOWN)]
     indirection = indirection_scan(path, files)
     return {
@@ -1859,7 +1906,7 @@ def _range_style_probes(path: Path, base_sha: str, head_sha: str, base_layers: i
         "duplication": duplication_scan(path, files),
         "houseStyleCompare": house_style_compare(path, files),
         "docTells": doc_tells(path, md_files),
-        "securitySignals": security_signal(path, files),
+        "securitySignals": _change_security_signals(path, base_sha, head_sha, touched),
     }
 
 

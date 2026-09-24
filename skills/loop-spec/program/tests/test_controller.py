@@ -51,6 +51,15 @@ def _init_repo(tmp: Path) -> Path:
     return repo_dir
 
 
+def _add_origin(tmp: Path, repo_dir: Path, *branches: str) -> Path:
+    """A bare `origin` holding `branches`, so a PR adoption can fetch its head."""
+    origin = tmp / "origin.git"
+    _git(tmp, "init", "-q", "--bare", str(origin))
+    _git(repo_dir, "remote", "add", "origin", str(origin))
+    _git(repo_dir, "push", "-q", "origin", *branches)
+    return origin
+
+
 def _open(paths: FeaturePaths) -> StateStore:
     return StateStore.open(paths)
 
@@ -1157,6 +1166,7 @@ class DebugAndReviseEntryTests(_QuietStdout):
             head_sha = repo_module.head_sha(repo_dir)
             _git(repo_dir, "checkout", "-q", "main")
 
+            _add_origin(tmp, repo_dir, "main", "pr-branch")
             adoption = repo_module.PrAdoption(
                 adopt=True, number=42, url="https://github.com/example/repo/pull/42", branch="pr-branch",
                 base_branch="main", head_sha=head_sha, reason="named open PR #42",
@@ -1261,6 +1271,7 @@ class DebugAndReviseEntryTests(_QuietStdout):
             pr_url = "https://github.com/example/repo/pull/42"
             atomic_write_json(prior_paths.result_json, {"prs": [{"number": 42, "repo": repo_name, "url": pr_url}]})
 
+            _git(repo_dir, "push", "-q", "origin", "pr-branch")
             adoption = repo_module.PrAdoption(
                 adopt=True, number=42, url=pr_url, branch="pr-branch",
                 base_branch="main", head_sha=head_sha, reason="named open PR #42",
@@ -1584,6 +1595,41 @@ def _run_one_full_external_cycle(repo_dir, home, markers, slug: str, request_tex
 
     assert next_.kind == "result", f"expected a terminal result, got {next_.kind}"
     return paths
+
+
+class RequestAdoptionTests(unittest.TestCase):
+    """EA-runs item 1b: a cycle or micro request naming an open PR continues that PR's
+    branch through the same adoption revise uses (the record EXECUTE's adopted review
+    reads names its repo, and the run starts at the PR head, not the merge-base)."""
+
+    def test_a_cycle_naming_an_open_pr_adopts_it_like_revise(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            base_sha = repo_module.head_sha(repo_dir)
+            _git(repo_dir, "checkout", "-q", "-b", "pr-branch")
+            (repo_dir / "greet.py").write_text("print('hi')\n", encoding="utf-8")
+            _git(repo_dir, "add", "greet.py")
+            _git(repo_dir, "commit", "-q", "-m", "add greeting")
+            head_sha = repo_module.head_sha(repo_dir)
+            _git(repo_dir, "checkout", "-q", "main")
+            _add_origin(tmp, repo_dir, "main", "pr-branch")
+            _git(repo_dir, "branch", "-q", "-D", "pr-branch")
+            adoption = repo_module.PrAdoption(
+                adopt=True, number=42, url="https://github.com/example/repo/pull/42", branch="pr-branch",
+                base_branch="main", head_sha=head_sha, reason="named open PR #42",
+            )
+            home = tmp / "home"
+            paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "x"), project_root=repo_dir)
+            store = StateStore.create(paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x",
+                                              "createdAt": "2026-01-01T00:00:00+00:00"}, "fix it on #42")
+            with patch.object(repo_module, "adopt_pr", return_value=adoption):
+                controller._resolve_repos(store, repo_dir, "x", 42, home)
+            name = store.state["adoption"]["repo"]
+            self.assertEqual(store.state["repos"][name]["featureBranch"], "pr-branch")
+            self.assertEqual(store.state["repos"][name]["lastKnownHead"], head_sha)
+            self.assertEqual(store.state["repos"][name]["baseSha"], base_sha)
+            self.assertEqual(repo_module.head_sha(repo_dir, "refs/heads/pr-branch"), head_sha)
 
 
 class WorktreeReuseTests(_QuietStdout):

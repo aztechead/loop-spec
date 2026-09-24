@@ -1309,6 +1309,15 @@ def _on_implement_submit(store, paths, task_id: str, task_state: dict, step_reco
         _retry_or_block(execute_state, task_id, task_state, "no commit was made on the task branch")
         return
 
+    # 7.3.0 (EA-runs item 3): the plan's repo checks (lint, typecheck) at the task head,
+    # close-outs included, before any review is issued, so a new diagnostic retries
+    # the implementer without spending a review on it. Early feedback only: VERIFY's
+    # check runs at the final head are the gate.
+    regressed = _check_regressed(store, execute_state, task_id, task_state, worktree, task_head)
+    _restore_after_checks(paths, worktree, task_id, step_record.get("attempt"))
+    if regressed:
+        return
+
     task_state["probes"] = probes_module.diff_probes(worktree, feature_head, task_head, task_state["baseLayers"])
     if task_state.get("closeOut"):
         # A close-out has no PLAN file list; the files it changed feed review, E11 and VERIFY.
@@ -1316,6 +1325,19 @@ def _on_implement_submit(store, paths, task_id: str, task_state: dict, step_reco
         task_state["files"] = sorted(line for line in changed.splitlines() if line.strip())
     task_state["reason"] = None
     task_state["status"] = "probing"
+
+
+def _restore_after_checks(paths, worktree: Path, task_id: str, attempt_id) -> None:
+    """The worktree was clean before the checks ran, so anything they left behind (a
+    formatter run without --check, a tool cache outside .gitignore) is theirs, not
+    the implementer's: put the tree back so the next implement submit's is_clean
+    check does not blame the implementer for it. Ignored files are untouched."""
+    if repo_module.is_clean(worktree):
+        return
+    repo_module.run_git(worktree, "restore", "--staged", "--worktree", ".")
+    repo_module.run_git(worktree, "clean", "-fdq")
+    emit(paths, "repo_checks_dirtied_worktree", {"task": task_id, "summary": f"{task_id}'s repo checks wrote files; restored"},
+         phase="execute", attempt_id=attempt_id)
 
 
 def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record: dict, result: dict) -> None:
@@ -1376,12 +1398,6 @@ def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record:
         if comparison.verdict not in ("no-regression", "featureAdded-ok", "mustFlip-ok"):
             _route_verify_comparison(execute_state, task_id, task_state, comparison, candidate)
             return
-
-    # 7.1.0: the plan's repo checks (lint, typecheck) at this task's head, close-outs
-    # included, so a new diagnostic goes back to the implementer minutes after the
-    # task. Early feedback only: VERIFY's check runs at the final head are the gate.
-    if _check_regressed(store, execute_state, task_id, task_state, run_cwd, task_head):
-        return
 
     feature_worktree = Path(execute_state["repos"][task_state["repo"]]["worktree"])
     feature_head = execute_state["repos"][task_state["repo"]]["head"]
