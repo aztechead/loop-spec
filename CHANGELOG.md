@@ -4,6 +4,25 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.4.1] - 2026-09-24
+
+The five gaps 7.4.0 left.
+
+- A run on an open PR that finds the work already done ends as a `no-change`
+  success. Before, it could only end blocked: E9 judged "no change" from the
+  merge-base, where the PR's own commits always sit. E9 now judges from the start
+  commit (the adopted PR's head in its repo, else the base). The result's
+  `verifiedSha` is the PR head, and `prUrl` names the PR. DELIVER writes nothing.
+  The adopted repo's skipped row names the PR, and D6, now required by `delivered`,
+  checks that `gh pr view` still shows it open at the verified head. A later
+  `revise --pr` never takes such a run's SPEC and PLAN as the delivering run's.
+- Revise reads every page of a PR's inline review comments. It read only the first
+  30.
+- A test pins the plan critic's effort when PLAN runs its default implementation.
+- `references/runner.md` is rewritten as reference material for a lead, organized
+  by marker and step kind. Every command and field name is unchanged.
+- The live-runs versions table names Claude Code 2.1.278 to 2.1.282.
+
 ## [7.4.0] - 2026-09-24
 
 The four follow-ups from 7.3.0, plus per-role effort for dispatched workers.
