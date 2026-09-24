@@ -20,6 +20,52 @@ from loop_spec.postconditions import retry_limit
 from loop_spec.repo import remove_worktree
 from loop_spec.schema import validate, validate_or_raise
 
+# The step contract between a phase adapter and the core: what an adapter's
+# step()/run() returns. contract.invoke turns each into its on-disk file.
+
+class IssueStep:
+    __slots__ = ("request",)
+
+    def __init__(self, request: dict) -> None:
+        self.request = request
+
+
+class IssueSteps:
+    """Two or more requests from the SAME wave, for the lead to dispatch in
+    parallel (step() falls back to the single-request IssueStep when a wave
+    only ever has one request to issue, so every other module's step() and
+    every existing test of it are unaffected)."""
+    __slots__ = ("requests",)
+
+    def __init__(self, requests: list[dict]) -> None:
+        self.requests = requests
+
+
+class Wait:
+    """Nothing new to issue this call, but the wave is not done: one or more of
+    its tasks already have a step open (implementing/reviewing) from an earlier
+    call in this same wave. `open` names those steps' ids so the caller knows
+    what it is waiting on rather than being told to start something new."""
+    __slots__ = ("open",)
+
+    def __init__(self, open: list[str]) -> None:
+        self.open = open
+
+
+class Product:
+    __slots__ = ("product",)
+
+    def __init__(self, product: dict) -> None:
+        self.product = product
+
+
+class Pause:
+    __slots__ = ("question_request",)
+
+    def __init__(self, question_request: dict) -> None:
+        self.question_request = question_request
+
+
 # The verifier and debugger are re-run by the program itself (V4, B1), and the
 # implementer's evidence is its own review; these three roles are pure judgment
 # with nothing behind them but the transcript, so an unattested submission for

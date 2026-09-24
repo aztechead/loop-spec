@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from loop_spec.execute import IssueStep, Product
+from loop_spec.steps import IssueStep, Product
 from loop_spec.iterate import on_submit as _on_submit, step
 
 

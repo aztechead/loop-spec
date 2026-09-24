@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 from loop_spec import deliver
 from loop_spec import repo as repo_module
-from loop_spec.execute import Product
+from loop_spec.steps import Product
 from loop_spec.paths import FeaturePaths
 from loop_spec.schema import load_schema, validate
 from loop_spec.state import StateStore

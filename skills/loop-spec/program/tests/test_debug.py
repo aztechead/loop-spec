@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from loop_spec.debug import compact_products, on_submit, record_base_runs, step
-from loop_spec.execute import IssueStep, Product
+from loop_spec.steps import IssueStep, Product
 from loop_spec.paths import FeaturePaths
 from loop_spec.state import StateStore
 

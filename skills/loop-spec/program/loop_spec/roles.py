@@ -20,11 +20,12 @@ from loop_spec.errors import LoopSpecError
 from loop_spec.ids import digest_bytes
 from loop_spec.jsonio import render_json
 
-ROLE_NAMES = ["spec-writer", "planner", "plan-critic", "implementer", "code-reviewer", "verifier", "iterate-judge", "debugger"]
-
 # skills/loop-spec/roles/<name>/ sits next to program/, i.e. two levels above this
 # file's own package directory (program/loop_spec/roles.py -> program -> loop-spec).
 _ROLES_DIR = Path(__file__).resolve().parent.parent.parent / "roles"
+
+# The role registry is the roles directory itself: a role is a skill dir with a schema.
+ROLE_NAMES = sorted(d.name for d in _ROLES_DIR.iterdir() if (d / "schema.json").is_file())
 
 
 @dataclass

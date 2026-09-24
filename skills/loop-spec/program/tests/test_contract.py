@@ -96,13 +96,14 @@ class InvokeTests(unittest.TestCase):
             attempt_id = "attempt-1"
             contract.write_context(paths, attempt_id, _envelope(attempt_id, tmp, paths))
             from loop_spec import execute as execute_module
+            from loop_spec import steps as steps_module
             request = {
                 "kind": "role", "role": "implementer", "phase": "execute", "cwd": str(tmp),
                 "prompt": "do it", "resultPath": str(Path(tmp) / "result.json"), "schema": {},
                 "postconditions": [], "attempt": attempt_id, "inputsDigest": "sha256:" + "a" * 64,
                 "retryOf": None, "reason": None,
             }
-            with patch.object(execute_module, "step", return_value=execute_module.IssueStep(request)):
+            with patch.object(execute_module, "step", return_value=steps_module.IssueStep(request)):
                 outcome = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
             self.assertEqual(outcome.code, 2)
             self.assertEqual(outcome.kind, "step")
@@ -114,11 +115,12 @@ class InvokeTests(unittest.TestCase):
             attempt_id = "attempt-1"
             contract.write_context(paths, attempt_id, _envelope(attempt_id, tmp, paths))
             from loop_spec import execute as execute_module
+            from loop_spec import steps as steps_module
             product = {
                 "exit": "no change", "inputsDigest": "sha256:" + "a" * 64,
                 "boundTo": {"requirements": None, "plan": None}, "tasks": [], "issues": [], "heads": {},
             }
-            with patch.object(execute_module, "step", return_value=execute_module.Product(product)):
+            with patch.object(execute_module, "step", return_value=steps_module.Product(product)):
                 outcome = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
             self.assertEqual(outcome.code, 0)
             self.assertEqual(outcome.kind, "product")
@@ -132,8 +134,9 @@ class InvokeTests(unittest.TestCase):
             attempt_id = "attempt-1"
             contract.write_context(paths, attempt_id, _envelope(attempt_id, tmp, paths))
             from loop_spec import execute as execute_module
+            from loop_spec import steps as steps_module
             invalid_product = {"exit": "no change", "inputsDigest": "sha256:" + "a" * 64}  # missing required fields
-            with patch.object(execute_module, "step", return_value=execute_module.Product(invalid_product)):
+            with patch.object(execute_module, "step", return_value=steps_module.Product(invalid_product)):
                 outcome = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
             self.assertEqual(outcome.kind, "error")
             self.assertTrue(outcome.stderr.startswith("default EXECUTE implementation produced an invalid product: "))
@@ -144,12 +147,13 @@ class InvokeTests(unittest.TestCase):
             attempt_id = "attempt-1"
             contract.write_context(paths, attempt_id, _envelope(attempt_id, tmp, paths))
             from loop_spec import execute as execute_module
+            from loop_spec import steps as steps_module
             question = {
                 "attempt": attempt_id, "phase": "execute", "text": "the feature branch moved; how should the run proceed?",
                 "options": [{"value": "resume", "label": "resume"}, {"value": "abort", "label": "abort"}],
                 "defaultValue": None, "kind": "blocked", "payload": {},
             }
-            with patch.object(execute_module, "step", return_value=execute_module.Pause(question)):
+            with patch.object(execute_module, "step", return_value=steps_module.Pause(question)):
                 outcome = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
             self.assertEqual(outcome.code, 3)
             self.assertEqual(outcome.kind, "question")
@@ -163,6 +167,7 @@ class InvokeTests(unittest.TestCase):
             attempt_id = "attempt-1"
             contract.write_context(paths, attempt_id, _envelope(attempt_id, tmp, paths))
             from loop_spec import execute as execute_module
+            from loop_spec import steps as steps_module
 
             def _request(role, task_id):
                 return {
@@ -173,12 +178,12 @@ class InvokeTests(unittest.TestCase):
                 }
 
             old_a, old_b = _request("implementer", "T-1"), _request("implementer", "T-2")
-            with patch.object(execute_module, "step", return_value=execute_module.IssueSteps([old_a, old_b])):
+            with patch.object(execute_module, "step", return_value=steps_module.IssueSteps([old_a, old_b])):
                 first = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
             self.assertEqual(first.kind, "steps")
 
             new_review = _request("code-reviewer", "T-1")
-            with patch.object(execute_module, "step", return_value=execute_module.IssueStep(new_review)):
+            with patch.object(execute_module, "step", return_value=steps_module.IssueStep(new_review)):
                 second = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
             self.assertEqual(second.kind, "step")
             self.assertEqual(read_json(second.path)["role"], "code-reviewer")
@@ -191,6 +196,7 @@ class InvokeTests(unittest.TestCase):
             attempt_id = "attempt-1"
             contract.write_context(paths, attempt_id, _envelope(attempt_id, tmp, paths))
             from loop_spec import execute as execute_module
+            from loop_spec import steps as steps_module
 
             def _request(role, task_id):
                 return {
@@ -201,12 +207,12 @@ class InvokeTests(unittest.TestCase):
                 }
 
             old_single = _request("implementer", "T-1")
-            with patch.object(execute_module, "step", return_value=execute_module.IssueStep(old_single)):
+            with patch.object(execute_module, "step", return_value=steps_module.IssueStep(old_single)):
                 first = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
             self.assertEqual(first.kind, "step")
 
             new_a, new_b = _request("implementer", "T-2"), _request("implementer", "T-3")
-            with patch.object(execute_module, "step", return_value=execute_module.IssueSteps([new_a, new_b])):
+            with patch.object(execute_module, "step", return_value=steps_module.IssueSteps([new_a, new_b])):
                 second = contract.invoke(paths, phase="execute", attempt_id=attempt_id, implementation="default", program_launcher=Path("/bin/true"), store=Mock())
             self.assertEqual(second.kind, "steps")
             requests = read_json(second.path)

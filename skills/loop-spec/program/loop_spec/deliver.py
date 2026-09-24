@@ -16,7 +16,7 @@ from loop_spec import render
 from loop_spec import repo as repo_module
 from loop_spec.contract import load_config
 from loop_spec.errors import LoopSpecError
-from loop_spec.execute import Pause, Product  # noqa: F401 -- Pause kept for interface symmetry
+from loop_spec.steps import Pause, Product  # noqa: F401 -- Pause kept for interface symmetry
 from loop_spec.ids import now_iso
 
 

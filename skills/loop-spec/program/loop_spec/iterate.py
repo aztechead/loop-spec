@@ -16,7 +16,7 @@ from loop_spec.budget import has_room
 from loop_spec.contract import resolve_role, validate_request
 from loop_spec.errors import LoopSpecError
 from loop_spec.events import emit
-from loop_spec.execute import IssueStep, Product
+from loop_spec.steps import IssueStep, Product
 from loop_spec.paths import ensure_results_dir
 from loop_spec.roles import compose_prompt, load_role, resolve_model
 

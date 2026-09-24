@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from loop_spec.errors import LoopSpecError
-from loop_spec.execute import IssueStep, Product
+from loop_spec.steps import IssueStep, Product
 from loop_spec.paths import FeaturePaths
 from loop_spec.state import StateStore
 from loop_spec.verify import on_step_refused, on_submit as _on_submit, step

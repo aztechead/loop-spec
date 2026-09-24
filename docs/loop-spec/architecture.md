@@ -11,24 +11,39 @@ product and the postconditions that product must satisfy are not (sections 2
 and 4). A phase's JSON validating against its schema is necessary and never
 sufficient: the program checks the claimed exit against the repository first.
 
-## The program, by responsibility
+## Core and plug-ins
 
-Everything lives under `skills/loop-spec/program/loop_spec/`.
+7.x is a microkernel. A small core runs every run. Plug-ins add behaviour through a
+contract the core checks, and the core finds each one through a registry. Everything
+under `skills/loop-spec/program/loop_spec/` that is not a plug-in below is core. That
+covers `controller.py` (the only place a phase transitions), `postconditions.py`,
+`contract.py`, `state.py`, `steps.py`, `attest.py`, `questions.py`, `result.py`,
+`events.py`, `ledger.py`, `paths.py`, and `entries.py`. It also covers the shared
+services `repo.py`, `baseline.py`, `probes.py`, `schema.py`, `render.py`, `jsonio.py`,
+`ids.py`, `errors.py`, and `log.py`, plus `defaults.py` and `external.py`, the core side
+of the lead and external implementation kinds.
 
-- **Entry and state machine**: `cli.py` (argparse, error boundary),
-  `controller.py` (transitions a phase, writes a result).
-- **The contract**: `contract.py` (runs one implementation), `external.py`
-  (the placeholder, exit/postcondition tables), `defaults.py` (SPEC/PLAN's
-  lead dispatch), `roles.py` (a role's prompt and schema).
-- **Phase defaults**: `execute.py`, `verify.py`, `iterate.py`, `debug.py`,
-  `revise.py` issue one role step at a time; `deliver.py` runs one pass.
-- **Checking**: `postconditions.py` (the boundary check, route matrix),
-  `budget.py` (the T1 rewind budget).
-- **Handoffs**: `steps.py`, `questions.py`, `attest.py` (native transcript
-  check), `sdk_runner.py` (a step through the Agent SDK).
-- **Records and support**: `state.py`, `paths.py`, `ledger.py`, `result.py`,
-  `events.py`, `baseline.py`, `repo.py`, `probes.py`, `schema.py`, `jsonio.py`,
-  `ids.py`, `errors.py`, `render.py` (PR body, committed artifacts).
+| Plug-in kind | Contract | Registry |
+|---|---|---|
+| Phase implementation | `context.json` in, `product.json` out, the route matrix's postconditions | `contract.resolve_implementation` chooses the default, an external tool, or a bound skill. `contract.DEFAULT_IMPLEMENTATIONS` names each default adapter (`execute.py`, `verify.py`, `iterate.py`, `debug.py`, `revise.py`, `deliver.py`, and the lead roles) |
+| Role | `roles/<name>/SKILL.md` + `schema.json` | the `roles/` directory (`roles.ROLE_NAMES`); `contract.resolve_role` binds another skill |
+| Runner | `step.json` in, `submit` out | none: whichever process picks up `step.json` (the lead, or `sdk_runner.py`) |
+| Entry | an entry name and what it takes (a request or a PR) | `entries.ENTRIES`; the CLI and `controller._ENTRY_START` read it |
+
+The plug-in rule: a plug-in never imports another plug-in, and it returns the step
+contract's types from `steps.py`. The core reads a plug-in's products, not its
+private state. Two known deviations remain, as follow-ups:
+
+- The controller still reads plug-in state:
+  - `store.state["verify"]` (`_write_terminal_result`);
+  - the shared `executeRuns` and `verifyRuns` records;
+  - `debug.record_base_runs`, `debug.compact_products`, and `revise.gaps_from_pr`,
+    called at entry.
+
+  Fixing this means each phase publishes what the core reads through its product.
+- The entry skill stubs (`skills/<entry>/SKILL.md`) each repeat the runner protocol.
+  One protocol file that the stubs cite, or stubs generated from it, would remove the
+  copies.
 
 ## Implementation kinds and the step seam
 

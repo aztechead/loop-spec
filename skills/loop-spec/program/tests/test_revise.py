@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from loop_spec.execute import IssueStep, Product
+from loop_spec.steps import IssueStep, Product
 from loop_spec.paths import FeaturePaths
 from loop_spec.revise import adopted_range, gaps_from_pr, on_submit, step
 from loop_spec.state import StateStore

@@ -12,6 +12,7 @@ import shlex
 from pathlib import Path
 
 from loop_spec import VERSION, attest, contract, controller, log, questions, steps
+from loop_spec.entries import ENTRIES, RESUME_PHASES
 from loop_spec.errors import LoopSpecError
 from loop_spec.events import emit as emit_event
 from loop_spec.events import marker_next, marker_wait
@@ -20,9 +21,8 @@ from loop_spec.paths import FeaturePaths, feature_dir, repo_id, state_home
 from loop_spec.postconditions import retry_limit
 from loop_spec.state import StateStore
 
-# Full-cycle and single-phase controller entries: same later-wave behavior for now.
-_CONTROLLER_ENTRIES = ("cycle", "micro", "debug", "revise",
-                       "spec", "plan", "execute", "verify", "iterate", "deliver")
+# Every run-starting entry (the registry) plus the phases a run resumes at by name.
+_CONTROLLER_ENTRIES = (*ENTRIES, *RESUME_PHASES)
 
 
 def _add_common(parser: argparse.ArgumentParser, require_root: bool = True) -> None:
@@ -40,12 +40,11 @@ def _build_parser() -> argparse.ArgumentParser:
     for name in _CONTROLLER_ENTRIES:
         p = sub.add_parser(name)
         _add_common(p)
-        if name in ("cycle", "micro"):
+        takes = ENTRIES[name].takes if name in ENTRIES else None
+        if takes == "request":
             p.add_argument("--request")
             p.add_argument("--request-file")
-        elif name == "debug":
-            p.add_argument("--request")
-        elif name == "revise":
+        elif takes == "pr":
             p.add_argument("--pr")
 
     _add_common(sub.add_parser("status"))
@@ -193,8 +192,7 @@ def _request_text(args: argparse.Namespace) -> str | None:
     return getattr(args, "request", None)
 
 
-_REPAIR_COMMAND = re.compile(
-    r"`loop-spec (status|cycle|micro|debug|revise|spec|plan|execute|verify|iterate|deliver|submit|answer)\b")
+_REPAIR_COMMAND = re.compile(r"`loop-spec (" + "|".join(("status", *_CONTROLLER_ENTRIES, "submit", "answer")) + r")\b")
 
 
 def _runnable_repair(repair: str, args: argparse.Namespace) -> str:

@@ -7,7 +7,8 @@ from pathlib import Path
 from loop_spec import repo as repo_module
 from loop_spec.baseline import BaselineEntry, run_command
 from loop_spec.errors import LoopSpecError
-from loop_spec.execute import _final_product, IssueStep, IssueSteps, Pause, Product, dag_waves, on_step_refused, on_submit, step
+from loop_spec.execute import _final_product, dag_waves, on_step_refused, on_submit, step
+from loop_spec.steps import IssueStep, IssueSteps, Pause, Product
 from loop_spec.jsonio import atomic_write_json
 from loop_spec.paths import FeaturePaths
 from loop_spec.postconditions import retry_limit

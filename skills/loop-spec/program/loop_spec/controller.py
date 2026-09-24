@@ -15,8 +15,6 @@ from loop_spec import baseline as baseline_module
 from loop_spec import budget as budget_module
 from loop_spec import contract
 from loop_spec import debug as debug_module
-from loop_spec import execute as execute_module
-from loop_spec import iterate as iterate_module
 from loop_spec import ledger as ledger_module
 from loop_spec import postconditions
 from loop_spec import probes as probes_module
@@ -26,7 +24,7 @@ from loop_spec import repo_checks
 from loop_spec import result as result_module
 from loop_spec import revise as revise_module
 from loop_spec import steps
-from loop_spec import verify as verify_module
+from loop_spec.entries import ENTRIES, RESUME_PHASES
 from loop_spec.errors import LoopSpecError
 from loop_spec.ids import digest, new_id, now_iso
 from loop_spec.jsonio import atomic_write_json, read_json
@@ -36,8 +34,8 @@ from loop_spec.paths import state_home as resolve_state_home
 from loop_spec.state import StateStore
 
 _PHASE_ORDER = ["spec", "plan", "execute", "verify", "iterate", "deliver"]
-_ALL_IMPLEMENTATION_PHASES = _PHASE_ORDER + ["debug", "revise"]
-_RESUMABLE_PHASES = ("spec", "plan", "execute", "verify", "iterate", "deliver")
+_ALL_IMPLEMENTATION_PHASES = list(contract.DEFAULT_IMPLEMENTATIONS)
+_RESUMABLE_PHASES = RESUME_PHASES
 
 
 @dataclass
@@ -64,20 +62,9 @@ def run_entry(entry: str, *, project_root: Path, request_text: str | None, slug:
     home = resolve_state_home(state_home)
     rid = repo_id(project_root)
 
-    if entry in ("cycle", "micro"):
-        return _run_request_entry(
-            entry, project_root=project_root, request_text=request_text, slug=slug, home=home, rid=rid,
-            answer_policy=answer_policy, cycle_type="full" if entry == "cycle" else "micro", initial_phase="spec",
-        )
-
-    if entry == "debug":
-        return _run_request_entry(
-            entry, project_root=project_root, request_text=request_text, slug=slug, home=home, rid=rid,
-            answer_policy=answer_policy, cycle_type="debug", initial_phase="debug",
-        )
-
-    if entry == "revise":
-        return _run_revise_entry(project_root=project_root, pr=pr, slug=slug, home=home, rid=rid, answer_policy=answer_policy)
+    if entry in _ENTRY_START:
+        return _ENTRY_START[entry](project_root=project_root, request_text=request_text, slug=slug, home=home,
+                                   rid=rid, answer_policy=answer_policy, pr=pr)
 
     if entry in _RESUMABLE_PHASES:
         if not slug:
@@ -92,7 +79,27 @@ def run_entry(entry: str, *, project_root: Path, request_text: str | None, slug:
             store.save()
         return continue_run(store, paths, project_root=project_root)
 
-    raise LoopSpecError(f"unknown entry {entry}", repair="use cycle, micro, debug, revise, spec, plan, execute, verify, iterate, or deliver")
+    raise LoopSpecError(f"unknown entry {entry}", repair="use one of: " + ", ".join((*ENTRIES, *_RESUMABLE_PHASES)))
+
+
+def _request_start(entry: str, cycle_type: str, initial_phase: str):
+    def start(*, project_root, request_text, slug, home, rid, answer_policy, pr) -> Next:
+        return _run_request_entry(entry, project_root=project_root, request_text=request_text, slug=slug, home=home,
+                                  rid=rid, answer_policy=answer_policy, cycle_type=cycle_type, initial_phase=initial_phase)
+    return start
+
+
+def _revise_start(*, project_root, request_text, slug, home, rid, answer_policy, pr) -> Next:
+    return _run_revise_entry(project_root=project_root, pr=pr, slug=slug, home=home, rid=rid, answer_policy=answer_policy)
+
+
+# How the core starts each registered entry (entries.ENTRIES; a test holds the keys equal).
+_ENTRY_START = {
+    "cycle": _request_start("cycle", "full", "spec"),
+    "micro": _request_start("micro", "micro", "spec"),
+    "debug": _request_start("debug", "debug", "debug"),
+    "revise": _revise_start,
+}
 
 
 def _run_request_entry(entry: str, *, project_root: Path, request_text: str | None, slug: str | None,
@@ -1588,13 +1595,14 @@ def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: 
 # Step submission routing
 # ---------------------------------------------------------------------------
 
-_SUBMIT_ROLE_MODULES = {
-    ("execute", "implementer"): execute_module, ("execute", "code-reviewer"): execute_module,
-    ("verify", "verifier"): verify_module, ("verify", "code-reviewer"): verify_module,
-    ("iterate", "iterate-judge"): iterate_module,
-    ("debug", "debugger"): debug_module,
-    ("revise", "reviser"): revise_module,
-}
+def _stepped_owner(store: StateStore, phase: str):
+    """The default adapter that owns `phase`'s role steps, or None: a lead or external
+    phase's steps (the plan critic, an external product step with role None) belong
+    to no adapter."""
+    if ((store.state.get("implementations") or {}).get("phases") or {}).get(phase, "default") != "default":
+        return None
+    kind, _ = contract.DEFAULT_IMPLEMENTATIONS.get(phase, (None, None))
+    return contract.default_adapter(phase) if kind == "stepped" else None
 
 
 def route_submission(store: StateStore, paths: FeaturePaths, step: dict, result: dict) -> None:
@@ -1606,17 +1614,14 @@ def route_submission(store: StateStore, paths: FeaturePaths, step: dict, result:
         store.state["adoptedReview"] = result
         store.save()
         return
-    module = _SUBMIT_ROLE_MODULES.get((step["phase"], step["role"]))
-    if module is not None:
+    module = _stepped_owner(store, step["phase"])
+    if module is not None and step["role"] is not None:
         module.on_submit(store, paths, step, result)
 
 
 # ---------------------------------------------------------------------------
 # Refused evidence (LF-60)
 # ---------------------------------------------------------------------------
-
-_REFUSAL_OWNERS = {"execute": execute_module, "verify": verify_module, "iterate": iterate_module}
-
 
 def _reset_refused_owner(store: StateStore, paths: FeaturePaths, step_id: str, refused: dict) -> None:
     """Drop every reference the owning phase holds to the refused step, so its next
@@ -1627,8 +1632,10 @@ def _reset_refused_owner(store: StateStore, paths: FeaturePaths, step_id: str, r
     elif step_id == phase_state.get("adoptedReviewStepId"):
         phase_state["adoptedReviewStepId"] = None
         store.state["adoptedReview"] = None
-    elif refused["phase"] in _REFUSAL_OWNERS:
-        _REFUSAL_OWNERS[refused["phase"]].on_step_refused(store, paths, step_id, refused)
+    else:
+        on_step_refused = getattr(_stepped_owner(store, refused["phase"]), "on_step_refused", None)
+        if on_step_refused is not None:
+            on_step_refused(store, paths, step_id, refused)
 
 
 def _finish_refusals(store: StateStore, paths: FeaturePaths) -> None:

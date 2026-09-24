@@ -28,6 +28,7 @@ from loop_spec.jsonio import read_json
 from loop_spec.paths import ensure_results_dir
 from loop_spec.postconditions import adopted_commits, close_out_view, close_outs, retry_limit
 from loop_spec.roles import compose_prompt, load_role, resolve_model
+from loop_spec.steps import IssueStep, IssueSteps, Pause, Product, Wait
 
 _TERMINAL = {"done", "already-satisfied", "removed", "blocked", "planGap", "adopted"}
 _DIFF_CAP = 200_000  # ponytail: a flat cap, raise it if a real diff gets truncated in practice
@@ -56,49 +57,6 @@ _MUST_FLIP_BASELINE_DETAIL = "reproduction did not fail at base"
 # _mark_adopted_tasks already compares to decide whether a reviser's carried-
 # forward task is still the same task.
 _PLAN_IDENTITY_FIELDS = ("title", "files", "repo", "verify", "criteria", "dependsOn", "featureAdded", "mustFlip")
-
-
-class IssueStep:
-    __slots__ = ("request",)
-
-    def __init__(self, request: dict) -> None:
-        self.request = request
-
-
-class IssueSteps:
-    """Two or more requests from the SAME wave, for the lead to dispatch in
-    parallel (step() falls back to the single-request IssueStep when a wave
-    only ever has one request to issue, so every other module's step() and
-    every existing test of it are unaffected)."""
-    __slots__ = ("requests",)
-
-    def __init__(self, requests: list[dict]) -> None:
-        self.requests = requests
-
-
-class Wait:
-    """Nothing new to issue this call, but the wave is not done: one or more of
-    its tasks already have a step open (implementing/reviewing) from an earlier
-    call in this same wave. `open` names those steps' ids so the caller knows
-    what it is waiting on rather than being told to start something new."""
-    __slots__ = ("open",)
-
-    def __init__(self, open: list[str]) -> None:
-        self.open = open
-
-
-class Product:
-    __slots__ = ("product",)
-
-    def __init__(self, product: dict) -> None:
-        self.product = product
-
-
-class Pause:
-    __slots__ = ("question_request",)
-
-    def __init__(self, question_request: dict) -> None:
-        self.question_request = question_request
 
 
 def dag_waves(tasks: list[dict], width: int = 3) -> list[list[str]]:

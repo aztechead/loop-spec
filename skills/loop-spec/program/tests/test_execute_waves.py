@@ -19,7 +19,8 @@ from loop_spec import cli
 from loop_spec import controller
 from loop_spec import postconditions
 from loop_spec.baseline import BaselineEntry, run_command
-from loop_spec.execute import IssueStep, IssueSteps, Wait, _final_product, on_submit, step
+from loop_spec.execute import _final_product, on_submit, step
+from loop_spec.steps import IssueStep, IssueSteps, Wait
 from loop_spec.jsonio import read_json
 from loop_spec.paths import FeaturePaths
 from loop_spec.state import StateStore
