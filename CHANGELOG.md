@@ -4,6 +4,25 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.4.2] - 2026-09-24
+
+A run on an open PR finds finished work quickly. The 7.4.1 live run took 20.5
+minutes to conclude that its PR already did what was asked, and about 15 of them
+were waste.
+
+- The planner, plan critic and reviser read and run in a clean checkout of each
+  repo's code: the start commit, or EXECUTE's head on a re-plan. They get it as
+  `codePath` and `codeSha`. Before this, a planner lead read the operator's checkout
+  on `main` and planned work the PR head already had.
+- A plan task may carry `alreadySatisfied` (`evidence`, `cites`). EXECUTE never
+  dispatches such a task. P8 checks its cites and refuses it on a `mustFlip` task or
+  a task that owns integrated commits. The plan critic raises an unmarked task the
+  code already does as Critical, recommending the mark. VERIFY still proves every
+  criterion at the head.
+- The adopted-range review at EXECUTE entry runs only when a task is adopted: a plan
+  task matching the delivering run's, or any task under an external EXECUTE. A micro
+  or cycle on a PR no longer spends that step.
+
 ## [7.4.1] - 2026-09-24
 
 The five gaps 7.4.0 left.
