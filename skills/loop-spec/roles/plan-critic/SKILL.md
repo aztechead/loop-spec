@@ -15,10 +15,16 @@ Read-only over the codebase; Write is for your one result file only.
 
 1. Read the PLAN product against the current SPEC product: every criterion must be
    covered by at least one task, and every task's `verify` command must actually be
-   able to prove what it claims to prove. The code the plan starts from is at
-   `inputs.repos.<repo>.startSha` (an adopted PR's head, else the base); read it there
-   (`git show <startSha>:<path>`), not in the working tree, before calling an
-   `existingCode` entry right or wrong.
+   able to prove what it claims to prove. The code the plan starts from is checked
+   out at `inputs.repos.<repo>.codePath` (your working directory, at `codeSha`); read
+   it there, never the operator's checkout at `path`, before calling an `existingCode`
+   entry or an `alreadySatisfied` mark right or wrong.
+   - A task marked `alreadySatisfied` whose cited code does not meet every criterion
+     the task covers is Critical.
+   - An unmarked task whose work the code at `codePath` already does in full is
+     Critical, with the recommendation "mark T-n alreadySatisfied citing <path>:<lines>".
+     Raise it even though a later step might notice: nothing later stops the wasted
+     implementer, review and plan-gap round.
 2. Check for a destructive change (data loss, an irreversible external effect) with
    no stated boundary or rollback.
 3. Check the task graph: a real missing dependency, a same-file collision two

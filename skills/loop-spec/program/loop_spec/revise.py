@@ -85,12 +85,14 @@ def _reviser_request(store, paths, ctx) -> dict:
         "repos": repo_map(store.state["repos"]),
         "probes": ctx.get("probes", {}),
     }
-    prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=repo_path, phase="revise")
+    # 7.4.2: the reviser reads and runs in the code checkout at the PR head.
+    code_path = Path((store.state["repos"][adoption["repo"]].get("codeCheckout") or {}).get("path") or repo_path)
+    prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=code_path, phase="revise")
     request = {
         # "revise" is not one of the seven ROUTES phases (it re-enters through SPEC's
         # own approval flow); step.json's own schema does not restrict "phase" to an
         # enum, so this is the run's actual stage, not a postcondition lookup key.
-        "kind": "lead", "role": "reviser", "phase": "revise", "cwd": str(repo_path), "prompt": prompt,
+        "kind": "lead", "role": "reviser", "phase": "revise", "cwd": str(code_path), "prompt": prompt,
         "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"], "retryOf": None, "reason": None,
         **dispatch_settings(project_root, "reviser"),

@@ -148,7 +148,8 @@ def start_sha(state: dict, repo_name: str) -> str:
 
 # LF-52/4.8: a plan task's identity, for EXECUTE's plan reconciliation and for
 # deciding whether a reviser's carried-forward task is still the delivered one.
-PLAN_IDENTITY_FIELDS = ("title", "files", "repo", "verify", "criteria", "dependsOn", "featureAdded", "mustFlip")
+PLAN_IDENTITY_FIELDS = ("title", "files", "repo", "verify", "criteria", "dependsOn", "featureAdded", "mustFlip",
+                        "alreadySatisfied")
 
 
 def adoptable_task_ids(state: dict, plan_tasks: list[dict]) -> set[str]:
@@ -509,8 +510,6 @@ class Boundary:
         # cites that resolve); whether reuse was the right call is the critic's.
         repos = self._repo_entries()
         task_ids = {t["id"] for t in self.product["tasks"]}
-        # A re-plan after EXECUTE also resolves cites at the heads EXECUTE published.
-        execute_heads = ((self.store.state["products"].get("execute") or {}).get("product") or {}).get("heads") or {}
         for entry in self.product.get("existingCode") or []:
             if entry["repo"] not in repos:
                 return f"existingCode {entry['concept']!r} names an unknown repo {entry['repo']!r}"
@@ -519,18 +518,40 @@ class Boundary:
                 return f"existingCode {entry['concept']!r} names tasks not in the plan: {', '.join(unknown)}"
             if entry["decision"] != "new" and not entry["cites"]:
                 return f"existingCode {entry['concept']!r} is {entry['decision']} but cites no code"
-            info = repos[entry["repo"]]
-            shas = [start_sha(self.store.state, entry["repo"])]
-            if execute_heads.get(entry["repo"]):
-                shas.append(execute_heads[entry["repo"]])  # code an earlier task of this run added
             for cite in entry["cites"]:
-                first, last = (int(n) for n in cite["lines"].split("-"))
-                texts = [shown.stdout for sha in shas
-                         if (shown := repo_module._git(Path(info["path"]), "show", f"{sha}:{cite['path']}")).returncode == 0]
-                if not texts:
-                    return f"existingCode {entry['concept']!r} cites {cite['path']}, which does not exist at the repo's start commit"
-                if not any(1 <= first <= last <= len(text.splitlines()) for text in texts):
-                    return f"existingCode {entry['concept']!r} cites {cite['path']}:{cite['lines']}, outside the file"
+                if error := self._cite_error(entry["repo"], cite):
+                    return f"existingCode {entry['concept']!r} {error}"
+        # 7.4.2: a task PLAN marks already satisfied is never dispatched; its cites must
+        # resolve, a debug repair task (mustFlip) must fail at base, and a task that owns
+        # integrated commits is re-implemented, never skipped.
+        execute = (self.store.state["products"].get("execute") or {}).get("product") or {}
+        owns_commits = {t["id"] for t in execute.get("tasks") or [] if t.get("commits")}
+        for task in self.product["tasks"]:
+            marked = task.get("alreadySatisfied")
+            if not marked:
+                continue
+            if task["mustFlip"]:
+                return f"task {task['id']} is mustFlip and marked alreadySatisfied"
+            if task["id"] in owns_commits:
+                return f"task {task['id']} owns integrated commits and cannot be marked alreadySatisfied"
+            for cite in marked["cites"]:
+                if error := self._cite_error(task["repo"], cite):
+                    return f"task {task['id']}'s alreadySatisfied {error}"
+        return None
+
+    def _cite_error(self, repo_name: str, cite: dict) -> str | None:
+        """Whether a cite resolves at the repo's start commit, or at the head EXECUTE
+        published (code an earlier task of this run added)."""
+        info = self._repo_entries()[repo_name]
+        execute_heads = ((self.store.state["products"].get("execute") or {}).get("product") or {}).get("heads") or {}
+        shas = [start_sha(self.store.state, repo_name), *([execute_heads[repo_name]] if execute_heads.get(repo_name) else [])]
+        first, last = (int(n) for n in cite["lines"].split("-"))
+        texts = [shown.stdout for sha in shas
+                 if (shown := repo_module._git(Path(info["path"]), "show", f"{sha}:{cite['path']}")).returncode == 0]
+        if not texts:
+            return f"cites {cite['path']}, which does not exist at the repo's start commit"
+        if not any(1 <= first <= last <= len(text.splitlines()) for text in texts):
+            return f"cites {cite['path']}:{cite['lines']}, outside the file"
         return None
 
     def _p7(self) -> str | None:

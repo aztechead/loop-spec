@@ -49,8 +49,10 @@ and `tests/test_architecture.py` enforces it:
   implementation, so an external product cannot vouch for itself.
 
 One known duplication remains: PLAN's probes (`controller._phase_probes`) and P8 pick
-an adopted repo's start commit from `adoption.headSha`, while the planner's repo map
-reads the same commit from `repos.<repo>.lastKnownHead`.
+an adopted repo's start commit from `adoption.headSha` (`postconditions.start_sha`),
+while the planner's repo map reads the same commit from `repos.<repo>.lastKnownHead`.
+The code checkout the plan-writing roles read (`repos.<repo>.codeCheckout`, `codeSha`
+in the repo map) is made from `start_sha`, or from EXECUTE's head on a re-plan.
 
 The entry skill stubs (`skills/<entry>/SKILL.md`) start the program and then cite
 `skills/loop-spec/references/runner.md`, the runner protocol's one copy; the values its

@@ -503,6 +503,36 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
             return waiting
 
 
+def _ensure_code_checkouts(store: StateStore, paths: FeaturePaths) -> None:
+    """7.4.2: the roles that write or check a PLAN read and run in a clean checkout of
+    the code they plan against, never the operator's tree (v741-g5: a lead read `main`
+    while the PR head had the work). Per repo: the head EXECUTE published (a re-plan),
+    else the start commit. A recorded checkout is reused while it is clean, at that
+    commit, and not quarantined; a replaced one is removed only when it is clean and
+    its writers are known to have ended, otherwise terminal cleanup takes it."""
+    execute_heads = ((store.state["products"].get("execute") or {}).get("product") or {}).get("heads") or {}
+    quarantined = {Path(q["path"]).resolve() for q in store.state["steps"]["quarantined"]}
+    changed = False
+    for name, info in store.state["repos"].items():
+        repo_path = Path(info["path"])
+        sha = execute_heads.get(name) or postconditions.start_sha(store.state, name)
+        current = info.get("codeCheckout")
+        old = Path(current["path"]) if current else None
+        if old is not None and old.is_dir() and old.resolve() not in quarantined and repo_module.is_clean(old) \
+                and current["sha"] == sha and repo_module.head_sha(old) == sha:
+            continue
+        if old is not None and old.is_dir() and repo_module.is_clean(old) \
+                and steps.writers_known_terminated(store, paths, old):
+            repo_module.remove_worktree(repo_path, old)
+        repo_module.run_git(repo_path, "worktree", "prune")
+        checkout = Path(paths.checkouts_dir) / f"code-{name}-{sha[:12]}-{uuid.uuid4().hex[:8]}"
+        repo_module.clean_checkout(repo_path, sha, checkout)
+        info["codeCheckout"] = {"path": str(checkout), "sha": sha}
+        changed = True
+    if changed:
+        store.save()
+
+
 def _phase_probes(state: dict, phase: str, checkouts_dir: Path) -> dict:
     """7.1.0: the phases that write a PLAN get the repo-checks facts for each repo, read
     at the tree that plan will run against (a revise run's adopted repo at the PR head).
@@ -619,6 +649,8 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
         store.save()
         marker_phase_start(paths, phase, attempt_id)
         emit(paths, "phase_start", {"summary": f"{phase} attempt {attempt_id}"}, phase=phase, attempt_id=attempt_id)
+        if phase in ("plan", "debug", "revise"):
+            _ensure_code_checkouts(store, paths)
         envelope = build_envelope(store, paths, phase, attempt_id, project_root)
         contract.write_context(paths, attempt_id, envelope)
 
@@ -1040,7 +1072,10 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
     # roles.compose_prompt/load_role (see _issue_adopted_review), and the critic
     # step now does too.
     from loop_spec.roles import compose_prompt, load_role, repo_map, resolve_effort, resolve_model
-    repo_path = next(iter(store.state["repos"].values()))["path"]
+    # 7.4.2: the critic reads and runs in the code checkout, like the planner.
+    _ensure_code_checkouts(store, paths)
+    first_repo = next(iter(store.state["repos"].values()))
+    repo_path = first_repo["codeCheckout"]["path"]
     spec_product = store.state["products"]["spec"]["product"]
     inputs = {"specCriteria": spec_product["criteria"], "planTasks": plan_product["tasks"], "baseline": facts,
               "repos": repo_map(store.state["repos"])}

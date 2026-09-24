@@ -165,9 +165,11 @@ class BundledSchemaTests(unittest.TestCase):
     def test_verify_plan_task_def_matches_plan_schema(self):
         # verify.json can only $ref within its own document, so it carries its own copy
         # of the plan task shape; this pins the copy against drift from plan.json.
+        # 7.4.2: minus alreadySatisfied -- a remediation task is work VERIFY asks for.
         verify_schema = load_schema("verify")
-        plan_schema = load_schema("plan")
-        self.assertEqual(verify_schema["$defs"]["planTask"], plan_schema["properties"]["tasks"]["items"])
+        plan_task = json.loads(json.dumps(load_schema("plan")["properties"]["tasks"]["items"]))
+        del plan_task["properties"]["alreadySatisfied"]
+        self.assertEqual(verify_schema["$defs"]["planTask"], plan_task)
 
     def test_debug_spec_and_plan_defs_match_products_minus_envelope(self):
         # Same reasoning as above: debug.json embeds the spec/plan product shapes

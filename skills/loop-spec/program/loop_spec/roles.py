@@ -144,7 +144,10 @@ CONTRACTS: dict[str, str] = {
         "a verify command; `dependsOn` is acyclic. `featureAdded` is a target file "
         "PATH that does not exist at base, never a command; `mustFlip` is only for a "
         "debug repair task whose verify is the failing reproduction, and is false for "
-        "every ordinary task. Declare `exit: \"ready\"`, or `\"spec gap\"` naming the "
+        "every ordinary task. Read code under `inputs.repos.<repo>.codePath`, never the "
+        "operator's checkout. When that code already meets every criterion a task covers, "
+        "keep the task and set `alreadySatisfied` with evidence and cites; never on a "
+        "`mustFlip` task. Declare `exit: \"ready\"`, or `\"spec gap\"` naming the "
         "missing requirement. Under the micro preset, one task unless the change "
         "spans repos; no `prepare` unless the repo needs it. " + REPO_NAME_RULE
     ),
@@ -155,7 +158,10 @@ CONTRACTS: dict[str, str] = {
         "marked `mustFlip` that is not a debug repair, `featureAdded` that is not a "
         "path or names a path present at base, or a verify command with a relative "
         "interpreter path that a clean checkout will not have, or an `existingCode` "
-        "entry marked `new` for behavior cited or named code already implements. No style advice. "
+        "entry marked `new` for behavior cited or named code already implements, a task "
+        "marked `alreadySatisfied` whose cited code does not meet its criteria, or an "
+        "unmarked task whose work the code at `codePath` already does in full (recommend "
+        "marking it). No style advice. "
         "Output `{\"findings\": []}` when nothing is Critical."
     ),
     "implementer": (
@@ -213,10 +219,17 @@ def repo_map(repos) -> dict:
     """`inputs.repos` for a role that writes or checks a PLAN: each repo's name, path,
     base (where the baseline runs) and start (the code this run begins from: an adopted
     PR's head, else the base). `startSha` is `lastKnownHead`, which holds only because
-    nothing advances `lastKnownHead` after the run's repos are resolved."""
+    nothing advances `lastKnownHead` after the run's repos are resolved. `codePath` is
+    a clean checkout of the code to read, at `codeSha` (7.4.2); the repo's own path when
+    the program made none."""
     items = repos.items() if isinstance(repos, dict) else ((r.get("name"), r) for r in repos)
-    return {name: {"path": info["path"], "baseSha": info.get("baseSha"),
-                   "startSha": info.get("lastKnownHead") or info.get("baseSha")} for name, info in items}
+    out = {}
+    for name, info in items:
+        start = info.get("lastKnownHead") or info.get("baseSha")
+        code = info.get("codeCheckout") or {}
+        out[name] = {"path": info["path"], "baseSha": info.get("baseSha"), "startSha": start,
+                     "codePath": code.get("path") or info["path"], "codeSha": code.get("sha") or start}
+    return out
 
 
 def compose_prompt(role: Role, *, inputs: dict, result_path: Path, cwd: Path, phase: str) -> str:

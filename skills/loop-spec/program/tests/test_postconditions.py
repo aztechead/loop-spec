@@ -273,6 +273,20 @@ class PostconditionsTests(unittest.TestCase):
         self.store.state["products"]["execute"] = {"product": {"heads": {"repo": self.sha_a}}}
         self.assertIsNone(p8(cites=[{"path": "a.txt", "lines": "1-1"}]))
 
+    def test_p8_checks_already_satisfied_tasks(self):
+        """7.4.2: a marked task's cites resolve; never mustFlip; never a task that owns commits."""
+        def p8(**task):
+            product = copy.deepcopy(self.plan_product)
+            product["tasks"][0] |= {"alreadySatisfied": {"evidence": "done", "cites": [{"path": "README.md", "lines": "1-1"}]}} | task
+            return self._boundary("plan", product, "ready")._p8()
+
+        self.store.state["products"]["execute"] = None
+        self.assertIsNone(p8())
+        self.assertIn("outside the file", p8(alreadySatisfied={"evidence": "done", "cites": [{"path": "README.md", "lines": "1-9"}]}))
+        self.assertIn("mustFlip", p8(mustFlip=True))
+        self.store.state["products"]["execute"] = {"product": {"heads": {}, "tasks": [{"id": self.plan_product["tasks"][0]["id"], "commits": ["abc"]}]}}
+        self.assertIn("owns integrated commits", p8())
+
     def test_p7(self):
         self.assertIsNone(self._boundary("plan", self.plan_product, "ready")._p7())
         self.store.state["critic"] = None

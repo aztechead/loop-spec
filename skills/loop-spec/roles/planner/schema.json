@@ -103,6 +103,33 @@
           "mustFlip": {
             "type": "boolean",
             "description": "true only for a debug repair task whose verify command is the failing reproduction; false for every ordinary task."
+          },
+          "alreadySatisfied": {
+            "description": "7.4.2: set only when the code at codePath already meets every criterion this task covers; the task is then never dispatched. evidence says how, cites point at that code. Never on a mustFlip task.",
+            "anyOf": [
+              {"type": "null"},
+              {
+                "type": "object",
+                "required": ["evidence", "cites"],
+                "additionalProperties": false,
+                "properties": {
+                  "evidence": {"type": "string", "minLength": 1},
+                  "cites": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": ["path", "lines"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": {"type": "string", "minLength": 1},
+                        "lines": {"type": "string", "pattern": "^[0-9]+-[0-9]+$"}
+                      }
+                    }
+                  }
+                }
+              }
+            ]
           }
         }
       }

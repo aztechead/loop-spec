@@ -559,6 +559,39 @@ class ExecuteLifecycleTests(unittest.TestCase):
             {"task": "T-1", "retries": 0, "text": "the verify re-run of `sh verify.sh` is mustFlip-failed: reproduction did not fail at base"},
         ])
 
+    _MARK = {"evidence": "the code already does it", "cites": [{"path": "verify.sh", "lines": "1-1"}]}
+
+    def test_tasks_plan_marked_already_satisfied_are_never_dispatched(self):
+        # 7.4.2: PLAN found the work done at the code commit; EXECUTE exits no change with no step.
+        for task in self.plan_tasks:
+            task["alreadySatisfied"] = self._MARK
+        self.store.save()
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, Product)
+        self.assertEqual(action.product["exit"], "no change")
+        self.assertEqual([t["disposition"] for t in action.product["tasks"]], ["already-satisfied"] * 2)
+        self.assertEqual(action.product["tasks"][0]["evidence"], "already satisfied at PLAN: the code already does it")
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product, check_boundary=False)
+
+    def test_a_replan_that_marks_a_plan_gap_task_resets_it_and_unmarking_reopens_it(self):
+        # 7.4.2: adding or removing the mark is a plan change (PLAN_IDENTITY_FIELDS).
+        self.plan_tasks[0]["mustFlip"] = True
+        self.plan_tasks[0]["featureAdded"] = "sh verify.sh"
+        self._implement_and_review("T-1", "T-1.txt")
+        self._assert_routed_to_plan_gap("T-1")
+
+        self.plan_tasks[0].update({"mustFlip": False, "featureAdded": None, "alreadySatisfied": self._MARK})
+        self.store.save()
+        action = step(self.store, self.paths, self.ctx)
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "already-satisfied")
+        self.assertEqual((action.request["role"], action.request["cwd"] != ""), ("implementer", True))  # T-2 runs
+        self.assertIn('"reset": ["T-1"]', self.paths.events_jsonl.read_text())
+
+        self.plan_tasks[0]["alreadySatisfied"] = None
+        self.store.save()
+        step(self.store, self.paths, self.ctx)
+        self.assertNotEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "already-satisfied")
+
     def test_missing_baseline_routes_to_plan_gap(self):
         self.plan_tasks[0]["verify"] = "sh other.sh"
         self.store.state["baseline"]["entries"]["sh other.sh"] = BaselineEntry(

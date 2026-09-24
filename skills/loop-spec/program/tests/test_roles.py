@@ -194,8 +194,12 @@ class RepoMapTests(unittest.TestCase):
             "fresh": {"path": "/f", "baseSha": "c" * 40, "lastKnownHead": "c" * 40},
         }
         mapped = repo_map(repos)
-        self.assertEqual(mapped["adopted"], {"path": "/a", "baseSha": "b" * 40, "startSha": "h" * 40})
+        self.assertEqual(mapped["adopted"], {"path": "/a", "baseSha": "b" * 40, "startSha": "h" * 40,
+                                             "codePath": "/a", "codeSha": "h" * 40})
         self.assertEqual(mapped["fresh"]["startSha"], "c" * 40)
+        # 7.4.2: the code checkout the program made, when there is one.
+        repos["adopted"]["codeCheckout"] = {"path": "/run/checkouts/code-adopted", "sha": "h" * 40}
+        self.assertEqual(repo_map(repos)["adopted"]["codePath"], "/run/checkouts/code-adopted")
 
 
 class ResolveEffortTests(unittest.TestCase):

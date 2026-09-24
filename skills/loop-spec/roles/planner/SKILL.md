@@ -18,9 +18,11 @@ never for installing, building, or running the plan's own verify commands.
    repo whose files the request or SPEC names, `inputs.probes.named.<repo>` (those
    `files` with their house style, duplication, indirection, security signals, and
    the third-party `deps` they import). The probes read each repo at
-   `inputs.repos.<repo>.startSha`: an adopted PR's head, otherwise the base. Read code
-   there too (`git show <startSha>:<path>`); the working tree may be on another
-   commit. The probes already answer what a fresh scan
+   `inputs.repos.<repo>.startSha`: an adopted PR's head, otherwise the base. Read the
+   repo's code under `inputs.repos.<repo>.codePath`, a clean checkout of the code you
+   plan against (`codeSha`: the start commit, or the head an earlier task of this run
+   integrated), which is your working directory; never the operator's checkout at
+   `path`, which may be on another commit. The probes already answer what a fresh scan
    would only re-derive. When a task uses a listed dependency's API, fetch its
    current docs yourself.
 2. Map every criterion to at least one task; a criterion no task covers is a gap.
@@ -71,8 +73,13 @@ never for installing, building, or running the plan's own verify commands.
    the tasks that use it; `reason` says why. A `new` entry's `reason` says what you
    searched for, where, and at which commit. The program checks every cite resolves (P8); the
    implementer of each named task is handed its entries.
-8. Declare `exit: "ready"`, or `"spec gap"` naming exactly what SPEC is missing.
-9. Under the micro preset (`inputs.entry.payload.preset` is `micro`), one task
+8. When the code at `codePath` already meets every criterion a task covers, keep the
+   task and set its `alreadySatisfied`: `evidence` says how the code meets them, and
+   `cites` point at that code (`path`, `lines` as in `existingCode`). The program
+   never dispatches a marked task, and VERIFY still proves its criteria at the head.
+   Never mark a `mustFlip` task. Leave `alreadySatisfied` out otherwise.
+9. Declare `exit: "ready"`, or `"spec gap"` naming exactly what SPEC is missing.
+10. Under the micro preset (`inputs.entry.payload.preset` is `micro`), one task
    unless the change spans repos; no `prepare` unless the repo needs it.
 
 ## Engineering principles

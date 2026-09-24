@@ -249,10 +249,13 @@ def _plan_snapshot(plan_task: dict) -> dict:
     re-entry (4.8) -- deep-copied so a later in-place edit to the live plan
     product (there is none today, but nothing here should rely on that) can
     never retroactively change a snapshot already taken."""
-    return copy.deepcopy({f: plan_task.get(f) for f in _PLAN_IDENTITY_FIELDS})
+    # A null alreadySatisfied is left out, so a snapshot taken before 7.4.2 compares equal.
+    return copy.deepcopy({f: plan_task.get(f) for f in _PLAN_IDENTITY_FIELDS
+                          if f != "alreadySatisfied" or plan_task.get(f)})
 
 
 def _fresh_task_state(plan_task: dict) -> dict:
+    marked = plan_task.get("alreadySatisfied")
     return {
         "status": "pending", "repo": plan_task["repo"], "worktree": None, "branch": None,
         "baseLayers": None, "implementSteps": [], "reviewSteps": [], "commits": [],
@@ -281,6 +284,9 @@ def _fresh_task_state(plan_task: dict) -> dict:
         # LF-52/4.8: this task's identity as PLAN currently states it, compared
         # on every re-entry to decide whether its recorded work still applies.
         "plan": _plan_snapshot(plan_task),
+        # 7.4.2: PLAN found the work already done at the code commit; never dispatched.
+        # Read only here, so a VERIFY remediation that re-opens the task still runs it.
+        **({"status": "already-satisfied", "evidence": f"already satisfied at PLAN: {marked['evidence']}"} if marked else {}),
     }
 
 
@@ -1054,7 +1060,7 @@ def _reconcile_plan(store, paths, ctx, execute_state: dict) -> None:
             fresh = _fresh_task_state(plan_task)
             fresh["generation"] = generation
             tasks[tid] = execute_state["tasks"][tid] = fresh
-            if had_fork:
+            if had_fork and fresh["status"] == "pending":
                 # The plain task/<slug>/<id> name is already spent on the
                 # discarded attempt's (possibly still-retained) branch -- fork
                 # a new generation right away instead of leaving _ensure_worktree

@@ -21,8 +21,9 @@ the codebase; Write is for your one result file only.
    before `prior.commentsCutoff` was handed to the earlier revise run that produced
    `prior`; fold it in again only when the code at `startSha` still does not address
    it (an edited comment keeps its original `createdAt`). The PR's current code is at
-   `inputs.repos.<repo>.startSha` (its head); read it there (`git show
-   <startSha>:<path>`), not in the working tree.
+   `inputs.repos.<repo>.startSha` (its head), checked out at
+   `inputs.repos.<repo>.codePath`, your working directory; read it there, never the
+   operator's checkout at `path`.
 2. For a comment that changes what "done" means (a missed requirement, a wrong
    boundary), fold it into the SPEC product as a new or revised criterion or
    boundary, with a decision recording why.

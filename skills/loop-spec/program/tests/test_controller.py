@@ -715,6 +715,10 @@ class PlanCriticTests(_QuietStdout):
                 critic_step = read_json(next_.path)
                 self.assertEqual(critic_step["role"], "plan-critic")
                 self.assertEqual(critic_step["effort"], "high")
+                # 7.4.2: the planner lead and the critic both run in the code checkout.
+                code_path = next(iter(_open(paths).state["repos"].values()))["codeCheckout"]["path"]
+                self.assertEqual((step["cwd"], critic_step["cwd"]), (code_path, code_path))
+                self.assertIn(f'"codePath": "{code_path}"', step["prompt"])
 
     def test_critic_result_in_review_tool_shape_is_rejected(self):
         # LF-32: the plan-critic worker wrote a review-tool-shaped result (the bug
@@ -2721,6 +2725,41 @@ class PhaseProbesTests(unittest.TestCase):
             state["request"]["text"] = "nothing named"
             self.assertNotIn("named", controller._phase_probes(state, "plan", checkouts))
 
+
+    def test_code_checkout_is_clean_at_the_start_and_replaced_when_dirty_or_moved(self):
+        """7.4.2: plan-writing roles read a clean checkout of the code, never the operator's tree."""
+        with tempfile.TemporaryDirectory() as t:
+            repo = _init_repo(Path(t))
+            base = repo_module.head_sha(repo)
+            _git(repo, "checkout", "-q", "-b", "pr")
+            (repo / "pr.txt").write_text("pr\n")
+            _git(repo, "add", "pr.txt")
+            _git(repo, "commit", "-q", "-m", "pr")
+            pr_head = repo_module.head_sha(repo)
+            _git(repo, "checkout", "-q", "main")
+            paths = FeaturePaths(root=Path(t) / "run")
+            store = StateStore.create(paths, {"id": "run-1", "slug": "s"}, "x")
+            store.state["repos"] = {"repo": {"path": str(repo), "baseSha": base, "lastKnownHead": pr_head}}
+            store.state["adoption"] = {"repo": "repo", "headSha": pr_head}
+
+            controller._ensure_code_checkouts(store, paths)
+            first = Path(store.state["repos"]["repo"]["codeCheckout"]["path"])
+            self.assertEqual(repo_module.head_sha(first), pr_head)
+            self.assertTrue((first / "pr.txt").is_file())  # the PR head, not the operator's main
+            controller._ensure_code_checkouts(store, paths)
+            self.assertEqual(Path(store.state["repos"]["repo"]["codeCheckout"]["path"]), first)  # reused
+
+            (first / "scratch.txt").write_text("left by a lead\n")
+            controller._ensure_code_checkouts(store, paths)
+            second = Path(store.state["repos"]["repo"]["codeCheckout"]["path"])
+            self.assertNotEqual(second, first)
+            self.assertTrue(first.is_dir())  # dirty: left for terminal cleanup, never force-removed
+
+            store.state["products"]["execute"] = {"product": {"heads": {"repo": base}}}
+            controller._ensure_code_checkouts(store, paths)
+            third = Path(store.state["repos"]["repo"]["codeCheckout"]["path"])
+            self.assertEqual(repo_module.head_sha(third), base)  # a re-plan reads EXECUTE's head
+            self.assertFalse(second.exists())  # clean, no open step: removed
 
 class FailureObservationTests(unittest.TestCase):
     """7.1.0: a failing criterion with a recorded pass is re-run by the program at the
