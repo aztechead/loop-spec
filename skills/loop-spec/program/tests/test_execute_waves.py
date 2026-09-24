@@ -8,6 +8,7 @@ git/baseline setup rather than import it, matching this tree's established
 "no shared test-fixture module" convention (see test_execute.py's own comment
 on _git/_init_repo).
 """
+import argparse
 import contextlib
 import io
 import subprocess
@@ -477,7 +478,7 @@ class ControllerAndCliSurfaceWholeWaveTests(unittest.TestCase):
         next_ = controller.continue_run(self.store, self.paths, project_root=self.repo)
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
-            cli._print_next(self.paths, next_)
+            cli._print_next(self.paths, next_, argparse.Namespace(state_home=str(self.paths.root.parent), project_root=str(self.repo)))
         lines = [line for line in buffer.getvalue().splitlines() if line.startswith("LOOP_SPEC_NEXT ")]
         self.assertEqual(len(lines), 2)
 

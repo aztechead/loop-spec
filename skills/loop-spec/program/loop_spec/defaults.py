@@ -10,7 +10,7 @@ from pathlib import Path
 from loop_spec import external
 from loop_spec.jsonio import atomic_write_json, read_json
 from loop_spec.paths import FeaturePaths, ensure_results_dir
-from loop_spec.roles import compose_prompt, load_role, repo_map, resolve_model
+from loop_spec.roles import compose_prompt, load_role, repo_map, dispatch_settings
 from loop_spec.schema import load_schema, validate
 
 
@@ -69,7 +69,7 @@ def run_lead_phase(phase: str, role_name: str, context_path: Path, product_path:
         "resultPath": str(result_path), "schema": load_schema(phase),
         "postconditions": external.PHASE_POSTCONDITIONS[phase],
         "attempt": context["attempt"]["id"], "inputsDigest": context["inputs"]["digest"],
-        "retryOf": None, "reason": None, "model": resolve_model(project_root, role_name),
+        "retryOf": None, "reason": None, **dispatch_settings(project_root, role_name),
     }
     atomic_write_json(product_path.parent / "step.json", step_request)
     return 2

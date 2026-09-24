@@ -13,7 +13,7 @@ from loop_spec.contract import resolve_role, validate_request
 from loop_spec.errors import LoopSpecError
 from loop_spec.steps import IssueStep, Product
 from loop_spec.paths import ensure_results_dir
-from loop_spec.roles import compose_prompt, load_role, repo_map, resolve_model
+from loop_spec.roles import compose_prompt, load_role, repo_map, dispatch_settings
 from loop_spec.schema import load_schema
 
 
@@ -39,7 +39,7 @@ def _debugger_request(store, paths, ctx) -> dict:
         "resultPath": str(result_path), "schema": load_schema("debug"),
         "postconditions": external.PHASE_POSTCONDITIONS["debug"],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"], "retryOf": None, "reason": None,
-        "model": resolve_model(project_root, "debugger"),
+        **dispatch_settings(project_root, "debugger"),
     }
     errors = validate_request("step", request)
     if errors:

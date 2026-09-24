@@ -43,7 +43,7 @@ worker has no human); the supervisor's `run_lead_step` uses a different
 
 ## Run it
 
-Prerequisites: Python 3.10 or later, `pip install claude-agent-sdk==0.2.157`
+Prerequisites: Python 3.10 or later, `pip install claude-agent-sdk==0.2.157` (the version whose `ClaudeAgentOptions.effort` a step's configured effort is passed to)
 (bundles Claude Code CLI 2.1.277), and `git`. Auth is the SDK's own: a Claude
 subscription login (run `claude`, then `/login`), `CLAUDE_CODE_OAUTH_TOKEN` from
 `claude setup-token`, `ANTHROPIC_API_KEY`, or a cloud provider's variables. DELIVER

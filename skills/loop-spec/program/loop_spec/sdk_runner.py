@@ -124,7 +124,8 @@ def make_step_policy(paths):
     return _policy
 
 
-async def _run_step_sdk_async(step: dict, *, paths, plugin_path: Path, model: str | None, permission_mode: str) -> StepRun:
+async def _run_step_sdk_async(step: dict, *, paths, plugin_path: Path, model: str | None, permission_mode: str,
+                              effort: str | None = None) -> StepRun:
     # R2: a receipt is only ever evidence of an SDK-launched run when the run's
     # own state SAYS so, recorded here (the one place that actually launches an
     # SDK session) before the session runs, not inferred later from a file's mere
@@ -136,7 +137,7 @@ async def _run_step_sdk_async(step: dict, *, paths, plugin_path: Path, model: st
 
     sdk = _import_sdk()
     options = sdk.ClaudeAgentOptions(
-        cwd=step["cwd"], model=model, permission_mode=permission_mode,
+        cwd=step["cwd"], model=model, permission_mode=permission_mode, effort=effort,
         plugins=[{"type": "local", "path": str(plugin_path)}],
         setting_sources=["user", "project", "local"],
         output_format={"type": "json_schema", "schema": step["schema"]},
@@ -189,5 +190,8 @@ async def _run_step_sdk_async(step: dict, *, paths, plugin_path: Path, model: st
     return StepRun(ok=True, reason=None, session_id=session_id, events=events, result_digest=result_digest)
 
 
-def run_step_sdk(step: dict, *, paths, plugin_path: Path, model: str | None, permission_mode: str = "acceptEdits") -> StepRun:
-    return asyncio.run(_run_step_sdk_async(step, paths=paths, plugin_path=plugin_path, model=model, permission_mode=permission_mode))
+def run_step_sdk(step: dict, *, paths, plugin_path: Path, model: str | None, permission_mode: str = "acceptEdits",
+                 effort: str | None = None) -> StepRun:
+    # effort: ClaudeAgentOptions.effort (claude-agent-sdk 0.2.157, passed as --effort).
+    return asyncio.run(_run_step_sdk_async(step, paths=paths, plugin_path=plugin_path, model=model,
+                                           permission_mode=permission_mode, effort=effort))

@@ -27,7 +27,7 @@ from loop_spec.ids import new_id, now_iso
 from loop_spec.jsonio import read_json
 from loop_spec.paths import ensure_results_dir
 from loop_spec.postconditions import adopted_commits, close_out_view, close_outs, retry_limit
-from loop_spec.roles import compose_prompt, load_role, resolve_model
+from loop_spec.roles import compose_prompt, load_role, dispatch_settings
 from loop_spec.steps import IssueStep, IssueSteps, Pause, Product, Wait
 
 _TERMINAL = {"done", "already-satisfied", "removed", "blocked", "planGap", "adopted"}
@@ -446,7 +446,7 @@ def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, tas
         "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
         "retryOf": task_state["implementSteps"][-1] if task_state["implementSteps"] else None,
-        "reason": task_state["reason"], "model": resolve_model(project_root, "implementer"),
+        "reason": task_state["reason"], **dispatch_settings(project_root, "implementer"),
     }
     errors = validate_request("step", request)
     if errors:
@@ -507,7 +507,7 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
         # review (see _handle_rejection) is the one case with a reason already
         # set and a prior review step to retry.
         "retryOf": task_state["reviewSteps"][-1] if task_state["reviewSteps"] else None,
-        "reason": task_state["reason"], "model": resolve_model(project_root, "code-reviewer"),
+        "reason": task_state["reason"], **dispatch_settings(project_root, "code-reviewer"),
     }
     errors = validate_request("step", request)
     if errors:
@@ -575,7 +575,7 @@ def _wave_review_request(store, paths, ctx, task_ids: list[str]) -> dict:
         "kind": "role", "role": "code-reviewer", "phase": "execute", "cwd": str(first_cwd),
         "prompt": prompt, "resultPath": str(result_path), "schema": wave_role.schema, "postconditions": [],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
-        "retryOf": None, "reason": None, "model": resolve_model(project_root, "code-reviewer"),
+        "retryOf": None, "reason": None, **dispatch_settings(project_root, "code-reviewer"),
     }
     errors = validate_request("step", request)
     if errors:

@@ -114,9 +114,9 @@ A step is one worker dispatch, `schemas/step.json`. Fields: `stepAttemptId`,
 `external`), `phase`, `cwd`, `prompt` (the composed prompt plus a trailer naming
 the step id, inputs digest, phase, and result path), `resultPath`, `schema` (the
 result's own JSON Schema), `postconditions[]`, `attempt`, `inputsDigest`,
-`issuedAt`, `retryOf`, `reason`, and an optional `model` (every role dispatch sets
-this from `roles.resolve_model`, env `LOOP_SPEC_MODEL_<ROLE>` or config
-`roles.<role>.model`). A `role` step also carries `transport: "file"`,
+`issuedAt`, `retryOf`, `reason`, and an optional `model` and `effort` (every role
+dispatch sets these from `roles.dispatch_settings`: env `LOOP_SPEC_MODEL_<ROLE>` /
+`LOOP_SPEC_EFFORT_<ROLE>`, or config `roles.<role>.model` / `.effort`). A `role` step also carries `transport: "file"`,
 `instructionPath` (`steps/<step-id>/instructions.md`, written once at issue with
 the exact bytes of `prompt`, which then ends in one LF and holds no CR) and
 `dispatchPrompt`, the text the lead passes as the Agent prompt, and `readSchedule`
@@ -213,8 +213,11 @@ question has no default and waits for a person.
 ## Markers and console lines
 
 Every controller entry ends its stdout with one line,
-`LOOP_SPEC_NEXT {"kind": "step"|"question"|"result", "path": <file>, "slug": <slug>}`
-(`events.marker_next`). Open the named file and act on it; every later `submit` or
+`LOOP_SPEC_NEXT {"kind": "step"|"question"|"result", "path": <file>, "slug": <slug>,
+"program": <launcher>, "stateHome": <dir>, "projectRoot": <dir>}` (`events.marker_next`;
+a step's line adds `stepKind`, `stepAttemptId`, `role`, `model`, `effort`, and for a
+role step `subagentType`). Open the named file and act on it, as
+[runner.md](runner.md) says; every later `submit` or
 `answer` call needs `--slug` from this line, since nothing else names the run. A
 wave that issues several step requests at once (`execute.py`'s `IssueSteps`) prints
 one `LOOP_SPEC_NEXT` line of kind `step` per request instead of one, for the caller
@@ -293,7 +296,7 @@ optional:
 | Key | Effect |
 |---|---|
 | `phases.<phase>` | binds that phase's implementation (`"external"`, or a phase name is otherwise `"default"`) |
-| `roles.<role>` | binds that role to a skill other than the bundled default (`roles.load_role`); a plain string is the binding, or an object `{"binding": ..., "model": ...}` also names a model for that role's dispatches (`roles.resolve_model`), reachable without also rebinding the skill |
+| `roles.<role>` | binds that role to a skill other than the bundled default (`roles.load_role`); a plain string is the binding, or an object `{"binding": ..., "model": ..., "effort": ...}` also names a model and an effort (`low`, `medium`, `high`, `xhigh`, `max`; `contract.load_config` refuses another) for that role's dispatches (`roles.dispatch_settings`), reachable without also rebinding the skill |
 | `deliver.base` | overrides the branch DELIVER's PR targets, instead of the repo's detected default branch |
 | `deliver.readiness` | `"checks"` makes D3 wait on `gh pr checks`; default `"none"` skips that wait |
 | `deliver.acceptRemotePaths` | a list of path globs (repo-relative, every repo of a workspace); commits someone else put on the PR branch after the verified SHA, such as a changelog bot's, are accepted when every path they touch in any commit matches and none is changed by the verified change. DELIVER then skips the push, keeps `deliveredSha` as the verified SHA, and records the commits as `acceptedRemote` (D1/D2). Absent or `[]`: any such commit blocks delivery. Anything but a list of strings is a config error |
@@ -310,6 +313,7 @@ Environment variables, precedence over config where both apply:
 | `LOOP_SPEC_PHASE_<NAME>` | overrides `phases.<phase>`; `<NAME>` is the phase name uppercased (`EXECUTE`, `DELIVER`, ...) |
 | `LOOP_SPEC_ROLE_<ROLE>` | overrides `roles.<role>`; `<ROLE>` is the role name uppercased with hyphens kept as-is (`SPEC-WRITER`, `CODE-REVIEWER`) |
 | `LOOP_SPEC_MODEL_<ROLE>` | sets the model on that role's step request (`roles.resolve_model`, read by every role dispatch: execute.py, controller.py's critic and adopted review, verify.py, iterate.py, debug.py, revise.py, defaults.py); `<ROLE>` has hyphens replaced with underscores (`SPEC_WRITER`). Overrides `roles.<role>.model` when both are set |
+| `LOOP_SPEC_EFFORT_<ROLE>` | sets the effort on that role's step request (`roles.resolve_effort`, same readers and `<ROLE>` spelling as `LOOP_SPEC_MODEL_<ROLE>`); overrides `roles.<role>.effort`. A role step with an effort is dispatched as `loop-spec:worker-<effort>` (the plugin's `agents/`), since the Agent tool takes no per-call effort, and attests only when its transcript's `.meta.json` names that agent type. A lead step runs in the lead's own session at the session's `--effort`; the SDK runner passes the effort to `ClaudeAgentOptions.effort` |
 | `LOOP_SPEC_STEP_RETRIES` | per-phase retry limit before a rejected product asks a `fix-and-re-enter`/`stop` question; default 3 |
 | `LOOP_SPEC_REWIND_BUDGET` | the shared T1 budget's limit; default 2, never resets within a run |
 | `LOOP_SPEC_EXECUTE_WIDTH` | EXECUTE's max tasks per wave; default 3 |

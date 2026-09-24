@@ -132,7 +132,7 @@ When done, write your JSON result to the result path above (write to a temporary
 def issue(store, paths, *, phase: str, attempt_id: str, kind: str, role: str | None, cwd: Path,
           prompt: str, schema: dict, postconditions: list[str], inputs_digest: str,
           retry_of: str | None = None, reason: str | None = None, result_path: Path | None = None,
-          model: str | None = None) -> dict:
+          model: str | None = None, effort: str | None = None) -> dict:
     step_id = new_id("step")
     step_dir = paths.steps_dir / step_id
     # A phase's own step (an external/lead/role implementation producing that
@@ -156,7 +156,7 @@ def issue(store, paths, *, phase: str, attempt_id: str, kind: str, role: str | N
         "stepAttemptId": step_id, "kind": kind, "role": role, "phase": phase, "cwd": str(cwd),
         "prompt": full_prompt, "resultPath": str(result_path), "schema": schema,
         "postconditions": postconditions, "attempt": attempt_id, "inputsDigest": inputs_digest,
-        "issuedAt": issued_at, "retryOf": retry_of, "reason": reason, "model": model,
+        "issuedAt": issued_at, "retryOf": retry_of, "reason": reason, "model": model, "effort": effort,
     }
     if kind == "role":
         # LF-59: a lead re-typing a long prompt into the Agent call changed it in

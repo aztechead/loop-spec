@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 from loop_spec import log
+from loop_spec.contract import subagent_type
 from loop_spec.errors import LoopSpecError
 from loop_spec.ids import now_iso
 from loop_spec.jsonio import append_jsonl, read_json
@@ -82,29 +83,34 @@ def marker_question(paths: FeaturePaths, question_id: str) -> None:
     _marker(paths, "LOOP_SPEC_QUESTION", {"questionId": question_id})
 
 
-def marker_wait(paths: FeaturePaths, open_step_ids: list[str]) -> None:
+def marker_wait(paths: FeaturePaths, open_step_ids: list[str], invocation: dict) -> None:
     # A wave with steps already dispatched and nothing new to issue: the caller
-    # submits what it already sent workers out for, and starts nothing new.
-    _marker(paths, "LOOP_SPEC_WAIT", {"open": open_step_ids})
+    # submits what it already sent workers out for, and starts nothing new. It
+    # carries the invocation too: a resumed run can print a wait before any NEXT.
+    _marker(paths, "LOOP_SPEC_WAIT", {"open": open_step_ids, **invocation})
 
 
 def marker_result(paths: FeaturePaths, result_dict: dict) -> None:
     _marker(paths, "LOOP_SPEC_RESULT", result_dict)
 
 
-def marker_next(kind: str, path: str, slug: str) -> None:
-    # No `paths` argument here (the design fixes this signature to take only
-    # kind/path/slug), so unlike the other markers this one cannot also append
+def marker_next(kind: str, path: str, slug: str, invocation: dict) -> None:
+    # No `paths` argument here, so unlike the other markers this one does not append
     # itself to the ledger. `slug` (LF-06) is what a stub passes back on the next
     # `submit`/`answer`, since those commands require --slug and nothing else in
-    # LOOP_SPEC_NEXT names the run.
-    marker = {'kind': kind, 'path': path, 'slug': slug}
+    # LOOP_SPEC_NEXT names the run. `invocation` (7.4.0, D5) is the launcher, state
+    # home and project root every follow-up command needs, so the one protocol file
+    # the entry stubs cite reads them here instead of each stub binding them.
+    marker = {'kind': kind, 'path': path, 'slug': slug, **invocation}
     if kind == "step":
         # A step's own fields, so a lead dispatching a role step never opens
         # step.json, which carries the whole composed prompt (up to ~170 KB).
         step = read_json(Path(path))
         marker.update({"stepKind": step["kind"], "stepAttemptId": step["stepAttemptId"],
-                       "role": step.get("role"), "model": step.get("model")})
+                       "role": step.get("role"), "model": step.get("model"), "effort": step.get("effort")})
+        if step["kind"] == "role":
+            # A lead step is never dispatched, so only a role step names an agent type.
+            marker["subagentType"] = subagent_type(step.get("effort"))
         if step.get("transport") == "file":
             marker["dispatchPath"] = str(Path(path).parent / "dispatch.txt")
     log.stdout.info(f"LOOP_SPEC_NEXT {_compact(marker)}")

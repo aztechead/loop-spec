@@ -13,7 +13,7 @@ from loop_spec.contract import resolve_role, validate_request
 from loop_spec.entries import ENTRIES, ROUTABLE
 from loop_spec.errors import LoopSpecError
 from loop_spec.paths import ensure_results_dir
-from loop_spec.roles import compose_prompt, load_role, resolve_model
+from loop_spec.roles import compose_prompt, load_role, dispatch_settings
 from loop_spec.steps import IssueStep, Product
 
 
@@ -39,7 +39,7 @@ def _router_request(store, paths, ctx) -> dict:
         "kind": "role", "role": "router", "phase": "route", "cwd": str(project_root), "prompt": prompt,
         "resultPath": str(result_path), "schema": role.schema, "postconditions": external.PHASE_POSTCONDITIONS["route"],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"], "retryOf": None, "reason": rejected,
-        "model": resolve_model(project_root, "router"),
+        **dispatch_settings(project_root, "router"),
     }
     errors = validate_request("step", request)
     if errors:

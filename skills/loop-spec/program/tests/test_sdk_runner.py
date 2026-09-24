@@ -69,6 +69,7 @@ class PermissionResultDeny:
 class ClaudeAgentOptions:
     cwd: str | None = None
     model: str | None = None
+    effort: str | None = None  # claude-agent-sdk 0.2.157
     permission_mode: str | None = None
     plugins: list = field(default_factory=list)
     setting_sources: list | None = None

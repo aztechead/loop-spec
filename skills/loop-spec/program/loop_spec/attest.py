@@ -12,6 +12,8 @@ import re
 from pathlib import Path
 from typing import Protocol
 
+from loop_spec.contract import subagent_type
+
 
 class HostAttestor(Protocol):
     def attest(self, step: dict, result_digest: str, dispatch_name: str) -> tuple[bool, str]: ...
@@ -219,4 +221,23 @@ class ClaudeCodeAttestor:
         transcripts = find_transcripts(self.claude_home, self.project_cwd, self.session_id, dispatch_name)
         if len(transcripts) != 1:
             return False, f"expected exactly one transcript for {dispatch_name}, found {len(transcripts)}"
+        if step.get("effort") is not None:
+            refusal = check_agent_type(transcripts[0], step)
+            if refusal is not None:
+                return False, refusal
         return check_transcript(transcripts[0], step, result_digest)
+
+
+def check_agent_type(transcript: Path, step: dict) -> str | None:
+    """7.4.0: a step with an effort is dispatched as the plugin's worker agent for that
+    level; the host records no applied effort, so the agent type in the transcript's
+    `.meta.json` is the only evidence it ran. No sidecar, or none naming the type, fails."""
+    expected = subagent_type(step["effort"])
+    meta = transcript.with_name(transcript.name[: -len(".jsonl")] + ".meta.json")
+    try:
+        agent_type = json.loads(meta.read_text(encoding="utf-8")).get("agentType")
+    except (OSError, ValueError):
+        agent_type = None
+    if agent_type != expected:
+        return f"dispatched as {agent_type or 'unknown'}; this step runs as {expected} for effort {step['effort']}"
+    return None

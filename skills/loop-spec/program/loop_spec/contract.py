@@ -53,7 +53,30 @@ def load_config(project_root: Path) -> dict:
     if accept is not None and not (isinstance(accept, list) and all(isinstance(g, str) and g for g in accept)):
         raise LoopSpecError(f"{path}: deliver.acceptRemotePaths is {accept!r}; it is a list of path globs",
                             repair='set it to a list such as ["CHANGELOG.md"], or remove it')
+    for role, bound in (config.get("roles") or {}).items():
+        effort = bound.get("effort") if isinstance(bound, dict) else None
+        if effort is not None:
+            check_effort(effort, f"{path}: roles.{role}.effort")
     return config
+
+
+# A dispatched worker's effort, as Claude Code's subagent `effort` frontmatter takes it
+# (which levels a model offers is the host's to refuse). The Agent tool has no per-call
+# effort, so a role step with one is dispatched as the plugin's matching worker agent.
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+
+
+def check_effort(value, source: str) -> str:
+    if value not in EFFORT_LEVELS:
+        raise LoopSpecError(f"{source} is {value!r}; the levels are {', '.join(EFFORT_LEVELS)}",
+                            repair=f"set it to one of {', '.join(EFFORT_LEVELS)}, or remove it to inherit")
+    return value
+
+
+def subagent_type(effort: str | None) -> str:
+    """The Agent tool's subagent_type for a role step: `agents/worker-<effort>.md` in this
+    plugin (plugin.json's name, `loop-spec`) when the step sets an effort."""
+    return "general-purpose" if effort is None else f"loop-spec:worker-{effort}"
 
 
 def unattested_policy(project_root: Path | None, role: str) -> str | None:

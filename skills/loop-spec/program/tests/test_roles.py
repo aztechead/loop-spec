@@ -8,7 +8,7 @@ from unittest.mock import patch
 from loop_spec import contract
 from loop_spec.errors import LoopSpecError
 from loop_spec.jsonio import atomic_write_json
-from loop_spec.roles import CONTRACTS, ROLE_NAMES, Role, compose_prompt, load_role, repo_map, resolve_model
+from loop_spec.roles import CONTRACTS, ROLE_NAMES, Role, compose_prompt, load_role, repo_map, resolve_effort, resolve_model
 from loop_spec.schema import load_schema, validate
 
 
@@ -196,6 +196,36 @@ class RepoMapTests(unittest.TestCase):
         mapped = repo_map(repos)
         self.assertEqual(mapped["adopted"], {"path": "/a", "baseSha": "b" * 40, "startSha": "h" * 40})
         self.assertEqual(mapped["fresh"]["startSha"], "c" * 40)
+
+
+class ResolveEffortTests(unittest.TestCase):
+    """F5: a role's effort resolves like its model: env, then config, else inherit."""
+
+    def _root(self, tmp: str, roles: dict) -> Path:
+        root = Path(tmp)
+        (root / ".loop-spec").mkdir()
+        atomic_write_json(root / ".loop-spec" / "config.json", {"roles": roles})
+        return root
+
+    def test_env_beats_config_and_unset_inherits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._root(tmp, {"code-reviewer": {"effort": "high"}})
+            with patch.dict("os.environ", {"LOOP_SPEC_EFFORT_CODE_REVIEWER": "low"}, clear=True):
+                self.assertEqual(resolve_effort(root, "code-reviewer"), "low")
+            with patch.dict("os.environ", {}, clear=True):
+                self.assertEqual(resolve_effort(root, "code-reviewer"), "high")
+                self.assertIsNone(resolve_effort(root, "implementer"))
+
+    def test_a_level_outside_the_host_list_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._root(tmp, {"code-reviewer": {"effort": "extreme"}})
+            with self.assertRaises(LoopSpecError):  # at the first config read, not mid-step
+                contract.load_config(root)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._root(tmp, {})
+            with patch.dict("os.environ", {"LOOP_SPEC_EFFORT_IMPLEMENTER": "turbo"}, clear=True):
+                with self.assertRaises(LoopSpecError):
+                    resolve_effort(root, "implementer")
 
 
 class ResolveModelTests(unittest.TestCase):

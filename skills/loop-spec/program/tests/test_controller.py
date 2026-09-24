@@ -1178,7 +1178,7 @@ class DebugAndReviseEntryTests(_QuietStdout):
 
             with patch.object(repo_module, "adopt_pr", return_value=adoption), \
                  patch.object(revise_module, "gaps_from_pr", return_value=gaps), \
-                 patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+                 patch.dict("os.environ", {**_EXTERNAL_ENV, "LOOP_SPEC_EFFORT_CODE_REVIEWER": "low"}, clear=False):
                 with contextlib.redirect_stdout(markers):
                     next_ = controller.run_entry(
                         "revise", project_root=repo_dir, request_text=None, slug=None,
@@ -1210,6 +1210,7 @@ class DebugAndReviseEntryTests(_QuietStdout):
                 self.assertEqual(next_.kind, "step")
                 review_step = read_json(next_.path)
                 self.assertEqual(review_step["role"], "code-reviewer")
+                self.assertEqual(review_step["effort"], "low")  # F5: the adopted review carries it too
                 # LF-27: the adopted review's result is model-written, so it belongs
                 # under the project's results dir, never the state home.
                 self.assertIn(str(Path(".loop-spec") / "results"), review_step["resultPath"])

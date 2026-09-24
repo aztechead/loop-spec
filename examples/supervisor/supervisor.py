@@ -117,7 +117,7 @@ def answer_by_policy(question: dict) -> str:
     raise RuntimeError(f"question {question['questionId']} has no default or options to answer automatically")
 
 
-async def run_lead_step(step: dict, *, plugin_path: Path, model: str | None) -> None:
+async def run_lead_step(step: dict, *, plugin_path: Path, model: str | None, effort: str | None = None) -> None:
     """Drive one lead step through query(): the same output_format/structured_output
     contract run_step_sdk uses for a role step, but can_use_tool answers
     AskUserQuestion instead of denying it -- a lead step is meant to interact with
@@ -146,7 +146,7 @@ async def run_lead_step(step: dict, *, plugin_path: Path, model: str | None) -> 
         yield {"type": "user", "message": {"role": "user", "content": step["prompt"]}}
 
     options = ClaudeAgentOptions(
-        cwd=step["cwd"], model=model, permission_mode="acceptEdits",
+        cwd=step["cwd"], model=model, permission_mode="acceptEdits", effort=effort,
         plugins=[{"type": "local", "path": str(plugin_path)}],
         setting_sources=["user", "project", "local"],
         output_format={"type": "json_schema", "schema": step["schema"]},
@@ -195,7 +195,8 @@ def drive(project_root: Path, state_home: str | None, slug: str | None, request:
                 # write the receipt under the state home, never beside the
                 # worker-writable result (R2).
                 run_paths = FeaturePaths(root=feature_dir(resolve_state_home(state_home), repo_id(project_root), run_slug))
-                run = run_step_sdk(step, paths=run_paths, plugin_path=REPO_ROOT, model=step.get("model") or model)
+                run = run_step_sdk(step, paths=run_paths, plugin_path=REPO_ROOT, model=step.get("model") or model,
+                                   effort=step.get("effort"))
                 if not run.ok:
                     log.stderr.error(f"role step ({step.get('role')}) failed: {run.reason}")
                     return 1
@@ -206,7 +207,8 @@ def drive(project_root: Path, state_home: str | None, slug: str | None, request:
                 # shape SKILL.md describes.
                 stdout = run_cli("submit", *common, "--step", step["stepAttemptId"], "--dispatch", step["stepAttemptId"])
             elif step["kind"] == "lead":
-                asyncio.run(run_lead_step(step, plugin_path=REPO_ROOT, model=step.get("model") or model))
+                asyncio.run(run_lead_step(step, plugin_path=REPO_ROOT, model=step.get("model") or model,
+                                          effort=step.get("effort")))
                 stdout = run_cli("submit", *common, "--step", step["stepAttemptId"])
             else:
                 log.stderr.error(f"external step at {next_['path']}: an operator must produce the product and submit it")

@@ -639,7 +639,7 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
             store, paths, phase=phase, attempt_id=attempt_id, kind=request["kind"], role=request.get("role"),
             cwd=Path(request["cwd"]), prompt=request["prompt"], schema=request["schema"],
             postconditions=request["postconditions"], inputs_digest=request["inputsDigest"],
-            retry_of=retry_of, reason=reason, model=request.get("model"),
+            retry_of=retry_of, reason=reason, model=request.get("model"), effort=request.get("effort"),
             result_path=Path(request["resultPath"]),
         )
         store.state["phase"]["lastStepId"] = record["stepAttemptId"]
@@ -658,6 +658,7 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
                 cwd=Path(request["cwd"]), prompt=request["prompt"], schema=request["schema"],
                 postconditions=request["postconditions"], inputs_digest=request["inputsDigest"],
                 retry_of=request.get("retryOf"), reason=request.get("reason"), model=request.get("model"),
+                effort=request.get("effort"),
                 result_path=Path(request["resultPath"]),
             )
             store.state["phase"]["lastStepId"] = record["stepAttemptId"]
@@ -1027,7 +1028,7 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
     # the role's own schema.json; every other role step goes through
     # roles.compose_prompt/load_role (see _issue_adopted_review), and the critic
     # step now does too.
-    from loop_spec.roles import compose_prompt, load_role, repo_map, resolve_model
+    from loop_spec.roles import compose_prompt, load_role, repo_map, resolve_effort, resolve_model
     repo_path = next(iter(store.state["repos"].values()))["path"]
     spec_product = store.state["products"]["spec"]["product"]
     inputs = {"specCriteria": spec_product["criteria"], "planTasks": plan_product["tasks"], "baseline": facts,
@@ -1045,6 +1046,7 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
         cwd=Path(repo_path), prompt=prompt, schema=role.schema, postconditions=["P7"],
         inputs_digest=inputs_digest, result_path=result_path,
         model=None if is_external else resolve_model(project_root, "plan-critic"),
+        effort=None if is_external else resolve_effort(project_root, "plan-critic"),
     )
     store.state["phase"]["criticStepId"] = record["stepAttemptId"]
     # Recorded so a later call for a DIFFERENT (corrected) revision recognizes this
@@ -1717,7 +1719,7 @@ def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: 
     # code-reviewer pass over the whole adopted range is on record. Issued once,
     # before EXECUTE's own attempt starts, so that record exists before any task
     # can claim it.
-    from loop_spec.roles import compose_prompt, load_role, resolve_model
+    from loop_spec.roles import compose_prompt, load_role, resolve_effort, resolve_model
     adoption = store.state["adoption"]
     repo_info = store.state["repos"][adoption["repo"]]
     repo_path = Path(repo_info["path"])
@@ -1746,6 +1748,7 @@ def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: 
         store, paths, phase="execute", attempt_id=attempt_id, kind="role", role="code-reviewer",
         cwd=checkout, prompt=prompt, schema=role.schema, postconditions=[], inputs_digest=digest(inputs),
         result_path=result_path, model=resolve_model(project_root, "code-reviewer"),
+        effort=resolve_effort(project_root, "code-reviewer"),
     )
     store.state["phase"]["adoptedReviewStepId"] = record["stepAttemptId"]
     store.save()

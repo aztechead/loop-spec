@@ -15,7 +15,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from loop_spec.contract import load_config
+from loop_spec.contract import check_effort, load_config
 from loop_spec.errors import LoopSpecError
 from loop_spec.ids import digest_bytes
 from loop_spec.jsonio import render_json
@@ -82,6 +82,22 @@ def load_role(name: str, project_root: Path, binding: str = "default") -> Role:
     # program still validates the product against the DEFAULT role's shape, so a bound
     # skill cannot smuggle in an incompatible contract.
     return Role(name=name, body=body, schema=default_schema, source=str(found), version=digest_bytes(body.encode()))
+
+
+def resolve_effort(project_root: Path, role: str) -> str | None:
+    """The same lookup as resolve_model, for effort: env LOOP_SPEC_EFFORT_<ROLE>, then
+    config roles.<role>.effort (load_config validates it), else None (inherit)."""
+    name = "LOOP_SPEC_EFFORT_" + role.upper().replace("-", "_")
+    env = os.environ.get(name)
+    if env:
+        return check_effort(env, name)
+    configured = load_config(project_root).get("roles", {}).get(role)
+    return configured.get("effort") if isinstance(configured, dict) else None
+
+
+def dispatch_settings(project_root: Path, role: str) -> dict:
+    """What a role's step request carries for whoever dispatches its worker."""
+    return {"model": resolve_model(project_root, role), "effort": resolve_effort(project_root, role)}
 
 
 def resolve_model(project_root: Path, role: str) -> str | None:

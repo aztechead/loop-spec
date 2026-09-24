@@ -19,7 +19,7 @@ from loop_spec.errors import LoopSpecError
 from loop_spec.events import emit
 from loop_spec.steps import IssueStep, Product
 from loop_spec.paths import ensure_results_dir
-from loop_spec.roles import compose_prompt, load_role, resolve_model
+from loop_spec.roles import compose_prompt, load_role, dispatch_settings
 
 _DIFF_CAP = 200_000  # ponytail: same flat cap as execute.py's review diff
 
@@ -90,7 +90,7 @@ def _judge_request(store, paths, ctx, heads: dict[str, str]) -> dict:
         "kind": "role", "role": "iterate-judge", "phase": "iterate", "cwd": str(cwd),
         "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"], "retryOf": None, "reason": None,
-        "model": resolve_model(project_root, "iterate-judge"),
+        **dispatch_settings(project_root, "iterate-judge"),
     }
     errors = validate_request("step", request)
     if errors:

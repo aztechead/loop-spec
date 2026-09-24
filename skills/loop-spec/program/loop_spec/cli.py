@@ -16,6 +16,7 @@ from loop_spec.entries import ENTRIES, RESUME_PHASES
 from loop_spec.errors import LoopSpecError
 from loop_spec.events import emit as emit_event
 from loop_spec.events import marker_next, marker_wait
+from loop_spec.contract import subagent_type
 from loop_spec.jsonio import read_json
 from loop_spec.paths import FeaturePaths, feature_dir, repo_id, state_home
 from loop_spec.postconditions import retry_limit
@@ -173,16 +174,22 @@ def _open_store(args: argparse.Namespace) -> tuple[StateStore, FeaturePaths]:
     return store, paths
 
 
-def _print_next(paths: FeaturePaths, next_) -> None:
+def _invocation(args: argparse.Namespace) -> dict:
+    """What every follow-up command needs, carried on the markers (7.4.0, D5)."""
+    return {"program": str(Path(__file__).resolve().parents[1] / "loop-spec"),
+            "stateHome": str(state_home(args.state_home)), "projectRoot": str(Path(args.project_root))}
+
+
+def _print_next(paths: FeaturePaths, next_, args: argparse.Namespace) -> None:
     # A "wait" Next means the run is waiting on steps a caller already
     # dispatched: LOOP_SPEC_WAIT, never a LOOP_SPEC_NEXT (there is nothing new
     # to act on). Otherwise print one LOOP_SPEC_NEXT per step a wave issued at
     # once (the primary Next plus its `also` siblings).
     if next_.kind == "wait":
-        marker_wait(paths, read_json(next_.path)["open"])
+        marker_wait(paths, read_json(next_.path)["open"], _invocation(args))
         return
     for n in [next_, *next_.also]:
-        marker_next(n.kind, str(n.path), n.slug)
+        marker_next(n.kind, str(n.path), n.slug, _invocation(args))
 
 
 def _request_text(args: argparse.Namespace) -> str | None:
@@ -223,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
                 slug=args.slug, state_home=args.state_home, answer_policy=args.answer_policy,
                 pr=getattr(args, "pr", None),
             )
-            _print_next(_feature_paths(args, next_.slug), next_)
+            _print_next(_feature_paths(args, next_.slug), next_, args)
             return 0
         if args.command == "submit":
             store, paths = _open_store(args)
@@ -234,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
                 # LF-60: nothing was accepted; continue_run raises the blocked question.
                 log.stderr.info(f"[{submission.step['phase'].upper()}] step {args.step} refused: {submission.refused}; "
                                 "nothing was accepted from it")
-                _print_next(paths, controller.continue_run(store, paths, project_root=Path(args.project_root)))
+                _print_next(paths, controller.continue_run(store, paths, project_root=Path(args.project_root)), args)
                 return 0
             if submission.redispatch is not None:
                 step_path = paths.steps_dir / submission.step["stepAttemptId"] / "step.json"
@@ -242,18 +249,19 @@ def main(argv: list[str] | None = None) -> int:
                 attempts = submission.step["attestationAttempts"]
                 log.stdout.info(f"[{tag}] step {args.step} unattested ({attempts}/{retry_limit()}): "
                                 f"{submission.step['reason']}; dispatch a fresh worker named {submission.redispatch} "
-                                f"with the same dispatchPrompt (or prompt, for a step without one) and submit again with --dispatch {submission.redispatch}")
-                marker_next("step", str(step_path), args.slug)
+                                f"with subagent_type {subagent_type(submission.step.get('effort'))} "
+                                f"and the same dispatchPrompt (or prompt, for a step without one) and submit again with --dispatch {submission.redispatch}")
+                marker_next("step", str(step_path), args.slug, _invocation(args))
                 return 0
             controller.route_submission(store, paths, submission.step, submission.result)
             next_ = controller.continue_run(store, paths, project_root=Path(args.project_root))
-            _print_next(paths, next_)
+            _print_next(paths, next_, args)
             return 0
         if args.command == "answer":
             store, paths = _open_store(args)
             questions.answer(store, paths, question_id=args.question, value=args.answer, scope=args.scope, by="human")
             next_ = controller.continue_run(store, paths, project_root=Path(args.project_root))
-            _print_next(paths, next_)
+            _print_next(paths, next_, args)
             return 0
         raise LoopSpecError(f"{args.command} lands in a later wave", repair="wait for the wave")
     except LoopSpecError as exc:
