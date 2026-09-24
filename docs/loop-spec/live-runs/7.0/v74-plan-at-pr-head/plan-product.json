@@ -1,0 +1,82 @@
+{
+  "boundTo": {
+    "plan": null,
+    "requirements": "sha256:fc4ca0487766b80318f8635180f37df0cca35ecb7fe19729c2e826f02bdaed48"
+  },
+  "checks": [],
+  "evidenceExceptions": [
+    {
+      "criterion": "AC-2",
+      "reason": "tests/test_calc.py::test_double does not exist at repo baseSha 66d0f98 (it is added by adopted PR #28's own commit at startSha bc5f8d67), so a verify command scoped to that node id errors as 'not found' at baseline instead of failing cleanly. Verify instead runs the whole file, exactly as the request specified (`pytest -q tests/test_calc.py`), which collects cleanly at every SHA. tests/test_calc.py also contains test_preexisting_failure, which asserts add(2, 2) == 5 and fails independently of this change (SPEC decision D-1); that failure persists in the verify output before and after this task and is not this task's concern -- AC-2 is proven by test_double's own pass/fail line in that same run, not by the file's aggregate exit code."
+    }
+  ],
+  "existingCode": [
+    {
+      "cites": [
+        {
+          "lines": "9-10",
+          "path": "calc/__init__.py"
+        }
+      ],
+      "concept": "double(x) returning 2 * x",
+      "decision": "extend",
+      "reason": "double(x) already exists in calc/__init__.py at startSha bc5f8d67 (PR #28) with no docstring; this task adds one line to it rather than writing a new function.",
+      "repo": "f1",
+      "tasks": [
+        "T-1"
+      ]
+    },
+    {
+      "cites": [
+        {
+          "lines": "1-4",
+          "path": "CHANGELOG.md"
+        }
+      ],
+      "concept": "CHANGELOG.md Unreleased entry per change",
+      "decision": "extend",
+      "reason": "CLAUDE.md requires every change to add one line under '## Unreleased' in CHANGELOG.md; CHANGELOG.md already has that section with a prior entry for negate(x), so this task appends one more line rather than creating a new file or section.",
+      "repo": "f1",
+      "tasks": [
+        "T-2"
+      ]
+    }
+  ],
+  "exit": "ready",
+  "inputsDigest": "sha256:9f3bc46f139189ccf5906b8a7cc44f6716240ad76420f9a76861d290f2c7c712",
+  "prepare": null,
+  "tasks": [
+    {
+      "criteria": [
+        "AC-1",
+        "AC-2"
+      ],
+      "dependsOn": [],
+      "featureAdded": null,
+      "files": [
+        "calc/__init__.py"
+      ],
+      "id": "T-1",
+      "mustFlip": false,
+      "repo": "f1",
+      "title": "Add a one-line docstring to double(x)",
+      "verify": "/private/tmp/claude-501/-Users-aztechead-Projects-loop-spec/aa3a1338-0fde-4f0c-a27e-945117d04f37/scratchpad/venv/bin/python -m pytest -q tests/test_calc.py"
+    },
+    {
+      "criteria": [
+        "AC-1",
+        "AC-2"
+      ],
+      "dependsOn": [],
+      "featureAdded": null,
+      "files": [
+        "CHANGELOG.md"
+      ],
+      "id": "T-2",
+      "mustFlip": false,
+      "repo": "f1",
+      "title": "Add CHANGELOG.md entry for the double(x) docstring",
+      "verify": "/private/tmp/claude-501/-Users-aztechead-Projects-loop-spec/aa3a1338-0fde-4f0c-a27e-945117d04f37/scratchpad/venv/bin/python -m pytest -q tests/test_calc.py"
+    }
+  ]
+}

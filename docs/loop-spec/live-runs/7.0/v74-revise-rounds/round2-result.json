@@ -1,0 +1,123 @@
+{
+  "autonomous": true,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "v74-double",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": true,
+  "createdAt": "2026-09-24T19:28:25+00:00",
+  "cycleType": "revise",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [],
+        "deliveredSha": "b96bb3bdf4e6bfcb153618ef82e5d5560f1dcd0b",
+        "pr": {
+          "base": "main",
+          "headRef": "v74-double",
+          "headSha": "b96bb3bdf4e6bfcb153618ef82e5d5560f1dcd0b",
+          "number": 28,
+          "url": "https://github.com/aztechead/loop-spec-live-7/pull/28"
+        },
+        "repo": "f1",
+        "state": "delivered"
+      }
+    ]
+  },
+  "eligibleTargets": [
+    {
+      "branch": "v74-double",
+      "targetSha": "b96bb3bdf4e6bfcb153618ef82e5d5560f1dcd0b"
+    }
+  ],
+  "feature_title": "revise PR #28: https://github.com/aztechead/loop-spec-live-7/pull/28",
+  "finishedAt": "2026-09-24T19:48:21+00:00",
+  "hostVersions": {
+    "claude": "2.1.282 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": true,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "direct": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "route": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 0
+  },
+  "loopSpecVersion": "7.4.0",
+  "noChangeReason": null,
+  "outcome": "delivered",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [],
+  "prUrl": "https://github.com/aztechead/loop-spec-live-7/pull/28",
+  "prs": [
+    {
+      "number": 28,
+      "repo": "f1",
+      "url": "https://github.com/aztechead/loop-spec-live-7/pull/28"
+    }
+  ],
+  "reason": null,
+  "result": "converged",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-6": {
+      "level": "host-attested",
+      "stepId": "step-a4be786f870a"
+    },
+    "T-7": {
+      "level": "host-attested",
+      "stepId": "step-a4be786f870a"
+    }
+  },
+  "rewinds": 0,
+  "schema": 1,
+  "slug": "revise-28-2",
+  "status": "completed",
+  "summary": "revise converged at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": "b96bb3bdf4e6bfcb153618ef82e5d5560f1dcd0b",
+  "warnings": [],
+  "weakenedAssurance": [
+    {
+      "criterion": "AC-2",
+      "kind": "evidence.exception",
+      "reason": "tests/test_calc.py::test_double does not exist at repo baseSha 66d0f983a02d0dfe4e171984ec03a3beea67da68 (it is present at repo startSha 4b00fd455b54c6a71456383c3b20ce354d63a3d2 as part of adopted PR #28), so a verify command scoped to that node id errors as 'not found' at baseline instead of failing cleanly. Verify instead runs the whole file, exactly as the request specified (`pytest -q tests/test_calc.py`), which collects cleanly at every SHA. tests/test_calc.py also contains test_preexisting_failure, which asserts add(2, 2) == 5 and fails independently of this change (SPEC decision D-1); that failure persists in the verify output before and after this task and is not this task's concern -- AC-2 is proven by test_double's own pass/fail line in that same run, not by the file's aggregate exit code.",
+      "source": "plan"
+    },
+    {
+      "criterion": "AC-3",
+      "kind": "evidence.exception",
+      "reason": "tests/test_calc.py::test_double_negative does not exist at repo baseSha 66d0f983a02d0dfe4e171984ec03a3beea67da68 (it is present at repo startSha 4b00fd455b54c6a71456383c3b20ce354d63a3d2 as part of adopted PR #28's prior revision), so a verify command scoped to that node id errors as 'not found' at baseline instead of failing cleanly. Verify instead runs the whole file, exactly as the request specified (`pytest -q tests/test_calc.py`), which collects cleanly at every SHA. tests/test_calc.py also contains test_preexisting_failure, which fails independently of this change (SPEC decision D-1); that failure persists in the verify output before and after this task and is not this task's concern -- AC-3 is proven by test_double_negative's own pass/fail line in that same run, not by the file's aggregate exit code.",
+      "source": "plan"
+    },
+    {
+      "criterion": "AC-4",
+      "kind": "evidence.exception",
+      "reason": "tests/test_calc.py::test_double_zero does not exist at repo baseSha 66d0f983a02d0dfe4e171984ec03a3beea67da68 nor at startSha 4b00fd455b54c6a71456383c3b20ce354d63a3d2 (it is added by this plan's task T-6), so a verify command scoped to that node id errors as 'not found' at baseline instead of failing cleanly. Verify instead runs the whole file (`pytest -q tests/test_calc.py`), which collects cleanly at every SHA. tests/test_calc.py also contains test_preexisting_failure, which asserts add(2, 2) == 5 and fails independently of this change (SPEC decision D-1); that failure persists in the verify output before and after this task and is not this task's concern -- AC-4 is proven by test_double_zero's own pass/fail line in that same run, not by the file's aggregate exit code.",
+      "source": "plan"
+    }
+  ],
+  "workDelivered": true
+}

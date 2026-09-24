@@ -1,0 +1,113 @@
+{
+  "autonomous": true,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "v74-double",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": true,
+  "createdAt": "2026-09-24T18:40:28+00:00",
+  "cycleType": "micro",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [],
+        "deliveredSha": "b1382ac0324b30fac4c439720fb5610126436746",
+        "pr": {
+          "base": "main",
+          "headRef": "v74-double",
+          "headSha": "b1382ac0324b30fac4c439720fb5610126436746",
+          "number": 28,
+          "url": "https://github.com/aztechead/loop-spec-live-7/pull/28"
+        },
+        "repo": "f1",
+        "state": "delivered"
+      }
+    ]
+  },
+  "eligibleTargets": [
+    {
+      "branch": "v74-double",
+      "targetSha": "b1382ac0324b30fac4c439720fb5610126436746"
+    }
+  ],
+  "feature_title": "add a one-line docstring to double on https://github.com/aztechead/loop-spec-live-7/pull/28. Verify with /private/tmp/claude-501/-Users-aztechead-Projects-loop-spec/aa3a1338-0fde-4f0c-a27e-945117d04f37/scratchpad/venv/bin/python -m pytest -q tests/test_calc.py",
+  "finishedAt": "2026-09-24T18:56:49+00:00",
+  "hostVersions": {
+    "claude": "2.1.281 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": true,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "direct": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "route": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 1
+  },
+  "loopSpecVersion": "7.3.0",
+  "noChangeReason": null,
+  "outcome": "delivered",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [
+    "question-3698a239f6d5"
+  ],
+  "prUrl": "https://github.com/aztechead/loop-spec-live-7/pull/28",
+  "prs": [
+    {
+      "number": 28,
+      "repo": "f1",
+      "url": "https://github.com/aztechead/loop-spec-live-7/pull/28"
+    }
+  ],
+  "reason": null,
+  "result": "converged",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-d6a30e03d71b"
+    },
+    "T-2": {
+      "level": "host-attested",
+      "stepId": "step-d6a30e03d71b"
+    }
+  },
+  "rewinds": 1,
+  "schema": 1,
+  "slug": "add-a-one-line-docstring-to-double-on-ht",
+  "status": "completed",
+  "summary": "micro converged at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": "b1382ac0324b30fac4c439720fb5610126436746",
+  "warnings": [],
+  "weakenedAssurance": [
+    {
+      "criterion": "AC-2",
+      "kind": "evidence.exception",
+      "reason": "tests/test_calc.py::test_double does not exist at repo baseSha 66d0f98 (it is added by adopted PR #28's own commit at startSha bc5f8d67), so a verify command scoped to that node id errors as 'not found' at baseline instead of failing cleanly. Verify instead runs the whole file, exactly as the request specified (`pytest -q tests/test_calc.py`), which collects cleanly at every SHA. tests/test_calc.py also contains test_preexisting_failure, which asserts add(2, 2) == 5 and fails independently of this change (SPEC decision D-1); that failure persists in the verify output before and after this task and is not this task's concern -- AC-2 is proven by test_double's own pass/fail line in that same run, not by the file's aggregate exit code.",
+      "source": "plan"
+    }
+  ],
+  "workDelivered": true
+}

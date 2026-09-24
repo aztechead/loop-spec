@@ -1,0 +1,128 @@
+{
+  "autonomous": true,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "v74-double",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": true,
+  "createdAt": "2026-09-24T19:04:50+00:00",
+  "cycleType": "revise",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [],
+        "deliveredSha": "4b00fd455b54c6a71456383c3b20ce354d63a3d2",
+        "pr": {
+          "base": "main",
+          "headRef": "v74-double",
+          "headSha": "4b00fd455b54c6a71456383c3b20ce354d63a3d2",
+          "number": 28,
+          "url": "https://github.com/aztechead/loop-spec-live-7/pull/28"
+        },
+        "repo": "f1",
+        "state": "delivered"
+      }
+    ]
+  },
+  "eligibleTargets": [
+    {
+      "branch": "v74-double",
+      "targetSha": "4b00fd455b54c6a71456383c3b20ce354d63a3d2"
+    }
+  ],
+  "feature_title": "revise PR #28: https://github.com/aztechead/loop-spec-live-7/pull/28",
+  "finishedAt": "2026-09-24T19:27:47+00:00",
+  "hostVersions": {
+    "claude": "2.1.282 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": true,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "direct": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "route": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 0
+  },
+  "loopSpecVersion": "7.3.0",
+  "noChangeReason": null,
+  "outcome": "delivered",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [
+    "question-a899bffe6f0e",
+    "question-f4a25ae3c2c2"
+  ],
+  "prUrl": "https://github.com/aztechead/loop-spec-live-7/pull/28",
+  "prs": [
+    {
+      "number": 28,
+      "repo": "f1",
+      "url": "https://github.com/aztechead/loop-spec-live-7/pull/28"
+    }
+  ],
+  "reason": null,
+  "result": "converged",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-c0f32eece7f4"
+    },
+    "T-2": {
+      "level": "host-attested",
+      "stepId": "step-c0f32eece7f4"
+    },
+    "T-3": {
+      "level": "host-attested",
+      "stepId": "step-2d0e7870ef8e"
+    },
+    "T-4": {
+      "level": "host-attested",
+      "stepId": "step-4c4593cb7eb9"
+    }
+  },
+  "rewinds": 0,
+  "schema": 1,
+  "slug": "revise-28",
+  "status": "completed",
+  "summary": "revise converged at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": "4b00fd455b54c6a71456383c3b20ce354d63a3d2",
+  "warnings": [],
+  "weakenedAssurance": [
+    {
+      "criterion": "AC-2",
+      "kind": "evidence.exception",
+      "reason": "tests/test_calc.py::test_double does not exist at repo baseSha 66d0f98 (it is added by adopted PR #28's own commit at startSha bc5f8d67), so a verify command scoped to that node id errors as 'not found' at baseline instead of failing cleanly. Verify instead runs the whole file, exactly as the request specified (`pytest -q tests/test_calc.py`), which collects cleanly at every SHA. tests/test_calc.py also contains test_preexisting_failure, which asserts add(2, 2) == 5 and fails independently of this change (SPEC decision D-1); that failure persists in the verify output before and after this task and is not this task's concern -- AC-2 is proven by test_double's own pass/fail line in that same run, not by the file's aggregate exit code.",
+      "source": "plan"
+    },
+    {
+      "criterion": "AC-3",
+      "kind": "evidence.exception",
+      "reason": "tests/test_calc.py::test_double_negative does not exist at repo baseSha 66d0f983a02d0dfe4e171984ec03a3beea67da68 (it is added by this revision's own task T-3 at startSha b1382ac0324b30fac4c439720fb5610126436746), so a verify command scoped to that node id errors as 'not found' at baseline instead of failing cleanly. Verify instead runs the whole file, exactly as the request specified (`pytest -q tests/test_calc.py`), which collects cleanly at every SHA. tests/test_calc.py also contains test_preexisting_failure, which asserts add(2, 2) == 5 and fails independently of this change (SPEC decision D-1); that failure persists in the verify output before and after this task and is not this task's concern -- AC-3 is proven by test_double_negative's own pass/fail line in that same run, not by the file's aggregate exit code.",
+      "source": "plan"
+    }
+  ],
+  "workDelivered": true
+}

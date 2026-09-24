@@ -1,0 +1,57 @@
+[
+  {
+    "name": "step-23184a7b0940",
+    "agentType": "loop-spec:worker-low",
+    "model": null
+  },
+  {
+    "name": "step-328434a50921",
+    "agentType": "general-purpose",
+    "model": null
+  },
+  {
+    "name": "step-4264c7e57591",
+    "agentType": "general-purpose",
+    "model": null
+  },
+  {
+    "name": "step-a4be786f870a",
+    "agentType": "loop-spec:worker-low",
+    "model": null
+  },
+  {
+    "name": "step-ac96d89e6e82",
+    "agentType": "loop-spec:worker-low",
+    "model": null
+  },
+  {
+    "name": "step-d3a546a22ea3",
+    "agentType": "general-purpose",
+    "model": null
+  },
+  {
+    "name": "step-edcd4b7d394b",
+    "agentType": "general-purpose",
+    "model": null
+  },
+  {
+    "name": "step-f01d8ab816c1",
+    "agentType": "general-purpose",
+    "model": null
+  },
+  {
+    "name": "step-f18e2816c0f9",
+    "agentType": "general-purpose",
+    "model": null
+  },
+  {
+    "name": "step-f4ceb76b812d",
+    "agentType": "general-purpose",
+    "model": null
+  },
+  {
+    "name": "step-f7d01fc63700",
+    "agentType": "general-purpose",
+    "model": null
+  }
+]
