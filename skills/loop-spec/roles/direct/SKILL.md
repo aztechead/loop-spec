@@ -16,7 +16,10 @@ remote and each PR against its head, so report only what actually happened.
 1. Read `inputs.request` and the router's reason (`inputs.products.route`).
    The repositories are under `inputs.repos`.
 2. Do what the request names and nothing more: change and push only the branches
-   it names, and open a PR only when it asks for one.
+   it names, and open a PR only when it asks for one. Before a merge or rebase in a
+   shallow clone (`git rev-parse --is-shallow-repository` prints `true`), run
+   `git fetch --unshallow` so git sees the real merge base; never merge with
+   `--allow-unrelated-histories`.
 3. Record every action that changed a repository or a remote in `actions`:
    `kind` is `commit`, `push`, `pr`, or `other`; `repo` is its name from
    `inputs.repos`; `ref` the branch; `sha` the commit (for a `push`, the SHA

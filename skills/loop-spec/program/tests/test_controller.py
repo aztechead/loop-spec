@@ -1723,17 +1723,21 @@ class AutoRouteTests(_QuietStdout):
         for exit_, blocker, expected in (("done", None, "direct"), ("incomplete", "the conflict needs a design call", "escalated")):
             with self.subTest(exit=exit_), tempfile.TemporaryDirectory() as tmp:
                 repo_dir, paths, next_ = self._start(Path(tmp))
+                _add_origin(Path(tmp), repo_dir, "main")
                 next_ = self._route(repo_dir, paths, next_, "direct")
                 step = read_json(next_.path)
                 self.assertEqual((step["kind"], step["role"]), ("lead", "direct"))
+                # LF-72 (live ea-a): a checked push makes workDelivered true with no DELIVER product.
+                push = {"kind": "push", "repo": next(iter(_open(paths).state["repos"])), "ref": "main",
+                        "sha": repo_module.head_sha(repo_dir), "url": None, "detail": "push main"}
                 atomic_write_json(Path(step["resultPath"]), {
                     "exit": exit_, "inputsDigest": step["inputsDigest"], "boundTo": {"requirements": None, "plan": None},
-                    "summary": "merged main", "actions": [], "blocker": blocker})
+                    "summary": "merged main", "actions": [push], "blocker": blocker})
                 next_ = _submit_and_continue(paths, repo_dir, self.markers, step["stepAttemptId"])
                 result = read_json(paths.result_json)
                 self.assertEqual((next_.kind, result["result"], result["cycleType"]), ("result", expected, "direct"))
                 if exit_ == "done":
-                    self.assertFalse(result["workDelivered"])
+                    self.assertTrue(result["workDelivered"])
                     self.assertTrue(any("no gate ran" in w for w in result["warnings"]))
                 else:
                     self.assertEqual(result["reason"], blocker)
