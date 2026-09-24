@@ -38,9 +38,10 @@ def _commit(cwd, filename, message):
 class GapsFromPrTests(unittest.TestCase):
     def test_collects_top_level_and_inline_comments(self):
         view_json = ('{"comments": [{"author": {"login": "alice"}, "body": "please add a test", '
-                     '"url": "https://x/1"}], "reviews": [{"author": {"login": "bob"}, "body": "", "url": "https://x/2"}]}')
+                     '"url": "https://x/1", "createdAt": "2026-09-24T10:00:00Z"}], '
+                     '"reviews": [{"author": {"login": "bob"}, "body": "", "url": "https://x/2"}]}')
         inline_json = ('[{"user": {"login": "carol"}, "body": "off by one here", "path": "a.py", "line": 12, '
-                        '"html_url": "https://x/3"}]')
+                        '"html_url": "https://x/3", "created_at": "2026-09-24T11:00:00Z"}]')
 
         def fake_run_gh(repo, *args):
             if args[:2] == ("pr", "view"):
@@ -57,6 +58,8 @@ class GapsFromPrTests(unittest.TestCase):
         self.assertEqual(gaps[1]["author"], "carol")
         self.assertEqual(gaps[1]["path"], "a.py")
         self.assertEqual(gaps[1]["line"], 12)
+        # F2: a second revise round tells old comments from new by this.
+        self.assertEqual([g["createdAt"] for g in gaps], ["2026-09-24T10:00:00Z", "2026-09-24T11:00:00Z"])
 
     def test_gh_pr_view_failure_raises(self):
         with patch("loop_spec.revise.repo_module.run_gh", return_value=(1, "", "not found")):

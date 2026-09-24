@@ -1293,7 +1293,8 @@ class DebugAndReviseEntryTests(_QuietStdout):
                 paths = FeaturePaths(root=feature_dir(home, rid, "revise-42"))
                 store = _open(paths)
                 self.assertEqual(store.state["run"]["cycleType"], "revise")
-                self.assertEqual(store.state["revise"]["prior"], {"slug": "delivered-42", "spec": prior_spec, "plan": prior_plan})
+                self.assertEqual(store.state["revise"]["prior"], {"slug": "delivered-42", "spec": prior_spec, "plan": prior_plan,
+                                                         "commentsCutoff": None})
                 self.assertEqual(next_.kind, "step")
 
                 # --- REVISE's lead step: T-1 carried forward verbatim, plus a new T-2 ---
@@ -2297,7 +2298,7 @@ class FindDeliveringRunProductsTests(unittest.TestCase):
             atomic_write_json(paths.result_json, {"prs": [{"number": 2, "repo": "consumer", "url": "https://example/pr/2"}]})
 
             found = controller._find_delivering_run_products(home, rid, "https://example/pr/2", project_root)
-            self.assertEqual(found, {"slug": "delivered", "spec": spec, "plan": plan})
+            self.assertEqual(found, {"slug": "delivered", "spec": spec, "plan": plan, "commentsCutoff": None})
 
             self.assertIsNone(controller._find_delivering_run_products(home, rid, "https://example/pr/999", project_root))
 
@@ -2324,7 +2325,8 @@ class FindDeliveringRunProductsTests(unittest.TestCase):
             atomic_write_json(delivered_paths.result_json, {"prs": [{"number": 2, "repo": "consumer", "url": pr_url}]})
 
             found = controller._find_delivering_run_products(home, rid, pr_url, project_root)
-            self.assertEqual(found, {"slug": "zzz-delivered", "spec": delivered_spec, "plan": delivered_plan})
+            self.assertEqual(found, {"slug": "zzz-delivered", "spec": delivered_spec, "plan": delivered_plan,
+                                     "commentsCutoff": None})
 
     def test_adoption_only_hit_used_when_no_result_names_the_pr(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2340,7 +2342,52 @@ class FindDeliveringRunProductsTests(unittest.TestCase):
             revise_store.save()
 
             found = controller._find_delivering_run_products(home, rid, pr_url, project_root)
-            self.assertEqual(found, {"slug": "revise-3", "spec": spec, "plan": plan})
+            self.assertEqual(found, {"slug": "revise-3", "spec": spec, "plan": plan, "commentsCutoff": None})
+
+    def test_the_latest_finished_run_wins_whatever_the_slugs_spell(self):
+        # F2: a second revise round needs the products the PR now reflects, which are
+        # the latest finished run's; the cutoff is that revise run's creation time.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            home, rid, project_root = tmp / "home", "repo-1", tmp / "project"
+            project_root.mkdir()
+            pr_url = "https://example/pr/4"
+            prs = {"prs": [{"number": 4, "repo": "consumer", "url": pr_url}]}
+            old_paths, _ = self._run_dir(home, rid, "zzz-original", project_root, {"criteria": []}, {"tasks": []})
+            atomic_write_json(old_paths.result_json, {**prs, "finishedAt": "2026-09-24T10:00:00+00:00"})
+            new_spec = {"criteria": [{"id": "AC-2", "text": "round one"}]}
+            new_paths, new_store = self._run_dir(home, rid, "aaa-revise", project_root, new_spec, {"tasks": []})
+            new_store.state["run"].update({"cycleType": "revise", "createdAt": "2026-09-24T11:00:00+00:00"})
+            new_store.save()
+            atomic_write_json(new_paths.result_json, {**prs, "finishedAt": "2026-09-24T12:00:00+00:00"})
+            no_time_paths, _ = self._run_dir(home, rid, "mmm-no-time", project_root, {"criteria": []}, {"tasks": []})
+            atomic_write_json(no_time_paths.result_json, prs)  # no finishedAt: sorts first, never raises
+
+            found = controller._find_delivering_run_products(home, rid, pr_url, project_root)
+            self.assertEqual(found, {"slug": "aaa-revise", "spec": new_spec, "plan": {"tasks": []},
+                                     "commentsCutoff": "2026-09-24T11:00:00Z"})
+
+
+class ReviseRoundTests(unittest.TestCase):
+    """F2: a finished revise run is one round, never reopened by `revise --pr`."""
+
+    def _revise_run(self, home: Path, rid: str, slug: str, number: int, finished: bool) -> None:
+        paths = FeaturePaths(root=feature_dir(home, rid, slug))
+        store = StateStore.create(paths, {"id": f"run-{slug}", "entry": "revise", "slug": slug, "cycleType": "revise"}, "r")
+        store.state["adoption"] = {"number": number, "url": f"https://example/pr/{number}"}
+        if finished:
+            store.state["result"] = {"classification": "converged", "writtenAt": "2026-09-24T12:00:00+00:00"}
+        store.save()
+
+    def test_a_finished_round_is_skipped_and_the_next_slug_is_numbered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, rid, project_root = Path(tmp) / "home", "repo-1", Path(tmp)
+            self._revise_run(home, rid, "revise-7", 7, finished=True)
+            self.assertIsNone(controller._find_run_by_adoption_number(home, rid, 7, project_root))
+            self.assertEqual(controller._next_revise_slug(home, rid, 7), "revise-7-2")
+            self._revise_run(home, rid, "revise-7-2", 7, finished=False)
+            self.assertEqual(controller._find_run_by_adoption_number(home, rid, 7, project_root), "revise-7-2")
+            self.assertEqual(controller._next_revise_slug(home, rid, 7), "revise-7-3")
 
 
 class ModulePauseAnswerTests(unittest.TestCase):

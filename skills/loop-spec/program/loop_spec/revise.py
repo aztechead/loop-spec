@@ -34,7 +34,8 @@ def gaps_from_pr(repo_path: Path, number: int) -> list[dict]:
         if not body:
             continue
         gaps.append({"id": f"G-{len(gaps) + 1}", "author": (comment.get("author") or {}).get("login", "unknown"),
-                     "body": body, "path": None, "line": None, "url": comment.get("url")})
+                     "body": body, "path": None, "line": None, "url": comment.get("url"),
+                     "createdAt": comment.get("createdAt") or comment.get("submittedAt")})
 
     code, out, err = repo_module.run_gh(repo_path, "api", f"repos/{{owner}}/{{repo}}/pulls/{number}/comments")
     if code != 0:
@@ -44,7 +45,8 @@ def gaps_from_pr(repo_path: Path, number: int) -> list[dict]:
         if not body:
             continue
         gaps.append({"id": f"G-{len(gaps) + 1}", "author": (inline.get("user") or {}).get("login", "unknown"),
-                     "body": body, "path": inline.get("path"), "line": inline.get("line"), "url": inline.get("html_url")})
+                     "body": body, "path": inline.get("path"), "line": inline.get("line"), "url": inline.get("html_url"),
+                     "createdAt": inline.get("created_at")})
     return gaps
 
 

@@ -168,9 +168,21 @@ def _find_run_by_adoption_number(home: Path, rid: str, number: int, project_root
         adoption = state.get("adoption")
         # Only a revise run is keyed by its PR: a cycle or micro run that adopted the
         # same PR is a different piece of work, never the one `revise --pr` resumes.
-        if state["run"].get("cycleType") == "revise" and adoption is not None and adoption.get("number") == number:
+        # A finished run (state.result set; a paused result.json alone is still
+        # resumable) is one round of review, never reopened: new comments get a new run.
+        if (state["run"].get("cycleType") == "revise" and adoption is not None
+                and adoption.get("number") == number and state.get("result") is None):
             return slug_dir.name
     return None
+
+
+def _next_revise_slug(home: Path, rid: str, number: int) -> str:
+    """`revise-<n>`, then `revise-<n>-2`, `-3`, ...: the first with no run in it."""
+    slug, round_ = f"revise-{number}", 1
+    while (feature_dir(home, rid, slug) / "state.json").exists():
+        round_ += 1
+        slug = f"revise-{number}-{round_}"
+    return slug
 
 
 def _delivering_run_entry(slug_dir_name: str, state: dict) -> dict | None:
@@ -178,39 +190,52 @@ def _delivering_run_entry(slug_dir_name: str, state: dict) -> dict | None:
     plan = (state.get("products", {}).get("plan") or {}).get("product")
     if spec is None or plan is None:
         return None
-    return {"slug": slug_dir_name, "spec": spec, "plan": plan}
+    # A prior revise run fetched the PR's comments just after it was created, so a
+    # comment older than that was handed to it; an original cycle or micro run never
+    # read comments. gh writes `...Z`, so the cutoff does too.
+    created = state["run"].get("createdAt") if state["run"].get("cycleType") == "revise" else None
+    cutoff = created.replace("+00:00", "Z") if created else None
+    return {"slug": slug_dir_name, "spec": spec, "plan": plan, "commentsCutoff": cutoff}
 
 
 def _find_delivering_run_products(home: Path, rid: str, pr_url: str, project_root: Path) -> dict | None:
     # LF-37: the reviser role reads "the SPEC and PLAN products it was delivered
     # against" (its own SKILL.md), but had no way to find that prior run itself --
     # a live lead scavenged the state home with find|xargs grep to do it by hand.
-    # This is that lookup: the run whose result.json names this PR (the original
-    # delivery) wins over a prior revise of the same PR (adoption.url match only).
+    # This is that lookup: a run whose result.json names this PR wins over one that
+    # only adopted it, and among each kind the latest finished wins, so a second
+    # revise round gets the products the PR now reflects, whatever the slugs spell.
     repo_home = home / rid
     if not repo_home.exists():
         return None
-    result_hit, adoption_hit = None, None
+    result_hits, adoption_hits = [], []
     for slug_dir in sorted(repo_home.iterdir()):
         candidate = FeaturePaths(root=slug_dir, project_root=project_root)
         if not candidate.state_json.exists():
             continue
         state = StateStore.open(candidate).state
 
-        prs = (state.get("result") or {}).get("prs") or []
+        result = state.get("result") or {}
+        prs = result.get("prs") or []
+        finished = result.get("writtenAt") or ""
         if candidate.result_json.is_file():
             try:
-                prs = read_json(candidate.result_json).get("prs") or prs
+                written = read_json(candidate.result_json)
+                prs = written.get("prs") or prs
+                finished = written.get("finishedAt") or finished
             except (OSError, ValueError):
                 pass
-        if result_hit is None and any(p.get("url") == pr_url for p in prs):
-            result_hit = _delivering_run_entry(slug_dir.name, state)
-
+        entry = _delivering_run_entry(slug_dir.name, state)
+        if entry is None:
+            continue
+        if any(p.get("url") == pr_url for p in prs):
+            result_hits.append((finished, entry))
         adoption = state.get("adoption")
-        if adoption_hit is None and adoption is not None and adoption.get("url") == pr_url:
-            adoption_hit = _delivering_run_entry(slug_dir.name, state)
+        if adoption is not None and adoption.get("url") == pr_url:
+            adoption_hits.append((finished or state["run"].get("createdAt") or "", entry))
 
-    return result_hit or adoption_hit
+    hits = result_hits or adoption_hits
+    return max(hits, key=lambda hit: hit[0])[1] if hits else None
 
 
 def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, home: Path, rid: str,
@@ -236,7 +261,7 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
         raise LoopSpecError(f"revise cannot adopt PR {pr!r}: {candidate.reason}", repair="check gh auth and that the PR is open and same-repo")
 
     existing_slug = _find_run_by_adoption_number(home, rid, adoption.number, project_root)
-    slug = slug or existing_slug or f"revise-{adoption.number}"
+    slug = slug or existing_slug or _next_revise_slug(home, rid, adoption.number)
     paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
 
     if paths.state_json.exists():
