@@ -1,0 +1,75 @@
+{
+  "execute": {
+    "attemptId": "attempt-a0228dfc8a9f",
+    "boundTo": {
+      "plan": "sha256:44956b433f7793c9a52c406badcb6ec3b41ce863afcb5685793f55325aa2fc14",
+      "requirements": "sha256:04aadb25866f941750180e6dd223bb8712b0688a493a59b7c01e59bf3d2e594f"
+    },
+    "evidenceLevel": "unattested",
+    "exit": "no change",
+    "inputsDigest": "sha256:c5a07fc2b1b2a281520297909aee6ef635672587ea30ae653a0809809cad6b7e",
+    "product": {
+      "boundTo": {
+        "plan": "sha256:44956b433f7793c9a52c406badcb6ec3b41ce863afcb5685793f55325aa2fc14",
+        "requirements": "sha256:04aadb25866f941750180e6dd223bb8712b0688a493a59b7c01e59bf3d2e594f"
+      },
+      "exit": "no change",
+      "heads": {
+        "c1": "444ebceb3bbee685e95679502f589e9b531a7c6b"
+      },
+      "inputsDigest": "sha256:c5a07fc2b1b2a281520297909aee6ef635672587ea30ae653a0809809cad6b7e",
+      "issues": [],
+      "tasks": [
+        {
+          "commits": [],
+          "disposition": "already-satisfied",
+          "evidence": "already satisfied: calc/__init__.py already defines triple(x) with a docstring, tests/test_calc.py already has test_triple asserting triple(4) == 12, and CHANGELOG.md already has the triple(x) line, all from commit 444ebce. No change made.",
+          "id": "T-1",
+          "review": null,
+          "securitySignals": [],
+          "steps": {
+            "implement": [
+              "step-8b52d5753e8b"
+            ],
+            "review": []
+          }
+        }
+      ]
+    },
+    "receivedAt": "2026-09-24T20:30:07+00:00"
+  },
+  "deliver": {
+    "attemptId": "attempt-a54c8b30ecd2",
+    "boundTo": {
+      "plan": "sha256:44956b433f7793c9a52c406badcb6ec3b41ce863afcb5685793f55325aa2fc14",
+      "requirements": "sha256:04aadb25866f941750180e6dd223bb8712b0688a493a59b7c01e59bf3d2e594f"
+    },
+    "evidenceLevel": "unattested",
+    "exit": "delivered",
+    "inputsDigest": "sha256:d57ca2fc399fb13074336846e88369c824a9318167ceeb850cb25f43587fbcfc",
+    "product": {
+      "boundTo": {
+        "plan": "sha256:44956b433f7793c9a52c406badcb6ec3b41ce863afcb5685793f55325aa2fc14",
+        "requirements": "sha256:04aadb25866f941750180e6dd223bb8712b0688a493a59b7c01e59bf3d2e594f"
+      },
+      "exit": "delivered",
+      "inputsDigest": "sha256:d57ca2fc399fb13074336846e88369c824a9318167ceeb850cb25f43587fbcfc",
+      "repos": [
+        {
+          "caveats": [],
+          "deliveredSha": null,
+          "pr": {
+            "base": "main",
+            "headRef": "v741-triple",
+            "headSha": "444ebceb3bbee685e95679502f589e9b531a7c6b",
+            "number": 29,
+            "url": "https://github.com/aztechead/loop-spec-live-7/pull/29"
+          },
+          "repo": "c1",
+          "state": "skipped"
+        }
+      ]
+    },
+    "receivedAt": "2026-09-24T20:33:34+00:00"
+  }
+}

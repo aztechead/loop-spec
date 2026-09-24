@@ -1,0 +1,47 @@
+{
+  "exit": "ready",
+  "inputsDigest": "sha256:511d0c77a982bb0323940085f0bc4c3e33d5f1adc078b5d8e16f1c7638930f63",
+  "boundTo": {"requirements": "sha256:04aadb25866f941750180e6dd223bb8712b0688a493a59b7c01e59bf3d2e594f", "plan": null},
+  "tasks": [
+    {
+      "id": "T-1",
+      "title": "Add triple(x) to calc with a docstring, tests, and a CHANGELOG line",
+      "dependsOn": [],
+      "files": ["calc/__init__.py", "tests/test_calc.py", "CHANGELOG.md"],
+      "repo": "c1",
+      "verify": "uv run --with pytest python -m pytest -q tests/test_calc.py",
+      "criteria": ["AC-1", "AC-2"],
+      "featureAdded": null,
+      "mustFlip": false
+    }
+  ],
+  "prepare": null,
+  "existingCode": [
+    {
+      "concept": "scale x by a fixed integer factor",
+      "decision": "extend",
+      "repo": "c1",
+      "cites": [{"path": "calc/__init__.py", "lines": "5-6"}],
+      "tasks": ["T-1"],
+      "reason": "calc/__init__.py holds the numeric one-arg helpers (add, negate); triple belongs beside negate, and no existing function multiplies x by a constant."
+    },
+    {
+      "concept": "test coverage for calc functions",
+      "decision": "extend",
+      "repo": "c1",
+      "cites": [{"path": "tests/test_calc.py", "lines": "1-7"}],
+      "tasks": ["T-1"],
+      "reason": "tests/test_calc.py already covers add(); triple's tests belong in the same file beside the existing calc tests rather than a new test module."
+    },
+    {
+      "concept": "CHANGELOG entry per change",
+      "decision": "extend",
+      "repo": "c1",
+      "cites": [{"path": "CHANGELOG.md", "lines": "1-5"}],
+      "tasks": ["T-1"],
+      "reason": "CLAUDE.md requires every change to add one line under ## Unreleased; CHANGELOG.md already holds the negate(x) entry in that section."
+    }
+  ],
+  "checks": [],
+  "evidenceExceptions": []
+}
