@@ -17,7 +17,9 @@ the codebase; Write is for your one result file only.
    was delivered against. They arrive as the `prior` input (`prior.spec`,
    `prior.plan`) when the program found the delivering run in its state home; when
    `prior` is null, derive the criteria and tasks from the PR body and diff
-   instead — never search the state home yourself.
+   instead — never search the state home yourself. The PR's current code is at
+   `inputs.repos.<repo>.startSha` (its head); read it there (`git show
+   <startSha>:<path>`), not in the working tree.
 2. For a comment that changes what "done" means (a missed requirement, a wrong
    boundary), fold it into the SPEC product as a new or revised criterion or
    boundary, with a decision recording why.

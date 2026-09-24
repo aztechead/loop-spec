@@ -194,9 +194,13 @@ CONTRACTS: dict[str, str] = {
 
 
 def repo_map(repos) -> dict:
-    """`inputs.repos` for a role that writes a PLAN: each repo's name, path and base."""
+    """`inputs.repos` for a role that writes or checks a PLAN: each repo's name, path,
+    base (where the baseline runs) and start (the code this run begins from: an adopted
+    PR's head, else the base). `startSha` is `lastKnownHead`, which holds only because
+    nothing advances `lastKnownHead` after the run's repos are resolved."""
     items = repos.items() if isinstance(repos, dict) else ((r.get("name"), r) for r in repos)
-    return {name: {"path": info["path"], "baseSha": info.get("baseSha")} for name, info in items}
+    return {name: {"path": info["path"], "baseSha": info.get("baseSha"),
+                   "startSha": info.get("lastKnownHead") or info.get("baseSha")} for name, info in items}
 
 
 def compose_prompt(role: Role, *, inputs: dict, result_path: Path, cwd: Path, phase: str) -> str:

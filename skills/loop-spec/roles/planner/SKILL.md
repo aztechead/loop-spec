@@ -17,7 +17,10 @@ never for installing, building, or running the plan's own verify commands.
    you before reading anything yourself: `inputs.probes.repoChecks`, and, for each
    repo whose files the request or SPEC names, `inputs.probes.named.<repo>` (those
    `files` with their house style, duplication, indirection, security signals, and
-   the third-party `deps` they import). The probes already answer what a fresh scan
+   the third-party `deps` they import). The probes read each repo at
+   `inputs.repos.<repo>.startSha`: an adopted PR's head, otherwise the base. Read code
+   there too (`git show <startSha>:<path>`); the working tree may be on another
+   commit. The probes already answer what a fresh scan
    would only re-derive. When a task uses a listed dependency's API, fetch its
    current docs yourself.
 2. Map every criterion to at least one task; a criterion no task covers is a gap.
@@ -26,11 +29,14 @@ never for installing, building, or running the plan's own verify commands.
    checks it again at the integrated head, so it never needs a `dependsOn`, and
    tasks on separate files still share a wave.
 3. For each task, name its repo, the files it touches, a `verify` command that
-   runs correctly from a bare checkout of the repo root at the base commit — no
+   runs correctly from a bare checkout of the repo root at the base commit
+   (`inputs.repos.<repo>.baseSha`, where the program captures the baseline) — no
    relative working-directory assumptions — and the criteria it satisfies.
    Every task's `repo` is one of the repository names listed under `inputs.repos` (the envelope's repo map), never a path, `.`, or a guess; a single-repository run has exactly one name.
    `featureAdded` is a target file PATH that does not exist yet at that base
-   commit, never a command; leave it `null` when the target already exists.
+   commit (`inputs.repos.<repo>.baseSha`; test it with `git cat-file -e
+   <baseSha>:<path>`), never a command; leave it `null` when the target already
+   exists there.
    `mustFlip` is `false` for every ordinary task — it is reserved for a debug
    repair task whose `verify` command IS the failing reproduction. No task
    ships without a verify command.
@@ -51,7 +57,7 @@ never for installing, building, or running the plan's own verify commands.
    run (installs, migrations, fixtures); leave it `null` when nothing is needed.
 6. Name the repo's own lint, typecheck and format checks in `checks`, one
    `{"repo", "command"}` per tool that `inputs.probes.repoChecks[<repo>]` lists (the
-   program read those from the repo's manifests at the base commit). Write a plain argv
+   program read those from the repo's manifests at `startSha`). Write a plain argv
    command whose output has one diagnostic per line: `uv run ruff check --output-format
    concise`, `uv run mypy`, `npx tsc --noEmit --pretty false`, `uv run ruff format
    --check`; any other command (such as `npm run lint`) is compared by its output lines.
@@ -60,10 +66,10 @@ never for installing, building, or running the plan's own verify commands.
 7. Record in `existingCode` each concept the plan adds or changes: search the repo
    for code that already does it (the named-file probes are a start, not the whole
    search), then decide `reuse` (call it as is), `extend` (change it), or `new`. A
-   `reuse` or `extend` entry cites the code (`path` and `lines` as `first-last` at the
-   base commit, or at the head for code an earlier task of this run added) and names
+   `reuse` or `extend` entry cites the code (`path` and `lines` as `first-last` at
+   `startSha`, or at the head for code an earlier task of this run added) and names
    the tasks that use it; `reason` says why. A `new` entry's `reason` says what you
-   searched for and where. The program checks every cite resolves (P8); the
+   searched for, where, and at which commit. The program checks every cite resolves (P8); the
    implementer of each named task is handed its entries.
 8. Declare `exit: "ready"`, or `"spec gap"` naming exactly what SPEC is missing.
 9. Under the micro preset (`inputs.entry.payload.preset` is `micro`), one task

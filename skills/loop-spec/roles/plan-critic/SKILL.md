@@ -15,7 +15,10 @@ Read-only over the codebase; Write is for your one result file only.
 
 1. Read the PLAN product against the current SPEC product: every criterion must be
    covered by at least one task, and every task's `verify` command must actually be
-   able to prove what it claims to prove.
+   able to prove what it claims to prove. The code the plan starts from is at
+   `inputs.repos.<repo>.startSha` (an adopted PR's head, else the base); read it there
+   (`git show <startSha>:<path>`), not in the working tree, before calling an
+   `existingCode` entry right or wrong.
 2. Check for a destructive change (data loss, an irreversible external effect) with
    no stated boundary or rollback.
 3. Check the task graph: a real missing dependency, a same-file collision two

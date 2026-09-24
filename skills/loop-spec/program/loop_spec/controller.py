@@ -962,10 +962,11 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
     # the role's own schema.json; every other role step goes through
     # roles.compose_prompt/load_role (see _issue_adopted_review), and the critic
     # step now does too.
-    from loop_spec.roles import compose_prompt, load_role, resolve_model
+    from loop_spec.roles import compose_prompt, load_role, repo_map, resolve_model
     repo_path = next(iter(store.state["repos"].values()))["path"]
     spec_product = store.state["products"]["spec"]["product"]
-    inputs = {"specCriteria": spec_product["criteria"], "planTasks": plan_product["tasks"], "baseline": facts}
+    inputs = {"specCriteria": spec_product["criteria"], "planTasks": plan_product["tasks"], "baseline": facts,
+              "repos": repo_map(store.state["repos"])}
     inputs_digest = digest({"plan": plan_product, "spec": spec_product, "baseline": facts})
 
     role = load_role("plan-critic", project_root, contract.resolve_role(project_root, "plan-critic"))

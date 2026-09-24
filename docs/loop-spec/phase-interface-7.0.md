@@ -26,7 +26,7 @@ code at M1; this page fixes the shape they must have.
 | `repos` | repository or workspace map, per-repo base SHA, feature branch, worktree root |
 | `paths` | state directory; paths the implementation may write to |
 | `answers` | answers recorded against question ids from this attempt, each with scope `question` or `run`; the run's answer policy when a `run`-scoped answer or `--answer-policy` set one |
-| `probes` | program probe output for this phase: at PLAN, DEBUG and REVISE the repo checks per repo, and at PLAN also, per repo, the tracked files the request or SPEC product names with their neighbourhood conventions, existing helpers, layer count, security signals, and imported third-party dependencies, read at the base commit; per EXECUTE task the diff-mode findings and security signals; at VERIFY the whole-range findings and security signals |
+| `probes` | program probe output for this phase: at PLAN, DEBUG and REVISE the repo checks per repo, and at PLAN also, per repo, the tracked files the request or SPEC product names with their neighbourhood conventions, existing helpers, layer count, security signals, and imported third-party dependencies, read at each repo's start commit (an adopted PR's head, else the base); per EXECUTE task the diff-mode findings and security signals; at VERIFY the whole-range findings and security signals |
 
 ### Process contract
 

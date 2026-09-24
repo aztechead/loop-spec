@@ -8,7 +8,7 @@ from unittest.mock import patch
 from loop_spec import contract
 from loop_spec.errors import LoopSpecError
 from loop_spec.jsonio import atomic_write_json
-from loop_spec.roles import CONTRACTS, ROLE_NAMES, Role, compose_prompt, load_role, resolve_model
+from loop_spec.roles import CONTRACTS, ROLE_NAMES, Role, compose_prompt, load_role, repo_map, resolve_model
 from loop_spec.schema import load_schema, validate
 
 
@@ -184,6 +184,18 @@ class PlanCriticSchemaTests(unittest.TestCase):
         self.assertEqual(validate({"findings": [ok]}, schema), [])
         bad = dict(finding, recommendation={"action": "close", "reason": "x"})
         self.assertNotEqual(validate({"findings": [bad]}, schema), [])
+
+
+class RepoMapTests(unittest.TestCase):
+    def test_start_is_the_adopted_head_or_the_base(self):
+        # F1: an adopted PR's repo starts at the PR head (lastKnownHead), a fresh repo at its base.
+        repos = {
+            "adopted": {"path": "/a", "baseSha": "b" * 40, "lastKnownHead": "h" * 40},
+            "fresh": {"path": "/f", "baseSha": "c" * 40, "lastKnownHead": "c" * 40},
+        }
+        mapped = repo_map(repos)
+        self.assertEqual(mapped["adopted"], {"path": "/a", "baseSha": "b" * 40, "startSha": "h" * 40})
+        self.assertEqual(mapped["fresh"]["startSha"], "c" * 40)
 
 
 class ResolveModelTests(unittest.TestCase):

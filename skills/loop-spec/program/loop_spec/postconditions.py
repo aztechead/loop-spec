@@ -495,7 +495,7 @@ class Boundary:
                 texts = [shown.stdout for sha in shas
                          if (shown := repo_module._git(Path(info["path"]), "show", f"{sha}:{cite['path']}")).returncode == 0]
                 if not texts:
-                    return f"existingCode {entry['concept']!r} cites {cite['path']}, which does not exist at the plan's commit"
+                    return f"existingCode {entry['concept']!r} cites {cite['path']}, which does not exist at the repo's start commit"
                 if not any(1 <= first <= last <= len(text.splitlines()) for text in texts):
                     return f"existingCode {entry['concept']!r} cites {cite['path']}:{cite['lines']}, outside the file"
         return None

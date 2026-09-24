@@ -691,6 +691,8 @@ class PlanCriticTests(_QuietStdout):
                 self.assertIn("## Output", critic_step["prompt"])
                 self.assertIn('"severity"', critic_step["prompt"])
                 self.assertIn("Critical-only", critic_step["prompt"])
+                # F1: the critic reads code at each repo's start commit, like the planner.
+                self.assertIn('"startSha"', critic_step["prompt"])
                 self.assertTrue(critic_step["resultPath"].startswith(str(paths.results_dir)))
                 attempt = store.state["phase"]["attemptId"]
                 self.assertEqual(Path(critic_step["resultPath"]).name, f"plan-critic-{attempt}.json")
