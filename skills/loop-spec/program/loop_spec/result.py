@@ -91,7 +91,8 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         for entry in delivery["targets"]:
             if entry.get("pr"):
                 prs.append({"repo": entry["repo"], "number": entry["pr"]["number"], "url": entry["pr"]["url"]})
-                if entry.get("state") == "delivered":
+                # A no-change run names the adopted PR it found already done (D6).
+                if entry.get("state") == "delivered" or classification == "no-change":
                     pr_url = pr_url or entry["pr"]["url"]
 
     # workDelivered is a delivery fact, not a label: true whenever any target

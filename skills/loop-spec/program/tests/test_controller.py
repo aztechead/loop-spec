@@ -2348,6 +2348,28 @@ class FindDeliveringRunProductsTests(unittest.TestCase):
             self.assertEqual(found, {"slug": "zzz-delivered", "spec": delivered_spec, "plan": delivered_plan,
                                      "commentsCutoff": None})
 
+    def test_a_later_no_change_run_naming_the_pr_is_not_the_delivering_run(self):
+        # 7.4.1: a no-change run's result names the PR it found already done, but its
+        # SPEC/PLAN are not what the PR's commits were delivered against.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            home, rid, project_root = tmp / "home", "repo-1", tmp / "project"
+            project_root.mkdir()
+            pr_url = "https://example/pr/2"
+            delivered_spec, delivered_plan = {"criteria": [{"id": "AC-1", "text": "the original delivery"}]}, {"tasks": []}
+            delivered_paths, _ = self._run_dir(home, rid, "aaa-delivered", project_root, delivered_spec, delivered_plan)
+            atomic_write_json(delivered_paths.result_json, {"prs": [{"number": 2, "url": pr_url}],
+                                                            "finishedAt": "2026-09-24T10:00:00Z"})
+            later_paths, later_store = self._run_dir(home, rid, "zzz-no-change", project_root,
+                                                     {"criteria": [{"id": "AC-1", "text": "already done"}]}, {"tasks": []})
+            later_store.state["products"]["execute"] = {"exit": "no change", "product": {"heads": {}}}
+            later_store.save()
+            atomic_write_json(later_paths.result_json, {"prs": [{"number": 2, "url": pr_url}],
+                                                        "finishedAt": "2026-09-24T11:00:00Z"})
+
+            found = controller._find_delivering_run_products(home, rid, pr_url, project_root)
+            self.assertEqual(found["slug"], "aaa-delivered")
+
     def test_adoption_only_hit_used_when_no_result_names_the_pr(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)

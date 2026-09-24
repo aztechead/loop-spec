@@ -137,6 +137,23 @@ class DeliverTests(unittest.TestCase):
         self.assertIsNone(entry["pr"])
         self.assertEqual(action.product["exit"], "delivered")
 
+    def test_no_change_on_an_adopted_pr_names_the_pr_and_writes_nothing(self):
+        # 7.4.1: the open PR already does what was asked; its commits sit after base,
+        # but a no-change run pushes nothing and makes no gh call.
+        self.store.state["products"]["execute"]["exit"] = "no change"
+        self.store.state["adoption"] = {"repo": "repo", "number": 7, "url": "https://x/pull/7", "headRef": "feature",
+                                         "baseBranch": "main", "baseSha": self.base_sha, "headSha": self.head_sha}
+        self.store.save()
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=AssertionError("no gh call on no change")):
+            action = deliver.run(self.store, self.paths, self.ctx)
+        entry = action.product["repos"][0]
+        self.assertEqual(entry["state"], "skipped")
+        self.assertIsNone(entry["deliveredSha"])
+        self.assertEqual(entry["pr"], {"number": 7, "url": "https://x/pull/7", "headRef": "feature",
+                                       "headSha": self.head_sha, "base": "main"})
+        self.assertEqual(action.product["exit"], "delivered")
+        self.assertNotEqual(_head(self.remote, "feature"), self.head_sha)  # nothing pushed
+
     def test_reuses_an_existing_open_pr_without_creating_a_new_one(self):
         calls = []
 

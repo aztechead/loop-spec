@@ -103,6 +103,18 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(record["verification"]["status"], "passed")
         self.assertTrue(record["partiallyDelivered"])
 
+    def test_no_change_names_the_adopted_pr_it_found_already_done(self):
+        # 7.4.1: a no-change run on an open PR is a success that names the PR (D6's
+        # skipped row) and delivered nothing.
+        store, paths = _new_run(self.tmp / "nochange", "nochange", "deliver")
+        _verify_passed(store)
+        _deliver(store, [{"repo": "repo", "state": "skipped", "pr": _pr(7), "deliveredSha": None, "caveats": []}])
+        record = read_json(result_module.write(store, paths, "no-change"))
+        self.assertEqual(record["prUrl"], "https://example/pull/7")
+        self.assertEqual(record["outcome"], "no-change-needed")
+        self.assertTrue(record["converged"])
+        self.assertFalse(record["workDelivered"])
+
     def test_a_stop_after_one_repo_published_reports_partial_delivery(self):
         # LF-58: the stop path passes no flag; the per-repo facts decide. A skipped
         # (untouched) repo beside a delivered one is not partial.

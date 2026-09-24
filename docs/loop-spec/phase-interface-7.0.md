@@ -165,14 +165,14 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 | E6 | every such review record's evidence level meets the accepted class for review steps; otherwise the task is listed in `unreviewed`. An `already-satisfied` close-out needs the same, plus a passing review of the empty range at the head the product exits on, whose attested prompt carries this close-out as its `closeOut` input | `integrated` |
 | E7 | each task's verify command produced no new failure identity against its baseline; a `featureAdded` command had a meaningful first success (exit zero, at least one parsed test identity where a test-runner parser exists) that became its task-local baseline; a `mustFlip` command failed at baseline with the recorded digest and passes at integration; a registered close-out has no verify command and is exempt | `integrated` |
 | E8 | the feature head is reachable from base and was not moved out of band | `integrated`, `no change` |
-| E9 | `base..head` is empty and every task is `already-satisfied` or `removed` | `no change`; forbids `integrated` |
+| E9 | `start..head` is empty, where start is the base, or the adopted PR's head in its own repo, and every task is `already-satisfied` or `removed` | `no change`; forbids `integrated` |
 | E10 | a rejected step was re-issued with its reason up to the per-step retry limit before `blocked` is claimed | `blocked` |
 | E11 | for a task whose probed diff touches a file with a security signal, the review record carries a disposition naming that file | `integrated` |
 
 | Exit | Requires | Route |
 |---|---|---|
 | `integrated` | E1 to E8, E11; E9 false | VERIFY at the integrated head |
-| `no change` | E1, E2, E8, E9 | VERIFY at base |
+| `no change` | E1, E2, E8, E9 | VERIFY at the head, over `base..head` |
 | `blocked` | E1, E10 | pause: a question to the operator naming the cause, with the answers fix-and-re-enter EXECUTE or stop; `status: paused` until answered; a stop answer, or a `run`-scoped default policy, exits terminal `escalated` with the cause |
 | `plan gap` | E1, T1 | PLAN, `remediation` |
 
@@ -198,7 +198,7 @@ on such a task refuses the run.
 |---|---|
 | Inputs | requirements revision; EXECUTE product and head; baseline; ledger; on re-entry, the prior VERIFY product |
 | Product | per criterion a `verdict` of `pass`, `fail`, or `blocked` with `evidence` (command, repo, SHA, exit status, parsed failure identities, raw output digest); `findings[]` with dispositions and typed `supersedes`; `remediationTasks[]`; `reviewedRanges[]` (one per touched repo). Evidence fields, read only when VERIFY ran its default implementation: per range `reviewStep` (the step that reviewed it; a reused range keeps the original step) and `reusedRangeId`, recorded in the ledger; `checkouts` per repo, the tree ITERATE's judge reads |
-| Preconditions | EXECUTE exited `integrated` or `no change` at the current revisions; each repo's verified head equals its integrated head, or its base for `no change`; module state is re-initialized when the requirements revision, plan revision or candidate heads changed since it was built |
+| Preconditions | EXECUTE exited `integrated` or `no change` at the current revisions; each repo's verified head equals EXECUTE's head for it (for `no change`, its start commit); module state is re-initialized when the requirements revision, plan revision or candidate heads changed since it was built |
 | Runs as | the probes once over `base..head`; verifier and reviewer as fresh contexts with those findings; the program re-runs every cited command |
 
 | Id | Postcondition | Gates |
@@ -275,9 +275,9 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | | |
 |---|---|
 | Inputs | ITERATE product; per-repo verified SHA; rendered summary; delivery configuration and readiness policy; existing remote state |
-| Product | per repo `pr` identity, `deliveredSha`, `caveats[]`, `state` (`delivered`, `failed`, `skipped`); a `failed` row carries `publishedSha` (and the PR, if one was opened) when this or an earlier DELIVER attempt put the branch on the remote, so a re-entry never erases what was published |
+| Product | per repo `pr` identity, `deliveredSha`, `caveats[]`, `state` (`delivered`, `failed`, `skipped`); a `failed` row carries `publishedSha` (and the PR, if one was opened) when this or an earlier DELIVER attempt put the branch on the remote, so a re-entry never erases what was published; on a `no change` run the adopted repo's `skipped` row carries the adopted PR |
 | Preconditions | ITERATE `converged` or `converged with caveats`; or `escalated` with an operator policy allowing partial delivery as a draft |
-| Runs as | program code: every touched repo's credentials are checked before the first remote write; then each repo is pushed and its PR reconciled, and a rejected push or failed PR step is that repo's `failed` row while the other repos are still attempted |
+| Runs as | program code: every touched repo's credentials are checked before the first remote write; then each repo is pushed and its PR reconciled (a `no change` run touches no repo, so nothing is pushed), and a rejected push or failed PR step is that repo's `failed` row while the other repos are still attempted |
 
 | Id | Postcondition | Gates |
 |---|---|---|
@@ -286,13 +286,13 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | D3 | required checks satisfy the configured readiness policy (6.9's exact-SHA and required-check behavior) | `delivered` |
 | D4 | a retried creation was reconciled by identity against existing remote state; no duplicate PR | every exit |
 | D5 | partial publication is recorded per repo and never reported as all delivered | `partially delivered` |
-| D6 | a `no change` head that ITERATE converged opened no PR and the product says so | terminal `no-change` |
+| D6 | on a `no change` EXECUTE every row is `skipped` with no `deliveredSha`; only the adopted repo's row names a PR, the adopted PR, at the verified head, and `gh pr view` shows it open at that head | `delivered` |
 | D7 | before the first remote write the program checked git and `gh` credentials and attempted the host's own refresh; a failure exits `delivery blocked` naming the command | `delivered`, `partially delivered` |
 | D8 | the product's repos cover exactly the set of repos EXECUTE touched with an accepted task's commits, no duplicates; a `skipped` row is only valid for a repo EXECUTE did not touch; every row marked `delivered` has a non-null PR | `delivered`, `partially delivered` |
 
 | Exit | Requires | Route |
 |---|---|---|
-| `delivered` | D1 to D4, D7, D8 for every repo | terminal `converged` or `converged-with-caveats` |
+| `delivered` | D1 to D4, D6 to D8 for every repo | terminal `converged` or `converged-with-caveats`; terminal `no-change` after a `no change` EXECUTE |
 | `partially delivered` | at least one repo `delivered` and at least one `failed`; D1, D2, D4, D5, D7, D8 for every repo whose remote write was attempted | terminal `escalated` (never `converged`, whatever ITERATE's own verdict was) with `partiallyDelivered: true`, `workDelivered: true`, and `reason` naming the repos that did not deliver |
 | `delivery blocked` | D4; a credential refusal (D7), or no touched repo delivered | pause: a question naming the failed command and repair, with the answers fix-and-re-enter DELIVER or stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` with `result: escalated` and per-repo state |
 
@@ -384,7 +384,7 @@ ITERATE exit at the current revisions.
 |---|---|---|
 | DELIVER `delivered` after ITERATE `converged` | `converged` | `status: completed`, `outcome: delivered`, `converged: true`, `workDelivered: true` |
 | DELIVER `delivered` after `converged with caveats` | `converged-with-caveats` | `outcome: delivered-draft`, `converged: false`, findings in `warnings` |
-| ITERATE `converged` on a `no change` head | `no-change` | `outcome: no-change-needed`, `noChangeReason: already-satisfied`, `converged: true`, `workDelivered: false` |
+| ITERATE `converged` on a `no change` head | `no-change` | `outcome: no-change-needed`, `noChangeReason: already-satisfied`, `converged: true`, `workDelivered: false`; `prUrl` names the adopted PR when the run adopted one |
 | ITERATE `escalated`; T1 refused at PLAN, EXECUTE, or VERIFY, written by the controller | `escalated` | `status: escalated`, `converged: false` |
 | process exit 1; environment cannot run the plan | `failed` | `status: failed`, `converged: false` |
 | process exit 3 outstanding, including every `blocked` exit | question pending | `status: paused`, `reason` names the question id and, for a blocked exit, the cause |

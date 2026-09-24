@@ -419,6 +419,24 @@ class PostconditionsTests(unittest.TestCase):
         bad["tasks"][0]["disposition"] = "done"
         self.assertIsNotNone(self._boundary("execute", bad, "no change")._e9())
 
+    def test_e9_adopted_repo_is_judged_from_the_pr_head(self):
+        # 7.4.1: an adopted PR's own commits sit between base and head; "no change"
+        # means nothing after the PR head.
+        no_change = {
+            "exit": "no change", "inputsDigest": "sha256:" + "0" * 64,
+            "boundTo": {"requirements": self.spec_revision, "plan": self.plan_revision},
+            "tasks": [{"id": "T-1", "disposition": "already-satisfied", "evidence": "done on the PR", "commits": [], "review": None}],
+            "issues": [], "heads": {"repo": self.sha_b},
+        }
+        self.store.state["adoption"] = {"repo": "repo", "baseSha": self.base_sha, "headSha": self.sha_b}
+        self.assertIsNone(self._boundary("execute", no_change, "no change")._e9())
+        self.store.state["adoption"]["headSha"] = self.sha_a  # sha_b follows the PR head
+        self.assertIsNotNone(self._boundary("execute", no_change, "no change")._e9())
+        # `integrated` with only adopted tasks at the PR head still has E9 false.
+        self.store.state["adoption"]["headSha"] = self.sha_b
+        adopted = {**no_change, "tasks": [{**no_change["tasks"][0], "disposition": "adopted"}]}
+        self.assertIsNotNone(self._boundary("execute", adopted, "integrated")._e9())
+
     def test_e10(self):
         blocked = copy.deepcopy(self.execute_product)
         blocked["issues"] = [{"task": "T-1", "text": "still failing"}]
@@ -753,10 +771,26 @@ class PostconditionsTests(unittest.TestCase):
         self.assertIsNotNone(self._boundary("deliver", all_delivered, "partially delivered")._d5())
 
     def test_d6(self):
-        skipped = {"repos": [{"repo": "repo", "pr": None, "state": "skipped"}]}
-        self.assertIsNone(self._boundary("deliver", skipped, "delivered")._d6())
-        not_skipped = {"repos": [{"repo": "repo", "pr": {"number": 1}, "state": "skipped"}]}
-        self.assertIsNotNone(self._boundary("deliver", not_skipped, "delivered")._d6())
+        # 7.4.1: D6 gates `delivered` after a no-change EXECUTE; only the adopted PR,
+        # still open at the verified head, may be named, on a skipped row.
+        self.assertIsNone(self._boundary("deliver", self.deliver_product, "delivered")._d6())  # integrated: inert
+        self.store.state["products"]["execute"]["exit"] = "no change"
+        self.store.state["adoption"] = {"repo": "repo", "number": 7, "headSha": self.sha_b}
+        pr = {"number": 7, "url": "https://example.invalid/pull/7", "headRef": "feat/x", "headSha": self.sha_b, "base": "main"}
+        row = {"repo": "repo", "pr": pr, "deliveredSha": None, "caveats": [], "state": "skipped"}
+
+        def d6(rows, live_head=self.sha_b):
+            view = json.dumps({"state": "OPEN", "headRefOid": live_head})
+            with patch("loop_spec.postconditions.repo_module.run_gh", return_value=(0, view, "")):
+                return self._boundary("deliver", {"repos": rows}, "delivered")._d6()
+
+        self.assertIsNone(d6([row]))
+        self.assertIsNone(d6([{**row, "pr": None}]))
+        self.assertIsNotNone(d6([row], live_head=self.sha_a))  # the PR moved during the run
+        self.assertIsNotNone(d6([{**row, "state": "delivered", "deliveredSha": self.sha_b}]))
+        self.assertIsNotNone(d6([{**row, "pr": {**pr, "headSha": self.sha_a}}]))
+        self.store.state["adoption"]["repo"] = "elsewhere"
+        self.assertIsNotNone(d6([row]))  # a PR on a repo the run did not adopt
 
     def test_d7(self):
         self.assertIsNone(self._boundary("deliver", self.deliver_product, "delivered")._d7())

@@ -173,7 +173,11 @@ def run(store, paths, ctx):
     spec_product = store.state["products"]["spec"]["product"]
     slug = store.state["run"].get("slug") or "run"
 
-    touched = _touched_repos(store)
+    # 7.4.1: a no-change run delivers nothing. An adopted PR's own commits would count
+    # as touched from the base, so the gate is EXECUTE's exit, not _touched_repos.
+    no_change = store.state["products"]["execute"]["exit"] == "no change"
+    touched = {} if no_change else _touched_repos(store)
+    adoption = store.state.get("adoption") or {}
     repos_out = []
     bound_to = {"requirements": store.state["revisions"]["requirements"], "plan": store.state["revisions"]["plan"]}
 
@@ -197,7 +201,12 @@ def run(store, paths, ctx):
 
     for repo_name, repo_info in store.state["repos"].items():
         if repo_name not in touched:
-            repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [], "state": "skipped"})
+            pr = None
+            if no_change and adoption.get("repo") == repo_name:
+                # The open PR already does what was asked; name it, write nothing (D6).
+                pr = {"number": adoption["number"], "url": adoption["url"], "headRef": adoption["headRef"],
+                      "headSha": adoption["headSha"], "base": adoption["baseBranch"]}
+            repos_out.append({"repo": repo_name, "pr": pr, "deliveredSha": None, "caveats": [], "state": "skipped"})
             continue
 
         # EXECUTE never commits into the operator's own checkout (repo_info["path"]);

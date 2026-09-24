@@ -95,7 +95,7 @@ ROUTES: dict[str, dict[str, dict]] = {
         "escalated": {"requires": ["I1", "I4"], "next": (None, "terminal"), "backward": False},
     },
     "deliver": {
-        "delivered": {"requires": ["D1", "D2", "D3", "D4", "D7", "D8"], "next": (None, "terminal"), "backward": False},
+        "delivered": {"requires": ["D1", "D2", "D3", "D4", "D6", "D7", "D8"], "next": (None, "terminal"), "backward": False},
         "partially delivered": {"requires": ["D1", "D2", "D4", "D5", "D7", "D8"], "next": (None, "terminal"), "backward": False},
         "delivery blocked": {"requires": ["D4"], "next": ("deliver", "remediation"), "backward": False, "pause": True},
     },
@@ -126,19 +126,22 @@ def verified_head(store) -> str:
     # one repo (result.py's verifiedSha, ITERATE's compact boundSha use) read its
     # head from here. A workspace run has no single "the" verified head; use
     # verified_heads() instead.
-    execute = store.state["products"]["execute"]
-    repo_entry = next(iter(store.state["repos"].values()))
-    if execute["exit"] == "no change":
-        return repo_entry["baseSha"]
-    return next(iter(execute["product"]["heads"].values()))
+    # A no-change head is the start commit: the base, or an adopted PR's head (E9).
+    return next(iter(store.state["products"]["execute"]["product"]["heads"].values()))
 
 
 def verified_heads(store) -> dict[str, str]:
     # LF-28: EXECUTE's own product always carries a head per repo it initialized,
-    # touched or not (an untouched repo's head is already its base -- execute.py
-    # only ever moves a repo's head when one of its tasks lands), so there is no
-    # separate "no change" case to special-case here the way verified_head() does.
+    # touched or not (an untouched repo's head is its start commit -- execute.py
+    # only ever moves a repo's head when one of its tasks lands).
     return store.state["products"]["execute"]["product"]["heads"]
+
+
+def start_sha(state: dict, repo_name: str) -> str:
+    """The commit a repo's work starts from: an adopted PR's head in its own repo, else
+    the repo's base. PLAN reads code there and E9 judges "no change" from it."""
+    adoption = state.get("adoption") or {}
+    return adoption["headSha"] if adoption.get("repo") == repo_name else state["repos"][repo_name]["baseSha"]
 
 
 def adopted_commits(store, repo_name: str, repo_path: Path) -> set[str]:
@@ -484,7 +487,6 @@ class Boundary:
         # cites that resolve); whether reuse was the right call is the critic's.
         repos = self._repo_entries()
         task_ids = {t["id"] for t in self.product["tasks"]}
-        adoption = self.store.state.get("adoption") or {}
         # A re-plan after EXECUTE also resolves cites at the heads EXECUTE published.
         execute_heads = ((self.store.state["products"].get("execute") or {}).get("product") or {}).get("heads") or {}
         for entry in self.product.get("existingCode") or []:
@@ -496,7 +498,7 @@ class Boundary:
             if entry["decision"] != "new" and not entry["cites"]:
                 return f"existingCode {entry['concept']!r} is {entry['decision']} but cites no code"
             info = repos[entry["repo"]]
-            shas = [adoption["headSha"] if adoption.get("repo") == entry["repo"] else info["baseSha"]]
+            shas = [start_sha(self.store.state, entry["repo"])]
             if execute_heads.get(entry["repo"]):
                 shas.append(execute_heads[entry["repo"]])  # code an earlier task of this run added
             for cite in entry["cites"]:
@@ -742,8 +744,8 @@ class Boundary:
     def _e9(self) -> str | None:
         for name, info in self._repo_entries().items():
             head = self.product["heads"].get(name)
-            if head and repo_module.commits_between(Path(info["path"]), info["baseSha"], head):
-                return f"repo {name} has commits since base"
+            if head and repo_module.commits_between(Path(info["path"]), start_sha(self.store.state, name), head):
+                return f"repo {name} has commits since its start commit"
         for task in self.product["tasks"]:
             if task["disposition"] not in ("already-satisfied", "removed"):
                 return f"task {task['id']} is not already-satisfied or removed on a no-change exit"
@@ -1071,9 +1073,28 @@ class Boundary:
         return None
 
     def _d6(self) -> str | None:
+        if self.store.state["products"]["execute"]["exit"] != "no change":
+            return None
+        adoption = self.store.state.get("adoption") or {}
+        heads = verified_heads(self.store)
         for entry in self.product["repos"]:
-            if entry.get("pr") is not None or entry["state"] != "skipped":
-                return f"repo {entry['repo']}: a no-change head must open no PR and be skipped"
+            if entry["state"] != "skipped" or entry.get("deliveredSha") is not None:
+                return f"repo {entry['repo']}: a no-change head must be skipped with nothing delivered"
+            pr = entry.get("pr")
+            if pr is None:
+                continue
+            if entry["repo"] != adoption.get("repo") or pr["number"] != adoption.get("number") \
+                    or pr["headSha"] != heads.get(entry["repo"]):
+                return f"repo {entry['repo']}: a no-change row names a PR only for the adopted PR at the verified head"
+            # The same read D2 makes: the PR must still be open at the head VERIFY saw.
+            code, out, err = repo_module.run_gh(Path(self._repo_entries()[entry["repo"]]["path"]), "pr", "view",
+                                                str(pr["number"]), "--json", "state,headRefOid")
+            if code != 0:
+                return f"repo {entry['repo']}: gh pr view failed: {err.strip() or code}"
+            data = json.loads(out)
+            if data.get("state") != "OPEN" or data.get("headRefOid") != pr["headSha"]:
+                return (f"repo {entry['repo']}: PR #{pr['number']} is no longer open at the verified head "
+                        f"{pr['headSha'][:12]}; stop and re-run the entry to adopt its current head")
         return None
 
     def _d7(self) -> str | None:

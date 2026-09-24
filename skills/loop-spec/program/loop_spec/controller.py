@@ -228,7 +228,10 @@ def _find_delivering_run_products(home: Path, rid: str, pr_url: str, project_roo
         entry = _delivering_run_entry(slug_dir.name, state)
         if entry is None:
             continue
-        if any(p.get("url") == pr_url for p in prs):
+        # 7.4.1: a no-change run's result names the PR it found already done, but it
+        # delivered nothing, so it is never the run the PR's commits came from.
+        no_change = ((state.get("products") or {}).get("execute") or {}).get("exit") == "no change"
+        if not no_change and any(p.get("url") == pr_url for p in prs):
             result_hits.append((finished, entry))
         adoption = state.get("adoption")
         if adoption is not None and adoption.get("url") == pr_url:
@@ -507,9 +510,7 @@ def _phase_probes(state: dict, phase: str, checkouts_dir: Path) -> dict:
     names, per repo, run in a clean checkout at that same commit."""
     if phase not in ("plan", "debug", "revise"):
         return {}
-    adoption = state.get("adoption") or {}
-    shas = {name: adoption["headSha"] if adoption.get("repo") == name else info["baseSha"]
-            for name, info in state["repos"].items()}
+    shas = {name: postconditions.start_sha(state, name) for name in state["repos"]}
     probes = {"repoChecks": {
         name: probes_module.repo_checks_probe(Path(info["path"]), shas[name]) for name, info in state["repos"].items()
     }}
