@@ -50,7 +50,8 @@ One shared budget bounds every backward transition, counted once per accepted
 transition and never reset within a run. Spent out, a run escalates rather
 than retrying forever. Terminal outcomes: `converged`, `converged-with-caveats`
 (draft PR, findings listed), `escalated` (a gap open, partial draft only if
-opted in), `failed` (sections 10, 15).
+opted in), `failed` (sections 10, 15). A `direct` run ends `direct`, with "no gate ran"
+in its warnings.
 
 ## Known limits
 

@@ -19,7 +19,9 @@
         "micro",
         "debug",
         "revise",
-        "diagnostic"
+        "diagnostic",
+        "auto",
+        "direct"
       ]
     },
     "slug": {
@@ -213,7 +215,9 @@
         "no-change",
         "escalated",
         "failed",
-        "paused"
+        "paused",
+        "direct",
+        "routed"
       ]
     },
     "rewinds": {

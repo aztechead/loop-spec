@@ -50,7 +50,7 @@ The 30 skills under `skills/*/SKILL.md`, plus `commands/loop-debug.md`. R§14 fi
 | `status` | replaced | `status` entry, read-only over state and outstanding decisions (R§14) |
 | `intake` | replaced | `cycle` takes request text or a spec file directly (R§4 SPEC precondition) |
 | `pause` | replaced | every run is resumable from state; a pending question is `status: paused` (R§15). `HANDOFF.json` and `.continue-here.md` go |
-| `auto` | removed | accepted 2026-09-22; the caller names the entry, and the route judge is gone with oneshot |
+| `auto` | replaced | removed 2026-09-22, reinstated in 7.3.0 as a router over the entry registry: a `router` role picks `cycle`, `micro`, `debug`, `revise`, or `direct` (no cycle), and the program checks the choice (A1, A2). `route-judge` stays removed: the router is a role, not a SPEC-entry judge |
 | `revise` | replaced | `revise` entry: PR comments become remediation gaps, EXECUTE onward on the adopted PR branch, DELIVER updates the PR by identity (R§7, R§14) |
 | `rollback` | removed | accepted 2026-09-22; state is off-branch (R§12) and the program never resets a branch (R§7). Git history is the user's |
 | `assess` | removed | accepted 2026-09-22; outside the seven-phase scope (R§20) |

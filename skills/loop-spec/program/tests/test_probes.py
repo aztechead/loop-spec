@@ -254,6 +254,32 @@ class ChangeSecuritySignalTests(unittest.TestCase):
         self.assertEqual(_HUNK.match("@@ -2 +1,0 @@").groups(), ("2", None, "1", "0"))
 
 
+class PrRefsTests(unittest.TestCase):
+    """7.3.0: the router's PR facts. A URL on any host resolves only in the repo whose
+    origin it names; an explicit reference nothing adopts stays with its reason; a bare
+    #n nothing adopts is dropped."""
+
+    def test_urls_explicit_and_bare_references(self):
+        from unittest.mock import patch
+        from loop_spec import probes as probes_module
+        from loop_spec import repo as repo_module
+
+        def adopt(path, ref):
+            if ref in (12, "https://ghe.example.com/team/svc/pull/12"):
+                return repo_module.PrAdoption(adopt=True, number=12, url="https://ghe.example.com/team/svc/pull/12",
+                                              branch="feat/x", base_branch="main", head_sha="a" * 40, reason="open")
+            return repo_module.PrAdoption(adopt=False, number=None, url=None, branch=None, base_branch=None,
+                                          head_sha=None, reason="no such PR")
+
+        repos = [("svc", Path("/w/svc")), ("web", Path("/w/web"))]
+        origins = {Path("/w/svc"): "git@ghe.example.com:team/svc.git", Path("/w/web"): "https://ghe.example.com/team/web"}
+        with patch.object(repo_module, "adopt_pr", side_effect=adopt), \
+             patch.object(repo_module, "origin_url", side_effect=lambda path: origins[path]):
+            rows = probes_module.pr_refs(repos, "fix https://ghe.example.com/team/svc/pull/12, see PR #30 and #99")
+        self.assertEqual([(r["number"], r["repo"], r["adoptable"]) for r in rows], [(12, "svc", True), (30, None, False)])
+        self.assertEqual(rows[1]["reason"], "no such PR")
+
+
 class RepoChecksProbeTests(unittest.TestCase):
     """7.1.0: configured check tools, read from git objects at a commit."""
 

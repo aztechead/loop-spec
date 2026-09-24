@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ROUTE product: the entry the router chose for a request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "exit",
+    "inputsDigest",
+    "boundTo",
+    "entry",
+    "pr",
+    "reason"
+  ],
+  "properties": {
+    "exit": {
+      "type": "string",
+      "enum": [
+        "routed"
+      ]
+    },
+    "inputsDigest": {
+      "type": "string"
+    },
+    "boundTo": {
+      "type": "object",
+      "required": [
+        "requirements",
+        "plan"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "requirements": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "entry": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pr": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

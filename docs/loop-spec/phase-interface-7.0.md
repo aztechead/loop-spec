@@ -316,6 +316,52 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | `reproduced` | B1, B2, S1 to S3, P1 to P8 for the compact products | EXECUTE, `fresh`, with the repair task; then VERIFY, ITERATE, and DELIVER as above. The reproduction passing after the repair is E7's `mustFlip` check, not a debug-local claim |
 | `blocked reproduction` | B3 | pause: a question asking for a reproduction or a stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` |
 
+## route
+
+The first phase of an `auto` run (7.3.0).
+
+| | |
+|---|---|
+| Inputs | request text; the PR references the request names, each resolved by the program against every workspace repo (number, URL, repo, adoptable, reason); the routable entries (every registered entry but `auto`), each with when it fits and what it takes |
+| Product | `entry`, `pr` (a number or null), `reason` |
+| Preconditions | request text present |
+| Runs as | a `router` role step (attested) |
+
+| Id | Postcondition | Gates |
+|---|---|---|
+| A1 | the chosen entry is one the router may choose (every registered entry but auto) | `routed` |
+| A2 | an entry that takes a PR names one the request names and the program could adopt; an entry that takes a request names no PR or such a PR; the PR is open in exactly one workspace repository | `routed` |
+
+| Exit | Requires | Route |
+|---|---|---|
+| `routed` | A1, A2 | `cycle`, `micro`, `debug`: the same run continues at SPEC (DEBUG for `debug`) with that entry's cycle type, adopting `pr` when set. `direct`: the same run continues at DIRECT. `revise`: the `revise` run for `pr` starts or resumes, with this run's answer policy; this run ends with result `routed` and `routedTo` naming that run |
+
+A refused choice is a rejected product: the router step is issued again with the
+failed rule as its reason. Past the retry limit, the run pauses with the usual
+stop-or-fix question, and `stop` is its default.
+
+## direct
+
+The phase of a `direct` run (7.3.0): the lead does a mechanical git or PR operation
+itself, with no SPEC, PLAN, review, or verification.
+
+| | |
+|---|---|
+| Inputs | request text; the ROUTE product when routed; the repo map |
+| Product | `summary`, `actions[]` (`kind`: `commit`, `push`, `pr`, or `other`; `repo`, `ref`, `sha`, `url`, `detail`), `blocker` |
+| Preconditions | request text present |
+| Runs in | the lead session, role `direct` |
+
+| Id | Postcondition | Gates |
+|---|---|---|
+| X1 | product validates against the DIRECT schema; an incomplete exit names its blocker | every exit |
+| X2 | every push action's SHA is the remote branch's head, and every pr action's SHA is that PR's head | `done` |
+
+| Exit | Requires | Route |
+|---|---|---|
+| `done` | X1, X2 | terminal `direct` |
+| `incomplete` | X1 | terminal `escalated`, with `blocker` as `reason` |
+
 ## Entry points and the order
 
 | Entry | Enters | Preconditions checked at entry |
@@ -324,6 +370,8 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | `spec`, `plan`, `execute`, `verify`, `iterate`, `deliver` | the named phase against durable state | that phase's preconditions above |
 | `debug` | debug, then EXECUTE with the repair task, then VERIFY onward | error report |
 | `micro` | the full order with compact presets | cannot drop a required phase |
+| `auto` | ROUTE, then the chosen entry's order | request text present |
+| `direct` | DIRECT only | request text present |
 | `status` | nothing; read-only | none |
 | `revise` | a compact SPEC and PLAN in the lead whose criteria are the PR comments mapped to gaps, with the PR's base as base SHA. The PLAN carries one `adopted` range task for the existing `base..head` commits plus one task per gap. At EXECUTE entry the program runs a full review step over the adopted range, which becomes that task's review record (E5, E6); findings on the adopted code join the gaps. Then EXECUTE on the adopted PR branch, and VERIFY onward over the whole PR | an open PR the repo module can adopt; a PR with no prior loop-spec state gets a fresh run id bound to the PR identity; nothing in the adopted range is exempt from E4 to E7 |
 
@@ -341,6 +389,8 @@ ITERATE exit at the current revisions.
 | process exit 1; environment cannot run the plan | `failed` | `status: failed`, `converged: false` |
 | process exit 3 outstanding, including every `blocked` exit | question pending | `status: paused`, `reason` names the question id and, for a blocked exit, the cause |
 | a `blocked` exit answered stop | `escalated` | `status: escalated`, `converged: false`, the cause in `reason` |
+| DIRECT `done` | `direct` | `status: completed`, `outcome: direct`, `converged: false`, `workDelivered` true when an action is a checked push or PR, "no gate ran" in `warnings` |
+| ROUTE `routed` to `revise` | `routed` | `status: completed`, `outcome: routed`, `routedTo` names the revise run; no `last-result.json` pointer and no result marker, since the revise run carries the request on |
 
 The `last-result.json` pointer is written in the state home beside `state.json`.
 

@@ -14,6 +14,7 @@ from loop_spec import controller
 from loop_spec import postconditions
 from loop_spec import questions
 from loop_spec import repo as repo_module
+from loop_spec import probes as probes_module
 from loop_spec import revise as revise_module
 from loop_spec import steps
 from loop_spec.errors import LoopSpecError
@@ -1630,6 +1631,123 @@ class RequestAdoptionTests(unittest.TestCase):
             self.assertEqual(store.state["repos"][name]["lastKnownHead"], head_sha)
             self.assertEqual(store.state["repos"][name]["baseSha"], base_sha)
             self.assertEqual(repo_module.head_sha(repo_dir, "refs/heads/pr-branch"), head_sha)
+
+
+class AutoRouteTests(_QuietStdout):
+    """7.3.0: an auto run's router picks an entry; the program holds the choice to
+    A1/A2 and hands the run on (same run for cycle/micro/debug/direct, a revise run
+    of its own for revise)."""
+
+    def _start(self, tmp: Path, refs=None, policy=None):
+        repo_dir = _init_repo(tmp)
+        self.markers = io.StringIO()
+        with patch.object(probes_module, "pr_refs", return_value=refs or []), contextlib.redirect_stdout(self.markers):
+            next_ = controller.run_entry("auto", project_root=repo_dir, request_text="do the thing", slug="auto-1",
+                                         state_home=str(tmp / "home"), answer_policy=policy, pr=None)
+        paths = FeaturePaths(root=feature_dir(tmp / "home", repo_id(repo_dir), "auto-1"), project_root=repo_dir)
+        return repo_dir, paths, next_
+
+    def _route(self, repo_dir, paths, next_, entry, pr=None):
+        step = read_json(next_.path)
+        self.assertEqual(step["role"], "router")
+        atomic_write_json(Path(step["resultPath"]), {"entry": entry, "pr": pr, "reason": f"chose {entry}"})
+        _write_sdk_receipt(_open(paths), paths, step)  # the router is attested; controller-observed here
+        return _submit_and_continue(paths, repo_dir, self.markers, step["stepAttemptId"])
+
+    def test_cycle_continues_in_the_same_run(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+            repo_dir, paths, next_ = self._start(Path(tmp))
+            next_ = self._route(repo_dir, paths, next_, "cycle")
+            store = _open(paths)
+            self.assertEqual((store.state["run"]["cycleType"], store.state["phase"]["current"]), ("full", "spec"))
+            self.assertEqual(store.state["run"]["routedTo"]["entry"], "cycle")
+            self.assertEqual((next_.kind, next_.slug), ("step", "auto-1"))
+
+    def test_micro_on_a_named_pr_adopts_it(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+            tmp = Path(tmp)
+            repo_dir = tmp / "repo"
+            repo_dir, paths, next_ = self._start(tmp, refs=[{"ref": "#42", "number": 42, "url": "https://example.invalid/o/r/pull/42",
+                                                             "repo": "repo", "adoptable": True, "reason": "open"}])
+            _git(repo_dir, "checkout", "-q", "-b", "pr-branch")
+            (repo_dir / "greet.py").write_text("print('hi')\n", encoding="utf-8")
+            _git(repo_dir, "add", "greet.py")
+            _git(repo_dir, "commit", "-q", "-m", "add greeting")
+            head_sha = repo_module.head_sha(repo_dir)
+            _git(repo_dir, "checkout", "-q", "main")
+            _add_origin(tmp, repo_dir, "main", "pr-branch")
+            adoption = repo_module.PrAdoption(adopt=True, number=42, url="https://example.invalid/o/r/pull/42",
+                                              branch="pr-branch", base_branch="main", head_sha=head_sha, reason="open")
+            store = _open(paths)
+            store.state["route"]["facts"]["prRefs"][0]["repo"] = next(iter(store.state["repos"]))
+            store.save()
+            with patch.object(repo_module, "adopt_pr", return_value=adoption):
+                self._route(repo_dir, paths, next_, "micro", 42)
+            store = _open(paths)
+            self.assertEqual(store.state["run"]["cycleType"], "micro")
+            self.assertEqual(store.state["adoption"]["repo"], next(iter(store.state["repos"])))
+            self.assertEqual(next(iter(store.state["repos"].values()))["lastKnownHead"], head_sha)
+
+    def test_revise_is_its_own_run_and_the_auto_run_records_where_it_went(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+            tmp = Path(tmp)
+            url = "https://example.invalid/o/r/pull/42"
+            repo_dir, paths, next_ = self._start(tmp, refs=[{"ref": url, "number": 42, "url": url, "repo": "repo",
+                                                             "adoptable": True, "reason": "open"}], policy="default")
+            _git(repo_dir, "checkout", "-q", "-b", "pr-branch")
+            (repo_dir / "greet.py").write_text("print('hi')\n", encoding="utf-8")
+            _git(repo_dir, "add", "greet.py")
+            _git(repo_dir, "commit", "-q", "-m", "add greeting")
+            head_sha = repo_module.head_sha(repo_dir)
+            _git(repo_dir, "checkout", "-q", "main")
+            _add_origin(tmp, repo_dir, "main", "pr-branch")
+            adoption = repo_module.PrAdoption(adopt=True, number=42, url=url, branch="pr-branch", base_branch="main",
+                                              head_sha=head_sha, reason="open")
+            store = _open(paths)
+            store.state["route"]["facts"]["prRefs"][0]["repo"] = next(iter(store.state["repos"]))
+            store.save()
+            with patch.object(repo_module, "adopt_pr", return_value=adoption), \
+                 patch.object(revise_module, "gaps_from_pr", return_value=[]):
+                next_ = self._route(repo_dir, paths, next_, "revise", 42)
+            self.assertEqual(next_.slug, "revise-42")
+            result = read_json(paths.result_json)
+            self.assertEqual((result["result"], result["routedTo"]["slug"]), ("routed", "revise-42"))
+            self.assertFalse(paths.last_result_json.exists())
+            revise_paths = FeaturePaths(root=paths.root.parent / "revise-42", project_root=repo_dir)
+            self.assertEqual(_open(revise_paths).state["questions"]["policy"], "default")
+            with contextlib.redirect_stdout(self.markers):
+                again = controller.continue_run(_open(paths), paths, project_root=repo_dir)
+            self.assertEqual(again.slug, "revise-42")
+
+    def test_direct_ends_with_a_direct_result_and_no_gate(self):
+        for exit_, blocker, expected in (("done", None, "direct"), ("incomplete", "the conflict needs a design call", "escalated")):
+            with self.subTest(exit=exit_), tempfile.TemporaryDirectory() as tmp:
+                repo_dir, paths, next_ = self._start(Path(tmp))
+                next_ = self._route(repo_dir, paths, next_, "direct")
+                step = read_json(next_.path)
+                self.assertEqual((step["kind"], step["role"]), ("lead", "direct"))
+                atomic_write_json(Path(step["resultPath"]), {
+                    "exit": exit_, "inputsDigest": step["inputsDigest"], "boundTo": {"requirements": None, "plan": None},
+                    "summary": "merged main", "actions": [], "blocker": blocker})
+                next_ = _submit_and_continue(paths, repo_dir, self.markers, step["stepAttemptId"])
+                result = read_json(paths.result_json)
+                self.assertEqual((next_.kind, result["result"], result["cycleType"]), ("result", expected, "direct"))
+                if exit_ == "done":
+                    self.assertFalse(result["workDelivered"])
+                    self.assertTrue(any("no gate ran" in w for w in result["warnings"]))
+                else:
+                    self.assertEqual(result["reason"], blocker)
+
+    def test_a_refused_choice_is_asked_again_with_the_rule_then_stops(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir, paths, next_ = self._start(Path(tmp), policy="default")
+            next_ = self._route(repo_dir, paths, next_, "revise", None)
+            self.assertIn("route-refused:pr-not-adoptable", read_json(next_.path)["reason"])
+            for _ in range(5):
+                if next_.kind == "result":
+                    break
+                next_ = self._route(repo_dir, paths, next_, "revise", None)
+            self.assertEqual(read_json(paths.result_json)["result"], "escalated")
 
 
 class WorktreeReuseTests(_QuietStdout):

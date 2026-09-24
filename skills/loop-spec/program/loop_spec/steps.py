@@ -70,7 +70,7 @@ class Pause:
 # implementer's evidence is its own review; these three roles are pure judgment
 # with nothing behind them but the transcript, so an unattested submission for
 # one of them is refused rather than silently accepted.
-ATTESTATION_REQUIRED_ROLES = frozenset({"plan-critic", "code-reviewer", "iterate-judge"})
+ATTESTATION_REQUIRED_ROLES = frozenset({"plan-critic", "code-reviewer", "iterate-judge", "router"})
 ACCEPTED_LEVELS = frozenset({"host-attested", "controller-observed", "human-attested"})
 
 # LF-61: the most rendered bytes (`n<TAB>line<LF>`, UTF-8) one scheduled Read covers.

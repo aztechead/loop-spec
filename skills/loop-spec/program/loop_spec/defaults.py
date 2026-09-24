@@ -56,7 +56,7 @@ def run_lead_phase(phase: str, role_name: str, context_path: Path, product_path:
         "answers": context.get("answers", {}),
         "probes": context.get("probes", {}),
         "inputsDigest": context["inputs"]["digest"],
-        **({"repos": repo_map(repos)} if phase == "plan" else {}),
+        **({"repos": repo_map(repos)} if phase in ("plan", "direct") else {}),
         "revisions": {
             "requirements": state.get("requirementsRevision"),
             "plan": state.get("planRevision"),

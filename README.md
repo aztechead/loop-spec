@@ -53,6 +53,7 @@ Each entry is a skill, invoked as `/loop-spec:<name> <argument>`:
 
 | Entry | Argument | Does |
 |---|---|---|
+| `/loop-spec:auto` | a request | pick the entry below that fits, or do a mechanical git or PR operation directly with no cycle |
 | `/loop-spec:cycle` | a request or spec file | run SPEC through DELIVER on a new feature |
 | `/loop-spec:micro` | a small, well-defined change | the same six phases, in one autonomous pass |
 | `/loop-spec:debug` | an error report or stack trace | reproduce it, find the cause, land a fix with a regression test |
@@ -71,6 +72,7 @@ result) and reports back or asks you what it says.
 /loop-spec:micro Rename the retry_count config key to max_retries everywhere, keeping the old key as a deprecated alias
 /loop-spec:debug tests/test_parser.py::test_unicode fails with UnicodeDecodeError on main since 3f2a91c
 /loop-spec:revise 42
+/loop-spec:auto resolve the merge conflicts on https://github.com/acme/api/pull/42 and push
 /loop-spec:status
 /loop-spec:verify add-a-json-flag-to-the-export-command
 ```
@@ -149,6 +151,26 @@ environment variables take precedence over it.
 | `LOOP_SPEC_MODEL_<ROLE>` | model for every dispatch of that role, e.g. `LOOP_SPEC_MODEL_CODE_REVIEWER=haiku` |
 | `LOOP_SPEC_REWIND_BUDGET` | how many backward transitions one run may spend; default 2 |
 | `LOOP_SPEC_STEP_RETRIES` | retries before a rejected product asks you to fix and re-enter or stop; default 3 |
+
+### Run your own reviewer during VERIFY
+
+Use this when your own review bot should review the change before loop-spec
+delivers it, so its findings are fixed in the same run.
+
+1. Write a project skill, `.claude/skills/<name>/SKILL.md`. Its body is a
+   code-reviewer prompt that writes a result in the shape of
+   [the code-reviewer schema](skills/loop-spec/roles/code-reviewer/schema.json).
+2. In that body, have the reviewer run your bot when `inputs.rangeProbes` is
+   non-empty. Only VERIFY's review fills it. A revised PR's adopted-range review
+   also runs the bound skill, but with an empty `rangeProbes`.
+3. Have the reviewer add each bot finding to `findings`, with its `location`,
+   `severity`, and `cause`.
+4. Bind the role in `.loop-spec/config.json` as `{"roles": {"code-reviewer": "<name>"}}`,
+   or set `LOOP_SPEC_ROLE_CODE_REVIEWER=<name>`.
+
+The bound skill also reviews every EXECUTE task, so keep the bot step conditional.
+The program validates the skill's result against the bundled schema and routes your
+bot's findings the same way as the default reviewer's.
 
 The full contract — every field, exit, and environment variable, grounded in the
 program's own source — is

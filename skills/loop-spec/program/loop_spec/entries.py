@@ -29,7 +29,16 @@ ENTRIES: dict[str, Entry] = {e.name: e for e in (
     Entry("revise", "Address reviewer feedback on an already-open pull request. Use when a human or bot left PR review "
           "comments to resolve. Not for starting new work (use cycle) or fixing a bug found outside review "
           "(use debug).", "pr"),
+    Entry("direct", "Do a mechanical git or pull-request operation the request asks for directly (resolve merge "
+          "conflicts, rebase or sync with base, re-run CI, retitle, push), with no spec, plan, or verification. "
+          "Not for any change to behaviour (use micro or cycle).", "request"),
+    Entry("auto", "Route a request to the right loop-spec entry: a full cycle, a small change, a debug, a revision of "
+          "an open pull request, or a mechanical operation done directly with no cycle. Use when the request does "
+          "not say which entry it needs.", "request"),
 )}
+
+# The entries the router may choose (auto routes; it is never its own target).
+ROUTABLE = [name for name in ENTRIES if name != "auto"]
 
 # The phases a run can be resumed at by name (`loop-spec <phase> --slug`).
 RESUME_PHASES = ("spec", "plan", "execute", "verify", "iterate", "deliver")

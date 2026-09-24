@@ -1833,6 +1833,45 @@ def repo_checks_probe(repo: Path, sha: str) -> list[dict]:
     return facts
 
 
+_ANY_PR_URL = re.compile(r"https?://[^\s/]+/([^\s/]+)/([^\s/]+)/pull/(\d+)")
+_PR_WORD = re.compile(r"\bPR\s*#?(\d+)\b", re.IGNORECASE)
+_PR_HASH = re.compile(r"(?<![\w/&])#(\d+)\b")
+
+
+def _origin_is(path: Path, owner: str, name: str) -> bool:
+    url = (repo_module.origin_url(path) or "").rstrip("/")
+    return url.removesuffix(".git").endswith(f"/{owner}/{name}") or url.removesuffix(".git").endswith(f":{owner}/{name}")
+
+
+def pr_refs(repos: list[tuple[str, Path]], text: str) -> list[dict]:
+    """Every pull request `text` names, resolved against each workspace repo (7.3.0,
+    the router's facts): `{ref, number, url, repo, adoptable, reason}`. A URL on any
+    host resolves only in a repo whose origin is that URL's repository. An explicit
+    reference (a URL or `PR #n`) that nothing adopts stays, with `repo: null` and the
+    reason, so the router sees why; a bare `#n` that nothing adopts is dropped."""
+    wanted = [(m.group(0), int(m.group(3)), (m.group(1), m.group(2))) for m in _ANY_PR_URL.finditer(text)]
+    wanted += [(m.group(0), int(m.group(1)), None) for m in _PR_WORD.finditer(text)]
+    bare = [(m.group(0), int(m.group(1)), None) for m in _PR_HASH.finditer(text)]
+    rows, seen = [], set()
+    for ref, number, owner_repo in wanted + bare:
+        explicit = (ref, number, owner_repo) not in bare
+        adopted_any, why = False, "no workspace repository has this pull request open"
+        for name, path in repos:
+            if (name, number) in seen or (owner_repo and not _origin_is(path, *owner_repo)):
+                continue
+            adoption = repo_module.adopt_pr(path, ref if owner_repo else number)
+            if adoption.adopt:
+                seen.add((name, number))
+                adopted_any = True
+                rows.append({"ref": ref, "number": number, "url": adoption.url, "repo": name,
+                             "adoptable": True, "reason": adoption.reason})
+            else:
+                why = adoption.reason
+        if not adopted_any and explicit and not any(r["number"] == number for r in rows):
+            rows.append({"ref": ref, "number": number, "url": None, "repo": None, "adoptable": False, "reason": why})
+    return rows
+
+
 def plan_probes(root: Path, files: list[str]) -> dict:
     """Everything a PLAN implementation needs about the files a request names:
     house style, duplication, indirection, security signals, and the third-party

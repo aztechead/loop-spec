@@ -9,6 +9,7 @@ answers whether the postconditions for a claimed exit hold. controller.py reads
 `ROUTES[phase][exit]["next"]` to decide where to go, and reads `Boundary.unreviewed`/
 `Boundary.weakened_assurance` after a passing check to fold into state and the result.
 """
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -103,6 +104,15 @@ ROUTES: dict[str, dict[str, dict]] = {
         # postconditions.py needs no rework when the entry lands.
         "reproduced": {"requires": ["B1", "B2", "S1", "S2", "S3", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"], "next": ("execute", "fresh"), "backward": False},
         "blocked reproduction": {"requires": ["B3"], "next": ("debug", "remediation"), "backward": False, "pause": True},
+    },
+    # 7.3.0: an auto run's first phase. "routed" hands the run to the chosen entry
+    # (controller._hand_off), so its next phase is named by the product, not here.
+    "route": {
+        "routed": {"requires": ["A1", "A2"], "next": (None, "routed"), "backward": False},
+    },
+    "direct": {
+        "done": {"requires": ["X1", "X2"], "next": (None, "terminal"), "backward": False},
+        "incomplete": {"requires": ["X1"], "next": (None, "terminal"), "backward": False},
     },
 }
 
@@ -1144,6 +1154,60 @@ class Boundary:
     def _b3(self) -> str | None:
         if self.product.get("reproduction") is not None:
             return "a reproduction exists; blocked reproduction forbids one"
+        return None
+
+    # -- A: ROUTE (7.3.0) -------------------------------------------------
+
+    def _route_facts(self) -> list[dict]:
+        return ((self.store.state.get("route") or {}).get("facts") or {}).get("prRefs") or []
+
+    def _a1(self) -> str | None:
+        from loop_spec.entries import ROUTABLE
+        if self.product["entry"] not in ROUTABLE:
+            return f"route-refused:unknown-entry: {self.product['entry']!r} is not one of {', '.join(ROUTABLE)}"
+        return None
+
+    def _a2(self) -> str | None:
+        from loop_spec.entries import ENTRIES
+        entry, pr = ENTRIES.get(self.product["entry"]), self.product["pr"]
+        if entry is None:
+            return None  # A1's refusal
+        matches = [r for r in self._route_facts() if r["adoptable"] and r["number"] == pr]
+        if entry.takes == "pr" and not matches:
+            return f"route-refused:pr-not-adoptable: {entry.name} needs a PR the request names and the program could adopt; #{pr} is not one"
+        if entry.takes == "request" and pr is not None and not matches:
+            return f"route-refused:pr-not-named: #{pr} is not an adoptable PR the request names"
+        if len({r["repo"] for r in matches}) > 1:
+            return f"route-refused:pr-ambiguous: #{pr} is open in more than one workspace repository"
+        return None
+
+    # -- X: DIRECT (7.3.0) ------------------------------------------------
+
+    def _x1(self) -> str | None:
+        errors = self._validates()
+        return "; ".join(errors) if errors else None
+
+    def _x2(self) -> str | None:
+        repos = self._repo_paths()
+        for action in self.product["actions"]:
+            if action["kind"] not in ("push", "pr"):
+                continue
+            path = repos.get(action["repo"] or "")
+            if path is None or not action["sha"]:
+                return f"a {action['kind']} action must name a workspace repo and its SHA: {action['detail']}"
+            if action["kind"] == "push":
+                if not action["ref"]:
+                    return f"a push action must name its branch: {action['detail']}"
+                remote = repo_module.remote_head(path, "origin", action["ref"])
+                if remote != action["sha"]:
+                    return f"origin/{action['ref']} is at {(remote or 'nothing')[:12]}, not the claimed push {action['sha'][:12]}"
+            else:
+                if not action["url"]:
+                    return f"a pr action must name the PR's URL: {action['detail']}"
+                code, out, err = repo_module.run_gh(path, "pr", "view", action["url"], "--json", "headRefOid")
+                head = json.loads(out).get("headRefOid") if code == 0 else None
+                if head != action["sha"]:
+                    return f"PR {action['url']} head is {(head or err.strip() or 'unreadable')[:40]}, not the claimed {action['sha'][:12]}"
         return None
 
     # -- T1: shared budget -----------------------------------------------

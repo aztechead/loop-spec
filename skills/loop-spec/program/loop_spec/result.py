@@ -18,11 +18,11 @@ from loop_spec.schema import validate_or_raise
 
 _STATUS = {
     "converged": "completed", "converged-with-caveats": "completed", "no-change": "completed",
-    "escalated": "escalated", "failed": "failed", "paused": "paused",
+    "escalated": "escalated", "failed": "failed", "paused": "paused", "direct": "completed", "routed": "completed",
 }
 _OUTCOME = {
     "converged": "delivered", "converged-with-caveats": "delivered-draft", "no-change": "no-change-needed",
-    "escalated": "escalated", "failed": "failed", "paused": "paused",
+    "escalated": "escalated", "failed": "failed", "paused": "paused", "direct": "direct", "routed": "routed",
 }
 
 
@@ -68,7 +68,12 @@ def _outstanding(store) -> list[str]:
 
 
 def write(store, paths, classification: str, *, reason: str | None = None, summary: str | None = None,
-          partially_delivered: bool = False) -> Path:
+          partially_delivered: bool = False, work_delivered: bool | None = None, warnings: list[str] | None = None,
+          announce: bool = True) -> Path:
+    """`work_delivered` and `warnings` are for a run with no DELIVER (direct): its
+    delivery facts come from its own checked actions, not delivery targets.
+    `announce=False` (a routed hand-off) writes this run's result file only: no
+    last-result pointer and no result marker, since another run carries the request on."""
     run = store.state["run"]
     repos = store.state.get("repos") or {}
     first_repo = next(iter(repos.values()), None)
@@ -91,13 +96,14 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
 
     # workDelivered is a delivery fact, not a label: true whenever any target
     # actually reached "delivered", including a partial draft on an escalated run.
-    work_delivered = any(entry.get("state") == "delivered" for entry in delivery["targets"]) if delivery else False
+    if work_delivered is None:
+        work_delivered = any(entry.get("state") == "delivered" for entry in delivery["targets"]) if delivery else False
     # LF-58: any route to a terminal result (a stop after a partial DELIVER, too)
     # reports partial publication from the per-repo facts, not the caller's flag alone.
     if work_delivered and any(entry.get("state") == "failed" for entry in delivery["targets"]):
         partially_delivered = True
 
-    warnings = [f.get("cause") or f.get("id", "") for f in store.state["ledger"]["findings"] if f.get("disposition") in ("deferred", "open")]
+    warnings = [f.get("cause") or f.get("id", "") for f in store.state["ledger"]["findings"] if f.get("disposition") in ("deferred", "open")] + (warnings or [])
 
     # A workspace's several repos have no single "the" verified SHA; only a
     # single-repo run's head means anything as one value.
@@ -155,13 +161,17 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         "policyAnsweredQuestions": store.state["questions"]["policyAnswered"],
         "hostVersions": _host_versions(),
     }
+    if run.get("routedTo") is not None:
+        record["routedTo"] = run["routedTo"]
     validate_or_raise(record, "result")
     atomic_write_json(paths.result_json, record)
     if classification != "paused":
         # A pause is resumable: last-result.json must keep pointing at whatever the
         # PRIOR terminal run produced (or nothing), not this in-progress one.
-        atomic_write_json(paths.last_result_json, record)
+        if announce:
+            atomic_write_json(paths.last_result_json, record)
         store.state["result"] = {"classification": classification, "path": str(paths.result_json), "writtenAt": record["finishedAt"]}
-    marker_result(paths, record)
+    if announce:
+        marker_result(paths, record)
     store.save()
     return paths.result_json

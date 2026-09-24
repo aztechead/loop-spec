@@ -925,6 +925,64 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class RouteAndDirectPostconditionTests(unittest.TestCase):
+    """7.3.0: A1/A2 hold a router's choice to the entry registry and the PRs the program
+    resolved; X2 holds a direct run's claimed pushes to the remote."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        tmp = Path(self._tmp.name)
+        self.repo_dir = tmp / "repo"
+        self.repo_dir.mkdir()
+        _git(self.repo_dir, "init", "-q", "-b", "main")
+        _git(self.repo_dir, "config", "user.email", "t@example.com")
+        _git(self.repo_dir, "config", "user.name", "T")
+        (self.repo_dir / "a.txt").write_text("a\n")
+        _git(self.repo_dir, "add", "a.txt")
+        _git(self.repo_dir, "commit", "-q", "-m", "a")
+        _git(tmp, "init", "-q", "--bare", str(tmp / "origin.git"))
+        _git(self.repo_dir, "remote", "add", "origin", str(tmp / "origin.git"))
+        _git(self.repo_dir, "push", "-q", "origin", "main")
+        self.paths = FeaturePaths(root=tmp / "home" / "rid" / "x", project_root=self.repo_dir)
+        self.store = StateStore.create(self.paths, {"id": "run-1", "entry": "auto", "cycleType": "auto", "slug": "x",
+                                                    "createdAt": "2026-01-01T00:00:00+00:00"}, "do it")
+        self.store.state["repos"] = {"repo": {"path": str(self.repo_dir)}}
+        ref = {"ref": "#42", "number": 42, "url": "https://example.invalid/o/r/pull/42", "adoptable": True, "reason": "open"}
+        self.store.state["route"] = {"facts": {"prRefs": [{**ref, "repo": "repo"},
+                                                          {**ref, "ref": "#7", "number": 7, "repo": None, "adoptable": False}]}}
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _check(self, phase, product, exit_):
+        boundary = postconditions.Boundary(self.store, self.paths, phase=phase, product=product, exit=exit_,
+                                           project_root=self.repo_dir)
+        return [(f.id, f.message) for f in boundary.check()]
+
+    def _route(self, entry, pr):
+        return self._check("route", {"exit": "routed", "entry": entry, "pr": pr, "reason": "r"}, "routed")
+
+    def test_route_choices_are_held_to_the_registry_and_the_resolved_prs(self):
+        self.assertEqual(self._route("revise", 42), [])
+        self.assertEqual(self._route("micro", 42), [])
+        self.assertEqual(self._route("cycle", None), [])
+        self.assertIn("route-refused:unknown-entry", self._route("auto", None)[0][1])
+        self.assertIn("route-refused:pr-not-adoptable", self._route("revise", 7)[0][1])
+        self.assertIn("route-refused:pr-not-named", self._route("micro", 9)[0][1])
+        facts = self.store.state["route"]["facts"]["prRefs"]
+        facts.append({**facts[0], "repo": "other"})
+        self.assertIn("route-refused:pr-ambiguous", self._route("revise", 42)[0][1])
+
+    def test_a_direct_push_must_be_what_the_remote_holds(self):
+        head = _rev_parse(self.repo_dir)
+        product = {"exit": "done", "inputsDigest": "d", "boundTo": {"requirements": None, "plan": None},
+                   "summary": "pushed", "blocker": None,
+                   "actions": [{"kind": "push", "repo": "repo", "ref": "main", "sha": head, "url": None, "detail": "push"}]}
+        self.assertEqual(self._check("direct", product, "done"), [])
+        product["actions"][0]["sha"] = "0" * 40
+        self.assertEqual(self._check("direct", product, "done")[0][0], "X2")
+
+
 class RepoCheckPostconditionTests(unittest.TestCase):
     """7.1.0: P3/P6 for the plan's repo checks, and V10 over the program's own check runs."""
 

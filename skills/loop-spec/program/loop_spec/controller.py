@@ -82,7 +82,17 @@ def run_entry(entry: str, *, project_root: Path, request_text: str | None, slug:
     raise LoopSpecError(f"unknown entry {entry}", repair="use one of: " + ", ".join((*ENTRIES, *_RESUMABLE_PHASES)))
 
 
-def _request_start(entry: str, cycle_type: str, initial_phase: str):
+# A request entry's run: its cycleType and first phase. The router's hand-off reads the
+# same table, so a routed run and a directly entered one start identically.
+_REQUEST_ENTRIES = {
+    "cycle": ("full", "spec"), "micro": ("micro", "spec"), "debug": ("debug", "debug"),
+    "direct": ("direct", "direct"), "auto": ("auto", "route"),
+}
+
+
+def _request_start(entry: str):
+    cycle_type, initial_phase = _REQUEST_ENTRIES[entry]
+
     def start(*, project_root, request_text, slug, home, rid, answer_policy, pr) -> Next:
         return _run_request_entry(entry, project_root=project_root, request_text=request_text, slug=slug, home=home,
                                   rid=rid, answer_policy=answer_policy, cycle_type=cycle_type, initial_phase=initial_phase)
@@ -94,12 +104,7 @@ def _revise_start(*, project_root, request_text, slug, home, rid, answer_policy,
 
 
 # How the core starts each registered entry (entries.ENTRIES; a test holds the keys equal).
-_ENTRY_START = {
-    "cycle": _request_start("cycle", "full", "spec"),
-    "micro": _request_start("micro", "micro", "spec"),
-    "debug": _request_start("debug", "debug", "debug"),
-    "revise": _revise_start,
-}
+_ENTRY_START = {**{name: _request_start(name) for name in _REQUEST_ENTRIES}, "revise": _revise_start}
 
 
 def _run_request_entry(entry: str, *, project_root: Path, request_text: str | None, slug: str | None,
@@ -134,7 +139,16 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
         }
         store = StateStore.create(paths, run_fields, request_text)
         store.state["phase"]["current"] = initial_phase
-        _resolve_repos(store, project_root, slug, repo_module.find_pr_reference(request_text), home)
+        if entry == "auto":
+            # The router decides which PR, if any, the work continues on; nothing is
+            # adopted before it has chosen (the hand-off adopts through _adopt).
+            _resolve_repos(store, project_root, slug, None, home)
+            repos = [(name, Path(info["path"])) for name, info in store.state["repos"].items()]
+            store.state["route"] = {"facts": {"prRefs": probes_module.pr_refs(repos, request_text)}}
+        elif entry == "direct":
+            _resolve_repos(store, project_root, slug, None, home)
+        else:
+            _resolve_repos(store, project_root, slug, repo_module.find_pr_reference(request_text), home)
         _resolve_implementations(store, project_root)
         if answer_policy == "default":
             store.state["questions"]["policy"] = "default"
@@ -376,7 +390,13 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
     slug = store.state["run"]["slug"]
     while True:
         if store.state.get("result") is not None:
+            routed_slug = (store.state["run"].get("routedTo") or {}).get("slug")
+            if routed_slug:
+                return _routed_run(paths, project_root, routed_slug)
             return Next(kind="result", path=paths.result_json, slug=slug)
+        handoff = store.state["phase"].get("handoff")
+        if handoff is not None:
+            return _start_handoff(store, paths, project_root, handoff)
         _finish_refusals(store, paths)
         open_question = store.state["questions"]["open"]
         if open_question is not None:
@@ -769,15 +789,60 @@ def _begin_compaction(store: StateStore, paths: FeaturePaths, project_root: Path
     # acceptance advances phase.current to "plan" -- continue_run's compaction check
     # feeds it in then, instead of letting _drive_phase ask a PLAN implementation.
     store.state["phase"]["compaction"] = {"plan": plan_product}
+    _enter_phase(store, "spec")
+    # The compacted SPEC's approval is asked and looked up under this attempt id.
     spec_attempt_id = new_id("attempt")
-    store.state["phase"]["current"] = "spec"
     store.state["phase"]["attemptId"] = spec_attempt_id
-    store.state["phase"]["entry"] = "fresh"
-    store.state["phase"]["entryPayload"] = None
-    store.state["phase"]["pending"] = None
-    store.state["phase"]["provisional"] = None
     store.save()
     _accept_product(store, paths, project_root, "spec", spec_attempt_id, spec_product)
+
+
+def _enter_phase(store: StateStore, phase: str) -> None:
+    """A fresh entry into `phase` with nothing carried over from the phase before it.
+    attemptId stays None so _drive_phase mints the attempt and writes its context."""
+    store.state["phase"].update({"current": phase, "attemptId": None, "entry": "fresh", "entryPayload": None,
+                                 "pending": None, "provisional": None, "retries": 0})
+
+
+def _hand_off(store: StateStore, paths: FeaturePaths, project_root: Path, product: dict) -> None:
+    """ROUTE's accepted choice (A1, A2 held). cycle/micro/debug/direct continue in this
+    run, adopting the chosen PR the same way a direct entry would; revise is keyed by
+    its PR, so it is its own run, started by continue_run's hand-off branch."""
+    entry = product["entry"]
+    url = None
+    if product["pr"] is not None:
+        url = next(r["url"] for r in store.state["route"]["facts"]["prRefs"]
+                   if r["adoptable"] and r["number"] == product["pr"])
+    store.state["run"]["routedTo"] = {"entry": entry, "pr": url, "reason": product["reason"]}
+    if entry == "revise":
+        store.state["phase"]["handoff"] = {"entry": entry, "pr": url, "reason": product["reason"]}
+        store.save()
+        return
+    cycle_type, first_phase = _REQUEST_ENTRIES[entry]
+    if entry != "direct":
+        _resolve_repos(store, project_root, store.state["run"]["slug"], url, paths.root.parent.parent)
+    store.state["run"]["cycleType"] = cycle_type
+    _enter_phase(store, first_phase)
+    store.save()
+
+
+def _start_handoff(store: StateStore, paths: FeaturePaths, project_root: Path, handoff: dict) -> Next:
+    """Start (or resume) the revise run the router chose, then close this auto run with
+    a `routed` result that neither moves the last-result pointer nor prints a result
+    marker: the request is not finished, the revise run carries it on."""
+    next_ = _ENTRY_START["revise"](
+        project_root=project_root, request_text=None, slug=None, home=paths.root.parent.parent,
+        rid=paths.root.parent.name, answer_policy=store.state["questions"].get("policy"), pr=handoff["pr"],
+    )
+    store.state["run"]["routedTo"] = {**handoff, "slug": next_.slug}
+    store.state["phase"]["handoff"] = None
+    _finish_run(store, paths, "routed", reason=f"routed to revise ({next_.slug}): {handoff['reason']}", announce=False)
+    return next_
+
+
+def _routed_run(paths: FeaturePaths, project_root: Path, slug: str) -> Next:
+    other = FeaturePaths(root=paths.root.parent / slug, project_root=project_root)
+    return continue_run(_open_existing(other), other, project_root=project_root)
 
 
 def _resume_compaction(store: StateStore, paths: FeaturePaths, project_root: Path) -> None:
@@ -1333,6 +1398,10 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
         _write_terminal_result(store, paths, phase, exit_)
         return
 
+    if mode == "routed":
+        _hand_off(store, paths, project_root, product)
+        return
+
     store.state["phase"]["current"] = next_phase
     store.state["phase"]["entry"] = mode
     store.state["phase"]["attemptId"] = None
@@ -1502,7 +1571,8 @@ def _protected_worktree_paths(store: StateStore) -> set[Path]:
 
 
 def _finish_run(store: StateStore, paths: FeaturePaths, classification: str, *, reason: str | None = None,
-                 summary: str | None = None, partially_delivered: bool = False) -> Path:
+                 summary: str | None = None, partially_delivered: bool = False, work_delivered: bool | None = None,
+                 warnings: list[str] | None = None, announce: bool = True) -> Path:
     # LF-39: every result_module.write in this module writes a terminal result
     # (nothing here passes "paused", the one classification that leaves a run
     # resumable) -- removing each repo's worktrees under this run's own feature
@@ -1522,10 +1592,21 @@ def _finish_run(store: StateStore, paths: FeaturePaths, classification: str, *, 
         if removed:
             emit(paths, "worktrees_removed", {"removed": removed}, phase=store.state["phase"]["current"])
     return result_module.write(store, paths, classification, reason=reason, summary=summary,
-                                partially_delivered=partially_delivered)
+                                partially_delivered=partially_delivered, work_delivered=work_delivered,
+                                warnings=warnings, announce=announce)
 
 
 def _write_terminal_result(store: StateStore, paths: FeaturePaths, phase: str, exit_: str) -> None:
+    if phase == "direct":
+        product = store.state["products"]["direct"]["product"]
+        if exit_ == "incomplete":
+            _finish_run(store, paths, "escalated", reason=product["blocker"])
+            return
+        # X2 confirmed every push and PR against the remote, so they are delivery facts.
+        _finish_run(store, paths, "direct", summary=product["summary"],
+                    work_delivered=any(a["kind"] in ("push", "pr") for a in product["actions"]),
+                    warnings=["no gate ran: a direct run has no spec, plan, review, or verification"])
+        return
     if phase == "iterate" and exit_ == "escalated":
         _finish_run(store, paths, "escalated")
         return

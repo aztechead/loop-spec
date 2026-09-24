@@ -20,6 +20,8 @@ PHASE_EXITS: dict[str, list[str]] = {
     "iterate": ["converged", "converged with caveats", "rewind", "escalated"],
     "deliver": ["delivered", "partially delivered", "delivery blocked"],
     "debug": ["reproduced", "blocked reproduction"],
+    "route": ["routed"],
+    "direct": ["done", "incomplete"],
 }
 
 PHASE_POSTCONDITIONS: dict[str, list[str]] = {
@@ -30,6 +32,8 @@ PHASE_POSTCONDITIONS: dict[str, list[str]] = {
     "iterate": ["I1", "I2", "I3", "I4", "I5", "I6"],
     "deliver": ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"],
     "debug": ["B1", "B2", "B3"],
+    "route": ["A1", "A2"],
+    "direct": ["X1", "X2"],
 }
 
 # One line per id, copied from docs/loop-spec/phase-interface-7.0.md (the "Postcondition"
@@ -84,6 +88,10 @@ POSTCONDITION_TEXT: dict[str, str] = {
     "B1": "the reproduction command passes the plain-argv format check before it runs; the program ran the recorded reproduction at base in a clean checkout and it failed with at least one parsed identity or fingerprint; the failure digest it recorded is the mustFlip baseline",
     "B2": "a changed reproduction states a reason and the original was run too, with both results recorded; the original command passes the plain-argv format check before it runs",
     "B3": "no reproduction exists",
+    "A1": "the chosen entry is one the router may choose (every registered entry but auto)",
+    "A2": "an entry that takes a PR names one the request names and the program could adopt; an entry that takes a request names no PR or such a PR; the PR is open in exactly one workspace repository",
+    "X1": "product validates against the DIRECT schema; an incomplete exit names its blocker",
+    "X2": "every push action's SHA is the remote branch's head, and every pr action's SHA is that PR's head",
     "T1": "the shared feature-level budget has room and this transition was counted once against it; default two, operator override, persisted across sessions, never reset by a fresh attempt",
 }
 

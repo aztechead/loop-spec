@@ -58,7 +58,8 @@ or one slug per line if a 7.x run already exists there.
 | `/loop-spec:pause` | nothing to run; every run resumes from state, and `status` shows the pending question |
 | `/loop-spec:revise <pr>` | `/loop-spec:revise <n-or-url>`. It compacts the PR's review gaps into SPEC and PLAN and runs the cycle forward. EXECUTE reviews the PR's existing commits once before its own tasks |
 | `/loop-spec:status` | unchanged |
-| `/loop-spec:auto`, `oneshot`, `spec-lite` | removed; name the entry you want, `micro` for a small change |
+| `/loop-spec:auto` | `/loop-spec:auto <request>` (7.3.0). A router picks the entry, including `direct` for a mechanical git or PR operation that needs no cycle |
+| `oneshot`, `spec-lite` | removed; name the entry you want, `micro` for a small change |
 | `assess`, `sentinel`, `watch`, `retro`, `rules`, `forensics`, `walkthrough`, `quality-loop`, `checking-gates`, `specifying-gates`, `onboard`, `settings`, `rollback`, `loop-runner` | removed; see the inventory for what, if anything, replaces each |
 
 From a script, the same entries are launcher subcommands, each with
@@ -149,7 +150,8 @@ state home and `git status` in the consumer repository is clean.
 
 The terminal result keeps schema 1: every existing field keeps its name and meaning,
 and the object allows extra fields. One field is added, `result`, with one of
-`converged`, `converged-with-caveats`, `no-change`, `escalated`, `failed`, `paused`.
+`converged`, `converged-with-caveats`, `no-change`, `escalated`, `failed`, `paused`, and, from
+7.3.0, `direct` and `routed`.
 Read `result` for the 7.x classification and keep reading `converged` for what 6.9
 meant by it. `status` is `completed`, `paused`, `escalated`, or `failed`. A `paused`
 result is not mirrored to `last-result.json`, since the run can still resume.

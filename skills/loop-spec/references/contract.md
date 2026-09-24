@@ -11,8 +11,10 @@ An implementation is one of:
 
 - **`default`** — the program's own code runs the phase. SPEC and PLAN dispatch a
   `lead` step running a bound role's prompt (`defaults.py`). EXECUTE, VERIFY, ITERATE,
-  DEBUG, and REVISE drive a `step()`/`on_submit()` loop that issues `role` steps one
-  at a time (`execute.py`, `verify.py`, `iterate.py`, `debug.py`, `revise.py`).
+  DEBUG, REVISE, and ROUTE drive a `step()`/`on_submit()` loop that issues `role` steps one
+  at a time (`execute.py`, `verify.py`, `iterate.py`, `debug.py`, `revise.py`, `route.py`).
+  DIRECT dispatches a `lead` step like SPEC and PLAN. `contract.DEFAULT_IMPLEMENTATIONS`
+  is the one table of these adapters.
   DELIVER runs one pass with no worker step (`deliver.py`).
 - **`external`** — a person or another tool produces the phase's whole product.
   `external.py` issues one `kind: "external"` step naming the schema and exits to
@@ -76,7 +78,7 @@ shape, including nested item schemas):
 - **plan**: `tasks[]` (`id: "T-n"`, `title`, `dependsOn[]`, `files[]`, `repo`,
   `verify`, `criteria[]`, `featureAdded`, `mustFlip`), `prepare`, optional
   `checks[]` (`repo`, `command`: the repo's lint, typecheck and format checks, baselined,
-  re-run at each task integration and at VERIFY's head for V10),
+  re-run at each implement submit, before the task's review, and at VERIFY's head for V10),
   `evidenceExceptions[]`, `criticResponses[]`. The same optional `checks[]` is in the
   compact plan of **debug** and **revise**.
 - **execute**: `tasks[]` (`id`, `disposition`: `done`/`already-satisfied`/`removed`/
@@ -239,7 +241,7 @@ so a future field never breaks an old consumer), written by `result.py` at
 repository; a `paused` result is not mirrored, since the run is still resumable).
 Key fields: `status` (`completed`, `paused`, `escalated`, `failed`), `outcome`,
 `result` (`converged`, `converged-with-caveats`, `no-change`, `escalated`,
-`failed`, `paused`), `converged`, `workDelivered`, `phaseReached`, `prUrl`,
+`failed`, `paused`, `direct`, `routed`), `converged`, `workDelivered`, `phaseReached`, `prUrl`,
 `delivery`, `reviewed` (task id to evidence level), `unreviewed[]`,
 `weakenedAssurance[]`, `rewinds`, `hostVersions`. Every `weakenedAssurance` entry is
 an object carrying its own `kind`: E6's `evidence.review.accept` entries are
@@ -333,6 +335,7 @@ the user's `~/.claude/skills/<name>/` or `~/.agents/skills/<name>/`, or (for a
 `plugin:skill` binding) an installed plugin's cache. A bound role supplies its own
 prompt body only; `roles.load_role` still validates the result against the
 *default* role's schema, and `roles.CONTRACTS` appends the same
-program-authored contract text regardless of source. The nine roles that ship
+program-authored contract text regardless of source. The eleven roles that ship
 under `skills/loop-spec/roles/`: `spec-writer`, `planner`, `plan-critic`,
-`implementer`, `code-reviewer`, `verifier`, `iterate-judge`, `debugger`, `reviser`.
+`implementer`, `code-reviewer`, `verifier`, `iterate-judge`, `debugger`, `reviser`,
+`router`, `direct`.

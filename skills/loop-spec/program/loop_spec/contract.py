@@ -36,7 +36,7 @@ class PhaseOutcome:
 
 # LF-60: which config key lets an unattested submission of each judgment role count.
 # One key per role family, so opting reviews in never weakens the critic or judge.
-_UNATTESTED_POLICY = {"code-reviewer": "review", "plan-critic": "judgment", "iterate-judge": "judgment"}
+_UNATTESTED_POLICY = {"code-reviewer": "review", "plan-critic": "judgment", "iterate-judge": "judgment", "router": "judgment"}
 
 
 def load_config(project_root: Path) -> dict:
@@ -162,8 +162,8 @@ def _accept_wait(path: Path, code: int) -> PhaseOutcome:
 DEFAULT_IMPLEMENTATIONS = {
     "spec": ("lead", "spec-writer"), "plan": ("lead", "planner"),
     "execute": ("stepped", "execute"), "verify": ("stepped", "verify"), "iterate": ("stepped", "iterate"),
-    "debug": ("stepped", "debug"), "revise": ("stepped", "revise"),
-    "deliver": ("run", "deliver"),
+    "debug": ("stepped", "debug"), "revise": ("stepped", "revise"), "route": ("stepped", "route"),
+    "direct": ("lead", "direct"), "deliver": ("run", "deliver"),
 }
 
 
