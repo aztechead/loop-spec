@@ -1,0 +1,114 @@
+{
+  "autonomous": true,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "feat/add-clamp-x-lo-hi-to-calc-returning-x-li",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": true,
+  "createdAt": "2026-09-24T17:28:33+00:00",
+  "cycleType": "micro",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [],
+        "deliveredSha": "2049d23a97c84474a59387b5bb23ac9b02ac5a7d",
+        "pr": {
+          "base": "main",
+          "headRef": "feat/add-clamp-x-lo-hi-to-calc-returning-x-li",
+          "headSha": "2049d23a97c84474a59387b5bb23ac9b02ac5a7d",
+          "number": 27,
+          "url": "https://github.com/aztechead/loop-spec-live-7/pull/27"
+        },
+        "repo": "c",
+        "state": "delivered"
+      }
+    ]
+  },
+  "eligibleTargets": [
+    {
+      "branch": "feat/add-clamp-x-lo-hi-to-calc-returning-x-li",
+      "targetSha": "2049d23a97c84474a59387b5bb23ac9b02ac5a7d"
+    }
+  ],
+  "feature_title": "add clamp(x, lo, hi) to calc, returning x limited to the range lo..hi, with tests. Verify with /private/tmp/claude-501/-Users-aztechead-Projects-loop-spec/aa3a1338-0fde-4f0c-a27e-945117d04f37/scratchpad/venv/bin/python -m pytest -q tests/test_calc.py -k clamp",
+  "finishedAt": "2026-09-24T17:46:31+00:00",
+  "hostVersions": {
+    "claude": "2.1.281 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": true,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "direct": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "route": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 2
+  },
+  "loopSpecVersion": "7.3.0",
+  "noChangeReason": null,
+  "outcome": "delivered",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [
+    "question-5b8213e1b607"
+  ],
+  "prUrl": "https://github.com/aztechead/loop-spec-live-7/pull/27",
+  "prs": [
+    {
+      "number": 27,
+      "repo": "c",
+      "url": "https://github.com/aztechead/loop-spec-live-7/pull/27"
+    }
+  ],
+  "reason": null,
+  "result": "converged",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-a1f2eeb9c9a3"
+    }
+  },
+  "rewinds": 2,
+  "routedTo": {
+    "entry": "micro",
+    "pr": null,
+    "reason": "rule 4: the request is a small, well-defined change — add one function clamp(x, lo, hi) to calc with tests and a given pytest verify command — not a feature needing a full spec/plan/execute cycle."
+  },
+  "schema": 1,
+  "slug": "add-clamp-x-lo-hi-to-calc-returning-x-li",
+  "status": "completed",
+  "summary": "micro converged at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": "2049d23a97c84474a59387b5bb23ac9b02ac5a7d",
+  "warnings": [],
+  "weakenedAssurance": [
+    {
+      "criterion": "AC-1",
+      "kind": "evidence.exception",
+      "reason": "at the base commit no clamp tests exist yet, so `pytest -q tests/test_calc.py -k clamp` deselects every test and exits 5 (no tests collected); mustFlip records that T-1's verify command is expected to flip from that non-passing baseline state to passing once clamp and its tests exist.",
+      "source": "plan"
+    }
+  ],
+  "workDelivered": true
+}
