@@ -4,6 +4,40 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.3.0] - 2026-09-24
+
+The 2026-09-23 upstream report on three autonomous runs (6.11.1), done in v7 terms,
+and the plugin laid out as a microkernel: a core, plug-ins that do not import each
+other, and a registry for each plug-in kind.
+
+- `auto` is back, as a router: the program resolves the PRs a request names (any host),
+  and a `router` role picks `cycle`, `micro`, `debug`, `revise`, or `direct` from the
+  entry registry. ROUTE's A1/A2 check the choice and name the rule a refused one broke;
+  past the retry limit the run stops by default, never guessing a cycle. A revise
+  choice starts the revise run for that PR with the same answer policy.
+- `direct`: a mechanical git or PR operation (resolve conflicts, rebase, push) done by
+  the lead with no cycle. X2 checks each reported push against the remote and each PR
+  against its head; the result is `direct`, with "no gate ran" in its warnings.
+- Revise from a fresh `--depth=1 --single-branch` clone works: the PR's head and base
+  are fetched into explicit remote-tracking refs (unshallowing a shallow clone), and the
+  local PR branch is created at the head. A cycle or micro request naming an open PR now
+  continues that PR's branch through the same path (it raised KeyError at EXECUTE). A
+  checked-out or diverged local PR branch is refused with a repair, never moved.
+- Repo checks (lint, typecheck) run when the implementer submits, before any review;
+  a check that writes files leaves the worktree clean.
+- Review-time security signals read the change: added lines, then removed lines, per
+  file. VERIFY's range probes read the verify checkout at head.
+- The planner adds the changelog entry as a task when the repo asks for one; the
+  reviser groups small gaps by owning file; DELIVER's moved-branch caveat names a
+  rescue branch, never a reset that drops commits.
+- `debug` accepts `--request-file`, like `cycle` and `micro` (the CLI is built from
+  the entry registry).
+- README: running your own reviewer during VERIFY by binding the code-reviewer role.
+- Registries: `contract.DEFAULT_IMPLEMENTATIONS` (phase adapters), the `roles/`
+  directory (roles), `entries.ENTRIES` (entries); the step contract types live in
+  `steps.py`. `architecture.md` maps core and plug-ins and names the two remaining
+  deviations.
+
 ## [7.2.0] - 2026-09-23
 
 The 6.9.1, 6.10.0 and 6.11.0 fixes, checked item by item against v7 and done in v7's
