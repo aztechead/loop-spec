@@ -33,6 +33,10 @@ other, and a registry for each plug-in kind.
 - `debug` accepts `--request-file`, like `cycle` and `micro` (the CLI is built from
   the entry registry).
 - README: running your own reviewer during VERIFY by binding the code-reviewer role.
+- From the 7.3.0 live runs: a direct run's checked push no longer crashes its result
+  (LF-72); the direct role unshallows before a merge and never merges unrelated
+  histories (LF-73); a shallow clone keeps its repo id when adoption unshallows it, so
+  a revise from a `--depth=1` clone finds its own run again (LF-74).
 - Registries: `contract.DEFAULT_IMPLEMENTATIONS` (phase adapters), the `roles/`
   directory (roles), `entries.ENTRIES` (entries); the step contract types live in
   `steps.py`. `architecture.md` maps core and plug-ins and names the two remaining
