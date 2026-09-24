@@ -26,7 +26,8 @@ from loop_spec.events import emit
 from loop_spec.ids import new_id, now_iso
 from loop_spec.jsonio import read_json
 from loop_spec.paths import ensure_results_dir
-from loop_spec.postconditions import adopted_commits, close_out_view, close_outs, retry_limit
+from loop_spec.postconditions import (PLAN_IDENTITY_FIELDS as _PLAN_IDENTITY_FIELDS, adoptable_task_ids, adopted_commits,
+                                      close_out_view, close_outs, retry_limit)
 from loop_spec.roles import compose_prompt, load_role, dispatch_settings
 from loop_spec.steps import IssueStep, IssueSteps, Pause, Product, Wait
 
@@ -53,10 +54,6 @@ _TASK_ID_RE = re.compile(r"[TRC]-\d+")  # plan T-n/R-n, close-out C-n (LF-55)
 # mustFlip-failed detail) stays on the retry path below -- that one means the
 # implementer's fix did not land yet, which a retry can still address.
 _MUST_FLIP_BASELINE_DETAIL = "reproduction did not fail at base"
-# LF-52/4.8: a plan task's identity for reconciliation -- the same eight fields
-# _mark_adopted_tasks already compares to decide whether a reviser's carried-
-# forward task is still the same task.
-_PLAN_IDENTITY_FIELDS = ("title", "files", "repo", "verify", "criteria", "dependsOn", "featureAdded", "mustFlip")
 
 
 def dag_waves(tasks: list[dict], width: int = 3) -> list[list[str]]:
@@ -224,20 +221,11 @@ def _mark_adopted_tasks(store, paths, ctx, tasks: dict, plan_tasks: list[dict]) 
     # retries exhaust. A task counts as adopted only when its full dict (every
     # field a reviser could have touched) still matches the delivering run's plan.
     adoption = store.state.get("adoption")
-    prior = (store.state.get("adoption") or {}).get("prior")
-    if adoption is None or not prior or not prior.get("plan"):
-        return
-    prior_tasks = {t["id"]: t for t in prior["plan"]["tasks"]}
+    adoptable = adoptable_task_ids(store.state, plan_tasks)
     for plan_task in plan_tasks:
-        prior_task = prior_tasks.get(plan_task["id"])
-        if prior_task is None or any(plan_task.get(f) != prior_task.get(f) for f in _PLAN_IDENTITY_FIELDS):
+        if plan_task["id"] not in adoptable:
             continue
-        repo_name = plan_task["repo"]
-        # The adopted range only covers the PR's own repo; a workspace's other
-        # repos have no adopted commits to attribute a task's work to.
-        if repo_name != adoption.get("repo"):
-            continue
-        repo_info = store.state["repos"][repo_name]
+        repo_info = store.state["repos"][plan_task["repo"]]
         commits = repo_module.commits_between(Path(repo_info["path"]), repo_info["baseSha"], adoption["headSha"])
         task_state = tasks[plan_task["id"]]
         task_state.update({

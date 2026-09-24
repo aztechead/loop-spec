@@ -5,7 +5,9 @@ product binds to, `bound_ok` to check a product against the run's current revisi
 and `Boundary.check` to run exactly the ids `ROUTES[phase][exit]` requires and collect
 every failure (never stopping at the first). `ROUTES` transcribes the route matrix in
 docs/loop-spec/phase-interface-7.0.md; this module never picks a route itself, it only
-answers whether the postconditions for a claimed exit hold. controller.py reads
+answers whether the postconditions for a claimed exit hold. It also holds the facts
+about an adopted PR that the checks and the phases share (`start_sha`,
+`adopted_commits`, `adoptable_task_ids`). controller.py reads
 `ROUTES[phase][exit]["next"]` to decide where to go, and reads `Boundary.unreviewed`/
 `Boundary.weakened_assurance` after a passing check to fold into state and the result.
 """
@@ -142,6 +144,26 @@ def start_sha(state: dict, repo_name: str) -> str:
     the repo's base. PLAN reads code there and E9 judges "no change" from it."""
     adoption = state.get("adoption") or {}
     return adoption["headSha"] if adoption.get("repo") == repo_name else state["repos"][repo_name]["baseSha"]
+
+
+# LF-52/4.8: a plan task's identity, for EXECUTE's plan reconciliation and for
+# deciding whether a reviser's carried-forward task is still the delivered one.
+PLAN_IDENTITY_FIELDS = ("title", "files", "repo", "verify", "criteria", "dependsOn", "featureAdded", "mustFlip")
+
+
+def adoptable_task_ids(state: dict, plan_tasks: list[dict]) -> set[str]:
+    """LF-38: the plan tasks the adopted PR already delivered. Each matches the
+    delivering run's prior plan task field for field and lives in the adopted repo
+    (a workspace's other repos have no adopted commits). EXECUTE marks them
+    `adopted`; the controller runs the adopted-range review only when one exists."""
+    adoption = state.get("adoption") or {}
+    prior_plan = (adoption.get("prior") or {}).get("plan")
+    if not prior_plan:
+        return set()
+    prior = {t["id"]: t for t in prior_plan["tasks"]}
+    return {t["id"] for t in plan_tasks
+            if t["id"] in prior and t["repo"] == adoption.get("repo")
+            and all(t.get(f) == prior[t["id"]].get(f) for f in PLAN_IDENTITY_FIELDS)}
 
 
 def adopted_commits(store, repo_name: str, repo_path: Path) -> set[str]:

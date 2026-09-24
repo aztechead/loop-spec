@@ -373,7 +373,7 @@ itself, with no SPEC, PLAN, review, or verification.
 | `auto` | ROUTE, then the chosen entry's order | request text present |
 | `direct` | DIRECT only | request text present |
 | `status` | nothing; read-only | none |
-| `revise` | a compact SPEC and PLAN in the lead whose criteria are the PR comments mapped to gaps, with the PR's base as base SHA. The PLAN carries one `adopted` range task for the existing `base..head` commits plus one task per gap. At EXECUTE entry the program runs a full review step over the adopted range, which becomes that task's review record (E5, E6); findings on the adopted code join the gaps. Then EXECUTE on the adopted PR branch, and VERIFY onward over the whole PR | an open PR the repo module can adopt; a PR with no prior loop-spec state gets a fresh run id bound to the PR identity; nothing in the adopted range is exempt from E4 to E7 |
+| `revise` | a compact SPEC and PLAN in the lead whose criteria are the PR comments mapped to gaps, with the PR's base as base SHA. The PLAN carries one `adopted` range task for the existing `base..head` commits plus one task per gap. At EXECUTE entry the program runs a full review step over the adopted range when a task is adopted (a plan task matching the delivering run's, or any task an external EXECUTE may claim), which becomes that task's review record (E5, E6); findings on the adopted code join the gaps. Then EXECUTE on the adopted PR branch, and VERIFY onward over the whole PR | an open PR the repo module can adopt; a PR with no prior loop-spec state gets a fresh run id bound to the PR identity; nothing in the adopted range is exempt from E4 to E7 |
 
 A standalone `deliver` cannot bypass VERIFY or ITERATE: its preconditions require an
 ITERATE exit at the current revisions.

@@ -581,6 +581,17 @@ def build_envelope(store: StateStore, paths: FeaturePaths, phase: str, attempt_i
     }
 
 
+def _needs_adopted_review(state: dict) -> bool:
+    """7.4.2: the adopted-range review is read only for an `adopted` task, which the
+    default EXECUTE makes only from an adoptable task; an external EXECUTE may claim
+    one itself (E5)."""
+    if state.get("adoption") is None or state.get("adoptedReview") is not None \
+            or state["phase"].get("adoptedReviewStepId") is not None:
+        return False
+    return (state["implementations"]["phases"].get("execute") == "external"
+            or bool(postconditions.adoptable_task_ids(state, state["products"]["plan"]["product"]["tasks"])))
+
+
 def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> Next | None:
     # None means "state changed, let continue_run's loop re-evaluate from the
     # top" (every existing branch); a Next means "nothing new to report, hand
@@ -596,8 +607,7 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
     phase = store.state["phase"]["current"]
     if phase == "execute":
         _migrate_legacy_baseline(store, paths)
-    if (phase == "execute" and store.state.get("adoption") is not None and store.state.get("adoptedReview") is None
-            and store.state["phase"].get("adoptedReviewStepId") is None):
+    if phase == "execute" and _needs_adopted_review(store.state):
         _issue_adopted_review(store, paths, project_root)
         return
 

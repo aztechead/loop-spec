@@ -1711,6 +1711,22 @@ class AutoRouteTests(_QuietStdout):
             self.assertEqual(store.state["adoption"]["repo"], next(iter(store.state["repos"])))
             self.assertEqual(next(iter(store.state["repos"].values()))["lastKnownHead"], head_sha)
 
+    def test_adopted_review_runs_only_when_something_reads_it(self):
+        # 7.4.2: a default EXECUTE on a PR with no prior run adopts no task, so the
+        # adopted-range review is skipped; an external EXECUTE or an adoptable task needs it.
+        task = {"id": "T-1", "title": "t", "files": ["a.py"], "repo": "repo", "verify": "true", "criteria": ["AC-1"],
+                "dependsOn": [], "featureAdded": None, "mustFlip": False}
+        state = {"adoption": {"repo": "repo", "prior": None}, "adoptedReview": None, "phase": {},
+                 "implementations": {"phases": {"execute": "default"}},
+                 "products": {"plan": {"product": {"tasks": [task]}}}}
+        self.assertFalse(controller._needs_adopted_review(state))
+        state["adoption"]["prior"] = {"plan": {"tasks": [dict(task)]}}
+        self.assertTrue(controller._needs_adopted_review(state))
+        state["adoption"]["prior"] = {"plan": {"tasks": [dict(task, title="other")]}}
+        self.assertFalse(controller._needs_adopted_review(state))
+        state["implementations"]["phases"]["execute"] = "external"
+        self.assertTrue(controller._needs_adopted_review(state))
+
     def test_revise_is_its_own_run_and_the_auto_run_records_where_it_went(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
             tmp = Path(tmp)
