@@ -54,6 +54,20 @@ class RepoIdTests(unittest.TestCase):
             self.assertNotEqual(repo_id(Path(a)), repo_id(Path(b)))
 
 
+    def test_a_shallow_clone_keeps_its_id_after_unshallowing(self):
+        # LF-74 (live ea-b): adopting a PR unshallows a --depth=1 clone, which moved
+        # the root commit and with it every later call's state key.
+        with tempfile.TemporaryDirectory() as tmp:
+            work, clone = Path(tmp) / "work", Path(tmp) / "clone"
+            work.mkdir()
+            _git(work, "init", "-q", "-b", "main")
+            for msg in ("one", "two"):
+                _git(work, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", msg)
+            _git(tmp, "clone", "-q", "--depth=1", work.as_uri(), str(clone))
+            before = repo_id(clone)
+            _git(clone, "fetch", "-q", "--unshallow")
+            self.assertEqual(before, repo_id(clone))
+
 class FeaturePathsResultsDirTests(unittest.TestCase):
     # LF-27: a live model, under Claude Code's default permission mode, cannot
     # write anywhere under the state home (~/.claude/...) even with the Write

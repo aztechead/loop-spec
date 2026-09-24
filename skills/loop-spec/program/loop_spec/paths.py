@@ -29,6 +29,14 @@ def state_home(explicit: str | None = None) -> Path:
     return home
 
 
+def _git_out(project_root: Path, *args: str) -> str | None:
+    try:
+        result = subprocess.run(["git", *args], cwd=project_root, capture_output=True, text=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    return result.stdout.strip()
+
+
 def repo_id(project_root: Path) -> str:
     project_root = Path(project_root)
     # Identity comes from the repository's first root commit, never from a remote URL:
@@ -36,17 +44,19 @@ def repo_id(project_root: Path) -> str:
     # (finding LF-04). A root commit is stable across remotes, renames, and clones. A
     # directory without a git history (a workspace root, an empty dir before
     # init-in-place) keys on its realpath.
-    try:
-        result = subprocess.run(
-            ["git", "rev-list", "--max-parents=0", "HEAD"],
-            cwd=project_root, capture_output=True, text=True, check=True,
-        )
-        roots = result.stdout.split()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        roots = []
+    pinned = _git_out(project_root, "config", "--local", "--get", "loop-spec.repoId")
+    if pinned:
+        return pinned
+    roots = (_git_out(project_root, "rev-list", "--max-parents=0", "HEAD") or "").split()
     canonical = sorted(roots)[0] if roots else str(project_root.resolve())
     full = digest_bytes(canonical.encode())  # "sha256:<64 hex>"
-    return full.split(":", 1)[1][:16]
+    rid = full.split(":", 1)[1][:16]
+    if roots and _git_out(project_root, "rev-parse", "--is-shallow-repository") == "true":
+        # LF-74: a shallow clone's "root" is its graft, and adopting a PR unshallows the
+        # clone mid-run, which would move every later call to another state key. Pin
+        # the first answer in the clone's own config so it outlives the unshallow.
+        _git_out(project_root, "config", "--local", "loop-spec.repoId", rid)
+    return rid
 
 
 @dataclass
