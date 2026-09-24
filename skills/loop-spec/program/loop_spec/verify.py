@@ -422,8 +422,19 @@ def _final_product(store, paths, ctx, verify_state: dict) -> dict:
         "exit": exit_, "inputsDigest": ctx["inputs"]["digest"],
         "boundTo": {"requirements": store.state["revisions"]["requirements"], "plan": store.state["revisions"]["plan"]},
         "verdicts": verdicts_out, "findings": findings_out, "remediationTasks": remediation_tasks,
-        "reviewedRanges": [verify_state["ranges"][name] for name in verify_state["reviewers"]],
+        "reviewedRanges": [_published_range(verify_state, name) for name in verify_state["reviewers"]],
+        # D4: ITERATE's judge reads the verified tree here, not in this module's bucket.
+        "checkouts": dict(verify_state["checkouts"]),
     }
+
+
+def _published_range(verify_state: dict, name: str) -> dict:
+    """A reviewed range with the step that reviewed it (a reused range keeps the step
+    that originally did), which the core records in the ledger (LF-60)."""
+    reused = (verify_state.get("reused") or {}).get(name)
+    return {**verify_state["ranges"][name],
+            "reviewStep": reused["byStep"] if reused else verify_state["reviewerSteps"].get(name),
+            "reusedRangeId": reused["rangeId"] if reused else None}
 
 
 def _check_remediations(store, paths, ctx, plan_product: dict, verifier_result: dict,

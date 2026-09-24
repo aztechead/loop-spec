@@ -1,16 +1,14 @@
 """DEBUG's phase module (M4): one lead step (role `debugger`) produces the whole
 debug product; the entry-side work (creating the run, approval, routing the compact
-SPEC/PLAN onward) is the controller's, using the two pure helpers below.
+SPEC/PLAN onward) is the core's, which calls `compact` below through the registry.
 
 Use `step`/`on_submit` the same way `execute.py` does. Module state lives under
-`store.state["debug"]`, which also holds `baseRun`/`originalRun` once the controller
-calls `record_base_runs` (B1/B2 read them).
+`store.state["debug"]`. The program's own re-run of the reproduction, which B1/B2
+read, is core evidence (`state.debugRuns`, written by the controller).
 """
 from pathlib import Path
 
-from loop_spec import baseline as baseline_module
 from loop_spec import external
-from loop_spec import repo as repo_module
 from loop_spec.contract import resolve_role, validate_request
 from loop_spec.errors import LoopSpecError
 from loop_spec.steps import IssueStep, Product
@@ -62,36 +60,9 @@ def on_submit(store, paths, step, result: dict) -> None:
     store.save()
 
 
-def _with_error_class(run: dict) -> dict:
-    """LF-23: a pyenv shim (or similar wrapper) can exit 127 without ever raising
-    FileNotFoundError, so run_command's own exception-based errorClass detection
-    never fires for it. Backfilling errorClass from the exit status here lets B1's
-    message name a missing binary either way run_command found it."""
-    if run.get("exitStatus") == 127 or run.get("errorClass") is not None:
-        return {**run, "errorClass": run.get("errorClass") or "command-not-found"}
-    return run
-
-
-def record_base_runs(store, paths, product: dict, repo_path: Path, base_sha: str) -> None:
-    checkout = Path(paths.checkouts_dir) / f"debug-base-{base_sha[:12]}"
-    repo_module.clean_checkout(repo_path, base_sha, checkout)
-    try:
-        base_run = baseline_module.run_command(product["reproduction"]["command"], checkout, base_sha)
-        debug_state = store.state.setdefault("debug", {})
-        debug_state["baseRun"] = _with_error_class(base_run.to_dict())
-        # LF-23: the worker's own failureDigest came from its own checkout, a
-        # different path than the program's clean checkout above -- the two digests
-        # can never match, so this is recorded as the worker's claim, never compared.
-        debug_state["claimedDigest"] = product["reproduction"]["failureDigest"]
-        if product.get("original") is not None:
-            original_run = baseline_module.run_command(product["original"]["command"], checkout, base_sha)
-            debug_state["originalRun"] = _with_error_class(original_run.to_dict())
-    finally:
-        repo_module.remove_worktree(repo_path, checkout, force=True)
-    store.save()
-
-
-def compact_products(product: dict) -> tuple[dict, dict]:
+def compact(product: dict) -> tuple[dict, dict]:
+    """The registry hook the core calls after accepting a debug product: its SPEC and
+    PLAN halves, each repair task pinned to the reproduction (debug's meaning)."""
     plan_product = product["plan"]
     tasks = [{**task, "mustFlip": True, "verify": product["reproduction"]["command"]} for task in plan_product["tasks"]]
     return product["spec"], {**plan_product, "tasks": tasks}

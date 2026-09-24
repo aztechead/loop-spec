@@ -138,7 +138,7 @@ def _retry_or_block(execute_state: dict, task_id: str, task_state: dict, reason_
     if task_state["retries"] > retry_limit():
         task_state["status"] = "blocked"
         task_state["reason"] = None
-        execute_state["issues"].append({"task": task_id, "text": reason_text})
+        execute_state["issues"].append({"task": task_id, "retries": task_state["retries"], "text": reason_text})
     else:
         task_state["status"] = retry_status
         task_state["reason"] = reason_text
@@ -210,7 +210,7 @@ def _route_verify_comparison(execute_state: dict, task_id: str, task_state: dict
     if is_plan_defect:
         task_state["status"] = "planGap"
         task_state["reason"] = None
-        execute_state["issues"].append({"task": task_id, "text": reason_text})
+        execute_state["issues"].append({"task": task_id, "retries": task_state["retries"], "text": reason_text})
         return
     _retry_or_block(execute_state, task_id, task_state, reason_text)
 
@@ -224,7 +224,7 @@ def _mark_adopted_tasks(store, paths, ctx, tasks: dict, plan_tasks: list[dict]) 
     # retries exhaust. A task counts as adopted only when its full dict (every
     # field a reviser could have touched) still matches the delivering run's plan.
     adoption = store.state.get("adoption")
-    prior = (store.state.get("revise") or {}).get("prior")
+    prior = (store.state.get("adoption") or {}).get("prior")
     if adoption is None or not prior or not prior.get("plan"):
         return
     prior_tasks = {t["id"]: t for t in prior["plan"]["tasks"]}
@@ -314,7 +314,7 @@ def _init(store, paths, ctx) -> dict:
         repo_path = Path(info["path"])
         if repo_module.branch_sha(repo_path, info["featureBranch"]) is None:
             repo_module.create_feature_branch(repo_path, info["featureBranch"], info["baseSha"])
-        worktree = paths.worktrees_dir / "feature" / name
+        worktree = paths.feature_worktree(name)
         repo_module.add_worktree(repo_path, worktree, branch=info["featureBranch"])
         # LF-15: defaultHead is the checkout's OWN branch (main, say) at entry --
         # a worker that commits there by mistake, instead of into its task
@@ -1087,6 +1087,17 @@ def _reconcile_plan(store, paths, ctx, execute_state: dict) -> None:
 
 # --- the phase product -------------------------------------------------
 
+def _published(task_state: dict) -> dict:
+    """D4: what the core's E3, E6 and E11 read about a task, published on the product
+    rather than read from this module's bucket: its step ids and the security signals
+    its reviewer was shown (probes is None until the diff probes run)."""
+    return {
+        "steps": {"implement": list(task_state.get("implementSteps") or []),
+                  "review": list(task_state.get("reviewSteps") or [])},
+        "securitySignals": ((task_state.get("probes") or {}).get("securitySignals")) or [],
+    }
+
+
 def _final_product(store, ctx, execute_state: dict) -> dict:
     tasks_out = []
     any_done = False
@@ -1095,14 +1106,14 @@ def _final_product(store, ctx, execute_state: dict) -> dict:
             any_done = True
             tasks_out.append({
                 "id": task_id, "disposition": "done", "evidence": task_state["evidence"],
-                "commits": task_state["commits"], "review": task_state["review"],
+                "commits": task_state["commits"], "review": task_state["review"], **_published(task_state),
             })
         elif task_state["status"] == "already-satisfied":
             tasks_out.append({
                 "id": task_id, "disposition": "already-satisfied",
                 "evidence": task_state["evidence"], "commits": [],
                 # LF-55: a close-out's no-change claim is closed by its review, which E6 reads.
-                "review": task_state["review"] if task_state.get("closeOut") else None,
+                "review": task_state["review"] if task_state.get("closeOut") else None, **_published(task_state),
             })
         elif task_state["status"] == "adopted":
             # LF-38: delivered by the adopted PR, not this run -- counts as done
@@ -1121,6 +1132,7 @@ def _final_product(store, ctx, execute_state: dict) -> dict:
                     "reviewedRange": adopted["reviewedRange"], "verdict": adopted["verdict"],
                     "findings": adopted["findings"], "securityDispositions": adopted["securityDispositions"],
                 },
+                **_published(task_state),
             })
 
     if any(t["status"] == "planGap" for t in execute_state["tasks"].values()):
@@ -1229,7 +1241,7 @@ def step(store, paths, ctx):
             elif task_state["status"] == "probing":
                 if _moved_after_refusal(task_state):
                     task_state["status"] = "blocked"
-                    execute_state["issues"].append({"task": task_id, "text": (
+                    execute_state["issues"].append({"task": task_id, "retries": task_state["retries"], "text": (
                         f"the task branch moved after its review was refused (reviewed candidate "
                         f"{task_state['reviewCandidate'][:12]}); a worker whose termination is unknown may have written to it")})
                     store.save()
@@ -1357,7 +1369,7 @@ def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record:
         # it ran (a retired worker's late write) is never relabelled as reviewed.
         task_state["status"] = "blocked"
         task_state["reason"] = None
-        execute_state["issues"].append({"task": task_id, "text": (
+        execute_state["issues"].append({"task": task_id, "retries": task_state["retries"], "text": (
             f"the task branch moved from {candidate[:12]} to {(current or 'missing')[:12]} while its review ran; "
             "the review covers only the issued candidate")})
         return

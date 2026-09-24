@@ -229,6 +229,42 @@
                 }
               }
             ]
+          },
+          "steps": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "implement",
+              "review"
+            ],
+            "properties": {
+              "implement": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "review": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "securitySignals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "file"
+              ],
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }
@@ -248,6 +284,9 @@
           },
           "text": {
             "type": "string"
+          },
+          "retries": {
+            "type": "integer"
           }
         }
       }

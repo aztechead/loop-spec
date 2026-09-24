@@ -31,19 +31,30 @@ of the lead and external implementation kinds.
 | Entry | an entry name and what it takes (a request or a PR) | `entries.ENTRIES`; the CLI and `controller._ENTRY_START` read it, and the `router` role chooses among its routable entries |
 
 The plug-in rule: a plug-in never imports another plug-in, and it returns the step
-contract's types from `steps.py`. The core reads a plug-in's products, not its
-private state. Two known deviations remain, as follow-ups:
+contract's types from `steps.py`. Since 7.4.0 the ownership of `state.json` is fixed,
+and `tests/test_architecture.py` enforces it:
 
-- The controller still reads plug-in state:
-  - `store.state["verify"]` (`_write_terminal_result`);
-  - the shared `executeRuns` and `verifyRuns` records;
-  - `debug.record_base_runs`, `debug.compact_products`, and `revise.gaps_from_pr`,
-    called at entry.
+- A plug-in owns one bucket, `state.<its phase>`. It never touches another's; it reads
+  that phase's product.
+- The core owns its records (`run`, `phase`, `steps`, `products`, `repos`, `adoption`,
+  `questions`, `budget`, `ledger`, `critic`, `closeOuts`, `routeFacts`, ...) and the
+  program's evidence, commands it ran itself (`executeRuns`, `verifyRuns`,
+  `criterionPasses`, `checkRuns`, `debugRuns`). A plug-in may read core state, and may
+  record a run it made through `baseline.run_command` in an evidence record.
+- The core never reads a plug-in's bucket and never imports a plug-in module. It reads
+  products, and it reaches a plug-in's hooks (`step`, `on_submit`, `run`, `compact`)
+  through `contract.default_adapter(phase)`.
+- A product field that names evidence (a step id, a retry count, the security signals a
+  reviewer was shown, a checkout) is read only when that phase ran its default
+  implementation, so an external product cannot vouch for itself.
 
-  Fixing this means each phase publishes what the core reads through its product.
-- The entry skill stubs (`skills/<entry>/SKILL.md`) each repeat the runner protocol.
-  One protocol file that the stubs cite, or stubs generated from it, would remove the
-  copies.
+One known duplication remains: PLAN's probes (`controller._phase_probes`) and P8 pick
+an adopted repo's start commit from `adoption.headSha`, while the planner's repo map
+reads the same commit from `repos.<repo>.lastKnownHead`.
+
+The entry skill stubs (`skills/<entry>/SKILL.md`) each repeat the runner protocol.
+One protocol file that the stubs cite, or stubs generated from it, would remove the
+copies.
 
 ## Implementation kinds and the step seam
 

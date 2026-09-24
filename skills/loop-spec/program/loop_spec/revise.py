@@ -1,12 +1,12 @@
 """The revise entry's phase module (M5): turn a PR's review comments into gaps, then
 one lead step (role `reviser`) turns those gaps into a compact SPEC and PLAN.
 
-Use `gaps_from_pr` once at entry (the controller's job, not this module's) to collect
-review comments off an adopted PR; `step`/`on_submit` the same way `debug.py` does;
-`adopted_range` wherever the adopted range's base/head SHAs are needed. Module state
-lives under `store.state["revise"]` (`gaps`, `product`); the PR identity the range and
-the reviser's inputs read comes from `store.state["adoption"]`, which the controller's
-own `run_entry("revise", pr=...)` populates.
+`step` fetches the adopted PR's review comments (`gaps_from_pr`) once, on its first
+call, then issues the reviser; `on_submit` the same way `debug.py` does; `compact` is
+the registry hook the core calls on acceptance; `adopted_range` wherever the adopted
+range's base/head SHAs are needed. Module state lives under `store.state["revise"]`
+(`gaps`, `product`); the PR identity and the delivering run's products (`prior`) come
+from `store.state["adoption"]`, which the core's revise entry populates.
 """
 import json
 from pathlib import Path
@@ -79,7 +79,7 @@ def _reviser_request(store, paths, ctx) -> dict:
         # LF-37: the delivering run's SPEC/PLAN products, found by the program in
         # its state home (controller._find_delivering_run_products); null when no
         # prior run matched this PR, so the reviser derives from the PR body/diff.
-        "prior": store.state["revise"].get("prior"),
+        "prior": store.state["adoption"].get("prior"),
         "repos": repo_map(store.state["repos"]),
         "probes": ctx.get("probes", {}),
     }
@@ -101,12 +101,24 @@ def _reviser_request(store, paths, ctx) -> dict:
 
 
 def step(store, paths, ctx):
-    revise_state = store.state.setdefault("revise", {"gaps": [], "product": None})
+    revise_state = store.state.setdefault("revise", {"product": None})
     if revise_state.get("product") is not None:
         return Product(revise_state["product"])
+    if "gaps" not in revise_state:
+        # Fetched once, into this module's own bucket (D4); an empty list is a PR
+        # with no comments, never a reason to fetch again.
+        adoption = store.state["adoption"]
+        revise_state["gaps"] = gaps_from_pr(Path(store.state["repos"][adoption["repo"]]["path"]), adoption["number"])
+        store.save()
     return IssueStep(_reviser_request(store, paths, ctx))
 
 
+def compact(product: dict) -> tuple[dict, dict]:
+    """The registry hook the core calls after accepting a revise product: its SPEC and
+    PLAN halves, re-entering through SPEC's approval flow as debug's do."""
+    return product["spec"], product["plan"]
+
+
 def on_submit(store, paths, step, result: dict) -> None:
-    store.state.setdefault("revise", {"gaps": [], "product": None})["product"] = result
+    store.state.setdefault("revise", {"product": None})["product"] = result
     store.save()

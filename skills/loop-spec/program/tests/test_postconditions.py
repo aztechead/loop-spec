@@ -268,8 +268,9 @@ class PostconditionsTests(unittest.TestCase):
         self.assertIn("not in the plan", p8(tasks=["T-9"]))
         self.assertIn("outside the file", p8(cites=[{"path": "README.md", "lines": "1-2"}]))
         self.assertIn("outside the file", p8(cites=[{"path": "README.md", "lines": "0-1"}]))
+        self.store.state["products"]["execute"] = None  # no EXECUTE product yet: base (or adopted head) only
         self.assertIn("does not exist", p8(cites=[{"path": "a.txt", "lines": "1-1"}]))  # added after base
-        self.store.state["execute"] = {"repos": {"repo": {"head": self.sha_a}}}
+        self.store.state["products"]["execute"] = {"product": {"heads": {"repo": self.sha_a}}}
         self.assertIsNone(p8(cites=[{"path": "a.txt", "lines": "1-1"}]))
 
     def test_p7(self):
@@ -296,6 +297,16 @@ class PostconditionsTests(unittest.TestCase):
         bad = copy.deepcopy(self.execute_product)
         bad["tasks"][0]["disposition"] = "removed"  # T-2 depends on an un-accepted T-1
         self.assertIsNotNone(self._boundary("execute", bad, "integrated")._e3())
+
+    def test_e3_ordering_rejects_a_step_the_program_never_issued(self):
+        # D4: the default EXECUTE publishes each task's step ids; one the program has no
+        # record of fails E3 instead of skipping the ordering check.
+        self.store.state["implementations"]["phases"]["execute"] = "default"
+        product = copy.deepcopy(self.execute_product)
+        product["tasks"][0]["steps"] = {"implement": [], "review": ["step-t1"]}
+        product["tasks"][1]["steps"] = {"implement": ["step-ghost"], "review": []}
+        self.store.state["steps"]["submissions"]["step-t1"] = {"submittedAt": "2026-01-01T00:00:00+00:00"}
+        self.assertIn("never issued", self._boundary("execute", product, "integrated")._e3())
 
     def test_e4(self):
         self.assertIsNone(self._boundary("execute", self.execute_product, "integrated")._e4())
@@ -374,10 +385,8 @@ class PostconditionsTests(unittest.TestCase):
         self.store.state["adoptedReview"] = adopted_review
         self.store.state["phase"]["adoptedReviewStepId"] = "step-adopted"
         self.store.state["steps"]["submissions"]["step-adopted"] = {"evidenceLevel": "host-attested"}
-        self.store.state.setdefault("execute", {})["tasks"] = {
-            "T-1": {"status": "adopted", "reviewSteps": []},
-            "T-2": {"status": "done", "reviewSteps": ["step-t2"]},
-        }
+        product["tasks"][0]["steps"] = {"implement": [], "review": []}
+        product["tasks"][1]["steps"] = {"implement": ["impl-t2"], "review": ["step-t2"]}
         self.store.state["steps"]["submissions"]["step-t2"] = {"evidenceLevel": "host-attested"}
         boundary = self._boundary("execute", product, "integrated")
         self.assertIsNone(boundary._e5())
@@ -420,19 +429,25 @@ class PostconditionsTests(unittest.TestCase):
     def test_e10_accepts_a_task_that_exhausted_its_own_retries(self):
         # LF-40: the task's per-step retries count, not only the phase's rejections.
         blocked = copy.deepcopy(self.execute_product)
-        blocked["issues"] = [{"task": "T-1", "text": "no commit was made on the task branch"}]
+        blocked["issues"] = [{"task": "T-1", "text": "no commit was made on the task branch",
+                              "retries": postconditions.retry_limit() + 1}]
         self.store.state["phase"]["retries"] = 0
-        self.store.state["execute"] = {"tasks": {"T-1": {"retries": postconditions.retry_limit() + 1}}}
+        self.store.state["implementations"]["phases"]["execute"] = "default"
         self.assertIsNone(self._boundary("execute", blocked, "blocked")._e10())
-        self.store.state["execute"]["tasks"]["T-1"]["retries"] = 1
+        blocked["issues"][0]["retries"] = 1
+        self.assertIsNotNone(self._boundary("execute", blocked, "blocked")._e10())
+        # D4: an external EXECUTE cannot vouch for its own retry count.
+        blocked["issues"][0]["retries"] = postconditions.retry_limit() + 1
+        self.store.state["implementations"]["phases"]["execute"] = "external"
         self.assertIsNotNone(self._boundary("execute", blocked, "blocked")._e10())
 
     def test_e11(self):
         self.assertIsNone(self._boundary("execute", self.execute_product, "integrated")._e11())
-        self.store.state["execute"] = {"tasks": {"T-1": {"probes": {"securitySignals": [
-            {"file": "a.txt", "signal": "auth", "reason": "strong term"}]}}}}
-        self.assertIsNotNone(self._boundary("execute", self.execute_product, "integrated")._e11())  # T-1 touches a.txt with no disposition
-        fixed = copy.deepcopy(self.execute_product)
+        self.store.state["implementations"]["phases"]["execute"] = "default"
+        flagged = copy.deepcopy(self.execute_product)
+        flagged["tasks"][0]["securitySignals"] = [{"file": "a.txt", "signal": "auth", "reason": "strong term"}]
+        self.assertIsNotNone(self._boundary("execute", flagged, "integrated")._e11())  # T-1 touches a.txt with no disposition
+        fixed = copy.deepcopy(flagged)
         fixed["tasks"][0]["review"]["securityDispositions"] = [{"signal": "a.txt", "disposition": "accepted", "reason": "reviewed"}]
         self.assertIsNone(self._boundary("execute", fixed, "integrated")._e11())
 
@@ -755,20 +770,20 @@ class PostconditionsTests(unittest.TestCase):
         # the worker's failureDigest against it (the checkouts differ, so a digest
         # comparison could never match).
         self.assertIsNotNone(self._boundary("debug", {"reproduction": {"command": "pytest -q", "failureDigest": "sha256:" + "d" * 64}}, "reproduced")._b1())
-        self.store.state["debug"] = {"baseRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": ["boom"], "fingerprints": []}}
+        self.store.state["debugRuns"] = {"baseRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": ["boom"], "fingerprints": []}}
         self.assertIsNone(self._boundary("debug", {"reproduction": {"command": "pytest -q", "failureDigest": "sha256:" + "d" * 64}}, "reproduced")._b1())
 
-        self.store.state["debug"] = {"baseRun": {"exitStatus": 127, "errorClass": "command-not-found"}}
+        self.store.state["debugRuns"] = {"baseRun": {"exitStatus": 127, "errorClass": "command-not-found"}}
         self.assertIn("could not run at base", self._boundary("debug", {}, "reproduced")._b1())
 
-        self.store.state["debug"] = {"baseRun": {"exitStatus": 0, "errorClass": None}}
+        self.store.state["debugRuns"] = {"baseRun": {"exitStatus": 0, "errorClass": None}}
         self.assertIn("passed at base", self._boundary("debug", {}, "reproduced")._b1())
 
-        self.store.state["debug"] = {"baseRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": [], "fingerprints": []}}
+        self.store.state["debugRuns"] = {"baseRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": [], "fingerprints": []}}
         self.assertIsNotNone(self._boundary("debug", {}, "reproduced")._b1())
 
         # LF-53: a shell reproduction is rejected on its form, whatever the base run says.
-        self.store.state["debug"] = {"baseRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": ["boom"], "fingerprints": []}}
+        self.store.state["debugRuns"] = {"baseRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": ["boom"], "fingerprints": []}}
         product = {"reproduction": {"command": "cd pkg && pytest -q", "failureDigest": "sha256:" + "d" * 64}}
         self.assertIn("reproduction command uses the shell operator '&&'", self._boundary("debug", product, "reproduced")._b1())
 
@@ -776,10 +791,10 @@ class PostconditionsTests(unittest.TestCase):
         changed = {"original": {"command": "pytest -q"}, "reproduction": {"reason": None}}
         self.assertIsNotNone(self._boundary("debug", changed, "reproduced")._b2())
         changed["reproduction"]["reason"] = "the failure moved files"
-        self.store.state["debug"] = {"originalRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": ["x"], "fingerprints": []}}
+        self.store.state["debugRuns"] = {"originalRun": {"exitStatus": 1, "errorClass": None, "failureIdentities": ["x"], "fingerprints": []}}
         self.assertIsNone(self._boundary("debug", changed, "reproduced")._b2())
         # Same normalization as B1: an original run that passed at base does not hold.
-        self.store.state["debug"] = {"originalRun": {"exitStatus": 0, "errorClass": None}}
+        self.store.state["debugRuns"] = {"originalRun": {"exitStatus": 0, "errorClass": None}}
         self.assertIsNotNone(self._boundary("debug", changed, "reproduced")._b2())
         # LF-53: the original command is checked on its form too.
         changed["original"]["command"] = "pytest -q; true"
@@ -858,9 +873,6 @@ class PostconditionsTests(unittest.TestCase):
     def test_e6_binds_a_no_change_close_out_review_to_the_obligation_and_head(self):
         entry = self._close_out()
         self.store.state["implementations"]["phases"]["execute"] = "default"
-        self.store.state["execute"] = {"tasks": {
-            "T-1": {"status": "done", "reviewSteps": ["step-t1"]}, "T-2": {"status": "done", "reviewSteps": ["step-t2"]},
-            "C-1": {"status": "already-satisfied", "reviewSteps": ["step-c1"], "closeOut": "C-1"}}}
         for sid in ("step-t1", "step-t2", "step-c1"):
             self.store.state["steps"]["submissions"][sid] = {"evidenceLevel": "host-attested"}
         step_dir = self.paths.steps_dir / "step-c1"
@@ -872,7 +884,10 @@ class PostconditionsTests(unittest.TestCase):
         write_prompt(postconditions.close_out_view(entry))
         product = copy.deepcopy(self.execute_product)
         at_head = {"reviewedRange": {"from": self.sha_b, "to": self.sha_b}, "verdict": "pass", "findings": [], "securityDispositions": []}
-        product["tasks"].append({"id": "C-1", "disposition": "already-satisfied", "evidence": "already satisfied: yes", "commits": [], "review": at_head})
+        product["tasks"][0]["steps"] = {"implement": [], "review": ["step-t1"]}
+        product["tasks"][1]["steps"] = {"implement": [], "review": ["step-t2"]}
+        product["tasks"].append({"id": "C-1", "disposition": "already-satisfied", "evidence": "already satisfied: yes", "commits": [], "review": at_head,
+                                 "steps": {"implement": [], "review": ["step-c1"]}})
         self.assertIsNone(self._boundary("execute", product, "integrated")._e6())
 
         stale = copy.deepcopy(product)  # attested and passing, but reviewed at an older head
@@ -892,7 +907,6 @@ class PostconditionsTests(unittest.TestCase):
         entry = self._close_out()
         entry["text"] = "rename the helper \u2014 it shadows a builtin"
         self.store.state["implementations"]["phases"]["execute"] = "default"
-        self.store.state["execute"] = {"tasks": {"T-1": {"reviewSteps": ["s1"]}, "T-2": {"reviewSteps": ["s2"]}, "C-1": {"reviewSteps": ["s3"]}}}
         for sid in ("s1", "s2", "s3"):
             self.store.state["steps"]["submissions"][sid] = {"evidenceLevel": "host-attested"}
         role = Role(name="code-reviewer", body="Review.", schema={"type": "object"}, source="default", version="sha256:" + "0" * 64)
@@ -901,7 +915,10 @@ class PostconditionsTests(unittest.TestCase):
         atomic_write_json(self.paths.steps_dir / "s3" / "step.json", {"prompt": prompt})
         product = copy.deepcopy(self.execute_product)
         review = {"reviewedRange": {"from": self.sha_b, "to": self.sha_b}, "verdict": "pass", "findings": [], "securityDispositions": []}
-        product["tasks"].append({"id": "C-1", "disposition": "already-satisfied", "evidence": "e", "commits": [], "review": review})
+        product["tasks"][0]["steps"] = {"implement": [], "review": ["s1"]}
+        product["tasks"][1]["steps"] = {"implement": [], "review": ["s2"]}
+        product["tasks"].append({"id": "C-1", "disposition": "already-satisfied", "evidence": "e", "commits": [], "review": review,
+                                 "steps": {"implement": [], "review": ["s3"]}})
         self.assertIsNone(self._boundary("execute", product, "integrated")._e6())
 
     def test_i2_resolves_an_execute_gap_to_a_known_repo(self):
@@ -948,8 +965,8 @@ class RouteAndDirectPostconditionTests(unittest.TestCase):
                                                     "createdAt": "2026-01-01T00:00:00+00:00"}, "do it")
         self.store.state["repos"] = {"repo": {"path": str(self.repo_dir)}}
         ref = {"ref": "#42", "number": 42, "url": "https://example.invalid/o/r/pull/42", "adoptable": True, "reason": "open"}
-        self.store.state["route"] = {"facts": {"prRefs": [{**ref, "repo": "repo"},
-                                                          {**ref, "ref": "#7", "number": 7, "repo": None, "adoptable": False}]}}
+        self.store.state["routeFacts"] = {"prRefs": [{**ref, "repo": "repo"},
+                                                     {**ref, "ref": "#7", "number": 7, "repo": None, "adoptable": False}]}
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -969,7 +986,7 @@ class RouteAndDirectPostconditionTests(unittest.TestCase):
         self.assertIn("route-refused:unknown-entry", self._route("auto", None)[0][1])
         self.assertIn("route-refused:pr-not-adoptable", self._route("revise", 7)[0][1])
         self.assertIn("route-refused:pr-not-named", self._route("micro", 9)[0][1])
-        facts = self.store.state["route"]["facts"]["prRefs"]
+        facts = self.store.state["routeFacts"]["prRefs"]
         facts.append({**facts[0], "repo": "other"})
         self.assertIn("route-refused:pr-ambiguous", self._route("revise", 42)[0][1])
 

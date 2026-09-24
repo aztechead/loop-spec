@@ -301,8 +301,26 @@
           },
           "full": {
             "type": "boolean"
+          },
+          "reviewStep": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reusedRangeId": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
+      }
+    },
+    "checkouts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
       }
     }
   }

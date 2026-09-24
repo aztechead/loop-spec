@@ -14,7 +14,6 @@ from typing import Literal
 from loop_spec import baseline as baseline_module
 from loop_spec import budget as budget_module
 from loop_spec import contract
-from loop_spec import debug as debug_module
 from loop_spec import ledger as ledger_module
 from loop_spec import postconditions
 from loop_spec import probes as probes_module
@@ -22,7 +21,6 @@ from loop_spec import questions
 from loop_spec import repo as repo_module
 from loop_spec import repo_checks
 from loop_spec import result as result_module
-from loop_spec import revise as revise_module
 from loop_spec import steps
 from loop_spec.entries import ENTRIES, RESUME_PHASES
 from loop_spec.errors import LoopSpecError
@@ -31,7 +29,7 @@ from loop_spec.jsonio import atomic_write_json, read_json
 from loop_spec.events import emit, marker_phase_end, marker_phase_start
 from loop_spec.paths import FeaturePaths, ensure_results_dir, feature_dir, repo_id, slug_from_request
 from loop_spec.paths import state_home as resolve_state_home
-from loop_spec.state import StateStore
+from loop_spec.state import STATE_FORMAT, StateStore
 
 _PHASE_ORDER = ["spec", "plan", "execute", "verify", "iterate", "deliver"]
 _ALL_IMPLEMENTATION_PHASES = list(contract.DEFAULT_IMPLEMENTATIONS)
@@ -144,7 +142,7 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
             # adopted before it has chosen (the hand-off adopts through _adopt).
             _resolve_repos(store, project_root, slug, None, home)
             repos = [(name, Path(info["path"])) for name, info in store.state["repos"].items()]
-            store.state["route"] = {"facts": {"prRefs": probes_module.pr_refs(repos, request_text)}}
+            store.state["routeFacts"] = {"prRefs": probes_module.pr_refs(repos, request_text)}
         elif entry == "direct":
             _resolve_repos(store, project_root, slug, None, home)
         else:
@@ -170,8 +168,10 @@ def _find_run_by_adoption_number(home: Path, rid: str, number: int, project_root
         # same PR is a different piece of work, never the one `revise --pr` resumes.
         # A finished run (state.result set; a paused result.json alone is still
         # resumable) is one round of review, never reopened: new comments get a new run.
+        # A pre-7.4.0 run cannot be resumed (check_compatible), so it never blocks a new round.
         if (state["run"].get("cycleType") == "revise" and adoption is not None
-                and adoption.get("number") == number and state.get("result") is None):
+                and adoption.get("number") == number and state.get("result") is None
+                and state.get("stateFormat", 1) >= STATE_FORMAT):
             return slug_dir.name
     return None
 
@@ -275,11 +275,10 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
     run_fields = {"id": new_id("run"), "entry": "revise", "createdAt": now_iso(), "slug": slug, "repoId": rid, "cycleType": "revise"}
     store = StateStore.create(paths, run_fields, request_text)
     store.state["repos"] = {repo_name: repo_entry}
-    store.state["adoption"] = adoption_record
-    store.state["revise"] = {
-        "gaps": revise_module.gaps_from_pr(repo_path, adoption.number), "product": None,
-        "prior": _find_delivering_run_products(home, rid, adoption.url, project_root),
-    }
+    # D4: the delivering run's products are a fact about the adopted PR (core-owned);
+    # revise.py fetches the PR's comments into its own bucket on its first step.
+    store.state["adoption"] = {**adoption_record,
+                               "prior": _find_delivering_run_products(home, rid, adoption.url, project_root)}
     store.state["phase"]["current"] = "revise"
     _resolve_implementations(store, project_root)
     if answer_policy == "default":
@@ -293,6 +292,15 @@ def check_compatible(store: StateStore) -> None:
     stored baselines, cached comparisons and critic facts were all made under the rules
     that captured it. Checked before any command touches the run's state; a run with no
     baseline yet has nothing to be incompatible with."""
+    # 7.4.0 (D4): phase state moved out of plug-in buckets into products and core
+    # records, so an older run's state is a different shape. A finished run runs
+    # nothing more, so it still reads (its result, a routed hand-off) as before.
+    if store.state.get("stateFormat", 1) < STATE_FORMAT and store.state.get("result") is None:
+        raise LoopSpecError(
+            f"this run's state is format {store.state.get('stateFormat', 1)}, from a loop-spec before 7.4.0; "
+            f"this program reads format {STATE_FORMAT}",
+            repair="finish the run on the loop-spec version that started it, or start a new run with --slug <new-slug>",
+        )
     baseline_state = store.state.get("baseline")
     if baseline_state is None:
         return
@@ -761,7 +769,7 @@ def _accept_debug_product(store: StateStore, paths: FeaturePaths, project_root: 
         _ask_pause_question(store, paths, "debug", exit_, product)
         return
 
-    # "reproduced": B1/B2 need the base run debug.record_base_runs is about to
+    # "reproduced": B1/B2 need the base run _run_reproduction_runs is about to
     # capture, so they run against THIS boundary object after it, not through the
     # normal ROUTES-driven check() (which would also try S1-S3/P1-P7 against the
     # whole debug product instead of the SPEC/PLAN halves those ids actually name --
@@ -773,7 +781,7 @@ def _accept_debug_product(store: StateStore, paths: FeaturePaths, project_root: 
         _reject_product(store, paths, "debug", attempt_id, exit_, form)
         return
     _, repo_info = next(iter(store.state["repos"].items()))
-    debug_module.record_base_runs(store, paths, product, Path(repo_info["path"]), repo_info["baseSha"])
+    _run_reproduction_runs(store, paths, product, Path(repo_info["path"]), repo_info["baseSha"])
     failures = [postconditions.Failure(req_id, message) for req_id in ("B1", "B2")
                 for message in [getattr(boundary, f"_{req_id.lower()}")()] if message is not None]
     if failures:
@@ -781,11 +789,43 @@ def _accept_debug_product(store: StateStore, paths: FeaturePaths, project_root: 
         return
     _record_accepted_product(store, "debug", attempt_id, product, exit_, boundary)
 
-    spec_product, plan_product = debug_module.compact_products(product)
+    spec_product, plan_product = contract.default_adapter("debug").compact(product)
     spec_product = {**spec_product, "exit": "approved", "inputsDigest": product["inputsDigest"],
                      "boundTo": {"requirements": None, "plan": None}}
     plan_product = {**plan_product, "exit": "ready", "inputsDigest": product["inputsDigest"]}
     _begin_compaction(store, paths, project_root, spec_product, plan_product)
+
+
+def _with_error_class(run: dict) -> dict:
+    """LF-23: a pyenv shim (or similar wrapper) can exit 127 without ever raising
+    FileNotFoundError, so run_command's own exception-based errorClass detection
+    never fires for it. Backfilling errorClass from the exit status here lets B1's
+    message name a missing binary either way run_command found it."""
+    if run.get("exitStatus") == 127 or run.get("errorClass") is not None:
+        return {**run, "errorClass": run.get("errorClass") or "command-not-found"}
+    return run
+
+
+def _run_reproduction_runs(store: StateStore, paths: FeaturePaths, product: dict, repo_path: Path, base_sha: str) -> None:
+    """The program's own clean re-run of a debug product's reproduction (and of the
+    original command it replaced) at base: core evidence beside executeRuns and
+    verifyRuns, which B1 and B2 read (D4: not the debug module's bucket)."""
+    checkout = Path(paths.checkouts_dir) / f"debug-base-{base_sha[:12]}"
+    repo_module.clean_checkout(repo_path, base_sha, checkout)
+    try:
+        base_run = baseline_module.run_command(product["reproduction"]["command"], checkout, base_sha)
+        # LF-23: the worker's own failureDigest came from its own checkout, a
+        # different path than the program's clean checkout above -- the two digests
+        # can never match, so this is recorded as the worker's claim, never compared.
+        runs = {"baseRun": _with_error_class(base_run.to_dict()),
+                "claimedDigest": product["reproduction"]["failureDigest"]}
+        if product.get("original") is not None:
+            original_run = baseline_module.run_command(product["original"]["command"], checkout, base_sha)
+            runs["originalRun"] = _with_error_class(original_run.to_dict())
+        store.state["debugRuns"] = runs
+    finally:
+        repo_module.remove_worktree(repo_path, checkout, force=True)
+    store.save()
 
 
 def _accept_revise_product(store: StateStore, paths: FeaturePaths, project_root: Path, attempt_id: str, product: dict) -> None:
@@ -797,10 +837,10 @@ def _accept_revise_product(store: StateStore, paths: FeaturePaths, project_root:
     # the seven ROUTES phases; revise.py already owns store.state["revise"]["product"]
     # as its own record). It re-enters through SPEC's own approval flow, same as
     # debug's compacted product below.
-    store.state.setdefault("revise", {})["acceptedAttempt"] = attempt_id
     inputs_digest = digest(product)
-    spec_product = {**product["spec"], "exit": "approved", "inputsDigest": inputs_digest, "boundTo": {"requirements": None, "plan": None}}
-    plan_product = {**product["plan"], "exit": "ready", "inputsDigest": inputs_digest}
+    spec_half, plan_half = contract.default_adapter("revise").compact(product)
+    spec_product = {**spec_half, "exit": "approved", "inputsDigest": inputs_digest, "boundTo": {"requirements": None, "plan": None}}
+    plan_product = {**plan_half, "exit": "ready", "inputsDigest": inputs_digest}
     _begin_compaction(store, paths, project_root, spec_product, plan_product)
 
 
@@ -836,7 +876,7 @@ def _hand_off(store: StateStore, paths: FeaturePaths, project_root: Path, produc
     entry = product["entry"]
     url = None
     if product["pr"] is not None:
-        url = next(r["url"] for r in store.state["route"]["facts"]["prRefs"]
+        url = next(r["url"] for r in store.state["routeFacts"]["prRefs"]
                    if r["adoptable"] and r["number"] == product["pr"])
     store.state["run"]["routedTo"] = {"entry": entry, "pr": url, "reason": product["reason"]}
     if entry == "revise":
@@ -1461,7 +1501,7 @@ def _close_close_outs(store: StateStore, attempt_id: str, product: dict) -> None
     for entry in store.state.get("closeOuts") or []:
         task = by_id[entry["id"]]
         review = task.get("review") or {}
-        _, step_id = postconditions.review_evidence(store, entry["id"])
+        _, step_id = postconditions.review_evidence(store, task)
         closure = {
             "disposition": task["disposition"], "repo": entry["repo"], "commits": list(task["commits"]),
             "reviewedRange": review.get("reviewedRange"), "verdict": review.get("verdict"),
@@ -1497,18 +1537,19 @@ def _record_accepted_product(store: StateStore, phase: str, attempt_id: str, pro
         # than stamped with whichever range happened to be recorded last.
         # LF-60: each range's own review step (a reused range keeps the step that
         # originally reviewed it), so a later pass can check that evidence.
-        verify_state = store.state.get("verify") or {}
+        # D4: the default VERIFY publishes each range's review step; an external one
+        # cannot name a step to vouch for its range, so it records none, as before.
+        trusted = postconditions.ran_default(store, "verify")
         findings = product.get("findings", [])
         reviewed_ranges = product["reviewedRanges"]
         multi_repo = len(reviewed_ranges) > 1
         for reviewed_range in reviewed_ranges:
             repo = reviewed_range["repo"]
-            reused = (verify_state.get("reused") or {}).get(repo)
-            by_step = reused["byStep"] if reused else (verify_state.get("reviewerSteps") or {}).get(repo)
             range_id = ledger_module.record_range(
                 store, repo=repo, from_sha=reviewed_range["from"], to_sha=reviewed_range["to"],
-                full=reviewed_range["full"], sha=reviewed_range["to"], by_step=by_step,
-                reused_from=reused["rangeId"] if reused else None,
+                full=reviewed_range["full"], sha=reviewed_range["to"],
+                by_step=reviewed_range.get("reviewStep") if trusted else None,
+                reused_from=reviewed_range.get("reusedRangeId") if trusted else None,
             )
             repo_findings = [f for f in findings if f.get("repo") == repo] if multi_repo else findings
             ledger_module.record_findings(store, repo_findings, sha=reviewed_range["to"], range_id=range_id)

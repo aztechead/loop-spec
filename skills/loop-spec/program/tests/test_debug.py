@@ -1,10 +1,12 @@
-"""Unit tests for loop_spec.debug: base-run recording and compact_products."""
+"""Unit tests for loop_spec.debug (step, compact) and the core's own re-run of a debug
+product's reproduction (controller._run_reproduction_runs, state.debugRuns)."""
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
-from loop_spec.debug import compact_products, on_submit, record_base_runs, step
+from loop_spec.controller import _run_reproduction_runs as record_base_runs
+from loop_spec.debug import compact as compact_products, on_submit, step
 from loop_spec.steps import IssueStep, Product
 from loop_spec.paths import FeaturePaths
 from loop_spec.state import StateStore
@@ -79,22 +81,22 @@ class RecordBaseRunsTests(unittest.TestCase):
     def test_failing_reproduction_stores_a_nonzero_base_run(self):
         product = _debug_product("sh repro.sh")
         record_base_runs(self.store, self.paths, product, self.repo, self.base_sha)
-        self.assertEqual(self.store.state["debug"]["baseRun"]["exitStatus"], 1)
-        self.assertNotIn("originalRun", self.store.state["debug"])
+        self.assertEqual(self.store.state["debugRuns"]["baseRun"]["exitStatus"], 1)
+        self.assertNotIn("originalRun", self.store.state["debugRuns"])
 
     def test_an_original_reproduction_is_also_recorded(self):
         product = _debug_product("sh repro.sh", original_command="sh old-repro.sh")
         record_base_runs(self.store, self.paths, product, self.repo, self.base_sha)
-        self.assertEqual(self.store.state["debug"]["originalRun"]["exitStatus"], 1)
+        self.assertEqual(self.store.state["debugRuns"]["originalRun"]["exitStatus"], 1)
 
     def test_a_reproduction_naming_a_missing_binary_records_command_not_found(self):
         # LF-23: run_command itself never sets errorClass for a shim's own 127 (no
-        # FileNotFoundError was raised); record_base_runs backfills it so B1's
+        # FileNotFoundError was raised); the core backfills it so B1's
         # message can name what actually went wrong.
         product = _debug_product("sh missing-binary-shim.sh")
         record_base_runs(self.store, self.paths, product, self.repo, self.base_sha)
-        self.assertEqual(self.store.state["debug"]["baseRun"]["exitStatus"], 127)
-        self.assertEqual(self.store.state["debug"]["baseRun"]["errorClass"], "command-not-found")
+        self.assertEqual(self.store.state["debugRuns"]["baseRun"]["exitStatus"], 127)
+        self.assertEqual(self.store.state["debugRuns"]["baseRun"]["errorClass"], "command-not-found")
 
 
 class CompactProductsTests(unittest.TestCase):

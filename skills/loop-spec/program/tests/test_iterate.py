@@ -69,10 +69,10 @@ class IterateTests(unittest.TestCase):
                                                "lastKnownHead": self.head_sha}}
         self.store.state["products"]["execute"] = {"exit": "integrated", "product": {"heads": {"repo": self.head_sha}}}
         self.store.state["products"]["spec"] = {"exit": "approved", "product": {"criteria": [{"id": "AC-1", "text": "it works"}]}}
-        self.store.state["products"]["verify"] = {"exit": "passed", "product": {"verdicts": []}}
         self.checkout = self.paths.checkouts_dir / f"verify-{self.head_sha[:12]}"
         self.checkout.mkdir(parents=True)
-        self.store.state["verify"] = {"checkouts": {"repo": str(self.checkout)}}
+        self.store.state["products"]["verify"] = {"exit": "passed", "product": {"verdicts": [],
+                                                                               "checkouts": {"repo": str(self.checkout)}}}
         self.store.save()
 
         self.ctx = {"attempt": {"id": "attempt-1"}, "inputs": {"digest": "sha256:" + "a" * 64},

@@ -151,7 +151,14 @@ def adopted_commits(store, repo_name: str, repo_path: Path) -> set[str]:
     return set(repo_module.commits_between(repo_path, adoption["baseSha"], adoption["headSha"]))
 
 
-def review_evidence(store, task_id: str) -> tuple[str, str | None]:
+def ran_default(store, phase: str) -> bool:
+    """D4: a product field that names evidence (a step id, a retry count, the signals a
+    reviewer was shown) is read only when the phase ran its default implementation; an
+    external product cannot vouch for its own evidence. Same test as review_evidence's."""
+    return store.state["implementations"]["phases"].get(phase) != "external"
+
+
+def review_evidence(store, task: dict) -> tuple[str, str | None]:
     """The evidence level and step id for one EXECUTE task's review: E6 and
     result.py's `reviewed` field both need this. An external EXECUTE's whole
     product is one human-attested submission with no per-task review step; the
@@ -159,18 +166,19 @@ def review_evidence(store, task_id: str) -> tuple[str, str | None]:
     evidence-level judgment) is the real evidence, and its id names it."""
     if store.state["implementations"]["phases"].get("execute") == "external":
         return "human-attested", None
-    task_state = (store.state.get("execute") or {}).get("tasks", {}).get(task_id, {})
-    if task_state.get("status") == "adopted":
+    if task.get("disposition") == "adopted":
         # LF-42: an adopted task never had a review step of its own; the adopted
         # range review (issued before EXECUTE's first attempt) is its evidence.
         step_id = store.state["phase"].get("adoptedReviewStepId")
         if step_id is None:
             return "unattested", None
         return store.state["steps"]["submissions"].get(step_id, {}).get("evidenceLevel", "unattested"), step_id
-    review_steps = task_state.get("reviewSteps") or []
+    review_steps = (task.get("steps") or {}).get("review") or []
     if not review_steps:
         return "unattested", None
     step_id = review_steps[-1]
+    # The level is the core's record of that step's submission, so a product cannot
+    # claim more than its step earned; an unknown id reads as unattested.
     level = store.state["steps"]["submissions"].get(step_id, {}).get("evidenceLevel", "unattested")
     return level, step_id
 
@@ -477,7 +485,8 @@ class Boundary:
         repos = self._repo_entries()
         task_ids = {t["id"] for t in self.product["tasks"]}
         adoption = self.store.state.get("adoption") or {}
-        execute_repos = (self.store.state.get("execute") or {}).get("repos") or {}
+        # A re-plan after EXECUTE also resolves cites at the heads EXECUTE published.
+        execute_heads = ((self.store.state["products"].get("execute") or {}).get("product") or {}).get("heads") or {}
         for entry in self.product.get("existingCode") or []:
             if entry["repo"] not in repos:
                 return f"existingCode {entry['concept']!r} names an unknown repo {entry['repo']!r}"
@@ -488,8 +497,8 @@ class Boundary:
                 return f"existingCode {entry['concept']!r} is {entry['decision']} but cites no code"
             info = repos[entry["repo"]]
             shas = [adoption["headSha"] if adoption.get("repo") == entry["repo"] else info["baseSha"]]
-            if (execute_repos.get(entry["repo"]) or {}).get("head"):
-                shas.append(execute_repos[entry["repo"]]["head"])  # code an earlier task of this run added
+            if execute_heads.get(entry["repo"]):
+                shas.append(execute_heads[entry["repo"]])  # code an earlier task of this run added
             for cite in entry["cites"]:
                 first, last = (int(n) for n in cite["lines"].split("-"))
                 texts = [shown.stdout for sha in shas
@@ -570,25 +579,30 @@ class Boundary:
         path = self.paths.steps_dir / step_id / "step.json"
         return read_json(path).get("issuedAt") if path.is_file() else None
 
-    def _e3_dispatch_ordering(self, execute_tasks: dict, task_id: str, dep_id: str) -> str | None:
+    def _e3_dispatch_ordering(self, steps_by_task: dict, task_id: str, dep_id: str) -> str | None:
         # An external EXECUTE product has no per-task dispatch timeline (execute.py
         # never ran), so there is nothing to order here beyond the disposition check
-        # above; the default implementation's own state.execute.tasks records it.
-        task_steps = execute_tasks.get(task_id, {}).get("implementSteps") or []
-        dep_steps = execute_tasks.get(dep_id, {}).get("reviewSteps") or execute_tasks.get(dep_id, {}).get("implementSteps") or []
+        # above; the default implementation publishes each task's step ids.
+        task_steps = steps_by_task.get(task_id, {}).get("implement") or []
+        dep_steps = steps_by_task.get(dep_id, {}).get("review") or steps_by_task.get(dep_id, {}).get("implement") or []
         if not task_steps or not dep_steps:
             return None
         submissions = self.store.state["steps"]["submissions"]
         task_started = self._step_issued_at(task_steps[0])
         dep_finished = submissions.get(dep_steps[-1], {}).get("submittedAt")
-        if task_started and dep_finished and task_started < dep_finished:
+        if task_started is None:
+            return f"task {task_id} names implement step {task_steps[0]}, which the program never issued"
+        if dep_finished is None:
+            return f"task {dep_id} names step {dep_steps[-1]}, which has no recorded submission"
+        if task_started < dep_finished:
             return f"task {task_id} was dispatched before its dependency {dep_id} finished"
         return None
 
     def _e3(self) -> str | None:
         by_id = {t["id"]: t for t in self.product["tasks"]}
         plan_tasks = {t["id"]: t for t in self.store.state["products"]["plan"]["product"]["tasks"]}
-        execute_tasks = (self.store.state.get("execute") or {}).get("tasks", {})
+        steps_by_task = ({t["id"]: t.get("steps") or {} for t in self.product["tasks"]}
+                         if ran_default(self.store, "execute") else {})
         for task in self.product["tasks"]:
             if task["disposition"] != "done":
                 continue
@@ -599,7 +613,7 @@ class Boundary:
                 dep_task = by_id.get(dep_id)
                 if dep_task is None or dep_task["disposition"] not in ("done", "already-satisfied", "adopted"):
                     return f"task {task['id']} depends on {dep_id}, which has no accepted disposition"
-                ordering_error = self._e3_dispatch_ordering(execute_tasks, task["id"], dep_id)
+                ordering_error = self._e3_dispatch_ordering(steps_by_task, task["id"], dep_id)
                 if ordering_error:
                     return ordering_error
         return None
@@ -660,7 +674,7 @@ class Boundary:
                 failure = self._no_change_proof(registry[task["id"]], task, is_external)
                 if failure:
                     return failure
-            level, _ = review_evidence(self.store, task["id"])
+            level, _ = review_evidence(self.store, task)
             if level in ACCEPTED_REVIEW_LEVELS or (level == "human-attested" and is_external):
                 continue
             if level == "unattested" and accept_unattested:
@@ -687,7 +701,7 @@ class Boundary:
             return f"close-out {cid}: its no-change review covers {reviewed['from'][:12]}..{reviewed['to'][:12]}, not the empty range at head {str(head)[:12]}"
         if is_external:
             return None
-        _, step_id = review_evidence(self.store, cid)
+        _, step_id = review_evidence(self.store, task)
         step_path = self.paths.steps_dir / str(step_id) / "step.json"
         prompt = read_json(step_path).get("prompt", "") if step_id and step_path.is_file() else ""
         if render_json(close_out_view(entry)) not in prompt:
@@ -743,9 +757,8 @@ class Boundary:
         # A task that exhausted its own per-step retries is what E10 means by "up to
         # the per-step retry limit"; counting only the phase's product rejections made
         # a correctly blocked product re-run three empty attempts first (LF-40).
-        task_states = (self.store.state.get("execute") or {}).get("tasks") or {}
-        step_retries_exhausted = any(
-            task_states.get(i.get("task"), {}).get("retries", 0) > retry_limit() for i in issues
+        step_retries_exhausted = ran_default(self.store, "execute") and any(
+            i.get("retries", 0) > retry_limit() for i in issues
         )
         if (self.store.state["phase"].get("retries", 0) < retry_limit() and not has_permission_denied
                 and not step_retries_exhausted):
@@ -753,12 +766,12 @@ class Boundary:
         return None
 
     def _e11(self) -> str | None:
-        # 7.1.1: the signals are the ones the program probed on the task's own diff
-        # (execute.py stores them with the review-time probes, close-outs included).
-        task_states = (self.store.state.get("execute") or {}).get("tasks") or {}
+        # 7.1.1: the signals are the ones the program probed on the task's own diff at
+        # review time, close-outs included; the default EXECUTE publishes that set.
+        if not ran_default(self.store, "execute"):
+            return None
         for task in self.product["tasks"]:
-            probes = task_states.get(task["id"], {}).get("probes") or {}
-            flagged = {signal["file"] for signal in probes.get("securitySignals") or []}
+            flagged = {signal["file"] for signal in task.get("securitySignals") or []}
             covered = {d["signal"] for d in (task.get("review") or {}).get("securityDispositions", [])}
             if not flagged <= covered:
                 return f"task {task['id']} touches a security signal with no disposition"
@@ -999,8 +1012,8 @@ class Boundary:
         if accepted is None:
             return entry["deliveredSha"]
         globs = (load_config(self.project_root).get("deliver") or {}).get("acceptRemotePaths") or []
-        execute_repo = ((self.store.state.get("execute") or {}).get("repos") or {}).get(entry["repo"])
-        where = Path(execute_repo["worktree"]) if execute_repo else Path(repo_info["path"])
+        worktree = self.paths.feature_worktree(entry["repo"])
+        where = worktree if worktree.is_dir() else Path(repo_info["path"])
         ext = repo_module.remote_extension(where, repo_info["featureBranch"], entry["deliveredSha"], repo_info["baseSha"], globs)
         if ext["state"] != "extension" or ext["refused"] or \
                 {k: ext[k] for k in ("head", "commits", "paths")} != accepted:
@@ -1140,7 +1153,7 @@ class Boundary:
     def _b1(self) -> str | None:
         if (form := self._b1_form()) is not None:
             return form
-        return self._reproduction_run_holds((self.store.state.get("debug") or {}).get("baseRun"))
+        return self._reproduction_run_holds((self.store.state.get("debugRuns") or {}).get("baseRun"))
 
     def _b2(self) -> str | None:
         if self.product.get("original") is None:
@@ -1149,7 +1162,7 @@ class Boundary:
             return form
         if not self.product["reproduction"].get("reason"):
             return "a changed reproduction needs a stated reason"
-        return self._reproduction_run_holds((self.store.state.get("debug") or {}).get("originalRun"))
+        return self._reproduction_run_holds((self.store.state.get("debugRuns") or {}).get("originalRun"))
 
     def _b3(self) -> str | None:
         if self.product.get("reproduction") is not None:
@@ -1159,7 +1172,7 @@ class Boundary:
     # -- A: ROUTE (7.3.0) -------------------------------------------------
 
     def _route_facts(self) -> list[dict]:
-        return ((self.store.state.get("route") or {}).get("facts") or {}).get("prRefs") or []
+        return (self.store.state.get("routeFacts") or {}).get("prRefs") or []
 
     def _a1(self) -> str | None:
         from loop_spec.entries import ROUTABLE

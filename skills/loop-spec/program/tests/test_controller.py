@@ -1037,7 +1037,7 @@ class DebugAndReviseEntryTests(_QuietStdout):
 
                 store = _open(paths)
                 self.assertEqual(store.state["products"]["debug"]["exit"], "reproduced")
-                self.assertEqual(store.state["debug"]["baseRun"]["exitStatus"], 1)
+                self.assertEqual(store.state["debugRuns"]["baseRun"]["exitStatus"], 1)
                 self.assertEqual(next_.kind, "question")  # the compacted SPEC's own approval question
                 next_ = _approve_compacted_spec_and_submit_critic(paths, repo_dir, markers, next_)
 
@@ -1293,7 +1293,7 @@ class DebugAndReviseEntryTests(_QuietStdout):
                 paths = FeaturePaths(root=feature_dir(home, rid, "revise-42"))
                 store = _open(paths)
                 self.assertEqual(store.state["run"]["cycleType"], "revise")
-                self.assertEqual(store.state["revise"]["prior"], {"slug": "delivered-42", "spec": prior_spec, "plan": prior_plan,
+                self.assertEqual(store.state["adoption"]["prior"], {"slug": "delivered-42", "spec": prior_spec, "plan": prior_plan,
                                                          "commentsCutoff": None})
                 self.assertEqual(next_.kind, "step")
 
@@ -1682,7 +1682,7 @@ class AutoRouteTests(_QuietStdout):
             adoption = repo_module.PrAdoption(adopt=True, number=42, url="https://example.invalid/o/r/pull/42",
                                               branch="pr-branch", base_branch="main", head_sha=head_sha, reason="open")
             store = _open(paths)
-            store.state["route"]["facts"]["prRefs"][0]["repo"] = next(iter(store.state["repos"]))
+            store.state["routeFacts"]["prRefs"][0]["repo"] = next(iter(store.state["repos"]))
             store.save()
             with patch.object(repo_module, "adopt_pr", return_value=adoption):
                 self._route(repo_dir, paths, next_, "micro", 42)
@@ -1707,7 +1707,7 @@ class AutoRouteTests(_QuietStdout):
             adoption = repo_module.PrAdoption(adopt=True, number=42, url=url, branch="pr-branch", base_branch="main",
                                               head_sha=head_sha, reason="open")
             store = _open(paths)
-            store.state["route"]["facts"]["prRefs"][0]["repo"] = next(iter(store.state["repos"]))
+            store.state["routeFacts"]["prRefs"][0]["repo"] = next(iter(store.state["repos"]))
             store.save()
             with patch.object(repo_module, "adopt_pr", return_value=adoption), \
                  patch.object(revise_module, "gaps_from_pr", return_value=[]):
@@ -2146,7 +2146,7 @@ class VerifyRerunsTests(unittest.TestCase):
             store.save()
             product = {"reproduction": {"command": "cd pkg && pytest", "failureDigest": "sha256:" + "d" * 64, "reason": None},
                        "original": None}
-            with patch.object(controller.debug_module, "record_base_runs", side_effect=AssertionError("ran")):
+            with patch.object(controller, "_run_reproduction_runs", side_effect=AssertionError("ran")):
                 controller._accept_debug_product(store, paths, repo, "a-1", product, "reproduced")
             failures = store.state["phase"]["entryPayload"]["rejected"]["failures"]
             self.assertEqual([f["id"] for f in failures], ["B1"])
@@ -2389,6 +2389,18 @@ class ReviseRoundTests(unittest.TestCase):
             self.assertEqual(controller._find_run_by_adoption_number(home, rid, 7, project_root), "revise-7-2")
             self.assertEqual(controller._next_revise_slug(home, rid, 7), "revise-7-3")
 
+    def test_an_unfinished_pre_7_4_round_never_blocks_a_new_one(self):
+        # It cannot be resumed (check_compatible), so the next round starts past it.
+        with tempfile.TemporaryDirectory() as tmp:
+            home, rid, project_root = Path(tmp) / "home", "repo-1", Path(tmp)
+            self._revise_run(home, rid, "revise-9", 9, finished=False)
+            paths = FeaturePaths(root=feature_dir(home, rid, "revise-9"))
+            store = StateStore.open(paths)
+            del store.state["stateFormat"]
+            store.save()
+            self.assertIsNone(controller._find_run_by_adoption_number(home, rid, 9, project_root))
+            self.assertEqual(controller._next_revise_slug(home, rid, 9), "revise-9-2")
+
 
 class ModulePauseAnswerTests(unittest.TestCase):
     """LF-65: a phase module's blocked pause is answered through phase.blockedQuestionId,
@@ -2587,6 +2599,22 @@ class CompatibilityTests(unittest.TestCase):
     def test_baseline_free_run_is_compatible(self):
         with tempfile.TemporaryDirectory() as t:
             _, _, paths = self._run_with_baseline(Path(t), None)
+            controller.check_compatible(StateStore.open(paths))  # no raise
+
+    def test_a_pre_7_4_run_is_refused_unless_it_finished(self):
+        # 7.4.0 (D4): state moved out of plug-in buckets; an older unfinished run is
+        # refused even with no baseline, a finished one still reads.
+        with tempfile.TemporaryDirectory() as t:
+            _, _, paths = self._run_with_baseline(Path(t), None)
+            store = StateStore.open(paths)
+            del store.state["stateFormat"]
+            store.save()
+            with self.assertRaises(LoopSpecError) as raised:
+                controller.check_compatible(StateStore.open(paths))
+            self.assertIn("--slug <new-slug>", raised.exception.repair)
+            store = StateStore.open(paths)
+            store.state["result"] = {"classification": "converged"}
+            store.save()
             controller.check_compatible(StateStore.open(paths))  # no raise
 
 

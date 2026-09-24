@@ -95,6 +95,11 @@ class FeaturePaths:
         # home/repo_id/slug) -- no separate slug field needed to namespace this.
         self.results_dir = self.project_root / ".loop-spec" / "results" / self.root.name
 
+    def feature_worktree(self, repo: str) -> Path:
+        """EXECUTE's checkout of `repo`'s feature branch, where its integrated commits
+        live; task generations get their own worktrees, never this one."""
+        return self.worktrees_dir / "feature" / repo
+
 
 def ensure_results_dir(paths: FeaturePaths) -> Path:
     """Create `paths.results_dir` and, for a git project root, keep `.loop-spec/`

@@ -117,16 +117,27 @@ class StepTests(unittest.TestCase):
         self.assertIn("### prior\nnull", action.request["prompt"])
 
     def test_step_carries_prior_spec_and_plan_when_found(self):
-        # LF-37: controller._find_delivering_run_products fills revise.prior before
-        # the step is ever issued; the reviser's own request just passes it through.
-        self.store.state["revise"]["prior"] = {
+        # LF-37: controller._find_delivering_run_products fills adoption.prior (core
+        # state, D4) before the step is ever issued; the request passes it through.
+        self.store.state["adoption"]["prior"] = {
             "slug": "delivered-run",
             "spec": {"criteria": [{"id": "AC-1", "text": "the greeting is friendly"}]},
             "plan": {"tasks": []},
         }
         action = step(self.store, self.paths, self.ctx)
         self.assertIn("### prior", action.request["prompt"])
-        self.assertIn("AC-1", action.request["prompt"])
+        self.assertIn("delivered-run", action.request["prompt"])
+        self.assertIn("the greeting is friendly", action.request["prompt"])
+
+    def test_step_fetches_the_comments_once_when_its_bucket_has_none(self):
+        # D4: revise fetches its own gaps on its first step; an empty list is a PR
+        # with no comments and is never fetched again.
+        self.store.state["revise"] = {"product": None}
+        with patch("loop_spec.revise.gaps_from_pr", return_value=[]) as fetch:
+            step(self.store, self.paths, self.ctx)
+            step(self.store, self.paths, self.ctx)
+        fetch.assert_called_once_with(self.repo, 7)
+        self.assertEqual(self.store.state["revise"]["gaps"], [])
 
     def test_on_submit_then_step_yields_a_product(self):
         action = step(self.store, self.paths, self.ctx)

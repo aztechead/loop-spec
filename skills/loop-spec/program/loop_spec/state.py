@@ -12,6 +12,11 @@ from loop_spec.ids import digest
 from loop_spec.jsonio import atomic_write_json, read_json
 from loop_spec.paths import FeaturePaths
 
+# The shape of state.json. 2 (7.4.0): phase facts the core reads live in products and
+# core records, not plug-in buckets (D4); controller.check_compatible refuses to resume
+# a lower one.
+STATE_FORMAT = 2
+
 
 def _digest_path(paths: FeaturePaths) -> Path:
     return paths.state_json.parent / "state.digest"
@@ -34,6 +39,7 @@ class StateStore:
         state = {
             "schema": 1,
             "loopSpecVersion": VERSION,
+            "stateFormat": STATE_FORMAT,
             "run": run_fields,
             "request": {"text": request_text, "digest": digest(request_text)},
             "phase": {"current": None, "attemptId": None, "entry": "fresh", "entryPayload": None},

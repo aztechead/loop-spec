@@ -556,7 +556,7 @@ class ExecuteLifecycleTests(unittest.TestCase):
 
         action = self._assert_routed_to_plan_gap("T-1")
         self.assertEqual(action.product["issues"], [
-            {"task": "T-1", "text": "the verify re-run of `sh verify.sh` is mustFlip-failed: reproduction did not fail at base"},
+            {"task": "T-1", "retries": 0, "text": "the verify re-run of `sh verify.sh` is mustFlip-failed: reproduction did not fail at base"},
         ])
 
     def test_missing_baseline_routes_to_plan_gap(self):
@@ -1240,10 +1240,10 @@ class AdoptedTaskTests(unittest.TestCase):
         r1["title"] = "fix the remaining gap"
         self.plan_tasks = [_plan_task("T-1"), r1]
         self.store.state["products"]["plan"] = {"exit": "ready", "product": {"tasks": self.plan_tasks}}
-        self.store.state["revise"] = {"gaps": [], "product": None, "prior": {
+        self.store.state["adoption"]["prior"] = {
             "slug": "delivered", "spec": {"criteria": [{"id": "AC-1", "text": "it works"}]},
             "plan": {"tasks": [_plan_task("T-1")]},
-        }}
+        }
         baseline_run = run_command("sh verify.sh", self.repo, self.pr_head_sha)
         entry = BaselineEntry(command="sh verify.sh", task=None, status="ran", run=baseline_run)
         self.store.state["baseline"] = {"entries": {"sh verify.sh": entry.to_dict()}}
@@ -1371,7 +1371,7 @@ class AdoptedTaskTests(unittest.TestCase):
     def test_a_changed_prior_task_is_not_adopted(self):
         # The delivering run's T-1 ran a different verify command -- the reviser
         # changed it, so EXECUTE must redo the task rather than adopt stale work.
-        self.store.state["revise"]["prior"]["plan"]["tasks"][0]["verify"] = "sh other-verify.sh"
+        self.store.state["adoption"]["prior"]["plan"]["tasks"][0]["verify"] = "sh other-verify.sh"
 
         action = step(self.store, self.paths, self.ctx)
         # T-1 (redone) and R-1 (never adopted) are both pending in the same

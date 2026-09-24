@@ -10,6 +10,7 @@ import copy
 from pathlib import Path
 
 from loop_spec import ledger as ledger_module
+from loop_spec import postconditions
 from loop_spec import repo as repo_module
 from loop_spec import steps as steps_module
 from loop_spec.budget import has_room
@@ -53,7 +54,11 @@ def _judge_request(store, paths, ctx, heads: dict[str, str]) -> dict:
 
     if touched:
         first_repo = touched[0]
-        checkout = ((store.state.get("verify") or {}).get("checkouts") or {}).get(first_repo)
+        # D4: VERIFY's product names its checkouts; only a default VERIFY's are used as
+        # the judge's working tree, so an external one cannot pick the tree it is judged in.
+        verify_product = (store.state["products"].get("verify") or {}).get("product") or {}
+        checkouts = (verify_product.get("checkouts") or {}) if postconditions.ran_default(store, "verify") else {}
+        checkout = checkouts.get(first_repo)
         cwd = Path(checkout) if checkout else Path(paths.checkouts_dir) / "verify-missing"
         if not cwd.is_dir():
             raise LoopSpecError(

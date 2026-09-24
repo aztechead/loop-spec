@@ -2,7 +2,7 @@
 continues as.
 
 Use `step`/`on_submit` the way `debug.py` does. The facts the router reads are the
-controller's (`store.state["route"]["facts"]`, written when the auto run starts); this
+core's (`store.state["routeFacts"]`, written when the auto run starts); this
 module owns only `store.state["route"]["result"]`, bound to the attempt it answered, so
 a rejected choice is asked again with the rule it broke instead of replayed.
 """
@@ -30,7 +30,7 @@ def _router_request(store, paths, ctx) -> dict:
     rejected = _rejection(ctx)
     inputs = {
         "request": ctx["request"]["text"],
-        "prRefs": store.state["route"]["facts"]["prRefs"],
+        "prRefs": store.state["routeFacts"]["prRefs"],
         "entries": [{"name": n, "use": ENTRIES[n].use, "takes": ENTRIES[n].takes} for n in ROUTABLE],
         "rejected": rejected,
     }

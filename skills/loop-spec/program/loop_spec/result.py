@@ -40,10 +40,10 @@ def _host_versions() -> dict:
     return versions
 
 
-def _accepted_tasks(execute_entry: dict | None) -> list[str]:
+def _accepted_tasks(execute_entry: dict | None) -> list[dict]:
     if execute_entry is None:
         return []
-    return [t["id"] for t in execute_entry["product"]["tasks"] if t["disposition"] in ("done", "adopted")]
+    return [t for t in execute_entry["product"]["tasks"] if t["disposition"] in ("done", "adopted")]
 
 
 def _verification_status(store) -> str:
@@ -148,7 +148,7 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         "result": classification,
         "rewinds": len(store.state["budget"]["transitions"]),
         "prs": prs,
-        "reviewed": {t: {"level": level, "stepId": step_id}
+        "reviewed": {t["id"]: {"level": level, "stepId": step_id}
                      for t in _accepted_tasks(execute_entry)
                      for level, step_id in [review_evidence(store, t)]},
         "unreviewed": store.state.get("unreviewed", []),

@@ -202,9 +202,9 @@ def run(store, paths, ctx):
 
         # EXECUTE never commits into the operator's own checkout (repo_info["path"]);
         # its own worktrees/feature/<repo> is where the pushed commits actually live.
-        execute_repos = (store.state.get("execute") or {}).get("repos") or {}
-        execute_repo = execute_repos.get(repo_name)
-        worktree = Path(execute_repo["worktree"]) if execute_repo else Path(repo_info["path"])
+        worktree = paths.feature_worktree(repo_name)
+        if not worktree.is_dir():
+            worktree = Path(repo_info["path"])
 
         # R8: a commit added to the feature branch after VERIFY passed must never
         # get published just because DELIVER pushes whatever the branch currently

@@ -161,7 +161,8 @@ class VerifyTests(unittest.TestCase):
                 self.store.save()
                 product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]))
                 self.assertEqual(product["reviewedRanges"][0],
-                                 {"repo": "repo", "from": self.base_sha, "to": self.head_sha, "full": True})
+                                 {"repo": "repo", "from": self.base_sha, "to": self.head_sha, "full": True,
+                                  "reviewStep": "r-step-repo", "reusedRangeId": None})
 
     def test_a_refused_review_is_found_by_its_checkout_and_reissued_in_a_fresh_one(self):
         # LF-60: reviewerSteps is written only on an accepted submit, so the refused
@@ -217,7 +218,9 @@ class VerifyTests(unittest.TestCase):
         action = step(self.store, self.paths, self.ctx)
         self.assertIsInstance(action, Product)  # no reviewer step issued
         product = action.product
-        self.assertEqual(product["reviewedRanges"], [{"repo": "repo", "from": self.base_sha, "to": self.head_sha, "full": True}])
+        # D4: a reused range publishes the step that originally reviewed it.
+        self.assertEqual(product["reviewedRanges"], [{"repo": "repo", "from": self.base_sha, "to": self.head_sha, "full": True,
+                                                      "reviewStep": "r-prior", "reusedRangeId": "range-1"}])
         events_text = self.paths.events_jsonl.read_text()
         self.assertIn('"review_reused"', events_text)
         assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
