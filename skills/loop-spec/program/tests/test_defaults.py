@@ -109,5 +109,17 @@ class RunLeadPhaseTests(unittest.TestCase):
             self.assertEqual(step["cwd"], tmp)
 
 
+class SubmitPathsTests(unittest.TestCase):
+    def test_a_step_issued_after_submit_writes_under_the_project_root(self):
+        # LF-27, found live on 7.6.0 (v76-auto): cli._feature_paths dropped the project
+        # root, so every role step issued by `submit` named a result path in the state home.
+        import argparse
+        from loop_spec import cli
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as project:
+            with patch.object(cli, "repo_id", return_value="rid"):
+                paths = cli._feature_paths(argparse.Namespace(state_home=home, project_root=project), "slug")
+            self.assertEqual(paths.results_dir, Path(project) / ".loop-spec" / "results" / "slug")
+
+
 if __name__ == "__main__":
     unittest.main()

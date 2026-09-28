@@ -162,7 +162,10 @@ def _cmd_status(args: argparse.Namespace) -> int:
 def _feature_paths(args: argparse.Namespace, slug: str) -> FeaturePaths:
     home = state_home(args.state_home)
     rid = repo_id(Path(args.project_root))
-    return FeaturePaths(root=feature_dir(home, rid, slug))
+    # LF-27: a step issued after `submit` or `answer` names its result path from these
+    # paths, so they carry the project root; without it results_dir fell back under the
+    # state home, which a default permission mode refuses a worker's write to.
+    return FeaturePaths(root=feature_dir(home, rid, slug), project_root=Path(args.project_root))
 
 
 def _open_store(args: argparse.Namespace) -> tuple[StateStore, FeaturePaths]:
