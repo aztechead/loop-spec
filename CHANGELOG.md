@@ -4,6 +4,16 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.6.1] - 2026-09-28
+
+### Fixed
+
+- A step issued by `submit` or `answer` named its result path under the state home
+  (`~/.claude/...`), because the CLI built the run's paths without the project root.
+  Under a default permission mode a worker cannot write there, and the lead had to pass
+  `--result-file`. Every step's result path is now under the project's
+  `.loop-spec/results/`, as `references/runner.md` says. Found in the 7.6.0 live run.
+
 ## [7.6.0] - 2026-09-28
 
 A conformance pass over the microkernel before v7 is promoted. Every role, entry, and
