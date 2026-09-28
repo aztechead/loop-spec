@@ -4,6 +4,16 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.6.2] - 2026-09-28
+
+### Fixed
+
+- Both 7.6.x live runs spent their one rewind the same way: the planner's verify command
+  filtered to the test the task adds (`pytest -k cube`), which runs nothing at base, so
+  EXECUTE could not compare it and the run went back to PLAN. The planner now keeps an
+  ordinary task's verify command running at least one test at base, and the plan critic
+  raises a `regression` task whose base run ran no tests or is `incomplete` as Critical.
+
 ## [7.6.1] - 2026-09-28
 
 ### Fixed
