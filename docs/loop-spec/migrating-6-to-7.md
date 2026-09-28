@@ -130,11 +130,11 @@ at once shares one run's state. Run concurrent work from different slugs, or giv
 scratch repository its own first commit.
 
 The state home resolves in this order: `--state-home`, else `$LOOP_SPEC_HOME`, else
-`~/.loop-spec/`. The Claude Code skills pass `--state-home ${CLAUDE_PLUGIN_DATA}`,
-which is a directory under `~/.claude/plugins/data/` (`ls -d ~/.claude/plugins/data/loop-spec*`).
-A script that inspects or answers a run started in Claude Code must pass that same
-path as `--state-home`. With the default it looks in `~/.loop-spec/` and finds
-nothing.
+`~/.loop-spec/`. The Claude Code skills pass no `--state-home`, so a script that
+inspects or answers a run started in Claude Code finds it with the same default.
+Before 7.7.0 the skills passed the plugin's data directory under
+`~/.claude/plugins/data/`, which Claude Code's sandbox does not let the plugin write;
+finish a run started there by passing that directory as `--state-home`.
 
 `.loop-spec/` still appears in your repository, for a different reason. It holds only
 workers' result files, under `.loop-spec/results/<slug>/`, because Claude Code's
@@ -232,7 +232,7 @@ claude -p "/loop-spec:cycle <request> [Operator: this is a headless run; pass --
 
 The lead then auto-approves every question that has a default, including the
 requirements approval. A question with no default still stops the run. Answer it
-with `"$LS" answer` (section 6, with the plugin's `--state-home`), then continue with
+with `"$LS" answer` (section 6), then continue with
 `claude -p --resume <session id> "The question was answered; continue the run."`.
 `--output-format stream-json --verbose` puts the lead's text, thinking, and tool
 calls on stdout. This path is the one the recorded live runs use.

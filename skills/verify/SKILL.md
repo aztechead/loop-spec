@@ -5,7 +5,7 @@ description: "Run or resume the VERIFY phase of an in-progress loop-spec run: ch
 
 Run this once, without changing directory, substituting the two placeholders:
 
-    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" verify --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --slug "{slug}"
+    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" verify --project-root "{project-root}" --slug "{slug}"
 
 `{project-root}` is the repository (or workspace) root the user is working in.
 `{slug}` identifies the run to resume; find it with the `status` entry if unknown.

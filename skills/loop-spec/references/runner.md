@@ -93,7 +93,7 @@ Answer a question:
 ```
 
 A result file belongs under the project's `.loop-spec/results/`. It never goes under
-`~/.claude`, where the state home lives and a default permission mode refuses writes.
+the state home or `~/.claude`, where a default permission mode refuses writes.
 If a result landed somewhere else, add `--result-file <path>` to `submit`, and the
 program reads it from there.
 

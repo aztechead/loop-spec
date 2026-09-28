@@ -633,9 +633,9 @@ intended for Python dependencies and state that should survive updates. The
 placeholder resolves inline in skill content and is not an environment variable
 inside Bash tool calls.
 
-- The state home is `${CLAUDE_PLUGIN_DATA}` when the plugin is installed in Claude
-  Code and the skill passes the resolved path to the program, else `$LOOP_SPEC_HOME`,
-  else `~/.loop-spec/`. Keyed by repository identity and slug. The
+- The state home is `--state-home` when a caller passes one, else `$LOOP_SPEC_HOME`,
+  else `~/.loop-spec/`. (Until 7.7.0 the skills passed `${CLAUDE_PLUGIN_DATA}`; Claude
+  Code's sandbox refuses writes under `~/.claude/plugins`, so they pass nothing now.) Keyed by repository identity and slug. The
   `last-result.json` pointer lives here too, beside `state.json`, not in the consumer
   repo (decided 2026-09-22; 6.9 consumers change one path, shown by a live checklist case at M1).
   An empty directory is initialized in place by the repo module, with 6.9's refusals

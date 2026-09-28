@@ -39,11 +39,18 @@ Every agent loop-spec runs now reasons from first principles.
   the user asks for a headless run. A resume with `--answer-policy default` sets the
   run's policy and answers the question it is waiting on; a resume never clears a
   policy.
-
-### Fixed
-
-- SPEC `needs answer` now asks one question listing the spec writer's open questions and re-enters SPEC with the answer, instead of re-running SPEC with no answer until the retry budget ran out.
-- DEBUG `blocked reproduction` names the diagnosis in its question, a stop answer's result carries that cause in `reason`, and the result reports `noChangeReason: diagnostic-only`.
+- SPEC `needs answer` now asks one question listing the spec writer's open questions
+  and re-enters SPEC with the answer, instead of re-running SPEC with no answer until
+  the retry budget ran out.
+- DEBUG `blocked reproduction` names the diagnosis in its question, a stop answer's
+  result carries that cause in `reason`, and the result reports `noChangeReason:
+  diagnostic-only`.
+- The entry stubs passed `--state-home "${CLAUDE_PLUGIN_DATA}"`, a directory under
+  `~/.claude/plugins/data/` that Claude Code's sandbox refuses writes to, so a
+  sandboxed run could not write its own state. The stubs pass no state home now: the
+  program uses `LOOP_SPEC_HOME`, else `~/.loop-spec/`. To finish a run started before
+  7.7.0, pass its old directory as `--state-home`
+  (`ls -d ~/.claude/plugins/data/loop-spec*`).
 
 ## [7.6.2] - 2026-09-28
 

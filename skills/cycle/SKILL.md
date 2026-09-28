@@ -5,7 +5,7 @@ description: Run the full loop-spec cycle (SPEC, PLAN, EXECUTE, VERIFY, ITERATE,
 
 Run this once, without changing directory, substituting the two placeholders:
 
-    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" cycle --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --request "{request}"
+    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" cycle --project-root "{project-root}" --request "{request}"
 
 `{project-root}` is the repository (or workspace) root the user is working in.
 `{request}` is the user's request text; pass a file with `--request-file` instead when

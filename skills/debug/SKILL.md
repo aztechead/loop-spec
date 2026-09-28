@@ -5,7 +5,7 @@ description: "Diagnose and fix a specific failure: reproduce a bug or error repo
 
 Run this once, without changing directory, substituting the two placeholders:
 
-    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" debug --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --request "{request}"
+    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" debug --project-root "{project-root}" --request "{request}"
 
 `{project-root}` is the repository (or workspace) root the user is working in.
 `{request}` is the error report, stack trace, or bug description to reproduce and fix.

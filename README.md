@@ -110,18 +110,18 @@ claude -p "/loop-spec:cycle <request> [Operator: this is a headless run; pass --
 requirements approval. Each skill adds it to its command when the prompt asks for it,
 and a resume with `--slug` and the flag applies it from then on, including to the
 question the run is already waiting on. Without it, or for a question with no
-default, the run stops and the final message names the question. Answer it with the launcher, passing the plugin's state
-home, then resume the session:
+default, the run stops and the final message names the question. Answer it with the launcher,
+then resume the session:
 
 ```bash
 LS=~/.claude/plugins/cache/loop-spec-marketplace/loop-spec/<version>/skills/loop-spec/program/loop-spec
-"$LS" answer --project-root . --state-home ~/.claude/plugins/data/<loop-spec data dir> \
+"$LS" answer --project-root . \
   --slug <slug> --question <questionId> --answer approve
 claude -p --resume <session id> "The question was answered; continue the run." \
   --permission-mode bypassPermissions --output-format stream-json --verbose >> run.jsonl
 ```
 
-`ls -d ~/.claude/plugins/data/loop-spec*` shows the data directory. Question
+Question
 fields and scopes are in
 [references/contract.md](skills/loop-spec/references/contract.md#questions).
 
@@ -136,16 +136,16 @@ not just the checklist, and can rewind SPEC, PLAN, EXECUTE, or VERIFY if it find
 a gap. DELIVER pushes the verified SHA and opens or updates one PR.
 
 Run state is durable outside your repository, under `~/.loop-spec/` by default
-(`LOOP_SPEC_HOME` to move it, or the plugin's own data directory on Claude Code) —
+(`LOOP_SPEC_HOME` to move it) —
 a killed or restarted session resumes from there instead of starting over.
 Nothing is committed to your repository: the SPEC/PLAN/VERIFICATION documents a
 6.x run committed are rendered into the pull request body instead, and the
 delivered head is always the SHA VERIFY passed.
 
 A worker's result file is the one exception: it is written to
-`<project root>/.loop-spec/results/<slug>/`, not the state home, because Claude
-Code's default permission mode refuses writes under `~/.claude`, where the state
-home lives on that host, even with the Write tool allow-listed. `loop-spec`
+`<project root>/.loop-spec/results/<slug>/`, not the state home, because a
+worker writes it with the Write tool, and Claude Code's default permission mode
+lets that tool write inside the project without a prompt. `loop-spec`
 excludes `.loop-spec/` from `git status` itself, via the repository's own
 `.git/info/exclude`, so this is never committed either; `submit` reads a result
 written somewhere else with `--result-file <path>`.
