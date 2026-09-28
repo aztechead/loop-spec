@@ -4,6 +4,29 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.7.0] - 2026-09-28
+
+Every agent loop-spec runs now reasons from first principles.
+
+### Added
+
+- `skills/loop-spec/roles/principles.md`, a first-principles stance that
+  `roles.compose_prompt` puts ahead of every role's method, whatever skill a project
+  binds in the role's place. It asks a worker to state the goal before the method,
+  check a premise before building on it, find a failure's cause before changing
+  anything, and add only what a requirement or a found fact calls for.
+- `references/runner.md` has the lead read the same stance for the decisions the
+  protocol leaves to it. It does not widen what the lead may do.
+
+### Fixed
+
+- A lead that copied an entry stub's start command dropped the `--answer-policy
+  default` a headless request asked for, so the run stopped on SPEC approval, and
+  resuming with the flag changed nothing. Every run stub now says to add the flag when
+  the user asks for a headless run. A resume with `--answer-policy default` sets the
+  run's policy and answers the question it is waiting on; a resume never clears a
+  policy.
+
 ## [7.6.2] - 2026-09-28
 
 ### Fixed

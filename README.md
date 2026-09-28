@@ -109,8 +109,8 @@ claude -p "/loop-spec:cycle <request> [Operator: this is a headless run; pass --
 `--answer-policy default` answers every question that has a default, including the
 requirements approval. Each skill adds it to its command when the prompt asks for it,
 and a resume with `--slug` and the flag applies it from then on, including to the
-question the run is already waiting on. Without it, or for a question with no default, the run stops and the final
-message names the question. Answer it with the launcher, passing the plugin's state
+question the run is already waiting on. Without it, or for a question with no
+default, the run stops and the final message names the question. Answer it with the launcher, passing the plugin's state
 home, then resume the session:
 
 ```bash
