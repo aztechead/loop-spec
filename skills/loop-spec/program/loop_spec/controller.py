@@ -75,7 +75,7 @@ def run_entry(entry: str, *, project_root: Path, request_text: str | None, slug:
             store.state["phase"]["entry"] = "fresh"
             store.state["phase"]["attemptId"] = None
             store.save()
-        return continue_run(store, paths, project_root=project_root)
+        return _continue_with_policy(store, paths, project_root, answer_policy)
 
     raise LoopSpecError(f"unknown entry {entry}", repair="use one of: " + ", ".join((*ENTRIES, *_RESUMABLE_PHASES)))
 
@@ -114,7 +114,7 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
         paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
         if not paths.state_json.exists():
             raise LoopSpecError(f"no run for slug {slug!r}", repair="check `loop-spec status` for known slugs, or pass --request to start one")
-        return continue_run(_open_existing(paths), paths, project_root=project_root)
+        return _continue_with_policy(_open_existing(paths), paths, project_root, answer_policy)
 
     slug = slug or slug_from_request(request_text)
     paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
@@ -145,6 +145,20 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
         _resolve_implementations(store, project_root)
         if answer_policy == "default":
             store.state["questions"]["policy"] = "default"
+        store.save()
+    return _continue_with_policy(store, paths, project_root, answer_policy)
+
+
+def _continue_with_policy(store: StateStore, paths: FeaturePaths, project_root: Path, answer_policy: str | None) -> Next:
+    # A policy named when a run resumes applies from then on, and to the question the
+    # run is already waiting on: a lead whose start command lacked the flag the user
+    # asked for can still apply it (the 7.7.0 live control run stopped on SPEC approval
+    # that way). A resume never clears a policy the run already has.
+    if answer_policy == "default" and store.state["questions"]["policy"] != "default":
+        store.state["questions"]["policy"] = "default"
+        open_question = store.state["questions"]["open"]
+        if open_question is not None:
+            questions.resolve_policy_answer(store, paths, open_question, save=False)
         store.save()
     return continue_run(store, paths, project_root=project_root)
 
@@ -244,7 +258,7 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
         paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
         if not paths.state_json.exists():
             raise LoopSpecError(f"no run for slug {slug!r}", repair="check `loop-spec status` for known slugs, or pass --pr to start one")
-        return continue_run(_open_existing(paths), paths, project_root=project_root)
+        return _continue_with_policy(_open_existing(paths), paths, project_root, answer_policy)
 
     workspace = repo_module.detect_workspace(project_root)
     if workspace.mode == "none":
@@ -265,7 +279,7 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
     if paths.state_json.exists():
         store = _open_existing(paths)
         _clear_stale_last_result(paths, slug)
-        return continue_run(store, paths, project_root=project_root)
+        return _continue_with_policy(store, paths, project_root, answer_policy)
     _clear_stale_last_result(paths, slug)
 
     repo_entry, adoption_record = _adopt(repo_name, repo_path, adoption, home)

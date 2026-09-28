@@ -11,6 +11,9 @@ Run this once, without changing directory, substituting the two placeholders:
 `{request}` is the user's request text; pass a file with `--request-file` instead when
 they gave a spec file.
 
+When the user asks for a headless run or names `--answer-policy default`, add
+`--answer-policy default` to this command.
+
 Then read `${CLAUDE_SKILL_DIR}/../loop-spec/references/runner.md` in full and follow it
 for every line the program prints.
 

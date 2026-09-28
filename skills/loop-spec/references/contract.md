@@ -204,7 +204,9 @@ Answer with `loop-spec answer --question <id> --answer <value> --slug <slug>
 `answeredAt`, `by`: `human` or `policy`). `--scope run` also sets the run's answer
 policy to `default`. Under that policy, `questions.ask` answers every question that
 carries a `defaultValue` as soon as it opens (`questions.resolve_policy_answer`, one
-place for every caller, LF-62). The result's `policyAnsweredQuestions` lists every
+place for every caller, LF-62). An entry resumed with `--answer-policy default` sets
+the same policy and answers the run's open question by it (`controller._continue_with_policy`);
+a resume never clears a policy. The result's `policyAnsweredQuestions` lists every
 question a policy, not a person, answered. A PLAN critic question asked after the
 second pass carries the critic's own recommendation as its default (P7), so the policy
 answers it. The critic's judgment, the question, that answer and the phase's

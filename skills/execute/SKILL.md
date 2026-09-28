@@ -10,6 +10,9 @@ Run this once, without changing directory, substituting the two placeholders:
 `{project-root}` is the repository (or workspace) root the user is working in.
 `{slug}` identifies the run to resume; find it with the `status` entry if unknown.
 
+When the user asks for a headless run or names `--answer-policy default`, add
+`--answer-policy default` to this command.
+
 Then read `${CLAUDE_SKILL_DIR}/../loop-spec/references/runner.md` in full and follow it
 for every line the program prints.
 

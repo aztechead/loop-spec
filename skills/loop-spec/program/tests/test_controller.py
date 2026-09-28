@@ -2292,6 +2292,22 @@ class CriticFactsAndDefaultTests(unittest.TestCase):
         self.assertIsNone(controller._critic_default([reject("F-1", "a"), {"id": "F-4"}]))
         self.assertIsNone(controller._critic_default([reject("F-1", "  ")]))
 
+    def test_a_policy_named_on_resume_answers_the_open_question_and_stays(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, store = self._store(Path(tmp))
+            record = questions.ask(store, paths, phase="spec", attempt_id="a-1", text="Approve?", kind="text",
+                                   options=[{"value": "approve", "label": "Approve"}], default_value="approve", payload=None)
+            self.assertIsNotNone(store.state["questions"]["open"])  # no policy at start: it waits
+            with patch.object(controller, "continue_run", return_value="next") as cont:
+                self.assertEqual(controller._continue_with_policy(store, paths, Path(tmp), None), "next")
+                self.assertIsNotNone(store.state["questions"]["open"])
+                controller._continue_with_policy(store, paths, Path(tmp), "default")
+            self.assertEqual(cont.call_count, 2)
+            answered = store.state["questions"]["answered"][record["questionId"]]
+            self.assertEqual((answered["by"], answered["value"]), ("policy", "approve"))
+            self.assertEqual(store.state["questions"]["policy"], "default")
+            self.assertIsNone(StateStore.open(paths).state["questions"]["open"])  # saved
+
     def test_policy_answer_closes_the_finding_with_the_recommended_reason(self):
         with tempfile.TemporaryDirectory() as tmp:
             paths, store = self._store(Path(tmp))
