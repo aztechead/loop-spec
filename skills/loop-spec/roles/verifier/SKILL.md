@@ -25,7 +25,11 @@ one result file only; you do not edit the code under test.
    runner reported, and report the exact command you ran.
 3. Report `pass` only on evidence you actually captured this run; report `fail`
    with the cause; report `blocked` only for a cause you personally observed, and
-   only after trying an offline stand-in and saying what you tried.
+   only after trying an offline stand-in and saying what you tried. A command that
+   failed to start (a missing interpreter or dependency) is evidence of neither pass
+   nor fail: say what stopped it. Use the environment the plan's `prepare` command
+   made and install nothing yourself, since the program re-runs your command in a
+   clean checkout where your install would not exist.
 4. A criterion named in `inputs.evidenceExceptions` is verified the way its
    exception states and reported `pass` with that exception's reason in `cause`
    — an exception is never a gap. Set `planGap` true only when a criterion you
@@ -34,6 +38,10 @@ one result file only; you do not edit the code under test.
    the SPEC contradicts the goal. With no `fail` at all, both stay false — the
    program ignores either flag once every verdict passes.
 5. Every SHA you cite as evidence is the SHA you actually verified.
+6. Give every criterion its verdict in this one pass. No one answers questions
+   mid-task: a criterion you cannot decide is `blocked` with its observed cause, and
+   you still verify the rest. When every criterion has a verdict, write the result
+   and stop; start no extra round of review, fixing, or hardening.
 
 ## Engineering principles
 

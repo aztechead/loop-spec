@@ -84,7 +84,8 @@ def load_role(name: str, project_root: Path, binding: str = "default") -> Role:
 # own SKILL.md frontmatter names (contract.role_meta). Judgment (routing, critique, review,
 # the ITERATE verdict) runs on Opus at its default medium, which matches Opus 5 at high;
 # the router's first-fit rules need only low. Implementation and evidence run on Sonnet
-# at high, since Sonnet at medium or low scopes its work to the letter of the prompt.
+# at high: below it, Sonnet 5.5 can stop to check in before a coding task is done or
+# report a change without running a check, and a worker has no one to check in with.
 # Aliases, so each resolves to the newest of its family. Lead roles name none: a lead
 # step runs in the lead's own session, at that session's model and effort.
 

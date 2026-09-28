@@ -18,6 +18,19 @@ Every agent loop-spec runs now reasons from first principles.
 - `references/runner.md` has the lead read the same stance for the decisions the
   protocol leaves to it. It does not widen what the lead may do.
 
+### Changed
+
+- The Sonnet roles (implementer, verifier) follow the Sonnet 5.5 prompting guide.
+  Each carries its work through in one pass and puts a question it cannot settle in
+  its result, since no one answers a worker mid-task. Each stops when its work is
+  done, and the implementer adds no feature, test, file or refactor the task does
+  not call for. A syntax-only check or a command that failed to start does not count
+  as a run. The implementer installs missing declared dependencies only through
+  `prepare` or the project's own package manager, never sudo; the verifier installs
+  nothing, because the program re-runs its commands in a clean checkout. Both stay
+  at `high` effort, where Sonnet 5.5 neither stops early to check in nor skips
+  verifying a change.
+
 ### Fixed
 
 - A lead that copied an entry stub's start command dropped the `--answer-policy
