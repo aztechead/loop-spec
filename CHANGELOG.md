@@ -4,6 +4,36 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.6.0] - 2026-09-28
+
+A conformance pass over the microkernel before v7 is promoted. Every role, entry, and
+plug-in now registers where the architecture says it does, and the architecture test
+checks writes as well as reads.
+
+### Changed
+
+- A role's facts live in its own directory. `model`, `effort` and `evidence` are keys in
+  its `SKILL.md` frontmatter (`contract.role_meta`), and its contract text is
+  `contract.md` (`roles.role_contract`). This replaces four tables in the core that
+  named roles: `roles.DISPATCH_DEFAULTS`, `roles.CONTRACTS`,
+  `contract._UNATTESTED_POLICY`, and `steps.ATTESTATION_REQUIRED_ROLES`. The last two
+  listed the same four roles twice. Composed prompts are byte-identical to 7.5.0's.
+- An entry's cycle type and first phase are fields of its `entries.ENTRIES` row.
+  `controller._REQUEST_ENTRIES` is gone, so a new request entry is one registry row.
+- A plug-in no longer writes a core record. EXECUTE quarantines a worktree through
+  `steps.quarantine`, and the SDK runner records itself through
+  `StateStore.record_runner`. DELIVER keeps its records in its own bucket:
+  `deliver.published` and `deliver.creating` replace the top-level `deliverPublished`
+  and `deliverCreating`.
+- `STATE_FORMAT` is 3. A run left unfinished by an earlier version is refused on resume
+  with a repair message; a finished one still reads.
+- `tests/test_architecture.py` also fails when a plug-in writes outside its own bucket
+  and the program's evidence records.
+- `llms.txt` describes 7.x: the `auto` entry, all eleven roles and their defaults, the
+  architecture and runner protocol, both SDK examples, and the worker agents.
+- `architecture.md` lists every core module, `CLAUDE.md` says where a role's facts go,
+  and three stale code comments are corrected.
+
 ## [7.5.0] - 2026-09-28
 
 Each phase's workers run on the model family suited to its job, calibrated for Opus 5.5
