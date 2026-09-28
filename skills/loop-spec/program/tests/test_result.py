@@ -86,6 +86,11 @@ class ResultTests(unittest.TestCase):
                 self.assertEqual(record["retryable"], classification == "failed")
                 self.assertEqual(store.state["result"]["classification"], classification)
 
+    def test_a_result_written_in_debug_reports_diagnostic_only(self):
+        store, paths = _new_run(self.tmp / "debug", "debug", "debug")
+        record = read_json(result_module.write(store, paths, "escalated", reason="because"))
+        self.assertEqual(record["noChangeReason"], "diagnostic-only")
+
     def test_escalated_partial_draft_delivers_one_of_two_targets(self):
         # A run that escalated in ITERATE but whose operator policy allowed a
         # partial draft: one repo actually reached "delivered", the other did not.

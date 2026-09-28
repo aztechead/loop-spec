@@ -70,7 +70,7 @@ class Failure:
 ROUTES: dict[str, dict[str, dict]] = {
     "spec": {
         "approved": {"requires": ["S1", "S2", "S3"], "next": ("plan", "fresh"), "backward": False},
-        "needs answer": {"requires": ["S1"], "next": ("spec", "remediation"), "backward": False},
+        "needs answer": {"requires": ["S1"], "next": ("spec", "remediation"), "backward": False, "ask": True},
     },
     "plan": {
         "ready": {"requires": ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"], "next": ("execute", "fresh"), "backward": False},
@@ -102,8 +102,6 @@ ROUTES: dict[str, dict[str, dict]] = {
         "delivery blocked": {"requires": ["D4"], "next": ("deliver", "remediation"), "backward": False, "pause": True},
     },
     "debug": {
-        # Not runnable until M4 (run_entry refuses "debug"); the checks exist now so
-        # postconditions.py needs no rework when the entry lands.
         "reproduced": {"requires": ["B1", "B2", "S1", "S2", "S3", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"], "next": ("execute", "fresh"), "backward": False},
         "blocked reproduction": {"requires": ["B3"], "next": ("debug", "remediation"), "backward": False, "pause": True},
     },

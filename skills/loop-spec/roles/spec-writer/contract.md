@@ -9,3 +9,7 @@ question in `openQuestions` when you cannot proceed without one. When
 `inputs.entry.payload.preset` is `micro`, write the fewest criteria that prove the
 change (usually one or two), no open questions unless the request is ambiguous, and
 declare `approved` without an interview unless a boundary is unclear.
+
+When `inputs.entry.payload.answers` is present, the user has answered your earlier open
+questions: fold each answer into the spec, do not ask that question again, and declare
+`needs answer` only for a question those answers leave open.

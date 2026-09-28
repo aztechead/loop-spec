@@ -122,7 +122,8 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         "outcome": _OUTCOME[classification],
         "reason": reason,
         "summary": summary or f"{run.get('cycleType', 'run')} {classification} at {store.state['phase']['current']}",
-        "noChangeReason": "already-satisfied" if classification == "no-change" else None,
+        # A debug run that ends in DEBUG changed nothing: it only diagnosed.
+        "noChangeReason": "diagnostic-only" if store.state["phase"]["current"] == "debug" else ("already-satisfied" if classification == "no-change" else None),
         "phaseReached": store.state["phase"]["current"],
         "branch": first_repo["featureBranch"] if first_repo else None,
         "baseBranch": first_repo["defaultBranch"] if first_repo else None,

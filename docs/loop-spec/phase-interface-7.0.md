@@ -119,7 +119,7 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 | Exit | Requires | Route |
 |---|---|---|
 | `approved` | S1, S2, S3 | PLAN, `fresh` |
-| `needs answer` | S1 | process exit 3; re-enter SPEC with the answer |
+| `needs answer` | S1 | ask one text question listing `openQuestions` (process exit 3 while it is open); the answer re-enters SPEC, `remediation`, with `entryPayload.answers` |
 
 ## PLAN
 
@@ -389,6 +389,7 @@ ITERATE exit at the current revisions.
 | process exit 1; environment cannot run the plan | `failed` | `status: failed`, `converged: false` |
 | process exit 3 outstanding, including every `blocked` exit | question pending | `status: paused`, `reason` names the question id and, for a blocked exit, the cause |
 | a `blocked` exit answered stop | `escalated` | `status: escalated`, `converged: false`, the cause in `reason` |
+| DEBUG `blocked reproduction` answered stop | `escalated` | as above, plus `noChangeReason: diagnostic-only`; the diagnosis is the cause in `reason` |
 | DIRECT `done` | `direct` | `status: completed`, `outcome: direct`, `converged: false`, `workDelivered` true when an action is a checked push or PR, "no gate ran" in `warnings` |
 | ROUTE `routed` to `revise` | `routed` | `status: completed`, `outcome: routed`, `routedTo` names the revise run; no `last-result.json` pointer and no result marker, since the revise run carries the request on |
 

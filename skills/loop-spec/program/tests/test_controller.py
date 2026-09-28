@@ -923,6 +923,9 @@ class PauseCauseTests(unittest.TestCase):
     def test_falls_back_to_exit_when_the_product_names_nothing(self):
         self.assertEqual(controller._pause_cause("deliver", {"repos": []}, "delivery blocked"), "delivery blocked")
 
+    def test_debug_uses_the_diagnosis(self):
+        self.assertEqual(controller._pause_cause("debug", {"diagnosis": "no failing test"}, "blocked reproduction"), "no failing test")
+
 
 class ResumeBySlugTests(_QuietStdout):
     def test_cycle_with_slug_and_no_request_resumes_the_existing_run(self):
@@ -2539,6 +2542,48 @@ class ModulePauseAnswerTests(unittest.TestCase):
             self.assertEqual(invoke.call_count, 1)
             self.assertIsNone(store.state["questions"]["open"])
             self.assertIsNone(store.state["phase"]["blockedQuestionId"])
+
+    def test_a_stop_answer_carries_the_asked_cause_in_the_result_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, store, question_id = self._paused(Path(tmp))
+            questions.answer(store, paths, question_id=question_id, value="stop")
+            reason = self._continue_capturing_finish(store, paths, tmp)[0][1]
+            self.assertIn("feature branch moved out of band", reason)
+
+
+class SpecNeedsAnswerTests(unittest.TestCase):
+    """SPEC `needs answer` asks one text question listing the open questions and
+    re-enters SPEC with the answer, rather than re-running SPEC with no answer."""
+
+    def test_the_question_is_asked_and_its_answer_re_enters_spec(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            paths = FeaturePaths(root=tmp / "feature")
+            store = StateStore.create(
+                paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x", "createdAt": "2026-01-01T00:00:00+00:00"}, "do it",
+            )
+            store.state["phase"].update(current="spec", attemptId="attempt-1")
+            store.save()
+            product = {"goal": "g", "boundaries": [], "criteria": [], "decisions": [],
+                       "openQuestions": [{"id": "Q-1", "text": "which database?"}], "inputsDigest": "sha256:" + "0" * 64,
+                       "boundTo": {"requirements": None, "plan": None}}
+            with patch.object(controller.postconditions.Boundary, "check", return_value=[]):
+                controller._finalize(store, paths, tmp, "spec", "attempt-1", product, "needs answer")
+            opened = store.state["questions"]["open"]
+            question = read_json(Path(opened["path"]))
+            self.assertEqual(question["kind"], "text")
+            self.assertIn("Q-1", question["text"])
+            self.assertIn("which database?", question["text"])
+            question_id = store.state["phase"]["specQuestionId"]
+            self.assertEqual(question_id, opened["questionId"])
+
+            questions.answer(store, paths, question_id=question_id, value="postgres")
+            waiting = controller.Next(kind="step", path=tmp / "step.json", slug="x")
+            with patch.object(controller, "_drive_phase", return_value=waiting):
+                controller.continue_run(store, paths, project_root=tmp)
+            self.assertEqual(store.state["phase"]["entry"], "remediation")
+            self.assertIsNone(store.state["phase"]["specQuestionId"])
+            self.assertEqual(store.state["phase"]["entryPayload"]["answers"][0]["answer"], "postgres")
 
 
 class RefusedEvidenceTests(unittest.TestCase):

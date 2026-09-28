@@ -40,6 +40,11 @@ Every agent loop-spec runs now reasons from first principles.
   run's policy and answers the question it is waiting on; a resume never clears a
   policy.
 
+### Fixed
+
+- SPEC `needs answer` now asks one question listing the spec writer's open questions and re-enters SPEC with the answer, instead of re-running SPEC with no answer until the retry budget ran out.
+- DEBUG `blocked reproduction` names the diagnosis in its question, a stop answer's result carries that cause in `reason`, and the result reports `noChangeReason: diagnostic-only`.
+
 ## [7.6.2] - 2026-09-28
 
 ### Fixed
