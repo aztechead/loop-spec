@@ -8,7 +8,8 @@ text a worker or the lead session actually reads, and `resolve_model` for the mo
 every role's dispatch request carries (the role's own frontmatter default when nothing
 overrides it). `role_contract` is the per-role text loop-spec always appends,
 independent of whatever body a bound skill supplies, so a borrowed skill cannot drop
-the program's own requirements on its way in.
+the program's own requirements on its way in; `principles` is the first-principles
+stance every role's prompt carries the same way.
 """
 import glob
 import json
@@ -124,7 +125,16 @@ def role_contract(name: str) -> str:
     """The text loop-spec always appends to a role's prompt: `contract.md` in the default
     role directory, read whatever skill a project binds in its place, so a borrowed skill
     cannot drop the program's own requirements. Empty for a role with none."""
-    path = ROLES_DIR / name / "contract.md"
+    return _unwrapped(ROLES_DIR / name / "contract.md")
+
+
+def principles() -> str:
+    """The first-principles stance every role's prompt carries, ahead of its method:
+    `roles/principles.md`, read whatever skill is bound, like `role_contract`."""
+    return _unwrapped(ROLES_DIR / "principles.md")
+
+
+def _unwrapped(path: Path) -> str:
     # The file is wrapped for its editors; the prompt carries each paragraph as one line.
     paragraphs = path.read_text().strip().split("\n\n") if path.is_file() else []
     return "\n\n".join(" ".join(p.split("\n")) for p in paragraphs)
@@ -157,6 +167,7 @@ def compose_prompt(role: Role, *, inputs: dict, result_path: Path, cwd: Path, ph
         f"Every command you run starts with `cd {cwd} &&` (or uses `git -C {cwd}`). "
         "Never run git checkout, reset, clean, or commit in any other directory; the "
         "directory you were started in belongs to the user.",
+        f"## First principles\n{principles()}",
         f"## Method\n{role.body}".rstrip(),
     ]
 

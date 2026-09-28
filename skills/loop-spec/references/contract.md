@@ -341,7 +341,8 @@ the user's `~/.claude/skills/<name>/` or `~/.agents/skills/<name>/`, or (for a
 `plugin:skill` binding) an installed plugin's cache. A bound role supplies its own
 prompt body only. `roles.load_role` still validates the result against the
 *default* role's schema, and `roles.role_contract` appends the default role's
-`contract.md` whatever the source. The eleven roles that ship
+`contract.md` whatever the source; every role's prompt, bound or not, also opens its
+method with `roles/principles.md` (`roles.principles`). The eleven roles that ship
 under `skills/loop-spec/roles/`: `spec-writer`, `planner`, `plan-critic`,
 `implementer`, `code-reviewer`, `verifier`, `iterate-judge`, `debugger`, `reviser`,
 `router`, `direct`.
