@@ -137,7 +137,10 @@ a gap. DELIVER pushes the verified SHA and opens or updates one PR.
 
 Run state is durable outside your repository, under `~/.loop-spec/` by default
 (`LOOP_SPEC_HOME` to move it) —
-a killed or restarted session resumes from there instead of starting over.
+a killed or restarted session resumes from there instead of starting over. With
+Claude Code's sandbox on, add that directory to `sandbox.filesystem.allowWrite`
+(`"allowWrite": ["~/.loop-spec"]`); the sandbox writes only the project and the temp
+directory by default.
 Nothing is committed to your repository: the SPEC/PLAN/VERIFICATION documents a
 6.x run committed are rendered into the pull request body instead, and the
 delivered head is always the SHA VERIFY passed.

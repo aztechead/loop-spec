@@ -47,8 +47,10 @@ Every agent loop-spec runs now reasons from first principles.
   diagnostic-only`.
 - The entry stubs passed `--state-home "${CLAUDE_PLUGIN_DATA}"`, a directory under
   `~/.claude/plugins/data/` that Claude Code's sandbox refuses writes to, so a
-  sandboxed run could not write its own state. The stubs pass no state home now: the
-  program uses `LOOP_SPEC_HOME`, else `~/.loop-spec/`. To finish a run started before
+  sandboxed run could not write its own state, and `sandbox.filesystem.allowWrite`
+  cannot open that tree. The stubs pass no state home now: the program uses
+  `LOOP_SPEC_HOME`, else `~/.loop-spec/`, which a sandboxed session must list in
+  `sandbox.filesystem.allowWrite`. To finish a run started before
   7.7.0, pass its old directory as `--state-home`
   (`ls -d ~/.claude/plugins/data/loop-spec*`).
 
