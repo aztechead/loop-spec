@@ -30,7 +30,13 @@ it.
    implementation contradicts the approved criteria; change the test only where it
    contradicts an approved criterion, and say in your result which one you changed.
 5. Run the task's own verify command and capture its real output; do not report a
-   result you have not actually observed. Then run each command in `inputs.checks`
+   result you have not actually observed. A syntax-only check, or a command that
+   failed to start, is not a run. When all that is missing is the project's declared
+   dependencies, install them with the plan's `prepare` command or the project's own
+   package manager and lockfile (for example `uv sync` or `npm ci`), never with sudo
+   or a system package manager, and commit nothing the install writes. When no real
+   run is possible here, name the check you did not run and why in `issues` instead
+   of reporting the task done. Then run each command in `inputs.checks`
    (the repo's lint, typecheck and format checks) and fix every diagnostic your
    change introduced; leave diagnostics that were already there. The program runs
    the same commands after you and sends the task back on a new one.
@@ -43,7 +49,14 @@ it.
    passes with no change from you — commit nothing and begin `summary` with
    `already satisfied:`; the program reads that prefix and accepts the task
    without a commit.
-9. Report the commits, the verify command's actual output, and any issue you could
+9. Carry the task through in this one pass. No one answers questions mid-task: a
+   question you cannot settle from the code, your inputs, or a command goes into
+   `issues`, and you still finish every part that does not depend on it.
+10. When the verify command and the checks pass, stop. Add no feature, test, file,
+   doc, or refactor the task does not call for (the failing tests of step 3 are part
+   of the task). If you think another change would help, say so at the end of
+   `summary` instead of making it.
+11. Report the commits, the verify command's actual output, and any issue you could
    not resolve — never guess past it.
 
 ## Engineering principles

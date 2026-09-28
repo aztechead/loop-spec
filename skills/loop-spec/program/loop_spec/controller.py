@@ -6,6 +6,7 @@ question result. This module is the ONLY place that transitions a phase, spends 
 T1 rewind budget, writes the SPEC approval record, or writes a terminal result;
 `postconditions.py` only answers whether a claimed exit's requirements hold.
 """
+import json
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -75,7 +76,7 @@ def run_entry(entry: str, *, project_root: Path, request_text: str | None, slug:
             store.state["phase"]["entry"] = "fresh"
             store.state["phase"]["attemptId"] = None
             store.save()
-        return continue_run(store, paths, project_root=project_root)
+        return _continue_with_policy(store, paths, project_root, answer_policy)
 
     raise LoopSpecError(f"unknown entry {entry}", repair="use one of: " + ", ".join((*ENTRIES, *_RESUMABLE_PHASES)))
 
@@ -114,7 +115,7 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
         paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
         if not paths.state_json.exists():
             raise LoopSpecError(f"no run for slug {slug!r}", repair="check `loop-spec status` for known slugs, or pass --request to start one")
-        return continue_run(_open_existing(paths), paths, project_root=project_root)
+        return _continue_with_policy(_open_existing(paths), paths, project_root, answer_policy)
 
     slug = slug or slug_from_request(request_text)
     paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
@@ -145,6 +146,20 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
         _resolve_implementations(store, project_root)
         if answer_policy == "default":
             store.state["questions"]["policy"] = "default"
+        store.save()
+    return _continue_with_policy(store, paths, project_root, answer_policy)
+
+
+def _continue_with_policy(store: StateStore, paths: FeaturePaths, project_root: Path, answer_policy: str | None) -> Next:
+    # A policy named when a run resumes applies from then on, and to the question the
+    # run is already waiting on: a lead whose start command lacked the flag the user
+    # asked for can still apply it (the 7.7.0 live control run stopped on SPEC approval
+    # that way). A resume never clears a policy the run already has.
+    if answer_policy == "default" and store.state["questions"]["policy"] != "default":
+        store.state["questions"]["policy"] = "default"
+        open_question = store.state["questions"]["open"]
+        if open_question is not None:
+            questions.resolve_policy_answer(store, paths, open_question, save=False)
         store.save()
     return continue_run(store, paths, project_root=project_root)
 
@@ -244,7 +259,7 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
         paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
         if not paths.state_json.exists():
             raise LoopSpecError(f"no run for slug {slug!r}", repair="check `loop-spec status` for known slugs, or pass --pr to start one")
-        return continue_run(_open_existing(paths), paths, project_root=project_root)
+        return _continue_with_policy(_open_existing(paths), paths, project_root, answer_policy)
 
     workspace = repo_module.detect_workspace(project_root)
     if workspace.mode == "none":
@@ -265,7 +280,7 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
     if paths.state_json.exists():
         store = _open_existing(paths)
         _clear_stale_last_result(paths, slug)
-        return continue_run(store, paths, project_root=project_root)
+        return _continue_with_policy(store, paths, project_root, answer_policy)
     _clear_stale_last_result(paths, slug)
 
     repo_entry, adoption_record = _adopt(repo_name, repo_path, adoption, home)
@@ -449,12 +464,28 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
                     refused = next((f"step {sid} ({r['role']}) has no accepted evidence: {r['reason']}; "
                                     for sid, r in (store.state["steps"].get("refused") or {}).items()
                                     if r.get("questionId") == blocked_question_id), "")
+                    asked = paths.attempts_dir / answered["attempt"] / "question.json"
+                    cause = json.loads(asked.read_text())["text"] if asked.is_file() else None
                     _finish_run(
                         store, paths, "escalated",
-                        reason=f"{refused}{store.state['phase']['current']} paused; operator chose {answered['value']!r}",
+                        reason=f"{refused}{store.state['phase']['current']} paused" + (f": {cause}" if cause else "") + f"; operator chose {answered['value']!r}",
                     )
                     continue
                 store.save()  # fix-and-re-enter / spec gap: phase.entry is already "remediation"
+                continue
+
+        spec_question_id = store.state["phase"].get("specQuestionId")
+        if spec_question_id is not None:
+            answered = store.state["questions"]["answered"].get(spec_question_id)
+            if answered is not None:
+                store.state["phase"]["specQuestionId"] = None
+                question = json.loads((paths.attempts_dir / answered["attempt"] / "question.json").read_text())
+                store.state["phase"]["entryPayload"] = {"answers": [{
+                    "questionId": spec_question_id,
+                    "openQuestions": question["payload"]["openQuestions"],
+                    "answer": answered["value"],
+                }]}
+                store.save()  # phase.entry is already "remediation"
                 continue
 
         critic_question_id = store.state["phase"].get("criticQuestionId")
@@ -1482,12 +1513,16 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
         store.state["escalatedDraft"] = True
         store.state["phase"]["entryPayload"] = {"draft": True}
 
-    verdict = "blocked" if route.get("pause") else ("completed" if mode == "terminal" else ("rewind" if route["backward"] else "advanced"))
+    verdict = "blocked" if route.get("pause") or route.get("ask") else ("completed" if mode == "terminal" else ("rewind" if route["backward"] else "advanced"))
     marker_phase_end(paths, phase, attempt_id, verdict, next_phase, 0.0, None)
     emit(paths, "transition", {"summary": f"{phase} {exit_} -> {next_phase or 'terminal'}"}, phase=phase, attempt_id=attempt_id)
 
     if route.get("pause"):
         _ask_pause_question(store, paths, phase, exit_, product)
+        return
+
+    if route.get("ask"):
+        _ask_spec_questions(store, paths, product)
         return
 
     if route["backward"]:
@@ -1640,12 +1675,14 @@ def _reject_product(store: StateStore, paths: FeaturePaths, phase: str, attempt_
 
 def _pause_cause(phase: str, product: dict, exit_: str) -> str:
     # Each phase's blocked-style product names the cause in its own field: EXECUTE's
-    # issues, VERIFY's blocked verdicts, DELIVER's per-repo caveats. Falling through
-    # to the exit name (the pre-fix behavior) reads as a tautology, e.g. "DELIVER
-    # exited delivery blocked: delivery blocked".
+    # issues, VERIFY's blocked verdicts, DELIVER's per-repo caveats, DEBUG's
+    # diagnosis. Falling through to the exit name (the pre-fix behavior) reads as a
+    # tautology, e.g. "DELIVER exited delivery blocked: delivery blocked".
     if phase == "deliver":
         caveats = [c for entry in product.get("repos", []) for c in entry.get("caveats", [])]
         return "; ".join(caveats) if caveats else exit_
+    if phase == "debug":
+        return product.get("diagnosis") or exit_
     issues = product.get("issues") or []
     if issues:
         return "; ".join(f"{i.get('task', '?')}: {i.get('text', '')}" for i in issues)
@@ -1665,6 +1702,26 @@ def _ask_pause_question(store: StateStore, paths: FeaturePaths, phase: str, exit
         default_value="stop", payload={"phase": phase, "exit": exit_},
     )
     store.state["phase"]["blockedQuestionId"] = record["questionId"]
+    store.state["phase"]["entry"] = "remediation"
+    store.state["phase"]["attemptId"] = None
+    store.save()
+
+
+def _ask_spec_questions(store: StateStore, paths: FeaturePaths, product: dict) -> None:
+    # SPEC `needs answer`: the spec writer cannot go on without the user. One text
+    # question carries every open question; continue_run's specQuestionId branch
+    # re-enters SPEC with the answer in entryPayload, since answers_for_context only
+    # shows an attempt its own answers and the re-entry is a new attempt.
+    open_questions = product.get("openQuestions") or []
+    listed = "; ".join(f"{q['id']}: {q['text']}" for q in open_questions) or "the spec writer named no question"
+    attempt_id = store.state["phase"]["attemptId"]
+    record = questions.ask(
+        store, paths, phase="spec", attempt_id=attempt_id,
+        text=f"SPEC needs an answer before it can continue. {listed}",
+        kind="text", options=[], default_value=None,
+        payload={"phase": "spec", "openQuestions": open_questions}, save=False,
+    )
+    store.state["phase"]["specQuestionId"] = record["questionId"]
     store.state["phase"]["entry"] = "remediation"
     store.state["phase"]["attemptId"] = None
     store.save()

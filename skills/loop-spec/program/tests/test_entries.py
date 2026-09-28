@@ -33,6 +33,11 @@ class RunnerProtocolTests(unittest.TestCase):
                 self.assertNotIn("LOOP_SPEC_WAIT", stub)
         self.assertIn("LOOP_SPEC_WAIT", (_SKILLS / "loop-spec" / "references" / "runner.md").read_text())
 
+    def test_runner_protocol_points_the_lead_at_the_principles_every_role_prompt_carries(self):
+        runner = (_SKILLS / "loop-spec" / "references" / "runner.md").read_text()
+        self.assertIn("skills/loop-spec/roles/principles.md", runner)
+        self.assertTrue((_SKILLS / "loop-spec" / "references" / ".." / "roles" / "principles.md").is_file())
+
     def test_one_worker_agent_per_effort_level_with_one_body(self):
         # F5: agents/worker-<level>.md at the plugin root, `effort:` matching, bodies equal.
         agents = _SKILLS.parent / "agents"

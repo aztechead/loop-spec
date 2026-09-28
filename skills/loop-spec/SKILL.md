@@ -34,7 +34,7 @@ project root every follow-up command takes. What to do with each kind of line is
 
 ## Checking a run
 
-`"${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" status --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" [--slug "{slug}"]`
+`"${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" status --project-root "{project-root}" [--slug "{slug}"]`
 is read-only and always exits 0: with `--slug` it prints that run's phase, open
 question/step (including the step's `kind`/`role`, or the question's text and
 options), and result; without it, it lists the runs known for this repository.

@@ -5,10 +5,13 @@ description: "Address reviewer feedback on an already-open pull request. Use whe
 
 Run this once, without changing directory, substituting the two placeholders:
 
-    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" revise --project-root "{project-root}" --state-home "${CLAUDE_PLUGIN_DATA}" --pr "{pr}"
+    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" revise --project-root "{project-root}" --pr "{pr}"
 
 `{project-root}` is the repository (or workspace) root the user is working in.
 `{pr}` is the pull request number or URL whose review feedback to address.
+
+When the user asks for a headless run or names `--answer-policy default`, add
+`--answer-policy default` to this command.
 
 Then read `${CLAUDE_SKILL_DIR}/../loop-spec/references/runner.md` in full and follow it
 for every line the program prints.

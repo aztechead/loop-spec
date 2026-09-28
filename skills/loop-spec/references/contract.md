@@ -204,7 +204,9 @@ Answer with `loop-spec answer --question <id> --answer <value> --slug <slug>
 `answeredAt`, `by`: `human` or `policy`). `--scope run` also sets the run's answer
 policy to `default`. Under that policy, `questions.ask` answers every question that
 carries a `defaultValue` as soon as it opens (`questions.resolve_policy_answer`, one
-place for every caller, LF-62). The result's `policyAnsweredQuestions` lists every
+place for every caller, LF-62). An entry resumed with `--answer-policy default` sets
+the same policy and answers the run's open question by it (`controller._continue_with_policy`);
+a resume never clears a policy. The result's `policyAnsweredQuestions` lists every
 question a policy, not a person, answered. A PLAN critic question asked after the
 second pass carries the critic's own recommendation as its default (P7), so the policy
 answers it. The critic's judgment, the question, that answer and the phase's
@@ -341,7 +343,8 @@ the user's `~/.claude/skills/<name>/` or `~/.agents/skills/<name>/`, or (for a
 `plugin:skill` binding) an installed plugin's cache. A bound role supplies its own
 prompt body only. `roles.load_role` still validates the result against the
 *default* role's schema, and `roles.role_contract` appends the default role's
-`contract.md` whatever the source. The eleven roles that ship
+`contract.md` whatever the source; every role's prompt, bound or not, also opens its
+method with `roles/principles.md` (`roles.principles`). The eleven roles that ship
 under `skills/loop-spec/roles/`: `spec-writer`, `planner`, `plan-critic`,
 `implementer`, `code-reviewer`, `verifier`, `iterate-judge`, `debugger`, `reviser`,
 `router`, `direct`.

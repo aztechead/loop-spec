@@ -9,7 +9,7 @@ from loop_spec import contract
 from loop_spec.errors import LoopSpecError
 from loop_spec.jsonio import atomic_write_json
 from loop_spec.contract import EFFORT_LEVELS, ROLE_NAMES, role_meta
-from loop_spec.roles import Role, compose_prompt, load_role, repo_map, resolve_effort, resolve_model, role_contract
+from loop_spec.roles import Role, compose_prompt, load_role, principles, repo_map, resolve_effort, resolve_model, role_contract
 from loop_spec.schema import load_schema, validate
 
 
@@ -96,6 +96,13 @@ class ComposePromptTests(unittest.TestCase):
         self.assertIn("### note", prompt)
         self.assertIn("hello", prompt)
         self.assertIn(str(Path("/tmp/out/product.json")), prompt)
+
+    def test_first_principles_precede_the_method_whatever_skill_is_bound(self):
+        role = Role(name="implementer", body="A borrowed method.", schema={"type": "object"}, source="/elsewhere/SKILL.md", version="sha256:" + "0" * 64)
+        prompt = compose_prompt(role, inputs={}, result_path=Path("/tmp/out/product.json"), cwd=Path("/tmp/out"), phase="execute")
+        self.assertIn("first principles", principles())
+        self.assertIn("## First principles\n" + principles(), prompt)
+        self.assertLess(prompt.index("## First principles"), prompt.index("## Method"))
 
     def test_string_input_ending_in_newline_leaves_one_blank_line_before_the_next_section(self):
         role = Role(name="code-reviewer", body="Review.", schema={"type": "object"}, source="default", version="sha256:" + "0" * 64)

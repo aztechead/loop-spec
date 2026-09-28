@@ -4,6 +4,56 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.7.0] - 2026-09-28
+
+Every agent loop-spec runs now reasons from first principles.
+
+### Added
+
+- `skills/loop-spec/roles/principles.md`, a first-principles stance that
+  `roles.compose_prompt` puts ahead of every role's method, whatever skill a project
+  binds in the role's place. It asks a worker to state the goal before the method,
+  check a premise before building on it, find a failure's cause before changing
+  anything, and add only what a requirement or a found fact calls for.
+- `references/runner.md` has the lead read the same stance for the decisions the
+  protocol leaves to it. It does not widen what the lead may do.
+
+### Changed
+
+- The Sonnet roles (implementer, verifier) follow the Sonnet 5.5 prompting guide.
+  Each carries its work through in one pass and puts a question it cannot settle in
+  its result, since no one answers a worker mid-task. Each stops when its work is
+  done, and the implementer adds no feature, test, file or refactor the task does
+  not call for. A syntax-only check or a command that failed to start does not count
+  as a run. The implementer installs missing declared dependencies only through
+  `prepare` or the project's own package manager, never sudo; the verifier installs
+  nothing, because the program re-runs its commands in a clean checkout. Both stay
+  at `high` effort, where Sonnet 5.5 neither stops early to check in nor skips
+  verifying a change.
+
+### Fixed
+
+- A lead that copied an entry stub's start command dropped the `--answer-policy
+  default` a headless request asked for, so the run stopped on SPEC approval, and
+  resuming with the flag changed nothing. Every run stub now says to add the flag when
+  the user asks for a headless run. A resume with `--answer-policy default` sets the
+  run's policy and answers the question it is waiting on; a resume never clears a
+  policy.
+- SPEC `needs answer` now asks one question listing the spec writer's open questions
+  and re-enters SPEC with the answer, instead of re-running SPEC with no answer until
+  the retry budget ran out.
+- DEBUG `blocked reproduction` names the diagnosis in its question, a stop answer's
+  result carries that cause in `reason`, and the result reports `noChangeReason:
+  diagnostic-only`.
+- The entry stubs passed `--state-home "${CLAUDE_PLUGIN_DATA}"`, a directory under
+  `~/.claude/plugins/data/` that Claude Code's sandbox refuses writes to, so a
+  sandboxed run could not write its own state, and `sandbox.filesystem.allowWrite`
+  cannot open that tree. The stubs pass no state home now: the program uses
+  `LOOP_SPEC_HOME`, else `~/.loop-spec/`, which a sandboxed session must list in
+  `sandbox.filesystem.allowWrite`. To finish a run started before
+  7.7.0, pass its old directory as `--state-home`
+  (`ls -d ~/.claude/plugins/data/loop-spec*`).
+
 ## [7.6.2] - 2026-09-28
 
 ### Fixed
