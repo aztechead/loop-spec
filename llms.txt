@@ -1,53 +1,73 @@
 # loop-spec
 
-loop-spec is a Claude Code plugin that turns a feature request into a verified
-pull request through six program-checked phases: SPEC, PLAN, EXECUTE, VERIFY,
-ITERATE, DELIVER. A model does the judgment; a Python program checks each
-claimed exit against that phase's postconditions before advancing.
+> A Claude Code plugin (7.x) that turns a request into a verified pull request. A
+> model does the judgment; a stdlib Python program checks each phase's claimed exit
+> against that phase's postconditions before it advances.
+
+A full cycle runs six phases: SPEC, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. `debug`,
+`revise`, `route` and `direct` are phases of their own for the entries that use them.
+The program is a microkernel: a small core, plug-ins that register through a contract,
+and registries the core reads.
 
 ## Entry stubs
 
-Each is a thin `SKILL.md` that locates and runs the program, then acts on the
-file `LOOP_SPEC_NEXT` names.
+Each is a thin `SKILL.md` that runs the program, then follows the runner protocol for
+every line the program prints.
 
-- [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md): the hub — entry list, where state lives, how to read a step/question/result file.
-- [skills/cycle/SKILL.md](skills/cycle/SKILL.md): run SPEC through DELIVER on a new feature request or spec file.
-- [skills/micro/SKILL.md](skills/micro/SKILL.md): the same six phases in one pass, for a small well-defined change.
+- [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md): the hub, with the entry list, where state lives, and how to check a run.
+- [skills/auto/SKILL.md](skills/auto/SKILL.md): route a request to the right entry, or do a mechanical git or PR operation directly with no cycle.
+- [skills/cycle/SKILL.md](skills/cycle/SKILL.md): run SPEC through DELIVER on a feature request or spec file.
+- [skills/micro/SKILL.md](skills/micro/SKILL.md): a small, well-defined change in one autonomous pass.
 - [skills/debug/SKILL.md](skills/debug/SKILL.md): reproduce a failure, find the cause, land a fix with a regression test.
-- [skills/revise/SKILL.md](skills/revise/SKILL.md): address reviewer feedback on an already-open pull request.
-- [skills/status/SKILL.md](skills/status/SKILL.md): show a run's phase, open question or step, budget, and result.
+- [skills/revise/SKILL.md](skills/revise/SKILL.md): address reviewer feedback on an open pull request.
+- [skills/status/SKILL.md](skills/status/SKILL.md): show a run's phase, open question or step, and result.
 - [skills/spec/SKILL.md](skills/spec/SKILL.md), [plan](skills/plan/SKILL.md), [execute](skills/execute/SKILL.md), [verify](skills/verify/SKILL.md), [iterate](skills/iterate/SKILL.md), [deliver](skills/deliver/SKILL.md): resume one phase of an existing run by slug.
 
 ## The program
 
-- [skills/loop-spec/program/loop_spec/](skills/loop-spec/program/loop_spec/): the whole implementation, stdlib-only Python >= 3.11. `controller.py` drives phases; `contract.py` invokes one implementation; `postconditions.py` checks a claimed exit; `steps.py`/`questions.py` are the worker and human handoffs; `schemas/` holds every product, envelope, and step shape.
-- [skills/loop-spec/references/contract.md](skills/loop-spec/references/contract.md): the process contract — files, fields, exit codes, config, environment — for an implementer or a harness author.
+- [docs/loop-spec/architecture.md](docs/loop-spec/architecture.md): the core, the plug-in kinds (phase implementation, role, runner, entry), their registries, and who owns each part of `state.json`.
+- [skills/loop-spec/program/loop_spec/](skills/loop-spec/program/loop_spec/): the implementation, stdlib-only Python >= 3.11. `controller.py` is the only place a phase transitions; `contract.py` holds the registries and invokes one implementation; `postconditions.py` checks a claimed exit; `steps.py` and `questions.py` are the worker and human handoffs; `schemas/` holds every product, envelope, and step shape.
+- [skills/loop-spec/references/runner.md](skills/loop-spec/references/runner.md): the runner protocol a lead follows for each `LOOP_SPEC_NEXT` line, including how to dispatch a role step and when a turn may end.
+- [skills/loop-spec/references/contract.md](skills/loop-spec/references/contract.md): the process contract (files, fields, exit codes, config, environment) for an implementer or a harness author.
+- [agents/](agents/): the `loop-spec:worker-<effort>` agents a role step with an effort is dispatched as.
 
 ## Roles
 
-Bundled prompt bodies and result schemas under
-[skills/loop-spec/roles/](skills/loop-spec/roles/): `spec-writer`, `planner`,
-`plan-critic`, `implementer`, `code-reviewer`, `verifier`, `iterate-judge`,
-`debugger`, `reviser`. A project or user may bind a different skill in a role's
-place (`.loop-spec/config.json` or `LOOP_SPEC_ROLE_<ROLE>`); the result is still
-checked against the bundled role's schema.
+Each role is a directory under [skills/loop-spec/roles/](skills/loop-spec/roles/):
+`SKILL.md` (the prompt body), `schema.json` (the result shape), and an optional
+`contract.md` the program always appends. The SKILL.md frontmatter names the role's
+default `model` and `effort` and, for a judgment role, the `evidence` family that needs
+host attestation. The eleven roles are `router`, `spec-writer`, `planner`,
+`plan-critic`, `implementer`, `code-reviewer`, `verifier`, `iterate-judge`, `debugger`,
+`reviser`, and `direct`. By default the judgment workers run on Opus and the
+implementer and verifier on Sonnet; lead roles run at the session's own model. A
+project or user may bind a different skill in a role's place (`.loop-spec/config.json`
+or `LOOP_SPEC_ROLE_<ROLE>`); the result is still checked against the bundled role's
+schema.
 
 ## Design docs
 
 - [docs/loop-spec/ROADMAP-7.0.md](docs/loop-spec/ROADMAP-7.0.md): why 7.x is shaped this way, milestone by milestone.
 - [docs/loop-spec/phase-interface-7.0.md](docs/loop-spec/phase-interface-7.0.md): the full route matrix and every postcondition's prose.
+- [docs/loop-spec/reliability.md](docs/loop-spec/reliability.md): what the program proves about a result, and what stays judgment.
+- [docs/loop-spec/runner-decision-7.0.md](docs/loop-spec/runner-decision-7.0.md): why there are two runners, native Claude Code Agents and direct Agent SDK workers.
 - [docs/loop-spec/migrating-6-to-7.md](docs/loop-spec/migrating-6-to-7.md): how-to for a 6.x consumer moving to 7.x.
 - [docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md): which checklist case was shown by which recorded live run.
 
 ## Examples
 
-- [examples/supervisor/](examples/supervisor/README.md): a reference supervisor driving one cycle to completion on the Claude Agent SDK, with no person in the loop. Not a supported surface; not run live.
+Reference consumers of the Claude Agent SDK. Neither is a supported surface; both were
+run live (see the live-runs record).
+
+- [examples/sdk-plugin/](examples/sdk-plugin/README.md): run any loop-spec entry from Python with loop-spec loaded as a plugin, answering questions from the terminal or by policy.
+- [examples/supervisor/](examples/supervisor/README.md): a supervisor process that drives one cycle's every step and question itself, with no person in the loop.
 
 ## Rules an agent must not break here
 
 - [CLAUDE.md](CLAUDE.md): the rules a change to this repository must obey.
 - Do not add a dependency to the shipped program; it is stdlib-only Python plus one bash launcher.
 - Do not write an offline test for a whole cycle; model-driven behavior is shown by a live run, recorded in [docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md).
+- A plug-in never imports another plug-in, and the core never imports a plug-in or reads its state bucket; `tests/test_architecture.py` enforces both.
 - A name not in [skills/loop-spec/references/contract.md](skills/loop-spec/references/contract.md#configuration-and-environment) or read directly by `os.environ.get` in the program's own source is not a control.
 
 ## Optional
