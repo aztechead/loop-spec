@@ -26,7 +26,7 @@ of the lead and external implementation kinds.
 | Plug-in kind | Contract | Registry |
 |---|---|---|
 | Phase implementation | `context.json` in, `product.json` out, the route matrix's postconditions | `contract.resolve_implementation` chooses the default, an external tool, or a bound skill. `contract.DEFAULT_IMPLEMENTATIONS` names each default adapter (`execute.py`, `verify.py`, `iterate.py`, `debug.py`, `revise.py`, `route.py`, `deliver.py`, and the lead roles for SPEC, PLAN, and DIRECT) |
-| Role | `roles/<name>/SKILL.md` + `schema.json`; its dispatch settings, model and effort (`roles.dispatch_settings`), with an effort dispatched as the plugin's `agents/worker-<effort>.md` | the `roles/` directory (`roles.ROLE_NAMES`); `contract.resolve_role` binds another skill |
+| Role | `roles/<name>/SKILL.md` + `schema.json`; its dispatch settings, model and effort (`roles.dispatch_settings`, defaulting to `roles.DISPATCH_DEFAULTS`), with an effort dispatched as the plugin's `agents/worker-<effort>.md` | the `roles/` directory (`roles.ROLE_NAMES`); `contract.resolve_role` binds another skill |
 | Runner | `step.json` in, `submit` out | none: whichever process picks up `step.json` (the lead, or `sdk_runner.py`) |
 | Entry | an entry name and what it takes (a request or a PR) | `entries.ENTRIES`; the CLI and `controller._ENTRY_START` read it, and the `router` role chooses among its routable entries |
 

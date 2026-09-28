@@ -88,7 +88,7 @@ written by the planner and applied before every baseline capture and re-verifica
 
 | 6.9 variable | 7.x |
 |---|---|
-| `LOOP_SPEC_MODEL_<ROLE>` | kept: sets the model for every dispatch of that role (`SPEC_WRITER`, `CODE_REVIEWER`, ...), overriding `roles.<role>.model` in config |
+| `LOOP_SPEC_MODEL_<ROLE>` | kept: sets the model for every dispatch of that role (`SPEC_WRITER`, `CODE_REVIEWER`, ...), overriding `roles.<role>.model` in config. Since 7.5.0 a dispatched role with neither set runs at its default: `opus` for router, plan-critic, code-reviewer and iterate-judge, `sonnet` for implementer and verifier |
 | `LOOP_SPEC_CMD_PREPARE`, `LOOP_SPEC_CMD_TEST`, `_LINT`, `_TYPECHECK` | removed; PLAN names each task's `verify` command and the plan's `prepare` command. Nothing is detected from manifests |
 | `LOOP_SPEC_ARTIFACTS_IN_PR` | nothing; the rendered documents go into the PR body and the state home, never into a commit (a docs commit after VERIFY would deliver a head VERIFY never saw) |
 | `LOOP_SPEC_NON_INTERACTIVE` | nothing; a question ends the entry with a `question` file to answer (section 6) |

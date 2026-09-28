@@ -43,10 +43,10 @@ LOOP_SPEC_NEXT {"kind": ..., "path": ..., "slug": ..., "program": ..., "stateHom
 | `stepKind` | On a `step`: `lead`, `role` or `external`. It is the same `kind` as in `step.json`. |
 | `stepAttemptId` | On a `step`: the step's id, for `--step`, and for a role step also the worker's name and `--dispatch`. |
 | `dispatchPath` | On a role step with file transport: the file whose exact text is the worker's prompt. Absent otherwise. |
-| `subagentType` | On a role step: `general-purpose`, or `loop-spec:worker-<level>` for a step with a configured effort. |
+| `subagentType` | On a role step: `loop-spec:worker-<level>` for a step with an effort, else `general-purpose`. Every role step has an effort unless the project sets it to `null`. |
 | `role` | On a `step`: the role name, or null. |
-| `model` | On a `step`: the worker's model, or null for none. |
-| `effort` | On a `step`: the configured effort, or null. `subagentType` already reflects it. |
+| `model` | On a `step`: the worker's model (`opus` or `sonnet` by default), or null to inherit yours. A lead step's model is informational: you run it in this session. |
+| `effort` | On a `step`: the worker's effort, or null. `subagentType` already reflects it. |
 
 Several `LOOP_SPEC_NEXT` lines of kind `step` at once mean a wave. Dispatch every one
 of them in the same `Agent` tool message so they run concurrently, each under its own
