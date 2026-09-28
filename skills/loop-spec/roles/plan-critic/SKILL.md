@@ -79,6 +79,9 @@ not a finding.
 - A criterion that no command can prove at the head (a delivery, pull-request,
   CI, or branch fact -- DELIVER's own checks cover those).
 - A verify command that cannot test what the task claims it tests.
+- A `regression` task whose base run in `inputs.baseline` ran no tests (`testsRan` 0)
+  or is `incomplete`, such as a filter that selects only a test the task adds:
+  EXECUTE cannot compare it, so the run returns to PLAN.
 - A destructive or irreversible change with no boundary or rollback named.
 - A task graph that cannot execute as written (a cycle, an unresolvable
   dependency, two tasks that silently collide on the same file).

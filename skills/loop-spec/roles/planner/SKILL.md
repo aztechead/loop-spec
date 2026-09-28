@@ -39,6 +39,11 @@ never for installing, building, or running the plan's own verify commands.
    commit (`inputs.repos.<repo>.baseSha`; test it with `git cat-file -e
    <baseSha>:<path>`), never a command; leave it `null` when the target already
    exists there.
+   An ordinary task's `verify` must run at least one test at that base commit, since
+   EXECUTE compares its failures there with its failures after the change. A filter
+   that selects only a test the task adds (`-k <new test>`, a node id in a new test)
+   runs nothing at base and sends the run back to PLAN; run the test file or suite
+   that holds it instead, even when an unrelated test in it already fails.
    `mustFlip` is `false` for every ordinary task — it is reserved for a debug
    repair task whose `verify` command IS the failing reproduction. No task
    ships without a verify command.

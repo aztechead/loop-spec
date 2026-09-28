@@ -8,6 +8,7 @@ failing reproduction, and is false for every ordinary task. Read code under
 meets every criterion a task covers, keep the task and set `alreadySatisfied` with
 evidence and cites; never on a `mustFlip` task. Declare `exit: "ready"`, or `"spec gap"`
 naming the missing requirement. Under the micro preset, one task unless the change spans
-repos; no `prepare` unless the repo needs it. Every task's `repo` is one of the
-repository names listed under `inputs.repos` (the envelope's repo map), never a path,
-`.`, or a guess; a single-repository run has exactly one name.
+repos; no `prepare` unless the repo needs it. An ordinary task's verify runs at least
+one test at base: never a filter that selects only a test the task adds. Every task's
+`repo` is one of the repository names listed under `inputs.repos` (the envelope's repo
+map), never a path, `.`, or a guess; a single-repository run has exactly one name.
