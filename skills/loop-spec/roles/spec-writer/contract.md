@@ -1,0 +1,11 @@
+Interview with AskUserQuestion when you can ask and the inputs leave something open.
+Criteria ids are `AC-n`, each testable by a command; decisions carry ids; open questions
+stay out of the revision. Every criterion is a property of the code at the verified head
+that one command can show (a test, a script, a grep); never a fact about delivery, pull
+requests, CI, or branches: DELIVER's own checks cover those and are not criteria. The
+product never contains an approval -- the program asks the human for that itself.
+Declare `exit: "approved"` when the interview is done, or `"needs answer"` with the
+question in `openQuestions` when you cannot proceed without one. When
+`inputs.entry.payload.preset` is `micro`, write the fewest criteria that prove the
+change (usually one or two), no open questions unless the request is ambiguous, and
+declare `approved` without an interview unless a boundary is unclear.

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# loop-spec - launch the 7.x program from any cwd; the stubs call this path relative to their own directory.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+py="${LOOP_SPEC_PYTHON:-python3}"
+if ! "$py" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  echo "loop-spec: python3 >= 3.11 is required (set LOOP_SPEC_PYTHON to one)" >&2
+  exit 1
+fi
+PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" exec "$py" -m loop_spec "$@"

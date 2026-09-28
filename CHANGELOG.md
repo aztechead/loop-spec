@@ -4,175 +4,514 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
-## [6.11.1] - 2026-09-23
-
-A finished full-cycle run's log showed DELIVER opened and never closed, and never
-printed the run's result, so a reader of the log saw the run stuck in DELIVER.
+## [7.6.2] - 2026-09-28
 
 ### Fixed
 
-- Every phase that opens now closes in the log. The graph engine emits
-  `LOOP_SPEC_PHASE_START`/`LOOP_SPEC_PHASE_END` only on node transitions. `finish`,
-  `escalate`, the no-change completion, and a stopped delivery all end a run without
-  one, so the phase they ended in never closed. Each of them now closes the phase that
-  the event ledger still holds open, with `next` set to `completed` or `escalated`.
-  `events.sh` gives an escalated close the verdict `escalated` (it previously said
-  `advanced`).
-- Every result the driver publishes now prints its `LOOP_SPEC_RESULT` line on the
-  driver's stderr, the same stream as the phase markers. Before, the driver captured
-  `cycle-result.sh`'s stdout, so the line never reached the log.
+- Both 7.6.x live runs spent their one rewind the same way: the planner's verify command
+  filtered to the test the task adds (`pytest -k cube`), which runs nothing at base, so
+  EXECUTE could not compare it and the run went back to PLAN. The planner now keeps an
+  ordinary task's verify command running at least one test at base, and the plan critic
+  raises a `regression` task whose base run ran no tests or is `incomplete` as Critical.
+
+## [7.6.1] - 2026-09-28
+
+### Fixed
+
+- A step issued by `submit` or `answer` named its result path under the state home
+  (`~/.claude/...`), because the CLI built the run's paths without the project root.
+  Under a default permission mode a worker cannot write there, and the lead had to pass
+  `--result-file`. Every step's result path is now under the project's
+  `.loop-spec/results/`, as `references/runner.md` says. Found in the 7.6.0 live run.
+
+## [7.6.0] - 2026-09-28
+
+A conformance pass over the microkernel before v7 is promoted. Every role, entry, and
+plug-in now registers where the architecture says it does, and the architecture test
+checks writes as well as reads.
 
 ### Changed
 
-- The Python under `lib/` no longer calls `print()`. All output goes through stdlib
-  `logging` in `lib/loop_log.py`, which has two channels:
-  - `logger` (stderr) carries diagnostics, notes, and markers, with levels.
-  - `stdout_log` (stdout) carries the protocol line and the JSON that callers parse.
-    It is fixed at INFO with no level setting, so no configuration can drop a line a
-    caller depends on.
+- A role's facts live in its own directory. `model`, `effort` and `evidence` are keys in
+  its `SKILL.md` frontmatter (`contract.role_meta`), and its contract text is
+  `contract.md` (`roles.role_contract`). This replaces four tables in the core that
+  named roles: `roles.DISPATCH_DEFAULTS`, `roles.CONTRACTS`,
+  `contract._UNATTESTED_POLICY`, and `steps.ATTESTATION_REQUIRED_ROLES`. The last two
+  listed the same four roles twice. Composed prompts are byte-identical to 7.5.0's.
+- An entry's cycle type and first phase are fields of its `entries.ENTRIES` row.
+  `controller._REQUEST_ENTRIES` is gone, so a new request entry is one registry row.
+- A plug-in no longer writes a core record. EXECUTE quarantines a worktree through
+  `steps.quarantine`, and the SDK runner records itself through
+  `StateStore.record_runner`. DELIVER keeps its records in its own bucket:
+  `deliver.published` and `deliver.creating` replace the top-level `deliverPublished`
+  and `deliverCreating`.
+- `STATE_FORMAT` is 3. A run left unfinished by an earlier version is refused on resume
+  with a repair message; a finished one still reads.
+- `tests/test_architecture.py` also fails when a plug-in writes outside its own bucket
+  and the program's evidence records.
+- `llms.txt` describes 7.x: the `auto` entry, all eleven roles and their defaults, the
+  architecture and runner protocol, both SDK examples, and the worker agents.
+- `architecture.md` lists every core module, `CLAUDE.md` says where a role's facts go,
+  and three stale code comments are corrected.
 
-  Both write the bare message to the stream that is current when the line is logged,
-  so every line keeps its bytes and the driver's in-process `capture()` still works.
-  A line that cannot be written, such as one sent to a closed pipe, raises an error
-  as `print()` did; logging's default would print a traceback and carry on.
+## [7.5.0] - 2026-09-28
 
-## [6.11.0] - 2026-09-23
+Each phase's workers run on the model family suited to its job, calibrated for Opus 5.5
+and Sonnet 5 and later. Before this, every worker inherited the lead session's model and
+effort unless a project configured one.
 
-Fixes from a 6.9.1 upstream report: a headless run stayed in VERIFY for 30 minutes
-because a pre-team suite regression could not reach EXECUTE.
+### Changed
 
-### Fixed
+- Dispatched roles have default models and efforts (`roles.DISPATCH_DEFAULTS`). The
+  router runs on `opus` at `low`, and plan-critic, code-reviewer and iterate-judge on
+  `opus` at `medium`, the Opus 5.5 default that matches Opus 5 at `high`. Implementer
+  and verifier run on `sonnet` at `high`, because Sonnet at lower efforts scopes its work
+  to the literal prompt. The aliases resolve to the newest model in each family. An env
+  var or `roles.<role>.model` / `.effort` still overrides a default, and an explicit
+  `null` in config inherits the lead's setting. Lead roles (SPEC, PLAN, debug, revise,
+  direct) keep running at the session's own model; run that session on Opus.
+- The runner protocol has an "Ending a turn" section. It names the early stops an
+  unattended lead makes (a summary that announces the next step, an offer to continue,
+  a list of decisions that block nothing, a milestone report) and says status notes go
+  in the same message as the next tool call.
+- The implementer prompt states its scope explicitly for literal readers: a failing test
+  first for every behavior the task adds or changes, and the guard check for every test
+  added that names a guard.
+- The code reviewer reports every non-Critical finding too; only a Critical blocks, and
+  the rest reach the PR.
+- The SPEC writer reads the code the request touches, including unnamed files, before it
+  writes criteria, so each criterion names a command the repository can run.
 
-- VERIFY's pre-team remediate now reaches EXECUTE. `verify-prepare` queues the
-  remediation task and records the acceptance fail without writing VERIFICATION.md,
-  and `next --returned-from verify` used to REDO on that missing artifact on every
-  return. With a queued task and a failed verify gate, the driver now skips the exit
-  gates and answers `REWIND next=execute`. The verify skill says to return after
-  `route=remediate`.
-- A suite-regression task created without a verification baseline now lists the
-  failing commands and their failure lines as acceptance criteria. Before, it only
-  said "pass as before the change".
-- `critique delta` rejects a reply that has no line equal to the packet's
-  `NONCE: <token>`, and rejects a reply with no `DELTA-VERIFIED:` or
-  `DELTA-FINDINGS:` line. It also rejects a second reply to the same packet and any
-  round past the ceiling. `critique revised` puts a new token in each delta packet.
-  A lead could previously submit its own text, and a revised/delta loop that skipped
-  `fail` ran three rounds on a ceiling of one.
-- Findings left open when a critique closes at its ceiling are added to
-  feature.json `warnings`, so the PR body lists them under "Shipped with warnings".
-  Before, they were written only to the residue file, which nothing read.
-- The RULES.md rule that ITERATE writes when its iteration limit is spent pointed its
-  check at `bash lib/criteria-coverage.sh` with absolute artifact paths. That check
-  resolves only inside loop-spec itself. It now stores
-  `{loop-spec-lib}/criteria-coverage.sh` with repo-relative artifact paths, and
-  `rules.sh render` replaces the placeholder with the installed `lib/` directory.
-- Gate failures and hook refusals that tell the lead to run a bundled script now
-  print the installed `lib/` path, not `bash lib/<script>`. The relative path does
-  not resolve in a consumer repository. This covers the PLAN exit gate's extract
-  command, the grounding lint's `evidence.sh` hint, the EXECUTE exit gate, the
-  terminal-result and forgery guards, `execute-step`, `profile`, `issue-intake`, and
-  the Codex adapter. `tests/lib-path-hints-coverage.test.sh` fails on a new one.
+## [7.4.2] - 2026-09-24
+
+A run on an open PR finds finished work quickly. The 7.4.1 live run took 20.5
+minutes to conclude that its PR already did what was asked, and about 15 of them
+were waste.
+
+- The planner, plan critic and reviser read and run in a clean checkout of each
+  repo's code: the start commit, or EXECUTE's head on a re-plan. They get it as
+  `codePath` and `codeSha`. Before this, a planner lead read the operator's checkout
+  on `main` and planned work the PR head already had.
+- A plan task may carry `alreadySatisfied` (`evidence`, `cites`). EXECUTE never
+  dispatches such a task. P8 checks its cites and refuses it on a `mustFlip` task or
+  a task that owns integrated commits. The plan critic raises an unmarked task the
+  code already does as Critical, recommending the mark. VERIFY still proves every
+  criterion at the head.
+- The adopted-range review at EXECUTE entry runs only when a task is adopted: a plan
+  task matching the delivering run's, or any task under an external EXECUTE. A micro
+  or cycle on a PR no longer spends that step.
+
+## [7.4.1] - 2026-09-24
+
+The five gaps 7.4.0 left.
+
+- A run on an open PR that finds the work already done ends as a `no-change`
+  success. Before, it could only end blocked: E9 judged "no change" from the
+  merge-base, where the PR's own commits always sit. E9 now judges from the start
+  commit (the adopted PR's head in its repo, else the base). The result's
+  `verifiedSha` is the PR head, and `prUrl` names the PR. DELIVER writes nothing.
+  The adopted repo's skipped row names the PR, and D6, now required by `delivered`,
+  checks that `gh pr view` still shows it open at the verified head. A later
+  `revise --pr` never takes such a run's SPEC and PLAN as the delivering run's.
+- Revise reads every page of a PR's inline review comments. It read only the first
+  30.
+- A test pins the plan critic's effort when PLAN runs its default implementation.
+- `references/runner.md` is rewritten as reference material for a lead, organized
+  by marker and step kind. Every command and field name is unchanged.
+- The live-runs versions table names Claude Code 2.1.278 to 2.1.282.
+
+## [7.4.0] - 2026-09-24
+
+The four follow-ups from 7.3.0, plus per-role effort for dispatched workers.
+
+- PLAN reads an adopted PR's code at the PR head. The planner, plan critic and reviser
+  get each repo's `startSha` (the PR head when a run continues a PR, else the base)
+  beside `baseSha`, where the baseline, `featureAdded` and repo checks still run. A
+  micro run naming a PR that already had the function planned "Add square(x)"; it now
+  plans an edit to the existing one.
+- A second `revise --pr <n>` after a finished round starts a new run, `revise-<n>-2`,
+  instead of returning the old result and never reading the new comments. The reviser
+  gets the latest finished run's products, and each comment's `createdAt` with a cutoff
+  at the prior revise run's start. A revise run now fetches its comments on its first
+  step, so a `gh` failure there leaves a run that the next `revise --pr` resumes.
+- The core reads phase products, never a plug-in's state (D4). EXECUTE publishes each
+  task's step ids and security signals and each issue's retry count; VERIFY publishes
+  each range's review step and its checkouts; the debug reproduction re-run is core
+  evidence (`debugRuns`); a revise run's prior products are `adoption.prior`; the PR
+  facts an `auto` run routes on are `routeFacts`. Evidence fields are read only when
+  the phase ran its default implementation. `tests/test_architecture.py` fails on any
+  core import of a plug-in and on any read of another module's state bucket.
+- `state.json` gains `stateFormat` 2. A run started before 7.4.0 that has not finished
+  is refused on resume (finish it on 7.3.x, or start a new run with `--slug`); a
+  finished one still reads.
+- The runner protocol lives once, in `skills/loop-spec/references/runner.md` (D5). Each
+  entry stub runs its start command and cites it; `LOOP_SPEC_NEXT` and
+  `LOOP_SPEC_WAIT` carry the launcher, state home and project root its commands need.
+- Per-role effort: `roles.<role>.effort` or `LOOP_SPEC_EFFORT_<ROLE>` (`low`, `medium`,
+  `high`, `xhigh`, `max`). The Agent tool takes no per-call effort, so a role step with
+  one is dispatched as the plugin's `loop-spec:worker-<level>` agent
+  (`agents/worker-<level>.md`, `effort:` frontmatter), and it attests only when the
+  transcript's `.meta.json` names that agent type. The SDK runner passes the effort to
+  `ClaudeAgentOptions.effort`. A step the lead runs itself keeps the session's effort.
+
+## [7.3.0] - 2026-09-24
+
+The 2026-09-23 upstream report on three autonomous runs (6.11.1), done in v7 terms,
+and the plugin laid out as a microkernel: a core, plug-ins that do not import each
+other, and a registry for each plug-in kind.
+
+- `auto` is back, as a router: the program resolves the PRs a request names (any host),
+  and a `router` role picks `cycle`, `micro`, `debug`, `revise`, or `direct` from the
+  entry registry. ROUTE's A1/A2 check the choice and name the rule a refused one broke;
+  past the retry limit the run stops by default, never guessing a cycle. A revise
+  choice starts the revise run for that PR with the same answer policy.
+- `direct`: a mechanical git or PR operation (resolve conflicts, rebase, push) done by
+  the lead with no cycle. X2 checks each reported push against the remote and each PR
+  against its head; the result is `direct`, with "no gate ran" in its warnings.
+- Revise from a fresh `--depth=1 --single-branch` clone works: the PR's head and base
+  are fetched into explicit remote-tracking refs (unshallowing a shallow clone), and the
+  local PR branch is created at the head. A cycle or micro request naming an open PR now
+  continues that PR's branch through the same path (it raised KeyError at EXECUTE). A
+  checked-out or diverged local PR branch is refused with a repair, never moved.
+- Repo checks (lint, typecheck) run when the implementer submits, before any review;
+  a check that writes files leaves the worktree clean.
+- Review-time security signals read the change: added lines, then removed lines, per
+  file. VERIFY's range probes read the verify checkout at head.
+- The planner adds the changelog entry as a task when the repo asks for one; the
+  reviser groups small gaps by owning file; DELIVER's moved-branch caveat names a
+  rescue branch, never a reset that drops commits.
+- `debug` accepts `--request-file`, like `cycle` and `micro` (the CLI is built from
+  the entry registry).
+- README: running your own reviewer during VERIFY by binding the code-reviewer role.
+- From the 7.3.0 live runs: a direct run's checked push no longer crashes its result
+  (LF-72); the direct role unshallows before a merge and never merges unrelated
+  histories (LF-73); a shallow clone keeps its repo id when adoption unshallows it, so
+  a revise from a `--depth=1` clone finds its own run again (LF-74).
+- Registries: `contract.DEFAULT_IMPLEMENTATIONS` (phase adapters), the `roles/`
+  directory (roles), `entries.ENTRIES` (entries); the step contract types live in
+  `steps.py`. `architecture.md` maps core and plug-ins and names the two remaining
+  deviations.
+
+## [7.2.0] - 2026-09-23
+
+The 6.9.1, 6.10.0 and 6.11.0 fixes, checked item by item against v7 and done in v7's
+terms where v7 did not already cover them:
+
+- Existing-code lookup (6.10.0): the PLAN product may record `existingCode`, per concept
+  `reuse`, `extend` or `new` with the code it cites and the tasks it applies to. New
+  postcondition P8 checks the facts (known repo and tasks, a cite for reuse/extend,
+  every cite resolves at the plan's commit or the run's EXECUTE head, lines within the
+  file). The planner records it, the critic treats a `new` entry that duplicates cited
+  or named code as Critical, and each task's implementer is handed its entries.
+- Suite fingerprints (6.9.1): pytest's long-run summary `(H:MM:SS)`, jest's
+  `Test Suites:`, vitest's `Test Files` and cargo's `test result:` lines lose their
+  counts, and a line reporting a pass is never a failure fingerprint whatever its test
+  id says. Normalization v3; a run from older rules is refused before any write.
+- Repair hints (6.11.0): a hint naming `loop-spec <command>` is printed with this
+  launcher's path and the call's `--project-root` and `--state-home`, so it runs as
+  printed; the stubs' operator lines name the full command too.
+- A failed-verdict remediation carries what the program's own VERIFY re-run printed at
+  that head (6.11.0), not only the verifier's cause.
+- A VERIFY evidence re-run is reused only under the same prepare command (6.11.0).
+- A PR title is one line even when the goal spans lines (6.9.1).
+
+## [7.1.2] - 2026-09-23
+
+- All program output goes through `logging`: the new `loop_spec.log` gives a stdout
+  logger (status lines, `LOOP_SPEC_*` markers, unchanged byte for byte) and a stderr
+  logger (progress and errors), each writing to the stream current at the time. The
+  `examples/` consumers log the same way. No module calls `print`; a unit test
+  enforces it.
+
+## [7.1.1] - 2026-09-23
+
+- PLAN gets the fact probes it was promised: for each repo, the tracked files the
+  request or SPEC product names (full path, or a unique basename), probed for house
+  style, duplication, indirection, security signals and imported dependencies in a
+  clean checkout at the base commit (the adopted head for an adopted repo). The program
+  no longer fetches dependency docs; `docs_probe` is removed and the planner fetches
+  docs itself.
+- Security signals are computed with the review-time probes over each task's diff and
+  over VERIFY's range, as repo-relative paths; the reviewer dispositions each by file
+  and E11 checks them. They were never produced before, so E11 always held.
+- The VERIFY checkout is keyed by repo, head and prepare command
+  (`verify-<repo>-<head12>-<prepare8>`): workspace repos at one SHA no longer share a
+  tree, a changed prepare gets a fresh one, and a failed prepare leaves none behind.
+  ITERATE finds it through VERIFY's state.
+
+## [7.1.0] - 2026-09-23
+
+From the 6.9.x upstream and improvement reports, checked against 7.0.7 (the items 7.x
+did not already cover):
+
+- Repo checks: PLAN may name `checks` (lint, typecheck, format check) per repo; the
+  program reports which tools each repo's manifests configure (read from git objects),
+  baselines the checks, re-runs them at every task integration (a new diagnostic sends
+  the task back) and at VERIFY's head, where a regression is a remediation and V10 gates
+  `passed`. A diagnostics parser gives ruff, mypy, flake8, tsc and `ruff format --check`
+  output stable `<path>: <message>` identities.
+- DELIVER: opt-in `deliver.acceptRemotePaths` accepts commits someone else put on the PR
+  branch after the verified SHA (a changelog bot) when every path they touch matches and
+  none is part of the verified change; the verified SHA stays the delivered one and the
+  commits are recorded as `acceptedRemote` (D1/D2 hold both to one observed head). An
+  existing PR's body is refreshed on re-entry.
+- A retrying implementer reads the failures: new test ids, the output lines behind new
+  fingerprints, or the run's last lines.
+- Fingerprints strip the counts on a whole summary line (normalization v2); a run whose
+  baseline used other comparison rules is refused before any command touches it.
+- A criterion that passed and now fails is re-run by the program; a failing test file
+  added since the pass is stated to the implementer as a fact (ROADMAP §10).
+- The PR body lists Critical PLAN-critic findings the run rejected, with the reason.
+- Imports inside `loop_spec` are absolute.
+- Docs: migration inventory and ROADMAP §11 no longer claim `commitArtifacts`, config
+  `prepare`, detected repo checks or integration reason codes that did not exist.
+
+## [7.0.7] - 2026-09-23
+
+- EXECUTE reviews a wave's ready tasks in one code-reviewer step (6.10's per-wave
+  review): the step returns one result per task, each applied as that task's own
+  review; a lone task and a close-out keep a review step of their own.
+- LF-71: a whole-suite criterion ("the full test suite passes") is covered by any
+  task whose verify runs that suite and never needs a `dependsOn`; a 7.0.7 run's
+  lead chained two disjoint tasks to cover one, so they never shared a wave.
+
+## [7.0.6] - 2026-09-23
+
+- LF-70: the planner keeps a test in the task of the code it tests and splits only
+  into tasks on separate files that can share a wave; a 7.0.5 run's config-app-tests
+  chain made three one-task waves and a 20-minute EXECUTE.
+- `docs/loop-spec/live-runs-7.0.md` records the six 7.0.5 timing runs.
+
+## [7.0.5] - 2026-09-23
+
+From the 7.0.3/7.0.4 timing runs, a prompt audit, and a cost profile of those runs:
+
+- LF-68: an open Important finding at ITERATE becomes an EXECUTE close-out, as a
+  Critical one does, instead of a PLAN gap; the re-plan cost 8 to 12 minutes per
+  rewind.
+- LF-69: the PLAN critic drops a finding whose honest recommendation is "reject, a
+  later check covers it", and treats a criterion about how code is written as code
+  review's to check; its example no longer models a self-closing Critical.
+- Review, judge and revise diffs leave out package-manager lockfile content and name
+  each changed lockfile (`uv.lock` was 90% of those diffs, about 16% of spend).
+- `LOOP_SPEC_NEXT` for a step carries `stepKind`, `stepAttemptId`, `role`, `model`,
+  and `dispatchPath` (a `dispatch.txt` with the dispatch text), so a lead dispatches
+  a role step without opening the ~170 KB `step.json`; the step trailer asks for a
+  short final message.
+- Prompt audit: every stub carries the wave and unattested re-dispatch rules; the
+  verifier loses steps its schema cannot hold; implementer, plan-critic, planner and
+  spec-writer text corrected.
+
+## [7.0.4] - 2026-09-23
+
+Four defects found by Sonnet FastAPI timing runs on 7.0.3 (claude -p and the Agent SDK
+plugin example), each fixed at its root with module tests:
+
+- LF-64: every verdict passing with a Critical review finding open made VERIFY exit
+  `passed`, which V7 rejected, and the re-review found the same finding until a blocked
+  question. VERIFY now exits `implementation gap` with one remediation task per finding,
+  reopening the plan task that owns the finding's file.
+- LF-65: a phase module's blocked pause (EXECUTE's out-of-band branch, leftover task
+  branch, unmapped commits) was asked but never linked, so its answer was ignored and
+  the pause re-asked forever. It now goes through the controller's blocked handler; the
+  branch pauses offer `stop` or `fix-and-re-enter` instead of the unhandled
+  `resume`/`abort`.
+- LF-66: fix-and-re-enter/stop questions had no default, so headless runs could not
+  answer them and the lead edited project code itself. They now list `stop` first and
+  default to it; every stub says the lead never edits the project or dispatches a worker
+  the program did not issue.
+- LF-67: a code-review submission from an unknown checkout raised StopIteration; it is
+  now a LoopSpecError naming the checkout.
+- Docs: `migrating-6-to-7.md` says two clones of one repository share a repo id and so
+  share a concurrent run's state.
+
+## [7.0.3] - 2026-09-22
+
+Ten defects found by the 7.0.2 and 7.0.3 live runs (LF-54 to LF-63), each fixed at its root
+with module tests and shown live in `docs/loop-spec/live-runs-7.0.md`:
+
+- LF-54: the PLAN critic gets each task's baseline facts (ran or not, failing
+  identities at base) and learns that the program compares failure identities, not
+  exit status. Each finding carries a `recommendation`; the blocked critic question
+  takes its default from them, so a headless run no longer stops on it.
+- LF-55: an ITERATE rewind with free-text `execute` gaps registers close-out tasks
+  (`closeOuts`, `C-n`) that EXECUTE must implement or prove already true under
+  review, so the rewind changes something before VERIFY runs again.
+- LF-56: a string input's trailing newlines are trimmed at the section boundary, so
+  a review prompt survives transit unchanged and attests.
+- LF-57: JSON inputs render non-ASCII text as itself, not as `\u` escapes a lead
+  would retype differently.
+- LF-58: one repo's rejected push is that repo's failed row; the other repos still
+  deliver (`partially delivered`, `partiallyDelivered: true`). Publication history
+  (a pushed SHA, a PR) survives a later failed or retried attempt. The repair text
+  names divergence only when git reports it.
+- LF-59: a role worker gets a fixed bootstrap and reads its prompt from
+  `steps/<id>/instructions.md`. Attestation requires the worker's own Read calls to
+  return every line of the issued prompt before any other tool call. The calls must
+  sit in assistant records and their results in user records.
+- LF-60: a `plan-critic`, `code-reviewer` or `iterate-judge` step with no accepted
+  evidence after its re-dispatches is refused, never waived. Nothing it produced is
+  accepted; the phase asks a blocked question (`fix-and-re-enter` or `stop`, no
+  default) unless `evidence.review.accept` or the new `evidence.judgment.accept`
+  opts the role in. Cached judgments and reviewed ranges are consumed only with
+  accepted evidence. A task review is bound to the candidate SHA it was issued for,
+  and a branch that moved while the review ran is blocked, never relabelled as
+  reviewed.
+- LF-61: the program schedules the instruction-file Reads. `dispatchPrompt` states
+  the line count and lists each Read call. Ranges are cut by a provisional
+  16,000-byte rendered budget, not by line count, because 537 lines of hex already
+  exceeded the host's 25,000-token cap. The bootstrap says how to recover from a
+  short or over-limit read, and when to stop. A prompt line over the supported
+  budget stops the step before anything is written. Attestation still requires
+  every line.
+- LF-62: under `--answer-policy default`, the PLAN critic's second-pass question is
+  answered with the critic's recommendation. Until now, only callers that remembered
+  to resolve the policy applied it. `questions.ask` now applies the policy for every
+  question. The critic question, its answer and its link are saved together, so a
+  crash cannot separate them.
+- LF-63: the ITERATE judge gets each touched repo's diff as its own input section
+  (`diff`, or `diff:<repo>` in a workspace) instead of a `diffs` object. JSON had put
+  a whole diff on one escaped line, and LF-61's read budget then refused the step.
+  A project that binds its own iterate-judge skill and read `diffs` must read the new
+  sections. Each diff is still cut at 200,000 characters (`_DIFF_CAP`) before the
+  prompt is composed. A complete receipt of the prompt does not mean a complete
+  receipt of a larger diff.
+
+Each role skill also carries one brief, schema-valid result example.
+
+## [7.0.2] - 2026-09-22
+
+One defect found by the second end-to-end workspace run (LF-53):
+
+- A product command that relies on shell syntax is rejected before it runs. The
+  program runs PLAN `verify` and `prepare`, the debug reproduction and original,
+  and VERIFY evidence commands as argv with no shell, so a verify command joined
+  with `&&` reached git as arguments and every EXECUTE retry failed. P3, B1, B2,
+  and V4 now name the task, command, or criterion and the construct; quoted and
+  escaped literals still pass. The rules are under "Commands" in
+  `docs/loop-spec/phase-interface-7.0.md`.
+
+## [7.0.1] - 2026-09-22
+
+Four defects found by the first end-to-end workspace run on the audited 7.0 program
+(LF-49 to LF-52), each fixed at its root with deterministic module tests:
+
+- An "already satisfied" implement result is honored only when Git agrees: a
+  recorded fork, an existing branch at that fork, and a clean worktree. Commits
+  past the fork take the ordinary review path (`already_satisfied_contradicted`).
+- A reviewer that repeats an open ledger finding by its id carries it forward
+  instead of minting a duplicate V8 rejects; the ledger records an observation and
+  takes a closure with a reason; an echo of a closed finding is dropped; a reopen
+  needs an explicit `supersedes`. V7 evaluates the ledger with the product's valid
+  closures overlaid.
+- A VERIFY `implementation gap` now reaches EXECUTE: the transition carries the
+  failing verdicts and remediation tasks, and the plan task owning each failed
+  criterion is re-opened against the current feature head with a fresh retry
+  allowance. A worktree is reused only when clean, its writers known terminated,
+  and already containing the head; otherwise a new generation branch and worktree
+  is forked and the old worktree is kept (quarantined unless clean and
+  terminated). Tasks carry `forkedFrom` (attributes new commits) and `reviewFrom`
+  (one review record covers every commit a task owns); conflict recovery keeps
+  integrated commits and never deletes the branch. Forward transitions clear the
+  entry payload. `confirm_terminated` no longer force-removes a dirty worktree.
+- VERIFY and ITERATE key their module state on their inputs (requirements and
+  plan revisions, heads, and for ITERATE the accepted VERIFY attempt) and rebuild
+  when any changed, so a repaired head is never judged by pre-repair evidence.
+  EXECUTE reconciles a changed plan by task identity and refuses a dropped or
+  repo-moved task that owns integrated commits, and legacy state without plan
+  snapshots.
+
+## [7.0.0] - 2026-09-21
+
+A ground-up rewrite: loop-spec is now a stdlib-only Python program
+(`skills/loop-spec/program/loop_spec/`) driven by thin Claude Code skill stubs,
+instead of the 6.x bash/jq implementation.
 
 ### Added
 
-- The driver notices a lead that keeps calling `next` or `phase-begin` without changing
-  anything. It fingerprints every repository's HEAD and working tree plus the
-  phase-related feature.json fields, not the command, so alternating the two calls
-  still counts. On the third unchanged call it prints `NOTE [stuck] ... Next:
-  <command>` to stderr, naming the command that moves the cycle on:
-  - the remediate return when VERIFY has queued a task
-  - `critique resume` when a critique gate is open
-  - fixing the last REDO's flags
-  - acting on the phase-begin answer
-  - ending the session at a human pause
-  - fixing the error when the same refusal repeats
-
-  It only prints guidance; it never refuses a call or escalates
-  (`lib/stuck_hint.py`, `tests/lib/stuck-hint.test.sh`).
-- `phase-begin verify` stores its result. A repeat call on the same clean HEADs,
-  commands, baseline, and mode returns that result with `cached: true`. It does not
-  re-run the suite or record another gate entry, and it re-queues only tasks that are
-  no longer queued. An escalate result is never stored.
-- `LOOP_SPEC_INTEGRATE_REPO_CHECKS=1` adds the project's lint and typecheck commands
-  to each task's integration check, so EXECUTE catches lint and type errors that
-  VERIFY would otherwise find later. It is off by default.
-- VERIFY guidance: to check whether a failure predates the change, use a temporary
-  worktree at the merge base, never `git stash`. Never run a gate under `env -i`.
-  RULES.md: a `check:` command runs from the target repository root.
-
-## [6.10.0] - 2026-09-23
-
-PLAN no longer writes PATTERNS.md. The planner now looks up existing code inside
-PLAN.md, where the tasks that depend on it can cite it.
+- The 7.x program: `controller.py` drives SPEC, PLAN, EXECUTE, VERIFY, ITERATE,
+  DELIVER (plus the DEBUG and REVISE entries) one phase at a time, and
+  `postconditions.py` checks every claimed exit before it advances.
+- Twelve Claude Code entries: `cycle`, `micro`, `debug`, `revise`, `spec`, `plan`,
+  `execute`, `verify`, `iterate`, `deliver`, `status`, and the `loop-spec` hub.
+- `loop_spec/sdk_runner.py` and [`examples/supervisor/`](examples/supervisor/README.md):
+  an unattended runner and reference supervisor on `claude-agent-sdk`, for driving
+  a cycle with no Claude Code session at all.
+- `controller-observed` evidence: an SDK receipt beside a step's result grants the
+  same standing as a native host attestation, with no host process required.
+- [`skills/loop-spec/references/contract.md`](skills/loop-spec/references/contract.md):
+  the process contract — files, fields, exit codes, config, environment — for an
+  implementer or a harness author.
+- [`docs/loop-spec/live-runs-7.0.md`](docs/loop-spec/live-runs-7.0.md): which
+  checklist case was shown by which recorded live run.
+- EXECUTE issues every task of a wave at once (`LOOP_SPEC_NEXT` per step,
+  `LOOP_SPEC_WAIT` while siblings are open); a task is reviewed against the head it
+  forked from and integrates with a merge commit when a sibling merged first; a
+  conflicting merge re-implements the task on the new head as a counted retry.
+- An unattested `plan-critic`, `code-reviewer`, or `iterate-judge` step is refused
+  and re-dispatched under a new name up to `LOOP_SPEC_STEP_RETRIES`, then accepted
+  with a waiver the result's `weakenedAssurance` names.
+- `LOOP_SPEC_MODEL_<ROLE>` and `roles.<role>.model` set the model on every role
+  dispatch, not only the SPEC and PLAN lead steps.
+- ITERATE dispositions the findings a `met` verdict leaves open: Critical stays a
+  blocker, Important becomes a PLAN gap while the rewind budget has room, Minor (or
+  Important without room) is deferred as a caveat; I4 accepts `escalated` only for a
+  refused rewind or an unmet verdict with no gap.
+- The 7.0 code audit's eleven findings (R1 to R11) are fixed on the branch: the
+  current invocation's step file is authoritative; an SDK receipt counts only on an
+  SDK-launched run and lives under the run's steps dir; native attestation binds the
+  whole composed prompt; baselines and EXECUTE re-runs are per repo; a runner that
+  fails before collecting tests is a regression; terminal cleanup keeps open,
+  quarantined, and dirty worktrees and lists them in `cleanupBacklog`; D8 requires
+  every touched repo delivered with a real PR; the result's compatibility fields
+  follow the schema-1 table; a reused verify execution is re-matched against the
+  current claim; exempt criteria are never re-executed; timeout output is decoded.
+  `commitArtifacts` is removed (R8): the delivered head is always the verified SHA.
+  The round-2 audit's residuals are fixed too: a candidate run that did not
+  complete is never `no-regression`; a partial delivery ends the run `escalated`;
+  DELIVER refuses a feature branch that moved after VERIFY and pushes the verified
+  SHA by value.
 
 ### Changed
 
-- PLAN.md has a required `## Existing code` section that comes before the tasks. For
-  each concept the feature adds or changes, the planner searches the tree for the
-  module that already does the job and records one decision: `reuse` (call it through
-  its current interface), `extend` (add the behavior behind that interface), or `new`
-  (says what was searched and why nothing fits). `reuse` and `extend` cite the
-  `path:lines` read, the interface callers rely on, and a test analog. A new module
-  must pass the deletion test, and a new seam needs two adapters (production and
-  test). Tasks list the cited files in `read_first`.
-- `lib/artifact-lint.sh plan` flags a PLAN that has no `## Existing code` section, an
-  entry without a decision, a `reuse`/`extend` entry without a `path:lines`
-  citation, and a `new` entry that does not say what was searched. The PLAN exit
-  gate and the artifact-lint hook enforce these through the same lint.
+- Run state moves off `docs/loop-spec/features/<slug>/feature.json` and committed
+  markdown into `<state home>/<repo id>/<slug>/state.json`, durable outside the
+  consumer repository. Configuration moves from environment variables into
+  `.loop-spec/config.json`'s `phases`/`roles`/`deliver` keys.
+  [migrating-6-to-7.md](docs/loop-spec/migrating-6-to-7.md) maps each surface.
+  The terminal result keeps schema 1; a new `result` field carries the 7.x
+  classification (`converged`, `converged-with-caveats`, `no-change`,
+  `escalated`, `failed`, `paused`) alongside the fields a 6.x consumer already
+  reads.
 
 ### Removed
 
-- PATTERNS.md, its template, `artifact-lint.sh patterns`, and the PATTERNS entries in
-  the PLAN graph node (ingress, egress artifacts, commit paths).
-- The `pattern-mapper` agent, its `patternMapper` model key and
-  `LOOP_SPEC_MODEL_PATTERN_MAPPER` override, its path-guard case, and
-  `lib/gsd-ingest.sh`, which only imported a GSD PATTERNS.md.
+Per the M7 cutover plan in [ROADMAP-7.0.md](docs/loop-spec/ROADMAP-7.0.md#17-testing-live-gates-and-cutover):
+`hooks/`, `extensions/`, `lib/`, `graph/`, `agents/`, `commands/`, `evals/`,
+`.codex-plugin/`, the 6.x `skills/` tree (every skill but the twelve listed
+above), and the 6.x `tests/` suite. The environment variables each one read are
+listed, with their 7.x fate, in
+[migrating-6-to-7.md](docs/loop-spec/migrating-6-to-7.md#3-move-your-environment-variables-into-config-or-flags).
+opencode, Google ADK, and OpenAI Codex support goes with them; 7.x targets
+Claude Code and the Claude Agent SDK only.
 
-## [6.9.1] - 2026-09-23
+### Shown live
 
-Two autonomous runs against a GitHub Enterprise Server (upstream report, 2026-09-23) did
-the work and still failed. Every item below is one of their findings.
+Recorded in [docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md),
+against Claude Code 2.1.278 on `sonnet`: the all-external traversal, a full
+native cycle to a delivered pull request, attestation in both directions, the
+blocked exit answered `stop`, a two-repo workspace, the debug and revise entries,
+the program's own invalid product ending a run as `failed`, the rewind budget
+ending one as `escalated`, and permission denial under the default mode. The
+45 live findings (LF-01 to LF-45) those runs raised are fixed on the 7.0 branch; each
+fix's commit subject names its finding number.
 
-### Fixed
+### Not shown live
 
-- The delivery PR title is derived from the goal, not the goal itself: `lib/pr-body.sh
-  title` keeps the first sentence, capped at 120 characters; the body still carries the
-  full goal. A 1138-character goal produced a 1144-character title that the server
-  refused three times (create, edit, and the escalation checkpoint). The checkpoint
-  draft uses the same title.
-- `pr_create_failed`, `metadata_failed`, and the checkpoint's "gh pr create failed"
-  skip now carry the last lines of gh's stderr, as the push path already did. The
-  three refusals above logged nothing but "gh pr create failed".
-- With `LOOP_SPEC_ARTIFACTS_IN_PR=0`, the frozen-intent check no longer escalates
-  `frozen-intent-changed` with a missing-file error once finalization has moved
-  `SPEC.md` to the artifact store: the driver reads the store copy
-  (`artifactSink.path`, new). A blocked delivery now reports its own blocker, and a
-  successful one no longer escalates. A second finalization at a new head (after a CI
-  remediation round) carries the stored documents forward instead of recording an
-  empty store. A `SPEC.md` that is missing everywhere escalates as `spec-unreadable`.
-- The suite-regression gate no longer fingerprints runner summary lines (pytest with
-  or without `===` borders, jest, vitest) or `PASSED` lines. On a base with 87
-  pre-existing failures, a feature that added 40 passing tests was reported as a
-  regression because "2611 passed" hashed differently from "2571 passed". The
-  remediation task now lists each added failure line (`addedLines`, capped at 10) so
-  the implementer can see what counts.
-- `pr-feedback` addresses the PR's host: the driver passes `--repo <host>/<owner/repo>`
-  from the PR URL and `lib/pr-comments.sh` exports `GH_HOST` from it. On an Enterprise
-  host with `GH_HOST` unset, every feedback call went to github.com and the observation
-  degraded.
-
-### Added
-
-- `LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS` (opt-in, colon-separated globs): final
-  delivery accepts a remote commit on the PR branch that descends from the verified SHA
-  and touches only matching paths, binding the PR head to it without re-verifying;
-  the result records `remoteHeadAccepted`. A changelog workflow that pushes one
-  `CHANGELOG.md` commit onto every new PR blocked delivery forever (`push_failed`, then
-  `post_gate_drift` after the agent fast-forwarded). Unset, behavior is unchanged.
-  Commits landing after checks pass are still refused.
-- `checkpointPrHead` in feature.json and result.json: the head branch of the
-  escalation checkpoint PR, `<branch>-checkpoint` under `LOOP_SPEC_ARTIFACTS_IN_PR=0`.
-  A host that found the run's PR by `branch` opened a duplicate.
+The SDK runner and reference supervisor: this repository has no Claude Agent SDK
+credentials. Deferred by the maintainer's own accepted decision of 2026-09-22
+(recorded in ROADMAP-7.0.md); grounded from the installed package's source and
+its docs instead of a live run's output.
 
 ## [6.9.0] - 2026-09-17
 

@@ -1,0 +1,116 @@
+{
+  "type": "object",
+  "required": [
+    "verdicts",
+    "planGap",
+    "intentGap"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "planGap": {
+      "type": "boolean"
+    },
+    "intentGap": {
+      "type": "boolean"
+    },
+    "verdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "criterion",
+          "verdict",
+          "evidence",
+          "cause",
+          "remediation"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "criterion": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "blocked"
+            ]
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "command",
+                  "repo",
+                  "sha",
+                  "exitStatus",
+                  "failureIdentities",
+                  "outputDigest"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "description": "One argv command, run with no shell: no &&, ||, |, ;, redirection, newlines, $ expansion, backticks, leading ~ or #, unquoted * ? [, or NAME=value prefix. Quote literals and patterns the program reads itself; call a venv's python by its path.",
+                    "type": "string"
+                  },
+                  "repo": {
+                    "type": "string",
+                    "description": "Which touched repo this criterion's verify command ran in."
+                  },
+                  "sha": {
+                    "type": "string"
+                  },
+                  "exitStatus": {
+                    "type": "integer"
+                  },
+                  "failureIdentities": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "outputDigest": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "cause": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "remediation": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "files"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

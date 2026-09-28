@@ -1,0 +1,174 @@
+{
+  "type": "object",
+  "required": [
+    "exit",
+    "inputsDigest",
+    "boundTo",
+    "repos"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "exit": {
+      "type": "string",
+      "enum": [
+        "delivered",
+        "partially delivered",
+        "delivery blocked"
+      ]
+    },
+    "inputsDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "boundTo": {
+      "type": "object",
+      "required": [
+        "requirements",
+        "plan"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "requirements": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "repos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "repo",
+          "pr",
+          "deliveredSha",
+          "caveats",
+          "state"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "pr": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "number",
+                  "url",
+                  "headRef",
+                  "headSha",
+                  "base"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "number": {
+                    "type": "integer"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "headRef": {
+                    "type": "string"
+                  },
+                  "headSha": {
+                    "type": "string"
+                  },
+                  "base": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "publishedSha": {
+            "description": "Set on a failed row whose branch this or an earlier DELIVER attempt pushed, or observed on the remote as an accepted extension: the SHA on the remote branch.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deliveredSha": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "caveats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "delivered",
+              "failed",
+              "skipped"
+            ]
+          },
+          "acceptedRemote": {
+            "description": "7.1.0: commits after the verified SHA on the remote branch, accepted under deliver.acceptRemotePaths; deliveredSha stays the verified SHA.",
+            "type": "object",
+            "required": [
+              "head",
+              "commits",
+              "paths"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "head": {
+                "type": "string"
+              },
+              "commits": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "sha",
+                    "subject",
+                    "paths"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "sha": {
+                      "type": "string"
+                    },
+                    "subject": {
+                      "type": "string"
+                    },
+                    "paths": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

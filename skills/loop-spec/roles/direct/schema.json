@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DIRECT product: what the lead did for a request run with no cycle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "exit",
+    "inputsDigest",
+    "boundTo",
+    "summary",
+    "actions",
+    "blocker"
+  ],
+  "properties": {
+    "exit": {
+      "type": "string",
+      "enum": [
+        "done",
+        "incomplete"
+      ]
+    },
+    "inputsDigest": {
+      "type": "string"
+    },
+    "boundTo": {
+      "type": "object",
+      "required": [
+        "requirements",
+        "plan"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "requirements": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "repo",
+          "ref",
+          "sha",
+          "url",
+          "detail"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "commit",
+              "push",
+              "pr",
+              "other"
+            ]
+          },
+          "repo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sha": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "blocker": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "exit": {
+          "const": "done"
+        },
+        "blocker": {
+          "type": "null"
+        }
+      }
+    },
+    {
+      "properties": {
+        "exit": {
+          "const": "incomplete"
+        },
+        "blocker": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  ]
+}

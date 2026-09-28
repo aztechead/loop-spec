@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "required": ["questionId", "value", "scope", "answeredAt", "by"],
+  "additionalProperties": false,
+  "properties": {
+    "questionId": {"type": "string"},
+    "value": {"type": "string"},
+    "scope": {"type": "string", "enum": ["question", "run"]},
+    "answeredAt": {"type": "string"},
+    "by": {"type": "string", "enum": ["human", "policy"]}
+  }
+}

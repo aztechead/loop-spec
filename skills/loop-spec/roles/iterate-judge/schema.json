@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "required": [
+    "verdict",
+    "gaps",
+    "caveats"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "met",
+        "unmet"
+      ]
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "target",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": [
+              "spec",
+              "plan",
+              "execute",
+              "verify"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "caveats": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
