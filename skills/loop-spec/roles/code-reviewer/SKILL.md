@@ -28,7 +28,9 @@ Read-only over the codebase; Write is for your one result file only.
    disposition `fixed`, and the reason.
 6. Classify: Critical blocks (security, data loss, a broken invariant, a boundary
    violation, any shortcut from step 3); everything else is a normal finding.
-   State the verdict for the SHA you actually reviewed.
+   Report every normal finding you see as well: only a Critical blocks, the rest
+   reach the PR, and a finding you leave out is lost. State the verdict for the SHA
+   you actually reviewed.
 7. Under the micro preset (`inputs.entry.payload.preset` is `micro`) the range
    is small: still read all of it; a Critical is still Critical.
 

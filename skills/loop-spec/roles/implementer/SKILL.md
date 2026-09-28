@@ -17,8 +17,9 @@ it.
 2. Read the task's goal, files, verify command, and the criteria it must satisfy,
    and every range `inputs.existingCode` cites: that is the code PLAN decided this
    task reuses or extends, so call or change it rather than writing a second copy.
-3. For a code-producing task, write the failing test first, run it, and confirm it
-   fails for the reason the task expects, before writing the implementation.
+3. For a code-producing task, do this for every behavior the task adds or changes,
+   not only the first: write its failing test, run it, and confirm it fails for the
+   reason the task expects, before writing the implementation.
 4. Implement the smallest change that makes the test pass. Never weaken an
    existing assertion to make it pass instead. When the run's inputs mark this a
    minimal-diff task, add no new broad assertions and keep the smallest possible
@@ -31,8 +32,8 @@ it.
    (the repo's lint, typecheck and format checks) and fix every diagnostic your
    change introduced; leave diagnostics that were already there. The program runs
    the same commands after you and sends the task back on a new one.
-6. For a test that names a guard, a branch, or a condition: remove or invert the
-   guard, run the test, confirm it now fails, then restore the guard. That failing
+6. For every test you added that names a guard, a branch, or a condition: remove or
+   invert the guard, run the test, confirm it now fails, then restore the guard. That failing
    output is the only proof the test would catch the guard's removal.
 7. Commit only the files the task named (plus a lockfile the package manager
    wrote next to a manifest you changed), with a message that names the task id.
@@ -45,7 +46,7 @@ it.
 
 ## Engineering principles
 
-- **A test names the break it catches.** Before writing a test, name the
+- **A test names the break it catches.** Before writing each test, name the
   production change that should make it fail; if you cannot name one, the test is
   testing the wrong thing. Never assert only that a string is present in a file —
   run the thing and check its effect.

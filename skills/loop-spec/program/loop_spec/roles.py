@@ -5,9 +5,10 @@ Use `load_role` to resolve a role name to its body and schema (the plugin's own
 `skills/loop-spec/roles/<name>/` unless a project or user binds a different skill in
 its place), `compose_prompt` to turn that role plus one attempt's inputs into the
 text a worker or the lead session actually reads, and `resolve_model` for the model
-every role's dispatch request carries. `CONTRACTS` is the per-role text loop-spec
-always appends, independent of whatever body a bound skill supplies, so a borrowed
-skill cannot drop the program's own requirements on its way in.
+every role's dispatch request carries (`DISPATCH_DEFAULTS` when nothing overrides
+it). `CONTRACTS` is the per-role text loop-spec always appends, independent of
+whatever body a bound skill supplies, so a borrowed skill cannot drop the program's
+own requirements on its way in.
 """
 import glob
 import json
@@ -84,15 +85,44 @@ def load_role(name: str, project_root: Path, binding: str = "default") -> Role:
     return Role(name=name, body=body, schema=default_schema, source=str(found), version=digest_bytes(body.encode()))
 
 
+# 7.5.0: the model and effort each dispatched role runs at when nothing overrides it.
+# Judgment (routing, critique, review, the ITERATE verdict) runs on Opus at its default
+# medium, which matches Opus 5 at high; the router's first-fit rules need only low.
+# Implementation and evidence run on Sonnet at high, since Sonnet at medium or low scopes
+# its work to the letter of the prompt. Aliases, so each resolves to the newest of its
+# family. Lead roles (spec-writer, planner, debugger, reviser, direct) are absent: a lead
+# step runs in the lead's own session, at that session's model and effort.
+DISPATCH_DEFAULTS: dict[str, tuple[str, str]] = {
+    "router": ("opus", "low"),
+    "plan-critic": ("opus", "medium"),
+    "code-reviewer": ("opus", "medium"),
+    "iterate-judge": ("opus", "medium"),
+    "implementer": ("sonnet", "high"),
+    "verifier": ("sonnet", "high"),
+}
+
+
+def _dispatch_setting(project_root: Path, role: str, key: str, env_name: str) -> str | None:
+    # env first, then config roles.<role>.<key> when that role is bound as an object
+    # rather than a plain binding string (an explicit null there inherits the caller's
+    # own), else the role's default.
+    env = os.environ.get(env_name)
+    if env:
+        return env
+    configured = load_config(project_root).get("roles", {}).get(role)
+    if isinstance(configured, dict) and key in configured:
+        return configured[key]
+    default = DISPATCH_DEFAULTS.get(role)
+    return default[("model", "effort").index(key)] if default else None
+
+
 def resolve_effort(project_root: Path, role: str) -> str | None:
     """The same lookup as resolve_model, for effort: env LOOP_SPEC_EFFORT_<ROLE>, then
-    config roles.<role>.effort (load_config validates it), else None (inherit)."""
+    config roles.<role>.effort (load_config validates it), else the role's default."""
     name = "LOOP_SPEC_EFFORT_" + role.upper().replace("-", "_")
-    env = os.environ.get(name)
-    if env:
-        return check_effort(env, name)
-    configured = load_config(project_root).get("roles", {}).get(role)
-    return configured.get("effort") if isinstance(configured, dict) else None
+    if os.environ.get(name):
+        check_effort(os.environ[name], name)
+    return _dispatch_setting(project_root, role, "effort", name)
 
 
 def dispatch_settings(project_root: Path, role: str) -> dict:
@@ -101,16 +131,8 @@ def dispatch_settings(project_root: Path, role: str) -> dict:
 
 
 def resolve_model(project_root: Path, role: str) -> str | None:
-    # env first (LOOP_SPEC_MODEL_<ROLE>, hyphens to underscores, upper -- the
-    # same key defaults.py's SPEC/PLAN lead dispatch already read before this),
-    # then config.json's own roles.<role>.model when that role is bound as an
-    # object rather than a plain binding string, else no override (the caller's
-    # own default model applies).
-    env = os.environ.get("LOOP_SPEC_MODEL_" + role.upper().replace("-", "_"))
-    if env:
-        return env
-    configured = load_config(project_root).get("roles", {}).get(role)
-    return configured.get("model") if isinstance(configured, dict) else None
+    # LOOP_SPEC_MODEL_<ROLE>, hyphens to underscores, upper; see _dispatch_setting.
+    return _dispatch_setting(project_root, role, "model", "LOOP_SPEC_MODEL_" + role.upper().replace("-", "_"))
 
 
 # A debug or revise task can slip a path or a guess into `repo`; the planner
@@ -180,8 +202,8 @@ CONTRACTS: dict[str, str] = {
     "code-reviewer": (
         "Read the named range only. The verdict names the SHA reviewed. A finding on "
         "code a prior pass already cleared names what it supersedes. Critical means a "
-        "show-stopper or an outright incorrect implementation -- the PR review catches "
-        "the rest. One disposition per entry in the probe findings' `securitySignals`, "
+        "show-stopper or an outright incorrect implementation; report the rest at a "
+        "lower severity, for the PR review. One disposition per entry in the probe findings' `securitySignals`, "
         "naming its file, when you were given any. Under the micro preset the range is small: "
         "still read all of it; a Critical is still Critical."
     ),

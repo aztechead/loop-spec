@@ -12,6 +12,20 @@ you do about it. Every stub cites this file, and it is the only copy of the prot
    new last line. Go back to step 1. The only exceptions are `result`, `external`, a
    question you cannot ask, and a non-zero exit, where you stop.
 
+## Ending a turn
+
+A message with no tool call ends your turn, and in a headless run nothing continues
+the run after it. Those four stops are the only ones the run wants. Do not end a turn
+in any of these ways while the program still has a line for you to act on:
+
+- a summary of what the run has done that announces the next step instead of running it;
+- an offer to continue, or a question about whether to;
+- a list of decisions for the user when none of them blocks the next command (a
+  `question` line is the only way the run asks the user anything);
+- a report because a phase finished or the run has been long.
+
+Status notes are welcome. Put each one in the same message as your next tool call.
+
 ## Markers
 
 ### `LOOP_SPEC_NEXT`

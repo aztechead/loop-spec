@@ -203,7 +203,7 @@ class RepoMapTests(unittest.TestCase):
 
 
 class ResolveEffortTests(unittest.TestCase):
-    """F5: a role's effort resolves like its model: env, then config, else inherit."""
+    """F5: a role's effort resolves like its model: env, then config, else the role's default."""
 
     def _root(self, tmp: str, roles: dict) -> Path:
         root = Path(tmp)
@@ -211,14 +211,16 @@ class ResolveEffortTests(unittest.TestCase):
         atomic_write_json(root / ".loop-spec" / "config.json", {"roles": roles})
         return root
 
-    def test_env_beats_config_and_unset_inherits(self):
+    def test_env_beats_config_beats_default(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = self._root(tmp, {"code-reviewer": {"effort": "high"}})
+            root = self._root(tmp, {"code-reviewer": {"effort": "high"}, "verifier": {"effort": None}})
             with patch.dict("os.environ", {"LOOP_SPEC_EFFORT_CODE_REVIEWER": "low"}, clear=True):
                 self.assertEqual(resolve_effort(root, "code-reviewer"), "low")
             with patch.dict("os.environ", {}, clear=True):
                 self.assertEqual(resolve_effort(root, "code-reviewer"), "high")
-                self.assertIsNone(resolve_effort(root, "implementer"))
+                self.assertEqual(resolve_effort(root, "implementer"), "high")  # 7.5.0 default
+                self.assertIsNone(resolve_effort(root, "verifier"))  # an explicit null inherits
+                self.assertIsNone(resolve_effort(root, "planner"))  # a lead role has no default
 
     def test_a_level_outside_the_host_list_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -258,18 +260,20 @@ class ResolveModelTests(unittest.TestCase):
                 self.assertEqual(contract.resolve_role(root, "code-reviewer"), "custom-skill")
                 self.assertEqual(resolve_model(root, "code-reviewer"), "config-model")
 
-    def test_string_form_config_yields_binding_and_no_model(self):
+    def test_string_form_config_yields_binding_and_the_default_model(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / ".loop-spec").mkdir()
             atomic_write_json(root / ".loop-spec" / "config.json", {"roles": {"verifier": "custom-skill"}})
             with patch.dict("os.environ", {}, clear=True):
                 self.assertEqual(contract.resolve_role(root, "verifier"), "custom-skill")
-                self.assertIsNone(resolve_model(root, "verifier"))
+                self.assertEqual(resolve_model(root, "verifier"), "sonnet")
 
-    def test_nothing_configured_is_none(self):
+    def test_nothing_configured_is_the_default(self):
+        # 7.5.0: judgment on Opus, implementation on Sonnet; a lead role inherits the session.
         with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {}, clear=True):
-            self.assertIsNone(resolve_model(Path(tmp), "planner"))
+            self.assertEqual({r: resolve_model(Path(tmp), r) for r in ("code-reviewer", "implementer", "planner")},
+                             {"code-reviewer": "opus", "implementer": "sonnet", "planner": None})
 
 
 if __name__ == "__main__":

@@ -15,7 +15,9 @@ Write your result to the path the step names; write nowhere else.
 
 1. Read the request text and every input the program gave you (prior products, the
    run's state, its answered questions, and any probes) before asking anything the
-   inputs already answer.
+   inputs already answer. Then read the code the request touches, including files it
+   does not name: its entry points, the tests that cover them, and how the repository
+   runs those tests, so each criterion names a command this repository can run.
 2. Interview for what is missing: the goal in one sentence, explicit boundaries
    (behaviors this change must never produce), and, for each acceptance criterion,
    a command or an observable behavior that proves it. Every criterion is a

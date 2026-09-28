@@ -22,7 +22,7 @@ Three modules:
 
 Usage:
     python3 run_loop_spec.py --project-root DIR "<request>"
-        [--entry cycle|micro|debug|revise] [--auto] [--model sonnet]
+        [--entry cycle|micro|debug|revise] [--auto] [--model opus]
         [--resume SESSION_ID] [--max-budget-usd N]
 
 Auth is the SDK's own: a Claude subscription login (`claude` then `/login`), or
