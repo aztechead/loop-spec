@@ -1,0 +1,107 @@
+{
+  "autonomous": true,
+  "baseBranch": "main",
+  "blocked": [],
+  "branch": "feat/add-halve-x-to-calc-returning-x-2-with-a",
+  "checkpointPrUrl": null,
+  "cleanupBacklog": [],
+  "converged": true,
+  "createdAt": "2026-09-28T16:31:42+00:00",
+  "cycleType": "micro",
+  "delivery": {
+    "targets": [
+      {
+        "caveats": [],
+        "deliveredSha": "b1490fffe8b7f5a676e7b1dea2ed0b79c9e92fbb",
+        "pr": {
+          "base": "main",
+          "headRef": "feat/add-halve-x-to-calc-returning-x-2-with-a",
+          "headSha": "b1490fffe8b7f5a676e7b1dea2ed0b79c9e92fbb",
+          "number": 33,
+          "url": "https://github.com/aztechead/loop-spec-live-7/pull/33"
+        },
+        "repo": "fx",
+        "state": "delivered"
+      }
+    ]
+  },
+  "eligibleTargets": [
+    {
+      "branch": "feat/add-halve-x-to-calc-returning-x-2-with-a",
+      "targetSha": "b1490fffe8b7f5a676e7b1dea2ed0b79c9e92fbb"
+    }
+  ],
+  "feature_title": "Add halve(x) to calc returning x / 2, with a test.",
+  "finishedAt": "2026-09-28T16:36:35+00:00",
+  "hostVersions": {
+    "claude": "2.1.283 (Claude Code)",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "python3": "Python 3.13.2"
+  },
+  "implementationConverged": true,
+  "implementations": {
+    "phases": {
+      "debug": "default",
+      "deliver": "default",
+      "direct": "default",
+      "execute": "default",
+      "iterate": "default",
+      "plan": "default",
+      "revise": "default",
+      "route": "default",
+      "spec": "default",
+      "verify": "default"
+    },
+    "roles": {}
+  },
+  "iterations": {
+    "max": 2,
+    "used": 0
+  },
+  "loopSpecVersion": "7.6.2",
+  "noChangeReason": null,
+  "outcome": "delivered",
+  "outstanding": [],
+  "partiallyDelivered": false,
+  "phaseReached": "deliver",
+  "policyAnsweredQuestions": [
+    "question-fe5cb3b3bd59"
+  ],
+  "prUrl": "https://github.com/aztechead/loop-spec-live-7/pull/33",
+  "prs": [
+    {
+      "number": 33,
+      "repo": "fx",
+      "url": "https://github.com/aztechead/loop-spec-live-7/pull/33"
+    }
+  ],
+  "reason": null,
+  "result": "converged",
+  "retryPhase": null,
+  "retryable": false,
+  "reviewed": {
+    "T-1": {
+      "level": "host-attested",
+      "stepId": "step-d68727ed4a6d"
+    }
+  },
+  "rewinds": 0,
+  "routedTo": {
+    "entry": "micro",
+    "pr": null,
+    "reason": "rule 4: the request \"Add halve(x) to calc returning x / 2, with a test\" is a small, well-defined tiny tweak"
+  },
+  "schema": 1,
+  "slug": "add-halve-x-to-calc-returning-x-2-with-a",
+  "status": "completed",
+  "summary": "micro converged at deliver",
+  "unreviewed": [],
+  "verification": {
+    "command": null,
+    "status": "passed"
+  },
+  "verifiedSha": "b1490fffe8b7f5a676e7b1dea2ed0b79c9e92fbb",
+  "warnings": [],
+  "weakenedAssurance": [],
+  "workDelivered": true
+}

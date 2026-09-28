@@ -1,0 +1,86 @@
+[
+  {
+    "stepAttemptId": "step-0c5bfa303a44",
+    "role": "router",
+    "model": "opus",
+    "effort": "low",
+    "agentType": "loop-spec:worker-low",
+    "modelsRun": [
+      "claude-opus-5-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-30cabafb54e3",
+    "role": "iterate-judge",
+    "model": "opus",
+    "effort": "medium",
+    "agentType": "loop-spec:worker-medium",
+    "modelsRun": [
+      "claude-opus-5-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-5f16f4cc3ced",
+    "role": "verifier",
+    "model": "sonnet",
+    "effort": "high",
+    "agentType": "loop-spec:worker-high",
+    "modelsRun": [
+      "claude-sonnet-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-98721bb23774",
+    "role": "implementer",
+    "model": "sonnet",
+    "effort": "high",
+    "agentType": "loop-spec:worker-high",
+    "modelsRun": [
+      "claude-sonnet-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-aacf89cd8c4b",
+    "role": "plan-critic",
+    "model": "opus",
+    "effort": "medium",
+    "agentType": "loop-spec:worker-medium",
+    "modelsRun": [
+      "claude-opus-5-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-b1b20a3c9ace",
+    "role": "code-reviewer",
+    "model": "opus",
+    "effort": "medium",
+    "agentType": "loop-spec:worker-medium",
+    "modelsRun": [
+      "claude-opus-5-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-d68727ed4a6d",
+    "role": "code-reviewer",
+    "model": "opus",
+    "effort": "medium",
+    "agentType": "loop-spec:worker-medium",
+    "modelsRun": [
+      "claude-opus-5-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  }
+]

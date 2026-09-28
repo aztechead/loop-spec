@@ -1,0 +1,134 @@
+[
+  {
+    "stepAttemptId": "step-1ef5961af244",
+    "role": "plan-critic",
+    "model": "opus",
+    "effort": "medium",
+    "agentType": "loop-spec:worker-medium",
+    "modelsRun": [
+      "claude-opus-5-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-2229e6dc1dd3",
+    "role": "code-reviewer",
+    "model": "opus",
+    "effort": "medium",
+    "agentType": "loop-spec:worker-medium",
+    "modelsRun": [
+      "claude-opus-5-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-3e2eda11ec8f",
+    "role": "router",
+    "model": "opus",
+    "effort": "low",
+    "agentType": "loop-spec:worker-low",
+    "modelsRun": [
+      "claude-opus-5-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-496208a37c2d",
+    "role": "plan-critic",
+    "model": "opus",
+    "effort": "medium",
+    "agentType": "loop-spec:worker-medium",
+    "modelsRun": [
+      "claude-opus-5-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-4d95d04d9fb5",
+    "role": "code-reviewer",
+    "model": "opus",
+    "effort": "medium",
+    "agentType": "loop-spec:worker-medium",
+    "modelsRun": [
+      "claude-opus-5-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-866c3d0be2d3",
+    "role": "implementer",
+    "model": "sonnet",
+    "effort": "high",
+    "agentType": "loop-spec:worker-high",
+    "modelsRun": [
+      "claude-sonnet-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-8b76ee8c300a",
+    "role": "iterate-judge",
+    "model": "opus",
+    "effort": "medium",
+    "agentType": "loop-spec:worker-medium",
+    "modelsRun": [
+      "claude-opus-5-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-8f55de810958",
+    "role": "code-reviewer",
+    "model": "opus",
+    "effort": "medium",
+    "agentType": "loop-spec:worker-medium",
+    "modelsRun": [
+      "claude-opus-5-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-a0b75d15805c",
+    "role": "implementer",
+    "model": "sonnet",
+    "effort": "high",
+    "agentType": "loop-spec:worker-high",
+    "modelsRun": [
+      "claude-sonnet-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-f1ca4c5fe1a7",
+    "role": "verifier",
+    "model": "sonnet",
+    "effort": "high",
+    "agentType": "loop-spec:worker-high",
+    "modelsRun": [
+      "claude-sonnet-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  },
+  {
+    "stepAttemptId": "step-f37d66804e89",
+    "role": "plan-critic",
+    "model": "opus",
+    "effort": "medium",
+    "agentType": "loop-spec:worker-medium",
+    "modelsRun": [
+      "claude-opus-5-5"
+    ],
+    "evidenceLevel": "host-attested",
+    "resultUnderStateHome": false
+  }
+]
