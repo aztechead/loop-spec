@@ -12,6 +12,16 @@ you do about it. Every stub cites this file, and it is the only copy of the prot
    new last line. Go back to step 1. The only exceptions are `result`, `external`, a
    question you cannot ask, and a non-zero exit, where you stop.
 
+## Reasoning
+
+Before acting on the first line, read `principles.md` in the `roles` directory beside
+this file's directory (`skills/loop-spec/roles/principles.md`), and apply it to the
+decisions this protocol leaves to you: what a marker or a refused `submit` means, why
+a command exited non-zero, and what you tell the user. Every step prompt you run or
+dispatch already carries it; never add it to one. It does not widen what you may do.
+The rules at the end of this file hold as written, and a premise you cannot check or
+a cause you cannot find goes into your report, never into a workaround.
+
 ## Ending a turn
 
 A message with no tool call ends your turn, and in a headless run nothing continues
