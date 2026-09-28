@@ -41,6 +41,19 @@ Claude Code plugin, from inside a session:
 /plugin install loop-spec@loop-spec-marketplace
 ```
 
+### Staying on 6.x
+
+`main` is 7.x. A marketplace added without a ref follows `main`, so your next update
+moves you to 7.x. To move, follow [migrating-6-to-7.md](docs/loop-spec/migrating-6-to-7.md).
+To stay on 6.x, which still gets bug fixes on the `6.x` branch, pin the marketplace to
+that branch:
+
+```
+/plugin marketplace remove loop-spec-marketplace
+/plugin marketplace add aztechead/loop-spec#6.x
+/plugin install loop-spec@loop-spec-marketplace
+```
+
 Agent Skills, for any other harness that reads a `skills/` tree:
 
 ```bash
