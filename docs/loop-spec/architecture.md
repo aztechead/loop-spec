@@ -84,10 +84,9 @@ The default hands a step to the lead, which runs it with the host's own Agent
 tool: nothing beyond the standard library, so it is the interactive default.
 `sdk_runner.py` has the program spawn the worker itself over
 `claude-agent-sdk`, Claude-only with its own credentials, for an unattended
-deployment (section 9, [runner-decision-7.0.md](runner-decision-7.0.md)).
+deployment (section 9).
 
 ## What is deliberately not there
 
 No hooks, no per-harness adapters (opencode, ADK, Codex), no stored code map:
-7.x targets Claude Code and the Agent SDK only
-([migration-inventory-7.0.md](migration-inventory-7.0.md)).
+7.x targets Claude Code and the Agent SDK only.

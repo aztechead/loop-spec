@@ -2,9 +2,9 @@
 
 Use `ClaudeCodeAttestor` as the `HostAttestor` `steps.submit` calls when a step was
 dispatched natively (the Agent tool) rather than run by a controller-observed runner
-that needs no transcript. What the host writes and the check built from it are
-recorded in docs/loop-spec/native-attestation-probe-7.0.md: one observation on one
-host and version, not a promise every host or a future version will match it.
+that needs no transcript. What the host writes, and so the check built from it, come
+from one observation (Claude Code 2.1.278, 2026-09-22; ROADMAP section 19), not a
+promise every host or a future version will match it.
 """
 import json
 import os

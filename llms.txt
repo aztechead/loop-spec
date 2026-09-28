@@ -50,7 +50,6 @@ schema.
 - [docs/loop-spec/ROADMAP-7.0.md](docs/loop-spec/ROADMAP-7.0.md): why 7.x is shaped this way, milestone by milestone.
 - [docs/loop-spec/phase-interface-7.0.md](docs/loop-spec/phase-interface-7.0.md): the full route matrix and every postcondition's prose.
 - [docs/loop-spec/reliability.md](docs/loop-spec/reliability.md): what the program proves about a result, and what stays judgment.
-- [docs/loop-spec/runner-decision-7.0.md](docs/loop-spec/runner-decision-7.0.md): why there are two runners, native Claude Code Agents and direct Agent SDK workers.
 - [docs/loop-spec/migrating-6-to-7.md](docs/loop-spec/migrating-6-to-7.md): how-to for a 6.x consumer moving to 7.x.
 - [docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md): which checklist case was shown by which recorded live run.
 

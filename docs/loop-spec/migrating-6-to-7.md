@@ -4,8 +4,7 @@ How-to for a person or agent that runs loop-spec 6.9 today, in Claude Code or fr
 script, and wants the same work running on 7.x. Follow the sections in order; each
 ends with a check you can run. Sections 1 to 5 apply to everyone. Section 6 is for a
 script or service that drove 6.9 itself, and section 7 is for unattended runs. Why
-7.x is shaped this way is in [ROADMAP-7.0.md](ROADMAP-7.0.md); the full
-surface-by-surface mapping is [migration-inventory-7.0.md](migration-inventory-7.0.md).
+7.x is shaped this way is in [ROADMAP-7.0.md](ROADMAP-7.0.md).
 
 Applies to 7.0.2. Every name, flag, and path below is the shipped one.
 
@@ -157,10 +156,8 @@ meant by it. `status` is `completed`, `paused`, `escalated`, or `failed`. A `pau
 result is not mirrored to `last-result.json`, since the run can still resume.
 
 Field list: [contract.md, Result](../../skills/loop-spec/references/contract.md#result).
-Real results from recorded runs are under [live-runs/7.0/](live-runs/7.0/).
 
-Check: your consumer parses
-[live-runs/7.0/e2e-workspace-7.0.2/result.json](live-runs/7.0/e2e-workspace-7.0.2/result.json)
+Check: your consumer parses the `result.json` of the `micro` run from section 4's check
 and does not fail on a field it does not know.
 
 ## 6. If a script or service drove 6.9

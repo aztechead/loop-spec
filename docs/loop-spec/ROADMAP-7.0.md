@@ -6,16 +6,17 @@ order it gets built. It is a decision document with one reference section (secti
 that the decision has to be checkable against. It is not a user guide.
 
 Status: favored plan, 2026-09-22, after two external review rounds. The second,
-[phase-interface-review-7.0.md](phase-interface-review-7.0.md), found nine holes in
-the first version of the contract below. A re-audit,
-[phase-interface-reaudit-7.0.md](phase-interface-reaudit-7.0.md), confirmed three
-closed and left six open; this revision addresses those six in the sections they
+`phase-interface-review-7.0.md`, found nine holes in the first version of the contract
+below. A re-audit, `phase-interface-reaudit-7.0.md`, confirmed three closed and left
+six open; this revision addresses those six in the sections they
 name. Closure is the re-audit's call, not this document's. The counterexamples from
 both reviews are rejection cases on the live checklist. 6.9 stays on
 `main` and keeps receiving fixes until 7.0 passes its live gates (M6). Then `main`
 becomes 7, a `6.x` branch is cut for maintenance, and the marketplace entry follows
-`main`. The runner comparison that fed this plan is in
-[runner-decision-7.0.md](runner-decision-7.0.md).
+`main`. The runner comparison that fed this plan is `runner-decision-7.0.md`.
+That record, the review records, the probe record and the fixtures review this
+document names by file were removed from the repository at merge; they are in the `v7`
+branch history at `70c393e`.
 
 ## 1. Why a new line
 
@@ -496,7 +497,7 @@ risk as a bad default.
 
 This was the headline decision in the first draft. Under the interface model it is a
 detail of the default EXECUTE and VERIFY implementations, and the
-[runner comparison](runner-decision-7.0.md) is the evidence.
+runner comparison (`runner-decision-7.0.md`) is the evidence.
 
 The default hands the worker to the lead as a step, and the lead runs it with its
 host's own mechanism: the Agent tool in Claude Code and under the SDK, the
@@ -796,8 +797,7 @@ the data directory placeholder. 7.x ships no hook (decided 2026-09-22).
 The implementation contract and the worker runner are the two seams. 7.x tests only its deterministic Python modules, with plain unit tests on the module's own inputs and outputs (parsers, digests, the state writer, the route checks); every cycle-level behavior is shown by live runs. There is no
 offline cycle suite, no fake runner, and no pinned host version (decided 2026-09-22).
 The 6.9 tests and their 157 s ceiling go with the 6.9 tree. The cycle-level cases are
-the live checklist, kept in
-`m1-fixtures-7.0.md`: the happy path, a real defect at VERIFY, a review-only rewind,
+the live checklist: the happy path, a real defect at VERIFY, a review-only rewind,
 the self-inflicted regression route, the shared budget, a blocked criterion, a
 workspace with two repos, every phase entry and debug, a green checklist with an unmet
 original goal, each ITERATE route, stale approval, an external implementation of

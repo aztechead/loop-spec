@@ -397,7 +397,7 @@ The `last-result.json` pointer is written in the state home beside `state.json`.
 ## Routes settled 2026-09-22
 
 The four routes the first version left for M1, answered from the M1 fixtures review
-(`m1-fixtures-7.0.md`, DEC-01 to DEC-06). No route is unspecified.
+(DEC-01 to DEC-06; the review is in the `v7` branch history at `70c393e`). No route is unspecified.
 
 - Every `blocked` exit pauses with a question and resumes into the same phase or, on a
   stop answer, exits terminal `escalated`. One rule for EXECUTE, VERIFY, debug, and
@@ -420,4 +420,3 @@ The four routes the first version left for M1, answered from the M1 fixtures rev
 ## Related
 
 - [ROADMAP-7.0.md](ROADMAP-7.0.md) sections 4, 5, and 10: the reasoning behind each row.
-- [migration-inventory-7.0.md](migration-inventory-7.0.md): the 6.9 graph probes each route replaces.
