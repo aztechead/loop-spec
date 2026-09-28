@@ -9,6 +9,9 @@ _PACKAGE = Path(__file__).resolve().parents[1] / "loop_spec"
 PLUGINS = {"execute", "verify", "iterate", "debug", "revise", "route", "deliver", "sdk_runner"}
 # The state buckets a phase plug-in owns, one per phase module.
 BUCKETS = PLUGINS - {"sdk_runner"}
+# The program's evidence records: a run a plug-in made itself through baseline.run_command.
+EVIDENCE = {"executeRuns", "executeCheckRuns", "verifyRuns", "criterionPasses", "checkRuns", "debugRuns"}
+_MUTATORS = ("append", "extend", "update", "setdefault", "pop", "clear", "insert", "remove")
 
 
 def _is_state(node: ast.AST) -> bool:
@@ -29,6 +32,42 @@ def _bucket_keys(tree: ast.AST) -> list[tuple[int, str]]:
             continue
         if isinstance(key, ast.Constant) and key.value in BUCKETS:
             found.append((node.lineno, key.value))
+    return found
+
+
+def _state_root_key(node: ast.AST):
+    # The top-level key of a `state[...]` chain (`state["a"]["b"]`, `state.get("a", {})["b"]`,
+    # `store.state.setdefault("a", {})`), or None when the chain does not start at state.
+    keys = []
+    while True:
+        if isinstance(node, ast.Subscript):
+            if isinstance(node.slice, ast.Constant):
+                keys.append(node.slice.value)
+            node = node.value
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("get", "setdefault"):
+            if node.args and isinstance(node.args[0], ast.Constant):
+                keys.append(node.args[0].value)
+            node = node.func.value
+        elif _is_state(node):
+            return keys[-1] if keys else None
+        else:
+            return None
+
+
+def _state_writes(tree: ast.AST) -> list[tuple[int, str]]:
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
+            targets = [node.target]
+        elif isinstance(node, ast.Delete):
+            targets = node.targets
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _MUTATORS:
+            targets = [node.func.value] if node.func.attr != "setdefault" else [node.func.value, node]
+        else:
+            continue
+        found += [(node.lineno, key) for key in map(_state_root_key, targets) if key is not None]
     return found
 
 
@@ -62,6 +101,14 @@ class MicrokernelBoundaryTests(unittest.TestCase):
             tree = ast.parse((_PACKAGE / f"{name}.py").read_text(encoding="utf-8"))
             with self.subTest(module=name):
                 self.assertEqual([(line, key) for line, key in _bucket_keys(tree) if key != name], [])
+
+    def test_a_plugin_writes_only_its_bucket_or_an_evidence_record(self):
+        # A core record (run, steps, repos, ...) changes through a core function
+        # (steps.quarantine, StateStore.record_runner), never a plug-in's own write.
+        for name in sorted(PLUGINS):
+            tree = ast.parse((_PACKAGE / f"{name}.py").read_text(encoding="utf-8"))
+            with self.subTest(module=name):
+                self.assertEqual([(line, key) for line, key in _state_writes(tree) if key != name and key not in EVIDENCE], [])
 
 
 if __name__ == "__main__":

@@ -767,11 +767,8 @@ def _retire_worktree(store, paths, repo_path: Path, worktree, *, last_step: str 
     if not dirty and known:
         repo_module.remove_worktree(repo_path, Path(worktree), force=False)
         return True
-    store.state["steps"]["quarantined"].append({
-        "stepAttemptId": last_step, "path": str(worktree),
-        "reason": "uncommitted changes" if dirty else "writer termination unknown",
-        "at": now_iso(),
-    })
+    steps_module.quarantine(store, step_id=last_step, path=Path(worktree),
+                            reason="uncommitted changes" if dirty else "writer termination unknown")
     return False
 
 

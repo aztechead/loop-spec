@@ -1,9 +1,8 @@
-"""The default SPEC/PLAN implementations under the process contract: dispatch a
-`lead` step that runs the bound role's composed prompt in the current session.
+"""The `lead` implementation kind: dispatch a `lead` step that runs the bound role's
+composed prompt in the current session.
 
-Use `run_lead_phase` as `contract.invoke`'s `implementation == "default"` handler
-for the `spec` and `plan` phases; EXECUTE/VERIFY/ITERATE/DELIVER have no default
-yet, so `contract.py` still raises "lands at M3/M4/M5" for those.
+Use `run_lead_phase` as `contract.invoke`'s handler for every phase that
+`contract.DEFAULT_IMPLEMENTATIONS` marks `lead` (SPEC, PLAN, DIRECT).
 """
 from pathlib import Path
 

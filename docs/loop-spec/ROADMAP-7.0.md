@@ -118,7 +118,7 @@ An implementation can change how a phase is satisfied. Nothing can change these:
   approval are separate; an auto-approve list is never used as a restriction boundary.
   `LOOP_SPEC_MODEL_<ROLE>` stays as the one operator override, unset by default.
   Amended in 7.5.0 (decided 2026-09-28): each dispatched role worker has a default
-  model and effort (`roles.DISPATCH_DEFAULTS`). Judgment roles run on Opus and
+  model and effort (in its own `SKILL.md` frontmatter). Judgment roles run on Opus and
   implementation roles on Sonnet, because one inherited model fits neither job well.
   The lead session's model stays the user's. A `null` in config restores inheritance.
 

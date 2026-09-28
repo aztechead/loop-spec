@@ -80,16 +80,10 @@ def run_entry(entry: str, *, project_root: Path, request_text: str | None, slug:
     raise LoopSpecError(f"unknown entry {entry}", repair="use one of: " + ", ".join((*ENTRIES, *_RESUMABLE_PHASES)))
 
 
-# A request entry's run: its cycleType and first phase. The router's hand-off reads the
-# same table, so a routed run and a directly entered one start identically.
-_REQUEST_ENTRIES = {
-    "cycle": ("full", "spec"), "micro": ("micro", "spec"), "debug": ("debug", "debug"),
-    "direct": ("direct", "direct"), "auto": ("auto", "route"),
-}
-
-
 def _request_start(entry: str):
-    cycle_type, initial_phase = _REQUEST_ENTRIES[entry]
+    # A request entry's cycleType and first phase come from its registry row; the router's
+    # hand-off reads the same row, so a routed run and a directly entered one start identically.
+    cycle_type, initial_phase = ENTRIES[entry].cycle_type, ENTRIES[entry].first_phase
 
     def start(*, project_root, request_text, slug, home, rid, answer_policy, pr) -> Next:
         return _run_request_entry(entry, project_root=project_root, request_text=request_text, slug=slug, home=home,
@@ -101,8 +95,9 @@ def _revise_start(*, project_root, request_text, slug, home, rid, answer_policy,
     return _run_revise_entry(project_root=project_root, pr=pr, slug=slug, home=home, rid=rid, answer_policy=answer_policy)
 
 
-# How the core starts each registered entry (entries.ENTRIES; a test holds the keys equal).
-_ENTRY_START = {**{name: _request_start(name) for name in _REQUEST_ENTRIES}, "revise": _revise_start}
+# How the core starts each registered entry (entries.ENTRIES): a request entry from its
+# row, an entry that takes a PR through the revise start.
+_ENTRY_START = {name: _revise_start if e.takes == "pr" else _request_start(name) for name, e in ENTRIES.items()}
 
 
 def _run_request_entry(entry: str, *, project_root: Path, request_text: str | None, slug: str | None,
@@ -295,12 +290,12 @@ def check_compatible(store: StateStore) -> None:
     stored baselines, cached comparisons and critic facts were all made under the rules
     that captured it. Checked before any command touches the run's state; a run with no
     baseline yet has nothing to be incompatible with."""
-    # 7.4.0 (D4): phase state moved out of plug-in buckets into products and core
-    # records, so an older run's state is a different shape. A finished run runs
-    # nothing more, so it still reads (its result, a routed hand-off) as before.
+    # 7.4.0 (D4) and 7.5.0: state moved between plug-in buckets, products and core
+    # records, so an older run's state is a different shape (state.STATE_FORMAT). A
+    # finished run runs nothing more, so it still reads (its result, a routed hand-off).
     if store.state.get("stateFormat", 1) < STATE_FORMAT and store.state.get("result") is None:
         raise LoopSpecError(
-            f"this run's state is format {store.state.get('stateFormat', 1)}, from a loop-spec before 7.4.0; "
+            f"this run's state is format {store.state.get('stateFormat', 1)}, from an earlier loop-spec; "
             f"this program reads format {STATE_FORMAT}",
             repair="finish the run on the loop-spec version that started it, or start a new run with --slug <new-slug>",
         )
@@ -927,7 +922,7 @@ def _hand_off(store: StateStore, paths: FeaturePaths, project_root: Path, produc
         store.state["phase"]["handoff"] = {"entry": entry, "pr": url, "reason": product["reason"]}
         store.save()
         return
-    cycle_type, first_phase = _REQUEST_ENTRIES[entry]
+    cycle_type, first_phase = ENTRIES[entry].cycle_type, ENTRIES[entry].first_phase
     if entry != "direct":
         _resolve_repos(store, project_root, store.state["run"]["slug"], url, paths.root.parent.parent)
     store.state["run"]["cycleType"] = cycle_type

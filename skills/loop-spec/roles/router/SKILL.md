@@ -2,6 +2,9 @@
 name: router
 description: Choose the one loop-spec entry a request should run through (a full cycle, a small change, a debug, a PR revision, or no cycle at all). Dispatched by the program as a role step for an `auto` run; not for ad-hoc use.
 allowed-tools: Read, Grep, Glob, Write
+model: opus
+effort: low
+evidence: judgment
 ---
 
 # router

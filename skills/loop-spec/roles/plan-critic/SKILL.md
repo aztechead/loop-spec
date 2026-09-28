@@ -2,6 +2,9 @@
 name: plan-critic
 description: Critique the drafted PLAN product for Critical-only engineering flaws before it is accepted. Dispatched by the program as a role step; not for ad-hoc use.
 allowed-tools: Read, Grep, Glob, Bash, Write
+model: opus
+effort: medium
+evidence: judgment
 ---
 
 # plan-critic

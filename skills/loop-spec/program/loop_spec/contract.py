@@ -6,6 +6,7 @@ envelope, and `invoke` (or the out-of-process `run_phase` the CLI's `phase` comm
 calls) to run one and turn its exit code and output files into a `PhaseOutcome`. This
 module never decides a route; that is postconditions.py/controller.py (wave D).
 """
+import functools
 import importlib
 import os
 from dataclasses import dataclass
@@ -34,9 +35,30 @@ class PhaseOutcome:
     stderr: str
 
 
-# LF-60: which config key lets an unattested submission of each judgment role count.
-# One key per role family, so opting reviews in never weakens the critic or judge.
-_UNATTESTED_POLICY = {"code-reviewer": "review", "plan-critic": "judgment", "iterate-judge": "judgment", "router": "judgment"}
+# The role registry is the roles directory itself: skills/loop-spec/roles/<name>/, a
+# skill dir with a schema, beside program/ (program/loop_spec/contract.py -> program ->
+# loop-spec). Everything the program knows about a role is in that directory.
+ROLES_DIR = Path(__file__).resolve().parent.parent.parent / "roles"
+ROLE_NAMES = sorted(d.name for d in ROLES_DIR.iterdir() if (d / "schema.json").is_file())
+_ROLE_META_KEYS = ("model", "effort", "evidence")
+
+
+@functools.cache
+def role_meta(name: str) -> dict[str, str]:
+    """The program's keys in a role's own SKILL.md frontmatter, read from the default
+    role directory whatever skill a project binds in its place (as its schema is):
+    `model` and `effort`, its dispatch defaults, and `evidence`, the family (`judgment`
+    or `review`) whose submissions need host attestation (LF-60: one config key per
+    family, so opting reviews in never weakens the critic or judge)."""
+    path = ROLES_DIR / name / "SKILL.md"
+    text = path.read_text() if path.is_file() else ""
+    end = text.find("\n---", 4) if text.startswith("---\n") else -1
+    meta = {}
+    for line in text[4:end].splitlines() if end != -1 else ():
+        key, sep, value = line.partition(":")
+        if sep and key in _ROLE_META_KEYS:
+            meta[key] = value.strip()
+    return meta
 
 
 def load_config(project_root: Path) -> dict:
@@ -81,7 +103,7 @@ def subagent_type(effort: str | None) -> str:
 
 def unattested_policy(project_root: Path | None, role: str) -> str | None:
     """The config key that lets `role`'s unattested evidence count, when it is set."""
-    family = _UNATTESTED_POLICY.get(role)
+    family = role_meta(role).get("evidence")
     if project_root is None or family is None:
         return None
     accept = (load_config(project_root).get("evidence") or {}).get(family, {}).get("accept")

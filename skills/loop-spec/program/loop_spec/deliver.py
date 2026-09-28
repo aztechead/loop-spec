@@ -79,7 +79,7 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
     else:
         # A crash-recovery marker, not a control-flow gate: `gh pr list` above already
         # reconciles a lost create response on its own, so nothing reads this back.
-        store.state.setdefault("deliverCreating", {})[repo_name] = {"at": now_iso(), "branch": branch}
+        store.state.setdefault("deliver", {}).setdefault("creating", {})[repo_name] = {"at": now_iso(), "branch": branch}
         store.save()
         args = ["pr", "create", "--base", base, "--head", branch, "--title", pr_title(title), "--body-file", str(body_path)]
         if draft:
@@ -87,7 +87,7 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
         code, _, err = repo_module.run_gh(worktree, *args)
         if code != 0:
             return None, f"gh pr create failed: {err.strip()}", caveats
-        store.state["deliverCreating"].pop(repo_name, None)
+        store.state["deliver"]["creating"].pop(repo_name, None)
         store.save()
 
     code, out, err = repo_module.run_gh(worktree, "pr", "view", branch,
@@ -126,7 +126,7 @@ def _accept_extension(worktree: Path, repo_info: dict, verified_sha: str, globs:
 def _published(store, repo_name: str, row: dict) -> dict:
     """LF-58: what earlier DELIVER attempts already put on the remote (a pushed SHA, a
     PR) survives a later failed attempt, so a re-entry never erases that history."""
-    earlier = (store.state.get("deliverPublished") or {}).get(repo_name)
+    earlier = ((store.state.get("deliver") or {}).get("published") or {}).get(repo_name)
     if earlier is None or row["state"] == "delivered":
         return row
     pr = earlier.get("pr")
@@ -149,7 +149,7 @@ def _accepted_text(accepted: dict) -> str:
 def _record_published(store, repo_name: str, sha: str, pr: dict | None, attempt_id: str,
                       accepted: dict | None = None) -> None:
     # Cumulative: a push with no PR yet (pr=None) keeps the PR an earlier attempt recorded.
-    published = store.state.setdefault("deliverPublished", {})
+    published = store.state.setdefault("deliver", {}).setdefault("published", {})
     earlier = published.get(repo_name) or {}
     record = {"sha": sha, "attemptId": attempt_id, "at": now_iso(),
               "pr": earlier.get("pr"), "prAttemptId": earlier.get("prAttemptId", earlier.get("attemptId")),

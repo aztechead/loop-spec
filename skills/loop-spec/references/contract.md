@@ -116,8 +116,8 @@ the step id, inputs digest, phase, and result path), `resultPath`, `schema` (the
 result's own JSON Schema), `postconditions[]`, `attempt`, `inputsDigest`,
 `issuedAt`, `retryOf`, `reason`, and an optional `model` and `effort` (every role
 dispatch sets these from `roles.dispatch_settings`: env `LOOP_SPEC_MODEL_<ROLE>` /
-`LOOP_SPEC_EFFORT_<ROLE>`, then config `roles.<role>.model` / `.effort`, else
-`roles.DISPATCH_DEFAULTS`). A `role` step also carries `transport: "file"`,
+`LOOP_SPEC_EFFORT_<ROLE>`, then config `roles.<role>.model` / `.effort`, else the
+role's own `SKILL.md` frontmatter, `contract.role_meta`). A `role` step also carries `transport: "file"`,
 `instructionPath` (`steps/<step-id>/instructions.md`, written once at issue with
 the exact bytes of `prompt`, which then ends in one LF and holds no CR) and
 `dispatchPrompt`, the text the lead passes as the Agent prompt, and `readSchedule`
@@ -298,7 +298,7 @@ optional:
 |---|---|
 | `phases.<phase>` | binds that phase's implementation (`"external"`, or a phase name is otherwise `"default"`) |
 | `roles.<role>` | binds that role to a skill other than the bundled default (`roles.load_role`); a plain string is the binding, or an object `{"binding": ..., "model": ..., "effort": ...}` also names a model and an effort (`low`, `medium`, `high`, `xhigh`, `max`; `contract.load_config` refuses another) for that role's dispatches (`roles.dispatch_settings`), reachable without also rebinding the skill; an explicit `null` model or effort inherits the dispatcher's own instead of the role's default |
-| (default) | with neither env nor config set, `roles.DISPATCH_DEFAULTS` applies: `router` `opus`/`low`; `plan-critic`, `code-reviewer`, `iterate-judge` `opus`/`medium`; `implementer`, `verifier` `sonnet`/`high`. Lead roles (`spec-writer`, `planner`, `debugger`, `reviser`, `direct`) have none and run at the lead session's model and effort |
+| (default) | with neither env nor config set, the role's own `SKILL.md` frontmatter applies (`contract.role_meta`): `router` `opus`/`low`; `plan-critic`, `code-reviewer`, `iterate-judge` `opus`/`medium`; `implementer`, `verifier` `sonnet`/`high`. Lead roles (`spec-writer`, `planner`, `debugger`, `reviser`, `direct`) name none and run at the lead session's model and effort |
 | `deliver.base` | overrides the branch DELIVER's PR targets, instead of the repo's detected default branch |
 | `deliver.readiness` | `"checks"` makes D3 wait on `gh pr checks`; default `"none"` skips that wait |
 | `deliver.acceptRemotePaths` | a list of path globs (repo-relative, every repo of a workspace); commits someone else put on the PR branch after the verified SHA, such as a changelog bot's, are accepted when every path they touch in any commit matches and none is changed by the verified change. DELIVER then skips the push, keeps `deliveredSha` as the verified SHA, and records the commits as `acceptedRemote` (D1/D2). Absent or `[]`: any such commit blocks delivery. Anything but a list of strings is a config error |
@@ -339,9 +339,9 @@ third value raises (bound phase implementations are not built in this release). 
 `roles._bound_skill_candidates` against the project's `.claude/skills/<name>/`,
 the user's `~/.claude/skills/<name>/` or `~/.agents/skills/<name>/`, or (for a
 `plugin:skill` binding) an installed plugin's cache. A bound role supplies its own
-prompt body only; `roles.load_role` still validates the result against the
-*default* role's schema, and `roles.CONTRACTS` appends the same
-program-authored contract text regardless of source. The eleven roles that ship
+prompt body only. `roles.load_role` still validates the result against the
+*default* role's schema, and `roles.role_contract` appends the default role's
+`contract.md` whatever the source. The eleven roles that ship
 under `skills/loop-spec/roles/`: `spec-writer`, `planner`, `plan-critic`,
 `implementer`, `code-reviewer`, `verifier`, `iterate-judge`, `debugger`, `reviser`,
 `router`, `direct`.

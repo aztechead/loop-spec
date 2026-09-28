@@ -385,7 +385,7 @@ class DeliverTests(unittest.TestCase):
         row = product["repos"][0]
         self.assertEqual((row["state"], row["pr"]["number"], row["publishedSha"]), ("failed", 42, self.head_sha))
         self.assertIn("HTTP 502", row["caveats"][0])
-        record = self.store.state["deliverPublished"]["repo"]
+        record = self.store.state["deliver"]["published"]["repo"]
         self.assertEqual((record["pr"]["number"], record["attemptId"]), (42, "attempt-retry"))
         self.assertNotEqual(record["prAttemptId"], "attempt-retry")  # the PR was not re-seen this attempt
 
@@ -512,7 +512,7 @@ class AcceptedRemoteTests(DeliverTests.__bases__[0]):
         row = action.product["repos"][0]
         self.assertEqual(row["state"], "failed")
         self.assertIn("no push", row["caveats"][0])
-        published = self.store.state["deliverPublished"]["repo"]
+        published = self.store.state["deliver"]["published"]["repo"]
         self.assertEqual((published["observed"], published["acceptedRemote"]["paths"]), (True, ["CHANGELOG.md"]))
 
     def test_without_the_config_key_a_bot_commit_still_blocks(self):

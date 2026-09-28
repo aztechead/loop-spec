@@ -14,33 +14,39 @@ sufficient: the program checks the claimed exit against the repository first.
 ## Core and plug-ins
 
 7.x is a microkernel. A small core runs every run. Plug-ins add behaviour through a
-contract the core checks, and the core finds each one through a registry. Everything
-under `skills/loop-spec/program/loop_spec/` that is not a plug-in below is core. That
-covers `controller.py` (the only place a phase transitions), `postconditions.py`,
-`contract.py`, `state.py`, `steps.py`, `attest.py`, `questions.py`, `result.py`,
-`events.py`, `ledger.py`, `paths.py`, and `entries.py`. It also covers the shared
-services `repo.py`, `baseline.py`, `probes.py`, `schema.py`, `render.py`, `jsonio.py`,
-`ids.py`, `errors.py`, and `log.py`, plus `defaults.py` and `external.py`, the core side
-of the lead and external implementation kinds.
+contract the core checks, and the core finds each one through a registry. The plug-ins
+are the phase adapters (`execute.py`, `verify.py`, `iterate.py`, `debug.py`, `revise.py`,
+`route.py`, `deliver.py`), the SDK runner (`sdk_runner.py`), and the role directories
+under `skills/loop-spec/roles/`. Every other module under
+`skills/loop-spec/program/loop_spec/` is core. That covers `controller.py` (the only
+place a phase transitions), `postconditions.py`, `contract.py`, `state.py`, `steps.py`,
+`attest.py`, `questions.py`, `result.py`, `events.py`, `ledger.py`, `budget.py`,
+`paths.py`, `entries.py`, `roles.py`, and `cli.py`. It also covers the shared services
+`repo.py`, `repo_checks.py`, `baseline.py`, `probes.py`, `schema.py`, `render.py`,
+`jsonio.py`, `ids.py`, `errors.py`, and `log.py`, plus `defaults.py` and `external.py`,
+the core side of the lead and external implementation kinds.
 
 | Plug-in kind | Contract | Registry |
 |---|---|---|
 | Phase implementation | `context.json` in, `product.json` out, the route matrix's postconditions | `contract.resolve_implementation` chooses the default, an external tool, or a bound skill. `contract.DEFAULT_IMPLEMENTATIONS` names each default adapter (`execute.py`, `verify.py`, `iterate.py`, `debug.py`, `revise.py`, `route.py`, `deliver.py`, and the lead roles for SPEC, PLAN, and DIRECT) |
-| Role | `roles/<name>/SKILL.md` + `schema.json`; its dispatch settings, model and effort (`roles.dispatch_settings`, defaulting to `roles.DISPATCH_DEFAULTS`), with an effort dispatched as the plugin's `agents/worker-<effort>.md` | the `roles/` directory (`roles.ROLE_NAMES`); `contract.resolve_role` binds another skill |
+| Role | `roles/<name>/`: `SKILL.md` is the prompt body. Its frontmatter's `model` and `effort` are the role's dispatch defaults, and `evidence` marks a judgment role whose submissions need host attestation. `schema.json` is the result shape. An optional `contract.md` is the text the program appends to the prompt whatever skill is bound. A step with an effort is dispatched as the plugin's `agents/worker-<effort>.md` | the `roles/` directory (`contract.ROLE_NAMES`, read by `contract.role_meta` and `roles.role_contract`); `contract.resolve_role` binds another skill |
 | Runner | `step.json` in, `submit` out | none: whichever process picks up `step.json` (the lead, or `sdk_runner.py`) |
-| Entry | an entry name and what it takes (a request or a PR) | `entries.ENTRIES`; the CLI and `controller._ENTRY_START` read it, and the `router` role chooses among its routable entries |
+| Entry | an entry name, what it takes (a request or a PR), its cycle type, and its first phase | `entries.ENTRIES`; the CLI and `controller._ENTRY_START` read it, and the `router` role chooses among its routable entries |
 
 The plug-in rule: a plug-in never imports another plug-in, and it returns the step
-contract's types from `steps.py`. Since 7.4.0 the ownership of `state.json` is fixed,
-and `tests/test_architecture.py` enforces it:
+contract's types from `steps.py`. The ownership of `state.json` is fixed, and
+`tests/test_architecture.py` checks every import, read, and write against it:
 
 - A plug-in owns one bucket, `state.<its phase>`. It never touches another's; it reads
   that phase's product.
 - The core owns its records (`run`, `phase`, `steps`, `products`, `repos`, `adoption`,
   `questions`, `budget`, `ledger`, `critic`, `closeOuts`, `routeFacts`, ...) and the
-  program's evidence, commands it ran itself (`executeRuns`, `verifyRuns`,
-  `criterionPasses`, `checkRuns`, `debugRuns`). A plug-in may read core state, and may
-  record a run it made through `baseline.run_command` in an evidence record.
+  program's evidence, the records of commands it ran itself (`executeRuns`,
+  `executeCheckRuns`, `verifyRuns`, `criterionPasses`, `checkRuns`, `debugRuns`). A
+  plug-in may read core state, and may record a run it made through
+  `baseline.run_command` in an evidence record. It changes any other core record only
+  by calling the core function that owns it, such as `steps.quarantine` or
+  `StateStore.record_runner`.
 - The core never reads a plug-in's bucket and never imports a plug-in module. It reads
   products, and it reaches a plug-in's hooks (`step`, `on_submit`, `run`, `compact`)
   through `contract.default_adapter(phase)`.

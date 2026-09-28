@@ -2,6 +2,9 @@
 name: code-reviewer
 description: Review one commit range for correctness, security, and quality, and return a pass/fail verdict with findings. Dispatched by the program as a role step; not for ad-hoc use.
 allowed-tools: Read, Grep, Glob, Bash, Write
+model: opus
+effort: medium
+evidence: review
 ---
 
 # code-reviewer

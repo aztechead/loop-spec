@@ -2,6 +2,9 @@
 name: iterate-judge
 description: Judge the integrated result against the original request (not just the frozen SPEC checklist) and classify the single highest-leverage gap. Dispatched by the program as a role step; not for ad-hoc use.
 allowed-tools: Read, Grep, Glob, Bash, Write
+model: opus
+effort: medium
+evidence: judgment
 ---
 
 # iterate-judge

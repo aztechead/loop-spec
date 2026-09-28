@@ -10,7 +10,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from loop_spec.contract import unattested_policy
+from loop_spec.contract import role_meta, unattested_policy
 from loop_spec.errors import LoopSpecError
 from loop_spec.events import emit
 from loop_spec.ids import digest_bytes, new_id, now_iso
@@ -67,10 +67,9 @@ class Pause:
 
 
 # The verifier and debugger are re-run by the program itself (V4, B1), and the
-# implementer's evidence is its own review; these three roles are pure judgment
-# with nothing behind them but the transcript, so an unattested submission for
-# one of them is refused rather than silently accepted.
-ATTESTATION_REQUIRED_ROLES = frozenset({"plan-critic", "code-reviewer", "iterate-judge", "router"})
+# implementer's evidence is its own review. A role whose SKILL.md names an `evidence`
+# family (contract.role_meta) is pure judgment with nothing behind it but the
+# transcript, so an unattested submission for it is refused rather than silently accepted.
 ACCEPTED_LEVELS = frozenset({"host-attested", "controller-observed", "human-attested"})
 
 # LF-61: the most rendered bytes (`n<TAB>line<LF>`, UTF-8) one scheduled Read covers.
@@ -320,7 +319,7 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
         evidence_level = "host-attested" if ok else "unattested"
         attestation = {"ok": ok, "reason": reason_text}
 
-    if step["kind"] == "role" and step["role"] in ATTESTATION_REQUIRED_ROLES and evidence_level == "unattested":
+    if step["kind"] == "role" and role_meta(step["role"]).get("evidence") and evidence_level == "unattested":
         reason_text = attestation["reason"] if attestation else ("no dispatch name given" if host is not None else "no host attestor")
         attempts = open_record.get("attestationAttempts", 0) + 1
         open_record["attestationAttempts"] = attempts
@@ -391,11 +390,18 @@ def retire(store, paths, *, step_id: str, reason: str, save: bool = True) -> Non
         # Roadmap 5: expiry never deletes on its own; the worktree (or a review
         # checkout, LF-60) waits here until the host confirms the dispatch actually
         # ended (confirm_terminated). A re-issued step gets a fresh path instead.
-        store.state["steps"]["quarantined"].append({
-            "stepAttemptId": step_id, "path": str(cwd), "reason": reason, "at": now_iso(),
-        })
+        quarantine(store, step_id=step_id, path=cwd, reason=reason)
     if save:
         store.save()
+
+
+def quarantine(store, *, step_id: str | None, path: Path, reason: str) -> None:
+    """Keep a worktree or checkout a worker may still write to until the host confirms
+    the dispatch ended (confirm_terminated); terminal cleanup protects it meanwhile.
+    The core's record, so a plug-in retiring a worktree calls this rather than writing it."""
+    store.state["steps"]["quarantined"].append({
+        "stepAttemptId": step_id, "path": str(path), "reason": reason, "at": now_iso(),
+    })
 
 
 def confirm_terminated(store, paths, *, step_id: str, repo: Path) -> None:

@@ -130,10 +130,7 @@ async def _run_step_sdk_async(step: dict, *, paths, plugin_path: Path, model: st
     # own state SAYS so, recorded here (the one place that actually launches an
     # SDK session) before the session runs, not inferred later from a file's mere
     # presence. Idempotent: a later step in the same run just confirms the flag.
-    store = StateStore.open(paths)
-    if store.state["run"].get("runner") != "sdk":
-        store.state["run"]["runner"] = "sdk"
-        store.save()
+    StateStore.open(paths).record_runner("sdk")
 
     sdk = _import_sdk()
     options = sdk.ClaudeAgentOptions(

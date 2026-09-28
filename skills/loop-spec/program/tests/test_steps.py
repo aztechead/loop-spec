@@ -445,7 +445,7 @@ class AttestationRequiredRoleTests(StepsTestCase):
                 load_config(Path(tmp))
 
     def test_implementer_role_is_accepted_unattested_on_the_first_submit(self):
-        # implementer is not in ATTESTATION_REQUIRED_ROLES: its own evidence is the
+        # implementer names no `evidence` family (contract.role_meta): its own evidence is the
         # task's verify command, so an unattested transcript is accepted as today.
         with tempfile.TemporaryDirectory() as tmp:
             store, paths = self._store(tmp)

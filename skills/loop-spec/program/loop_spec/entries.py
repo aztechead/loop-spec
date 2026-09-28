@@ -13,28 +13,30 @@ class Entry:
     name: str
     use: str
     takes: str  # "request" (--request / --request-file) or "pr" (--pr)
+    cycle_type: str  # the run's state.run.cycleType
+    first_phase: str  # the phase the run enters first
 
 
 ENTRIES: dict[str, Entry] = {e.name: e for e in (
     Entry("cycle", "Run the full loop-spec cycle (SPEC, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER) on a feature "
           "request or spec file and deliver a PR. Use for a feature or change that needs planning, implementation, "
           "and verification. Not for a one-line fix (use micro), a failing test or bug report (use debug), or PR "
-          "review comments (use revise).", "request"),
+          "review comments (use revise).", "request", "full", "spec"),
     Entry("micro", "Make a small, well-defined change (a one-file fix, a typo, a tiny tweak) in one autonomous pass. "
           "Use for a change too small to need a spec/plan/execute/verify cycle. Not for a feature that needs planning "
-          "(use cycle) or a bug that needs root-cause investigation (use debug).", "request"),
+          "(use cycle) or a bug that needs root-cause investigation (use debug).", "request", "micro", "spec"),
     Entry("debug", "Diagnose and fix a specific failure: reproduce a bug or error report, find the root cause, and land "
           "a fix with a regression test. Use for a stack trace, a failing test, or a reported bug. Not for a new "
-          "feature (use cycle) or a one-line style/typo fix with no bug (use micro).", "request"),
+          "feature (use cycle) or a one-line style/typo fix with no bug (use micro).", "request", "debug", "debug"),
     Entry("revise", "Address reviewer feedback on an already-open pull request. Use when a human or bot left PR review "
           "comments to resolve. Not for starting new work (use cycle) or fixing a bug found outside review "
-          "(use debug).", "pr"),
+          "(use debug).", "pr", "revise", "revise"),
     Entry("direct", "Do a mechanical git or pull-request operation the request asks for directly (resolve merge "
           "conflicts, rebase or sync with base, re-run CI, retitle, push), with no spec, plan, or verification. "
-          "Not for any change to behaviour (use micro or cycle).", "request"),
+          "Not for any change to behaviour (use micro or cycle).", "request", "direct", "direct"),
     Entry("auto", "Route a request to the right loop-spec entry: a full cycle, a small change, a debug, a revision of "
           "an open pull request, or a mechanical operation done directly with no cycle. Use when the request does "
-          "not say which entry it needs.", "request"),
+          "not say which entry it needs.", "request", "auto", "route"),
 )}
 
 # The entries the router may choose (auto routes; it is never its own target).

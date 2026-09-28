@@ -1182,7 +1182,7 @@ class Boundary:
                     return f"repo {name}: touched by EXECUTE but not delivered"
         return None
 
-    # -- B: debug (checks implemented now; the entry lands at M4) ------------
+    # -- B: debug ---------------------------------------------------------------
 
     def _reproduction_run_holds(self, run: dict | None) -> str | None:
         # LF-23: the worker's own failureDigest comes from its own checkout, a

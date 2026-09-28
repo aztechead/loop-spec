@@ -8,7 +8,8 @@ from unittest.mock import patch
 from loop_spec import contract
 from loop_spec.errors import LoopSpecError
 from loop_spec.jsonio import atomic_write_json
-from loop_spec.roles import CONTRACTS, ROLE_NAMES, Role, compose_prompt, load_role, repo_map, resolve_effort, resolve_model
+from loop_spec.contract import EFFORT_LEVELS, ROLE_NAMES, role_meta
+from loop_spec.roles import Role, compose_prompt, load_role, repo_map, resolve_effort, resolve_model, role_contract
 from loop_spec.schema import load_schema, validate
 
 
@@ -91,7 +92,7 @@ class ComposePromptTests(unittest.TestCase):
         self.assertLess(method_at, contract_at)
         self.assertLess(contract_at, inputs_at)
         self.assertLess(inputs_at, output_at)
-        self.assertIn(CONTRACTS["spec-writer"], prompt)
+        self.assertIn(role_contract("spec-writer"), prompt)
         self.assertIn("### note", prompt)
         self.assertIn("hello", prompt)
         self.assertIn(str(Path("/tmp/out/product.json")), prompt)
@@ -123,23 +124,23 @@ class ComposePromptTests(unittest.TestCase):
         # does not, before anything else in the section.
         role = Role(name="debugger", body="Do the thing.", schema={"type": "object"}, source="default", version="sha256:" + "0" * 64)
         prompt = compose_prompt(role, inputs={}, result_path=Path("/tmp/out/product.json"), cwd=Path("/tmp/out"), phase="debug")
-        self.assertIn(CONTRACTS["debugger"], prompt)
-        self.assertTrue(CONTRACTS["debugger"].startswith("You do not repair anything. You modify no file."))
+        self.assertIn(role_contract("debugger"), prompt)
+        self.assertTrue(role_contract("debugger").startswith("You do not repair anything. You modify no file."))
 
     def test_spec_writer_contract_forbids_delivery_facts_as_criteria(self):
         # LF-26: the spec-writer wrote a criterion about a pull request existing,
         # which no VERIFY run can prove before DELIVER; the contract text must
         # name pull requests among the delivery facts a criterion is never about.
-        self.assertIn("pull request", CONTRACTS["spec-writer"])
+        self.assertIn("pull request", role_contract("spec-writer"))
 
     def test_planner_contract_names_inputs_repos_for_task_repo_names(self):
         # LF-31: the debugger wrote a compact plan task with repo "." instead of
         # a real repo name; the contract text must point at inputs.repos as the
         # only valid source for a task's repo field.
-        self.assertIn("inputs.repos", CONTRACTS["planner"])
+        self.assertIn("inputs.repos", role_contract("planner"))
 
     def test_no_contract_section_when_role_has_none(self):
-        # Every real role name now has a CONTRACTS entry (debugger's joined the
+        # Every real role name now has a contract.md (debugger's joined the
         # rest under LF-22); this exercises the "none" branch with a name that
         # deliberately is not one.
         role = Role(name="made-up-role", body="Do the thing.", schema={"type": "object"}, source="default", version="sha256:" + "0" * 64)
@@ -232,6 +233,24 @@ class ResolveEffortTests(unittest.TestCase):
             with patch.dict("os.environ", {"LOOP_SPEC_EFFORT_IMPLEMENTER": "turbo"}, clear=True):
                 with self.assertRaises(LoopSpecError):
                     resolve_effort(root, "implementer")
+
+
+class RoleRegistryTests(unittest.TestCase):
+    """7.5.0: a role's own directory declares what the program knows about it; the core
+    names no role in a table of its own."""
+
+    def test_every_role_declares_valid_facts(self):
+        for name in ROLE_NAMES:
+            meta = role_meta(name)
+            with self.subTest(role=name):
+                self.assertEqual("model" in meta, "effort" in meta)  # a dispatch default names both
+                self.assertIn(meta.get("effort", "high"), EFFORT_LEVELS)
+                self.assertIn(meta.get("evidence", "judgment"), ("judgment", "review"))
+
+    def test_the_judgment_roles_require_attestation(self):
+        # LF-60's four: nothing but the transcript backs their evidence.
+        self.assertEqual({name: role_meta(name).get("evidence") for name in ROLE_NAMES if role_meta(name).get("evidence")},
+                         {"code-reviewer": "review", "iterate-judge": "judgment", "plan-critic": "judgment", "router": "judgment"})
 
 
 class ResolveModelTests(unittest.TestCase):

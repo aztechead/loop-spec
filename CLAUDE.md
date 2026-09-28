@@ -32,9 +32,12 @@ recognize while working and what to do; a rule with no trigger does not fire.
   program, never in a stub. Reach bundled files with `${CLAUDE_SKILL_DIR}`, never
   another placeholder.
 - **When you add or change a role** (`skills/loop-spec/roles/<name>/`), it is a
-  skill: `SKILL.md` (the prompt body) plus `schema.json` (the result shape
+  skill: `SKILL.md` (the prompt body), `schema.json` (the result shape
   `roles.load_role` validates against, regardless of which skill a project binds
-  in its place). A role never cites a script; a program module dispatches it.
+  in its place), and an optional `contract.md` (text the program always appends).
+  Everything the program knows about a role lives in that directory: `model`,
+  `effort`, and `evidence` go in the SKILL.md frontmatter, never in a table in a
+  program module. A role never cites a script; a program module dispatches it.
 - **When you would run a live cycle against this checkout**, don't edit
   `skills/loop-spec/program/` or `skills/*/` while it runs. A live run's supervisor
   or session reads the plugin tree as it goes; an edit mid-run changes what it

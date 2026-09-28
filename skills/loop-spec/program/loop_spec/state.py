@@ -13,9 +13,10 @@ from loop_spec.jsonio import atomic_write_json, read_json
 from loop_spec.paths import FeaturePaths
 
 # The shape of state.json. 2 (7.4.0): phase facts the core reads live in products and
-# core records, not plug-in buckets (D4); controller.check_compatible refuses to resume
-# a lower one.
-STATE_FORMAT = 2
+# core records, not plug-in buckets (D4). 3 (7.5.0): DELIVER's own records live in its
+# bucket (`deliver.published`, `deliver.creating`), not at the top level.
+# controller.check_compatible refuses to resume a lower one.
+STATE_FORMAT = 3
 
 
 def _digest_path(paths: FeaturePaths) -> Path:
@@ -81,3 +82,10 @@ class StateStore:
     def save(self) -> None:
         atomic_write_json(self.paths.state_json, self.state)
         _digest_path(self.paths).write_text(digest(self.state) + "\n", encoding="utf-8")
+
+    def record_runner(self, runner: str) -> None:
+        """Record which runner launches this run's workers (R2: a receipt counts as
+        evidence only when the run says it was launched that way). Idempotent."""
+        if self.state["run"].get("runner") != runner:
+            self.state["run"]["runner"] = runner
+            self.save()
