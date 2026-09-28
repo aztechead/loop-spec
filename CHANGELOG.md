@@ -4,6 +4,34 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.5.0] - 2026-09-28
+
+Each phase's workers run on the model family suited to its job, calibrated for Opus 5.5
+and Sonnet 5 and later. Before this, every worker inherited the lead session's model and
+effort unless a project configured one.
+
+### Changed
+
+- Dispatched roles have default models and efforts (`roles.DISPATCH_DEFAULTS`). The
+  router runs on `opus` at `low`, and plan-critic, code-reviewer and iterate-judge on
+  `opus` at `medium`, the Opus 5.5 default that matches Opus 5 at `high`. Implementer
+  and verifier run on `sonnet` at `high`, because Sonnet at lower efforts scopes its work
+  to the literal prompt. The aliases resolve to the newest model in each family. An env
+  var or `roles.<role>.model` / `.effort` still overrides a default, and an explicit
+  `null` in config inherits the lead's setting. Lead roles (SPEC, PLAN, debug, revise,
+  direct) keep running at the session's own model; run that session on Opus.
+- The runner protocol has an "Ending a turn" section. It names the early stops an
+  unattended lead makes (a summary that announces the next step, an offer to continue,
+  a list of decisions that block nothing, a milestone report) and says status notes go
+  in the same message as the next tool call.
+- The implementer prompt states its scope explicitly for literal readers: a failing test
+  first for every behavior the task adds or changes, and the guard check for every test
+  added that names a guard.
+- The code reviewer reports every non-Critical finding too; only a Critical blocks, and
+  the rest reach the PR.
+- The SPEC writer reads the code the request touches, including unnamed files, before it
+  writes criteria, so each criterion names a command the repository can run.
+
 ## [7.4.2] - 2026-09-24
 
 A run on an open PR finds finished work quickly. The 7.4.1 live run took 20.5
