@@ -4,6 +4,14 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+### Changed
+
+- `roles/principles.md` adds a thinking discipline that every role prompt and the
+  lead carry: check the request's premises first, finish one approach before
+  switching, treat a checked answer as settled, reopen it only for a named concrete
+  reason, never flip to agree without new evidence, verify with a real check rather
+  than rethinking, and state residual uncertainty once.
+
 ## [7.7.2] - 2026-09-28
 
 A whole-plugin cleanup: less duplicated code in the program, accurate plugin
