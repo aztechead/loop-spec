@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 from loop_spec import VERSION
+from loop_spec import ledger as ledger_module
 from loop_spec.events import marker_result
 from loop_spec.ids import now_iso
 from loop_spec.jsonio import atomic_write_json
@@ -58,10 +59,10 @@ def _verification_status(store) -> str:
     return "failed"
 
 
-def _outstanding(store) -> list[str]:
-    # Same computation as render.py's pr_body "Outstanding" section: every open
-    # ledger finding plus every gap ITERATE never closed.
-    open_findings = [f["id"] for f in store.state["ledger"]["findings"] if f["disposition"] == "open"]
+def outstanding(store) -> list[str]:
+    """Every open ledger finding id plus every gap ITERATE never closed (the result's
+    `outstanding` and the PR body's "Outstanding" section)."""
+    open_findings = [f["id"] for f in ledger_module.open_findings(store)]
     iterate_product = (store.state["products"].get("iterate") or {}).get("product") or {}
     unmet_gaps = [gap["text"] for gap in iterate_product.get("gaps", [])]
     return open_findings + unmet_gaps
@@ -154,7 +155,7 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
                      for t in _accepted_tasks(execute_entry)
                      for level, step_id in [review_evidence(store, t)]},
         "unreviewed": store.state.get("unreviewed", []),
-        "outstanding": _outstanding(store),
+        "outstanding": outstanding(store),
         "blocked": [],
         "partiallyDelivered": partially_delivered,
         "weakenedAssurance": store.state.get("weakenedAssurance", []) + store.state.get("attestationWaivers", []),

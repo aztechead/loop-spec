@@ -438,16 +438,16 @@ def writers_known_terminated(store, paths, path) -> bool:
     terminated = store.state["steps"].setdefault("terminated", [])
     submissions = store.state["steps"]["submissions"]
     for step_id in store.state["steps"]["retired"]:
+        # The state-only checks first: a step either one clears never needs its
+        # step.json (which carries the whole prompt) read for its cwd.
+        if submissions.get(step_id, {}).get("evidenceLevel") in ("host-attested", "human-attested"):
+            continue
+        if step_id in terminated:
+            continue
         step_path = paths.steps_dir / step_id / "step.json"
         if not step_path.is_file():
             continue
-        record = read_json(step_path)
-        if Path(record["cwd"]).resolve() != Path(resolved):
-            continue
-        submission = submissions.get(step_id, {})
-        if submission.get("evidenceLevel") in ("host-attested", "human-attested"):
-            continue
-        if step_id in terminated:
+        if Path(read_json(step_path)["cwd"]).resolve() != Path(resolved):
             continue
         return False
     return True

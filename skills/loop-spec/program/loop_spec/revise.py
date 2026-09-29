@@ -12,13 +12,11 @@ import json
 from pathlib import Path
 
 from loop_spec import repo as repo_module
-from loop_spec.contract import resolve_role, validate_request
 from loop_spec.errors import LoopSpecError
 from loop_spec.steps import IssueStep, Product
 from loop_spec.paths import ensure_results_dir
-from loop_spec.roles import compose_prompt, load_role, repo_map, dispatch_settings
+from loop_spec.roles import compose_prompt, load_role, repo_map, step_request
 
-_DIFF_CAP = 200_000  # ponytail: same flat cap as execute.py's review diff
 
 
 def gaps_from_pr(repo_path: Path, number: int) -> list[dict]:
@@ -59,7 +57,7 @@ def adopted_range(store) -> tuple[str, str]:
 
 def _reviser_request(store, paths, ctx) -> dict:
     project_root = Path(ctx["paths"]["projectRoot"])
-    role = load_role("reviser", project_root, resolve_role(project_root, "reviser"))
+    role = load_role("reviser", project_root)
     adoption = store.state["adoption"]
     repo_path = Path(store.state["repos"][adoption["repo"]]["path"])
     base_sha, head_sha = adopted_range(store)
@@ -70,8 +68,6 @@ def _reviser_request(store, paths, ctx) -> dict:
     result_path = paths.results_dir / f"revise-{ctx['attempt']['id']}.json"
 
     diff = repo_module.review_diff(repo_path, f"{base_sha}..{head_sha}")
-    if len(diff) > _DIFF_CAP:
-        diff = diff[:_DIFF_CAP] + "\n...(truncated)"
 
     inputs = {
         "gaps": store.state["revise"]["gaps"],
@@ -88,20 +84,11 @@ def _reviser_request(store, paths, ctx) -> dict:
     # 7.4.2: the reviser reads and runs in the code checkout at the PR head.
     code_path = Path((store.state["repos"][adoption["repo"]].get("codeCheckout") or {}).get("path") or repo_path)
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=code_path, phase="revise")
-    request = {
-        # "revise" is not one of the seven ROUTES phases (it re-enters through SPEC's
-        # own approval flow); step.json's own schema does not restrict "phase" to an
-        # enum, so this is the run's actual stage, not a postcondition lookup key.
-        "kind": "lead", "role": "reviser", "phase": "revise", "cwd": str(code_path), "prompt": prompt,
-        "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
-        "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"], "retryOf": None, "reason": None,
-        **dispatch_settings(project_root, "reviser"),
-    }
-    errors = validate_request("step", request)
-    if errors:
-        raise LoopSpecError("revise built an invalid lead step request: " + "; ".join(errors),
-                             repair="fix _reviser_request in revise.py")
-    return request
+    # "revise" is not one of the seven ROUTES phases (it re-enters through SPEC's
+    # own approval flow); step.json's own schema does not restrict "phase" to an
+    # enum, so this is the run's actual stage, not a postcondition lookup key.
+    return step_request("lead", "reviser", "revise", project_root=project_root, ctx=ctx, cwd=code_path, prompt=prompt,
+                        result_path=result_path, schema=role.schema)
 
 
 def step(store, paths, ctx):

@@ -7,6 +7,7 @@ VERIFY would push a head that is not the verified SHA). Every function reads
 `store.state["products"]` and the ledger; none of them mutate anything.
 """
 from loop_spec import VERSION
+from loop_spec import result as result_module
 
 
 def spec_md(store) -> str:
@@ -80,10 +81,7 @@ def pr_body(store) -> str:
                       for f in rejected]
             lines.append("")
 
-    open_findings = [f["id"] for f in findings if f["disposition"] == "open"]
-    iterate_product = (store.state["products"].get("iterate") or {}).get("product") or {}
-    unmet_gaps = [gap["text"] for gap in iterate_product.get("gaps", [])]
-    outstanding = open_findings + unmet_gaps
+    outstanding = result_module.outstanding(store)
     lines += [f"### Outstanding\n{', '.join(outstanding) if outstanding else 'none'}", ""]
     lines += [f"Rewinds used: {store.state['budget']['spent']}/{store.state['budget']['limit']}", ""]
     lines.append(f"Generated with loop-spec {VERSION}")

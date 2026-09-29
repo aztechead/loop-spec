@@ -10,7 +10,7 @@ from loop_spec.errors import LoopSpecError
 from loop_spec.ids import digest, digest_bytes
 from loop_spec.jsonio import atomic_write_json, read_json
 from loop_spec.paths import FeaturePaths
-from loop_spec.repo import add_worktree, head_sha
+from loop_spec.repo import clean_checkout, head_sha
 from loop_spec.state import StateStore
 
 _RESULT_SCHEMA = {"type": "object", "required": ["ok"], "properties": {"ok": {"type": "boolean"}}}
@@ -494,7 +494,7 @@ class RetireTests(StepsTestCase):
             _git(repo, "commit", "-q", "-m", "init")
 
             worktree = paths.worktrees_dir / "step-1"
-            add_worktree(repo, worktree, detach_at=head_sha(repo))
+            clean_checkout(repo, head_sha(repo), worktree)
             record = self._issue(store, paths, cwd=worktree)
 
             steps.retire(store, paths, step_id=record["stepAttemptId"], reason="worker cancelled")
@@ -521,7 +521,7 @@ class RetireTests(StepsTestCase):
             _git(repo, "commit", "-q", "-m", "init")
 
             worktree = paths.worktrees_dir / "step-1"
-            add_worktree(repo, worktree, detach_at=head_sha(repo))
+            clean_checkout(repo, head_sha(repo), worktree)
             (worktree / "scratch.txt").write_text("uncommitted", encoding="utf-8")
             record = self._issue(store, paths, cwd=worktree)
             step_id = record["stepAttemptId"]
@@ -547,7 +547,7 @@ class WritersKnownTerminatedTests(StepsTestCase):
         _git(repo, "add", "README.md")
         _git(repo, "commit", "-q", "-m", "init")
         worktree = Path(tmp) / "wt"
-        add_worktree(repo, worktree, detach_at=head_sha(repo))
+        clean_checkout(repo, head_sha(repo), worktree)
         return worktree
 
     def test_writers_known_terminated(self):

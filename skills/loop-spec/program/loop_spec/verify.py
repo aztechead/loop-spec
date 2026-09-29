@@ -15,31 +15,18 @@ from pathlib import Path
 
 from loop_spec import baseline as baseline_module
 from loop_spec import ledger as ledger_module
+from loop_spec import postconditions
 from loop_spec import probes as probes_module
 from loop_spec import repo as repo_module
 from loop_spec import repo_checks
 from loop_spec import steps as steps_module
-from loop_spec.contract import resolve_role, validate_request
 from loop_spec.errors import LoopSpecError
 from loop_spec.events import emit
 from loop_spec.steps import IssueStep, Product
 from loop_spec.ids import new_id
 from loop_spec.paths import ensure_results_dir
-from loop_spec.roles import compose_prompt, load_role, dispatch_settings
+from loop_spec.roles import compose_prompt, load_role, step_request
 
-_DIFF_CAP = 200_000  # ponytail: same flat cap as execute.py's review diff
-
-
-def _heads(store) -> dict[str, str]:
-    # EXECUTE's own product always carries a head per repo it initialized
-    # (touched or not), unlike postconditions.verified_head, which only reads
-    # the first repo -- exactly the single-repo assumption LF-28 is about.
-    return store.state["products"]["execute"]["product"]["heads"]
-
-
-def _touched_repos(store, heads: dict[str, str]) -> list[str]:
-    repos = store.state["repos"]
-    return [name for name in heads if heads[name] != repos[name]["baseSha"]]
 
 
 def _criterion_repo(plan_product: dict) -> dict[str, str]:
@@ -136,26 +123,23 @@ def _base_layers(repo_path: Path, base_sha: str, files: list[str], checkouts_dir
     # A temporary checkout, removed once measured -- same shape as baseline.py's
     # own capture_baseline, not a worktree this module keeps around.
     dest = Path(checkouts_dir) / f"verify-base-{base_sha[:12]}"
-    repo_module.clean_checkout(repo_path, base_sha, dest)
-    try:
+    with repo_module.temp_checkout(repo_path, base_sha, dest):
         return probes_module.indirection_scan(dest, files)["layers"]
-    finally:
-        repo_module.remove_worktree(repo_path, dest, force=True)
 
 
 def _current_inputs(store) -> dict:
     return {
         "requirements": store.state["revisions"]["requirements"],
         "plan": store.state["revisions"]["plan"],
-        "heads": _heads(store),
+        "heads": postconditions.verified_heads(store),
     }
 
 
 def _init(store, paths, ctx) -> dict:
     plan_product = store.state["products"]["plan"]["product"]
-    heads = _heads(store)
+    heads = postconditions.verified_heads(store)
     repos = store.state["repos"]
-    touched = _touched_repos(store, heads)
+    touched = postconditions.touched_repos(store, heads)
 
     files_by_repo: dict[str, set] = {}
     for task in plan_product["tasks"]:
@@ -225,7 +209,7 @@ def _init(store, paths, ctx) -> dict:
 
 def _verifier_request(store, paths, ctx, verify_state: dict) -> dict:
     project_root = Path(ctx["paths"]["projectRoot"])
-    role = load_role("verifier", project_root, resolve_role(project_root, "verifier"))
+    role = load_role("verifier", project_root)
     plan_product = store.state["products"]["plan"]["product"]
     spec_product = store.state["products"]["spec"]["product"]
     criterion_repo = _criterion_repo(plan_product)
@@ -260,26 +244,17 @@ def _verifier_request(store, paths, ctx, verify_state: dict) -> dict:
                                  "verdict": r["comparison"]["verdict"], "detail": r["comparison"]["detail"],
                                  "newIdentities": r["comparison"]["newIdentities"][:20]} for r in check_rows]
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=cwd, phase="verify")
-    request = {
-        "kind": "role", "role": "verifier", "phase": "verify", "cwd": str(cwd),
-        "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
-        "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
-        # LF-30: None/None on a fresh pass -- a rejection re-routed back to the
-        # verifier (see _handle_rejection) is the one case with a reason already
-        # set and a prior verifier step to retry.
-        "retryOf": verify_state.get("verifierStep"), "reason": verify_state.get("reason"),
-        **dispatch_settings(project_root, "verifier"),
-    }
-    errors = validate_request("step", request)
-    if errors:
-        raise LoopSpecError("verify built an invalid verifier step request: " + "; ".join(errors),
-                             repair="fix _verifier_request in verify.py")
-    return request
+    # LF-30: None/None on a fresh pass -- a rejection re-routed back to the
+    # verifier (see _handle_rejection) is the one case with a reason already
+    # set and a prior verifier step to retry.
+    return step_request("role", "verifier", "verify", project_root=project_root, ctx=ctx, cwd=cwd, prompt=prompt,
+                        result_path=result_path, schema=role.schema,
+                        retry_of=verify_state.get("verifierStep"), reason=verify_state.get("reason"))
 
 
 def _reviewer_request(store, paths, ctx, verify_state: dict, repo_name: str) -> dict:
     project_root = Path(ctx["paths"]["projectRoot"])
-    role = load_role("code-reviewer", project_root, resolve_role(project_root, "code-reviewer"))
+    role = load_role("code-reviewer", project_root)
     repo_path = Path(store.state["repos"][repo_name]["path"])
     cwd = Path(verify_state["checkouts"][repo_name])
     ensure_results_dir(paths)
@@ -287,8 +262,6 @@ def _reviewer_request(store, paths, ctx, verify_state: dict, repo_name: str) -> 
 
     range_ = verify_state["ranges"][repo_name]
     diff = repo_module.review_diff(repo_path, f"{range_['from']}..{range_['to']}")
-    if len(diff) > _DIFF_CAP:
-        diff = diff[:_DIFF_CAP] + "\n...(truncated)"
 
     ledger = store.state.get("ledger", {})
     inputs = {
@@ -299,24 +272,13 @@ def _reviewer_request(store, paths, ctx, verify_state: dict, repo_name: str) -> 
         "rangeProbes": verify_state["rangeProbes"][repo_name], "full": range_["full"],
     }
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=cwd, phase="verify")
-    # simplicity: this build-validate-raise shape repeats iterate.py's own request
-    # builder and execute.py's (Wave G, out of this wave's file list); a shared
-    # helper would need a module none of those three currently import from.
-    request = {
-        "kind": "role", "role": "code-reviewer", "phase": "verify", "cwd": str(cwd),
-        "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
-        "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
-        # LF-30: None/None on a fresh pass -- a rejection re-routed back to this
-        # repo's review (see _handle_rejection) is the one case with a reason
-        # already set and a prior reviewer step to retry.
-        "retryOf": verify_state["reviewerSteps"].get(repo_name), "reason": verify_state.get("reviewerReasons", {}).get(repo_name),
-        **dispatch_settings(project_root, "code-reviewer"),
-    }
-    errors = validate_request("step", request)
-    if errors:
-        raise LoopSpecError("verify built an invalid reviewer step request: " + "; ".join(errors),
-                             repair="fix _reviewer_request in verify.py")
-    return request
+    # LF-30: None/None on a fresh pass -- a rejection re-routed back to this
+    # repo's review (see _handle_rejection) is the one case with a reason
+    # already set and a prior reviewer step to retry.
+    return step_request("role", "code-reviewer", "verify", project_root=project_root, ctx=ctx, cwd=cwd, prompt=prompt,
+                        result_path=result_path, schema=role.schema,
+                        retry_of=verify_state["reviewerSteps"].get(repo_name),
+                        reason=verify_state.get("reviewerReasons", {}).get(repo_name))
 
 
 def _final_product(store, paths, ctx, verify_state: dict) -> dict:

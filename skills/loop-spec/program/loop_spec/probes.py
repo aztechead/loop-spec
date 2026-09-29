@@ -1,7 +1,7 @@
 """Deterministic probes: facts about a change, ported from the M0-era lib/*.sh tools.
 
 Use `plan_probes` at PLAN entry (house style, duplication, indirection, security
-signals, the dependencies the named files import) and `diff_probes`/`range_probes` at EXECUTE/VERIFY
+signals, the dependencies the named files import) and `range_probes` at EXECUTE/VERIFY
 (comment/failure/doc tells, indirection delta, duplication, house-style deviation) to
 hand a phase measured facts instead of judgment calls a fresh context cannot make
 reliably. Every probe here fails safe (an unreadable or unknown-language input shrinks
@@ -63,13 +63,13 @@ def _tracked_or_walked_files(root) -> list[str]:
 # shell originals each carried an identical copy of this table).
 _COMMENT_PREFIX_HASH = ("#",)
 _COMMENT_PREFIX_SLASH = ("//", "/*", "*")
+_JS_EXTS = (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs")
 _COMMENT_PREFIX_BY_EXT = {
     ".py": _COMMENT_PREFIX_HASH, ".sh": _COMMENT_PREFIX_HASH, ".bash": _COMMENT_PREFIX_HASH,
     ".rb": _COMMENT_PREFIX_HASH, ".pl": _COMMENT_PREFIX_HASH,
     ".yml": _COMMENT_PREFIX_HASH, ".yaml": _COMMENT_PREFIX_HASH, ".toml": _COMMENT_PREFIX_HASH,
     ".tf": _COMMENT_PREFIX_HASH, ".ex": _COMMENT_PREFIX_HASH, ".exs": _COMMENT_PREFIX_HASH, ".r": _COMMENT_PREFIX_HASH,
-    ".js": _COMMENT_PREFIX_SLASH, ".jsx": _COMMENT_PREFIX_SLASH, ".ts": _COMMENT_PREFIX_SLASH,
-    ".tsx": _COMMENT_PREFIX_SLASH, ".mjs": _COMMENT_PREFIX_SLASH, ".cjs": _COMMENT_PREFIX_SLASH,
+    **{ext: _COMMENT_PREFIX_SLASH for ext in _JS_EXTS},
     ".go": _COMMENT_PREFIX_SLASH, ".java": _COMMENT_PREFIX_SLASH, ".c": _COMMENT_PREFIX_SLASH,
     ".h": _COMMENT_PREFIX_SLASH, ".cc": _COMMENT_PREFIX_SLASH, ".cpp": _COMMENT_PREFIX_SLASH,
     ".hpp": _COMMENT_PREFIX_SLASH, ".cs": _COMMENT_PREFIX_SLASH, ".rs": _COMMENT_PREFIX_SLASH,
@@ -98,18 +98,18 @@ _HS_LINE_COMMENT = {
     ".sql": ["--"], ".lua": ["--"], ".hs": ["--"], ".ex": ["#"], ".exs": ["#"],
 }
 _HS_BLOCK_COMMENT = {
-    ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".java",
+    *_JS_EXTS, ".go", ".java",
     ".c", ".h", ".cc", ".cpp", ".hpp", ".cs", ".rs", ".swift",
     ".kt", ".scala", ".php", ".css", ".scss",
 }
 _HS_SUPPORTED_EXTENSIONS = set(_HS_LINE_COMMENT).union(_HS_BLOCK_COMMENT)
-_HS_QUOTED = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".rb"}
-_HS_SEMICOLON_LANGS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
+_HS_QUOTED = {".py", *_JS_EXTS, ".rb"}
+_HS_SEMICOLON_LANGS = set(_JS_EXTS)
 _HS_MODULE_COMMONJS = re.compile(r"\brequire\s*\(|\bmodule\.exports\b|\bexports\.\w")
 _HS_MODULE_ESM = re.compile(r"^(?:import\s|export\s|export\{|import\{)")
 
 _HS_SHELL_LANGS = {".sh", ".bash"}
-_HS_HEREDOC_OPEN = re.compile(r"<<-?\s*[\"']?([A-Za-z_][A-Za-z0-9_]*)[\"']?")
+_HEREDOC_OPEN = re.compile(r"<<-?\s*[\"']?([A-Za-z_][A-Za-z0-9_]*)[\"']?")
 
 _HS_SHELL_DEF = re.compile(
     r"^\s*(?:function\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{"
@@ -134,7 +134,7 @@ _HS_GENERIC_DEF = re.compile(
     r"(?:def|func|fn|class|interface|type|struct|impl|sub|module)\s+([A-Za-z_][A-Za-z0-9_]*)"
 )
 _HS_DEF_RE_BY_EXT = {".sh": _HS_SHELL_DEF, ".bash": _HS_SHELL_DEF, ".py": _HS_PY_DEF, ".go": _HS_GO_DEF}
-for _hs_ext in (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"):
+for _hs_ext in _JS_EXTS:
     _HS_DEF_RE_BY_EXT[_hs_ext] = _HS_JS_DEF
 
 
@@ -220,7 +220,7 @@ def _hs_scan(path, tally):
                 heredoc = None
             continue
         if ext in _HS_SHELL_LANGS:
-            opener = _HS_HEREDOC_OPEN.search(line)
+            opener = _HEREDOC_OPEN.search(line)
             if opener:
                 heredoc = opener.group(1)
                 continue
@@ -579,13 +579,13 @@ def _dup_windows(lines, tier, size):
         yield start, _dup_digest(chunk)
 
 
-def _dup_corpus_paths(root, targets):
+def _dup_corpus_paths(root, targets, listing=None):
     wanted = set(os.path.splitext(t)[1].lower() for t in targets)
     wanted.discard("")
     if not wanted:
         return []
 
-    listing = _tracked_or_walked_files(root)
+    listing = _tracked_or_walked_files(root) if listing is None else listing
 
     seen = set(os.path.realpath(t) for t in targets)
     candidates = [
@@ -672,7 +672,7 @@ def _dup_find_clones(path, lines, index, tier, size):
     return findings
 
 
-def duplication_scan(root: Path, files: list[str]) -> list[dict]:
+def duplication_scan(root: Path, files: list[str], listing: list[str] | None = None) -> list[dict]:
     """Verbatim (`duplicate`) and renamed-identifier (`similar`) clones of `files`
     against each other and against the repo's tracked files of the same extension."""
     root = Path(root)
@@ -687,7 +687,7 @@ def duplication_scan(root: Path, files: list[str]) -> list[dict]:
     target_lines = {}
     corpus_lines = {}
     _dup_read_all(targets, target_lines, unreadable)
-    _dup_read_all(_dup_corpus_paths(root, targets), corpus_lines, unreadable)
+    _dup_read_all(_dup_corpus_paths(root, targets, listing), corpus_lines, unreadable)
 
     everything = dict(target_lines)
     everything.update(corpus_lines)
@@ -746,7 +746,8 @@ _IND_DEF_PATTERNS = {
     ".sh": re.compile(r"^(?P<indent>)(?P<name>[A-Za-z_]\w*)\s*\(\)\s*\{"),
     ".go": re.compile(r"^(?P<indent>)func\s+(?:\([^)]*\)\s*)?(?P<name>[A-Za-z_]\w*)\s*\("),
 }
-for _ind_alias, _ind_base in ((".jsx", ".js"), (".ts", ".js"), (".tsx", ".js"), (".mjs", ".js"), (".cjs", ".js"), (".bash", ".sh")):
+_IND_ALIASES = (*((ext, ".js") for ext in _JS_EXTS[1:]), (".bash", ".sh"))
+for _ind_alias, _ind_base in _IND_ALIASES:
     _IND_DEF_PATTERNS[_ind_alias] = _IND_DEF_PATTERNS[_ind_base]
 
 _IND_COMMENT_PREFIX = {".py": "#", ".sh": "#", ".bash": "#"}
@@ -762,7 +763,7 @@ _IND_EXPORTED = {
     ".sh": lambda name, text: bool(re.search(r"\bexport\s+-f\s+{}\b".format(re.escape(name)), text)),
     ".go": lambda name, text: name[:1].isupper(),
 }
-for _ind_alias, _ind_base in ((".jsx", ".js"), (".ts", ".js"), (".tsx", ".js"), (".mjs", ".js"), (".cjs", ".js"), (".bash", ".sh")):
+for _ind_alias, _ind_base in _IND_ALIASES:
     _IND_EXPORTED[_ind_alias] = _IND_EXPORTED[_ind_base]
 
 
@@ -836,10 +837,10 @@ def _ind_definitions(path):
     return found, "\n".join(lines)
 
 
-def _ind_corpus_text(root, targets):
+def _ind_corpus_text(root, targets, listing=None):
     wanted = set(os.path.splitext(t)[1].lower() for t in targets)
     wanted.discard("")
-    listing = _tracked_or_walked_files(root)
+    listing = _tracked_or_walked_files(root) if listing is None else listing
 
     chunks = {}
     target_by_identity = {os.path.realpath(path): path for path in targets}
@@ -856,10 +857,10 @@ def _ind_corpus_text(root, targets):
     return chunks
 
 
-def indirection_scan(root: Path, files: list[str]) -> dict:
+def indirection_scan(root: Path, files: list[str], listing: list[str] | None = None) -> dict:
     """Private, small, single-caller definitions `files` hold right now (a wrapper
     that would fail YAGNI). `layers` is the total count, for a caller to snapshot as
-    a baseline and diff against later (`diff_probes`/`range_probes`)."""
+    a baseline and diff against later (`range_probes`)."""
     root = Path(root)
     max_body = _ind_max_body()
 
@@ -875,7 +876,7 @@ def indirection_scan(root: Path, files: list[str]) -> dict:
         picked.append(target)
     targets = picked
 
-    corpus = _ind_corpus_text(root, targets)
+    corpus = _ind_corpus_text(root, targets, listing)
     for path in targets:
         if path not in corpus:
             lines = _ind_read(path)
@@ -1084,7 +1085,6 @@ _DD_REQ_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*")
 _DD_PYPROJECT_SELF = re.compile(r'^name\s*=\s*["\']([A-Za-z0-9._-]+)["\']', re.M)
 
 _DD_PY_EXTS = (".py",)
-_DD_JS_EXTS = (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs")
 _DD_GO_EXTS = (".go",)
 
 
@@ -1092,7 +1092,7 @@ def _dd_norm(name):
     return re.sub(r"[-_.]+", "_", name.lower())
 
 
-def _dd_read_text(path):
+def _read_text(path):
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as fh:
             return fh.read()
@@ -1120,7 +1120,7 @@ def _dd_declared_deps(dirs):
     py, js, go = {}, {}, []
     for d in dirs:
         pkg_path = os.path.join(d, "package.json")
-        pkg = _dd_read_text(pkg_path)
+        pkg = _read_text(pkg_path)
         if pkg:
             try:
                 data = json.loads(pkg)
@@ -1136,7 +1136,7 @@ def _dd_declared_deps(dirs):
         for name in entries:
             if name.startswith("requirements") and name.endswith(".txt"):
                 req_path = os.path.join(d, name)
-                text = _dd_read_text(req_path) or ""
+                text = _read_text(req_path) or ""
                 for line in text.splitlines():
                     line = line.strip()
                     if not line or line.startswith(("#", "-")):
@@ -1145,14 +1145,14 @@ def _dd_declared_deps(dirs):
                     if m:
                         py.setdefault(_dd_norm(m.group(0)), (m.group(0), req_path))
         pyproject_path = os.path.join(d, "pyproject.toml")
-        pyproject = _dd_read_text(pyproject_path)
+        pyproject = _read_text(pyproject_path)
         if pyproject:
             own = {_dd_norm(m) for m in _DD_PYPROJECT_SELF.findall(pyproject)}
             for spec in re.findall(r'["\']([A-Za-z0-9][A-Za-z0-9._-]*)\s*[<>=!~\["\']', pyproject):
                 if _dd_norm(spec) not in own:
                     py.setdefault(_dd_norm(spec), (spec, pyproject_path))
         gomod_path = os.path.join(d, "go.mod")
-        gomod = _dd_read_text(gomod_path)
+        gomod = _read_text(gomod_path)
         if gomod:
             for m in re.finditer(r"^\s*(?:require\s+)?([\w.\-/]+\.[\w\-]+/[\w.\-/]+)\s+v[\d.]", gomod, re.M):
                 go.append((m.group(1), gomod_path))
@@ -1160,7 +1160,7 @@ def _dd_declared_deps(dirs):
 
 
 def _dd_file_imports(path):
-    text = _dd_read_text(path)
+    text = _read_text(path)
     if text is None:
         return [], [], []
     ext = os.path.splitext(path)[1].lower()
@@ -1178,7 +1178,7 @@ def _dd_file_imports(path):
                     if part and (part[0].isalpha() or part[0] == "_"):
                         mods.append(part)
         return mods, [], []
-    if ext in _DD_JS_EXTS:
+    if ext in _JS_EXTS:
         return [], _DD_JS_SPECIFIER.findall(text), []
     if ext in _DD_GO_EXTS:
         paths = _DD_GO_SINGLE.findall(text)
@@ -1367,11 +1367,10 @@ def comment_tells(root: Path, files: list[str]) -> list[dict]:
     for path in sorted(_resolve_all(root, files)):
         if not os.path.isfile(path):
             continue
-        try:
-            with open(path, "r", encoding="utf-8", errors="replace") as handle:
-                numbered = list(enumerate(handle.read().splitlines(), 1))
-        except OSError:
+        text = _read_text(path)
+        if text is None:
             continue
+        numbered = list(enumerate(text.splitlines(), 1))
         for lineno, tell, body in _ct_scan(path, numbered):
             findings.append({"file": path, "line": lineno, "tell": tell, "detail": body})
     return findings
@@ -1387,7 +1386,6 @@ _FT_LANGUAGE = {
     ".js": "js", ".jsx": "js", ".mjs": "js", ".cjs": "js",
     ".ts": "js", ".tsx": "js",
 }
-_FT_HEREDOC_OPEN = re.compile(r"<<-?\s*[\"']?([A-Za-z_][A-Za-z0-9_]*)[\"']?")
 
 _FT_EXCEPT_INLINE = re.compile(r"^(\s*)except\b(?P<clause>[^:]*):\s*(pass|\.\.\.|continue)\s*$")
 _FT_EXCEPT_OPEN = re.compile(r"^(\s*)except\b(?P<clause>[^:]*):\s*$")
@@ -1475,7 +1473,7 @@ def _ft_executable_lines(lines, language):
                     break
 
             if language == "shell" and not text.startswith("<<<", index):
-                opener = _FT_HEREDOC_OPEN.match(text, index)
+                opener = _HEREDOC_OPEN.match(text, index)
                 if opener:
                     pending_terminator = opener.group(1)
 
@@ -1614,10 +1612,8 @@ def failure_tells(root: Path, files: list[str]) -> list[dict]:
     for path in sorted(_resolve_all(root, files)):
         if os.path.splitext(path)[1].lower() not in _FT_LANGUAGE:
             continue
-        try:
-            with open(path, "r", encoding="utf-8", errors="replace") as handle:
-                text = handle.read()
-        except OSError:
+        text = _read_text(path)
+        if text is None:
             continue
         for lineno, tell, detail in _ft_scan(path, text):
             findings.append({"file": path, "line": lineno, "tell": tell, "detail": detail[:90]})
@@ -1710,10 +1706,9 @@ def _dt_tracked_kinds(repo_root):
     return kinds
 
 
-def _dt_stale_refs(doc_dir, repo_root, outside):
+def _dt_stale_refs(doc_dir, repo_root, outside, kinds):
     if not repo_root:
         return
-    kinds = _dt_tracked_kinds(repo_root)
     for index, (lineno, text) in enumerate(outside):
         context = _DT_CODE_SPAN.sub(" ", " ".join(line for _, line in outside[max(index - 1, 0):index + 2]))
         for span in _DT_CODE_SPAN.findall(text):
@@ -1751,12 +1746,12 @@ def _dt_undefined_placeholders(outside, blocks):
                     yield lineno, "undefined-placeholder", "{} (the prose never says what to substitute)".format(token)
 
 
-def _dt_scan(path, text, repo_root):
+def _dt_scan(path, text, repo_root, kinds):
     lines = text.splitlines()
     outside, blocks = _dt_split_fences(lines)
     doc_dir = os.path.dirname(os.path.abspath(path)) or "."
     findings = list(_dt_dead_links(doc_dir, outside))
-    findings += list(_dt_stale_refs(doc_dir, repo_root, outside))
+    findings += list(_dt_stale_refs(doc_dir, repo_root, outside, kinds))
     findings += list(_dt_undefined_placeholders(outside, blocks))
     return sorted(set(findings))
 
@@ -1774,17 +1769,21 @@ def doc_tells(root: Path, files: list[str]) -> list[dict]:
     longer tracks (`stale-ref`), or a command holding a placeholder the page never
     explains (`undefined-placeholder`)."""
     findings = []
+    roots, kinds = {}, {}
     for path in _resolve_all(root, files):
         if not path.lower().endswith(_DT_MARKDOWN) or _DT_HISTORICAL.match(os.path.basename(path)):
             continue
-        try:
-            with open(path, "r", encoding="utf-8", errors="replace") as handle:
-                text = handle.read()
-        except OSError:
+        text = _read_text(path)
+        if text is None:
             continue
         doc_dir = os.path.dirname(os.path.abspath(path)) or "."
-        repo_root = _dt_repo_root_of(doc_dir)
-        for lineno, tell, detail in _dt_scan(path, text, repo_root):
+        # One rev-parse per directory and one ls-files per repo, not one each per doc.
+        if doc_dir not in roots:
+            roots[doc_dir] = _dt_repo_root_of(doc_dir)
+        repo_root = roots[doc_dir]
+        if repo_root and repo_root not in kinds:
+            kinds[repo_root] = _dt_tracked_kinds(repo_root)
+        for lineno, tell, detail in _dt_scan(path, text, repo_root, kinds.get(repo_root)):
             findings.append({"file": path, "line": lineno, "tell": tell, "detail": detail})
     return findings
 
@@ -1877,10 +1876,11 @@ def plan_probes(root: Path, files: list[str]) -> dict:
     house style, duplication, indirection, security signals, and the third-party
     dependencies those files import, in one call. Offline: the planner fetches a
     dependency's docs itself."""
+    listing = _tracked_or_walked_files(root)  # one repo listing for both scans
     return _relativize({
         "houseStyle": house_style_probe(root, files),
-        "duplication": duplication_scan(root, files),
-        "indirection": indirection_scan(root, files),
+        "duplication": duplication_scan(root, files, listing),
+        "indirection": indirection_scan(root, files, listing),
         "securitySignals": security_signal(root, files),
         "deps": doc_deps(root, files),
     }, root)
@@ -1928,12 +1928,17 @@ def _diff_touched_files(repo_path: Path, base_sha: str, head_sha: str) -> list[s
     return [line for line in out.splitlines() if line]
 
 
-def _range_style_probes(path: Path, base_sha: str, head_sha: str, base_layers: int) -> dict:
+def range_probes(path: Path, base_sha: str, head_sha: str, base_layers: int) -> dict:
+    """Review-time facts over what changed between two commits in a checked-out tree
+    (one task's diff at EXECUTE, the whole reviewed range at VERIFY): comment/failure/
+    doc tells, duplication, house-style deviation, and the indirection-layer delta
+    against a caller-supplied baseline count."""
     path = Path(path)
     touched = _diff_touched_files(path, base_sha, head_sha)
     files = [f for f in touched if (path / f).is_file()]
     md_files = [f for f in files if f.lower().endswith(_DT_MARKDOWN)]
-    indirection = indirection_scan(path, files)
+    listing = _tracked_or_walked_files(path)  # one repo listing for both scans
+    indirection = indirection_scan(path, files, listing)
     return {
         "commentTells": comment_tells(path, files),
         "failureTells": failure_tells(path, files),
@@ -1942,21 +1947,8 @@ def _range_style_probes(path: Path, base_sha: str, head_sha: str, base_layers: i
             "delta": indirection["layers"] - base_layers,
             "findings": indirection["findings"],
         },
-        "duplication": duplication_scan(path, files),
+        "duplication": duplication_scan(path, files, listing),
         "houseStyleCompare": house_style_compare(path, files),
         "docTells": doc_tells(path, md_files),
         "securitySignals": _change_security_signals(path, base_sha, head_sha, touched),
     }
-
-
-def diff_probes(worktree: Path, base_sha: str, head_sha: str, base_layers: int) -> dict:
-    """Review-time facts over what changed between two commits in a checked-out
-    worktree: comment/failure/doc tells, duplication, house-style deviation, and
-    the indirection-layer delta against a caller-supplied baseline count."""
-    return _range_style_probes(worktree, base_sha, head_sha, base_layers)
-
-
-def range_probes(repo: Path, base_sha: str, head_sha: str, base_layers: int) -> dict:
-    """Same facts as `diff_probes`, over the whole reviewed range rather than one
-    incremental diff (VERIFY's full-pass case)."""
-    return _range_style_probes(repo, base_sha, head_sha, base_layers)

@@ -1,6 +1,7 @@
 ---
 name: status
 description: "Show the state of a loop-spec run: current phase, open question or step, budget, and result if finished. Use to check progress or find out what a run is waiting on. Not for advancing a run (use its phase entry, e.g. spec, plan, execute)."
+argument-hint: "[slug]"
 ---
 
 Run this once, without changing directory:
@@ -11,4 +12,4 @@ Run this once, without changing directory:
 Pass `--slug` to see one run's detail; omit it to list the runs known for this repository.
 
 Report the command's output to the user. This command never advances a run and always
-exits 0. If the launcher is missing, read the sibling hub `skills/loop-spec/SKILL.md`.
+exits 0. If the launcher is missing, read the sibling hub `${CLAUDE_SKILL_DIR}/../loop-spec/SKILL.md`.

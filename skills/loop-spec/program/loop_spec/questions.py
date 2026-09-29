@@ -12,6 +12,14 @@ from loop_spec.ids import new_id, now_iso
 from loop_spec.jsonio import atomic_write_json
 from loop_spec.schema import validate_or_raise
 
+# A blocked question's answers. LF-66: "stop" is first and the default, so a headless
+# answerer (the default policy, or one that takes the first option) ends the run
+# instead of improvising a fix.
+BLOCKED_OPTIONS = [
+    {"value": "stop", "label": "Stop"},
+    {"value": "fix-and-re-enter", "label": "Fix and re-enter"},
+]
+
 
 def ask(store, paths, *, phase: str, attempt_id: str, text: str, kind: str,
         options: list[dict], default_value: str | None, payload: dict | None, save: bool = True) -> dict:
@@ -108,11 +116,3 @@ def answers_for_context(store, attempt_id: str) -> dict:
         if rec.get("attempt") == attempt_id
     }
     return {"byQuestion": by_question, "policy": store.state["questions"]["policy"]}
-
-
-def retire_attempt_questions(store, attempt_id: str) -> None:
-    open_question = store.state["questions"]["open"]
-    if open_question is not None and open_question.get("attempt") == attempt_id:
-        store.state["questions"]["retired"].append(open_question["questionId"])
-        store.state["questions"]["open"] = None
-        store.save()

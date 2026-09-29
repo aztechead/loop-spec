@@ -9,11 +9,9 @@ a rejected choice is asked again with the rule it broke instead of replayed.
 from pathlib import Path
 
 from loop_spec import external
-from loop_spec.contract import resolve_role, validate_request
 from loop_spec.entries import ENTRIES, ROUTABLE
-from loop_spec.errors import LoopSpecError
 from loop_spec.paths import ensure_results_dir
-from loop_spec.roles import compose_prompt, load_role, dispatch_settings
+from loop_spec.roles import compose_prompt, load_role, step_request
 from loop_spec.steps import IssueStep, Product
 
 
@@ -24,7 +22,7 @@ def _rejection(ctx) -> str | None:
 
 def _router_request(store, paths, ctx) -> dict:
     project_root = Path(ctx["paths"]["projectRoot"])
-    role = load_role("router", project_root, resolve_role(project_root, "router"))
+    role = load_role("router", project_root)
     ensure_results_dir(paths)
     result_path = paths.results_dir / f"route-{ctx['attempt']['id']}.json"
     rejected = _rejection(ctx)
@@ -35,17 +33,9 @@ def _router_request(store, paths, ctx) -> dict:
         "rejected": rejected,
     }
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=project_root, phase="route")
-    request = {
-        "kind": "role", "role": "router", "phase": "route", "cwd": str(project_root), "prompt": prompt,
-        "resultPath": str(result_path), "schema": role.schema, "postconditions": external.PHASE_POSTCONDITIONS["route"],
-        "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"], "retryOf": None, "reason": rejected,
-        **dispatch_settings(project_root, "router"),
-    }
-    errors = validate_request("step", request)
-    if errors:
-        raise LoopSpecError("route built an invalid router step request: " + "; ".join(errors),
-                             repair="fix _router_request in route.py")
-    return request
+    return step_request("role", "router", "route", project_root=project_root, ctx=ctx, cwd=project_root, prompt=prompt,
+                        result_path=result_path, schema=role.schema,
+                        postconditions=external.PHASE_POSTCONDITIONS["route"], reason=rejected)
 
 
 def step(store, paths, ctx):

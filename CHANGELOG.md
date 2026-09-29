@@ -4,6 +4,41 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.7.2] - 2026-09-28
+
+A whole-plugin cleanup: less duplicated code in the program, accurate plugin
+metadata, and entry stubs that follow Claude Code's skill conventions. No route,
+postcondition, or product shape changes.
+
+### Changed
+
+- Entry stubs carry an `argument-hint` for the slash-command menu, and reach the
+  hub through `${CLAUDE_SKILL_DIR}/../loop-spec/SKILL.md` instead of a path relative
+  to the user's project.
+- The plugin description names the entries the router picks (cycle, small change,
+  debug, PR revision, direct git operation), and the keywords drop `pi` and
+  `opencode`, which 7.x does not support. The output style no longer mentions 6.x
+  concepts (the ambiguity interview, rungs, startup preflight, `[PHASE]` lines).
+- One step-request builder (`roles.step_request`) replaces nine copies of the
+  build-validate-raise block. `roles.load_role` resolves the project's binding
+  itself.
+- `repo.review_diff` applies the 200,000-character cap, `repo.temp_checkout`
+  replaces eight hand-written checkout/remove blocks, and `questions.BLOCKED_OPTIONS`
+  is the one copy of a blocked question's answers.
+- `probes.range_probes` is the one name for review-time probes (`diff_probes` is
+  gone), `result.outstanding` is shared with the PR body, and `add_worktree` takes a
+  branch only.
+- Less repeated work in one invocation: the PLAN pre-baseline gate runs only the
+  four checks it reads, P8 caches each `git show`, command output is normalized
+  once, `doc_tells` lists a repo's files once, the duplication and indirection scans
+  share one listing, and `writers_known_terminated` reads a step's file only when
+  state cannot decide.
+
+### Removed
+
+- Dead code: `ledger.cleared_files`, `questions.retire_attempt_questions`,
+  `Boundary._first_repo_path`, `controller._PHASE_ORDER`, and unused imports.
+
 ## [7.7.1] - 2026-09-28
 
 The `cycle` and `debug` entries trigger on requests that clearly need them.

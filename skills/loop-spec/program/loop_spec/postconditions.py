@@ -23,8 +23,10 @@ from loop_spec import ledger as ledger_module
 from loop_spec import repo as repo_module
 from loop_spec import repo_checks
 from loop_spec.contract import load_config
+from loop_spec.entries import ENTRIES, ROUTABLE
 from loop_spec.ids import digest
 from loop_spec.jsonio import read_json, render_json
+from loop_spec.schema import load_schema, validate
 
 RETRY_LIMIT_DEFAULT = 3
 
@@ -135,6 +137,12 @@ def verified_heads(store) -> dict[str, str]:
     # touched or not (an untouched repo's head is its start commit -- execute.py
     # only ever moves a repo's head when one of its tasks lands).
     return store.state["products"]["execute"]["product"]["heads"]
+
+
+def touched_repos(store, heads: dict[str, str]) -> list[str]:
+    """The repos whose head moved off their base."""
+    repos = store.state["repos"]
+    return [name for name in heads if heads[name] != repos[name]["baseSha"]]
 
 
 def start_sha(state: dict, repo_name: str) -> str:
@@ -297,11 +305,15 @@ class Boundary:
         self.project_root = Path(project_root)
         self.unreviewed: list[str] = []
         self.weakened_assurance: list[str] = []
+        self._shown: dict[tuple[str, str, str], str | None] = {}  # (repo path, sha, file) -> `git show` text
 
-    def check(self) -> list[Failure]:
+    def check(self, only: frozenset[str] | None = None) -> list[Failure]:
+        """Every failed requirement of this route, or of just the `only` ids among them."""
         requires = ROUTES[self.phase][self.exit]["requires"]
         failures: list[Failure] = []
         for req_id in requires:
+            if only is not None and req_id.lstrip("!") not in only:
+                continue
             if req_id.startswith("!"):
                 base_id = req_id[1:]
                 if getattr(self, f"_{base_id.lower()}")() is None:
@@ -315,7 +327,6 @@ class Boundary:
     # -- shared helpers ------------------------------------------------------
 
     def _validates(self) -> list[str]:
-        from loop_spec.schema import load_schema, validate
         return validate(self.product, load_schema(self.phase))
 
     def _bound(self) -> str | None:
@@ -323,12 +334,6 @@ class Boundary:
 
     def _repo_entries(self) -> dict:
         return self.store.state.get("repos") or {}
-
-    def _first_repo_path(self) -> Path | None:
-        repos = self._repo_entries()
-        if not repos:
-            return None
-        return Path(next(iter(repos.values()))["path"])
 
     def _repo_paths(self) -> dict[str, Path]:
         return {name: Path(info["path"]) for name, info in self._repo_entries().items()}
@@ -537,6 +542,13 @@ class Boundary:
                     return f"task {task['id']}'s alreadySatisfied {error}"
         return None
 
+    def _show(self, repo_path: str, sha: str, path: str) -> str | None:
+        key = (repo_path, sha, path)
+        if key not in self._shown:
+            shown = repo_module._git(Path(repo_path), "show", f"{sha}:{path}")
+            self._shown[key] = shown.stdout if shown.returncode == 0 else None
+        return self._shown[key]
+
     def _cite_error(self, repo_name: str, cite: dict) -> str | None:
         """Whether a cite resolves at the repo's start commit, or at the head EXECUTE
         published (code an earlier task of this run added)."""
@@ -544,8 +556,7 @@ class Boundary:
         execute_heads = ((self.store.state["products"].get("execute") or {}).get("product") or {}).get("heads") or {}
         shas = [start_sha(self.store.state, repo_name), *([execute_heads[repo_name]] if execute_heads.get(repo_name) else [])]
         first, last = (int(n) for n in cite["lines"].split("-"))
-        texts = [shown.stdout for sha in shas
-                 if (shown := repo_module._git(Path(info["path"]), "show", f"{sha}:{cite['path']}")).returncode == 0]
+        texts = [text for sha in shas if (text := self._show(info["path"], sha, cite["path"])) is not None]
         if not texts:
             return f"cites {cite['path']}, which does not exist at the repo's start commit"
         if not any(1 <= first <= last <= len(text.splitlines()) for text in texts):
@@ -1064,7 +1075,6 @@ class Boundary:
         return ext["head"]
 
     def _d2(self) -> str | None:
-        import json as _json
         for entry in self.product["repos"]:
             if entry["state"] != "delivered" or entry.get("pr") is None:
                 continue
@@ -1075,7 +1085,7 @@ class Boundary:
             )
             if code != 0:
                 return f"repo {entry['repo']}: gh pr view failed: {err.strip() or code}"
-            data = _json.loads(out)
+            data = json.loads(out)
             base = load_config(self.project_root).get("deliver", {}).get("base") or repo_module.default_branch(Path(repo_info["path"]))
             observed = entry["deliveredSha"] if entry.get("acceptedRemote") is None else entry["acceptedRemote"]["head"]
             if data.get("state") != "OPEN" or data.get("headRefName") != entry["pr"]["headRef"] or \
@@ -1237,13 +1247,11 @@ class Boundary:
         return (self.store.state.get("routeFacts") or {}).get("prRefs") or []
 
     def _a1(self) -> str | None:
-        from loop_spec.entries import ROUTABLE
         if self.product["entry"] not in ROUTABLE:
             return f"route-refused:unknown-entry: {self.product['entry']!r} is not one of {', '.join(ROUTABLE)}"
         return None
 
     def _a2(self) -> str | None:
-        from loop_spec.entries import ENTRIES
         entry, pr = ENTRIES.get(self.product["entry"]), self.product["pr"]
         if entry is None:
             return None  # A1's refusal
