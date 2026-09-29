@@ -34,6 +34,13 @@ postcondition, or product shape changes.
   share one listing, and `writers_known_terminated` reads a step's file only when
   state cannot decide.
 
+### Fixed
+
+- A re-issued review or verifier step now tells the worker why the last one was
+  rejected (`retryReason` in its inputs), as the implementer's already did. A live run
+  on 7.7.2 escalated at VERIFY after four V8 rejections: each retried reviewer got the
+  same prompt, so it repeated the finding without `supersedes` every time.
+
 ### Removed
 
 - Dead code: `ledger.cleared_files`, `questions.retire_attempt_questions`,

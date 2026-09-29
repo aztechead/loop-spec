@@ -478,6 +478,8 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
             "This task closes out an ITERATE gap (closeOut.text). Pass only if that gap is closed at "
             "range.to. An empty range means the implementer found it already true there; check that claim."
         )
+    if task_state["reason"]:
+        inputs["retryReason"] = task_state["reason"]  # a re-issued step says why the last was rejected
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=review_cwd, phase="execute")
 
     # LF-16: normally None/None -- a task only ever reaches "probing" fresh,

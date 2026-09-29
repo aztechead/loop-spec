@@ -243,6 +243,8 @@ def _verifier_request(store, paths, ctx, verify_state: dict) -> dict:
         inputs["repoChecks"] = [{"repo": r["repo"], "command": r["command"], "head": r["head"],
                                  "verdict": r["comparison"]["verdict"], "detail": r["comparison"]["detail"],
                                  "newIdentities": r["comparison"]["newIdentities"][:20]} for r in check_rows]
+    if verify_state.get("reason"):
+        inputs["retryReason"] = verify_state["reason"]  # a re-issued step says why the last was rejected
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=cwd, phase="verify")
     # LF-30: None/None on a fresh pass -- a rejection re-routed back to the
     # verifier (see _handle_rejection) is the one case with a reason already
@@ -271,6 +273,9 @@ def _reviewer_request(store, paths, ctx, verify_state: dict, repo_name: str) -> 
                                      if f["disposition"] == "open" and f.get("repo") == repo_name]},
         "rangeProbes": verify_state["rangeProbes"][repo_name], "full": range_["full"],
     }
+    reason = verify_state.get("reviewerReasons", {}).get(repo_name)
+    if reason:
+        inputs["retryReason"] = reason  # a re-issued step says why the last was rejected
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=cwd, phase="verify")
     # LF-30: None/None on a fresh pass -- a rejection re-routed back to this
     # repo's review (see _handle_rejection) is the one case with a reason
