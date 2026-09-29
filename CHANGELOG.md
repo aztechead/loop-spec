@@ -4,6 +4,8 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.7.3] - 2026-09-29
+
 ### Changed
 
 - `roles/principles.md` adds a thinking discipline that every role prompt and the

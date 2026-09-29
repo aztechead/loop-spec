@@ -9,7 +9,7 @@
     {
       "name": "loop-spec",
       "description": "Loop-driven development from a spec file or prose prompt for Claude Code. A router picks the full six-phase cycle, a small change, a debug, a PR revision, or a direct git operation, then delivers a verified PR.",
-      "version": "7.7.2",
+      "version": "7.7.3",
       "source": "./",
       "author": {
         "name": "aztechead",
