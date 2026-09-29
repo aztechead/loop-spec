@@ -5,7 +5,6 @@ lib/graph/validate.sh derives state keys and resolves paths. This module keeps
 the graph rules in ordinary Python that readers and Python tooling can inspect.
 """
 
-from __future__ import print_function
 
 import json
 import os

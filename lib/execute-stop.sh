@@ -45,7 +45,6 @@ if [[ "$PLAN_BROKEN" == "1" ]]; then
 fi
 
 answer="$(python3 -c '
-from __future__ import print_function
 import re, sys
 text = sys.argv[1]
 checks = [

@@ -49,14 +49,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 _die2() { echo "sentinel-sources.sh: $*" >&2; exit 2; }
 
-_hash8() {
-  python3 -c '
-import hashlib, re, sys
-t = re.sub(r"[^a-z0-9]+", " ", sys.argv[1].lower()).strip()
-print(hashlib.sha256(t.encode()).hexdigest()[:8])
-' "$1"
-}
-
 cmd="${1:-}"
 shift || true
 

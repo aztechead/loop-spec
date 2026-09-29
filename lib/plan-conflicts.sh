@@ -34,7 +34,6 @@ file="$2"
 [[ -f "$file" ]] || { echo "plan-conflicts.sh: no such file $file" >&2; exit 2; }
 
 python3 - "$cmd" "$file" <<'PY'
-from __future__ import print_function
 import json, re, sys
 
 cmd, path = sys.argv[1], sys.argv[2]

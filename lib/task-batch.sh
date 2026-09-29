@@ -35,7 +35,6 @@ file="$2"
 [[ -f "$file" ]] || { echo "task-batch.sh: no such file $file" >&2; exit 2; }
 
 python3 - "$file" <<'PY'
-from __future__ import print_function
 import json, os, re, shlex, sys
 
 path = sys.argv[1]

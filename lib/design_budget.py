@@ -23,8 +23,6 @@ def main(feature_dir, phase):
         feature = feature_read.load_state(feature_dir)
     except (IOError, ValueError):
         feature = {}
-    if not isinstance(feature, dict):
-        feature = {}
     classification = feature.get("autonomousClassification") or feature.get("classification") or {}
     if not isinstance(classification, dict):
         classification = {}

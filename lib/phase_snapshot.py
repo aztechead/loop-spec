@@ -43,7 +43,7 @@ def render(plugin, feature_dir, phase, skill, harness, customization):
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8")
-        outputs[relative] = digest(target.read_bytes())
+        outputs[relative] = digest(text.encode("utf-8"))
         target.chmod(0o444)
     harness_file = destination / ("skills/shared/%s-harness.md" % harness)
     prompt = (harness_file.read_text(encoding="utf-8") + "\n\n"

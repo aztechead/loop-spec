@@ -42,16 +42,6 @@ _usage() {
   exit 1
 }
 
-# Resolve an absolute path (bash >= 4 compatible, no realpath needed).
-_abspath() {
-  local p="$1"
-  if [[ "$p" == /* ]]; then
-    printf '%s' "$p"
-  else
-    printf '%s/%s' "$PWD" "$p"
-  fi
-}
-
 # _detect_impl <abs-dir>  -- prints JSON, returns exit code.
 _detect_impl() {
   local dir="$1"

@@ -168,8 +168,6 @@ emit_round() {
     --data "$(jq -cn --arg g "$gate_name" --argjson r "$1" --arg m "$2" '{gate:$g, round:$r, mode:$m}')" >/dev/null 2>&1 || true
 }
 
-# Lines after the reply's header, non-empty, list numbering kept for the gate-log.
-reply_lines() { sed -n '2,$p' "$1" | sed '/^[[:space:]]*$/d'; }
 
 check_plan_structure() {
   # Check the authored artifact, not a possibly stale tasks.json. Failure leaves

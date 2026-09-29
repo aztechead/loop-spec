@@ -200,11 +200,11 @@ fi
 path_allowed() {
   local prefix="$1"
   # Relative match
-  if [[ "$FILE_PATH" == ${prefix}/* || "$FILE_PATH" == ${prefix} ]]; then
+  if [[ "$FILE_PATH" == "${prefix}"/* || "$FILE_PATH" == "${prefix}" ]]; then
     return 0
   fi
   # Absolute path containing the prefix segment (e.g. /Users/.../docs/loop-spec/features/...)
-  if [[ "$FILE_PATH" == */${prefix}/* || "$FILE_PATH" == */${prefix} ]]; then
+  if [[ "$FILE_PATH" == */"${prefix}"/* || "$FILE_PATH" == */"${prefix}" ]]; then
     return 0
   fi
   return 1

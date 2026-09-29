@@ -7,7 +7,6 @@ does the person on the other end learn what happened, or does the software go qu
 The rules stay silent whenever the answer needs a judgment rather than a match.
 """
 
-from __future__ import print_function
 
 import os
 import re

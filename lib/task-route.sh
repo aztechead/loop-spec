@@ -132,7 +132,6 @@ raw="$(jq -c '
 
 candidate_route="$(jq -r '.route' <<<"$raw")"
 task_kind="$(jq -r '.taskKind' <<<"$raw")"
-confidence="$(jq -r '.confidence' <<<"$raw")"
 estimated_files="$(jq -r '.estimatedFiles' <<<"$raw")"
 generated_files="$(jq -r '.generatedFiles' <<<"$raw")"
 reviewable_files=$((estimated_files - generated_files))

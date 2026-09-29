@@ -9,7 +9,6 @@ set -euo pipefail
 shift
 
 python3 - "$@" <<'PY'
-from __future__ import print_function
 
 import re
 import sys

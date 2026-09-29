@@ -96,7 +96,7 @@ fi
 
 regression='{"ran":false,"result":null}'
 if want regression; then
-  root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null || pwd)"
+  root="${top:-$(pwd)}"
   rout="$(lib regression-scan "$root" 2>/dev/null || echo null)"
   regression="$(jq -cn --argjson r "$(jq -c . <<<"$rout" 2>/dev/null || echo null)" '{ran:true, result:$r}')"
 fi

@@ -68,7 +68,6 @@ else
 fi
 
 python3 - "$MODE" "$TARGETS" <<'PY'
-from __future__ import print_function
 
 import os
 import re

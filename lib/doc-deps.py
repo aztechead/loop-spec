@@ -11,7 +11,6 @@ absent manifests shrink the answer instead of erroring: the probe fails safe, so
 the gate's demand is never larger than what the tree could prove.
 """
 
-from __future__ import print_function
 
 import json
 import os

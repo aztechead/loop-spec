@@ -1,10 +1,9 @@
 """Render the verifier assignment from verified phase sources, not lead prose."""
 import json
-import os
 from pathlib import Path
 import subprocess
-import tempfile
 
+from feature_write import publish
 from phase_snapshot import verify
 
 
@@ -59,13 +58,6 @@ def render(plugin_root, feature_dir, repository_root, feature, instructions, pre
     dispatch = feature_dir / "dispatch"
     dispatch.mkdir(parents=True, exist_ok=True)
     destination = dispatch / "verify-verifier-brief.md"
-    handle, temporary = tempfile.mkstemp(prefix=".verify-verifier-", dir=str(dispatch))
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            stream.write(text)
-        os.replace(temporary, destination)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+    publish(destination, text.encode("utf-8"))
     return {"role": "verifier", "model": (feature.get("models") or {}).get("verifier") or "inherit",
             "subagentType": "loop-spec:verifier", "promptFile": str(destination)}
