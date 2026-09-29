@@ -19,15 +19,18 @@ class Entry:
 
 ENTRIES: dict[str, Entry] = {e.name: e for e in (
     Entry("cycle", "Run the full loop-spec cycle (SPEC, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER) on a feature "
-          "request or spec file and deliver a PR. Use for a feature or change that needs planning, implementation, "
-          "and verification. Not for a one-line fix (use micro), a failing test or bug report (use debug), or PR "
-          "review comments (use revise).", "request", "full", "spec"),
+          "request or spec file and deliver a PR. Use whenever the user asks to add, build, or change behavior in "
+          "their code beyond a one-line tweak, especially when they want it tested or landed as a pull request, "
+          "even if they never mention loop-spec. Not for a one-line fix (use micro), a failing test or bug report "
+          "(use debug), PR review comments (use revise), or a question that changes no code.", "request", "full", "spec"),
     Entry("micro", "Make a small, well-defined change (a one-file fix, a typo, a tiny tweak) in one autonomous pass. "
           "Use for a change too small to need a spec/plan/execute/verify cycle. Not for a feature that needs planning "
           "(use cycle) or a bug that needs root-cause investigation (use debug).", "request", "micro", "spec"),
     Entry("debug", "Diagnose and fix a specific failure: reproduce a bug or error report, find the root cause, and land "
-          "a fix with a regression test. Use for a stack trace, a failing test, or a reported bug. Not for a new "
-          "feature (use cycle) or a one-line style/typo fix with no bug (use micro).", "request", "debug", "debug"),
+          "a fix with a regression test. Use whenever the user pastes a stack trace, names a failing test, or "
+          "reports that their code broke or regressed, even if they never say debug. Not for a new feature (use "
+          "cycle), a one-line style/typo fix with no bug (use micro), or a problem with a tool or machine setup "
+          "outside the repository's code.", "request", "debug", "debug"),
     Entry("revise", "Address reviewer feedback on an already-open pull request. Use when a human or bot left PR review "
           "comments to resolve. Not for starting new work (use cycle) or fixing a bug found outside review "
           "(use debug).", "pr", "revise", "revise"),

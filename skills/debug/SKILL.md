@@ -1,6 +1,6 @@
 ---
 name: debug
-description: "Diagnose and fix a specific failure: reproduce a bug or error report, find the root cause, and land a fix with a regression test. Use for a stack trace, a failing test, or a reported bug. Not for a new feature (use cycle) or a one-line style/typo fix with no bug (use micro)."
+description: "Diagnose and fix a specific failure: reproduce a bug or error report, find the root cause, and land a fix with a regression test. Use whenever the user pastes a stack trace, names a failing test, or reports that their code broke or regressed, even if they never say debug. Not for a new feature (use cycle), a one-line style/typo fix with no bug (use micro), or a problem with a tool or machine setup outside the repository's code."
 ---
 
 Run this once, without changing directory, substituting the two placeholders:

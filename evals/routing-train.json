@@ -1,0 +1,149 @@
+[
+ {
+  "query": "add per-user rate limiting to the upload endpoint in api/upload.py, 10 requests a minute, with tests, and open a PR when it's done",
+  "accept": [
+   "cycle",
+   "auto"
+  ]
+ },
+ {
+  "query": "use loop-spec to build a CSV export for upload history",
+  "accept": [
+   "cycle",
+   "auto"
+  ]
+ },
+ {
+  "query": "fix the typo in README.md, 'recieve' should be 'receive'",
+  "accept": [
+   "micro",
+   "auto",
+   "none"
+  ]
+ },
+ {
+  "query": "bump TIMEOUT in api/upload.py from 30 to 60",
+  "accept": [
+   "micro",
+   "auto",
+   "none"
+  ]
+ },
+ {
+  "query": "tests/test_upload.py::test_upload started failing after yesterday's merge with AssertionError: expected 3 got 2. figure out why and fix it",
+  "accept": [
+   "debug",
+   "auto"
+  ]
+ },
+ {
+  "query": "prod is throwing this on every upload, can you track it down?\nTraceback (most recent call last):\n  File \"api/upload.py\", line 6, in upload\n    return {\"ok\": data[\"size\"] < LIMIT}\nKeyError: 'size'",
+  "accept": [
+   "debug",
+   "auto"
+  ]
+ },
+ {
+  "query": "reviewers left 4 comments on PR #212, go address them",
+  "accept": [
+   "revise",
+   "auto"
+  ]
+ },
+ {
+  "query": "https://github.com/acme/api/pull/88 got review feedback from copilot, can you handle it",
+  "accept": [
+   "revise",
+   "auto"
+  ]
+ },
+ {
+  "query": "what's my loop-spec run waiting on?",
+  "accept": [
+   "status",
+   "loop-spec"
+  ]
+ },
+ {
+  "query": "the loop-spec run add-csv-export died partway through planning, resume it",
+  "accept": [
+   "plan",
+   "auto",
+   "status"
+  ]
+ },
+ {
+  "query": "rerun the verify step for slug rate-limit-upload",
+  "accept": [
+   "verify"
+  ]
+ },
+ {
+  "query": "open the PR for the converged run csv-export",
+  "accept": [
+   "deliver"
+  ]
+ },
+ {
+  "query": "rebase my branch onto origin/main and force push it",
+  "accept": [
+   "auto",
+   "none"
+  ]
+ },
+ {
+  "query": "PR #40 has merge conflicts with main, sort them out",
+  "accept": [
+   "auto",
+   "none"
+  ]
+ },
+ {
+  "query": "explain how upload() in api/upload.py works",
+  "accept": [
+   "none"
+  ]
+ },
+ {
+  "query": "what's the difference between a spec and a plan in agile teams?",
+  "accept": [
+   "none"
+  ]
+ },
+ {
+  "query": "write me a migration plan for moving our postgres 13 database to 16, just a markdown doc I can share with the team, no code changes",
+  "accept": [
+   "none"
+  ]
+ },
+ {
+  "query": "verify my AWS credentials are set up right on this machine",
+  "accept": [
+   "none"
+  ]
+ },
+ {
+  "query": "review my staged diff for bugs before I commit",
+  "accept": [
+   "none"
+  ]
+ },
+ {
+  "query": "check the status of the GitHub Actions run on main",
+  "accept": [
+   "none"
+  ]
+ },
+ {
+  "query": "debug why my zsh prompt takes 3 seconds to show up",
+  "accept": [
+   "none"
+  ]
+ },
+ {
+  "query": "iterate on this tagline a few times and give me 5 options: 'fast uploads for everyone'",
+  "accept": [
+   "none"
+  ]
+ }
+]
