@@ -137,6 +137,22 @@ if [[ -d "$WORK/cyclerepo" ]]; then
 
   check_sidecar_route "sidecar-only completed" sidecar-complete \
     '{"status":"pending","nextPhase":null}'
+
+  # A real (not dry) step into the terminal node publishes the run's result once: its
+  # body is cycle-result.sh, and the engine also published on the missing out-edge, so
+  # a 6.11.1 live run's log carried two LOOP_SPEC_RESULT lines for one completion.
+  tdir="$WORK/cyclerepo/.loop-spec/features/terminal-once"
+  mkdir -p "$tdir"
+  jq -n --arg base "$base_sha" '{slug:"terminal-once",feature_title:"terminal once",schemaVersion:7,
+    execStyle:"auto",autonomous:true,baseSha:$base,branch:"main",baseBranch:"main",artifacts:{},iterate:{used:0,feedback:null},
+    delivery:{nextPhase:"completed"},currentPhase:"deliver"}' > "$tdir/feature.json"
+  jq -n '{schema:1,ok:true,status:"ready-for-review",nextPhase:"completed"}' > "$tdir/delivery.json"
+  (cd "$WORK/cyclerepo" && bash "$SCRIPT" --step --feature-dir ".loop-spec/features/terminal-once" \
+    "$ROOT/graph/cycle.graph.json" >/dev/null 2>&1)
+  out="$(cd "$WORK/cyclerepo" && bash "$SCRIPT" --step --completed-node deliver \
+    --feature-dir ".loop-spec/features/terminal-once" "$ROOT/graph/cycle.graph.json" 2>"$WORK/terminal-once.err")"
+  check "terminal step reaches completed" "completed:true" "$(jq -r '"\(.node):\(.terminal)"' <<<"$out")"
+  check "terminal step prints one LOOP_SPEC_RESULT" "1" "$(grep -c '^LOOP_SPEC_RESULT ' "$WORK/terminal-once.err")"
   check_sidecar_route "sidecar completed beats stale tracked execute" sidecar-stale \
     '{"status":"checks-failed","nextPhase":"execute"}'
 fi
