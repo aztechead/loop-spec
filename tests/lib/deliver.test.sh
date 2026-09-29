@@ -514,6 +514,22 @@ check "post-gate source commit: exit 1" "1" "$ec"
 check "post-gate source commit: structured error" "post_gate_drift" "$(jq -r '.targets[0].errorCode' "$GDIR/delivery.json")"
 check "post-gate source commit: the refusal names the file" "1" "$(grep -c 'touch uv.lock' "$GDIR/delivery.json")"
 check "post-gate source commit: controller not called" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+check "post-gate source commit: driftPaths lists it" '["uv.lock"]' "$(jq -c '.targets[0].driftPaths' "$GDIR/delivery.json")"
+# A path in LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS is accepted from a local commit after the
+# gate as it is from a remote one; every other path is still refused and listed in full.
+printf 'entry\n' > "$DRIFT/CHANGELOG.md"; git -C "$DRIFT" add CHANGELOG.md; git -C "$DRIFT" commit -q -m "docs: changelog"
+out="$(LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS=CHANGELOG.md FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$GDIR")" || true
+check "accepted path after the gate: other paths still refused" '["uv.lock"]' "$(jq -c '.targets[0].driftPaths' "$GDIR/delivery.json")"
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$GDIR")" || true
+check "accepted path after the gate: unset lists both" '["CHANGELOG.md","uv.lock"]' "$(jq -c '.targets[0].driftPaths' "$GDIR/delivery.json")"
+jq -cn --arg sha "$(git -C "$DRIFT" rev-parse HEAD)" '{ts:"t",slug:"drift",event:"phase_end",phase:"oneshot",data:{next:"deliver"},verdict:"advanced",next:"deliver",headSha:$sha}' > "$GDIR/events.jsonl"
+printf 'entry 2\n' > "$DRIFT/CHANGELOG.md"; git -C "$DRIFT" commit -q -am "docs: changelog after the gate"
+: > "$LOG"; ec=0
+out="$(LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS=CHANGELOG.md FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$GDIR")" || ec=$?
+check "accepted-only commit after the gate: delivers" "0" "$ec"
 # A modern run whose last gate routed elsewhere has no gate to compare against: refused,
 # not skipped (the 6.6.4 live-run attack pushed a sneaked commit through that gap).
 jq -cn --arg sha "$GATED" '{ts:"t",slug:"drift",event:"phase_end",phase:"oneshot",data:{next:"discuss"},verdict:"advanced",next:"discuss",headSha:$sha}' > "$GDIR/events.jsonl"

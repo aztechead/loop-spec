@@ -4,6 +4,22 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.11.4] - 2026-09-29
+
+### Fixed
+
+- DELIVER refused a local commit made after the last gate even when it changed only
+  paths in `LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS`, although the same commit pushed to
+  the PR branch by a bot is accepted. A lead that added the changelog entry during
+  DELIVER ended the run `escalated` with nothing pushed. `lib/deliver.sh` now leaves
+  those paths out of the post-gate comparison, matching them as `lib/pr-delivery.sh`
+  does, in both the single-repo and workspace paths.
+
+### Added
+
+- A `post_gate_drift` delivery target carries `driftPaths`, every changed path after
+  the gate. The error text still names at most five.
+
 ## [6.11.3] - 2026-09-28
 
 A maintenance release for 6.x users. No route, gate, or artifact changes.
