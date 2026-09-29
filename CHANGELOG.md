@@ -4,6 +4,19 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.7.4] - 2026-09-29
+
+Effort defaults follow the Claude Opus 5.5 and Claude Sonnet 5.5 migration guides.
+
+### Changed
+
+- `implementer` and `verifier` default to effort `medium`, down from `high`. Sonnet 5.5
+  recalibrated its effort levels, and its migration guide starts agentic coding and
+  multistep tool use at `medium`. The `high` default was set in 7.5.0 for Sonnet 5's
+  levels. `LOOP_SPEC_EFFORT_IMPLEMENTER` and `LOOP_SPEC_EFFORT_VERIFIER` still override
+  it. The Opus roles already match the Opus 5.5 guide: the router at `low`, the other
+  judgment roles at `medium`.
+
 ## [7.7.3] - 2026-09-29
 
 ### Changed

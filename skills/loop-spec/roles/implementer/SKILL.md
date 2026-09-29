@@ -3,7 +3,7 @@ name: implementer
 description: Implement exactly one PLAN task in its own worktree, commit it, and report what the verify command produced. Dispatched by the program as a role step; not for ad-hoc use.
 allowed-tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
-effort: high
+effort: medium
 ---
 
 # implementer

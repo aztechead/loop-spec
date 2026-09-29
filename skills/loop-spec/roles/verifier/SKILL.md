@@ -3,7 +3,7 @@ name: verifier
 description: Run every acceptance criterion's verify command against the integrated result and report one verdict per criterion. Dispatched by the program as a role step; not for ad-hoc use.
 allowed-tools: Read, Write, Bash, Grep, Glob
 model: sonnet
-effort: high
+effort: medium
 ---
 
 # verifier
