@@ -8,7 +8,6 @@ follow this link, open this file, run this command -- and stays silent whenever
 the answer needs a judgment instead of a lookup.
 """
 
-from __future__ import print_function
 
 import os
 import re

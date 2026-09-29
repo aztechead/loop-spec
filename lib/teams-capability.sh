@@ -19,7 +19,7 @@ set -euo pipefail
 
 # A deployment-wide one-shot cap cannot be enforced inside a persistent team.
 # The resolver always returns a finite cap, including its conservative default.
-subagent_cap="$(bash "$(dirname "${BASH_SOURCE[0]}")/resource-bounds.sh" get subagents)" || exit $?
+bash "$(dirname "${BASH_SOURCE[0]}")/resource-bounds.sh" get subagents >/dev/null || exit $?
 
 # Harness gate: named, addressable teammates are a Claude Code surface today.
 # opencode's resumable task sessions and ADK's AgentTool dispatch both return a

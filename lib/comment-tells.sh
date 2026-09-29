@@ -62,7 +62,6 @@ if [[ "$MODE" == "diff" ]]; then
 fi
 
 python3 - "$@" <<'PY'
-from __future__ import print_function
 
 import os
 import re

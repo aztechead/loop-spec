@@ -66,7 +66,6 @@ anchors="$(git diff --unified=0 --find-renames "$base" "$head" 2>/dev/null |
 TRAIL_FILE="$trail" BASE_REF="$base" HEAD_REF="$head" \
 NUMSTAT="$numstat" ANCHORS="$anchors" \
 python3 - "$command" <<'PY'
-from __future__ import print_function
 
 import os
 import re

@@ -74,9 +74,8 @@ slug="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -er --filter '.slug | 
   exit 2
 }
 delivery_file="$feature_dir/delivery.json"
-bound=""
 bound_rc=0
-bound="$(bound_sha "$delivery_file" "$slug")" || bound_rc=$?
+bound_sha "$delivery_file" "$slug" >/dev/null || bound_rc=$?
 if [[ "$bound_rc" -eq 0 ]]; then
   # Exact-SHA retries and completion recovery are observation-only. In particular,
   # do not even refresh info/exclude after a candidate has been bound.

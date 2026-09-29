@@ -61,7 +61,6 @@ printf '%s' "$test_files" > "$scan_tmp/test-files.txt"
 BASE_REF="$base" HEAD_REF="$head" DIFF_FILE="$scan_tmp/diff.txt" \
 TEST_FILES_FILE="$scan_tmp/test-files.txt" \
 python3 - <<'PY'
-from __future__ import print_function
 
 import os
 import re

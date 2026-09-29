@@ -12,7 +12,6 @@ no context lines.
 Usage:
   git diff --unified=0 --no-color <base> [head] | python3 diff-added-lines.py
 """
-from __future__ import print_function
 
 import re
 import sys

@@ -1,6 +1,8 @@
 # Agent Frontmatter Reference
 
-This directory contains agent definitions for the loop-spec system. Each agent is a Markdown file with YAML frontmatter followed by the agent's prompt body.
+For a contributor adding or editing a file in `agents/`. That directory holds only agent
+definitions: Claude Code registers every `.md` file there as a subagent, so this reference
+lives here instead. Each agent is a Markdown file with YAML frontmatter followed by the agent's prompt body.
 
 ## Required fields
 

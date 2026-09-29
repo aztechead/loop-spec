@@ -12,7 +12,6 @@ process, so the cycle's loop and the graph's loop are one program
 carrying the run.sh exit code; main() turns it back into a process exit.
 """
 
-from __future__ import print_function
 
 import json
 import os
@@ -26,7 +25,6 @@ from paths import repo_path  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import feature_read  # noqa: E402
 from state_reads import unsatisfied_reads  # noqa: E402
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from loop_log import logger, stdout_log
 
 graph_path = feature_dir = repo_root = script_dir = completed_node = ""

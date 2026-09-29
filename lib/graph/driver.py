@@ -230,9 +230,9 @@ Session identity: callers that cross a phase boundary must export a stable
 adapters inject this automatically; standalone callers must set it explicitly.
 """
 
-from __future__ import print_function
 
 import datetime
+import functools
 import hashlib
 import json
 import os
@@ -405,6 +405,19 @@ def session_id():
     names remain compatibility fallbacks for attended sessions.
     """
     return resolve_session_id()
+
+
+@functools.lru_cache(maxsize=None)
+def graph_nodes():
+    """cycle.graph.json's nodes by id, parsed once per process (the file is static)."""
+    return {n["id"]: n for n in (read_json(GRAPH, {}) or {}).get("nodes", [])}
+
+
+def refuse_if_handed_off(fdir):
+    handed = handed_off_here(state(fdir))
+    if handed is not None:
+        raise Die("this session handed off after %s; %s starts in a fresh invocation (%s)"
+                  % (handed.get("from"), handed.get("next"), handoff_answer(fdir, handed)), 4)
 
 
 def handed_off_here(feat):
@@ -710,20 +723,14 @@ def cmd_start(argv):
                 record("Resume %s or start new?" % resume_pick, "resume " + resume_pick, reason)
                 picked = next(c for c in candidates if c.get("slug") == resume_pick)
                 fdir = os.path.join(picked["featureRoot"], ".loop-spec", "features", resume_pick)
-                handed = handed_off_here(state(fdir))
-                if handed is not None:
-                    raise Die("this session handed off after %s; %s starts in a fresh invocation (%s)"
-                              % (handed.get("from"), handed.get("next"), handoff_answer(fdir, handed)), 4)
+                refuse_if_handed_off(fdir)
         elif not non_interactive:
             if len(candidates) == 1:
                 resume_pick = candidates[0]["slug"]
                 record("Resume %s or start new?" % resume_pick, "resume " + resume_pick,
                        "attended: the one paused feature resumes")
                 fdir = os.path.join(candidates[0]["featureRoot"], ".loop-spec", "features", resume_pick)
-                handed = handed_off_here(state(fdir))
-                if handed is not None:
-                    raise Die("this session handed off after %s; %s starts in a fresh invocation (%s)"
-                              % (handed.get("from"), handed.get("next"), handoff_answer(fdir, handed)), 4)
+                refuse_if_handed_off(fdir)
             else:
                 # More than one paused feature is a human decision an attended run no
                 # longer stops to ask for (#9, 6.6.4 live run): a new cycle starts, and
@@ -1453,7 +1460,7 @@ def cmd_next(argv):
         # record, so it is answered from the record, never stepped again (the full-route
         # runs entered DISCUSS and PLAN twice and one ended with no result; port audit 5, R5).
         nxt = rec["next"]
-        node = next((n for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == nxt), {})
+        node = graph_nodes().get(nxt, {})
         fset(feature_dir, "handoffSession", None)
         fset(feature_dir, "currentPhaseStartedAt", now())
         fset(feature_dir, "driverNext", {"phase": nxt, "at": now()})
@@ -1775,7 +1782,7 @@ def instruction_record(feature_dir, phase):
         verify(active["instructions"], REPO_ROOT, feature_dir)
         if Path(active["instructions"]["manifest"]).parent.parent.parent == Path(feature_dir):
             return active["instructions"]
-    node = next(n for n in read_json(GRAPH, {})["nodes"] if n["id"] == phase)
+    node = graph_nodes()[phase]
     root = feature_root(feature_dir, state(feature_dir))
     prepend = lib("extension-points", "instructions", phase, "prepend", cwd=root)
     append = lib("extension-points", "instructions", phase, "append", cwd=root)
@@ -1801,7 +1808,7 @@ def instruction_record(feature_dir, phase):
 def print_next(nxt, label, effort, feature_dir):
     record = instruction_record(feature_dir, nxt)
     stdout_log.info('NEXT phase=%s label="%s" effort=%s' % (nxt, label, effort))
-    node_skill = next((n.get("skill") for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == nxt), None)
+    node_skill = graph_nodes().get(nxt, {}).get("skill")
     if node_skill:
         stdout_log.info("EXT skill=%s" % node_skill)
     stdout_log.info("EXT instructions=%s sha256=%s" % (record["prompt"], record["promptSha256"]))
@@ -3388,7 +3395,7 @@ def cmd_phase_begin(argv):
             logger.error((deferred.stderr).rstrip("\n"))
         if deferred.returncode != 0:
             raise Die("deferred baseline failed before oneshot dispatch", 2)
-    node = next((n for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == phase), {})
+    node = graph_nodes().get(phase, {})
     instructions = instruction_record(feature_dir, phase)
     skeletons = write_skeletons(feature_dir, state(feature_dir), node)
     entry = subprocess.run(["bash", str(LIB_DIR / "phase-entry.sh"), phase, "--feature-dir", feature_dir],

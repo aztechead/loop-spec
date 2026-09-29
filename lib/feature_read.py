@@ -41,7 +41,6 @@ Usage (lib/feature-read.sh is the launcher):
 Exit 0 printed; 1 the key is not a stateKey (the message names the enum); 2 the
 feature.json is missing or unreadable, or the invocation is wrong.
 """
-from __future__ import print_function
 
 import json
 import os

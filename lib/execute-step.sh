@@ -343,7 +343,6 @@ case "$cmd" in
       worktree="$(sget '.worktree')"; branch="$(sget '.branch')"
       res="$(lib integrate-task --feature-root "$root" --feature-branch "feat/$slug" --task-worktree "$worktree" \
         --task-branch "$branch" --verify "$verify_cmd" --cleanup)" || true
-      published="$(jq -r '.published // false' <<<"$res")"
       sha="$(git -C "$root" rev-parse "feat/$slug" 2>/dev/null || true)"
       answer="$(jq -c --arg sha "$sha" '{published:(.published // false), reason:(.reason // null), detail:(.detail // null), sha:$sha, blocked:null}' <<<"$res")"
     else

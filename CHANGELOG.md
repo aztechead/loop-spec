@@ -4,6 +4,37 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.11.3] - 2026-09-28
+
+A maintenance release for 6.x users. No route, gate, or artifact changes.
+
+### Fixed
+
+- Claude Code registered `agents/README.md` as a subagent, `loop-spec:README`, with no
+  frontmatter. The frontmatter reference now lives in `docs/agent-frontmatter.md`, and
+  `agents/` holds only agent definitions.
+- `artifact-lint-feedback.sh` shared the `Bash|Edit|Write` PostToolUse matcher even
+  though it acts only on Write and Edit, so every Bash call launched Python for it. It
+  now has its own `Edit|Write` matcher.
+- `path_allowed` in `restrict-agent-paths.sh` quotes its prefix, so a prefix is never
+  read as a glob.
+
+### Changed
+
+- The plugin keywords drop `pi`, a retired harness.
+- Less repeated work: the graph driver parses `cycle.graph.json` once per process,
+  `verify_dispatch.py` writes the verifier brief through `feature_write.publish`,
+  `phase_snapshot.py` hashes each snapshot from memory, and `verify-prepare.sh` reuses
+  the toplevel it already resolved.
+
+### Removed
+
+- Dead code: `_hash8` (`sentinel-sources.sh`), `_abspath` (`workspace.sh`),
+  `reply_lines` (`critique-step.sh`), four values computed and never read (in
+  `deliver.sh`, `execute-step.sh`, `task-route.sh`, `finalize-delivery-candidate.sh`),
+  a duplicate `sys.path` entry in `engine.py`, an unreachable type check in
+  `design_budget.py`, and every `from __future__ import print_function`.
+
 ## [6.11.2] - 2026-09-23
 
 ### Fixed

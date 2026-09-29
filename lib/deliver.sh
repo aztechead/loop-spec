@@ -421,7 +421,6 @@ fi
 # that cleared its checks but was held back because a sibling repo failed; it is not
 # delivered, so it keeps the feature out of ready-for-review.
 delivered_count="$(jq '[.[] | select(.outcome == "delivered")] | length' <<<"$targets")"
-skipped_count="$(jq '[.[] | select(.outcome == "skipped-no-commits")] | length' <<<"$targets")"
 held_count="$(jq '[.[] | select(.outcome == "ready-pending")] | length' <<<"$targets")"
 pushed_count="$(jq '[.[] | select(.outcome == "pushed-no-pr")] | length' <<<"$targets")"
 failure_count="$(jq '[.[] | select(.ok == false)] | length' <<<"$targets")"

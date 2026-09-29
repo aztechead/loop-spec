@@ -6,7 +6,6 @@ reader can see the parsing rules as ordinary Python: which directories are the
 surface, where a file's purpose line lives, and what `find`/`show` match against.
 """
 
-from __future__ import print_function
 
 import os
 import re
@@ -35,7 +34,7 @@ DIRS = {
 }
 KINDS = ("lib", "shared", "agent")
 # A test lives beside its subject in lib/ but is not part of the surface an agent calls,
-# and agents/README.md is the directory's own prose, not a role charter.
+# and a README.md is a directory's own prose, not part of the surface.
 SKIP = re.compile(r"\.test\.sh$|^README\.md$")
 
 

@@ -15,7 +15,7 @@
 set -euo pipefail
 
 # Workflow internals own their fan-out, so one-shot waves enforce the cap.
-subagent_cap="$(bash "$(dirname "${BASH_SOURCE[0]}")/resource-bounds.sh" get subagents)" || exit $?
+bash "$(dirname "${BASH_SOURCE[0]}")/resource-bounds.sh" get subagents >/dev/null || exit $?
 
 # Harness gate: the Workflow tool is a Claude Code surface. Under opencode and
 # ADK it never exists, regardless of any claude binary found on PATH.
