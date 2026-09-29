@@ -17,7 +17,7 @@ python3 evals/route_eval.py evals/routing-train.json evals/routing-held-out.json
 
 `route_eval.py` builds a throwaway fixture repository in a temp directory, runs
 `claude -p <query> --plugin-dir <this checkout>` for each query (`--runs` times,
-default 2), and stops each process at its first tool call, before any skill runs. A
+default 5), and stops each process at its first tool call, before any skill runs. A
 `loop-spec:<entry>` Skill call scores as that entry; any other first tool scores as
 `none`. A run passes when the result is in the query's `accept` list. `--help` lists
 the other options (`--model`, `--plugin-dir`, `--out`).
@@ -45,7 +45,19 @@ Opus 5.5, 2 runs per query, 2026-09-28:
 | 7.7.1 | 44/44 | 10/16 |
 
 Siblings were never confused with each other, and no near-miss triggered an entry in
-either version. The 7.7.1 wording catches a feature request that asks for a pull
-request, a named failing test, and a pasted traceback. The held-out misses are short,
-casual requests against the tiny fixture (a dry-run flag, a small refactor, a
-described bug), which the model does inline under both versions.
+either version.
+
+A same-day rerun did not reproduce the 7.7.1 train score. The three queries that
+7.7.1 targets (a feature request that asks for a pull request, a named failing test,
+a pasted traceback) were run again, pooled over every rerun:
+
+| Descriptions | `cycle` on the feature request | `debug` on the two bug reports |
+|---|---|---|
+| 7.7.0 | 0/7 | 0/14 |
+| 7.7.1 | 4/11 | 3/38 |
+
+The 7.7.1 wording helps, but most of these requests are still done inline. Two runs
+per query cannot rank two descriptions, so the default is now 5. Results depend on
+what else is installed: another skill with an overlapping description took the
+failing-test query in some runs. Descriptions reached the model in full; the skill
+listing's character budget did not truncate them.

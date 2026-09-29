@@ -87,7 +87,7 @@ def main() -> int:
     ap.add_argument("queries", nargs="+", type=Path, help="query files (routing-*.json)")
     ap.add_argument("--plugin-dir", default=str(here.parent), help="plugin to load (default: this checkout)")
     ap.add_argument("--model", default="claude-opus-5-5")
-    ap.add_argument("--runs", type=int, default=2, help="runs per query")
+    ap.add_argument("--runs", type=int, default=5, help="runs per query")
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--timeout", type=int, default=120, help="seconds per run")
     ap.add_argument("--out", type=Path, help="write per-query results as JSON here")

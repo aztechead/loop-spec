@@ -19,8 +19,9 @@ The `cycle` and `debug` entries trigger on requests that clearly need them.
 - The `cycle` and `debug` descriptions (and their `entries.py` mirrors) now say when
   to use them without the user naming loop-spec: a code change the user wants tested
   or landed as a pull request, and a pasted stack trace, a named failing test, or a
-  reported regression. Both also exclude questions and machine-setup problems. On the
-  train set, routing went from 38/44 to 44/44, with no new false triggers.
+  reported regression. Both also exclude questions and machine-setup problems. The
+  gain is modest and noisy (`evals/README.md` has the numbers), and no near-miss
+  query triggered an entry.
 
 ## [7.7.0] - 2026-09-28
 
