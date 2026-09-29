@@ -1,6 +1,6 @@
 ---
 name: cycle
-description: Run the full loop-spec cycle (SPEC, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER) on a feature request or spec file and deliver a PR. Use for a feature or change that needs planning, implementation, and verification. Not for a one-line fix (use micro), a failing test or bug report (use debug), or PR review comments (use revise).
+description: "Run the full loop-spec cycle (SPEC, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER) on a feature request or spec file and deliver a PR. Use whenever the user asks to add, build, or change behavior in their code beyond a one-line tweak, especially when they want it tested or landed as a pull request, even if they never mention loop-spec. Not for a one-line fix (use micro), a failing test or bug report (use debug), PR review comments (use revise), or a question that changes no code."
 ---
 
 Run this once, without changing directory, substituting the two placeholders:

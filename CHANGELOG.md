@@ -4,6 +4,25 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.7.1] - 2026-09-28
+
+The `cycle` and `debug` entries trigger on requests that clearly need them.
+
+### Added
+
+- `evals/`: a routing eval that loads the plugin into `claude -p`, sends each query
+  against a fixture repository, and records which entry skill fires first. It comes
+  with a train and a held-out query set, near-misses included. See `evals/README.md`.
+
+### Fixed
+
+- The `cycle` and `debug` descriptions (and their `entries.py` mirrors) now say when
+  to use them without the user naming loop-spec: a code change the user wants tested
+  or landed as a pull request, and a pasted stack trace, a named failing test, or a
+  reported regression. Both also exclude questions and machine-setup problems. The
+  gain is modest and noisy (`evals/README.md` has the numbers), and no near-miss
+  query triggered an entry.
+
 ## [7.7.0] - 2026-09-28
 
 Every agent loop-spec runs now reasons from first principles.
