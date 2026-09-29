@@ -24,7 +24,8 @@ Three modules:
 
 Usage:
     python3 run_loop_spec.py --project-root DIR "<request>"
-        [--entry cycle|micro|debug|revise] [--auto] [--model opus]
+        [--entry cycle|micro|debug|revise] [--auto] [--model sonnet]
+        [--phase-model PLAN=opus ...] [--spec-approval ask|policy]
         [--resume SESSION_ID] [--max-budget-usd N]
 
 Auth is the SDK's own: a Claude subscription login (`claude` then `/login`), or
@@ -252,6 +253,21 @@ def render(message: Message) -> None:
         err(f"[turn] {message.subtype} turns={message.num_turns} cost=${message.total_cost_usd}")
 
 
+def session_env(args: argparse.Namespace) -> dict[str, str]:
+    """The loop-spec settings this run passes to the session's environment, which the
+    lead's `loop-spec` commands inherit: a model per phase (LOOP_SPEC_PHASE_MODEL_<PHASE>)
+    and how SPEC's requirements approval is answered (LOOP_SPEC_SPEC_APPROVAL)."""
+    env = {}
+    for pair in args.phase_model or []:
+        phase, sep, model = pair.partition("=")
+        if not sep or not phase or not model:
+            raise ValueError(f"--phase-model takes PHASE=MODEL, got {pair!r}")
+        env["LOOP_SPEC_PHASE_MODEL_" + phase.upper()] = model
+    if args.spec_approval:
+        env["LOOP_SPEC_SPEC_APPROVAL"] = args.spec_approval
+    return env
+
+
 async def run(args: argparse.Namespace) -> int:
     options = ClaudeAgentOptions(
         cwd=str(args.project_root),
@@ -262,6 +278,7 @@ async def run(args: argparse.Namespace) -> int:
         permission_mode="acceptEdits",
         can_use_tool=make_can_use_tool(choose_answerer(args.auto)),
         model=args.model,
+        env=session_env(args),
         thinking={"type": "adaptive", "display": "summarized"},
         # Workers are Agent-tool subagents; forward their text and thinking too.
         forward_subagent_text=True,
@@ -321,12 +338,21 @@ def main() -> int:
     ap.add_argument("--entry", default="cycle", choices=["cycle", "micro", "debug", "revise"])
     ap.add_argument("--auto", action="store_true", help="answer every question with its first option")
     ap.add_argument("--model", help="the lead's model; a lead step with its own model and every worker use theirs")
+    ap.add_argument("--phase-model", action="append", metavar="PHASE=MODEL",
+                    help="a model for every step of a phase, SPEC and PLAN included (the lead switches to it), "
+                         "e.g. --phase-model spec=opus --phase-model plan=opus; repeatable")
+    ap.add_argument("--spec-approval", choices=["ask", "policy"],
+                    help="policy approves SPEC's requirements without asking; every other question is still asked")
     ap.add_argument("--resume", help="continue an earlier session by its id")
     ap.add_argument("--max-budget-usd", type=float)
     args = ap.parse_args()
     if not args.request and not args.resume:
         ap.error("pass a request, or --resume SESSION_ID")
     args.project_root = args.project_root.resolve()
+    try:
+        session_env(args)
+    except ValueError as exc:
+        ap.error(str(exc))
     configure_logging()
     return asyncio.run(run(args))
 

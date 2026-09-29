@@ -93,6 +93,7 @@ written by the planner and applied before every baseline capture and re-verifica
 | `LOOP_SPEC_ARTIFACTS_IN_PR` | nothing; the rendered documents go into the PR body and the state home, never into a commit (a docs commit after VERIFY would deliver a head VERIFY never saw) |
 | `LOOP_SPEC_NON_INTERACTIVE` | nothing; a question ends the entry with a `question` file to answer (section 6) |
 | `LOOP_SPEC_AUTONOMOUS` | `--answer-policy default` at entry, or `--scope run` on any answer |
+| `style:auto` (6.x's default), `LOOP_SPEC_ANSWER_STYLE=auto` | 7.x asks for requirements approval by default, which 6.x's `auto` style skipped. Set `spec.approval: "policy"` in config or `LOOP_SPEC_SPEC_APPROVAL=policy` to skip it again; `style:step`/`interactive` behavior (asking) is 7.x's default |
 | `LOOP_SPEC_ITERATE_MAX_ITERATIONS` | `LOOP_SPEC_REWIND_BUDGET` (the shared T1 budget's limit; default 2) |
 | `LOOP_SPEC_REDO_MAX`, `LOOP_SPEC_RALPH_THRESHOLD` | `LOOP_SPEC_STEP_RETRIES` (per-phase retry limit; default 3) |
 | `LOOP_SPEC_CHECKS_*`, `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | `deliver.readiness`/`deliver.base` in config; no configurable timeout in this release |

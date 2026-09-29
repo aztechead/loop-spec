@@ -4,6 +4,7 @@ review findings on 635bc7c. Run with
 `python3 -m unittest examples/sdk-plugin/test_run_loop_spec.py` where
 claude-agent-sdk is installed; loop-spec's own suite does not run it.
 """
+import argparse
 import asyncio
 import io
 import json
@@ -22,7 +23,7 @@ from claude_agent_sdk import (
 )
 
 sys.path.insert(0, str(Path(__file__).parent))
-from run_loop_spec import RunWatch, answer_first_option, answer_from_stdin, choose_answerer  # noqa: E402
+from run_loop_spec import RunWatch, answer_first_option, answer_from_stdin, choose_answerer, session_env  # noqa: E402
 
 QUESTION = {"question": "Approve?", "options": [{"label": "Approve"}, {"label": "Reject"}]}
 
@@ -134,6 +135,17 @@ class AnswererTests(unittest.TestCase):
 
     def test_auto_has_no_answer_without_options(self):
         self.assertIsNone(asyncio.run(answer_first_option({"question": "Why?", "options": []})))
+
+
+class SessionEnvTests(unittest.TestCase):
+    def test_phase_models_and_spec_approval_become_loop_spec_env(self):
+        args = argparse.Namespace(phase_model=["spec=opus", "PLAN=claude-opus-5-5"], spec_approval="policy")
+        self.assertEqual(session_env(args), {"LOOP_SPEC_PHASE_MODEL_SPEC": "opus",
+                                             "LOOP_SPEC_PHASE_MODEL_PLAN": "claude-opus-5-5",
+                                             "LOOP_SPEC_SPEC_APPROVAL": "policy"})
+        self.assertEqual(session_env(argparse.Namespace(phase_model=None, spec_approval=None)), {})
+        with self.assertRaises(ValueError):
+            session_env(argparse.Namespace(phase_model=["opus"], spec_approval=None))
 
 
 if __name__ == "__main__":

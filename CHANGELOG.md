@@ -23,6 +23,14 @@ Per-phase models, for adopting loop-spec through the Claude Agent SDK.
   ([live runs](docs/loop-spec/live-runs-7.0.md)). A lead step's effort is not applied:
   the SDK has no mid-session effort change. In Claude Code the lead still runs every
   lead step at the session's own model.
+- `spec.approval: "policy"` in config, or `LOOP_SPEC_SPEC_APPROVAL=policy`, approves
+  SPEC's requirements without asking. 6.x's default `auto` style skipped this gate;
+  7.x asked on every run with no way to skip only it (`--answer-policy default` also
+  answers every other defaulted question). The answer is recorded `by: "policy"`, so
+  S2 is unchanged, and the run's own answer policy stays off.
+- `examples/sdk-plugin/run_loop_spec.py` takes `--phase-model PHASE=MODEL`
+  (repeatable) and `--spec-approval ask|policy`, passed to the session through
+  `ClaudeAgentOptions.env`.
 
 ## [7.7.4] - 2026-09-29
 

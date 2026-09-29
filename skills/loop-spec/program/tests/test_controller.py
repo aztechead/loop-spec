@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from loop_spec import budget as budget_module
+from loop_spec import contract
 from loop_spec import controller
 from loop_spec import postconditions
 from loop_spec import questions
@@ -535,6 +536,41 @@ class EdgeCaseTests(_QuietStdout):
             self.assertEqual(rewind["exit"], "implementation gap")
             self.assertEqual(rewind["remediationTasks"], [remediation_task])
             self.assertEqual(rewind["verdicts"], verify_product["verdicts"])
+
+
+class SpecApprovalPolicyTests(_QuietStdout):
+    def test_spec_approval_policy_approves_without_a_question_and_leaves_the_run_policy_off(self):
+        # 6.x's default `auto` style skipped the human.after-spec gate; LOOP_SPEC_SPEC_APPROVAL=policy
+        # answers only this question by policy (S2 still holds: a policy answer to a question).
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            markers = io.StringIO()
+            with patch.dict("os.environ", {**_EXTERNAL_ENV, "LOOP_SPEC_SPEC_APPROVAL": "policy"}, clear=False):
+                with contextlib.redirect_stdout(markers):
+                    controller.run_entry("cycle", project_root=repo_dir, request_text="Add a greeting message",
+                                         slug="greeting", state_home=str(tmp / "home"), answer_policy=None, pr=None)
+                paths = FeaturePaths(root=feature_dir(tmp / "home", repo_id(repo_dir), "greeting"))
+                store = _open(paths)
+                step = read_json(paths.steps_dir / store.state["steps"]["open"][0]["stepAttemptId"] / "step.json")
+                atomic_write_json(Path(step["resultPath"]), {
+                    "exit": "approved", "inputsDigest": "sha256:" + "0" * 64,
+                    "boundTo": {"requirements": None, "plan": None}, "goal": "Add a greeting message",
+                    "boundaries": [], "criteria": [{"id": "AC-1", "text": "prints a greeting"}],
+                    "decisions": [], "openQuestions": [],
+                })
+                steps.submit(store, paths, step_id=step["stepAttemptId"], dispatch_name=None, host=None)
+                with contextlib.redirect_stdout(markers):
+                    next_ = controller.continue_run(_open(paths), paths, project_root=repo_dir)
+            state = _open(paths).state
+            self.assertEqual((next_.kind, state["phase"]["current"]), ("step", "plan"))
+            self.assertEqual(state["approval"]["by"], "policy")
+            self.assertIsNone(state["questions"]["policy"])
+
+    def test_a_bad_spec_approval_value_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {"LOOP_SPEC_SPEC_APPROVAL": "yes"}):
+            with self.assertRaises(LoopSpecError):
+                contract.spec_approval(Path(tmp))
 
 
 class PlanCriticTests(_QuietStdout):

@@ -108,7 +108,7 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 | Inputs | request text; on `rewind`, the intent-gap findings |
 | Product | `goal`, `boundaries`, `criteria[]` with ids, `decisions[]`, `openQuestions[]` |
 | Preconditions | request text present |
-| Runs in | the lead session; interviews with `AskUserQuestion` |
+| Runs in | the lead session; interviews with `AskUserQuestion`. The approval question for S2 is asked of a person unless `spec.approval` (or `LOOP_SPEC_SPEC_APPROVAL`) is `policy`, which answers it with its default, `approve`, when it opens |
 
 | Id | Postcondition | Gates |
 |---|---|---|

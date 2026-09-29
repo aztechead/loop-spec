@@ -75,6 +75,10 @@ def load_config(project_root: Path) -> dict:
     if accept is not None and not (isinstance(accept, list) and all(isinstance(g, str) and g for g in accept)):
         raise LoopSpecError(f"{path}: deliver.acceptRemotePaths is {accept!r}; it is a list of path globs",
                             repair='set it to a list such as ["CHANGELOG.md"], or remove it')
+    approval = (config.get("spec") or {}).get("approval")
+    if approval is not None and approval not in SPEC_APPROVALS:
+        raise LoopSpecError(f"{path}: spec.approval is {approval!r}; it is \"ask\" or \"policy\"",
+                            repair='set spec.approval to "ask" or "policy", or remove it')
     for role, bound in (config.get("roles") or {}).items():
         effort = bound.get("effort") if isinstance(bound, dict) else None
         if effort is not None:
@@ -108,6 +112,24 @@ def unattested_policy(project_root: Path | None, role: str) -> str | None:
         return None
     accept = (load_config(project_root).get("evidence") or {}).get(family, {}).get("accept")
     return f"evidence.{family}.accept" if accept == "unattested" else None
+
+
+# How SPEC's requirements approval is answered: "ask" (the default) opens it for a
+# person; "policy" answers it with its default ("approve") as soon as it opens, as
+# 6.x's default `auto` style skipped its human.after-spec gate. Only this question:
+# every other one is still asked.
+SPEC_APPROVALS = ("ask", "policy")
+
+
+def spec_approval(project_root: Path) -> str:
+    """env LOOP_SPEC_SPEC_APPROVAL, then config spec.approval, else "ask"."""
+    env = os.environ.get("LOOP_SPEC_SPEC_APPROVAL")
+    if env:
+        if env not in SPEC_APPROVALS:
+            raise LoopSpecError(f"LOOP_SPEC_SPEC_APPROVAL is {env!r}; it is \"ask\" or \"policy\"",
+                                repair="set LOOP_SPEC_SPEC_APPROVAL to ask or policy, or unset it")
+        return env
+    return (load_config(project_root).get("spec") or {}).get("approval") or "ask"
 
 
 def resolve_implementation(project_root: Path, phase: str) -> str:

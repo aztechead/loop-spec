@@ -31,6 +31,7 @@ launcher, dispatches each worker with the Agent tool, and asks questions with
 | `TaskStartedMessage`, `TaskNotificationMessage`, `TaskUpdatedMessage` | the lead runs workers as background tasks, so a turn can end while they work and a new turn starts when one finishes. The script keeps reading `receive_messages()` and stops when a turn ends with no task active and loop-spec's terminal result already printed, or after 60 quiet seconds with no task active |
 | `resume=<session id>` | continues a session that stopped |
 | `max_budget_usd` | optional spend ceiling |
+| `env={...}` | `--phase-model PHASE=MODEL` and `--spec-approval` become `LOOP_SPEC_PHASE_MODEL_<PHASE>` and `LOOP_SPEC_SPEC_APPROVAL` in the session's environment, which the lead's `loop-spec` commands inherit |
 
 The terminal result is found from the lead's own tool output: the launcher prints
 `LOOP_SPEC_NEXT {"kind":"result","path":...}`, and the script reads that file.
@@ -87,6 +88,16 @@ relying on `--auto` for it: a blocked PLAN critic, for example, offers only
 `spec gap`. Set loop-spec's
 environment variables (`LOOP_SPEC_MODEL_CODE_REVIEWER=haiku`, ...) in the calling
 environment; the session passes them to the program.
+
+`--spec-approval policy` answers only the requirements approval, the way 6.x's
+default `auto` style skipped that gate; the SPEC interview and every other question
+still come to you. A Sonnet lead with SPEC and PLAN on Opus:
+
+```bash
+python3 examples/sdk-plugin/run_loop_spec.py --project-root ~/src/my-app --model sonnet \
+  --phase-model spec=opus --phase-model plan=opus --spec-approval policy \
+  "Add a --json flag to the export command, verified by .venv/bin/python -m pytest -q tests/test_export.py"
+```
 
 ## Output
 

@@ -22,12 +22,14 @@ BLOCKED_OPTIONS = [
 
 
 def ask(store, paths, *, phase: str, attempt_id: str, text: str, kind: str,
-        options: list[dict], default_value: str | None, payload: dict | None, save: bool = True) -> dict:
+        options: list[dict], default_value: str | None, payload: dict | None, save: bool = True,
+        by_policy: bool = False) -> dict:
     """Open a question and, under the run's default policy, answer it with its offered
     default at once (LF-62: one place, so no caller can forget). save=False defers
     every state write, the policy answer's included, to the caller, which links the
     question id into its own state and saves once (LF-60, LF-62): a crash never leaves
-    a question, or its answer, that nothing points at."""
+    a question, or its answer, that nothing points at. by_policy=True answers this one
+    question by policy whatever the run's policy (contract.spec_approval)."""
     open_question = store.state["questions"]["open"]
     if open_question is not None:
         raise LoopSpecError(
@@ -52,7 +54,7 @@ def ask(store, paths, *, phase: str, attempt_id: str, text: str, kind: str,
     }
     emit(paths, "question", {"questionId": question_id, "summary": text}, phase=phase, attempt_id=attempt_id, source="program")
     marker_question(paths, question_id)
-    resolve_policy_answer(store, paths, record, save=False)
+    resolve_policy_answer(store, paths, record, save=False, this_question_only=by_policy)
     if save:
         store.save()
     return record
@@ -95,15 +97,25 @@ def answer(store, paths, *, question_id: str, value: str, scope: str = "question
     return state_record
 
 
-def resolve_policy_answer(store, paths, question: dict, save: bool = True) -> dict | None:
-    if store.state["questions"]["policy"] != "default":
+def resolve_policy_answer(store, paths, question: dict, save: bool = True,
+                          this_question_only: bool = False) -> dict | None:
+    # this_question_only: answer by policy even without the run's default policy, and
+    # at question scope, so the answer never turns the run's policy on.
+    if store.state["questions"]["policy"] != "default" and not this_question_only:
         return None
     default_value = question.get("defaultValue")
     if default_value is None:
         # A policy cannot invent an answer the question never offered.
         return None
-    record = answer(store, paths, question_id=question["questionId"], value=default_value, scope="run", by="policy", save=False)
+    scope = "run" if store.state["questions"]["policy"] == "default" else "question"
+    record = answer(store, paths, question_id=question["questionId"], value=default_value, scope=scope, by="policy", save=False)
     store.state["questions"]["policyAnswered"].append(question["questionId"])
+    # Say which operator setting answered, so a lead that saw the question printed never
+    # reads the answer as a gate it was never asked about being bypassed (p775-approval).
+    setting = "the run's default answer policy" if scope == "run" else "spec.approval: policy"
+    emit(paths, "policy_answer", {"questionId": question["questionId"], "value": default_value,
+                                  "summary": f"answered by policy ({setting}): {default_value}"},
+         phase=question.get("phase"), attempt_id=question.get("attempt"), source="program")
     if save:
         store.save()
     return record

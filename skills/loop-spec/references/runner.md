@@ -139,6 +139,12 @@ product exists.
 You never answer a question yourself. A question is for the user or the operator.
 Running `loop-spec answer` on your own judgment is forbidden.
 
+A question can be printed and then answered at once, with no `question` line for
+you: a `[<PHASE>] answered by policy (<setting>): <value>` line follows it. That is
+the operator's answer, set before the run (`--answer-policy default`, or
+`spec.approval: policy` / `LOOP_SPEC_SPEC_APPROVAL=policy` for the requirements
+approval). Follow the next `LOOP_SPEC_NEXT` line as usual.
+
 1. Ask the user the question in `question.json` with `AskUserQuestion`.
 2. Run the `answer` command with their answer.
 

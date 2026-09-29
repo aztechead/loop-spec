@@ -1,4 +1,5 @@
 """Unit tests for loop_spec.questions: ask/answer, retirement, and default policy."""
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -61,6 +62,19 @@ class QuestionsTests(unittest.TestCase):
             self.assertEqual((resolved["value"], resolved["by"]), ("approve", "policy"))
             self.assertEqual(store.state["questions"]["policyAnswered"], [record["questionId"]])
             self.assertIsNone(store.state["questions"]["open"])
+
+    def test_by_policy_answers_this_question_only_and_leaves_the_run_policy_off(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._ask(store, paths, default_value="approve", by_policy=True)
+            resolved = store.state["questions"]["answered"][record["questionId"]]
+            self.assertEqual((resolved["value"], resolved["by"], resolved["scope"]), ("approve", "policy", "question"))
+            self.assertIsNone(store.state["questions"]["policy"])
+            events = [json.loads(l) for l in paths.events_jsonl.read_text().splitlines()]
+            self.assertIn("answered by policy (spec.approval: policy): approve",
+                          [e["data"].get("summary") for e in events if e["event"] == "policy_answer"])
+            self.assertEqual(self._ask(store, paths, default_value="approve")["questionId"],
+                             store.state["questions"]["open"]["questionId"])  # the next question waits
 
     def test_without_the_default_policy_a_defaulted_question_stays_open(self):
         with tempfile.TemporaryDirectory() as tmp:
