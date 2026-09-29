@@ -131,6 +131,33 @@ append_target_failure() {
   targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
 }
 
+# Every path a commit after the gate changed, one per line, both sides of a rename. The
+# plugin's own artifact paths never count, and neither does a path matching
+# LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS: a remote commit touching only those is accepted
+# (lib/pr-delivery.sh, same matching), so a local one is too.
+post_gate_paths() {
+  local repo="$1" from="$2" to="$3" path glob accepted
+  git -C "$repo" diff --no-renames --name-only "$from" "$to" -- . \
+    ':(top,exclude)docs/loop-spec' ':(top,exclude).loop-spec' 2>/dev/null | while IFS= read -r path; do
+    accepted=0
+    # read, not `for glob in $list`: an unquoted expansion would glob against the cwd.
+    while IFS= read -r glob; do
+      [[ -n "$glob" ]] || continue
+      # shellcheck disable=SC2254 # the glob is the allowlist pattern
+      case "$path" in $glob) accepted=1; break ;; esac
+    done <<<"$(tr ':' '\n' <<<"${LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS:-}")"
+    [[ "$accepted" == "1" ]] || printf '%s\n' "$path"
+  done
+}
+
+# name path branch base sha hint gated_sha drift_paths. The message names at most five
+# paths; driftPaths holds all of them, so a host never has to recompute the diff.
+append_drift_failure() {
+  append_target_failure "$1" "$2" "$3" "$4" "$5" "$6" "post_gate_drift" \
+    "commits after the last gate (${7:0:12}) touch $(head -5 <<<"$8" | paste -sd ' ' -); re-run the cycle so the gate sees them"
+  targets="$(jq -c --arg p "$8" '.[-1].driftPaths = ($p | split("\n") | map(select(. != "")))' <<<"$targets")"
+}
+
 # A hard delivery failure or completion recovery stays bound to the exact eligible
 # SHA selected by the shared candidate policy. Remediation routes intentionally do not.
 bound_target_sha() {
@@ -177,8 +204,7 @@ if [[ -z "$workspace_root" ]]; then
   post_gate_drift=""
   if [[ -n "$gated_sha" && -n "$target_sha" ]] \
     && git -C "$artifact_root" rev-parse --verify -q "${gated_sha}^{commit}" >/dev/null 2>&1; then
-    post_gate_drift="$(git -C "$artifact_root" diff --name-only "$gated_sha" "$target_sha" -- . \
-      ':(top,exclude)docs/loop-spec' ':(top,exclude).loop-spec' 2>/dev/null | head -5 | paste -sd ' ' -)" || true
+    post_gate_drift="$(post_gate_paths "$artifact_root" "$gated_sha" "$target_sha")" || true
   fi
   if [[ -z "$target_sha" ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "" "$hint" \
@@ -223,8 +249,7 @@ if [[ -z "$workspace_root" ]]; then
       "no_gate_record" "no phase returned to deliver through the driver (events.jsonl has no phase_end routing to deliver); run the cycle so a gate binds the candidate"
     preflight_ok=0
   elif [[ -n "$post_gate_drift" ]]; then
-    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
-      "post_gate_drift" "commits after the last gate (${gated_sha:0:12}) touch $post_gate_drift; re-run the cycle so the gate sees them"
+    append_drift_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" "$gated_sha" "$post_gate_drift"
     preflight_ok=0
   elif [[ "$finalize_rc" -ne 0 ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
@@ -336,11 +361,9 @@ else
       continue
     fi
     if [[ -n "$gated_sha" ]] && git -C "$repo_dir" rev-parse --verify -q "${gated_sha}^{commit}" >/dev/null 2>&1; then
-      post_gate_drift="$(git -C "$repo_dir" diff --name-only "$gated_sha" "$target_sha" -- . \
-        ':(top,exclude)docs/loop-spec' ':(top,exclude).loop-spec' 2>/dev/null | head -5 | paste -sd ' ' -)" || true
+      post_gate_drift="$(post_gate_paths "$repo_dir" "$gated_sha" "$target_sha")" || true
       if [[ -n "$post_gate_drift" ]]; then
-        append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
-          "post_gate_drift" "commits after the last gate (${gated_sha:0:12}) touch $post_gate_drift; re-run the cycle so the gate sees them"
+        append_drift_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" "$gated_sha" "$post_gate_drift"
         continue
       fi
     fi
