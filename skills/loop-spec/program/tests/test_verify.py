@@ -557,6 +557,7 @@ class WorkspaceVerifyTests(unittest.TestCase):
         self.assertEqual(action.request["role"], "code-reviewer")
         self.assertEqual(action.request["retryOf"], last_textutil_step)
         self.assertIn("textutil", action.request["reason"])
+        self.assertIn(action.request["reason"], action.request["prompt"])  # the worker learns why
         self.assertNotIn("textutil", self.store.state["verify"]["reviewers"])
         self.assertEqual(self.store.state["verify"]["reviewers"]["calc"], calc_reviewer)
 

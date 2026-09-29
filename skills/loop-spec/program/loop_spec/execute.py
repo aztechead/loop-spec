@@ -20,19 +20,19 @@ from loop_spec import probes as probes_module
 from loop_spec import repo as repo_module
 from loop_spec import steps as steps_module
 from loop_spec.budget import has_room
-from loop_spec.contract import resolve_role, validate_request
+from loop_spec.contract import validate_request
 from loop_spec.errors import LoopSpecError
 from loop_spec.events import emit
 from loop_spec.ids import new_id, now_iso
 from loop_spec.jsonio import read_json
 from loop_spec.paths import ensure_results_dir
+from loop_spec.questions import BLOCKED_OPTIONS
 from loop_spec.postconditions import (PLAN_IDENTITY_FIELDS as _PLAN_IDENTITY_FIELDS, adoptable_task_ids, adopted_commits,
                                       close_out_view, close_outs, retry_limit)
-from loop_spec.roles import compose_prompt, load_role, dispatch_settings
+from loop_spec.roles import compose_prompt, load_role, step_request
 from loop_spec.steps import IssueStep, IssueSteps, Pause, Product, Wait
 
 _TERMINAL = {"done", "already-satisfied", "removed", "blocked", "planGap", "adopted"}
-_DIFF_CAP = 200_000  # ponytail: a flat cap, raise it if a real diff gets truncated in practice
 # LF-16: a rejected EXECUTE product's failures route to the task-state change that
 # gives the NEXT attempt a chance to actually differ, instead of resubmitting the
 # same already-"done" tasks and getting rejected again. E5/E6/E11 are all evidence-
@@ -41,12 +41,6 @@ _DIFF_CAP = 200_000  # ponytail: a flat cap, raise it if a real diff gets trunca
 # can change.
 _REVIEW_RETRY_FAILURE_IDS = {"E5", "E6", "E11"}
 _IMPLEMENT_RETRY_FAILURE_ID = "E7"
-# LF-66: "stop" is first and the default, so a headless answerer (the default policy,
-# or one that takes the first option) ends the run instead of improvising a fix.
-_BLOCKED_OPTIONS = [
-    {"value": "stop", "label": "Stop"},
-    {"value": "fix-and-re-enter", "label": "Fix and re-enter"},
-]
 _TASK_ID_RE = re.compile(r"[TRC]-\d+")  # plan T-n/R-n, close-out C-n (LF-55)
 # LF-11: a verify re-run that could never have passed no matter what the implementer
 # does is a defect in PLAN's own verify/featureAdded/mustFlip fields, not something a
@@ -412,7 +406,7 @@ def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, tas
         return pause
     worktree = Path(task_state["worktree"])
     project_root = Path(ctx["paths"]["projectRoot"])
-    role = load_role("implementer", project_root, resolve_role(project_root, "implementer"))
+    role = load_role("implementer", project_root)
     spec = store.state["products"]["spec"]["product"]
     # The result file lives outside the worktree: a result written into the checkout
     # shows up in `git status` and made every implement submission fail is_clean until
@@ -435,20 +429,28 @@ def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, tas
         inputs["retryReason"] = task_state["reason"]
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=worktree, phase="execute")
 
-    request = {
-        "kind": "role", "role": "implementer", "phase": "execute", "cwd": str(worktree),
-        "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
-        "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
-        "retryOf": task_state["implementSteps"][-1] if task_state["implementSteps"] else None,
-        "reason": task_state["reason"], **dispatch_settings(project_root, "implementer"),
-    }
-    errors = validate_request("step", request)
-    if errors:
-        raise LoopSpecError("execute built an invalid implement step request: " + "; ".join(errors),
-                             repair="fix _implement_request in execute.py")
+    request = step_request("role", "implementer", "execute", project_root=project_root, ctx=ctx, cwd=worktree, prompt=prompt,
+                           result_path=result_path, schema=role.schema,
+                           retry_of=task_state["implementSteps"][-1] if task_state["implementSteps"] else None,
+                           reason=task_state["reason"])
     task_state["status"] = "implementing"
     store.save()
     return request
+
+
+def _review_range(paths, execute_state: dict, task_state: dict, task_id: str, attempt_id: str) -> tuple[str, str, str]:
+    """(from, to, diff) a reviewer sees for one task. The range is always base..task
+    from the head this task's own worktree FORKED from, never the feature branch's
+    current head: a same-wave sibling can merge first and move that current head, and
+    a two-dot diff against a moved head would show the sibling's own work as removed
+    (a plain wrong diff), not just a stale one. _fork_point still runs (and backfills
+    a legacy forkedFrom) even though its own return value is not what the reviewer
+    sees -- reviewFrom falls back to forkedFrom (_review_from) and needs it populated."""
+    _fork_point(paths, execute_state, task_state, task_id, attempt_id)
+    review_from = _review_from(task_state)
+    worktree = Path(task_state["worktree"])
+    task_head = repo_module.branch_sha(worktree, task_state["branch"])
+    return review_from, task_head, repo_module.review_diff(worktree, f"{review_from}..{task_head}")
 
 
 def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dict:
@@ -457,24 +459,10 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
     # still run); the re-issued review reads a fresh checkout of the same candidate.
     review_cwd = Path(task_state.get("reviewCheckout") or worktree)
     project_root = Path(ctx["paths"]["projectRoot"])
-    role = load_role("code-reviewer", project_root, resolve_role(project_root, "code-reviewer"))
+    role = load_role("code-reviewer", project_root)
     execute_state = store.state["execute"]
-    # The range/diff a reviewer sees is always base..task from the head this
-    # task's own worktree FORKED from, never the feature branch's current head:
-    # a same-wave sibling can merge first and move that current head, and a
-    # two-dot diff against a moved head would show the sibling's own work as
-    # removed (a plain wrong diff), not just a stale one.
-    # _fork_point still runs (and backfills a legacy forkedFrom) even though its
-    # own return value is no longer what the reviewer sees below -- reviewFrom
-    # falls back to forkedFrom (_review_from) and needs it populated either way.
-    _fork_point(paths, execute_state, task_state, plan_task["id"], ctx["attempt"]["id"])
-    review_from = _review_from(task_state)
-    task_head = repo_module.branch_sha(worktree, task_state["branch"])
+    review_from, task_head, diff = _review_range(paths, execute_state, task_state, plan_task["id"], ctx["attempt"]["id"])
     result_path = _result_path(paths, plan_task["id"], "review", len(task_state["reviewSteps"]) + 1)
-
-    diff = repo_module.review_diff(worktree, f"{review_from}..{task_head}")
-    if len(diff) > _DIFF_CAP:
-        diff = diff[:_DIFF_CAP] + "\n...(truncated)"
 
     inputs = {
         "task": plan_task,
@@ -490,23 +478,18 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
             "This task closes out an ITERATE gap (closeOut.text). Pass only if that gap is closed at "
             "range.to. An empty range means the implementer found it already true there; check that claim."
         )
+    if task_state["reason"]:
+        inputs["retryReason"] = task_state["reason"]  # a re-issued step says why the last was rejected
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=review_cwd, phase="execute")
 
-    request = {
-        "kind": "role", "role": "code-reviewer", "phase": "execute", "cwd": str(review_cwd),
-        "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
-        "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
-        # LF-16: normally None/None -- a task only ever reaches "probing" fresh,
-        # straight from a passing implement step. A rejection re-routed back to
-        # review (see _handle_rejection) is the one case with a reason already
-        # set and a prior review step to retry.
-        "retryOf": task_state["reviewSteps"][-1] if task_state["reviewSteps"] else None,
-        "reason": task_state["reason"], **dispatch_settings(project_root, "code-reviewer"),
-    }
-    errors = validate_request("step", request)
-    if errors:
-        raise LoopSpecError("execute built an invalid review step request: " + "; ".join(errors),
-                             repair="fix _review_request in execute.py")
+    # LF-16: normally None/None -- a task only ever reaches "probing" fresh,
+    # straight from a passing implement step. A rejection re-routed back to
+    # review (see _handle_rejection) is the one case with a reason already
+    # set and a prior review step to retry.
+    request = step_request("role", "code-reviewer", "execute", project_root=project_root, ctx=ctx, cwd=review_cwd, prompt=prompt,
+                           result_path=result_path, schema=role.schema,
+                           retry_of=task_state["reviewSteps"][-1] if task_state["reviewSteps"] else None,
+                           reason=task_state["reason"])
     # LF-60: the review is bound to this candidate at issue; the submit applies it
     # to this SHA only, never to whatever the mutable task branch points at later.
     task_state["reviewCandidate"] = task_head
@@ -532,7 +515,7 @@ def _wave_review_request(store, paths, ctx, task_ids: list[str]) -> dict:
     task. Each task is judged on its own and gets its own result entry, which
     on_submit applies exactly as a single-task review; rework stays per task."""
     project_root = Path(ctx["paths"]["projectRoot"])
-    role = load_role("code-reviewer", project_root, resolve_role(project_root, "code-reviewer"))
+    role = load_role("code-reviewer", project_root)
     execute_state = store.state["execute"]
     ensure_results_dir(paths)
     result_path = paths.results_dir / f"wave-{'_'.join(task_ids)}-review-{new_id('step').split('-', 1)[1]}.json"
@@ -543,12 +526,7 @@ def _wave_review_request(store, paths, ctx, task_ids: list[str]) -> dict:
         worktree = Path(task_state["worktree"])
         review_cwd = Path(task_state.get("reviewCheckout") or worktree)
         first_cwd = first_cwd or review_cwd
-        _fork_point(paths, execute_state, task_state, task_id, ctx["attempt"]["id"])
-        review_from = _review_from(task_state)
-        task_head = repo_module.branch_sha(worktree, task_state["branch"])
-        diff = repo_module.review_diff(worktree, f"{review_from}..{task_head}")
-        if len(diff) > _DIFF_CAP:
-            diff = diff[:_DIFF_CAP] + "\n...(truncated)"
+        review_from, task_head, diff = _review_range(paths, execute_state, task_state, task_id, ctx["attempt"]["id"])
         entry = {"task": plan_task, "cwd": str(review_cwd), "range": {"from": review_from, "to": task_head},
                  "diff": diff, "probes": task_state["probes"]}
         if task_state.get("reason"):
@@ -565,35 +543,18 @@ def _wave_review_request(store, paths, ctx, task_ids: list[str]) -> dict:
     }
     wave_role = dataclasses.replace(role, schema=_wave_schema(role.schema, len(task_ids)))
     prompt = compose_prompt(wave_role, inputs=inputs, result_path=result_path, cwd=first_cwd, phase="execute")
-    request = {
-        "kind": "role", "role": "code-reviewer", "phase": "execute", "cwd": str(first_cwd),
-        "prompt": prompt, "resultPath": str(result_path), "schema": wave_role.schema, "postconditions": [],
-        "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
-        "retryOf": None, "reason": None, **dispatch_settings(project_root, "code-reviewer"),
-    }
-    errors = validate_request("step", request)
-    if errors:
-        raise LoopSpecError("execute built an invalid wave review step request: " + "; ".join(errors),
-                             repair="fix _wave_review_request in execute.py")
+    request = step_request("role", "code-reviewer", "execute", project_root=project_root, ctx=ctx, cwd=first_cwd, prompt=prompt,
+                           result_path=result_path, schema=wave_role.schema)
     store.save()
     return request
 
 
 def _pause_request(ctx, repo_name: str, expected: str, actual: str, *, text: str | None = None) -> dict:
-    request = {
-        "attempt": ctx["attempt"]["id"], "phase": "execute",
-        "text": text or (f"repo {repo_name}'s feature branch moved out of band "
-                          f"(expected {expected}, found {actual}); reset it to {expected} (or move the "
-                          f"commits into a task worktree), then fix-and-re-enter, or stop"),
-        "options": _BLOCKED_OPTIONS,
-        "defaultValue": "stop", "kind": "blocked",
-        "payload": {"repo": repo_name, "expected": expected, "actual": actual},
-    }
-    errors = validate_request("question", request)
-    if errors:
-        raise LoopSpecError("execute built an invalid pause question: " + "; ".join(errors),
-                             repair="fix _pause_request in execute.py")
-    return request
+    return _blocked_pause_request(
+        ctx, text or (f"repo {repo_name}'s feature branch moved out of band "
+                      f"(expected {expected}, found {actual}); reset it to {expected} (or move the "
+                      f"commits into a task worktree), then fix-and-re-enter, or stop"),
+        {"repo": repo_name, "expected": expected, "actual": actual})
 
 
 def _blocked_pause_request(ctx, text: str, payload: dict) -> dict:
@@ -603,7 +564,7 @@ def _blocked_pause_request(ctx, text: str, payload: dict) -> dict:
     own blocked questions already use, never an automatic resume."""
     request = {
         "attempt": ctx["attempt"]["id"], "phase": "execute", "text": text,
-        "options": _BLOCKED_OPTIONS, "defaultValue": "stop", "kind": "blocked", "payload": payload,
+        "options": BLOCKED_OPTIONS, "defaultValue": "stop", "kind": "blocked", "payload": payload,
     }
     errors = validate_request("question", request)
     if errors:
@@ -1321,7 +1282,7 @@ def _on_implement_submit(store, paths, task_id: str, task_state: dict, step_reco
     if regressed:
         return
 
-    task_state["probes"] = probes_module.diff_probes(worktree, feature_head, task_head, task_state["baseLayers"])
+    task_state["probes"] = probes_module.range_probes(worktree, feature_head, task_head, task_state["baseLayers"])
     if task_state.get("closeOut"):
         # A close-out has no PLAN file list; the files it changed feed review, E11 and VERIFY.
         changed = repo_module.run_git(worktree, "diff", "--name-only", f"{feature_head}..{task_head}")

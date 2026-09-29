@@ -14,32 +14,18 @@ from loop_spec import postconditions
 from loop_spec import repo as repo_module
 from loop_spec import steps as steps_module
 from loop_spec.budget import has_room
-from loop_spec.contract import resolve_role, validate_request
 from loop_spec.errors import LoopSpecError
 from loop_spec.events import emit
 from loop_spec.steps import IssueStep, Product
 from loop_spec.paths import ensure_results_dir
-from loop_spec.roles import compose_prompt, load_role, dispatch_settings
+from loop_spec.roles import compose_prompt, load_role, step_request
 
-_DIFF_CAP = 200_000  # ponytail: same flat cap as execute.py's review diff
-
-
-def _heads(store) -> dict[str, str]:
-    # EXECUTE's own product always carries a head per repo it initialized
-    # (touched or not), unlike postconditions.verified_head, which only reads
-    # the first repo -- the single-repo assumption LF-28 is about.
-    return store.state["products"]["execute"]["product"]["heads"]
-
-
-def _touched_repos(store, heads: dict[str, str]) -> list[str]:
-    repos = store.state["repos"]
-    return [name for name in heads if heads[name] != repos[name]["baseSha"]]
 
 
 def _judge_request(store, paths, ctx, heads: dict[str, str]) -> dict:
     project_root = Path(ctx["paths"]["projectRoot"])
-    role = load_role("iterate-judge", project_root, resolve_role(project_root, "iterate-judge"))
-    touched = _touched_repos(store, heads)
+    role = load_role("iterate-judge", project_root)
+    touched = postconditions.touched_repos(store, heads)
 
     # LF-63: each touched repo's diff is its own top-level string input, so it renders
     # as real lines; nested in a dict, JSON put a whole diff on one escaped line. A
@@ -48,8 +34,6 @@ def _judge_request(store, paths, ctx, heads: dict[str, str]) -> dict:
     for name in sorted(touched):
         repo_info = store.state["repos"][name]
         diff = repo_module.review_diff(Path(repo_info["path"]), f"{repo_info['baseSha']}..{heads[name]}")
-        if len(diff) > _DIFF_CAP:
-            diff = diff[:_DIFF_CAP] + "\n...(truncated)"
         diff_inputs["diff" if len(store.state["repos"]) == 1 else f"diff:{name}"] = diff
 
     if touched:
@@ -86,17 +70,8 @@ def _judge_request(store, paths, ctx, heads: dict[str, str]) -> dict:
     # simplicity: this build-validate-raise shape repeats verify.py's own request
     # builders and execute.py's (Wave G, out of this wave's file list); a shared
     # helper would need a module none of those three currently import from.
-    request = {
-        "kind": "role", "role": "iterate-judge", "phase": "iterate", "cwd": str(cwd),
-        "prompt": prompt, "resultPath": str(result_path), "schema": role.schema, "postconditions": [],
-        "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"], "retryOf": None, "reason": None,
-        **dispatch_settings(project_root, "iterate-judge"),
-    }
-    errors = validate_request("step", request)
-    if errors:
-        raise LoopSpecError("iterate built an invalid judge step request: " + "; ".join(errors),
-                             repair="fix _judge_request in iterate.py")
-    return request
+    return step_request("role", "iterate-judge", "iterate", project_root=project_root, ctx=ctx, cwd=cwd, prompt=prompt,
+                        result_path=result_path, schema=role.schema)
 
 
 def _final_product(store, paths, ctx, iterate_state: dict) -> dict:
@@ -172,7 +147,7 @@ def _final_product(store, paths, ctx, iterate_state: dict) -> dict:
 
 
 def step(store, paths, ctx):
-    heads = _heads(store)
+    heads = postconditions.verified_heads(store)
     iterate_state = store.state.get("iterate")
     if iterate_state is not None and "boundShas" not in iterate_state:
         # A run whose state.iterate predates the per-repo shape has "boundSha"

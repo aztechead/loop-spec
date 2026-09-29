@@ -11,19 +11,19 @@ Durable reports (PR bodies, commit messages, verification artifacts, the termina
 
 When the phase changes, write one line that names the phase before the next tool call.
 
-`SPEC: interviewing until ambiguity is under 0.20.`
+`SPEC: drafting acceptance criteria from the request.`
 
 For each action, write one thought — one sentence — then the tool call(s) that carry it out. The thought names what you are doing and why.
 
-An action is a step you would name to the operator: enter or leave a phase, ask a question, dispatch an agent, choose a rung, write or edit a file, run a gate or verify command, commit, push, or open a PR.
+An action is a step you would name to the operator: enter or leave a phase, ask a question, dispatch an agent, write or edit a file, run a gate or verify command, commit, push, or open a PR.
 
 A Read, Grep, or Glob that belongs to a thought you already wrote is not a new action. Chain those calls. Do not add a sentence per tool.
 
 The thought is one sentence that names the action and its reason. It does not announce, recap the last tool result, or carry a diagnosis; the next thought can name the fix and the final message can carry the diagnosis.
 
-If a skill names a stretch as silent (cycle startup preflight is the example), obey the skill. The first human-visible line is the launch line or the first phase.
+If a skill names a stretch as silent, obey the skill. The first human-visible line is the launch line or the first phase.
 
-The `loop-spec` program itself still prints greppable `[PHASE]` lines to the console as it drives a run. Chat phase lines do not replace those; they are a second, human-facing signal alongside the program's own.
+The `loop-spec` program prints its own status lines and a `LOOP_SPEC_NEXT` line as it drives a run. Chat phase lines do not replace those; they are a second, human-facing signal alongside the program's own.
 
 Break the one-sentence cap only when one of these is literally true:
 

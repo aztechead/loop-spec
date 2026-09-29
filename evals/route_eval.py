@@ -96,16 +96,17 @@ def main() -> int:
 
     total = hits = 0
     results = {}
+    sets = [(path, json.loads(path.read_text())) for path in opts.queries]
     with tempfile.TemporaryDirectory() as tmp:
         make_fixture(Path(tmp))
-        for path in opts.queries:
-            queries = json.loads(path.read_text())
-            jobs = [q["query"] for q in queries for _ in range(opts.runs)]
-            with ThreadPoolExecutor(opts.workers) as pool:
-                got = list(pool.map(lambda q: first_entry(q, opts.plugin_dir, opts.model, Path(tmp), opts.timeout), jobs))
+        # One pool across every file, so no worker idles while one file's slowest query finishes.
+        jobs = [q["query"] for _, queries in sets for q in queries for _ in range(opts.runs)]
+        with ThreadPoolExecutor(opts.workers) as pool:
+            got = iter(pool.map(lambda q: first_entry(q, opts.plugin_dir, opts.model, Path(tmp), opts.timeout), jobs))
+        for path, queries in sets:
             rows = []
-            for i, q in enumerate(queries):
-                runs = got[i * opts.runs:(i + 1) * opts.runs]
+            for q in queries:
+                runs = [next(got) for _ in range(opts.runs)]
                 passed = sum(g in q["accept"] for g in runs)
                 hits, total = hits + passed, total + len(runs)
                 rows.append({**q, "got": runs})

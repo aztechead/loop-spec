@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from loop_spec.errors import LoopSpecError
-from loop_spec.ledger import cleared_files, disposition, open_findings, record_findings, record_range
+from loop_spec.ledger import disposition, open_findings, record_findings, record_range
 from loop_spec.paths import FeaturePaths
 from loop_spec.state import StateStore
 
@@ -74,11 +74,6 @@ class LedgerTests(unittest.TestCase):
     def test_open_findings_filters_by_disposition(self):
         record_findings(self.store, [_finding("F-1", "open"), _finding("F-2", "fixed")], sha=self.head_sha, range_id="range-1")
         self.assertEqual([f["id"] for f in open_findings(self.store)], ["F-1"])
-
-    def test_cleared_files_from_real_commits(self):
-        record_range(self.store, repo="repo", from_sha=self.base_sha, to_sha=self.head_sha, full=True,
-                     sha=self.head_sha, by_step="step-1")
-        self.assertEqual(cleared_files(self.store, self.repo), {"changed.txt"})
 
     def test_disposition_updates_the_finding(self):
         record_findings(self.store, [_finding("F-1")], sha=self.head_sha, range_id="range-1")

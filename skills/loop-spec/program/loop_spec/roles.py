@@ -17,7 +17,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from loop_spec.contract import ROLES_DIR, check_effort, load_config, role_meta
+from loop_spec.contract import ROLES_DIR, check_effort, load_config, resolve_role, role_meta, validate_request
 from loop_spec.errors import LoopSpecError
 from loop_spec.ids import digest_bytes
 from loop_spec.jsonio import render_json
@@ -57,7 +57,10 @@ def _bound_skill_candidates(project_root: Path, binding: str) -> list[Path]:
     return candidates
 
 
-def load_role(name: str, project_root: Path, binding: str = "default") -> Role:
+def load_role(name: str, project_root: Path, binding: str | None = None) -> Role:
+    """The role's prompt and schema; `binding` defaults to the project's (resolve_role)."""
+    if binding is None:
+        binding = resolve_role(project_root, name)
     default_dir = ROLES_DIR / name
     default_schema = json.loads((default_dir / "schema.json").read_text())
 
@@ -200,3 +203,20 @@ def compose_prompt(role: Role, *, inputs: dict, result_path: Path, cwd: Path, ph
     )
 
     return "\n\n".join(sections)
+
+
+def step_request(kind: str, role_name: str, phase: str, *, project_root: Path, ctx: dict, cwd, prompt: str,
+                 result_path, schema: dict, postconditions: list | None = None,
+                 retry_of: str | None = None, reason: str | None = None) -> dict:
+    """A step request in the contract's `step` shape, validated; raises naming the phase and role."""
+    request = {
+        "kind": kind, "role": role_name, "phase": phase, "cwd": str(cwd), "prompt": prompt,
+        "resultPath": str(result_path), "schema": schema, "postconditions": postconditions or [],
+        "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
+        "retryOf": retry_of, "reason": reason, **dispatch_settings(project_root, role_name),
+    }
+    errors = validate_request("step", request)
+    if errors:
+        raise LoopSpecError(f"{phase} built an invalid {role_name} step request: " + "; ".join(errors),
+                            repair=f"fix the {role_name} request builder in {phase}")
+    return request

@@ -2,14 +2,12 @@
 persist across VERIFY passes.
 
 Use `record_range`/`record_findings` when a VERIFY product is accepted (any exit),
-`open_findings`/`cleared_files` to answer what the next pass needs (V7/V8 read the
+`open_findings` to answer what the next pass needs (V7/V8 read the
 same ledger these write), and `disposition` when an operator or a later pass closes
 a finding. Nothing here decides a route or an exit; `postconditions.py` reads this
 ledger to check one.
 """
-from pathlib import Path
 
-from loop_spec import repo as repo_module
 from loop_spec.errors import LoopSpecError
 from loop_spec.ids import new_id, now_iso
 
@@ -92,14 +90,6 @@ def record_findings(store, findings: list[dict], *, sha: str, range_id: str) -> 
 
 def open_findings(store) -> list[dict]:
     return [f for f in store.state["ledger"]["findings"] if f["disposition"] == "open"]
-
-
-def cleared_files(store, repo: Path) -> set[str]:
-    touched: set[str] = set()
-    for reviewed_range in store.state["ledger"]["reviewedRanges"]:
-        out = repo_module.run_git(repo, "diff", "--name-only", f"{reviewed_range['from']}..{reviewed_range['to']}")
-        touched.update(line for line in out.splitlines() if line)
-    return touched
 
 
 def disposition(store, finding_id: str, disposition_value: str, reason: str | None) -> None:

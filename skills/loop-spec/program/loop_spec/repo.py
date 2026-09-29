@@ -8,6 +8,7 @@ DELIVER precondition. Every function here reports a fact or fails safe; none of 
 choose a phase route (that is `postconditions.py`/`controller.py`).
 """
 import fnmatch
+import contextlib
 import json
 import re
 import shutil
@@ -43,14 +44,20 @@ LOCKFILES = ("uv.lock", "poetry.lock", "Pipfile.lock", "pdm.lock", "package-lock
              "pnpm-lock.yaml", "bun.lockb", "Cargo.lock", "go.sum", "Gemfile.lock", "composer.lock")
 
 
+REVIEW_DIFF_CAP = 200_000  # ponytail: a flat cap, raise it if a real diff gets truncated in practice
+
+
 def review_diff(repo: Path, rev_range: str) -> str:
     """`git diff <rev_range>` for a prompt: lockfile content left out, each changed
-    lockfile named in a trailing `--stat` block so a reviewer still sees it moved."""
+    lockfile named in a trailing `--stat` block so a reviewer still sees it moved,
+    and the whole cut at REVIEW_DIFF_CAP characters."""
     excludes = [f":(exclude,glob)**/{name}" for name in LOCKFILES]
     diff = run_git(repo, "diff", rev_range, "--", ".", *excludes)
     stat = run_git(repo, "diff", "--stat", rev_range, "--", *[f":(glob)**/{name}" for name in LOCKFILES])
     if stat.strip():
         diff += "\n# lockfile changes (content omitted):\n" + stat
+    if len(diff) > REVIEW_DIFF_CAP:
+        diff = diff[:REVIEW_DIFF_CAP] + "\n...(truncated)"
     return diff
 
 
@@ -235,17 +242,12 @@ def create_feature_branch(repo: Path, name: str, at_sha: str) -> None:
     run_git(repo, "branch", name, at_sha)
 
 
-def add_worktree(repo: Path, dest: Path, *, branch: str | None = None, detach_at: str | None = None) -> Path:
-    if (branch is None) == (detach_at is None):
-        raise LoopSpecError("add_worktree requires exactly one of branch or detach_at", repair="pass exactly one of branch= or detach_at=")
+def add_worktree(repo: Path, dest: Path, *, branch: str) -> Path:
+    """A worktree of `branch` at `dest`; a detached checkout is clean_checkout."""
     dest = Path(dest)
     if dest.exists():
         raise LoopSpecError(f"worktree destination already exists: {dest}", repair=f"remove {dest} or choose a different destination")
-
-    if branch is not None:
-        run_git(repo, "worktree", "add", str(dest), branch)
-    else:
-        run_git(repo, "worktree", "add", "--detach", str(dest), detach_at)
+    run_git(repo, "worktree", "add", str(dest), branch)
     return dest
 
 
@@ -311,6 +313,16 @@ def clean_checkout(repo: Path, sha: str, dest: Path) -> Path:
         raise LoopSpecError(f"checkout destination already exists: {dest}", repair=f"remove {dest} or choose a different destination")
     run_git(repo, "worktree", "add", "--detach", str(dest), sha)
     return dest
+
+
+@contextlib.contextmanager
+def temp_checkout(repo: Path, sha: str, dest: Path):
+    """A clean_checkout of `sha` at `dest`, force-removed when the block exits."""
+    clean_checkout(repo, sha, dest)
+    try:
+        yield dest
+    finally:
+        remove_worktree(repo, dest, force=True)
 
 
 def is_clean(worktree: Path) -> bool:

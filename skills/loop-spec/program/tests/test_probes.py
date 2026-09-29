@@ -7,7 +7,7 @@ from pathlib import Path
 
 from loop_spec.probes import (
     comment_tells,
-    diff_probes,
+    range_probes,
     doc_deps,
     doc_tells,
     duplication_scan,
@@ -199,7 +199,7 @@ class DiffProbesTests(unittest.TestCase):
                 ["git", "-C", tmp, "rev-parse", "HEAD"], check=True, capture_output=True, text=True
             ).stdout.strip()
 
-            result = diff_probes(Path(tmp), base_sha, head_sha, base_layers=0)
+            result = range_probes(Path(tmp), base_sha, head_sha, base_layers=0)
             self.assertEqual(
                 set(result),
                 {"commentTells", "failureTells", "indirection", "duplication", "houseStyleCompare", "docTells",
@@ -236,16 +236,16 @@ class ChangeSecuritySignalTests(unittest.TestCase):
             old = "# Changelog\n\n## 1.0\n- rotate credentials nightly\n"
             base = self._repo(tmp, old)
             head = self._commit(tmp, "# Changelog\n\n## 1.1\n- faster startup\n\n## 1.0\n- rotate credentials nightly\n")
-            self.assertEqual(diff_probes(Path(tmp), base, head, base_layers=0)["securitySignals"], [])
+            self.assertEqual(range_probes(Path(tmp), base, head, base_layers=0)["securitySignals"], [])
             head2 = self._commit(tmp, "# Changelog\n\n## 1.1\n- store the api secret in the vault\n\n## 1.0\n- rotate credentials nightly\n")
-            signals = diff_probes(Path(tmp), head, head2, base_layers=0)["securitySignals"]
+            signals = range_probes(Path(tmp), head, head2, base_layers=0)["securitySignals"]
             self.assertEqual(signals, [{"file": "CHANGELOG.md", "signal": "secret", "reason": "term=secret at line 4"}])
 
     def test_a_removed_permission_line_is_flagged(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = self._repo(tmp, "def handler(user):\n    check(user, permission='admin')\n    return 1\n")
             head = self._commit(tmp, "def handler(user):\n    return 1\n")
-            signals = diff_probes(Path(tmp), base, head, base_layers=0)["securitySignals"]
+            signals = range_probes(Path(tmp), base, head, base_layers=0)["securitySignals"]
             self.assertEqual(signals[0]["reason"], "term=permission at removed line 2")
 
     def test_hunk_headers_with_omitted_and_zero_counts(self):

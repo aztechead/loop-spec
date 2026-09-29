@@ -232,8 +232,8 @@ def fingerprint_candidates(text: str, root: Path) -> list[str]:
                   if not _PASS_LINE.search(_ANSI.sub("", line)) and _FAILURE_MARKER.search(line)]
     candidates = [c for c in candidates if c]
     if not candidates:
-        nonempty = [_normalize_line(line, root_str) for line in lines if line.strip()]
-        candidates = nonempty[-1:] or ["<no failure output>"]
+        last = next((line for line in reversed(lines) if line.strip()), None)
+        candidates = [_normalize_line(last, root_str)] if last is not None else ["<no failure output>"]
     return candidates
 
 
@@ -489,14 +489,15 @@ def run_command(
     for line in candidates:
         fingerprint_lines.setdefault(_fingerprint_hash(line), line[:_LINE_CAP])
     kept = dict(list(fingerprint_lines.items())[:_FINGERPRINT_LINE_CAP])
-    tail = [line[:_LINE_CAP] for line in normalize_output(output, root).splitlines() if line][-_TAIL_LINES:]
+    normalized = normalize_output(output, root)
+    tail = [line[:_LINE_CAP] for line in normalized.splitlines() if line][-_TAIL_LINES:]
     return CommandRun(
         command=command, cwd=str(cwd), sha=sha, exit_status=exit_status, runner=runner,
         failure_identities=_parse(runner, output, root) if runner else [],
         fingerprints=sorted(fingerprint_lines),
         fingerprint_lines=kept, omitted_lines=len(fingerprint_lines) - len(kept), tail=tail,
         output_digest=digest_bytes(output.encode()),
-        normalized_digest=digest_bytes(normalize_output(output, root).encode()),
+        normalized_digest=digest_bytes(normalized.encode()),
         normalization_version=NORMALIZATION_VERSION,
         started_at=started_at, elapsed_seconds=elapsed, error_class=error_class,
         tests_ran=_count_tests_ran(output, runner), log_path=str(log_path) if log_path is not None else None,
@@ -564,8 +565,7 @@ def capture_baseline(
     repo_name: str,
 ) -> Baseline:
     checkout_dest = Path(checkouts_dir) / f"baseline-{base_sha[:12]}"
-    repo_module.clean_checkout(repo, base_sha, checkout_dest)
-    try:
+    with repo_module.temp_checkout(repo, base_sha, checkout_dest):
         prepare_run = None
         if prepare:
             prepare_run = run_command(prepare, checkout_dest, base_sha)
@@ -596,8 +596,6 @@ def capture_baseline(
             base_sha=base_sha, repo=repo_name, prepare=prepare, prepare_run=prepare_run,
             entries=entries, captured_at=now_iso(), normalization_version=NORMALIZATION_VERSION,
         )
-    finally:
-        repo_module.remove_worktree(repo, checkout_dest, force=True)
 
 
 def repo_baseline_dict(baseline_state: dict | None, repo_name: str, repos: dict) -> dict | None:

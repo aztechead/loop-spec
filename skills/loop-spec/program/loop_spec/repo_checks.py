@@ -52,8 +52,7 @@ def ensure_check_runs(store, paths) -> list[dict]:
         repo_path = Path(store.state["repos"][repo_name]["path"])
         # A fresh name per run: an interrupted run's leftover checkout is never reused.
         checkout = paths.checkouts_dir / f"check-{repo_name}-{key['head'][:12]}-{uuid.uuid4().hex[:8]}"
-        repo_module.clean_checkout(repo_path, key["head"], checkout)
-        try:
+        with repo_module.temp_checkout(repo_path, key["head"], checkout):
             if prepare:
                 baseline_module.run_command(prepare, checkout, key["head"])
             for command in stale:
@@ -62,8 +61,6 @@ def ensure_check_runs(store, paths) -> list[dict]:
                 comparison = baseline_module.compare_to_baseline(entry, run)
                 repo_records[command] = {**key, "run": run.to_dict(), "comparison": comparison.to_dict()}
                 changed = True
-        finally:
-            repo_module.remove_worktree(repo_path, checkout, force=True)
     if changed:
         store.save()
     return [{"repo": repo_name, "command": command, "head": records[repo_name][command]["head"],

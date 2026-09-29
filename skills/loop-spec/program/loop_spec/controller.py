@@ -26,15 +26,13 @@ from loop_spec import steps
 from loop_spec.entries import ENTRIES, RESUME_PHASES
 from loop_spec.errors import LoopSpecError
 from loop_spec.ids import digest, new_id, now_iso
-from loop_spec.jsonio import atomic_write_json, read_json
+from loop_spec.jsonio import read_json
 from loop_spec.events import emit, marker_phase_end, marker_phase_start
 from loop_spec.paths import FeaturePaths, ensure_results_dir, feature_dir, repo_id, slug_from_request
 from loop_spec.paths import state_home as resolve_state_home
+from loop_spec.roles import compose_prompt, load_role, repo_map, resolve_effort, resolve_model
 from loop_spec.state import STATE_FORMAT, StateStore
 
-_PHASE_ORDER = ["spec", "plan", "execute", "verify", "iterate", "deliver"]
-_ALL_IMPLEMENTATION_PHASES = list(contract.DEFAULT_IMPLEMENTATIONS)
-_RESUMABLE_PHASES = RESUME_PHASES
 
 
 @dataclass
@@ -65,7 +63,7 @@ def run_entry(entry: str, *, project_root: Path, request_text: str | None, slug:
         return _ENTRY_START[entry](project_root=project_root, request_text=request_text, slug=slug, home=home,
                                    rid=rid, answer_policy=answer_policy, pr=pr)
 
-    if entry in _RESUMABLE_PHASES:
+    if entry in RESUME_PHASES:
         if not slug:
             raise LoopSpecError(f"{entry} requires --slug", repair="pass --slug <slug>, see `loop-spec status`")
         paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
@@ -78,7 +76,7 @@ def run_entry(entry: str, *, project_root: Path, request_text: str | None, slug:
             store.save()
         return _continue_with_policy(store, paths, project_root, answer_policy)
 
-    raise LoopSpecError(f"unknown entry {entry}", repair="use one of: " + ", ".join((*ENTRIES, *_RESUMABLE_PHASES)))
+    raise LoopSpecError(f"unknown entry {entry}", repair="use one of: " + ", ".join((*ENTRIES, *RESUME_PHASES)))
 
 
 def _request_start(entry: str):
@@ -164,15 +162,19 @@ def _continue_with_policy(store: StateStore, paths: FeaturePaths, project_root: 
     return continue_run(store, paths, project_root=project_root)
 
 
-def _find_run_by_adoption_number(home: Path, rid: str, number: int, project_root: Path) -> str | None:
+def _run_states(home: Path, rid: str, project_root: Path):
+    """(slug dir, paths, state) for every run with a state.json under this repo's home, in slug order."""
     repo_home = home / rid
     if not repo_home.exists():
-        return None
+        return
     for slug_dir in sorted(repo_home.iterdir()):
         candidate = FeaturePaths(root=slug_dir, project_root=project_root)
-        if not candidate.state_json.exists():
-            continue
-        state = StateStore.open(candidate).state
+        if candidate.state_json.exists():
+            yield slug_dir, candidate, StateStore.open(candidate).state
+
+
+def _find_run_by_adoption_number(home: Path, rid: str, number: int, project_root: Path) -> str | None:
+    for slug_dir, _, state in _run_states(home, rid, project_root):
         adoption = state.get("adoption")
         # Only a revise run is keyed by its PR: a cycle or micro run that adopted the
         # same PR is a different piece of work, never the one `revise --pr` resumes.
@@ -215,16 +217,8 @@ def _find_delivering_run_products(home: Path, rid: str, pr_url: str, project_roo
     # This is that lookup: a run whose result.json names this PR wins over one that
     # only adopted it, and among each kind the latest finished wins, so a second
     # revise round gets the products the PR now reflects, whatever the slugs spell.
-    repo_home = home / rid
-    if not repo_home.exists():
-        return None
     result_hits, adoption_hits = [], []
-    for slug_dir in sorted(repo_home.iterdir()):
-        candidate = FeaturePaths(root=slug_dir, project_root=project_root)
-        if not candidate.state_json.exists():
-            continue
-        state = StateStore.open(candidate).state
-
+    for slug_dir, candidate, state in _run_states(home, rid, project_root):
         result = state.get("result") or {}
         prs = result.get("prs") or []
         finished = result.get("writtenAt") or ""
@@ -394,7 +388,7 @@ def _adopt(repo_name: str, repo_path: Path, candidate, home: Path) -> tuple[dict
 def _resolve_implementations(store: StateStore, project_root: Path) -> None:
     # Every phase, including debug/revise (each entry's own first phase), gets an
     # implementation resolved once up front so _drive_phase's lookup never misses.
-    phases = {p: contract.resolve_implementation(project_root, p) for p in _ALL_IMPLEMENTATION_PHASES}
+    phases = {p: contract.resolve_implementation(project_root, p) for p in contract.DEFAULT_IMPLEMENTATIONS}
     store.state["implementations"] = {"phases": phases, "roles": {}}
 
 
@@ -582,11 +576,8 @@ def _phase_probes(state: dict, phase: str, checkouts_dir: Path) -> dict:
         if not files:
             continue
         checkout = Path(checkouts_dir) / f"plan-probes-{name}-{shas[name][:12]}-{uuid.uuid4().hex[:8]}"
-        repo_module.clean_checkout(repo_path, shas[name], checkout)
-        try:
+        with repo_module.temp_checkout(repo_path, shas[name], checkout):
             named[name] = {"files": files, **probes_module.plan_probes(checkout, files)}
-        finally:
-            repo_module.remove_worktree(repo_path, checkout, force=True)
     if named:
         probes["named"] = named
     return probes
@@ -881,8 +872,7 @@ def _run_reproduction_runs(store: StateStore, paths: FeaturePaths, product: dict
     original command it replaced) at base: core evidence beside executeRuns and
     verifyRuns, which B1 and B2 read (D4: not the debug module's bucket)."""
     checkout = Path(paths.checkouts_dir) / f"debug-base-{base_sha[:12]}"
-    repo_module.clean_checkout(repo_path, base_sha, checkout)
-    try:
+    with repo_module.temp_checkout(repo_path, base_sha, checkout):
         base_run = baseline_module.run_command(product["reproduction"]["command"], checkout, base_sha)
         # LF-23: the worker's own failureDigest came from its own checkout, a
         # different path than the program's clean checkout above -- the two digests
@@ -893,8 +883,6 @@ def _run_reproduction_runs(store: StateStore, paths: FeaturePaths, product: dict
             original_run = baseline_module.run_command(product["original"]["command"], checkout, base_sha)
             runs["originalRun"] = _with_error_class(original_run.to_dict())
         store.state["debugRuns"] = runs
-    finally:
-        repo_module.remove_worktree(repo_path, checkout, force=True)
     store.save()
 
 
@@ -1097,7 +1085,6 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
     # the role's own schema.json; every other role step goes through
     # roles.compose_prompt/load_role (see _issue_adopted_review), and the critic
     # step now does too.
-    from loop_spec.roles import compose_prompt, load_role, repo_map, resolve_effort, resolve_model
     # 7.4.2: the critic reads and runs in the code checkout, like the planner.
     _ensure_code_checkouts(store, paths)
     first_repo = next(iter(store.state["repos"].values()))
@@ -1107,7 +1094,7 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
               "repos": repo_map(store.state["repos"])}
     inputs_digest = digest({"plan": plan_product, "spec": spec_product, "baseline": facts})
 
-    role = load_role("plan-critic", project_root, contract.resolve_role(project_root, "plan-critic"))
+    role = load_role("plan-critic", project_root)
     ensure_results_dir(paths)
     result_path = paths.results_dir / f"plan-critic-{attempt_id}.json"
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=Path(repo_path), phase="plan")
@@ -1157,7 +1144,7 @@ def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, pro
     # Only the structural ids need to hold before a baseline capture makes sense;
     # the rest (P3, P4, P7) depend on the baseline/critic this function produces.
     # LF-53: a malformed prepare/verify command is rejected before any of them runs.
-    if any(f.id in ("P1", "P2", "P5", "P6") for f in boundary.check()) or boundary._p3_form() is not None:
+    if boundary.check(only=frozenset({"P1", "P2", "P5", "P6"})) or boundary._p3_form() is not None:
         return "ready"  # let the normal full-check rejection path in _finalize report these
 
     revision = postconditions.plan_revision(product)
@@ -1294,6 +1281,14 @@ def _capture_plan_baseline(store: StateStore, paths: FeaturePaths, plan_product:
     store.save()
 
 
+def _run_fresh(repo_path: Path, head: str, checkout: Path, prepare: str | None, command: str):
+    """Run `command` in a throwaway checkout of `head`, after `prepare` when set."""
+    with repo_module.temp_checkout(repo_path, head, checkout):
+        if prepare:
+            baseline_module.run_command(prepare, checkout, head)
+        return baseline_module.run_command(command, checkout, head)
+
+
 def _run_execute_verifications(store: StateStore, paths: FeaturePaths, execute_product: dict) -> None:
     baseline_state = store.state.get("baseline")
     if baseline_state is None:
@@ -1320,13 +1315,7 @@ def _run_execute_verifications(store: StateStore, paths: FeaturePaths, execute_p
             continue
         baseline_obj = baseline_module.Baseline.from_dict(repo_baseline_dict)
         checkout = paths.checkouts_dir / f"execute-{task['id']}-{head[:12]}"
-        repo_module.clean_checkout(repo_path, head, checkout)
-        try:
-            if prepare:
-                baseline_module.run_command(prepare, checkout, head)
-            run = baseline_module.run_command(plan_task["verify"], checkout, head)
-        finally:
-            repo_module.remove_worktree(repo_path, checkout, force=True)
+        run = _run_fresh(repo_path, head, checkout, prepare, plan_task["verify"])
         entry = baseline_obj.entries.get(plan_task["verify"])
         comparison = baseline_module.compare_to_baseline(
             entry, run, feature_added=bool(plan_task.get("featureAdded")), must_flip=bool(plan_task.get("mustFlip")),
@@ -1376,13 +1365,7 @@ def _run_verify_reruns(store: StateStore, paths: FeaturePaths, verify_product: d
         repo_path = Path(store.state["repos"][repo_name]["path"])
         head = heads[repo_name]
         checkout = paths.checkouts_dir / f"verify-{verdict['criterion']}-{head[:12]}"
-        repo_module.clean_checkout(repo_path, head, checkout)
-        try:
-            if prepare:
-                baseline_module.run_command(prepare, checkout, head)
-            rerun = baseline_module.run_command(evidence.get("command", ""), checkout, head)
-        finally:
-            repo_module.remove_worktree(repo_path, checkout, force=True)
+        rerun = _run_fresh(repo_path, head, checkout, prepare, evidence.get("command", ""))
         matched, reason = baseline_module.evidence_matches(evidence, rerun)
         verify_runs[verdict["criterion"]] = {"rerun": rerun.to_dict(), "matched": matched, "reason": reason, "repo": repo_name,
                                              "prepare": prepare}
@@ -1427,13 +1410,7 @@ def _observe_failures(store: StateStore, paths: FeaturePaths, verify_product: di
         head = heads[repo_name]
         repo_path = Path(store.state["repos"][repo_name]["path"])
         checkout = paths.checkouts_dir / f"observe-{criterion}-{head[:12]}"
-        repo_module.clean_checkout(repo_path, head, checkout)
-        try:
-            if prepare:
-                baseline_module.run_command(prepare, checkout, head)
-            run = baseline_module.run_command(command, checkout, head)
-        finally:
-            repo_module.remove_worktree(repo_path, checkout, force=True)
+        run = _run_fresh(repo_path, head, checkout, prepare, command)
         observations[criterion] = {"repo": repo_name, "sha": head, "command": command, "attemptId": attempt_id,
                                    "runner": run.runner, "failureIdentities": run.failure_identities}
     store.save()
@@ -1664,13 +1641,11 @@ def _reject_product(store: StateStore, paths: FeaturePaths, phase: str, attempt_
         record = questions.ask(
             store, paths, phase=phase, attempt_id=attempt_id,
             text=f"{phase.upper()} product rejected {store.state['phase']['retries']} times: {'; '.join(f.message for f in failures)}",
-            kind="blocked", options=[{"value": "stop", "label": "Stop"}, {"value": "fix-and-re-enter", "label": "Fix and re-enter"}],
+            kind="blocked", options=questions.BLOCKED_OPTIONS,
             default_value="stop", payload={"phase": phase},
         )
         store.state["phase"]["blockedQuestionId"] = record["questionId"]
-        store.save()
-    else:
-        store.save()
+    store.save()
 
 
 def _pause_cause(phase: str, product: dict, exit_: str) -> str:
@@ -1698,7 +1673,7 @@ def _ask_pause_question(store: StateStore, paths: FeaturePaths, phase: str, exit
     record = questions.ask(
         store, paths, phase=phase, attempt_id=attempt_id,
         text=f"{phase.upper()} exited {exit_}: {cause}",
-        kind="blocked", options=[{"value": "stop", "label": "Stop"}, {"value": "fix-and-re-enter", "label": "Fix and re-enter"}],
+        kind="blocked", options=questions.BLOCKED_OPTIONS,
         default_value="stop", payload={"phase": phase, "exit": exit_},
     )
     store.state["phase"]["blockedQuestionId"] = record["questionId"]
@@ -1808,7 +1783,6 @@ def _write_terminal_result(store: StateStore, paths: FeaturePaths, phase: str, e
 # Adopted-PR review (revise's one full pass before EXECUTE starts its own work)
 # ---------------------------------------------------------------------------
 
-_ADOPTED_REVIEW_DIFF_CAP = 200_000  # ponytail: same flat cap verify.py/revise.py use
 
 
 def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: Path) -> None:
@@ -1817,7 +1791,6 @@ def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: 
     # code-reviewer pass over the whole adopted range is on record. Issued once,
     # before EXECUTE's own attempt starts, so that record exists before any task
     # can claim it.
-    from loop_spec.roles import compose_prompt, load_role, resolve_effort, resolve_model
     adoption = store.state["adoption"]
     repo_info = store.state["repos"][adoption["repo"]]
     repo_path = Path(repo_info["path"])
@@ -1828,10 +1801,8 @@ def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: 
         checkout = paths.checkouts_dir / f"adopted-{adoption['headSha'][:12]}-{attempt_id}"
     repo_module.clean_checkout(repo_path, adoption["headSha"], checkout)
     diff = repo_module.review_diff(repo_path, f"{adoption['baseSha']}..{adoption['headSha']}")
-    if len(diff) > _ADOPTED_REVIEW_DIFF_CAP:
-        diff = diff[:_ADOPTED_REVIEW_DIFF_CAP] + "\n...(truncated)"
 
-    role = load_role("code-reviewer", project_root, contract.resolve_role(project_root, "code-reviewer"))
+    role = load_role("code-reviewer", project_root)
     # LF-27: a model-written result goes under the project's results dir, never
     # the state home (checkout is under state home; a live model's default
     # permission mode refuses writes there).
@@ -1916,7 +1887,7 @@ def _finish_refusals(store: StateStore, paths: FeaturePaths) -> None:
             record = questions.ask(
                 store, paths, phase=refused["phase"], attempt_id=attempt_id,
                 text=f"step {step_id} ({refused['role']}) has no accepted evidence: {refused['reason']}",
-                kind="blocked", options=[{"value": "stop", "label": "Stop"}, {"value": "fix-and-re-enter", "label": "Fix and re-enter"}],
+                kind="blocked", options=questions.BLOCKED_OPTIONS,
                 default_value="stop", payload={"phase": refused["phase"], "refusedStep": step_id}, save=False,
             )
             refused["questionId"] = record["questionId"]

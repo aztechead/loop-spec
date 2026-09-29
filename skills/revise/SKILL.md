@@ -1,6 +1,7 @@
 ---
 name: revise
 description: "Address reviewer feedback on an already-open pull request. Use when a human or bot left PR review comments to resolve. Not for starting new work (use cycle) or fixing a bug found outside review (use debug)."
+argument-hint: "<pr number or url>"
 ---
 
 Run this once, without changing directory, substituting the two placeholders:
@@ -16,5 +17,5 @@ When the user asks for a headless run or names `--answer-policy default`, add
 Then read `${CLAUDE_SKILL_DIR}/../loop-spec/references/runner.md` in full and follow it
 for every line the program prints.
 
-If the launcher is missing, read the sibling hub `skills/loop-spec/SKILL.md`. On any other
+If the launcher is missing, read the sibling hub `${CLAUDE_SKILL_DIR}/../loop-spec/SKILL.md`. On any other
 non-zero exit, report the program's output and stop.
