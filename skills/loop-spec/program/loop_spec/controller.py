@@ -801,7 +801,7 @@ def _accept_product(store: StateStore, paths: FeaturePaths, project_root: Path, 
         return
 
     if phase == "spec" and exit_ == "approved":
-        if _handle_spec_approval(store, paths, attempt_id, product) != "approved":
+        if _handle_spec_approval(store, paths, project_root, attempt_id, product) != "approved":
             return
 
     if phase == "plan" and exit_ == "ready":
@@ -982,7 +982,8 @@ def _resume_compaction(store: StateStore, paths: FeaturePaths, project_root: Pat
     _accept_product(store, paths, project_root, "plan", plan_attempt_id, plan_product)
 
 
-def _handle_spec_approval(store: StateStore, paths: FeaturePaths, attempt_id: str, product: dict) -> str:
+def _handle_spec_approval(store: StateStore, paths: FeaturePaths, project_root: Path, attempt_id: str,
+                          product: dict) -> str:
     revision = postconditions.requirements_revision(product)
     approval = store.state.get("approval")
     if approval is not None and approval.get("revision") == revision:
@@ -998,6 +999,7 @@ def _handle_spec_approval(store: StateStore, paths: FeaturePaths, attempt_id: st
             text=f"Approve these requirements (revision {revision})?", kind="approval",
             options=[{"value": "approve", "label": "Approve"}, {"value": "reject", "label": "Reject"}, {"value": "revise", "label": "Revise"}],
             default_value="approve", payload={"revision": revision},
+            by_policy=contract.spec_approval(project_root) == "policy",
         )
         return "pending"
 
@@ -1104,7 +1106,7 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
         kind="external" if is_external else "role", role=None if is_external else "plan-critic",
         cwd=Path(repo_path), prompt=prompt, schema=role.schema, postconditions=["P7"],
         inputs_digest=inputs_digest, result_path=result_path,
-        model=None if is_external else resolve_model(project_root, "plan-critic"),
+        model=None if is_external else resolve_model(project_root, "plan-critic", "plan"),
         effort=None if is_external else resolve_effort(project_root, "plan-critic"),
     )
     store.state["phase"]["criticStepId"] = record["stepAttemptId"]
@@ -1816,7 +1818,7 @@ def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: 
     record = steps.issue(
         store, paths, phase="execute", attempt_id=attempt_id, kind="role", role="code-reviewer",
         cwd=checkout, prompt=prompt, schema=role.schema, postconditions=[], inputs_digest=digest(inputs),
-        result_path=result_path, model=resolve_model(project_root, "code-reviewer"),
+        result_path=result_path, model=resolve_model(project_root, "code-reviewer", "execute"),
         effort=resolve_effort(project_root, "code-reviewer"),
     )
     store.state["phase"]["adoptedReviewStepId"] = record["stepAttemptId"]

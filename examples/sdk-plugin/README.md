@@ -27,9 +27,11 @@ launcher, dispatches each worker with the Agent tool, and asks questions with
 | `setting_sources=["project"]` | loads the project's settings and `CLAUDE.md`, and keeps your personal `~/.claude` settings and hooks out of the run |
 | `thinking={"type": "adaptive", "display": "summarized"}` | the lead's reasoning arrives as `ThinkingBlock`s |
 | `forward_subagent_text=True` | workers' text and thinking arrive too, marked by `parent_tool_use_id` |
+| `ClaudeSDKClient.set_model()` | a lead step (SPEC, PLAN, debug, revise, direct) runs in this session, so when its `LOOP_SPEC_NEXT` names a model (`LOOP_SPEC_MODEL_<ROLE>`, `roles.<role>.model`, or `LOOP_SPEC_PHASE_MODEL_<PHASE>`) the script switches the lead to it, and back to `--model` at the next step that is not a lead step with a model. `--model sonnet` with `LOOP_SPEC_PHASE_MODEL_SPEC=opus LOOP_SPEC_PHASE_MODEL_PLAN=opus` runs SPEC and PLAN on Opus and the rest of the lead on Sonnet. Each switch drops the lead's prompt cache, and the switch can land one API call after the marker. Effort cannot change mid-session, so a lead step's `effort` is not applied |
 | `TaskStartedMessage`, `TaskNotificationMessage`, `TaskUpdatedMessage` | the lead runs workers as background tasks, so a turn can end while they work and a new turn starts when one finishes. The script keeps reading `receive_messages()` and stops when a turn ends with no task active and loop-spec's terminal result already printed, or after 60 quiet seconds with no task active |
 | `resume=<session id>` | continues a session that stopped |
 | `max_budget_usd` | optional spend ceiling |
+| `env={...}` | `--phase-model PHASE=MODEL` and `--spec-approval` become `LOOP_SPEC_PHASE_MODEL_<PHASE>` and `LOOP_SPEC_SPEC_APPROVAL` in the session's environment, which the lead's `loop-spec` commands inherit |
 
 The terminal result is found from the lead's own tool output: the launcher prints
 `LOOP_SPEC_NEXT {"kind":"result","path":...}`, and the script reads that file.
@@ -37,7 +39,8 @@ The terminal result is found from the lead's own tool output: the launcher print
 ## Structure
 
 - `RunWatch` owns the only stateful decision: whether the session is finished and
-  where the result is. Its interface is `observe(message) -> done`, `idle`, and
+  where the result is, plus the model the current lead step names. Its interface is
+  `observe(message) -> done`, `idle`, `lead_model`, and
   `result_path`. [`test_run_loop_spec.py`](test_run_loop_spec.py) tests it through
   that interface, one case per message order a live session produced.
 - Question answering is a seam with two adapters, `answer_from_stdin` and
@@ -85,6 +88,16 @@ relying on `--auto` for it: a blocked PLAN critic, for example, offers only
 `spec gap`. Set loop-spec's
 environment variables (`LOOP_SPEC_MODEL_CODE_REVIEWER=haiku`, ...) in the calling
 environment; the session passes them to the program.
+
+`--spec-approval policy` answers only the requirements approval, the way 6.x's
+default `auto` style skipped that gate; the SPEC interview and every other question
+still come to you. A Sonnet lead with SPEC and PLAN on Opus:
+
+```bash
+python3 examples/sdk-plugin/run_loop_spec.py --project-root ~/src/my-app --model sonnet \
+  --phase-model spec=opus --phase-model plan=opus --spec-approval policy \
+  "Add a --json flag to the export command, verified by .venv/bin/python -m pytest -q tests/test_export.py"
+```
 
 ## Output
 

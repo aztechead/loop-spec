@@ -70,7 +70,7 @@ def run_lead_phase(phase: str, role_name: str, context_path: Path, product_path:
         "resultPath": str(result_path), "schema": load_schema(phase),
         "postconditions": external.PHASE_POSTCONDITIONS[phase],
         "attempt": context["attempt"]["id"], "inputsDigest": context["inputs"]["digest"],
-        "retryOf": None, "reason": None, **dispatch_settings(project_root, role_name),
+        "retryOf": None, "reason": None, **dispatch_settings(project_root, role_name, phase),
     }
     atomic_write_json(product_path.parent / "step.json", step_request)
     return 2

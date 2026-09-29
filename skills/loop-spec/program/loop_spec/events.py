@@ -21,7 +21,7 @@ from loop_spec.paths import FeaturePaths
 # emitting one of them would let a phase impersonate a controller transition.
 _RESERVED = {
     "phase_start", "phase_end", "step_accepted", "step_rejected",
-    "transition", "result", "question", "approval",
+    "transition", "result", "question", "approval", "policy_answer",
 }
 
 

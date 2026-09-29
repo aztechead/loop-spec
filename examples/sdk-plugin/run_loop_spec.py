@@ -11,9 +11,11 @@ imported here. Every SDK call follows the Agent SDK docs
 can_use_tool for approvals and AskUserQuestion, sessions, and message types.
 
 Three modules:
-- RunWatch decides when the session is finished and where loop-spec's terminal
-  result is. It is the only stateful logic here, and its interface
-  (`observe`, `idle`, `result_path`) is what test_run_loop_spec.py exercises.
+- RunWatch decides when the session is finished, where loop-spec's terminal
+  result is, and which model the current lead step names (`run` applies it with
+  `ClaudeSDKClient.set_model`). It is the only stateful logic here, and its
+  interface (`observe`, `idle`, `result_path`, `lead_model`) is what
+  test_run_loop_spec.py exercises.
 - An Answerer answers one AskUserQuestion question, or returns None when it
   cannot. Two adapters sit at that seam: `answer_from_stdin` (the default; a
   terminal or piped input) and `answer_first_option` (only with --auto).
@@ -22,7 +24,8 @@ Three modules:
 
 Usage:
     python3 run_loop_spec.py --project-root DIR "<request>"
-        [--entry cycle|micro|debug|revise] [--auto] [--model opus]
+        [--entry cycle|micro|debug|revise] [--auto] [--model sonnet]
+        [--phase-model PLAN=opus ...] [--spec-approval ask|policy]
         [--resume SESSION_ID] [--max-budget-usd N]
 
 Auth is the SDK's own: a Claude subscription login (`claude` then `/login`), or
@@ -119,6 +122,9 @@ class RunWatch:
         self.result_path: str | None = None
         self.last_result: ResultMessage | None = None
         self.error: str | None = None
+        # The model the program named for the current lead step (SPEC, PLAN, ...), set
+        # from each step's LOOP_SPEC_NEXT; None on any other step: the run's --model.
+        self.lead_model: str | None = None
 
     @property
     def idle(self) -> bool:
@@ -140,6 +146,8 @@ class RunWatch:
                             next_ = json.loads(line[len(NEXT_PREFIX):])
                             if next_["kind"] == "result":
                                 self.result_path = next_["path"]
+                            elif next_["kind"] == "step":
+                                self.lead_model = next_.get("model") if next_.get("stepKind") == "lead" else None
         elif isinstance(message, ResultMessage):
             self.last_result = message
             if message.is_error:
@@ -234,7 +242,7 @@ def render(message: Message) -> None:
                 OUT.info(block.text)
             elif isinstance(block, ToolUseBlock):
                 summary = block.input.get("command") or block.input.get("description") or ""
-                err(f"  [{who}tool] {block.name} {str(summary)[:200]}")
+                err(f"  [{who}tool {message.model}] {block.name} {str(summary)[:200]}")
     elif isinstance(message, UserMessage) and isinstance(message.content, list):
         for block in message.content:
             if isinstance(block, ToolResultBlock):
@@ -243,6 +251,21 @@ def render(message: Message) -> None:
                         err(f"  {line}")
     elif isinstance(message, ResultMessage):
         err(f"[turn] {message.subtype} turns={message.num_turns} cost=${message.total_cost_usd}")
+
+
+def session_env(args: argparse.Namespace) -> dict[str, str]:
+    """The loop-spec settings this run passes to the session's environment, which the
+    lead's `loop-spec` commands inherit: a model per phase (LOOP_SPEC_PHASE_MODEL_<PHASE>)
+    and how SPEC's requirements approval is answered (LOOP_SPEC_SPEC_APPROVAL)."""
+    env = {}
+    for pair in args.phase_model or []:
+        phase, sep, model = pair.partition("=")
+        if not sep or not phase or not model:
+            raise ValueError(f"--phase-model takes PHASE=MODEL, got {pair!r}")
+        env["LOOP_SPEC_PHASE_MODEL_" + phase.upper()] = model
+    if args.spec_approval:
+        env["LOOP_SPEC_SPEC_APPROVAL"] = args.spec_approval
+    return env
 
 
 async def run(args: argparse.Namespace) -> int:
@@ -255,6 +278,7 @@ async def run(args: argparse.Namespace) -> int:
         permission_mode="acceptEdits",
         can_use_tool=make_can_use_tool(choose_answerer(args.auto)),
         model=args.model,
+        env=session_env(args),
         thinking={"type": "adaptive", "display": "summarized"},
         # Workers are Agent-tool subagents; forward their text and thinking too.
         forward_subagent_text=True,
@@ -268,6 +292,7 @@ async def run(args: argparse.Namespace) -> int:
     )
 
     watch = RunWatch()
+    lead_model = args.model
     async with ClaudeSDKClient(options=options) as client:
         await client.query(prompt)
         # receive_messages, not receive_response: receive_response stops at the
@@ -285,7 +310,14 @@ async def run(args: argparse.Namespace) -> int:
                     err(f"{PLUGIN_NAME}:{args.entry} is not loaded; check --entry and the plugin path")
                     return 1
             render(message)
-            if watch.observe(message):
+            done = watch.observe(message)
+            # A lead step runs in this session, so its model (LOOP_SPEC_MODEL_<ROLE> or
+            # LOOP_SPEC_PHASE_MODEL_<PHASE>) is applied here, and --model restored after.
+            if (watch.lead_model or args.model) != lead_model:
+                lead_model = watch.lead_model or args.model
+                await client.set_model(lead_model)
+                err(f"[model] lead now {lead_model or 'the default'}")
+            if done:
                 break
 
     session_id = watch.last_result.session_id if watch.last_result else "<session id>"
@@ -305,13 +337,22 @@ def main() -> int:
     ap.add_argument("--project-root", required=True, type=Path)
     ap.add_argument("--entry", default="cycle", choices=["cycle", "micro", "debug", "revise"])
     ap.add_argument("--auto", action="store_true", help="answer every question with its first option")
-    ap.add_argument("--model", help="the lead's model; workers follow each step's own model")
+    ap.add_argument("--model", help="the lead's model; a lead step with its own model and every worker use theirs")
+    ap.add_argument("--phase-model", action="append", metavar="PHASE=MODEL",
+                    help="a model for every step of a phase, SPEC and PLAN included (the lead switches to it), "
+                         "e.g. --phase-model spec=opus --phase-model plan=opus; repeatable")
+    ap.add_argument("--spec-approval", choices=["ask", "policy"],
+                    help="policy approves SPEC's requirements without asking; every other question is still asked")
     ap.add_argument("--resume", help="continue an earlier session by its id")
     ap.add_argument("--max-budget-usd", type=float)
     args = ap.parse_args()
     if not args.request and not args.resume:
         ap.error("pass a request, or --resume SESSION_ID")
     args.project_root = args.project_root.resolve()
+    try:
+        session_env(args)
+    except ValueError as exc:
+        ap.error(str(exc))
     configure_logging()
     return asyncio.run(run(args))
 

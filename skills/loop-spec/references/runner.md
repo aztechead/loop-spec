@@ -55,7 +55,7 @@ LOOP_SPEC_NEXT {"kind": ..., "path": ..., "slug": ..., "program": ..., "stateHom
 | `dispatchPath` | On a role step with file transport: the file whose exact text is the worker's prompt. Absent otherwise. |
 | `subagentType` | On a role step: `loop-spec:worker-<level>` for a step with an effort, else `general-purpose`. Every role step has an effort unless the project sets it to `null`. |
 | `role` | On a `step`: the role name, or null. |
-| `model` | On a `step`: the worker's model (`opus` or `sonnet` by default), or null to inherit yours. A lead step's model is informational: you run it in this session. |
+| `model` | On a `step`: the worker's model (`opus` or `sonnet` by default), or null to inherit yours. A lead step's model is informational: you run it in this session. An Agent SDK host can apply it with `ClaudeSDKClient.set_model` (`examples/sdk-plugin` does). |
 | `effort` | On a `step`: the worker's effort, or null. `subagentType` already reflects it. |
 
 Several `LOOP_SPEC_NEXT` lines of kind `step` at once mean a wave. Dispatch every one
@@ -138,6 +138,12 @@ product exists.
 
 You never answer a question yourself. A question is for the user or the operator.
 Running `loop-spec answer` on your own judgment is forbidden.
+
+A question can be printed and then answered at once, with no `question` line for
+you: a `[<PHASE>] answered by policy (<setting>): <value>` line follows it. That is
+the operator's answer, set before the run (`--answer-policy default`, or
+`spec.approval: policy` / `LOOP_SPEC_SPEC_APPROVAL=policy` for the requirements
+approval). Follow the next `LOOP_SPEC_NEXT` line as usual.
 
 1. Ask the user the question in `question.json` with `AskUserQuestion`.
 2. Run the `answer` command with their answer.

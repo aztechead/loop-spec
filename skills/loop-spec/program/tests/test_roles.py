@@ -301,6 +301,24 @@ class ResolveModelTests(unittest.TestCase):
             self.assertEqual({r: resolve_model(Path(tmp), r) for r in ("code-reviewer", "implementer", "planner")},
                              {"code-reviewer": "opus", "implementer": "sonnet", "planner": None})
 
+    def test_phase_model_beats_the_role_default_but_not_the_role_setting(self):
+        # 6.x's LOOP_SPEC_PHASE_MODEL_<PHASE>: every role in the phase, unless its own is set.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".loop-spec").mkdir()
+            atomic_write_json(root / ".loop-spec" / "config.json",
+                               {"roles": {"plan-critic": {"binding": "plan-critic", "model": "config-model"},
+                                          "spec-writer": {"binding": "spec-writer", "model": None}}})
+            env = {"LOOP_SPEC_PHASE_MODEL_PLAN": "phase-model", "LOOP_SPEC_MODEL_IMPLEMENTER": "role-env"}
+            with patch.dict("os.environ", env, clear=True):
+                self.assertEqual(resolve_model(root, "planner", "plan"), "phase-model")
+                self.assertEqual(resolve_model(root, "plan-critic", "plan"), "config-model")
+                self.assertEqual(resolve_model(root, "implementer", "plan"), "role-env")
+                self.assertEqual(resolve_model(root, "verifier", "verify"), "sonnet")
+                self.assertIsNone(resolve_model(root, "planner"))
+            with patch.dict("os.environ", {"LOOP_SPEC_PHASE_MODEL_SPEC": "phase-model"}, clear=True):
+                self.assertIsNone(resolve_model(root, "spec-writer", "spec"))  # explicit null inherits
+
 
 if __name__ == "__main__":
     unittest.main()

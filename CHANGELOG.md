@@ -4,6 +4,34 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.7.5] - 2026-09-29
+
+Per-phase models, for adopting loop-spec through the Claude Agent SDK.
+
+### Added
+
+- `LOOP_SPEC_PHASE_MODEL_<PHASE>` is back (6.x had it; 7.0.0 to 7.7.4 dropped it without
+  a note). It sets the model on every step request of that phase whose role has no
+  model of its own (`LOOP_SPEC_MODEL_<ROLE>` or `roles.<role>.model`, where an explicit
+  `null` also counts). Callers pass the phase the step runs in, so a code-reviewer in
+  VERIFY follows `LOOP_SPEC_PHASE_MODEL_VERIFY`.
+- `examples/sdk-plugin` switches the lead's model with `ClaudeSDKClient.set_model` when a
+  lead step's `LOOP_SPEC_NEXT` names one, and back to `--model` at the next step that is
+  not. SPEC and PLAN run in the lead, so `--model sonnet` with
+  `LOOP_SPEC_PHASE_MODEL_SPEC=opus LOOP_SPEC_PHASE_MODEL_PLAN=opus` now runs them on Opus
+  and the rest of the lead on Sonnet. Shown live in `p775-phase-models`
+  ([live runs](docs/loop-spec/live-runs-7.0.md)). A lead step's effort is not applied:
+  the SDK has no mid-session effort change. In Claude Code the lead still runs every
+  lead step at the session's own model.
+- `spec.approval: "policy"` in config, or `LOOP_SPEC_SPEC_APPROVAL=policy`, approves
+  SPEC's requirements without asking. 6.x's default `auto` style skipped this gate;
+  7.x asked on every run with no way to skip only it (`--answer-policy default` also
+  answers every other defaulted question). The answer is recorded `by: "policy"`, so
+  S2 is unchanged, and the run's own answer policy stays off.
+- `examples/sdk-plugin/run_loop_spec.py` takes `--phase-model PHASE=MODEL`
+  (repeatable) and `--spec-approval ask|policy`, passed to the session through
+  `ClaudeAgentOptions.env`.
+
 ## [7.7.4] - 2026-09-29
 
 Effort defaults follow the Claude Opus 5.5 and Claude Sonnet 5.5 migration guides.
