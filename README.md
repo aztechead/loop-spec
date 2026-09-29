@@ -4,7 +4,7 @@ For a developer installing loop-spec in Claude Code, or embedding it in a Python
 app on the Claude Agent SDK. Use this guide to install it, run an entry, and read
 a result.
 
-Current version: 7.7.3
+Current version: 7.7.4
 
 ## Contents
 
@@ -166,7 +166,7 @@ environment variables take precedence over it.
 | `deliver.acceptRemotePaths` (config) | path globs, e.g. `["CHANGELOG.md"]`: accept a bot's commits on the PR branch that touch only these paths and none of the verified change |
 | `LOOP_SPEC_HOME` | state home root; default `~/.loop-spec` |
 | `roles.<role>.model` (config), `LOOP_SPEC_MODEL_<ROLE>` | model for every dispatch of that role, e.g. `LOOP_SPEC_MODEL_CODE_REVIEWER=haiku`. By default the judgment workers (router, plan-critic, code-reviewer, iterate-judge) run on `opus` and the implementation workers (implementer, verifier) on `sonnet`; a `null` in config inherits your session's model instead. Run the session itself on Opus: SPEC, PLAN, debug, revise and direct run in it |
-| `roles.<role>.effort` (config), `LOOP_SPEC_EFFORT_<ROLE>` | effort (`low`, `medium`, `high`, `xhigh`, `max`) for every worker that role dispatches, e.g. `LOOP_SPEC_EFFORT_CODE_REVIEWER=low`. By default the router runs at `low`, the other judgment workers at `medium`, and implementer and verifier at `high`; a `null` in config inherits. The worker runs as the plugin's `loop-spec:worker-<effort>` agent. It does not apply to a step the lead runs itself (SPEC, PLAN, debug, revise, direct), which uses the session's `--effort`. A mismatched agent type stops a plan-critic, code-reviewer, iterate-judge or router step; for implementer and verifier it is recorded and the run goes on |
+| `roles.<role>.effort` (config), `LOOP_SPEC_EFFORT_<ROLE>` | effort (`low`, `medium`, `high`, `xhigh`, `max`) for every worker that role dispatches, e.g. `LOOP_SPEC_EFFORT_CODE_REVIEWER=low`. By default the router runs at `low`, and every other worker at `medium`; a `null` in config inherits. The worker runs as the plugin's `loop-spec:worker-<effort>` agent. It does not apply to a step the lead runs itself (SPEC, PLAN, debug, revise, direct), which uses the session's `--effort`. A mismatched agent type stops a plan-critic, code-reviewer, iterate-judge or router step; for implementer and verifier it is recorded and the run goes on |
 | `LOOP_SPEC_REWIND_BUDGET` | how many backward transitions one run may spend; default 2 |
 | `LOOP_SPEC_STEP_RETRIES` | retries before a rejected product asks you to fix and re-enter or stop; default 3 |
 

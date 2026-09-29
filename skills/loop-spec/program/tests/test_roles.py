@@ -226,7 +226,7 @@ class ResolveEffortTests(unittest.TestCase):
                 self.assertEqual(resolve_effort(root, "code-reviewer"), "low")
             with patch.dict("os.environ", {}, clear=True):
                 self.assertEqual(resolve_effort(root, "code-reviewer"), "high")
-                self.assertEqual(resolve_effort(root, "implementer"), "high")  # 7.5.0 default
+                self.assertEqual(resolve_effort(root, "implementer"), "medium")  # 7.7.4 default
                 self.assertIsNone(resolve_effort(root, "verifier"))  # an explicit null inherits
                 self.assertIsNone(resolve_effort(root, "planner"))  # a lead role has no default
 
