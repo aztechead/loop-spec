@@ -1104,7 +1104,7 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
         kind="external" if is_external else "role", role=None if is_external else "plan-critic",
         cwd=Path(repo_path), prompt=prompt, schema=role.schema, postconditions=["P7"],
         inputs_digest=inputs_digest, result_path=result_path,
-        model=None if is_external else resolve_model(project_root, "plan-critic"),
+        model=None if is_external else resolve_model(project_root, "plan-critic", "plan"),
         effort=None if is_external else resolve_effort(project_root, "plan-critic"),
     )
     store.state["phase"]["criticStepId"] = record["stepAttemptId"]
@@ -1816,7 +1816,7 @@ def _issue_adopted_review(store: StateStore, paths: FeaturePaths, project_root: 
     record = steps.issue(
         store, paths, phase="execute", attempt_id=attempt_id, kind="role", role="code-reviewer",
         cwd=checkout, prompt=prompt, schema=role.schema, postconditions=[], inputs_digest=digest(inputs),
-        result_path=result_path, model=resolve_model(project_root, "code-reviewer"),
+        result_path=result_path, model=resolve_model(project_root, "code-reviewer", "execute"),
         effort=resolve_effort(project_root, "code-reviewer"),
     )
     store.state["phase"]["adoptedReviewStepId"] = record["stepAttemptId"]

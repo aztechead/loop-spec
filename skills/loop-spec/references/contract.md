@@ -116,8 +116,8 @@ the step id, inputs digest, phase, and result path), `resultPath`, `schema` (the
 result's own JSON Schema), `postconditions[]`, `attempt`, `inputsDigest`,
 `issuedAt`, `retryOf`, `reason`, and an optional `model` and `effort` (every role
 dispatch sets these from `roles.dispatch_settings`: env `LOOP_SPEC_MODEL_<ROLE>` /
-`LOOP_SPEC_EFFORT_<ROLE>`, then config `roles.<role>.model` / `.effort`, else the
-role's own `SKILL.md` frontmatter, `contract.role_meta`). A `role` step also carries `transport: "file"`,
+`LOOP_SPEC_EFFORT_<ROLE>`, then config `roles.<role>.model` / `.effort`, then, for the model
+only, env `LOOP_SPEC_PHASE_MODEL_<PHASE>`, else the role's own `SKILL.md` frontmatter, `contract.role_meta`). A `role` step also carries `transport: "file"`,
 `instructionPath` (`steps/<step-id>/instructions.md`, written once at issue with
 the exact bytes of `prompt`, which then ends in one LF and holds no CR) and
 `dispatchPrompt`, the text the lead passes as the Agent prompt, and `readSchedule`
@@ -317,6 +317,7 @@ Environment variables, precedence over config where both apply:
 | `LOOP_SPEC_PHASE_<NAME>` | overrides `phases.<phase>`; `<NAME>` is the phase name uppercased (`EXECUTE`, `DELIVER`, ...) |
 | `LOOP_SPEC_ROLE_<ROLE>` | overrides `roles.<role>`; `<ROLE>` is the role name uppercased with hyphens kept as-is (`SPEC-WRITER`, `CODE-REVIEWER`) |
 | `LOOP_SPEC_MODEL_<ROLE>` | sets the model on that role's step request (`roles.resolve_model`, read by every role dispatch: execute.py, controller.py's critic and adopted review, verify.py, iterate.py, debug.py, revise.py, defaults.py); `<ROLE>` has hyphens replaced with underscores (`SPEC_WRITER`). Overrides `roles.<role>.model` when both are set |
+| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | sets the model on every step request of that phase (`<PHASE>` uppercased: `SPEC`, `PLAN`, `EXECUTE`, ...) for a role with neither `LOOP_SPEC_MODEL_<ROLE>` nor `roles.<role>.model` set (an explicit `null` there counts as set and inherits); the role's own default applies when it is unset. A lead step's model is applied only by a host that can switch the lead's model, such as `examples/sdk-plugin` (`ClaudeSDKClient.set_model`) or `examples/supervisor` (a fresh session per lead step) |
 | `LOOP_SPEC_EFFORT_<ROLE>` | sets the effort on that role's step request (`roles.resolve_effort`, same readers and `<ROLE>` spelling as `LOOP_SPEC_MODEL_<ROLE>`); overrides `roles.<role>.effort`. A role step with an effort is dispatched as `loop-spec:worker-<effort>` (the plugin's `agents/`), since the Agent tool takes no per-call effort, and attests only when its transcript's `.meta.json` names that agent type. A lead step runs in the lead's own session at the session's `--effort`; the SDK runner passes the effort to `ClaudeAgentOptions.effort` |
 | `LOOP_SPEC_STEP_RETRIES` | per-phase retry limit before a rejected product asks a `fix-and-re-enter`/`stop` question; default 3 |
 | `LOOP_SPEC_REWIND_BUDGET` | the shared T1 budget's limit; default 2, never resets within a run |

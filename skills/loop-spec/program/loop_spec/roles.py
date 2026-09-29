@@ -93,16 +93,20 @@ def load_role(name: str, project_root: Path, binding: str | None = None) -> Role
 # step runs in the lead's own session, at that session's model and effort.
 
 
-def _dispatch_setting(project_root: Path, role: str, key: str, env_name: str) -> str | None:
+def _dispatch_setting(project_root: Path, role: str, key: str, env_name: str,
+                      phase_env: str | None = None) -> str | None:
     # env first, then config roles.<role>.<key> when that role is bound as an object
     # rather than a plain binding string (an explicit null there inherits the caller's
-    # own), else the role's default.
+    # own), then the phase-wide env (`phase_env`, as 6.x's LOOP_SPEC_PHASE_MODEL_<PHASE>),
+    # else the role's default.
     env = os.environ.get(env_name)
     if env:
         return env
     configured = load_config(project_root).get("roles", {}).get(role)
     if isinstance(configured, dict) and key in configured:
         return configured[key]
+    if phase_env and os.environ.get(phase_env):
+        return os.environ[phase_env]
     return role_meta(role).get(key)
 
 
@@ -115,14 +119,17 @@ def resolve_effort(project_root: Path, role: str) -> str | None:
     return _dispatch_setting(project_root, role, "effort", name)
 
 
-def dispatch_settings(project_root: Path, role: str) -> dict:
-    """What a role's step request carries for whoever dispatches its worker."""
-    return {"model": resolve_model(project_root, role), "effort": resolve_effort(project_root, role)}
+def dispatch_settings(project_root: Path, role: str, phase: str | None = None) -> dict:
+    """What a role's step request carries for whoever dispatches its worker, or, for a
+    lead step, for an SDK runner that switches the lead's model (examples/sdk-plugin)."""
+    return {"model": resolve_model(project_root, role, phase), "effort": resolve_effort(project_root, role)}
 
 
-def resolve_model(project_root: Path, role: str) -> str | None:
-    # LOOP_SPEC_MODEL_<ROLE>, hyphens to underscores, upper; see _dispatch_setting.
-    return _dispatch_setting(project_root, role, "model", "LOOP_SPEC_MODEL_" + role.upper().replace("-", "_"))
+def resolve_model(project_root: Path, role: str, phase: str | None = None) -> str | None:
+    # LOOP_SPEC_MODEL_<ROLE>, hyphens to underscores, upper; then LOOP_SPEC_PHASE_MODEL_<PHASE>
+    # for the phase the step runs in; see _dispatch_setting.
+    return _dispatch_setting(project_root, role, "model", "LOOP_SPEC_MODEL_" + role.upper().replace("-", "_"),
+                             ("LOOP_SPEC_PHASE_MODEL_" + phase.upper()) if phase else None)
 
 
 def role_contract(name: str) -> str:
@@ -213,7 +220,7 @@ def step_request(kind: str, role_name: str, phase: str, *, project_root: Path, c
         "kind": kind, "role": role_name, "phase": phase, "cwd": str(cwd), "prompt": prompt,
         "resultPath": str(result_path), "schema": schema, "postconditions": postconditions or [],
         "attempt": ctx["attempt"]["id"], "inputsDigest": ctx["inputs"]["digest"],
-        "retryOf": retry_of, "reason": reason, **dispatch_settings(project_root, role_name),
+        "retryOf": retry_of, "reason": reason, **dispatch_settings(project_root, role_name, phase),
     }
     errors = validate_request("step", request)
     if errors:

@@ -11,9 +11,11 @@ imported here. Every SDK call follows the Agent SDK docs
 can_use_tool for approvals and AskUserQuestion, sessions, and message types.
 
 Three modules:
-- RunWatch decides when the session is finished and where loop-spec's terminal
-  result is. It is the only stateful logic here, and its interface
-  (`observe`, `idle`, `result_path`) is what test_run_loop_spec.py exercises.
+- RunWatch decides when the session is finished, where loop-spec's terminal
+  result is, and which model the current lead step names (`run` applies it with
+  `ClaudeSDKClient.set_model`). It is the only stateful logic here, and its
+  interface (`observe`, `idle`, `result_path`, `lead_model`) is what
+  test_run_loop_spec.py exercises.
 - An Answerer answers one AskUserQuestion question, or returns None when it
   cannot. Two adapters sit at that seam: `answer_from_stdin` (the default; a
   terminal or piped input) and `answer_first_option` (only with --auto).
@@ -119,6 +121,9 @@ class RunWatch:
         self.result_path: str | None = None
         self.last_result: ResultMessage | None = None
         self.error: str | None = None
+        # The model the program named for the current lead step (SPEC, PLAN, ...), set
+        # from each step's LOOP_SPEC_NEXT; None on any other step: the run's --model.
+        self.lead_model: str | None = None
 
     @property
     def idle(self) -> bool:
@@ -140,6 +145,8 @@ class RunWatch:
                             next_ = json.loads(line[len(NEXT_PREFIX):])
                             if next_["kind"] == "result":
                                 self.result_path = next_["path"]
+                            elif next_["kind"] == "step":
+                                self.lead_model = next_.get("model") if next_.get("stepKind") == "lead" else None
         elif isinstance(message, ResultMessage):
             self.last_result = message
             if message.is_error:
@@ -234,7 +241,7 @@ def render(message: Message) -> None:
                 OUT.info(block.text)
             elif isinstance(block, ToolUseBlock):
                 summary = block.input.get("command") or block.input.get("description") or ""
-                err(f"  [{who}tool] {block.name} {str(summary)[:200]}")
+                err(f"  [{who}tool {message.model}] {block.name} {str(summary)[:200]}")
     elif isinstance(message, UserMessage) and isinstance(message.content, list):
         for block in message.content:
             if isinstance(block, ToolResultBlock):
@@ -268,6 +275,7 @@ async def run(args: argparse.Namespace) -> int:
     )
 
     watch = RunWatch()
+    lead_model = args.model
     async with ClaudeSDKClient(options=options) as client:
         await client.query(prompt)
         # receive_messages, not receive_response: receive_response stops at the
@@ -285,7 +293,14 @@ async def run(args: argparse.Namespace) -> int:
                     err(f"{PLUGIN_NAME}:{args.entry} is not loaded; check --entry and the plugin path")
                     return 1
             render(message)
-            if watch.observe(message):
+            done = watch.observe(message)
+            # A lead step runs in this session, so its model (LOOP_SPEC_MODEL_<ROLE> or
+            # LOOP_SPEC_PHASE_MODEL_<PHASE>) is applied here, and --model restored after.
+            if (watch.lead_model or args.model) != lead_model:
+                lead_model = watch.lead_model or args.model
+                await client.set_model(lead_model)
+                err(f"[model] lead now {lead_model or 'the default'}")
+            if done:
                 break
 
     session_id = watch.last_result.session_id if watch.last_result else "<session id>"
@@ -305,7 +320,7 @@ def main() -> int:
     ap.add_argument("--project-root", required=True, type=Path)
     ap.add_argument("--entry", default="cycle", choices=["cycle", "micro", "debug", "revise"])
     ap.add_argument("--auto", action="store_true", help="answer every question with its first option")
-    ap.add_argument("--model", help="the lead's model; workers follow each step's own model")
+    ap.add_argument("--model", help="the lead's model; a lead step with its own model and every worker use theirs")
     ap.add_argument("--resume", help="continue an earlier session by its id")
     ap.add_argument("--max-budget-usd", type=float)
     args = ap.parse_args()

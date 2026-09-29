@@ -52,6 +52,12 @@ def next_line(kind, path="/state/result.json"):
     return UserMessage(content=[ToolResultBlock(tool_use_id="t", content=f"[DELIVER] done\n{marker}")])
 
 
+def step_line(step_kind, model):
+    marker = "LOOP_SPEC_NEXT " + json.dumps({"kind": "step", "path": "/state/step.json", "slug": "x",
+                                             "stepKind": step_kind, "model": model})
+    return UserMessage(content=[ToolResultBlock(tool_use_id="t", content=marker)])
+
+
 def feed(watch, messages):
     return [watch.observe(m) for m in messages]
 
@@ -61,6 +67,15 @@ class RunWatchTests(unittest.TestCase):
         watch = RunWatch()
         self.assertEqual(feed(watch, [init(), next_line("result"), turn_end()]), [False, False, True])
         self.assertEqual(watch.result_path, "/state/result.json")
+
+    def test_a_lead_step_names_the_lead_model_until_the_next_other_step(self):
+        watch = RunWatch()
+        feed(watch, [step_line("lead", "opus")])
+        self.assertEqual(watch.lead_model, "opus")
+        feed(watch, [next_line("question", "/state/question.json")])
+        self.assertEqual(watch.lead_model, "opus")
+        feed(watch, [step_line("role", "opus")])
+        self.assertIsNone(watch.lead_model)
 
     def test_a_turn_ending_while_workers_run_is_not_done(self):
         # sdkp1: the lead dispatched two background workers and its turn ended.

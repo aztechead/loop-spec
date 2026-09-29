@@ -55,7 +55,7 @@ LOOP_SPEC_NEXT {"kind": ..., "path": ..., "slug": ..., "program": ..., "stateHom
 | `dispatchPath` | On a role step with file transport: the file whose exact text is the worker's prompt. Absent otherwise. |
 | `subagentType` | On a role step: `loop-spec:worker-<level>` for a step with an effort, else `general-purpose`. Every role step has an effort unless the project sets it to `null`. |
 | `role` | On a `step`: the role name, or null. |
-| `model` | On a `step`: the worker's model (`opus` or `sonnet` by default), or null to inherit yours. A lead step's model is informational: you run it in this session. |
+| `model` | On a `step`: the worker's model (`opus` or `sonnet` by default), or null to inherit yours. A lead step's model is informational: you run it in this session. An Agent SDK host can apply it with `ClaudeSDKClient.set_model` (`examples/sdk-plugin` does). |
 | `effort` | On a `step`: the worker's effort, or null. `subagentType` already reflects it. |
 
 Several `LOOP_SPEC_NEXT` lines of kind `step` at once mean a wave. Dispatch every one
