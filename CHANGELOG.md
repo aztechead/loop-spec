@@ -15,6 +15,9 @@ All notable changes documented here. Format follows Keep a Changelog.
   and every retry built the same prompt. Each task's diff is now its own top-level
   input, `diff:<task id>`, rendered as real lines, the layout the ITERATE judge adopted
   in LF-63. The wave schema and the per-task results are unchanged.
+- The revise entry had the same layout problem: each PR comment body sat inside the
+  `gaps` list, so a comment over about 16 KB (a pasted CI log, say) blocked the
+  reviser step the same way. Each body is now its own `gap:<id>` input.
 
 ## [7.7.7] - 2026-09-30
 

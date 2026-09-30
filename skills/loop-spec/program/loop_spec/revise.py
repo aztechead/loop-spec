@@ -69,8 +69,14 @@ def _reviser_request(store, paths, ctx) -> dict:
 
     diff = repo_module.review_diff(repo_path, f"{base_sha}..{head_sha}")
 
+    gaps = store.state["revise"]["gaps"]
     inputs = {
-        "gaps": store.state["revise"]["gaps"],
+        # LF-63 for the reviser: each gap's body is its own top-level string input, so
+        # it renders as real lines. Nested in `gaps`, JSON put a whole comment (a pasted
+        # CI log, say) on one escaped line, over the read budget.
+        "gaps": [{k: v for k, v in gap.items() if k != "body"} | {"body": f"see input gap:{gap['id']}"}
+                 for gap in gaps],
+        **{f"gap:{gap['id']}": gap["body"] for gap in gaps},
         "pr": {"number": adoption["number"], "url": adoption["url"], "headRef": adoption["headRef"],
                "baseBranch": adoption["baseBranch"]},
         "diff": diff,
