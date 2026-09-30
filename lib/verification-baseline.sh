@@ -217,7 +217,7 @@ else
     # A candidate whose own diff from baseSha changes a manifest the key hashes (a
     # dependency bump) changes the key by design; its failures are still compared by
     # identity below. A mismatch the diff does not explain is still refused.
-    git -C "$root" diff --no-renames --name-only "$base_sha" HEAD 2>/dev/null | sed 's|.*/||' \
+    git -C "$root" -c core.quotePath=false diff --no-renames --name-only "$base_sha" HEAD 2>/dev/null | sed 's|.*/||' \
       | grep -Fxf <(bash "$script_dir/prepare-environment.sh" manifests) >/dev/null \
       || infra "baseline prepareKey does not match"
   fi
