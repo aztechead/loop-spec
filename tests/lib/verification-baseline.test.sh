@@ -283,5 +283,33 @@ ec=0; capture --test 'true' --lint '' --typecheck '' >/dev/null 2>&1 || ec=$?
 check "capture ignores .loop-spec state as dirt" "0" "$ec"
 rm -rf "$REPO/.loop-spec"
 
+# A dependency bump on a red base: the candidate's own diff changes a manifest the
+# preparation key hashes, so the key differs by design and failures decide.
+DEP="$WORK/dep"
+mkdir -p "$DEP"
+git -C "$DEP" init -q
+git -C "$DEP" config user.email test@example.com
+git -C "$DEP" config user.name Test
+printf 'urllib3 2.7.0\n' > "$DEP/uv.lock"
+printf 'seed\n' > "$DEP/seed.txt"
+git -C "$DEP" add -A && git -C "$DEP" commit -qm base
+DEP_BASE="$(git -C "$DEP" rev-parse HEAD)"
+printf '%s\n' 'echo "FAILED tests/test_a.py::test_known"; exit 1' > "$WORK/dep-suite.sh"
+known="sh $WORK/dep-suite.sh"
+bash "$SCRIPT" capture --root "$DEP" --base-sha "$DEP_BASE" --prepare-key base-key \
+  --log-dir "$LOGS/dep-base" --test "$known" --lint '' --typecheck '' > "$WORK/dep-baseline.json" 2>/dev/null
+dep_compare() {
+  local ec=0 out
+  out="$(bash "$SCRIPT" compare --baseline "$WORK/dep-baseline.json" --root "$DEP" --base-sha "$DEP_BASE" \
+    --prepare-key cand-key --log-dir "$LOGS/dep-$1" --test "$2" --lint '' --typecheck '' 2>/dev/null)" || ec=$?
+  echo "$ec:$(jq -r '.outcome' <<<"$out")"
+}
+printf 'seed2\n' > "$DEP/seed.txt"; git -C "$DEP" commit -qam unrelated
+check "a key change no manifest in the diff explains is refused" "21:infra_error" "$(dep_compare nomanifest "$known")"
+printf 'urllib3 2.8.0\n' > "$DEP/uv.lock"; git -C "$DEP" commit -qam bump
+check "a manifest bump with the same base failure is accepted" "0:accepted" "$(dep_compare same "$known")"
+printf '%s\n' 'echo "FAILED tests/test_a.py::test_known"; echo "FAILED tests/test_b.py::test_new"; exit 1' > "$WORK/dep-suite.sh"
+check "a manifest bump that adds a failure is a regression" "20:regression" "$(dep_compare added "$known")"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

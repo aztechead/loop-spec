@@ -83,9 +83,9 @@ check_contains "resume reference picks up remaining ids" \
   lib/graph/driver.py '"task-progress", "remaining"'
 
 # Startup must not pay for a repository-wide suite on the untouched base. The capture
-# survives only as an opt-in for repositories whose base commit is already red.
+# runs eagerly only on opt-in; otherwise VERIFY runs it on the first failing candidate.
 check_contains "baseline capture is deferred to EXECUTE" \
-  lib/deferred-baseline.sh 'Capture an opt-in validation baseline once'
+  lib/deferred-baseline.sh 'Capture a validation baseline at baseSha once'
 check_contains "baseline attempt is durable" \
   lib/deferred-baseline.sh 'verificationBaselineAttempted true'
 check_contains "workspace prepare/baseline uses the shared bootstrap" \

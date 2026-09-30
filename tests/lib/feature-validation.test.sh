@@ -51,7 +51,31 @@ git -C "$repo" reset --hard -q "$base"
 git -C "$repo" checkout -B feat/demo -q
 write_feature null false
 out="$(bash "$SCRIPT" compare "$repo/.loop-spec/features/demo" 2>/dev/null)"; rc=$?
-assert_eq "missing baseline stays strict" "$rc" 20
+assert_eq "no baseline and a red base: VERIFY measures the base and accepts the same failure" "$rc" 0
+assert_eq "the lazily captured baseline is persisted at baseSha" \
+  "$(jq -r '.verificationBaseline.baseSha' "$repo/.loop-spec/features/demo/feature.json")" "$base"
+
+git -C "$repo" reset --hard -q "$base"
+git -C "$repo" checkout -B feat/demo -q
+write_feature null 'test "$(cat app.txt)" = base'
+printf 'changed\n' > "$repo/app.txt"; git -C "$repo" commit -qam change
+out="$(bash "$SCRIPT" compare "$repo/.loop-spec/features/demo" 2>/dev/null)"; rc=$?
+assert_eq "no baseline and a green base: a failure the change adds is a regression" "$rc" 20
+
+git -C "$repo" reset --hard -q "$base"
+git -C "$repo" checkout -B feat/demo -q
+write_feature null false
+out="$(LOOP_SPEC_WORKTREES=0 bash "$SCRIPT" compare "$repo/.loop-spec/features/demo" 2>/dev/null)"; rc=$?
+assert_eq "a base that cannot be measured is infrastructure, not a regression" "$rc:$(jq -r '.targets[0].comparison.stage' <<<"$out")" "21:baseline"
+assert_eq "the escalation names why the base was not measured" "$(jq -r '.targets[0].comparison.reason | test("LOOP_SPEC_WORKTREES=0")' <<<"$out")" true
+
+git -C "$repo" reset --hard -q "$base"
+git -C "$repo" checkout -B feat/demo -q
+write_feature null false
+jq '.greenfield = true' "$repo/.loop-spec/features/demo/feature.json" > "$TMP/fj" && mv "$TMP/fj" "$repo/.loop-spec/features/demo/feature.json"
+git -C "$repo" commit -qam greenfield
+out="$(bash "$SCRIPT" compare "$repo/.loop-spec/features/demo" 2>/dev/null)"; rc=$?
+assert_eq "a greenfield feature with no baseline stays strict" "$rc" 20
 
 workspace="$TMP/workspace"
 mkdir -p "$workspace/.loop-spec/features/empty"

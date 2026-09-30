@@ -201,7 +201,7 @@ case "$cmd" in
       "",
       "## Verify",
       (.verifyCommand // "true"),
-      "Run this command exactly. If it rejects behavior allowed by the acceptance criteria, report the contradictory assertion and evidence as NEEDS_CONTEXT. Do not rename symbols, force a representation, or weaken product behavior merely to satisfy a faulty generated check. The lead must repair the check and obtain fresh review before integration.",
+      "Run it exactly. If it rejects behavior the acceptance criteria allow, report the assertion and evidence as NEEDS_CONTEXT; never rename symbols, force a representation, or weaken behavior to pass a faulty check.",
       ((.verifyCommandRepairs // [])[] | "### Verification repair requiring review",
         "Previous command: \(.expectedCommand)", "Reason: \(.reason)", "Evidence: \(.evidence)",
         "Review the replacement against the unchanged acceptance criteria before passing this task."),
