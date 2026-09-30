@@ -67,6 +67,7 @@ git -C "$repo" checkout -B feat/demo -q
 write_feature null false
 out="$(LOOP_SPEC_WORKTREES=0 bash "$SCRIPT" compare "$repo/.loop-spec/features/demo" 2>/dev/null)"; rc=$?
 assert_eq "a base that cannot be measured is infrastructure, not a regression" "$rc:$(jq -r '.targets[0].comparison.stage' <<<"$out")" "21:baseline"
+assert_eq "the escalation names why the base was not measured" "$(jq -r '.targets[0].comparison.reason | test("LOOP_SPEC_WORKTREES=0")' <<<"$out")" true
 
 git -C "$repo" reset --hard -q "$base"
 git -C "$repo" checkout -B feat/demo -q

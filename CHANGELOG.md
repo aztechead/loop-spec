@@ -26,7 +26,8 @@ All notable changes documented here. Format follows Keep a Changelog.
   candidate pays nothing extra; a failure the change adds is still a regression. A base
   that cannot be measured (`LOOP_SPEC_WORKTREES=0`, a prepare that fails at base)
   escalates as infrastructure with the reason instead of dispatching remediation.
-  Greenfield features stay strict.
+  Greenfield features stay strict. A run whose opt-in capture already failed at
+  EXECUTE now escalates in VERIFY with that reason instead of dispatching remediation.
 - `tests/dispatch-read-set.test.sh` was red on 6.x: 6.11.x added a verify paragraph to
   every implementer brief and pushed the subagent read set over its ceiling. The
   paragraph is shorter and says the same thing to the implementer.

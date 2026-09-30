@@ -39,6 +39,7 @@ bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '
 }
 
 slug="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -er --filter '.slug | select(type == "string" and length > 0)' 2>/dev/null)" || exit 2
+capture_reasons=""
 greenfield="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.greenfield // false')"
 targets='[]'
 overall="accepted"
@@ -126,14 +127,17 @@ run_target() {
   # candidate never pays; a greenfield feature has no base to measure. A base that
   # cannot be measured escalates with its reason: accepting would pass real regressions.
   if [[ "$compare_rc" -eq 20 && "$baseline" == "null" && "$greenfield" != "true" ]]; then
-    local reason
-    reason="$(bash "$SCRIPT_DIR/deferred-baseline.sh" capture "$feature_dir" 2>&1 >/dev/null || true)"
+    # One capture call measures every workspace repo; keep its words for the repo that
+    # failed, since a later repo's call finds the latch set and says nothing.
+    local captured
+    captured="$(bash "$SCRIPT_DIR/deferred-baseline.sh" capture "$feature_dir" 2>&1 >/dev/null || true)"
+    [[ -z "$captured" ]] || capture_reasons="$captured"
     baseline="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -c --filter \
       'if .workspace == null then .verificationBaseline else (.workspace.repos[] | select(.name == $n) | .verificationBaseline) end // null' \
       -- --arg n "$name")"
     if [[ "$baseline" == "null" ]]; then
       compare_rc=21
-      compare_json="$(jq -cn --arg r "${reason:-an earlier baseline capture already failed (verificationBaselineAttempted is true)}" \
+      compare_json="$(jq -cn --arg r "$(grep -F "for $name:" <<<"$capture_reasons" || printf '%s' "${capture_reasons:-an earlier baseline capture already failed (verificationBaselineAttempted is true)}")" \
         --argjson c "${compare_json:-null}" '{outcome:"infra_error",stage:"baseline",reason:$r,candidate:$c}')"
     else
       printf '%s\n' "$baseline" > "$baseline_file"
