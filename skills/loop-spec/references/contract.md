@@ -173,8 +173,8 @@ A `role` step whose `role` is `plan-critic`, `code-reviewer`, or `iterate-judge`
 (pure judgment the program cannot re-derive) is never accepted `unattested`: an
 unattested submission for one of these leaves the step open, bumps its
 `attestationAttempts`, emits `step_redispatch`, and `submit` returns a `redispatch`
-name (`<stepId>-<n+1>`) for a fresh worker dispatched under that exact name with
-the same prompt, up to `retry_limit()` (`LOOP_SPEC_STEP_RETRIES`, default 3)
+name (`<stepId>-<n+1>`) for a fresh worker dispatched with that exact name as its
+`description`, no `name`, and the same prompt, up to `retry_limit()` (`LOOP_SPEC_STEP_RETRIES`, default 3)
 attempts. Past the bound, or at once when no host can attest (no
 `CLAUDE_CODE_SESSION_ID`) or an SDK receipt names another digest, the submission is
 accepted only when config opts the role in (`evidence.review.accept` for

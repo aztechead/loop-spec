@@ -3,8 +3,11 @@
 Use `ClaudeCodeAttestor` as the `HostAttestor` `steps.submit` calls when a step was
 dispatched natively (the Agent tool) rather than run by a controller-observed runner
 that needs no transcript. What the host writes, and so the check built from it, come
-from one observation (Claude Code 2.1.278, 2026-09-22; ROADMAP section 19), not a
-promise every host or a future version will match it.
+from observation (Claude Code 2.1.278, 2026-09-22, ROADMAP section 19; 2.1.285,
+2026-09-30), not a promise every host or a future version will match it. By 2.1.285
+an Agent call with a `name`, in an interactive session with agent teams, starts an
+in-process teammate whose sidecar records the name as `agentType`, so runner.md
+dispatches by `description` and never by `name`.
 """
 import json
 import os

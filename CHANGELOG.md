@@ -17,6 +17,15 @@ session with agent teams.
   unattested, and so did every retry. `runner.md` now dispatches with `description`
   set to the step attempt id and no `name`. `attest.find_transcripts` matches the
   sidecar's `description`, and a teammate sidecar is refused with that instruction.
+  A step that used up its retries this way before 7.7.6 is accepted only with
+  `evidence.review.accept` (code-reviewer) or `evidence.judgment.accept`
+  (plan-critic, iterate-judge) set to `"unattested"`, which records it under
+  `weakenedAssurance`.
+- EXECUTE's E3 rejected a task when VERIFY's remediation reopened its dependency after
+  it: the dependency's rework finished after the task's dispatch, so the product read as
+  out of order and was rejected until the run stopped. A task done with the same
+  implement steps in the EXECUTE product last accepted against the same plan revision
+  now keeps the order that product proved.
 - A `plugin:skill` role binding took the first version in the plugin cache by
   sorted directory name, not the installed version. It now reads the plugin's
   `installPath` from `~/.claude/plugins/installed_plugins.json`.

@@ -657,6 +657,14 @@ class Boundary:
         plan_tasks = {t["id"]: t for t in self.store.state["products"]["plan"]["product"]["tasks"]}
         steps_by_task = ({t["id"]: t.get("steps") or {} for t in self.product["tasks"]}
                          if ran_default(self.store, "execute") else {})
+        # A task done with the same implement steps in the EXECUTE product last accepted
+        # against this plan revision had its ordering proven when that product was
+        # accepted. VERIFY's remediation can reopen its dependency later, forked from
+        # this task's commits (h776-b); that rework is not this task's dispatch order.
+        prior = self.store.state["products"].get("execute")
+        proven = {t["id"]: (t.get("steps") or {}).get("implement")
+                  for t in prior["product"]["tasks"] if t["disposition"] == "done"} \
+            if prior and prior["boundTo"].get("plan") == self.product["boundTo"].get("plan") else {}
         for task in self.product["tasks"]:
             if task["disposition"] != "done":
                 continue
@@ -667,6 +675,9 @@ class Boundary:
                 dep_task = by_id.get(dep_id)
                 if dep_task is None or dep_task["disposition"] not in ("done", "already-satisfied", "adopted"):
                     return f"task {task['id']} depends on {dep_id}, which has no accepted disposition"
+                implement = steps_by_task.get(task["id"], {}).get("implement")
+                if implement and proven.get(task["id"]) == implement:
+                    continue
                 ordering_error = self._e3_dispatch_ordering(steps_by_task, task["id"], dep_id)
                 if ordering_error:
                     return ordering_error
