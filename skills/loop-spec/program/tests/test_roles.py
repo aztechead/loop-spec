@@ -88,6 +88,17 @@ class LoadBoundRoleTests(unittest.TestCase):
 
             self.assertEqual(role.body.strip(), f"zzz-installed {installed}/skills/rev/ref.md {installed}/bin")
 
+    def test_a_plugin_loaded_by_path_resolves_through_loop_spec_plugin_dirs(self):
+        with tempfile.TemporaryDirectory() as fake_home, tempfile.TemporaryDirectory() as plugin_dir:
+            Path(plugin_dir, ".claude-plugin").mkdir()
+            Path(plugin_dir, ".claude-plugin", "plugin.json").write_text(json.dumps({"name": "local-plug"}))
+            Path(plugin_dir, "skills", "rev").mkdir(parents=True)
+            Path(plugin_dir, "skills", "rev", "SKILL.md").write_text("Local body.\n")
+            with patch("pathlib.Path.home", return_value=Path(fake_home)), \
+                    patch.dict("os.environ", {"LOOP_SPEC_PLUGIN_DIRS": plugin_dir}):
+                role = load_role("reviser", Path(fake_home), binding="local-plug:rev")
+            self.assertEqual(role.body.strip(), "Local body.")
+
     def test_with_skills_follow_the_default_method(self):
         with tempfile.TemporaryDirectory() as fake_home, tempfile.TemporaryDirectory() as project_root:
             skill_dir = Path(project_root, ".claude", "skills", "pr-helper")

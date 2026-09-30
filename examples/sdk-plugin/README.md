@@ -20,7 +20,7 @@ launcher, dispatches each worker with the Agent tool, and asks questions with
 
 | Agent SDK feature | What the script does with it |
 |---|---|
-| `plugins=[{"type": "local", "path": ...}]` | loads this repository as the `loop-spec` plugin |
+| `plugins=[{"type": "local", "path": ...}]` | loads this repository as the `loop-spec` plugin, and each `--plugin DIR` beside it. Each `--plugin` directory is also named in `LOOP_SPEC_PLUGIN_DIRS`, because a plugin loaded by path is in no registry the program can find it in |
 | init `SystemMessage` | checks `slash_commands` lists `loop-spec:<entry>` before going on |
 | `can_use_tool` | answers `AskUserQuestion` from stdin (a terminal or piped input), or with the first option under `--auto`; denies and interrupts when neither yields an answer; allows and logs every other tool |
 | `permission_mode="acceptEdits"` | file edits in the project run without prompts |
@@ -99,6 +99,40 @@ python3 examples/sdk-plugin/run_loop_spec.py --project-root ~/src/my-app --model
   "Add a --json flag to the export command, verified by .venv/bin/python -m pytest -q tests/test_export.py"
 ```
 
+## Use your own plugin in a run
+
+[`pr-helper/`](pr-helper/) is a small example plugin with one skill for each hook:
+
+- `review-context` joins a role's method (`roles.<role>.with`). It records which review
+  comments the role acted on as a `D-PR-HELPER` decision and reads its bundled
+  `checklist.md` through `${CLAUDE_SKILL_DIR}`.
+- `follow-up` acts on the delivered PR (`deliver.after`). It posts one status comment
+  and never pushes.
+
+Name them in the project's `.loop-spec/config.json`:
+
+```json
+{
+  "roles": {"spec-writer": {"with": ["pr-helper:review-context"]},
+            "reviser": {"with": ["pr-helper:review-context"]}},
+  "deliver": {"after": ["pr-helper:follow-up"]}
+}
+```
+
+Then load the plugin with `--plugin`:
+
+```bash
+python3 examples/sdk-plugin/run_loop_spec.py --project-root ~/src/my-app --auto \
+  --plugin examples/sdk-plugin/pr-helper "Add septuple(x) to calc returning 7*x, with a test"
+```
+
+The spec-writer's and the reviser's prompts carry the skill after their method, with
+the checklist's path resolved. When DELIVER opens a PR, the result lists
+`pr-helper:follow-up` under `after`, and the lead invokes it on the PR before the
+session ends; the final summary prints `after`. Swap in your own plugin the same way.
+A skill that pushes, replies to threads, or loops on the PR belongs in
+`deliver.after`, never in a role.
+
 ## Output
 
 stdout carries the lead's text, turn by turn. stderr carries everything else,
@@ -106,7 +140,7 @@ prefixed: `[thinking]`, `[tool]`, `[worker]` and `[worker thinking]`, `[allow]` 
 each approved tool call, `[question]`, `[task started]` and `[task completed]`, and
 the program's own `[PHASE] ...` progress lines and `LOOP_SPEC_` markers as they appear
 in tool results. The last stderr lines are the session id, turn count, cost, and the
-terminal result's `status`, `result`, `reason`, `prUrl`, and `phaseReached`.
+terminal result's `status`, `result`, `reason`, `prUrl`, `phaseReached`, and `after`.
 
 Exit code 0 means the result's `status` was `completed`, and 1 means another terminal
 status. Exit code 2 means the session ended without a terminal result: an SDK error

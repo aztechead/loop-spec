@@ -52,6 +52,13 @@ def _bound_skill_candidates(project_root: Path, binding: str) -> list[Path]:
     ]
     if ":" in binding:
         plugin, skill = binding.split(":", 1)
+        # A plugin loaded by path (`claude --plugin-dir`, the Agent SDK's local plugins)
+        # is in no registry, so the session that loads it names its directory here.
+        for plugin_dir in filter(None, os.environ.get("LOOP_SPEC_PLUGIN_DIRS", "").split(os.pathsep)):
+            manifest = Path(plugin_dir) / ".claude-plugin" / "plugin.json"
+            name = json.loads(manifest.read_text()).get("name") if manifest.is_file() else Path(plugin_dir).name
+            if name == plugin:
+                candidates.append(Path(plugin_dir) / "skills" / skill / "SKILL.md")
         # The cache keeps every version a plugin was ever installed at, so the installed
         # one comes from Claude Code's own registry (this project's install first); the
         # cache glob, newest first, is only for a host without that registry.

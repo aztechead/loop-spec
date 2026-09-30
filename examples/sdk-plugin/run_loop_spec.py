@@ -25,7 +25,7 @@ Three modules:
 Usage:
     python3 run_loop_spec.py --project-root DIR "<request>"
         [--entry cycle|micro|debug|revise] [--auto] [--model sonnet]
-        [--phase-model PLAN=opus ...] [--spec-approval ask|policy]
+        [--phase-model PLAN=opus ...] [--spec-approval ask|policy] [--plugin DIR ...]
         [--resume SESSION_ID] [--max-budget-usd N]
 
 Auth is the SDK's own: a Claude subscription login (`claude` then `/login`), or
@@ -44,6 +44,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Awaitable, Callable
@@ -256,7 +257,9 @@ def render(message: Message) -> None:
 def session_env(args: argparse.Namespace) -> dict[str, str]:
     """The loop-spec settings this run passes to the session's environment, which the
     lead's `loop-spec` commands inherit: a model per phase (LOOP_SPEC_PHASE_MODEL_<PHASE>)
-    and how SPEC's requirements approval is answered (LOOP_SPEC_SPEC_APPROVAL)."""
+    and how SPEC's requirements approval is answered (LOOP_SPEC_SPEC_APPROVAL). Each
+    --plugin directory is named in LOOP_SPEC_PLUGIN_DIRS, since a plugin loaded by path
+    is in no registry the program could find its `plugin:skill` names in."""
     env = {}
     for pair in args.phase_model or []:
         phase, sep, model = pair.partition("=")
@@ -265,13 +268,17 @@ def session_env(args: argparse.Namespace) -> dict[str, str]:
         env["LOOP_SPEC_PHASE_MODEL_" + phase.upper()] = model
     if args.spec_approval:
         env["LOOP_SPEC_SPEC_APPROVAL"] = args.spec_approval
+    if args.plugin:
+        env["LOOP_SPEC_PLUGIN_DIRS"] = os.pathsep.join(str(Path(p).resolve()) for p in args.plugin)
     return env
 
 
 async def run(args: argparse.Namespace) -> int:
     options = ClaudeAgentOptions(
         cwd=str(args.project_root),
-        plugins=[{"type": "local", "path": str(PLUGIN_ROOT)}],
+        # loop-spec, and each --plugin: a skill the project names in roles.<role>.with
+        # or deliver.after must be loaded in this session too.
+        plugins=[{"type": "local", "path": str(p)} for p in [PLUGIN_ROOT, *(args.plugin or [])]],
         # Project settings and CLAUDE.md only: the operator's personal
         # ~/.claude settings and hooks stay out of an unattended run.
         setting_sources=["project"],
@@ -327,7 +334,7 @@ async def run(args: argparse.Namespace) -> int:
         err(f"no terminal loop-spec result in this session; resume it with --resume {session_id}")
         return 2
     result = json.loads(Path(watch.result_path).read_text())
-    err(json.dumps({k: result.get(k) for k in ("status", "result", "reason", "prUrl", "phaseReached")}, indent=2))
+    err(json.dumps({k: result.get(k) for k in ("status", "result", "reason", "prUrl", "phaseReached", "after")}, indent=2))
     return 0 if result.get("status") == "completed" else 1
 
 
@@ -343,12 +350,17 @@ def main() -> int:
                          "e.g. --phase-model spec=opus --phase-model plan=opus; repeatable")
     ap.add_argument("--spec-approval", choices=["ask", "policy"],
                     help="policy approves SPEC's requirements without asking; every other question is still asked")
+    ap.add_argument("--plugin", action="append", type=Path, metavar="DIR",
+                    help="another plugin to load in the session, for a skill the project's "
+                         ".loop-spec/config.json names (roles.<role>.with, deliver.after); repeatable")
     ap.add_argument("--resume", help="continue an earlier session by its id")
     ap.add_argument("--max-budget-usd", type=float)
     args = ap.parse_args()
     if not args.request and not args.resume:
         ap.error("pass a request, or --resume SESSION_ID")
     args.project_root = args.project_root.resolve()
+    # The session runs in --project-root, so a relative --plugin would resolve there.
+    args.plugin = [p.resolve() for p in args.plugin or []]
     try:
         session_env(args)
     except ValueError as exc:

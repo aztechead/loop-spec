@@ -36,6 +36,12 @@ session with agent teams.
   is the place for a skill that pushes, comments, resolves review threads or loops on
   a PR. Inside the run, such a skill would stop DELIVER, which requires the PR head to
   be the verified commit.
+- `LOOP_SPEC_PLUGIN_DIRS`: plugin directories a `plugin:skill` name resolves in first,
+  for a plugin a session loads by path (`claude --plugin-dir`, the Agent SDK's local
+  plugins), which is in no registry.
+- `examples/sdk-plugin`: `--plugin DIR` loads another plugin and names it in
+  `LOOP_SPEC_PLUGIN_DIRS`, the final summary prints `after`, and `pr-helper/` is an
+  example plugin with one skill for `roles.<role>.with` and one for `deliver.after`.
 - README: how to use your own skill or plugin in a phase, with the role each phase
   runs.
 - llms.txt: the phase-to-role binding, every config key and environment control from

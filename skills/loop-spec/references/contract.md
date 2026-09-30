@@ -315,6 +315,7 @@ Environment variables, precedence over config where both apply:
 | Variable | Effect |
 |---|---|
 | `LOOP_SPEC_HOME` | state home root; default `~/.loop-spec` |
+| `LOOP_SPEC_PLUGIN_DIRS` | plugin directories, separated by `os.pathsep`, that a `plugin:skill` name resolves in before Claude Code's installed-plugin registry (`roles._bound_skill_candidates`); a directory matches when its `.claude-plugin/plugin.json` `name` (else its own name) is the plugin. For a plugin a session loads by path (`claude --plugin-dir`, the Agent SDK's `plugins=[{"type": "local", ...}]`), which no registry lists |
 | `LOOP_SPEC_PYTHON` | interpreter the `loop-spec` launcher execs; default `python3`, must resolve to >= 3.11 |
 | `LOOP_SPEC_PHASE_<NAME>` | overrides `phases.<phase>`; `<NAME>` is the phase name uppercased (`EXECUTE`, `DELIVER`, ...) |
 | `LOOP_SPEC_ROLE_<ROLE>` | overrides `roles.<role>`; `<ROLE>` is the role name uppercased with hyphens kept as-is (`SPEC-WRITER`, `CODE-REVIEWER`) |
