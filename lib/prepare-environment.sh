@@ -14,6 +14,21 @@ reuse_from=""
 subcommand="${1:-}"
 shift || true
 
+# The dependency manifests the preparation key hashes, in hash order. `manifests`
+# prints them so verification-baseline.sh can tell a key change the candidate's own
+# diff explains from one it does not.
+manifest_names=(
+  package.json package-lock.json npm-shrinkwrap.json pnpm-lock.yaml yarn.lock
+  pyproject.toml poetry.lock uv.lock requirements.txt requirements.lock
+  Cargo.toml Cargo.lock go.mod go.sum Gemfile Gemfile.lock
+  composer.json composer.lock project.clj deps.edn mix.exs
+  pom.xml build.gradle build.gradle.kts
+)
+if [[ "$subcommand" == "manifests" ]]; then
+  printf '%s\n' "${manifest_names[@]}"
+  exit 0
+fi
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) root="${2:-}"; shift 2 || die2 "$1 needs a value" ;;
@@ -24,7 +39,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "$subcommand" == "resolve" || "$subcommand" == "run" ]] \
-  || die2 "usage: prepare-environment.sh {resolve|run} --root ROOT [--command COMMAND] [--reuse-from ROOT]"
+  || die2 "usage: prepare-environment.sh {resolve|run} --root ROOT [--command COMMAND] [--reuse-from ROOT] | manifests"
 [[ -n "$root" && -d "$root" ]] || die2 "--root must name a directory"
 root="$(cd "$root" && pwd -P)"
 git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
@@ -227,19 +242,14 @@ command_dirs() {
 }
 
 preparation_key() {
-  PREPARE_ROOT="$root" PREPARE_COMMAND="$command" PREPARE_DIRS="$(command_dirs)" python3 - <<'PY'
+  PREPARE_ROOT="$root" PREPARE_COMMAND="$command" PREPARE_DIRS="$(command_dirs)" \
+    PREPARE_NAMES="${manifest_names[*]}" python3 - <<'PY'
 import hashlib
 import os
 
 root = os.environ["PREPARE_ROOT"]
 command = os.environ["PREPARE_COMMAND"]
-names = (
-    "package.json", "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock",
-    "pyproject.toml", "poetry.lock", "uv.lock", "requirements.txt", "requirements.lock",
-    "Cargo.toml", "Cargo.lock", "go.mod", "go.sum", "Gemfile", "Gemfile.lock",
-    "composer.json", "composer.lock", "project.clj", "deps.edn", "mix.exs",
-    "pom.xml", "build.gradle", "build.gradle.kts",
-)
+names = os.environ["PREPARE_NAMES"].split()
 # The root keeps its bare manifest names so an unchanged repository keeps its
 # existing key; a prepared subdirectory contributes its manifests under the
 # relative path, which is what makes a workspace lockfile edit invalidate the

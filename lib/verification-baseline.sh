@@ -213,7 +213,14 @@ else
   baseline="$(jq -c . "$baseline_file" 2>/dev/null)" || infra "baseline JSON is invalid"
   [[ "$(jq -r '.schemaVersion // 0' <<<"$baseline")" == "1" ]] || infra "unsupported baseline schema"
   [[ "$(jq -r '.baseSha // ""' <<<"$baseline")" == "$base_sha" ]] || infra "baseline baseSha does not match"
-  [[ "$(jq -r '.prepareKey // ""' <<<"$baseline")" == "$prepare_key" ]] || infra "baseline prepareKey does not match"
+  if [[ "$(jq -r '.prepareKey // ""' <<<"$baseline")" != "$prepare_key" ]]; then
+    # A candidate whose own diff from baseSha changes a manifest the key hashes (a
+    # dependency bump) changes the key by design; its failures are still compared by
+    # identity below. A mismatch the diff does not explain is still refused.
+    git -C "$root" diff --no-renames --name-only "$base_sha" HEAD 2>/dev/null | sed 's|.*/||' \
+      | grep -Fxf <(bash "$script_dir/prepare-environment.sh" manifests) >/dev/null \
+      || infra "baseline prepareKey does not match"
+  fi
   jq -e --arg test "$test_cmd" --arg lint "$lint_cmd" --arg typecheck "$typecheck_cmd" \
     '.commands.test.command == $test and .commands.lint.command == $lint and .commands.typecheck.command == $typecheck' \
     >/dev/null 2>&1 <<<"$baseline" || infra "baseline command binding does not match"

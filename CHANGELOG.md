@@ -4,6 +4,20 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.11.5] - 2026-09-30
+
+### Fixed
+
+- VERIFY could not accept a dependency bump on a base that already fails a test. The
+  preparation key hashes the dependency manifests, so a candidate that changes
+  `uv.lock` (or any other hashed manifest) never matches the key recorded at `baseSha`,
+  and `lib/verification-baseline.sh compare` refused it as `infra_error` before
+  comparing failures. It now accepts a key mismatch when the candidate's own diff from
+  `baseSha` changes one of those manifests, and still compares failures by identity,
+  so a bump that adds a failure is a regression. A mismatch the diff does not explain
+  is still refused. `lib/prepare-environment.sh manifests` prints the hashed list, so
+  the key and the check read one definition.
+
 ## [6.11.4] - 2026-09-29
 
 ### Fixed
