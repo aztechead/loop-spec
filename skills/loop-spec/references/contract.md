@@ -343,8 +343,11 @@ third value raises (bound phase implementations are not built in this release). 
 `skills/loop-spec/roles/<name>/`) or a bound skill name, resolved by
 `roles._bound_skill_candidates` against the project's `.claude/skills/<name>/`,
 the user's `~/.claude/skills/<name>/` or `~/.agents/skills/<name>/`, or (for a
-`plugin:skill` binding) an installed plugin's cache. A bound role supplies its own
-prompt body only. `roles.load_role` still validates the result against the
+`plugin:skill` binding) the plugin's `installPath` in Claude Code's
+`~/.claude/plugins/installed_plugins.json` (this project's install first), then its
+cache, newest first. A bound role supplies its own prompt body only, with
+`${CLAUDE_SKILL_DIR}` and, for a plugin skill, `${CLAUDE_PLUGIN_ROOT}` resolved to
+the skill's own paths. `roles.load_role` still validates the result against the
 *default* role's schema, and `roles.role_contract` appends the default role's
 `contract.md` whatever the source; every role's prompt, bound or not, also opens its
 method with `roles/principles.md` (`roles.principles`). The eleven roles that ship

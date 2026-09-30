@@ -4,7 +4,7 @@ For a developer installing loop-spec in Claude Code, or embedding it in a Python
 app on the Claude Agent SDK. Use this guide to install it, run an entry, and read
 a result.
 
-Current version: 7.7.5
+Current version: 7.7.6
 
 ## Contents
 
@@ -171,6 +171,42 @@ environment variables take precedence over it.
 | `spec.approval` (config), `LOOP_SPEC_SPEC_APPROVAL` | `policy` approves SPEC's requirements without asking, as 6.x's default `auto` style did; the interview and every other question are still asked. Default `ask` |
 | `LOOP_SPEC_REWIND_BUDGET` | how many backward transitions one run may spend; default 2 |
 | `LOOP_SPEC_STEP_RETRIES` | retries before a rejected product asks you to fix and re-enter or stop; default 3 |
+
+### Use your own skill or plugin in a phase
+
+Use this when one phase should follow your method instead of the bundled one. Each
+phase's method is a role, so you bind the role:
+
+| Phase | Role | Runs as |
+|---|---|---|
+| SPEC | `spec-writer` | lead |
+| PLAN | `planner`, `plan-critic` | lead, worker |
+| EXECUTE | `implementer`, `code-reviewer` | worker |
+| VERIFY | `verifier`, `code-reviewer` | worker |
+| ITERATE | `iterate-judge` | worker |
+| debug | `debugger` | lead |
+| revise | `reviser` | lead |
+| route | `router` | worker |
+
+DELIVER has no role. The program performs it, so you can only bind it to
+`"external"` under `phases`.
+
+1. Write the skill's body as that role's method. The result must match the role's
+   `schema.json` under `skills/loop-spec/roles/<role>/`.
+2. Bind it in `.loop-spec/config.json`, for example
+   `{"roles": {"reviser": "my-plugin:revise-method"}}`. A plain name finds
+   `.claude/skills/<name>/`, `~/.claude/skills/<name>/` or `~/.agents/skills/<name>/`.
+   `plugin:skill` finds the skill in the installed version of that plugin.
+
+The program inlines the skill's body into the step's prompt. It resolves
+`${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` in that body, so the body can still
+reach its bundled files. It keeps the bundled role's first principles, its
+`contract.md` and its schema, whatever the bound skill says. A lead step runs in your
+session, so an installed plugin's other tools (MCP servers, agents) are also available
+to it.
+
+A binding applies wherever the role runs, so `code-reviewer` is bound for EXECUTE and
+VERIFY together.
 
 ### Run your own reviewer during VERIFY
 

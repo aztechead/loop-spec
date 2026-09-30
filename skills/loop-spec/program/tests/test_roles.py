@@ -72,6 +72,22 @@ class LoadBoundRoleTests(unittest.TestCase):
             default_role = load_role("spec-writer", Path(project_root))
             self.assertEqual(role.schema, default_role.schema)
 
+    def test_plugin_binding_reads_the_installed_version_and_resolves_its_placeholders(self):
+        with tempfile.TemporaryDirectory() as fake_home, tempfile.TemporaryDirectory() as project_root:
+            cache = Path(fake_home, ".claude", "plugins", "cache", "mkt", "myplug")
+            for version in ("aaa-stale", "zzz-installed"):
+                (cache / version / "skills" / "rev").mkdir(parents=True)
+                (cache / version / "skills" / "rev" / "SKILL.md").write_text(
+                    f"{version} ${{CLAUDE_SKILL_DIR}}/ref.md ${{CLAUDE_PLUGIN_ROOT}}/bin\n")
+            installed = cache / "zzz-installed"
+            Path(fake_home, ".claude", "plugins", "installed_plugins.json").write_text(json.dumps(
+                {"version": 2, "plugins": {"myplug@mkt": [{"scope": "user", "installPath": str(installed)}]}}))
+
+            with patch("pathlib.Path.home", return_value=Path(fake_home)):
+                role = load_role("reviser", Path(project_root), binding="myplug:rev")
+
+            self.assertEqual(role.body.strip(), f"zzz-installed {installed}/skills/rev/ref.md {installed}/bin")
+
     def test_missing_binding_raises_naming_searched_paths(self):
         with tempfile.TemporaryDirectory() as fake_home, tempfile.TemporaryDirectory() as project_root:
             with patch("pathlib.Path.home", return_value=Path(fake_home)):

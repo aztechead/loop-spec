@@ -40,10 +40,61 @@ default `model` and `effort` and, for a judgment role, the `evidence` family tha
 host attestation. The eleven roles are `router`, `spec-writer`, `planner`,
 `plan-critic`, `implementer`, `code-reviewer`, `verifier`, `iterate-judge`, `debugger`,
 `reviser`, and `direct`. By default the judgment workers run on Opus and the
-implementer and verifier on Sonnet; lead roles run at the session's own model. A
-project or user may bind a different skill in a role's place (`.loop-spec/config.json`
-or `LOOP_SPEC_ROLE_<ROLE>`); the result is still checked against the bundled role's
-schema.
+implementer and verifier on Sonnet; lead roles run at the session's own model.
+
+## Use your own skill or plugin in a phase
+
+A phase's method is its role, so binding the role changes the method. The phase's
+product, schema and postconditions do not change. Full how-to:
+[README.md](README.md#use-your-own-skill-or-plugin-in-a-phase).
+
+| Phase | Role (lead or worker) |
+|---|---|
+| SPEC | `spec-writer` (lead) |
+| PLAN | `planner` (lead), `plan-critic` (worker) |
+| EXECUTE | `implementer`, `code-reviewer` (workers) |
+| VERIFY | `verifier`, `code-reviewer` (workers) |
+| ITERATE | `iterate-judge` (worker) |
+| debug / revise | `debugger` / `reviser` (lead) |
+| route | `router` (worker) |
+| DELIVER | no role; the program performs it. Only `phases.deliver: "external"` replaces it |
+
+- Bind in `.loop-spec/config.json`, for example `{"roles": {"reviser": "my-plugin:revise-method"}}`, or with `LOOP_SPEC_ROLE_<ROLE>` (hyphens kept: `LOOP_SPEC_ROLE_CODE-REVIEWER`).
+- A plain name is looked up in `.claude/skills/<name>/`, then `~/.claude/skills/<name>/`, then `~/.agents/skills/<name>/`. `plugin:skill` is looked up in the plugin's installed version (`~/.claude/plugins/installed_plugins.json`), then in its cache.
+- Only the skill's body is used. The program resolves `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` in it, still prepends `roles/principles.md`, appends the bundled role's `contract.md`, and validates the result against the bundled `schema.json`.
+- A binding applies in every phase where the role runs, so binding `code-reviewer` covers both EXECUTE and VERIFY.
+- `phases.<phase>: "external"` hands the whole phase to a person or tool, which submits the product.
+
+## Controls
+
+Every control is listed in [contract.md](skills/loop-spec/references/contract.md#configuration-and-environment).
+Environment variables override `.loop-spec/config.json`. Any other name is not a control.
+
+Config keys (`.loop-spec/config.json`):
+
+- `phases.<phase>`: `"default"` or `"external"`.
+- `roles.<role>`: the skill bound in the role's place, as a string, or `{"binding", "model", "effort"}`. `effort` is one of `low`, `medium`, `high`, `xhigh`, `max`. An explicit `null` inherits the dispatcher's own model or effort.
+- `spec.approval`: `"ask"` (the default) or `"policy"` (approve the requirements without asking).
+- `deliver.base`: the PR's target branch. `deliver.readiness`: `"checks"` waits on required PR checks. `deliver.acceptRemotePaths`: path globs where a bot's commits are accepted. `deliver.escalatedPartialDraft`: `true` makes an escalated ITERATE open a draft PR.
+- `evidence.review.accept`, `evidence.judgment.accept`: `"unattested"` accepts an unattested review, or plan-critic and iterate-judge result, and records it in `weakenedAssurance`.
+
+Environment:
+
+- `LOOP_SPEC_HOME` (state root, default `~/.loop-spec`) and `LOOP_SPEC_PYTHON` (the launcher's interpreter, >= 3.11).
+- `LOOP_SPEC_PHASE_<PHASE>` and `LOOP_SPEC_ROLE_<ROLE>` override the phase and role bindings.
+- `LOOP_SPEC_MODEL_<ROLE>`, `LOOP_SPEC_EFFORT_<ROLE>` (hyphens become underscores: `CODE_REVIEWER`) and `LOOP_SPEC_PHASE_MODEL_<PHASE>` set a model or effort. The order is role env, then config `roles.<role>`, then phase model, then the role's frontmatter default.
+- `LOOP_SPEC_SPEC_APPROVAL`: `ask` or `policy`.
+- `LOOP_SPEC_STEP_RETRIES` (default 3), `LOOP_SPEC_REWIND_BUDGET` (default 2), `LOOP_SPEC_EXECUTE_WIDTH` (tasks per wave, default 3).
+- `LOOP_SPEC_CONSOLE_EVENTS=0` silences progress lines. `LOOP_SPEC_CONSOLE_STREAM`: `stdout` or `stderr`.
+- `LOOP_SPEC_DUP_MIN_LINES` and `LOOP_SPEC_INDIRECTION_MAX_BODY` are thresholds for the bundled probes.
+- `CLAUDE_CODE_SESSION_ID` is set by Claude Code, not by you. When present, a dispatched step must be attested from the host's transcript.
+
+## Dispatching a role step
+
+Follow [runner.md](skills/loop-spec/references/runner.md#role):
+
+- Call `Agent` with `description` set to `stepAttemptId`, `subagent_type` set to the marker's `subagentType`, and the exact dispatch text as the prompt. Then submit with `--dispatch <stepAttemptId>`.
+- Pass no `name`. In a session with agent teams, a named `Agent` becomes an in-process teammate. Its `.meta.json` records the name as the agent type, so the step can never attest.
 
 ## Design docs
 

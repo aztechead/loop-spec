@@ -4,6 +4,33 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.7.6] - 2026-09-30
+
+A skill or plugin bound to a phase's role now loads, and role steps attest in a
+session with agent teams.
+
+### Fixed
+
+- A role step dispatched with a `name` in a session with agent teams ran as an
+  in-process teammate. The teammate's `.meta.json` records the name as its
+  `agentType`, so every plan-critic, code-reviewer and iterate-judge step came back
+  unattested, and so did every retry. `runner.md` now dispatches with `description`
+  set to the step attempt id and no `name`. `attest.find_transcripts` matches the
+  sidecar's `description`, and a teammate sidecar is refused with that instruction.
+- A `plugin:skill` role binding took the first version in the plugin cache by
+  sorted directory name, not the installed version. It now reads the plugin's
+  `installPath` from `~/.claude/plugins/installed_plugins.json`.
+- A bound skill's `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` reached the
+  worker unresolved, because the harness substitutes them only in a skill that it
+  loads itself. `roles.load_role` resolves them.
+
+### Added
+
+- README: how to use your own skill or plugin in a phase, with the role each phase
+  runs.
+- llms.txt: the phase-to-role binding, every config key and environment control from
+  `contract.md`, and the role-step dispatch rule (`description`, no `name`).
+
 ## [7.7.5] - 2026-09-29
 
 Per-phase models, for adopting loop-spec through the Claude Agent SDK.

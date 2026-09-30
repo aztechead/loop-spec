@@ -52,8 +52,19 @@ def _bound_skill_candidates(project_root: Path, binding: str) -> list[Path]:
     ]
     if ":" in binding:
         plugin, skill = binding.split(":", 1)
+        # The cache keeps every version a plugin was ever installed at, so the installed
+        # one comes from Claude Code's own registry (this project's install first); the
+        # cache glob, newest first, is only for a host without that registry.
+        registry = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
+        installs = []
+        if registry.is_file():
+            for key, entries in (json.loads(registry.read_text()).get("plugins") or {}).items():
+                if key.split("@", 1)[0] == plugin:
+                    installs.extend(e for e in entries if e.get("installPath"))
+        installs.sort(key=lambda e: e.get("projectPath") != str(project_root))
+        candidates.extend(Path(e["installPath"]) / "skills" / skill / "SKILL.md" for e in installs)
         pattern = str(Path.home() / ".claude" / "plugins" / "cache" / "*" / plugin / "*" / "skills" / skill / "SKILL.md")
-        candidates.extend(Path(p) for p in sorted(glob.glob(pattern)))
+        candidates.extend(sorted((Path(p) for p in glob.glob(pattern)), key=lambda c: c.stat().st_mtime, reverse=True))
     return candidates
 
 
@@ -76,7 +87,11 @@ def load_role(name: str, project_root: Path, binding: str | None = None) -> Role
             repair="checked: " + "; ".join(str(c) for c in candidates),
         )
 
-    body = _strip_frontmatter(found.read_text())
+    # The harness substitutes these placeholders only in a skill it loads itself; the
+    # program inlines the body into a prompt, so it resolves them for the bound skill.
+    body = _strip_frontmatter(found.read_text()).replace("${CLAUDE_SKILL_DIR}", str(found.parent))
+    if found.parent.parent.name == "skills":
+        body = body.replace("${CLAUDE_PLUGIN_ROOT}", str(found.parent.parent.parent))
     # A borrowed skill supplies its own method, never its own schema (roadmap 8): the
     # program still validates the product against the DEFAULT role's shape, so a bound
     # skill cannot smuggle in an incompatible contract.

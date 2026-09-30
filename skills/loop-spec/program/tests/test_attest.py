@@ -48,7 +48,9 @@ class AttestorTests(unittest.TestCase):
         # F5: the host records no applied effort; the sidecar's agentType is the evidence.
         step = {**_STEP, "effort": "low"}
         for meta, expected_ok in ((None, False), ({"name": "worker-1", "agentType": "general-purpose"}, False),
-                                  ({"name": "worker-1", "agentType": "loop-spec:worker-low"}, True)):
+                                  ({"name": "worker-1", "agentType": "worker-1", "taskKind": "in_process_teammate"}, False),
+                                  ({"name": "worker-1", "agentType": "loop-spec:worker-low"}, True),
+                                  ({"description": "worker-1", "agentType": "loop-spec:worker-low"}, True)):
             with self.subTest(meta=meta), tempfile.TemporaryDirectory() as tmp:
                 claude_home = Path(tmp)
                 subagents = self._subagents_dir(claude_home)
@@ -58,7 +60,7 @@ class AttestorTests(unittest.TestCase):
                 ok, reason = self._attestor(claude_home).attest(step, _RESULT_DIGEST, "worker-1")
                 self.assertEqual(ok, expected_ok, reason)
                 if not expected_ok:
-                    self.assertIn("runs as loop-spec:worker-low for effort low", reason)
+                    self.assertIn("loop-spec:worker-low", reason)
 
     def _attest_records(self, records: list[dict]) -> tuple[bool, str]:
         with tempfile.TemporaryDirectory() as tmp:

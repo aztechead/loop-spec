@@ -51,7 +51,7 @@ LOOP_SPEC_NEXT {"kind": ..., "path": ..., "slug": ..., "program": ..., "stateHom
 | `slug` | Pass as `--slug <slug>` on every `submit` and `answer`. Both commands require it, and this marker is the only place a stub learns it. |
 | `program`, `stateHome`, `projectRoot` | Fill `<program>`, `<stateHome>` and `<projectRoot>` in every command below. |
 | `stepKind` | On a `step`: `lead`, `role` or `external`. It is the same `kind` as in `step.json`. |
-| `stepAttemptId` | On a `step`: the step's id, for `--step`, and for a role step also the worker's name and `--dispatch`. |
+| `stepAttemptId` | On a `step`: the step's id, for `--step`, and for a role step also the worker's `description` and `--dispatch`. |
 | `dispatchPath` | On a role step with file transport: the file whose exact text is the worker's prompt. Absent otherwise. |
 | `subagentType` | On a role step: `loop-spec:worker-<level>` for a step with an effort, else `general-purpose`. Every role step has an effort unless the project sets it to `null`. |
 | `role` | On a `step`: the role name, or null. |
@@ -80,7 +80,7 @@ Submit a lead or external step:
 "<program>" submit --project-root "<projectRoot>" --state-home "<stateHome>" --slug <slug from LOOP_SPEC_NEXT> --step <stepAttemptId>
 ```
 
-Submit a role step. `--dispatch` is the name you gave the `Agent`:
+Submit a role step. `--dispatch` is the description you gave the `Agent`:
 
 ```
 "<program>" submit --project-root "<projectRoot>" --state-home "<stateHome>" --slug <slug from LOOP_SPEC_NEXT> --step <stepAttemptId> --dispatch <stepAttemptId>
@@ -109,7 +109,9 @@ program reads it from there.
 ### `role`
 
 1. Dispatch a fresh worker with the `Agent` tool:
-   - name: the step attempt id (`stepAttemptId`);
+   - description: the step attempt id (`stepAttemptId`). Pass no `name`: a named
+     `Agent` can start as an in-process teammate, whose agent type the host does not
+     record, so the step can never attest;
    - prompt: the exact text of the file at the marker's `dispatchPath` (the step's
      `dispatchPrompt`). With no `dispatchPath`, the `prompt` in `step.json`, verbatim;
    - subagent_type: the marker's `subagentType`. The program checks the agent type
@@ -124,7 +126,7 @@ with the result digest. Any rewording, prefix or summary makes the step `unattes
 and an unattested review does not count.
 
 If `submit` answers that the step is unattested and names a new dispatch name,
-dispatch a fresh worker under that exact name. Use the same `subagent_type` and the
+dispatch a fresh worker with that exact name as its description. Use the same `subagent_type` and the
 same dispatch text verbatim, then submit again with that `--dispatch`.
 
 ### `external`
