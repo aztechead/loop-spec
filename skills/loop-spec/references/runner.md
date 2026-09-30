@@ -121,8 +121,9 @@ program reads it from there.
 3. Run the role `submit` command.
 
 The program checks three things about the worker's transcript: it opens with exactly
-the dispatched text, the worker read the whole instruction file it names, and it ends
-with the result digest. Any rewording, prefix or summary makes the step `unattested`,
+the dispatched text, the worker read the whole instruction file it names, and its closing
+report (its last message, or its `SubagentHandback` message in auto mode) ends with the
+result digest. Any rewording, prefix or summary makes the step `unattested`,
 and an unattested review does not count.
 
 If `submit` answers that the step is unattested and names a new dispatch name,

@@ -66,6 +66,43 @@ def _message_text(record: dict) -> str:
     return ""
 
 
+# Since Claude Code 2.1.271, a subagent in auto mode reports through this tool: its
+# last assistant record is a `SubagentHandback({message})` call with no text, the
+# call's own tool_result follows, and only `message` reaches the caller.
+HANDBACK_TOOL = "SubagentHandback"
+
+
+def closing_report(records: list[dict]) -> str | None:
+    """The worker's closing report, from its final message (every assistant record
+    with the last one's `message.id`: the host writes each parallel tool call as its
+    own record): the last `SubagentHandback` message in it when it made one, else the
+    last record's text. The host appends its own records after it (attachments such
+    as a prompt snapshot, the results of that message's own tool calls); those are
+    skipped. Anything else that reached the worker after its report (a user message,
+    another call's result) means it was not the last word, so there is none."""
+    index = next((i for i in range(len(records) - 1, -1, -1) if records[i].get("type") == "assistant"), None)
+    if index is None:
+        return None
+    message_id = records[index].get("message", {}).get("id")
+    final = [r for r in records[:index + 1] if r.get("type") == "assistant"
+             and message_id is not None and r.get("message", {}).get("id") == message_id] or [records[index]]
+    calls = [b for r in final for b in (r.get("message", {}).get("content") or [])
+             if isinstance(b, dict) and b.get("type") == "tool_use"]
+    call_ids = {b.get("id") for b in calls}
+    for record in records[index + 1:]:
+        if record.get("type") != "user":
+            continue  # attachment, system, progress: the host's own bookkeeping
+        blocks = record.get("message", {}).get("content")
+        if not (isinstance(blocks, list) and blocks
+                and all(b.get("type") == "tool_result" and b.get("tool_use_id") in call_ids for b in blocks)):
+            return None
+    handbacks = [b for b in calls if b.get("name") == HANDBACK_TOOL]
+    if handbacks:
+        message = (handbacks[-1].get("input") or {}).get("message")
+        return message if isinstance(message, str) else None
+    return _message_text(records[index])
+
+
 def _rstripped(text: str) -> str:
     # Trailing-whitespace-per-line only: a transcript is free to have trimmed a
     # trailing space or normalized line endings, never to have paraphrased,
@@ -204,11 +241,12 @@ def _common_checks(records: list[dict], step: dict, result_digest: str, ok_reaso
     if records[0].get("timestamp", "") < step["issuedAt"]:
         return False, "transcript predates the step"
 
-    last = records[-1]
-    closing_text = _message_text(last).rstrip() if last.get("type") == "assistant" else ""
-    if not closing_text.endswith(f"LOOP_SPEC_RESULT_DIGEST {result_digest}"):
+    closing = closing_report(records)
+    if closing is None:
+        return False, "the transcript has no closing report: no assistant record, or input reached the worker after it"
+    if not closing.rstrip().endswith(f"LOOP_SPEC_RESULT_DIGEST {result_digest}"):
         # A digest appearing earlier in the transcript (the worker's own hash
-        # command output) does not count; only the closing record's ending does.
+        # command output) does not count; only the closing report's ending does.
         return False, "final message does not end with the result digest"
 
     return True, ok_reason

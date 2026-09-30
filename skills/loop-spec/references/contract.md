@@ -141,7 +141,12 @@ fail attestation on every dispatch; recover with a fresh run.
 
 A worker writes its result to `resultPath` (write to a temp file in the same
 directory and rename) and, for a transcript-attested dispatch, ends its final
-message with `LOOP_SPEC_RESULT_DIGEST <sha256:hex of the result file bytes>`.
+message with `LOOP_SPEC_RESULT_DIGEST <sha256:hex of the result file bytes>`. Its
+final message is its last assistant record (`attest.closing_report`): the `message` of
+its `SubagentHandback` call when it made one (Claude Code's auto mode, since 2.1.271,
+delivers only that call's message), else that record's text. Host records after it
+(attachments, the hand-back's own tool_result) are skipped; any other user record
+after it fails attestation.
 `resultPath` (`paths.ensure_results_dir`) is under the project's
 `.loop-spec/results/<slug>/`, never under the state home, because a live model's
 default permission mode refuses writes under `~/.claude` (LF-27; see "Model-written

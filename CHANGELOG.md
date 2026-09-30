@@ -4,6 +4,31 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.7.7] - 2026-09-30
+
+Role steps attest in Claude Code's auto mode.
+
+### Fixed
+
+- Every role step (plan-critic, code-reviewer, iterate-judge, implementer, verifier,
+  router) was refused with "final message does not end with the result digest" when
+  its worker ran in auto mode. Since Claude Code 2.1.271, a subagent in auto mode
+  reports through a `SubagentHandback({message})` call: its last assistant record is
+  that call with no text, the call's tool_result follows, and only `message` reaches
+  the caller. Attestation read only the transcript's very last record as text, which
+  also failed when the host appended its own `attachment` records (such as a prompt
+  snapshot) after a plain-text report. `attest.closing_report` now reads the worker's
+  last assistant record: the hand-back `message` when there is one, else its text. It
+  skips the host's records after it, and still refuses a transcript in which anything
+  else reached the worker after its report. The final message is every assistant
+  record sharing the last one's `message.id`, because the host writes each parallel
+  tool call as its own record: a hand-back sent beside a hash command is read as the
+  report, and the hash command's result is not mistaken for later input.
+- The step trailer tells the worker that its `SubagentHandback` message is its final
+  message, and that the call ends its run, so it computes the digest first and makes
+  the hand-back its last call on its own. One auto-mode implementer had handed back
+  `"placeholder"` in parallel with the command that computed its digest (`h777-f`).
+
 ## [7.7.6] - 2026-09-30
 
 Your own skills and plugins in a run: `roles.<role>.with` adds a skill to a phase's

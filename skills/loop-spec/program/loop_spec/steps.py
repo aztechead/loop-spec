@@ -125,7 +125,7 @@ step: {step_id}
 inputs: {inputs_digest}
 phase: {phase}
 result: {result_path}
-When done, write your JSON result to the result path above (write to a temporary file in the same directory and rename). The result file carries your findings, so keep your final message to a sentence or two, then end it with the line `LOOP_SPEC_RESULT_DIGEST <sha256:hex of the result file bytes>`."""
+When done, write your JSON result to the result path above (write to a temporary file in the same directory and rename). The result file carries your findings, so keep your final message (your SubagentHandback message, when you report through that tool: it ends your run, so compute the digest first, then call it alone as your last call) to a sentence or two, then end it with the line `LOOP_SPEC_RESULT_DIGEST <sha256:hex of the result file bytes>`."""
 
 
 def issue(store, paths, *, phase: str, attempt_id: str, kind: str, role: str | None, cwd: Path,
