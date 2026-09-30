@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "required": ["status", "summary"],
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["resolved", "unresolvable"]
+    },
+    "summary": {
+      "type": "string"
+    }
+  }
+}

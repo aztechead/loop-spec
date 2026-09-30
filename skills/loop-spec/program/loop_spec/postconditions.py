@@ -103,6 +103,7 @@ ROUTES: dict[str, dict[str, dict]] = {
         "delivered": {"requires": ["D1", "D2", "D3", "D4", "D6", "D7", "D8"], "next": (None, "terminal"), "backward": False},
         "partially delivered": {"requires": ["D1", "D2", "D4", "D5", "D7", "D8"], "next": (None, "terminal"), "backward": False},
         "delivery blocked": {"requires": ["D4"], "next": ("deliver", "remediation"), "backward": False, "pause": True},
+        "base moved": {"requires": ["D4", "D9", "T1"], "next": ("execute", "remediation"), "backward": True},
     },
     "debug": {
         "reproduced": {"requires": ["B1", "B2", "S1", "S2", "S3", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"], "next": ("execute", "fresh"), "backward": False},
@@ -1202,6 +1203,31 @@ class Boundary:
             for name in required:
                 if seen[name]["state"] != "delivered":
                     return f"repo {name}: touched by EXECUTE but not delivered"
+        return None
+
+    def _d9(self) -> str | None:
+        # Nothing is published on a base move, so every row is either a moved repo or
+        # skipped; a moved row's conflicts are recomputed now against the EXECUTE head.
+        heads = self.store.state["products"]["execute"]["product"].get("heads", {})
+        moved = [e for e in self.product["repos"] if e["state"] == "base moved"]
+        if not moved:
+            return "base moved names no repo whose base moved"
+        for entry in self.product["repos"]:
+            if entry["state"] not in ("base moved", "skipped") or entry.get("pr") or entry.get("deliveredSha"):
+                return f"repo {entry['repo']}: a base-moved product publishes nothing"
+        for entry in moved:
+            repo_info = self._repo_entries().get(entry["repo"])
+            head = heads.get(entry["repo"])
+            if repo_info is None or head is None:
+                return f"repo {entry['repo']}: not a repo EXECUTE touched"
+            path = Path(repo_info["path"])
+            new_base = entry.get("newBase") or ""
+            if not repo_module.is_ancestor(path, repo_info["baseSha"], new_base) or \
+                    not repo_module.is_ancestor(path, new_base, f"refs/remotes/origin/{repo_info['defaultBranch']}"):
+                return f"repo {entry['repo']}: newBase is not origin/{repo_info['defaultBranch']} moved forward from the base"
+            conflicts = repo_module.merge_conflicts(path, head, new_base)
+            if not conflicts or sorted(conflicts) != sorted(entry.get("conflicts") or []):
+                return f"repo {entry['repo']}: the recorded conflicts are not what merging newBase into the head leaves"
         return None
 
     # -- B: debug ---------------------------------------------------------------

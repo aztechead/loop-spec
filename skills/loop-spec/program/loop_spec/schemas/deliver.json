@@ -13,7 +13,8 @@
       "enum": [
         "delivered",
         "partially delivered",
-        "delivery blocked"
+        "delivery blocked",
+        "base moved"
       ]
     },
     "inputsDigest": {
@@ -117,7 +118,8 @@
             "enum": [
               "delivered",
               "failed",
-              "skipped"
+              "skipped",
+              "base moved"
             ]
           },
           "acceptedRemote": {
@@ -165,6 +167,17 @@
                   "type": "string"
                 }
               }
+            }
+          },
+          "newBase": {
+            "description": "On a `base moved` row: the PR base's tip that conflicts with the verified head.",
+            "type": "string"
+          },
+          "conflicts": {
+            "description": "On a `base moved` row: the paths a merge of newBase into the verified head leaves conflicted.",
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }

@@ -15,6 +15,7 @@ from pathlib import Path
 from loop_spec import render
 from loop_spec import repo as repo_module
 from loop_spec.contract import load_config
+from loop_spec.errors import LoopSpecError
 from loop_spec.steps import Product  # noqa: F401 -- Pause kept for interface symmetry
 from loop_spec.ids import now_iso
 
@@ -198,6 +199,41 @@ def run(store, paths, ctx):
             repos_out.append(_published(store, repo_name, {"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": [reason], "state": "failed"}))
         return Product({"exit": "delivery blocked", "inputsDigest": ctx["inputs"]["digest"], "boundTo": bound_to, "repos": repos_out})
 
+    # Base moved: something merged into the PR base after this run forked (another
+    # agent's PR) and the verified head no longer merges into it. Checked for every
+    # touched repo before the first push, so nothing is published; EXECUTE merges the
+    # new base in (a resolver settles the conflicts) and the run re-verifies (D9).
+    moved, fetch_failed = {}, {}
+    for repo_name, head in touched.items():
+        repo_info = store.state["repos"][repo_name]
+        path = Path(repo_info["path"])
+        try:
+            tip = repo_module.fetch_base(path, repo_info["defaultBranch"])
+        except LoopSpecError as exc:
+            fetch_failed[repo_name] = f"{exc.message}; repair: {exc.repair}"
+            continue
+        if repo_module.is_ancestor(path, tip, head):
+            continue
+        if not repo_module.is_ancestor(path, repo_info["baseSha"], tip):
+            fetch_failed[repo_name] = (f"origin/{repo_info['defaultBranch']} ({tip[:12]}) no longer contains this run's base "
+                                       f"{repo_info['baseSha'][:12]} (rewritten history); repair: restore the base branch, or "
+                                       "merge it into the feature branch by hand, then re-enter (never force)")
+            continue
+        conflicts = repo_module.merge_conflicts(path, head, tip)
+        if conflicts:
+            moved[repo_name] = {"newBase": tip, "conflicts": conflicts}
+    if moved:
+        for repo_name, repo_info in store.state["repos"].items():
+            if repo_name not in moved:
+                note = [f"not attempted: the base moved under {', '.join(sorted(moved))}"] if repo_name in touched else []
+                repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": note, "state": "skipped"})
+                continue
+            move = moved[repo_name]
+            repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "state": "base moved", **move, "caveats": [
+                f"{repo_info['defaultBranch']} moved to {move['newBase'][:12]} and conflicts with the verified head in "
+                f"{', '.join(move['conflicts'])}; EXECUTE merges it in and resolves them, then the run re-verifies"]})
+        return Product({"exit": "base moved", "inputsDigest": ctx["inputs"]["digest"], "boundTo": bound_to, "repos": repos_out})
+
     for repo_name, repo_info in store.state["repos"].items():
         if repo_name not in touched:
             pr = None
@@ -230,6 +266,10 @@ def run(store, paths, ctx):
         def failed(reason: str) -> dict:
             return _published(store, repo_name, {"repo": repo_name, "pr": None, "deliveredSha": None,
                                                  "caveats": [reason], "state": "failed"})
+
+        if repo_name in fetch_failed:
+            repos_out.append(failed(fetch_failed[repo_name]))
+            continue
 
         # 7.1.0: with deliver.acceptRemotePaths set, commits someone else put on the
         # branch after the verified SHA (a changelog bot) are accepted when every path

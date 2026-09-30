@@ -812,6 +812,11 @@ def _accept_product(store: StateStore, paths: FeaturePaths, project_root: Path, 
             return
 
     if phase == "execute" and exit_ in ("integrated", "no change"):
+        plan = store.state["products"]["plan"]
+        if store.state.get("baseline") is not None and _baseline_stale(store, postconditions.plan_revision(plan["product"])):
+            # DELIVER `base moved`: EXECUTE merged a new base in; re-run the baseline there, so
+            # a failure the other change brought is the base's, not this run's regression.
+            _capture_plan_baseline(store, paths, plan["product"], postconditions.plan_revision(plan["product"]))
         _run_execute_verifications(store, paths, product)
 
     if phase == "verify" and exit_ == "passed":
@@ -1153,8 +1158,7 @@ def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, pro
         return "ready"  # let the normal full-check rejection path in _finalize report these
 
     revision = postconditions.plan_revision(product)
-    baseline = store.state.get("baseline")
-    if baseline is None or baseline.get("planRevision") != revision:
+    if _baseline_stale(store, revision):
         _capture_plan_baseline(store, paths, product, revision)
 
     facts = _critic_baseline_facts(store, product)
@@ -1254,6 +1258,16 @@ def _migrate_legacy_baseline(store: StateStore, paths: FeaturePaths) -> None:
          {"summary": "baseline state predates the per-repo shape; re-initializing", "missingKey": "repos"},
          phase="execute")
     store.save()
+
+
+def _baseline_stale(store: StateStore, revision: str) -> bool:
+    """No baseline for this plan revision, or one captured at a base a repo has since moved off."""
+    baseline = store.state.get("baseline")
+    if baseline is None or baseline.get("planRevision") != revision:
+        return True
+    repos = store.state["repos"]
+    return any((baseline_module.repo_baseline_dict(baseline, name, repos) or info).get("baseSha") != info["baseSha"]
+               for name, info in repos.items())
 
 
 def _capture_plan_baseline(store: StateStore, paths: FeaturePaths, plan_product: dict, revision: str) -> None:
@@ -1472,9 +1486,9 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
 
     # LF-51: a forward entry must never inherit a `rejected` or `rewind` payload
     # left behind by the phase before it -- only a backward route carries one
-    # forward, and only VERIFY's own "implementation gap" rewind (checked by
-    # execute._handle_rewind's "from"/"exit" guard) is ever acted on by anything
-    # downstream. Same-phase re-entries (_reject_product, answers, critic
+    # forward, and only VERIFY's own "implementation gap" rewind and DELIVER's
+    # "base moved" (checked by execute._handle_rewind's and _handle_base_moves'
+    # "from"/"exit" guards) are ever acted on by anything downstream. Same-phase re-entries (_reject_product, answers, critic
     # findings) still set their own payloads after this, later in the call.
     if route["backward"]:
         store.state["phase"]["entryPayload"] = {"rewind": {
@@ -1482,6 +1496,7 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
             "revisions": dict(store.state["revisions"]),
             "remediationTasks": list(product.get("remediationTasks") or []),
             "verdicts": [v for v in (product.get("verdicts") or []) if v.get("verdict") == "fail"],
+            "baseMoves": {r["repo"]: r["newBase"] for r in (product.get("repos") or []) if r.get("state") == "base moved"},
         }}
     else:
         store.state["phase"]["entryPayload"] = None

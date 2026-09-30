@@ -395,6 +395,24 @@ def _worktree_holding(repo: Path, branch: str) -> Path | None:
     return None
 
 
+def fetch_base(repo: Path, branch: str) -> str:
+    """origin's `branch` tip, fetched into refs/remotes/origin/<branch> (never the local branch)."""
+    fetch = _git(repo, "fetch", "--no-tags", "origin", f"+refs/heads/{branch}:refs/remotes/origin/{branch}")
+    if fetch.returncode != 0:
+        raise LoopSpecError(f"could not fetch origin/{branch}: {fetch.stderr.strip()}",
+                             repair="check origin's URL, network, and access, then re-enter (never force)")
+    return head_sha(repo, f"refs/remotes/origin/{branch}")
+
+
+def merge_conflicts(repo: Path, ours: str, theirs: str) -> list[str]:
+    """The paths a merge of `theirs` into `ours` leaves conflicted; [] when it merges cleanly."""
+    proc = _git(repo, "merge-tree", "--write-tree", "--name-only", "--no-messages", ours, theirs)
+    if proc.returncode not in (0, 1):
+        raise LoopSpecError(f"git merge-tree {ours[:12]} {theirs[:12]} failed: {proc.stderr.strip()}",
+                             repair="git 2.38 or later is required for merge-tree --write-tree")
+    return [line for line in proc.stdout.splitlines()[1:] if line]
+
+
 def fetch_pr_head(repo: Path, head_ref: str, base_ref: str, head_sha: str, *, managed_root: Path) -> None:
     """Make an adopted PR's head usable from `repo`, including a fresh `--depth=1
     --single-branch` clone: fetch both branches into explicit remote-tracking refs
