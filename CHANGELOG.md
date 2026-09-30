@@ -18,6 +18,15 @@ All notable changes documented here. Format follows Keep a Changelog.
 - The revise entry had the same layout problem: each PR comment body sat inside the
   `gaps` list, so a comment over about 16 KB (a pasted CI log, say) blocked the
   reviser step the same way. Each body is now its own `gap:<id>` input.
+- The cause is fixed where every prompt is built: `roles.compose_prompt` moves any
+  multi-line string over 1,000 bytes nested in a dict or list input into a section of
+  its own (`### <input>.<path>`), right after its parent, and leaves
+  `<see input <path>>` in the JSON. No input can put a whole document on one line
+  again. E6 finds a close-out obligation by the same rendering.
+- `steps.read_schedule` no longer refuses a prompt with a line over the read budget (a
+  minified file in a diff). That line gets a Read of its own and a warning on stderr;
+  the step is issued, and if the host cuts the line short the worker stops, the step
+  fails attestation and takes the ordinary retry path instead of blocking the phase.
 
 ## [7.7.7] - 2026-09-30
 

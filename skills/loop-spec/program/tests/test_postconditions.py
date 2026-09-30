@@ -21,6 +21,7 @@ from loop_spec import postconditions
 from loop_spec import repo as repo_module
 from loop_spec.jsonio import atomic_write_json
 from loop_spec.paths import FeaturePaths
+from loop_spec.roles import Role, compose_prompt
 from loop_spec.state import StateStore
 
 _VERIFY_CMD = 'python3 -c "import sys; sys.exit(0)"'
@@ -966,6 +967,17 @@ class PostconditionsTests(unittest.TestCase):
 
         write_prompt(postconditions.close_out_view(entry) | {"id": "C-2"})
         self.assertEqual(self._boundary("execute", product, "integrated")._e6(), "close-out C-1: its review step was not issued for this close-out")
+
+        # A long multi-line obligation text is hoisted out of the JSON; E6 finds the
+        # rendered section, pointer and hoisted text together.
+        entry["text"] = "".join(f"close out item {i}\n" for i in range(100))
+        prompt = compose_prompt(Role(name="code-reviewer", body="Review.", schema={"type": "object"}, source="default",
+                                     version="sha256:" + "0" * 64),
+                                inputs={"closeOut": postconditions.close_out_view(entry)}, result_path=step_dir / "r.json",
+                                cwd=step_dir, phase="execute")
+        self.assertIn("### closeOut.text\nclose out item 0", prompt)
+        atomic_write_json(step_dir / "step.json", {"prompt": prompt})
+        self.assertIsNone(self._boundary("execute", product, "integrated")._e6())
 
         write_prompt(postconditions.close_out_view(entry))
         product["tasks"][-1]["review"] = None

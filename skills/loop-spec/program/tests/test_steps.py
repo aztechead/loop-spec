@@ -314,16 +314,18 @@ class ReadScheduleTests(StepsTestCase):
     def test_multibyte_lines_and_the_budget_boundary(self):
         line = "é" * 27  # 54 bytes; rendered "1\t" + 54 + "\n" = 57
         self.assertEqual(steps.read_schedule(line + "\n" + line, budget=57), [{"offset": 1, "limit": 1}, {"offset": 2, "limit": 1}])
-        with self.assertRaisesRegex(LoopSpecError, "line 1 .* 57 bytes, over the supported 56-byte read budget"):
-            steps.read_schedule(line, budget=56)
 
-    def test_an_over_budget_line_issues_nothing(self):
+    def test_an_over_budget_line_is_scheduled_alone_and_the_step_issued(self):
+        # Fail open (7.x): the Read tool reads by line, so a line over the budget gets a
+        # range of its own; refusing left a run that no retry could move.
+        line = "é" * 27
+        self.assertEqual(steps.read_schedule("a\n" + line + "\nb", budget=56),
+                         [{"offset": 1, "limit": 1}, {"offset": 2, "limit": 1}, {"offset": 3, "limit": 1}])
         with tempfile.TemporaryDirectory() as tmp:
             store, paths = self._store(tmp)
-            with self.assertRaisesRegex(LoopSpecError, "execute code-reviewer step not issued: line 2 "):
-                self._issue(store, paths, role="code-reviewer", prompt="ok\n" + "é" * 9000)
-            self.assertEqual(store.state["steps"]["open"], [])
-            self.assertEqual(list(paths.steps_dir.glob("*")) if paths.steps_dir.exists() else [], [])
+            record = self._issue(store, paths, role="code-reviewer", prompt="ok\n" + "é" * 9000)
+            self.assertIn({"offset": 2, "limit": 1}, record["readSchedule"])
+            self.assertEqual(sum(r["limit"] for r in record["readSchedule"]), len(record["prompt"].split("\n")))
 
     def test_the_bootstrap_lists_every_call_and_keeps_a_unicode_path(self):
         with tempfile.TemporaryDirectory() as tmp:

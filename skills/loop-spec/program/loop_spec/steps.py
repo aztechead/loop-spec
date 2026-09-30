@@ -10,6 +10,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from loop_spec import log
 from loop_spec.contract import role_meta, unattested_policy
 from loop_spec.errors import LoopSpecError
 from loop_spec.events import emit
@@ -99,23 +100,29 @@ _DISPATCH_PROMPT = (
 
 def read_schedule(prompt: str, budget: int = READ_BUDGET_BYTES) -> list[dict]:
     """LF-61: contiguous Read ranges covering every line of `prompt` once, in order,
-    each rendering to at most `budget` bytes. A line that alone exceeds the budget
-    raises: it is over the supported read budget (not proof the host cannot read it)."""
+    each rendering to at most `budget` bytes. A line that alone exceeds the budget (a
+    minified file in a diff) gets a one-line range of its own: the Read tool reads by
+    line, so nothing can split it. The step is still issued; if the host cuts that line
+    short, the dispatch prompt tells the worker to stop, and the step fails attestation
+    and follows the retry path instead of blocking the phase (7.7.8)."""
     lines = prompt.split("\n")  # a prompt ending in LF ends with its empty last line
     ranges, start, size = [], 1, 0
     for number, line in enumerate(lines, 1):
         rendered = len(f"{number}\t{line}\n".encode("utf-8"))
         if rendered > budget:
-            raise LoopSpecError(
-                f"line {number} of the composed prompt renders to {rendered} bytes, over the supported "
-                f"{budget}-byte read budget",
-                repair="shorten the input that produced that line (for example a minified or generated file in "
-                       "a diff); the program does not truncate, split or summarize a prompt line")
+            log.stderr.warning(f"loop-spec: prompt line {number} renders to {rendered} bytes, over the "
+                               f"{budget}-byte read budget; scheduled as a read of its own")
+            if size:
+                ranges.append({"offset": start, "limit": number - start})
+            ranges.append({"offset": number, "limit": 1})
+            start, size = number + 1, 0
+            continue
         if size + rendered > budget:
             ranges.append({"offset": start, "limit": number - start})
             start, size = number, 0
         size += rendered
-    ranges.append({"offset": start, "limit": len(lines) - start + 1})
+    if start <= len(lines):
+        ranges.append({"offset": start, "limit": len(lines) - start + 1})
     return ranges
 
 
@@ -167,12 +174,8 @@ def issue(store, paths, *, phase: str, attempt_id: str, kind: str, role: str | N
                                 repair="compose role prompts with LF line endings only")
         record["prompt"] = full_prompt = full_prompt + "\n"
         instruction_path = step_dir / "instructions.md"
-        # LF-61: scheduled on the final prompt, before anything is written, so a
-        # refusal leaves no step anyone could dispatch.
-        try:
-            schedule = read_schedule(full_prompt)
-        except LoopSpecError as exc:
-            raise LoopSpecError(f"{phase} {role} step not issued: {exc.message}", repair=exc.repair) from exc
+        # LF-61: scheduled on the final prompt, before anything is written.
+        schedule = read_schedule(full_prompt)
         calls = "\n".join(f"{i}. offset={r['offset']} limit={r['limit']}" for i, r in enumerate(schedule, 1))
         record.update({"transport": "file", "instructionPath": str(instruction_path), "readSchedule": schedule,
                        "dispatchPrompt": _DISPATCH_PROMPT.format(step_id=step_id, path=instruction_path,

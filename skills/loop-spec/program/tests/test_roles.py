@@ -186,6 +186,19 @@ class ComposePromptTests(unittest.TestCase):
         block = prompt.split("### verify\n```json\n", 1)[1].split("\n```", 1)[0]
         self.assertEqual(json.loads(block), value)
 
+    def test_a_long_multiline_string_nested_in_an_input_gets_its_own_section(self):
+        # A diff or pasted log inside a dict/list rendered as one escaped JSON line,
+        # over the read budget; it now follows its parent as real lines.
+        role = Role(name="code-reviewer", body="Review.", schema={"type": "object"}, source="default", version="sha256:" + "0" * 64)
+        long_text = "".join(f"+line {i} é\n" for i in range(200))
+        value = [{"id": "T-1", "diff": long_text, "note": "short\ntext"}]
+        prompt = compose_prompt(role, inputs={"tasks": value, "after": "x"},
+                                result_path=Path("/tmp/out/product.json"), cwd=Path("/tmp/out"), phase="execute")
+        block = prompt.split("### tasks\n```json\n", 1)[1].split("\n```", 1)[0]
+        self.assertEqual(json.loads(block), [{"id": "T-1", "diff": "<see input tasks[0].diff>", "note": "short\ntext"}])
+        self.assertIn("\n```\n\n### tasks[0].diff\n+line 0 é\n+line 1 é\n", prompt)
+        self.assertIn("+line 199 é\n\n### after\nx", prompt)
+
     def test_debugger_contract_forbids_repair(self):
         # LF-22: the debugger lead step fixed a failing test in the user's own
         # checkout; the contract text reaching its prompt must say plainly it
