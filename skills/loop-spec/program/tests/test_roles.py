@@ -88,6 +88,22 @@ class LoadBoundRoleTests(unittest.TestCase):
 
             self.assertEqual(role.body.strip(), f"zzz-installed {installed}/skills/rev/ref.md {installed}/bin")
 
+    def test_with_skills_follow_the_default_method(self):
+        with tempfile.TemporaryDirectory() as fake_home, tempfile.TemporaryDirectory() as project_root:
+            skill_dir = Path(project_root, ".claude", "skills", "pr-helper")
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text("---\nname: pr-helper\n---\n\nRead ${CLAUDE_SKILL_DIR}/notes.md.\n")
+            Path(project_root, ".loop-spec").mkdir()
+            Path(project_root, ".loop-spec", "config.json").write_text(json.dumps({"roles": {"reviser": {"with": ["pr-helper"]}}}))
+
+            with patch("pathlib.Path.home", return_value=Path(fake_home)):
+                role = load_role("reviser", Path(project_root))
+
+            default_body = load_role("reviser", Path(fake_home)).body.rstrip()
+            self.assertTrue(role.body.startswith(default_body))
+            self.assertTrue(role.body.endswith(f"### Also follow the `pr-helper` skill\n\nRead {skill_dir}/notes.md.\n"))
+            self.assertEqual(role.source, "default")
+
     def test_missing_binding_raises_naming_searched_paths(self):
         with tempfile.TemporaryDirectory() as fake_home, tempfile.TemporaryDirectory() as project_root:
             with patch("pathlib.Path.home", return_value=Path(fake_home)):

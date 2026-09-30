@@ -26,6 +26,10 @@ session with agent teams.
 
 ### Added
 
+- `roles.<role>.with`: a list of skills, including `plugin:skill`, that the role follows
+  after its method, bundled or bound. A plugin that helps a phase no longer has to
+  replace the role's whole method. For example, `{"roles": {"reviser": {"with":
+  ["my-plugin:pr-reviews"]}}}` has REVISE use it on a PR's reviews.
 - README: how to use your own skill or plugin in a phase, with the role each phase
   runs.
 - llms.txt: the phase-to-role binding, every config key and environment control from

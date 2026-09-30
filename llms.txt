@@ -59,10 +59,11 @@ product, schema and postconditions do not change. Full how-to:
 | route | `router` (worker) |
 | DELIVER | no role; the program performs it. Only `phases.deliver: "external"` replaces it |
 
-- Bind in `.loop-spec/config.json`, for example `{"roles": {"reviser": "my-plugin:revise-method"}}`, or with `LOOP_SPEC_ROLE_<ROLE>` (hyphens kept: `LOOP_SPEC_ROLE_CODE-REVIEWER`).
+- Add to the bundled method: `{"roles": {"reviser": {"with": ["my-plugin:pr-reviews"]}}}`. The role follows its bundled method, then each listed skill, in order. Use this for a plugin that helps a phase but is not itself that role's whole method.
+- Replace the method: `{"roles": {"reviser": "my-plugin:revise-method"}}`, or `LOOP_SPEC_ROLE_<ROLE>` (hyphens kept: `LOOP_SPEC_ROLE_CODE-REVIEWER`). The skill must do the role's whole job. `{"binding": ..., "with": [...]}` does both. `with` can only be set in config.
 - A plain name is looked up in `.claude/skills/<name>/`, then `~/.claude/skills/<name>/`, then `~/.agents/skills/<name>/`. `plugin:skill` is looked up in the plugin's installed version (`~/.claude/plugins/installed_plugins.json`), then in its cache.
-- Only the skill's body is used. The program resolves `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` in it, still prepends `roles/principles.md`, appends the bundled role's `contract.md`, and validates the result against the bundled `schema.json`.
-- A binding applies in every phase where the role runs, so binding `code-reviewer` covers both EXECUTE and VERIFY.
+- Only each skill's body is used. The program resolves `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` in it, still prepends `roles/principles.md`, appends the bundled role's `contract.md`, and validates the result against the bundled `schema.json`.
+- A role's configuration applies in every phase where the role runs. Only `code-reviewer` runs in two phases, EXECUTE and VERIFY.
 - `phases.<phase>: "external"` hands the whole phase to a person or tool, which submits the product.
 
 ## Controls
@@ -73,7 +74,7 @@ Environment variables override `.loop-spec/config.json`. Any other name is not a
 Config keys (`.loop-spec/config.json`):
 
 - `phases.<phase>`: `"default"` or `"external"`.
-- `roles.<role>`: the skill bound in the role's place, as a string, or `{"binding", "model", "effort"}`. `effort` is one of `low`, `medium`, `high`, `xhigh`, `max`. An explicit `null` inherits the dispatcher's own model or effort.
+- `roles.<role>`: the skill bound in the role's place, as a string, or `{"binding", "model", "effort", "with"}`. `with` is a list of skills that follow the method. `effort` is one of `low`, `medium`, `high`, `xhigh`, `max`. An explicit `null` inherits the dispatcher's own model or effort.
 - `spec.approval`: `"ask"` (the default) or `"policy"` (approve the requirements without asking).
 - `deliver.base`: the PR's target branch. `deliver.readiness`: `"checks"` waits on required PR checks. `deliver.acceptRemotePaths`: path globs where a bot's commits are accepted. `deliver.escalatedPartialDraft`: `true` makes an escalated ITERATE open a draft PR.
 - `evidence.review.accept`, `evidence.judgment.accept`: `"unattested"` accepts an unattested review, or plan-critic and iterate-judge result, and records it in `weakenedAssurance`.

@@ -299,7 +299,7 @@ optional:
 | Key | Effect |
 |---|---|
 | `phases.<phase>` | binds that phase's implementation (`"external"`, or a phase name is otherwise `"default"`) |
-| `roles.<role>` | binds that role to a skill other than the bundled default (`roles.load_role`); a plain string is the binding, or an object `{"binding": ..., "model": ..., "effort": ...}` also names a model and an effort (`low`, `medium`, `high`, `xhigh`, `max`; `contract.load_config` refuses another) for that role's dispatches (`roles.dispatch_settings`), reachable without also rebinding the skill; an explicit `null` model or effort inherits the dispatcher's own instead of the role's default |
+| `roles.<role>` | binds that role to a skill other than the bundled default (`roles.load_role`); a plain string is the binding, or an object `{"binding": ..., "model": ..., "effort": ..., "with": [...]}` also names a model and an effort (`low`, `medium`, `high`, `xhigh`, `max`; `contract.load_config` refuses another) for that role's dispatches (`roles.dispatch_settings`), reachable without also rebinding the skill; an explicit `null` model or effort inherits the dispatcher's own instead of the role's default |
 | (default) | with neither env nor config set, the role's own `SKILL.md` frontmatter applies (`contract.role_meta`): `router` `opus`/`low`; `plan-critic`, `code-reviewer`, `iterate-judge` `opus`/`medium`; `implementer`, `verifier` `sonnet`/`medium`. Lead roles (`spec-writer`, `planner`, `debugger`, `reviser`, `direct`) name none and run at the lead session's model and effort |
 | `spec.approval` | `"ask"` (default) opens SPEC's requirements approval for a person; `"policy"` answers it with its default, `approve`, as soon as it opens, recorded `by: "policy"` (S2), and leaves every other question to be asked. 6.x's default `auto` style skipped the same gate. Any other value is a config error |
 | `deliver.base` | overrides the branch DELIVER's PR targets, instead of the repo's detected default branch |
@@ -345,7 +345,10 @@ third value raises (bound phase implementations are not built in this release). 
 the user's `~/.claude/skills/<name>/` or `~/.agents/skills/<name>/`, or (for a
 `plugin:skill` binding) the plugin's `installPath` in Claude Code's
 `~/.claude/plugins/installed_plugins.json` (this project's install first), then its
-cache, newest first. A bound role supplies its own prompt body only, with
+cache, newest first. Each skill named in `roles.<role>.with` (a list of names resolved the same way;
+`contract.load_config` refuses another type) is appended to the method, bound or
+default, under a ``### Also follow the `<name>` skill`` heading. A bound role supplies its own
+prompt body only, with
 `${CLAUDE_SKILL_DIR}` and, for a plugin skill, `${CLAUDE_PLUGIN_ROOT}` resolved to
 the skill's own paths. `roles.load_role` still validates the result against the
 *default* role's schema, and `roles.role_contract` appends the default role's

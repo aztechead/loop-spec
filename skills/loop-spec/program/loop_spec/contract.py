@@ -83,6 +83,10 @@ def load_config(project_root: Path) -> dict:
         effort = bound.get("effort") if isinstance(bound, dict) else None
         if effort is not None:
             check_effort(effort, f"{path}: roles.{role}.effort")
+        extra = bound.get("with") if isinstance(bound, dict) else None
+        if extra is not None and not (isinstance(extra, list) and all(isinstance(b, str) and b for b in extra)):
+            raise LoopSpecError(f"{path}: roles.{role}.with is {extra!r}; it is a list of skill names",
+                                repair='set it to a list such as ["my-plugin:pr-review"], or remove it')
     return config
 
 

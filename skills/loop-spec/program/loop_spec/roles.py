@@ -68,17 +68,7 @@ def _bound_skill_candidates(project_root: Path, binding: str) -> list[Path]:
     return candidates
 
 
-def load_role(name: str, project_root: Path, binding: str | None = None) -> Role:
-    """The role's prompt and schema; `binding` defaults to the project's (resolve_role)."""
-    if binding is None:
-        binding = resolve_role(project_root, name)
-    default_dir = ROLES_DIR / name
-    default_schema = json.loads((default_dir / "schema.json").read_text())
-
-    if binding == "default":
-        body = _strip_frontmatter((default_dir / "SKILL.md").read_text())
-        return Role(name=name, body=body, schema=default_schema, source="default", version=digest_bytes(body.encode()))
-
+def _read_skill(project_root: Path, binding: str) -> tuple[Path, str]:
     candidates = _bound_skill_candidates(project_root, binding)
     found = next((c for c in candidates if c.is_file()), None)
     if found is None:
@@ -86,16 +76,34 @@ def load_role(name: str, project_root: Path, binding: str | None = None) -> Role
             f"bound skill {binding} not found",
             repair="checked: " + "; ".join(str(c) for c in candidates),
         )
-
     # The harness substitutes these placeholders only in a skill it loads itself; the
     # program inlines the body into a prompt, so it resolves them for the bound skill.
     body = _strip_frontmatter(found.read_text()).replace("${CLAUDE_SKILL_DIR}", str(found.parent))
     if found.parent.parent.name == "skills":
         body = body.replace("${CLAUDE_PLUGIN_ROOT}", str(found.parent.parent.parent))
+    return found, body
+
+
+def load_role(name: str, project_root: Path, binding: str | None = None) -> Role:
+    """The role's prompt and schema; `binding` defaults to the project's (resolve_role).
+    Each skill in config `roles.<name>.with` follows the method, whichever is bound."""
+    if binding is None:
+        binding = resolve_role(project_root, name)
+    default_dir = ROLES_DIR / name
     # A borrowed skill supplies its own method, never its own schema (roadmap 8): the
     # program still validates the product against the DEFAULT role's shape, so a bound
     # skill cannot smuggle in an incompatible contract.
-    return Role(name=name, body=body, schema=default_schema, source=str(found), version=digest_bytes(body.encode()))
+    default_schema = json.loads((default_dir / "schema.json").read_text())
+
+    if binding == "default":
+        source, body = "default", _strip_frontmatter((default_dir / "SKILL.md").read_text())
+    else:
+        found, body = _read_skill(project_root, binding)
+        source = str(found)
+    configured = load_config(project_root).get("roles", {}).get(name)
+    for extra in configured.get("with", []) if isinstance(configured, dict) else []:
+        body = body.rstrip() + f"\n\n### Also follow the `{extra}` skill\n\n" + _read_skill(project_root, extra)[1]
+    return Role(name=name, body=body, schema=default_schema, source=source, version=digest_bytes(body.encode()))
 
 
 # 7.5.0: with nothing overriding it, a dispatched role runs at the `model` and `effort` its

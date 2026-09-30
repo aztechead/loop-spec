@@ -174,8 +174,8 @@ environment variables take precedence over it.
 
 ### Use your own skill or plugin in a phase
 
-Use this when one phase should follow your method instead of the bundled one. Each
-phase's method is a role, so you bind the role:
+Use this when a phase should use your skill or plugin, either alongside the bundled
+method or in its place. Each phase's method is a role, so you configure the role:
 
 | Phase | Role | Runs as |
 |---|---|---|
@@ -191,22 +191,35 @@ phase's method is a role, so you bind the role:
 DELIVER has no role. The program performs it, so you can only bind it to
 `"external"` under `phases`.
 
-1. Write the skill's body as that role's method. The result must match the role's
-   `schema.json` under `skills/loop-spec/roles/<role>/`.
-2. Bind it in `.loop-spec/config.json`, for example
-   `{"roles": {"reviser": "my-plugin:revise-method"}}`. A plain name finds
-   `.claude/skills/<name>/`, `~/.claude/skills/<name>/` or `~/.agents/skills/<name>/`.
-   `plugin:skill` finds the skill in the installed version of that plugin.
+To add your skill to the bundled method, list it under `with`. For example, to have
+REVISE use a plugin that helps work through a PR's reviews:
 
-The program inlines the skill's body into the step's prompt. It resolves
+```json
+{"roles": {"reviser": {"with": ["my-plugin:pr-reviews"]}}}
+```
+
+The reviser follows its bundled method, then your skill. Its result still has to
+match the reviser's schema.
+
+To replace the method, bind the role to your skill:
+`{"roles": {"reviser": "my-plugin:revise-method"}}`. Write that skill's body as the
+role's whole method; its result must match the role's `schema.json` under
+`skills/loop-spec/roles/<role>/`. The two combine:
+`{"binding": "<skill>", "with": [...]}`.
+
+A plain name finds `.claude/skills/<name>/`, `~/.claude/skills/<name>/` or
+`~/.agents/skills/<name>/`. `plugin:skill` finds the skill in the installed version of
+that plugin.
+
+The program inlines each skill's body into the step's prompt. It resolves
 `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` in that body, so the body can still
 reach its bundled files. It keeps the bundled role's first principles, its
-`contract.md` and its schema, whatever the bound skill says. A lead step runs in your
+`contract.md` and its schema, whatever your skill says. A lead step runs in your
 session, so an installed plugin's other tools (MCP servers, agents) are also available
 to it.
 
-A binding applies wherever the role runs, so `code-reviewer` is bound for EXECUTE and
-VERIFY together.
+A role's configuration applies wherever the role runs. Only `code-reviewer` runs in
+two phases, EXECUTE and VERIFY, so configuring it changes both.
 
 ### Run your own reviewer during VERIFY
 
