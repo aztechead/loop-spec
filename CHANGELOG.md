@@ -17,6 +17,9 @@ All notable changes documented here. Format follows Keep a Changelog.
   so a bump that adds a failure is a regression. A mismatch the diff does not explain
   is still refused. `lib/prepare-environment.sh manifests` prints the hashed list, so
   the key and the check read one definition.
+- `tests/dispatch-read-set.test.sh` was red on 6.x: 6.11.x added a verify paragraph to
+  every implementer brief and pushed the subagent read set over its ceiling. The
+  paragraph is shorter and says the same thing to the implementer.
 
 ## [6.11.4] - 2026-09-29
 
