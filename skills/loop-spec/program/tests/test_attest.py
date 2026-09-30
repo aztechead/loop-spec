@@ -69,6 +69,49 @@ class AttestorTests(unittest.TestCase):
             _write_transcript(subagents / "agent-aworker-1-0123456789abcdef.jsonl", records)
             return self._attestor(claude_home).attest(_STEP, _RESULT_DIGEST, "worker-1")
 
+    def test_the_closing_report_is_the_hand_back_message_or_the_last_text(self):
+        # Claude Code 2.1.285 in auto mode, as observed: a SubagentHandback call with no
+        # text, its tool_result, then the host's own attachment records.
+        opening, working = _valid_records()[:2]
+        digest_line = f"done. LOOP_SPEC_RESULT_DIGEST {_RESULT_DIGEST}"
+        handback = {"type": "assistant", "timestamp": "2026-09-22T10:00:10+00:00", "message": {"content": [
+            {"type": "tool_use", "id": "toolu_hb", "name": "SubagentHandback", "input": {"message": digest_line}}]}}
+        delivered = {"type": "user", "timestamp": "2026-09-22T10:00:11+00:00", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "toolu_hb",
+             "content": [{"type": "text", "text": '{"success":true,"message":"Report delivered to your caller."}'}]}]}}
+        snapshot = {"type": "attachment", "timestamp": "2026-09-22T10:00:12+00:00", "attachment": {"type": "prompt_snapshot"}}
+        late_user = {"type": "user", "timestamp": "2026-09-22T10:00:13+00:00", "message": {"content": "one more thing"}}
+        text_close = _valid_records()[2]
+        cases = [
+            ("hand-back, its result, an attachment", [opening, working, handback, delivered, snapshot], True),
+            ("text, then an attachment", [opening, working, text_close, snapshot], True),
+            ("a user message after the report", [opening, working, text_close, late_user], False),
+            ("hand-back without the digest after text that has it",
+             [opening, working, text_close, {**handback, "message": {"content": [
+                 {"type": "tool_use", "id": "toolu_hb", "name": "SubagentHandback", "input": {"message": "done."}}]}},
+              delivered], False),
+        ]
+        for label, records, expected in cases:
+            with self.subTest(label):
+                ok, reason = self._attest_records(records)
+                self.assertEqual(ok, expected, reason)
+
+        # h776-f: one message, two parallel calls the host writes as two records (a hash
+        # command and a hand-back sent before its result): the closing report is the
+        # hand-back's message, and it lacks the digest.
+        bash = {"type": "assistant", "timestamp": "2026-09-22T10:00:09+00:00", "message": {"id": "msg_1", "content": [
+            {"type": "tool_use", "id": "toolu_sh", "name": "Bash", "input": {"command": "shasum -a 256 result.json"}}]}}
+        early = {"type": "assistant", "timestamp": "2026-09-22T10:00:10+00:00", "message": {"id": "msg_1", "content": [
+            {"type": "tool_use", "id": "toolu_hb", "name": "SubagentHandback", "input": {"message": "placeholder"}}]}}
+        hashed = {"type": "user", "timestamp": "2026-09-22T10:00:11+00:00", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "toolu_sh", "content": "aaa  result.json"}]}}
+        ok, reason = self._attest_records([opening, working, bash, early, hashed, delivered])
+        self.assertFalse(ok)
+        self.assertEqual(reason, "final message does not end with the result digest")
+        with_digest = {**early, "message": {"id": "msg_1", "content": [
+            {"type": "tool_use", "id": "toolu_hb", "name": "SubagentHandback", "input": {"message": digest_line}}]}}
+        self.assertTrue(self._attest_records([opening, working, bash, with_digest, hashed, delivered])[0])
+
     def test_two_transcripts_is_unattested(self):
         with tempfile.TemporaryDirectory() as tmp:
             claude_home = Path(tmp)
