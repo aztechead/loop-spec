@@ -17,6 +17,16 @@ All notable changes documented here. Format follows Keep a Changelog.
   so a bump that adds a failure is a regression. A mismatch the diff does not explain
   is still refused. `lib/prepare-environment.sh manifests` prints the hashed list, so
   the key and the check read one definition.
+- With the default `LOOP_SPEC_STARTUP_BASELINE=0` there was no baseline, so VERIFY
+  called every failing test a regression, including one the base already failed. It
+  sent an implementer to fix a failure the change did not cause, saw the same failure
+  again, and escalated. `lib/feature-validation.sh` now measures the base on the first
+  failing candidate with no baseline (`lib/deferred-baseline.sh capture`, at `baseSha`
+  in a temporary worktree, persisted so it runs once) and compares again. A green
+  candidate pays nothing extra; a failure the change adds is still a regression. A base
+  that cannot be measured (`LOOP_SPEC_WORKTREES=0`, a prepare that fails at base)
+  escalates as infrastructure with the reason instead of dispatching remediation.
+  Greenfield features stay strict.
 - `tests/dispatch-read-set.test.sh` was red on 6.x: 6.11.x added a verify paragraph to
   every implementer brief and pushed the subagent read set over its ceiling. The
   paragraph is shorter and says the same thing to the implementer.

@@ -39,6 +39,7 @@ bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '
 }
 
 slug="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -er --filter '.slug | select(type == "string" and length > 0)' 2>/dev/null)" || exit 2
+greenfield="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.greenfield // false')"
 targets='[]'
 overall="accepted"
 
@@ -109,13 +110,37 @@ run_target() {
     }
   fi
 
-  compare_rc=0
-  compare_json="$(bash "$SCRIPT_DIR/verification-baseline.sh" compare \
-    --root "$root" --base-sha "$base_sha" --prepare-key "$prepare_key" \
-    --log-dir "$log_dir" --baseline "$baseline_file" \
-    --test "$(jq -r '.test // ""' <<<"$commands")" \
-    --lint "$(jq -r '.lint // ""' <<<"$commands")" \
-    --typecheck "$(jq -r '.typecheck // ""' <<<"$commands")")" || compare_rc=$?
+  compare() {
+    compare_rc=0
+    compare_json="$(bash "$SCRIPT_DIR/verification-baseline.sh" compare \
+      --root "$root" --base-sha "$base_sha" --prepare-key "$prepare_key" \
+      --log-dir "$log_dir" --baseline "$baseline_file" \
+      --test "$(jq -r '.test // ""' <<<"$commands")" \
+      --lint "$(jq -r '.lint // ""' <<<"$commands")" \
+      --typecheck "$(jq -r '.typecheck // ""' <<<"$commands")")" || compare_rc=$?
+  }
+  compare
+  # With no baseline every failure was a regression, so a test the base already failed
+  # sent VERIFY into remediation with nothing to fix. Measure the base now, once, at
+  # baseSha in a detached worktree (never the feature head), and compare again. A green
+  # candidate never pays; a greenfield feature has no base to measure. A base that
+  # cannot be measured escalates with its reason: accepting would pass real regressions.
+  if [[ "$compare_rc" -eq 20 && "$baseline" == "null" && "$greenfield" != "true" ]]; then
+    local reason
+    reason="$(bash "$SCRIPT_DIR/deferred-baseline.sh" capture "$feature_dir" 2>&1 >/dev/null || true)"
+    baseline="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -c --filter \
+      'if .workspace == null then .verificationBaseline else (.workspace.repos[] | select(.name == $n) | .verificationBaseline) end // null' \
+      -- --arg n "$name")"
+    if [[ "$baseline" == "null" ]]; then
+      compare_rc=21
+      compare_json="$(jq -cn --arg r "${reason:-an earlier baseline capture already failed (verificationBaselineAttempted is true)}" \
+        --argjson c "${compare_json:-null}" '{outcome:"infra_error",stage:"baseline",reason:$r,candidate:$c}')"
+    else
+      printf '%s\n' "$baseline" > "$baseline_file"
+      # ponytail: the candidate suite runs twice on a red base; reuse the first run's logs if that cost shows
+      compare
+    fi
+  fi
   case "$compare_rc" in
     0) outcome="accepted" ;;
     20) outcome="regression"; [[ "$overall" == "infra_error" ]] || overall="regression" ;;

@@ -73,8 +73,16 @@ check "suite-regression: the task names the added failure line" \
   "suite-regression:this failure no longer appears: $new_failure" \
   "$(jq -r '"\(.class):\(.remediationTasks[0].acceptanceCriteria[-1])"' <<<"$out")"
 
-# --- no baseline: the failing command and its lines are the criteria ------------------
+# --- no baseline and no base to measure: infrastructure, never a remediation task --------
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" verificationBaseline null >/dev/null
+out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
+check "no baseline, base unmeasurable (LOOP_SPEC_WORKTREES=0): escalate as infrastructure" \
+  "escalate:infrastructure" "$(jq -r '"\(.route):\(.class)"' <<<"$out")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" verificationBaselineAttempted false >/dev/null
+git -C "$REPO" commit -q --allow-empty -m "chore: re-run"
+
+# --- greenfield, no baseline: the failing command and its lines are the criteria --------
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" greenfield true >/dev/null
 out="$(bash "$SCRIPT" run --feature-dir "$FD" 2>/dev/null)"
 check "no baseline: the task names the failing command" "true" \
   "$(jq -r --arg c "\`$red_test\` exits 0" '.remediationTasks[0].acceptanceCriteria | index($c) != null' <<<"$out")"

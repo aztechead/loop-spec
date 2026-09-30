@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Capture an opt-in validation baseline once, at a phase boundary before implementation.
+# Capture a validation baseline at baseSha once: `run` is the opt-in eager capture at a
+# phase boundary before implementation; `capture` is VERIFY measuring the base on its
+# first failing candidate, when no baseline was recorded.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[[ "${1:-}" == "run" && -n "${2:-}" ]] || { echo "usage: deferred-baseline.sh run FEATURE_DIR" >&2; exit 2; }
+[[ ( "${1:-}" == "run" || "${1:-}" == "capture" ) && -n "${2:-}" ]] || { echo "usage: deferred-baseline.sh run|capture FEATURE_DIR" >&2; exit 2; }
 feature_dir="$(cd "$2" && pwd -P)"; fj="$feature_dir/feature.json"
 fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
-[[ "$(fget '.verificationBaselineOptIn // false')" == true || "${LOOP_SPEC_STARTUP_BASELINE:-0}" == 1 ]] || exit 0
+[[ "$1" == capture || "$(fget '.verificationBaselineOptIn // false')" == true || "${LOOP_SPEC_STARTUP_BASELINE:-0}" == 1 ]] || exit 0
 [[ "$(fget '.verificationBaselineAttempted // false')" != true ]] || exit 0
 [[ "$(fget '.verificationBaseline // null')" == null ]] || exit 0
 [[ "$(fget '.greenfield // false')" != true ]] || exit 0
