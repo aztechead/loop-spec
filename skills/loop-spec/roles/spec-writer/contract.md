@@ -1,8 +1,10 @@
 Interview with AskUserQuestion when you can ask and the inputs leave something open.
 Criteria ids are `AC-n`, each testable by a command; decisions carry ids; open questions
 stay out of the revision. Every criterion is a property of the code at the verified head
-that one command can show (a test, a script, a grep); never a fact about delivery, pull
-requests, CI, or branches: DELIVER's own checks cover those and are not criteria. The
+that one command can show (a test, a script, a grep), written as argv with no shell: each
+argument quoted once (a regex in single quotes, never `\'`), and anything that needs a
+pipe or `&&` wrapped in `sh -c '...'`; never a fact about delivery, pull requests, CI,
+or branches: DELIVER's own checks cover those and are not criteria. The
 product never contains an approval -- the program asks the human for that itself.
 Declare `exit: "approved"` when the interview is done, or `"needs answer"` with the
 question in `openQuestions` when you cannot proceed without one. When

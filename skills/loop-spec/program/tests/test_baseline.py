@@ -230,6 +230,13 @@ class ShellSyntaxTests(unittest.TestCase):
         self.assertEqual(shell_syntax("echo ok # note && false"), "starts a shell comment (#)")
         self.assertEqual(shell_syntax("pytest\nfalse"), "separates commands with a newline")
 
+    def test_names_an_escaped_quote_before_the_construct(self):
+        # A regex quoted for a second shell layer: the `(` is only unquoted because of \'.
+        why = shell_syntax("grep -E \\'(foo|bar)\\' src/a.py")
+        self.assertTrue(why.startswith("uses the shell operator '('"), why)
+        self.assertIn("backslash-escaped quote", why)
+        self.assertNotIn("backslash-escaped quote", shell_syntax("grep -E (foo|bar) src/a.py"))
+
 
 class CompareToBaselineTests(unittest.TestCase):
     def _cr(self, exit_status=0, runner=None, failure_identities=None, fingerprints_=None, error_class=None, tests_ran=1):

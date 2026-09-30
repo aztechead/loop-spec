@@ -336,6 +336,13 @@ _SPECIAL_PARAMS = set("?#@*!$-")
 _ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 
 
+# A spec or verifier that quotes a command for a second shell layer writes \' where it
+# meant ', so the pattern after it is unquoted; naming only the `(` it trips on led a
+# retry verifier to split the regex group instead of fixing the quoting.
+_ESCAPED_QUOTE = (" after a backslash-escaped quote, which is a literal character and"
+                  " does not start a quoted string; quote the argument once")
+
+
 class _InvalidCommand(Exception):
     pass
 
@@ -364,6 +371,7 @@ def shell_syntax(command: str) -> str | None:
     quote = None
     word_start = True
     first_word = True
+    escaped_quote = False
     i, n = 0, len(command)
     while i < n:
         c = command[i]
@@ -387,6 +395,7 @@ def shell_syntax(command: str) -> str | None:
         if c == "\\":
             if i + 1 < n and command[i + 1] in "\r\n":
                 return "uses a line continuation"
+            escaped_quote = escaped_quote or command[i + 1:i + 2] in ("'", '"')
             i += 2
             word_start = False
             continue
@@ -402,7 +411,7 @@ def shell_syntax(command: str) -> str | None:
             j = i
             while j < n and command[j] in _OPERATOR_CHARS:
                 j += 1
-            return f"uses the shell operator {command[i:j]!r}"
+            return f"uses the shell operator {command[i:j]!r}" + (_ESCAPED_QUOTE if escaped_quote else "")
         if c == "`":
             return "uses command substitution (`)"
         if c == "$" and (why := _expansion(command, i)):
@@ -415,6 +424,8 @@ def shell_syntax(command: str) -> str | None:
             if first_word and (m := _ASSIGNMENT.match(command, i)):
                 return f"sets an environment variable ({m.group(0)})"
         if c in _GLOB_CHARS:
+            if escaped_quote:
+                return f"uses an unquoted glob character ({c!r})" + _ESCAPED_QUOTE
             return f"uses an unquoted glob character ({c!r}); quote a pattern the program reads itself"
         if c in "'\"":
             quote = c
