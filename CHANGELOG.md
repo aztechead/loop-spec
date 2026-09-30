@@ -10,12 +10,12 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 - A shell-quoted criterion command no longer loops VERIFY. A spec that wrote a regex
   quoted for a second shell layer (`\'(a|b)\'`) was copied into the verifier's
-  evidence command; V4's plain-argv check rejected it on every attempt, naming only the
-  `(`, and a retry verifier once split the regex group to get past it. The spec-writer
-  and verifier contracts now state the argv format (each argument quoted once, a
-  pipeline through `sh -c '...'`), the verifier fixes only quoting and never weakens a
-  pattern, and the format check names a backslash-escaped quote when one left the
-  construct unquoted.
+  evidence command; V4's plain-argv check rejected it on every attempt, naming only
+  the `(`, and a retry verifier once split the regex group to get past it. The
+  spec-writer and verifier contracts now state the argv format (each argument quoted
+  once, a pipeline through `sh -c "..."` around a single-quoted regex), the verifier
+  fixes only quoting and never weakens a pattern, and the format check names a
+  backslash-escaped quote when one left the construct unquoted.
 
 ## [7.8.0] - 2026-09-30
 
