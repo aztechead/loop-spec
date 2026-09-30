@@ -229,14 +229,14 @@ to it.
 A role's configuration applies wherever the role runs. Only `code-reviewer` runs in
 two phases, EXECUTE and VERIFY, so configuring it changes both.
 
-To act on the PR after the run delivers it (reply to or resolve review threads,
+To act on the PR after the run completes (reply to or resolve review threads,
 trigger a review bot, push further rounds), list the skill under `deliver.after`:
 
 ```json
 {"deliver": {"after": ["my-plugin:pr-follow-up"]}}
 ```
 
-When a run ends with a PR, its result lists these skills under `after`, and the
+When a run completes with a PR, its result lists these skills under `after`, and the
 session invokes each one with the PR URLs once it has reported the result. The run is
 already final, so what they do is not part of what loop-spec verified.
 

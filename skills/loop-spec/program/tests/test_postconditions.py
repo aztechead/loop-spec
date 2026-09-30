@@ -335,8 +335,12 @@ class PostconditionsTests(unittest.TestCase):
         self.assertIn("dispatched before", self._boundary("execute", product, "integrated")._e3())
         accepted = copy.deepcopy(product)
         accepted["tasks"][0]["steps"] = {"implement": ["step-t1"], "review": ["step-t1-review"]}
-        self.store.state["products"]["execute"] = {"boundTo": copy.deepcopy(product["boundTo"]), "product": accepted}
+        self.store.state["products"]["execute"] = {"exit": "integrated", "boundTo": copy.deepcopy(product["boundTo"]),
+                                                   "product": accepted}
         self.assertIsNone(self._boundary("execute", product, "integrated")._e3())
+        self.store.state["products"]["execute"]["exit"] = "blocked"  # a blocked exit never ran E3
+        self.assertIn("dispatched before", self._boundary("execute", product, "integrated")._e3())
+        self.store.state["products"]["execute"]["exit"] = "integrated"
         self.store.state["products"]["execute"]["boundTo"]["plan"] = "sha256:" + "8" * 64  # a re-plan proves nothing
         self.assertIn("dispatched before", self._boundary("execute", product, "integrated")._e3())
 

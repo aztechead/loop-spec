@@ -658,13 +658,15 @@ class Boundary:
         steps_by_task = ({t["id"]: t.get("steps") or {} for t in self.product["tasks"]}
                          if ran_default(self.store, "execute") else {})
         # A task done with the same implement steps in the EXECUTE product last accepted
-        # against this plan revision had its ordering proven when that product was
-        # accepted. VERIFY's remediation can reopen its dependency later, forked from
-        # this task's commits (h776-b); that rework is not this task's dispatch order.
+        # as `integrated` against this plan revision had its ordering proven by this
+        # check then (only `integrated` requires E3). VERIFY's remediation can reopen its
+        # dependency later, forked from this task's commits (h776-b); that rework is not
+        # this task's dispatch order.
         prior = self.store.state["products"].get("execute")
         proven = {t["id"]: (t.get("steps") or {}).get("implement")
                   for t in prior["product"]["tasks"] if t["disposition"] == "done"} \
-            if prior and prior["boundTo"].get("plan") == self.product["boundTo"].get("plan") else {}
+            if prior and prior.get("exit") == "integrated" \
+            and prior["boundTo"].get("plan") == self.product["boundTo"].get("plan") else {}
         for task in self.product["tasks"]:
             if task["disposition"] != "done":
                 continue

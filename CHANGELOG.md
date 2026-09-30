@@ -24,8 +24,9 @@ session with agent teams.
 - EXECUTE's E3 rejected a task when VERIFY's remediation reopened its dependency after
   it: the dependency's rework finished after the task's dispatch, so the product read as
   out of order and was rejected until the run stopped. A task done with the same
-  implement steps in the EXECUTE product last accepted against the same plan revision
-  now keeps the order that product proved.
+  implement steps in the EXECUTE product last accepted as `integrated` (the one exit
+  that checks E3) against the same plan revision now keeps the order that product
+  proved.
 - A `plugin:skill` role binding took the first version in the plugin cache by
   sorted directory name, not the installed version. It now reads the plugin's
   `installPath` from `~/.claude/plugins/installed_plugins.json`.
@@ -40,7 +41,8 @@ session with agent teams.
   replace the role's whole method. For example, `{"roles": {"reviser": {"with":
   ["my-plugin:pr-reviews"]}}}` has REVISE use it on a PR's reviews.
 - `deliver.after`: a list of skills to run on the delivered PR once the run is final.
-  A run that ends with a PR lists them under `after` in `result.json`, and the lead
+  A run that completes with a PR lists them under `after` in `result.json` (never an
+  escalated or failed run, whose PR head may not be the verified commit), and the lead
   invokes each with the PR URLs after it reports the result (runner.md `result`). This
   is the place for a skill that pushes, comments, resolves review threads or loops on
   a PR. Inside the run, such a skill would stop DELIVER, which requires the PR head to

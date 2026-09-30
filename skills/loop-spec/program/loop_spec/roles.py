@@ -44,6 +44,16 @@ def _strip_frontmatter(text: str) -> str:
     return text
 
 
+def _json_object(path: Path) -> dict:
+    # A registry or manifest another tool writes: unreadable, malformed, or not an
+    # object reads as empty, so a bad file skips that source instead of failing the step.
+    try:
+        value = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
 def _bound_skill_candidates(project_root: Path, binding: str) -> list[Path]:
     candidates = [
         Path(project_root) / ".claude" / "skills" / binding / "SKILL.md",
@@ -55,8 +65,7 @@ def _bound_skill_candidates(project_root: Path, binding: str) -> list[Path]:
         # A plugin loaded by path (`claude --plugin-dir`, the Agent SDK's local plugins)
         # is in no registry, so the session that loads it names its directory here.
         for plugin_dir in filter(None, os.environ.get("LOOP_SPEC_PLUGIN_DIRS", "").split(os.pathsep)):
-            manifest = Path(plugin_dir) / ".claude-plugin" / "plugin.json"
-            name = json.loads(manifest.read_text()).get("name") if manifest.is_file() else Path(plugin_dir).name
+            name = _json_object(Path(plugin_dir) / ".claude-plugin" / "plugin.json").get("name") or Path(plugin_dir).name
             if name == plugin:
                 candidates.append(Path(plugin_dir) / "skills" / skill / "SKILL.md")
         # The cache keeps every version a plugin was ever installed at, so the installed
@@ -64,10 +73,10 @@ def _bound_skill_candidates(project_root: Path, binding: str) -> list[Path]:
         # cache glob, newest first, is only for a host without that registry.
         registry = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
         installs = []
-        if registry.is_file():
-            for key, entries in (json.loads(registry.read_text()).get("plugins") or {}).items():
-                if key.split("@", 1)[0] == plugin:
-                    installs.extend(e for e in entries if e.get("installPath"))
+        plugins = _json_object(registry).get("plugins")
+        for key, entries in (plugins.items() if isinstance(plugins, dict) else ()):
+            if key.split("@", 1)[0] == plugin and isinstance(entries, list):
+                installs.extend(e for e in entries if isinstance(e, dict) and isinstance(e.get("installPath"), str))
         installs.sort(key=lambda e: e.get("projectPath") != str(project_root))
         candidates.extend(Path(e["installPath"]) / "skills" / skill / "SKILL.md" for e in installs)
         pattern = str(Path.home() / ".claude" / "plugins" / "cache" / "*" / plugin / "*" / "skills" / skill / "SKILL.md")
@@ -86,8 +95,9 @@ def _read_skill(project_root: Path, binding: str) -> tuple[Path, str]:
     # The harness substitutes these placeholders only in a skill it loads itself; the
     # program inlines the body into a prompt, so it resolves them for the bound skill.
     body = _strip_frontmatter(found.read_text()).replace("${CLAUDE_SKILL_DIR}", str(found.parent))
-    if found.parent.parent.name == "skills":
-        body = body.replace("${CLAUDE_PLUGIN_ROOT}", str(found.parent.parent.parent))
+    plugin_root = found.parent.parent.parent  # <root>/skills/<skill>/SKILL.md
+    if (plugin_root / ".claude-plugin" / "plugin.json").is_file():
+        body = body.replace("${CLAUDE_PLUGIN_ROOT}", str(plugin_root))
     return found, body
 
 

@@ -1,5 +1,6 @@
 """Unit tests for loop_spec.roles: default/bound role loading and prompt composition."""
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -77,6 +78,8 @@ class LoadBoundRoleTests(unittest.TestCase):
             cache = Path(fake_home, ".claude", "plugins", "cache", "mkt", "myplug")
             for version in ("aaa-stale", "zzz-installed"):
                 (cache / version / "skills" / "rev").mkdir(parents=True)
+                (cache / version / ".claude-plugin").mkdir()
+                (cache / version / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "myplug"}))
                 (cache / version / "skills" / "rev" / "SKILL.md").write_text(
                     f"{version} ${{CLAUDE_SKILL_DIR}}/ref.md ${{CLAUDE_PLUGIN_ROOT}}/bin\n")
             installed = cache / "zzz-installed"
@@ -87,6 +90,21 @@ class LoadBoundRoleTests(unittest.TestCase):
                 role = load_role("reviser", Path(project_root), binding="myplug:rev")
 
             self.assertEqual(role.body.strip(), f"zzz-installed {installed}/skills/rev/ref.md {installed}/bin")
+
+            # A malformed registry is skipped, not fatal: the cache, newest first, answers.
+            Path(fake_home, ".claude", "plugins", "installed_plugins.json").write_text('{"plugins": ["not", "a", "map"]')
+            os.utime(cache / "zzz-installed" / "skills" / "rev" / "SKILL.md", (1, 1))
+            with patch("pathlib.Path.home", return_value=Path(fake_home)):
+                self.assertTrue(load_role("reviser", Path(project_root), binding="myplug:rev").body.startswith("aaa-stale"))
+
+    def test_plugin_root_resolves_only_in_a_plugin(self):
+        with tempfile.TemporaryDirectory() as fake_home, tempfile.TemporaryDirectory() as project_root:
+            skill_dir = Path(project_root, ".claude", "skills", "local")
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text("${CLAUDE_SKILL_DIR} ${CLAUDE_PLUGIN_ROOT}\n")
+            with patch("pathlib.Path.home", return_value=Path(fake_home)):
+                role = load_role("reviser", Path(project_root), binding="local")
+            self.assertEqual(role.body.strip(), f"{skill_dir} ${{CLAUDE_PLUGIN_ROOT}}")
 
     def test_a_plugin_loaded_by_path_resolves_through_loop_spec_plugin_dirs(self):
         with tempfile.TemporaryDirectory() as fake_home, tempfile.TemporaryDirectory() as plugin_dir:

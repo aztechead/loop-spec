@@ -127,7 +127,7 @@ python3 examples/sdk-plugin/run_loop_spec.py --project-root ~/src/my-app --auto 
 ```
 
 The spec-writer's and the reviser's prompts carry the skill after their method, with
-the checklist's path resolved. When DELIVER opens a PR, the result lists
+the checklist's path resolved. When the run completes with a PR, the result lists
 `pr-helper:follow-up` under `after`, and the lead invokes it on the PR before the
 session ends; the final summary prints `after`. Swap in your own plugin the same way.
 A skill that pushes, replies to threads, or loops on the PR belongs in

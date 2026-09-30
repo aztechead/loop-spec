@@ -61,13 +61,13 @@ product, schema and postconditions do not change. Full how-to:
 
 - Add to the bundled method: `{"roles": {"reviser": {"with": ["my-plugin:pr-reviews"]}}}`. The role follows its bundled method, then each listed skill, in order. Use this for a plugin that helps a phase but is not itself that role's whole method.
 - Replace the method: `{"roles": {"reviser": "my-plugin:revise-method"}}`, or `LOOP_SPEC_ROLE_<ROLE>` (hyphens kept: `LOOP_SPEC_ROLE_CODE-REVIEWER`). The skill must do the role's whole job. `{"binding": ..., "with": [...]}` does both. `with` can only be set in config.
-- A plain name is looked up in `.claude/skills/<name>/`, then `~/.claude/skills/<name>/`, then `~/.agents/skills/<name>/`. `plugin:skill` is looked up in `LOOP_SPEC_PLUGIN_DIRS` (plugins a session loads by path, such as the Agent SDK's local plugins), then in the plugin's installed version (`~/.claude/plugins/installed_plugins.json`), then in its cache.
+- A plain name is looked up in `.claude/skills/<name>/`, then `~/.claude/skills/<name>/`, then `~/.agents/skills/<name>/`. `plugin:skill` is looked up in those same three folders under its full name, then in `LOOP_SPEC_PLUGIN_DIRS` (plugins a session loads by path, such as the Agent SDK's local plugins), then in the plugin's installed version (`~/.claude/plugins/installed_plugins.json`), then in its cache.
 - Worked example: [examples/sdk-plugin/pr-helper/](examples/sdk-plugin/README.md#use-your-own-plugin-in-a-run) has one skill for `with` and one for `deliver.after`; `run_loop_spec.py --plugin <dir>` loads it.
 - Only each skill's body is used. The program resolves `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` in it, still prepends `roles/principles.md`, appends the bundled role's `contract.md`, and validates the result against the bundled `schema.json`.
 - A role's configuration applies in every phase where the role runs. Only `code-reviewer` runs in two phases, EXECUTE and VERIFY.
 - `phases.<phase>: "external"` hands the whole phase to a person or tool, which submits the product.
 - A skill in a role stays inside the run: it reads the role's inputs and writes the role's result. A skill that pushes, comments on the PR, resolves threads, or loops on its own breaks DELIVER's first postcondition (the PR head must be the verified commit), so it belongs in `deliver.after`.
-- `{"deliver": {"after": ["my-plugin:pr-follow-up"]}}`: when a run ends with a PR, `result.json` lists these under `after`, and the lead invokes each with the `Skill` tool after reporting, passing the `prs[].url` values. The run is already final, so these skills are outside its postconditions.
+- `{"deliver": {"after": ["my-plugin:pr-follow-up"]}}`: when a run completes (`status: completed`) with a PR, `result.json` lists these under `after`, and the lead invokes each with the `Skill` tool after reporting, passing the `prs[].url` values. The run is already final, so these skills are outside its postconditions.
 
 ## Controls
 
