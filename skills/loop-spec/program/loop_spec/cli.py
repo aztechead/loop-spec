@@ -251,8 +251,8 @@ def main(argv: list[str] | None = None) -> int:
                 tag = submission.step["phase"].upper()
                 attempts = submission.step["attestationAttempts"]
                 log.stdout.info(f"[{tag}] step {args.step} unattested ({attempts}/{retry_limit()}): "
-                                f"{submission.step['reason']}; dispatch a fresh worker named {submission.redispatch} "
-                                f"with subagent_type {subagent_type(submission.step.get('effort'))} "
+                                f"{submission.step['reason']}; dispatch a fresh worker with description {submission.redispatch} "
+                                f"(no name), subagent_type {subagent_type(submission.step.get('effort'))} "
                                 f"and the same dispatchPrompt (or prompt, for a step without one) and submit again with --dispatch {submission.redispatch}")
                 marker_next("step", str(step_path), args.slug, _invocation(args))
                 return 0

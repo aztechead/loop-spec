@@ -44,6 +44,16 @@ def _strip_frontmatter(text: str) -> str:
     return text
 
 
+def _json_object(path: Path) -> dict:
+    # A registry or manifest another tool writes: unreadable, malformed, or not an
+    # object reads as empty, so a bad file skips that source instead of failing the step.
+    try:
+        value = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
 def _bound_skill_candidates(project_root: Path, binding: str) -> list[Path]:
     candidates = [
         Path(project_root) / ".claude" / "skills" / binding / "SKILL.md",
@@ -52,22 +62,29 @@ def _bound_skill_candidates(project_root: Path, binding: str) -> list[Path]:
     ]
     if ":" in binding:
         plugin, skill = binding.split(":", 1)
+        # A plugin loaded by path (`claude --plugin-dir`, the Agent SDK's local plugins)
+        # is in no registry, so the session that loads it names its directory here.
+        for plugin_dir in filter(None, os.environ.get("LOOP_SPEC_PLUGIN_DIRS", "").split(os.pathsep)):
+            name = _json_object(Path(plugin_dir) / ".claude-plugin" / "plugin.json").get("name") or Path(plugin_dir).name
+            if name == plugin:
+                candidates.append(Path(plugin_dir) / "skills" / skill / "SKILL.md")
+        # The cache keeps every version a plugin was ever installed at, so the installed
+        # one comes from Claude Code's own registry (this project's install first); the
+        # cache glob, newest first, is only for a host without that registry.
+        registry = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
+        installs = []
+        plugins = _json_object(registry).get("plugins")
+        for key, entries in (plugins.items() if isinstance(plugins, dict) else ()):
+            if key.split("@", 1)[0] == plugin and isinstance(entries, list):
+                installs.extend(e for e in entries if isinstance(e, dict) and isinstance(e.get("installPath"), str))
+        installs.sort(key=lambda e: e.get("projectPath") != str(project_root))
+        candidates.extend(Path(e["installPath"]) / "skills" / skill / "SKILL.md" for e in installs)
         pattern = str(Path.home() / ".claude" / "plugins" / "cache" / "*" / plugin / "*" / "skills" / skill / "SKILL.md")
-        candidates.extend(Path(p) for p in sorted(glob.glob(pattern)))
+        candidates.extend(sorted((Path(p) for p in glob.glob(pattern)), key=lambda c: c.stat().st_mtime, reverse=True))
     return candidates
 
 
-def load_role(name: str, project_root: Path, binding: str | None = None) -> Role:
-    """The role's prompt and schema; `binding` defaults to the project's (resolve_role)."""
-    if binding is None:
-        binding = resolve_role(project_root, name)
-    default_dir = ROLES_DIR / name
-    default_schema = json.loads((default_dir / "schema.json").read_text())
-
-    if binding == "default":
-        body = _strip_frontmatter((default_dir / "SKILL.md").read_text())
-        return Role(name=name, body=body, schema=default_schema, source="default", version=digest_bytes(body.encode()))
-
+def _read_skill(project_root: Path, binding: str) -> tuple[Path, str]:
     candidates = _bound_skill_candidates(project_root, binding)
     found = next((c for c in candidates if c.is_file()), None)
     if found is None:
@@ -75,12 +92,35 @@ def load_role(name: str, project_root: Path, binding: str | None = None) -> Role
             f"bound skill {binding} not found",
             repair="checked: " + "; ".join(str(c) for c in candidates),
         )
+    # The harness substitutes these placeholders only in a skill it loads itself; the
+    # program inlines the body into a prompt, so it resolves them for the bound skill.
+    body = _strip_frontmatter(found.read_text()).replace("${CLAUDE_SKILL_DIR}", str(found.parent))
+    plugin_root = found.parent.parent.parent  # <root>/skills/<skill>/SKILL.md
+    if (plugin_root / ".claude-plugin" / "plugin.json").is_file():
+        body = body.replace("${CLAUDE_PLUGIN_ROOT}", str(plugin_root))
+    return found, body
 
-    body = _strip_frontmatter(found.read_text())
+
+def load_role(name: str, project_root: Path, binding: str | None = None) -> Role:
+    """The role's prompt and schema; `binding` defaults to the project's (resolve_role).
+    Each skill in config `roles.<name>.with` follows the method, whichever is bound."""
+    if binding is None:
+        binding = resolve_role(project_root, name)
+    default_dir = ROLES_DIR / name
     # A borrowed skill supplies its own method, never its own schema (roadmap 8): the
     # program still validates the product against the DEFAULT role's shape, so a bound
     # skill cannot smuggle in an incompatible contract.
-    return Role(name=name, body=body, schema=default_schema, source=str(found), version=digest_bytes(body.encode()))
+    default_schema = json.loads((default_dir / "schema.json").read_text())
+
+    if binding == "default":
+        source, body = "default", _strip_frontmatter((default_dir / "SKILL.md").read_text())
+    else:
+        found, body = _read_skill(project_root, binding)
+        source = str(found)
+    configured = load_config(project_root).get("roles", {}).get(name)
+    for extra in configured.get("with", []) if isinstance(configured, dict) else []:
+        body = body.rstrip() + f"\n\n### Also follow the `{extra}` skill\n\n" + _read_skill(project_root, extra)[1]
+    return Role(name=name, body=body, schema=default_schema, source=source, version=digest_bytes(body.encode()))
 
 
 # 7.5.0: with nothing overriding it, a dispatched role runs at the `model` and `effort` its

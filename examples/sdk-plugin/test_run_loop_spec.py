@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import io
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -138,14 +139,18 @@ class AnswererTests(unittest.TestCase):
 
 
 class SessionEnvTests(unittest.TestCase):
+    def test_each_plugin_directory_is_named_to_the_program(self):
+        args = argparse.Namespace(phase_model=None, spec_approval=None, plugin=[Path("/a/one"), Path("/b/two")])
+        self.assertEqual(session_env(args), {"LOOP_SPEC_PLUGIN_DIRS": os.pathsep.join(["/a/one", "/b/two"])})
+
     def test_phase_models_and_spec_approval_become_loop_spec_env(self):
-        args = argparse.Namespace(phase_model=["spec=opus", "PLAN=claude-opus-5-5"], spec_approval="policy")
+        args = argparse.Namespace(phase_model=["spec=opus", "PLAN=claude-opus-5-5"], spec_approval="policy", plugin=None)
         self.assertEqual(session_env(args), {"LOOP_SPEC_PHASE_MODEL_SPEC": "opus",
                                              "LOOP_SPEC_PHASE_MODEL_PLAN": "claude-opus-5-5",
                                              "LOOP_SPEC_SPEC_APPROVAL": "policy"})
-        self.assertEqual(session_env(argparse.Namespace(phase_model=None, spec_approval=None)), {})
+        self.assertEqual(session_env(argparse.Namespace(phase_model=None, spec_approval=None, plugin=None)), {})
         with self.assertRaises(ValueError):
-            session_env(argparse.Namespace(phase_model=["opus"], spec_approval=None))
+            session_env(argparse.Namespace(phase_model=["opus"], spec_approval=None, plugin=None))
 
 
 if __name__ == "__main__":

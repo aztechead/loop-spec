@@ -4,6 +4,62 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.7.6] - 2026-09-30
+
+Your own skills and plugins in a run: `roles.<role>.with` adds a skill to a phase's
+method, `deliver.after` runs one on the PR once the run completes, and a plugin loaded
+by path resolves. Role steps attest again in an interactive session with agent teams,
+and E3 no longer rejects a remediation that reopens a dependency.
+
+### Fixed
+
+- A role step dispatched with a `name` in a session with agent teams ran as an
+  in-process teammate. The teammate's `.meta.json` records the name as its
+  `agentType`, so every plan-critic, code-reviewer and iterate-judge step came back
+  unattested, and so did every retry. `runner.md` now dispatches with `description`
+  set to the step attempt id and no `name`. `attest.find_transcripts` matches the
+  sidecar's `description`, and a teammate sidecar is refused with that instruction.
+  A step that used up its retries this way before 7.7.6 is accepted only with
+  `evidence.review.accept` (code-reviewer) or `evidence.judgment.accept`
+  (plan-critic, iterate-judge) set to `"unattested"`, which records it under
+  `weakenedAssurance`.
+- EXECUTE's E3 rejected a task when VERIFY's remediation reopened its dependency after
+  it: the dependency's rework finished after the task's dispatch, so the product read as
+  out of order and was rejected until the run stopped. A task done with the same
+  implement steps in the EXECUTE product last accepted as `integrated` (the one exit
+  that checks E3) against the same plan revision now keeps the order that product
+  proved.
+- A `plugin:skill` role binding took the first version in the plugin cache by
+  sorted directory name, not the installed version. It now reads the plugin's
+  `installPath` from `~/.claude/plugins/installed_plugins.json`.
+- A bound skill's `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` reached the
+  worker unresolved, because the harness substitutes them only in a skill that it
+  loads itself. `roles.load_role` resolves them.
+
+### Added
+
+- `roles.<role>.with`: a list of skills, including `plugin:skill`, that the role follows
+  after its method, bundled or bound. A plugin that helps a phase no longer has to
+  replace the role's whole method. For example, `{"roles": {"reviser": {"with":
+  ["my-plugin:pr-reviews"]}}}` has REVISE use it on a PR's reviews.
+- `deliver.after`: a list of skills to run on the delivered PR once the run is final.
+  A run that completes with a PR lists them under `after` in `result.json` (never an
+  escalated or failed run, whose PR head may not be the verified commit), and the lead
+  invokes each with the PR URLs after it reports the result (runner.md `result`). This
+  is the place for a skill that pushes, comments, resolves review threads or loops on
+  a PR. Inside the run, such a skill would stop DELIVER, which requires the PR head to
+  be the verified commit.
+- `LOOP_SPEC_PLUGIN_DIRS`: plugin directories a `plugin:skill` name resolves in first,
+  for a plugin a session loads by path (`claude --plugin-dir`, the Agent SDK's local
+  plugins), which is in no registry.
+- `examples/sdk-plugin`: `--plugin DIR` loads another plugin and names it in
+  `LOOP_SPEC_PLUGIN_DIRS`, the final summary prints `after`, and `pr-helper/` is an
+  example plugin with one skill for `roles.<role>.with` and one for `deliver.after`.
+- README: how to use your own skill or plugin in a phase, with the role each phase
+  runs.
+- llms.txt: the phase-to-role binding, every config key and environment control from
+  `contract.md`, and the role-step dispatch rule (`description`, no `name`).
+
 ## [7.7.5] - 2026-09-29
 
 Per-phase models, for adopting loop-spec through the Claude Agent SDK.

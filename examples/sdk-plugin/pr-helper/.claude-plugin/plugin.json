@@ -1,0 +1,5 @@
+{
+  "name": "pr-helper",
+  "version": "0.1.0",
+  "description": "Example plugin for loop-spec's skill hooks: review-context joins a role's method (roles.<role>.with); follow-up acts on the delivered PR (deliver.after)."
+}

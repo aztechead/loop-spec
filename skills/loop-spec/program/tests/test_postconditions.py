@@ -322,6 +322,28 @@ class PostconditionsTests(unittest.TestCase):
         self.store.state["steps"]["submissions"]["step-t1"] = {"submittedAt": "2026-01-01T00:00:00+00:00"}
         self.assertIn("never issued", self._boundary("execute", product, "integrated")._e3())
 
+    def test_e3_keeps_the_order_an_accepted_product_proved_when_a_remediation_reopens_a_dependency(self):
+        # h776-b: T-2 ran after T-1 was accepted; VERIFY's remediation then reopened T-1,
+        # so T-1's latest review finishes after T-2's dispatch.
+        self.store.state["implementations"]["phases"]["execute"] = "default"
+        product = copy.deepcopy(self.execute_product)
+        product["tasks"][0]["steps"] = {"implement": ["step-t1-r1"], "review": ["step-t1-r1-review"]}
+        product["tasks"][1]["steps"] = {"implement": ["step-t2"], "review": ["step-t2-review"]}
+        (self.paths.steps_dir / "step-t2").mkdir(parents=True)
+        (self.paths.steps_dir / "step-t2" / "step.json").write_text(json.dumps({"issuedAt": "2026-01-01T00:01:00+00:00"}))
+        self.store.state["steps"]["submissions"]["step-t1-r1-review"] = {"submittedAt": "2026-01-01T00:05:00+00:00"}
+        self.assertIn("dispatched before", self._boundary("execute", product, "integrated")._e3())
+        accepted = copy.deepcopy(product)
+        accepted["tasks"][0]["steps"] = {"implement": ["step-t1"], "review": ["step-t1-review"]}
+        self.store.state["products"]["execute"] = {"exit": "integrated", "boundTo": copy.deepcopy(product["boundTo"]),
+                                                   "product": accepted}
+        self.assertIsNone(self._boundary("execute", product, "integrated")._e3())
+        self.store.state["products"]["execute"]["exit"] = "blocked"  # a blocked exit never ran E3
+        self.assertIn("dispatched before", self._boundary("execute", product, "integrated")._e3())
+        self.store.state["products"]["execute"]["exit"] = "integrated"
+        self.store.state["products"]["execute"]["boundTo"]["plan"] = "sha256:" + "8" * 64  # a re-plan proves nothing
+        self.assertIn("dispatched before", self._boundary("execute", product, "integrated")._e3())
+
     def test_e4(self):
         self.assertIsNone(self._boundary("execute", self.execute_product, "integrated")._e4())
         bad = copy.deepcopy(self.execute_product)

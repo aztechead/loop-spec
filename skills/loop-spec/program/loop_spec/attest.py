@@ -3,8 +3,11 @@
 Use `ClaudeCodeAttestor` as the `HostAttestor` `steps.submit` calls when a step was
 dispatched natively (the Agent tool) rather than run by a controller-observed runner
 that needs no transcript. What the host writes, and so the check built from it, come
-from one observation (Claude Code 2.1.278, 2026-09-22; ROADMAP section 19), not a
-promise every host or a future version will match it.
+from observation (Claude Code 2.1.278, 2026-09-22, ROADMAP section 19; 2.1.285,
+2026-09-30), not a promise every host or a future version will match it. By 2.1.285
+an Agent call with a `name`, in an interactive session with agent teams, starts an
+in-process teammate whose sidecar records the name as `agentType`, so runner.md
+dispatches by `description` and never by `name`.
 """
 import json
 import os
@@ -33,19 +36,21 @@ def find_transcripts(claude_home: Path, project_cwd: Path, session_id: str, disp
         return []
     # Claude Code 2.1.278 names the file by agent id (`agent-<id>.jsonl`) and keeps the
     # dispatch name in the `.meta.json` sidecar (live finding LF-10; the probe record had
-    # the name in the file name). Accept either spelling of the dispatch: the Agent
-    # tool's name, or the agent id it returned.
+    # the name in the file name). Accept any spelling of the dispatch: the Agent tool's
+    # description (what runner.md sets, since a named Agent can start as an in-process
+    # teammate whose sidecar records the name as its agentType), its name, or the agent
+    # id it returned.
     matches: list[Path] = []
     for meta in sorted(m for d in subagents_dirs for m in d.glob("agent-*.meta.json")):
         transcript = meta.with_name(meta.name[: -len(".meta.json")] + ".jsonl")
         if not transcript.exists():
             continue
         try:
-            name = json.loads(meta.read_text(encoding="utf-8")).get("name")
+            record = json.loads(meta.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            name = None
+            record = {}
         agent_id = meta.name[len("agent-"): -len(".meta.json")]
-        if name == dispatch_name or agent_id == dispatch_name:
+        if dispatch_name in (record.get("description"), record.get("name"), agent_id):
             matches.append(transcript)
     if not matches:
         matches = sorted(m for d in subagents_dirs for m in d.glob(f"agent-a{dispatch_name}-*.jsonl"))
@@ -235,9 +240,15 @@ def check_agent_type(transcript: Path, step: dict) -> str | None:
     expected = subagent_type(step["effort"])
     meta = transcript.with_name(transcript.name[: -len(".jsonl")] + ".meta.json")
     try:
-        agent_type = json.loads(meta.read_text(encoding="utf-8")).get("agentType")
+        record = json.loads(meta.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        agent_type = None
+        record = {}
+    agent_type = record.get("agentType")
+    if record.get("taskKind") == "in_process_teammate":
+        # A named Agent in a session with agent teams runs as a teammate; its sidecar
+        # records the name as agentType, so the type it ran as is unknowable.
+        return (f"dispatched as an in-process teammate (agentType {agent_type}); dispatch with no name, "
+                f"description set to the dispatch name, and subagent_type {expected}")
     if agent_type != expected:
         return f"dispatched as {agent_type or 'unknown'}; this step runs as {expected} for effort {step['effort']}"
     return None

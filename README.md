@@ -4,7 +4,7 @@ For a developer installing loop-spec in Claude Code, or embedding it in a Python
 app on the Claude Agent SDK. Use this guide to install it, run an entry, and read
 a result.
 
-Current version: 7.7.5
+Current version: 7.7.6
 
 ## Contents
 
@@ -162,15 +162,83 @@ environment variables take precedence over it.
 |---|---|
 | `phases.<phase>` (config) | bind a phase to `"external"` instead of its default implementation |
 | `roles.<role>` (config), `LOOP_SPEC_ROLE_<ROLE>` | bind a role to a skill other than the bundled default |
+| `deliver.after` (config) | skills to run on the delivered PR after the result is reported, e.g. `["my-plugin:pr-follow-up"]` |
 | `deliver.readiness` (config) | `"checks"` waits on required PR checks before DELIVER finishes |
 | `deliver.acceptRemotePaths` (config) | path globs, e.g. `["CHANGELOG.md"]`: accept a bot's commits on the PR branch that touch only these paths and none of the verified change |
 | `LOOP_SPEC_HOME` | state home root; default `~/.loop-spec` |
+| `LOOP_SPEC_PLUGIN_DIRS` | plugin directories, separated by `:`, where `plugin:skill` names resolve first; for a plugin loaded by path, such as the Agent SDK's local plugins (`examples/sdk-plugin --plugin` sets it) |
 | `roles.<role>.model` (config), `LOOP_SPEC_MODEL_<ROLE>` | model for every dispatch of that role, e.g. `LOOP_SPEC_MODEL_CODE_REVIEWER=haiku`. By default the judgment workers (router, plan-critic, code-reviewer, iterate-judge) run on `opus` and the implementation workers (implementer, verifier) on `sonnet`; a `null` in config inherits your session's model instead. SPEC, PLAN, debug, revise and direct run in the session itself, so in Claude Code run it on the model you want for them; an Agent SDK runner can switch the session to a lead step's model instead (`examples/sdk-plugin`, `examples/supervisor`) |
 | `LOOP_SPEC_PHASE_MODEL_<PHASE>` | model for every step of that phase (`SPEC`, `PLAN`, `EXECUTE`, ...) whose role has no model of its own set, e.g. `LOOP_SPEC_PHASE_MODEL_PLAN=opus`. For SPEC and PLAN it takes effect under an Agent SDK runner, as above |
 | `roles.<role>.effort` (config), `LOOP_SPEC_EFFORT_<ROLE>` | effort (`low`, `medium`, `high`, `xhigh`, `max`) for every worker that role dispatches, e.g. `LOOP_SPEC_EFFORT_CODE_REVIEWER=low`. By default the router runs at `low`, and every other worker at `medium`; a `null` in config inherits. The worker runs as the plugin's `loop-spec:worker-<effort>` agent. It does not apply to a step the lead runs itself (SPEC, PLAN, debug, revise, direct), which uses the session's `--effort`. A mismatched agent type stops a plan-critic, code-reviewer, iterate-judge or router step; for implementer and verifier it is recorded and the run goes on |
 | `spec.approval` (config), `LOOP_SPEC_SPEC_APPROVAL` | `policy` approves SPEC's requirements without asking, as 6.x's default `auto` style did; the interview and every other question are still asked. Default `ask` |
 | `LOOP_SPEC_REWIND_BUDGET` | how many backward transitions one run may spend; default 2 |
 | `LOOP_SPEC_STEP_RETRIES` | retries before a rejected product asks you to fix and re-enter or stop; default 3 |
+
+### Use your own skill or plugin in a phase
+
+Use this when a phase should use your skill or plugin, either alongside the bundled
+method or in its place. Each phase's method is a role, so you configure the role:
+
+| Phase | Role | Runs as |
+|---|---|---|
+| SPEC | `spec-writer` | lead |
+| PLAN | `planner`, `plan-critic` | lead, worker |
+| EXECUTE | `implementer`, `code-reviewer` | worker |
+| VERIFY | `verifier`, `code-reviewer` | worker |
+| ITERATE | `iterate-judge` | worker |
+| debug | `debugger` | lead |
+| revise | `reviser` | lead |
+| route | `router` | worker |
+
+DELIVER has no role. The program performs it, so you can only bind it to
+`"external"` under `phases`.
+
+A skill in a role runs inside the run. It reads the role's inputs and writes the
+role's result. It must not push, comment on the PR, or loop on its own: DELIVER
+delivers only the commit that VERIFY checked, so a push made during the run stops
+delivery. A skill that acts on the PR belongs in `deliver.after` (below).
+
+To add your skill to the bundled method, list it under `with`. For example, to have
+REVISE use a plugin that helps work through a PR's reviews:
+
+```json
+{"roles": {"reviser": {"with": ["my-plugin:pr-reviews"]}}}
+```
+
+The reviser follows its bundled method, then your skill. Its result still has to
+match the reviser's schema.
+
+To replace the method, bind the role to your skill:
+`{"roles": {"reviser": "my-plugin:revise-method"}}`. Write that skill's body as the
+role's whole method; its result must match the role's `schema.json` under
+`skills/loop-spec/roles/<role>/`. The two combine:
+`{"binding": "<skill>", "with": [...]}`.
+
+A plain name finds `.claude/skills/<name>/`, `~/.claude/skills/<name>/` or
+`~/.agents/skills/<name>/`. `plugin:skill` finds the skill in the installed version of
+that plugin, or, for a plugin a session loads by path, in a directory named in
+`LOOP_SPEC_PLUGIN_DIRS`.
+
+The program inlines each skill's body into the step's prompt. It resolves
+`${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` in that body, so the body can still
+reach its bundled files. It keeps the bundled role's first principles, its
+`contract.md` and its schema, whatever your skill says. A lead step runs in your
+session, so an installed plugin's other tools (MCP servers, agents) are also available
+to it.
+
+A role's configuration applies wherever the role runs. Only `code-reviewer` runs in
+two phases, EXECUTE and VERIFY, so configuring it changes both.
+
+To act on the PR after the run completes (reply to or resolve review threads,
+trigger a review bot, push further rounds), list the skill under `deliver.after`:
+
+```json
+{"deliver": {"after": ["my-plugin:pr-follow-up"]}}
+```
+
+When a run completes with a PR, its result lists these skills under `after`, and the
+session invokes each one with the PR URLs once it has reported the result. The run is
+already final, so what they do is not part of what loop-spec verified.
 
 ### Run your own reviewer during VERIFY
 

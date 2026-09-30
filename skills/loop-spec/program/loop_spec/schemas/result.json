@@ -226,6 +226,12 @@
     "prs": {
       "type": "array"
     },
+    "after": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "reviewed": {
       "type": "object"
     },

@@ -140,6 +140,19 @@ class ResultTests(unittest.TestCase):
         ])
         self.assertFalse(read_json(result_module.write(store2, paths2, "converged"))["partiallyDelivered"])
 
+    def test_after_skills_are_listed_only_when_the_run_completed_with_a_pr(self):
+        delivered = [{"repo": "calc", "state": "delivered", "pr": _pr(7), "deliveredSha": "a" * 40, "caveats": []}]
+        for n, (targets, classification, expected) in enumerate((
+                (delivered, "converged", ["my-plugin:pr-follow-up"]),
+                ([], "converged", []),
+                (delivered, "escalated", []))):  # a blocked or partial delivery keeps its PR row
+            with self.subTest(classification=classification, targets=len(targets)):
+                store, paths = _new_run(self.tmp / f"after-{n}", f"after-{n}", "deliver")
+                store.state["implementations"]["after"] = ["my-plugin:pr-follow-up"]
+                _verify_passed(store)
+                _deliver(store, targets)
+                self.assertEqual(read_json(result_module.write(store, paths, classification))["after"], expected)
+
     def test_verification_passed_but_delivery_blocked_delivers_nothing(self):
         # VERIFY passed and ITERATE converged, but DELIVER could not publish
         # anything (credentials failed, the operator answered stop) -- the run

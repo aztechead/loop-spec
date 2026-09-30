@@ -1,5 +1,6 @@
 """Unit tests for loop_spec.roles: default/bound role loading and prompt composition."""
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -71,6 +72,66 @@ class LoadBoundRoleTests(unittest.TestCase):
             self.assertEqual(role.source, str(skill_dir / "SKILL.md"))
             default_role = load_role("spec-writer", Path(project_root))
             self.assertEqual(role.schema, default_role.schema)
+
+    def test_plugin_binding_reads_the_installed_version_and_resolves_its_placeholders(self):
+        with tempfile.TemporaryDirectory() as fake_home, tempfile.TemporaryDirectory() as project_root:
+            cache = Path(fake_home, ".claude", "plugins", "cache", "mkt", "myplug")
+            for version in ("aaa-stale", "zzz-installed"):
+                (cache / version / "skills" / "rev").mkdir(parents=True)
+                (cache / version / ".claude-plugin").mkdir()
+                (cache / version / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "myplug"}))
+                (cache / version / "skills" / "rev" / "SKILL.md").write_text(
+                    f"{version} ${{CLAUDE_SKILL_DIR}}/ref.md ${{CLAUDE_PLUGIN_ROOT}}/bin\n")
+            installed = cache / "zzz-installed"
+            Path(fake_home, ".claude", "plugins", "installed_plugins.json").write_text(json.dumps(
+                {"version": 2, "plugins": {"myplug@mkt": [{"scope": "user", "installPath": str(installed)}]}}))
+
+            with patch("pathlib.Path.home", return_value=Path(fake_home)):
+                role = load_role("reviser", Path(project_root), binding="myplug:rev")
+
+            self.assertEqual(role.body.strip(), f"zzz-installed {installed}/skills/rev/ref.md {installed}/bin")
+
+            # A malformed registry is skipped, not fatal: the cache, newest first, answers.
+            Path(fake_home, ".claude", "plugins", "installed_plugins.json").write_text('{"plugins": ["not", "a", "map"]')
+            os.utime(cache / "zzz-installed" / "skills" / "rev" / "SKILL.md", (1, 1))
+            with patch("pathlib.Path.home", return_value=Path(fake_home)):
+                self.assertTrue(load_role("reviser", Path(project_root), binding="myplug:rev").body.startswith("aaa-stale"))
+
+    def test_plugin_root_resolves_only_in_a_plugin(self):
+        with tempfile.TemporaryDirectory() as fake_home, tempfile.TemporaryDirectory() as project_root:
+            skill_dir = Path(project_root, ".claude", "skills", "local")
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text("${CLAUDE_SKILL_DIR} ${CLAUDE_PLUGIN_ROOT}\n")
+            with patch("pathlib.Path.home", return_value=Path(fake_home)):
+                role = load_role("reviser", Path(project_root), binding="local")
+            self.assertEqual(role.body.strip(), f"{skill_dir} ${{CLAUDE_PLUGIN_ROOT}}")
+
+    def test_a_plugin_loaded_by_path_resolves_through_loop_spec_plugin_dirs(self):
+        with tempfile.TemporaryDirectory() as fake_home, tempfile.TemporaryDirectory() as plugin_dir:
+            Path(plugin_dir, ".claude-plugin").mkdir()
+            Path(plugin_dir, ".claude-plugin", "plugin.json").write_text(json.dumps({"name": "local-plug"}))
+            Path(plugin_dir, "skills", "rev").mkdir(parents=True)
+            Path(plugin_dir, "skills", "rev", "SKILL.md").write_text("Local body.\n")
+            with patch("pathlib.Path.home", return_value=Path(fake_home)), \
+                    patch.dict("os.environ", {"LOOP_SPEC_PLUGIN_DIRS": plugin_dir}):
+                role = load_role("reviser", Path(fake_home), binding="local-plug:rev")
+            self.assertEqual(role.body.strip(), "Local body.")
+
+    def test_with_skills_follow_the_default_method(self):
+        with tempfile.TemporaryDirectory() as fake_home, tempfile.TemporaryDirectory() as project_root:
+            skill_dir = Path(project_root, ".claude", "skills", "pr-helper")
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text("---\nname: pr-helper\n---\n\nRead ${CLAUDE_SKILL_DIR}/notes.md.\n")
+            Path(project_root, ".loop-spec").mkdir()
+            Path(project_root, ".loop-spec", "config.json").write_text(json.dumps({"roles": {"reviser": {"with": ["pr-helper"]}}}))
+
+            with patch("pathlib.Path.home", return_value=Path(fake_home)):
+                role = load_role("reviser", Path(project_root))
+
+            default_body = load_role("reviser", Path(fake_home)).body.rstrip()
+            self.assertTrue(role.body.startswith(default_body))
+            self.assertTrue(role.body.endswith(f"### Also follow the `pr-helper` skill\n\nRead {skill_dir}/notes.md.\n"))
+            self.assertEqual(role.source, "default")
 
     def test_missing_binding_raises_naming_searched_paths(self):
         with tempfile.TemporaryDirectory() as fake_home, tempfile.TemporaryDirectory() as project_root:

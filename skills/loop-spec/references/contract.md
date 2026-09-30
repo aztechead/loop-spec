@@ -173,8 +173,8 @@ A `role` step whose `role` is `plan-critic`, `code-reviewer`, or `iterate-judge`
 (pure judgment the program cannot re-derive) is never accepted `unattested`: an
 unattested submission for one of these leaves the step open, bumps its
 `attestationAttempts`, emits `step_redispatch`, and `submit` returns a `redispatch`
-name (`<stepId>-<n+1>`) for a fresh worker dispatched under that exact name with
-the same prompt, up to `retry_limit()` (`LOOP_SPEC_STEP_RETRIES`, default 3)
+name (`<stepId>-<n+1>`) for a fresh worker dispatched with that exact name as its
+`description`, no `name`, and the same prompt, up to `retry_limit()` (`LOOP_SPEC_STEP_RETRIES`, default 3)
 attempts. Past the bound, or at once when no host can attest (no
 `CLAUDE_CODE_SESSION_ID`) or an SDK receipt names another digest, the submission is
 accepted only when config opts the role in (`evidence.review.accept` for
@@ -299,12 +299,13 @@ optional:
 | Key | Effect |
 |---|---|
 | `phases.<phase>` | binds that phase's implementation (`"external"`, or a phase name is otherwise `"default"`) |
-| `roles.<role>` | binds that role to a skill other than the bundled default (`roles.load_role`); a plain string is the binding, or an object `{"binding": ..., "model": ..., "effort": ...}` also names a model and an effort (`low`, `medium`, `high`, `xhigh`, `max`; `contract.load_config` refuses another) for that role's dispatches (`roles.dispatch_settings`), reachable without also rebinding the skill; an explicit `null` model or effort inherits the dispatcher's own instead of the role's default |
+| `roles.<role>` | binds that role to a skill other than the bundled default (`roles.load_role`); a plain string is the binding, or an object `{"binding": ..., "model": ..., "effort": ..., "with": [...]}` also names a model and an effort (`low`, `medium`, `high`, `xhigh`, `max`; `contract.load_config` refuses another) for that role's dispatches (`roles.dispatch_settings`), reachable without also rebinding the skill; an explicit `null` model or effort inherits the dispatcher's own instead of the role's default |
 | (default) | with neither env nor config set, the role's own `SKILL.md` frontmatter applies (`contract.role_meta`): `router` `opus`/`low`; `plan-critic`, `code-reviewer`, `iterate-judge` `opus`/`medium`; `implementer`, `verifier` `sonnet`/`medium`. Lead roles (`spec-writer`, `planner`, `debugger`, `reviser`, `direct`) name none and run at the lead session's model and effort |
 | `spec.approval` | `"ask"` (default) opens SPEC's requirements approval for a person; `"policy"` answers it with its default, `approve`, as soon as it opens, recorded `by: "policy"` (S2), and leaves every other question to be asked. 6.x's default `auto` style skipped the same gate. Any other value is a config error |
 | `deliver.base` | overrides the branch DELIVER's PR targets, instead of the repo's detected default branch |
 | `deliver.readiness` | `"checks"` makes D3 wait on `gh pr checks`; default `"none"` skips that wait |
 | `deliver.acceptRemotePaths` | a list of path globs (repo-relative, every repo of a workspace); commits someone else put on the PR branch after the verified SHA, such as a changelog bot's, are accepted when every path they touch in any commit matches and none is changed by the verified change. DELIVER then skips the push, keeps `deliveredSha` as the verified SHA, and records the commits as `acceptedRemote` (D1/D2). Absent or `[]`: any such commit blocks delivery. Anything but a list of strings is a config error |
+| `deliver.after` | a list of skill names (`plugin:skill` or a plain name the Skill tool resolves), captured in `implementations.after` when the run starts; a result with status `completed` and at least one PR lists them under `after` (an escalated or failed run never does, since a blocked or partial delivery keeps a PR row whose head may not be the verified commit), and the lead invokes each on those PRs once it has reported the result (runner.md `result`). They run after the run is final, outside its postconditions; `contract.load_config` refuses anything but a list of non-empty strings |
 | `deliver.escalatedPartialDraft` | `true` routes an escalated ITERATE forward into DELIVER for a draft PR instead of terminating |
 | `evidence.review.accept` | `"unattested"` lets an `unattested` review count toward EXECUTE's E6, instead of blocking the task, and lets a `code-reviewer` step with no accepted evidence be accepted instead of refused; every task and step accepted this way is listed in the result's `weakenedAssurance` |
 | `evidence.judgment.accept` | `"unattested"` lets a `plan-critic` or `iterate-judge` step with no accepted evidence be accepted instead of refused, listed in `weakenedAssurance`. Either key with any other value is a config error |
@@ -314,6 +315,7 @@ Environment variables, precedence over config where both apply:
 | Variable | Effect |
 |---|---|
 | `LOOP_SPEC_HOME` | state home root; default `~/.loop-spec` |
+| `LOOP_SPEC_PLUGIN_DIRS` | plugin directories, separated by `os.pathsep`, that a `plugin:skill` name resolves in before Claude Code's installed-plugin registry (`roles._bound_skill_candidates`); a directory matches when its `.claude-plugin/plugin.json` `name` (else its own name) is the plugin. For a plugin a session loads by path (`claude --plugin-dir`, the Agent SDK's `plugins=[{"type": "local", ...}]`), which no registry lists |
 | `LOOP_SPEC_PYTHON` | interpreter the `loop-spec` launcher execs; default `python3`, must resolve to >= 3.11 |
 | `LOOP_SPEC_PHASE_<NAME>` | overrides `phases.<phase>`; `<NAME>` is the phase name uppercased (`EXECUTE`, `DELIVER`, ...) |
 | `LOOP_SPEC_ROLE_<ROLE>` | overrides `roles.<role>`; `<ROLE>` is the role name uppercased with hyphens kept as-is (`SPEC-WRITER`, `CODE-REVIEWER`) |
@@ -343,8 +345,14 @@ third value raises (bound phase implementations are not built in this release). 
 `skills/loop-spec/roles/<name>/`) or a bound skill name, resolved by
 `roles._bound_skill_candidates` against the project's `.claude/skills/<name>/`,
 the user's `~/.claude/skills/<name>/` or `~/.agents/skills/<name>/`, or (for a
-`plugin:skill` binding) an installed plugin's cache. A bound role supplies its own
-prompt body only. `roles.load_role` still validates the result against the
+`plugin:skill` binding) the plugin's `installPath` in Claude Code's
+`~/.claude/plugins/installed_plugins.json` (this project's install first), then its
+cache, newest first. Each skill named in `roles.<role>.with` (a list of names resolved the same way;
+`contract.load_config` refuses another type) is appended to the method, bound or
+default, under a ``### Also follow the `<name>` skill`` heading. A bound role supplies its own
+prompt body only, with
+`${CLAUDE_SKILL_DIR}` and, for a plugin skill, `${CLAUDE_PLUGIN_ROOT}` resolved to
+the skill's own paths. `roles.load_role` still validates the result against the
 *default* role's schema, and `roles.role_contract` appends the default role's
 `contract.md` whatever the source; every role's prompt, bound or not, also opens its
 method with `roles/principles.md` (`roles.principles`). The eleven roles that ship
