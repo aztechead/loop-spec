@@ -208,6 +208,51 @@ def repo_map(repos) -> dict:
     return out
 
 
+# A nested multi-line string longer than this leaves the JSON for a section of its own.
+# Shorter ones read better in place, and their one escaped line stays far below the
+# read budget and the host Read tool's long-line cut.
+HOIST_BYTES = 1_000
+
+
+def _hoist(value, path: str, out: dict):
+    """A copy of `value` where every long multi-line string is replaced by a pointer to
+    `out[path]`. JSON puts a nested string on one escaped line: a diff or a pasted log
+    in a dict or list became a single prompt line over the read budget (the wave review
+    and revise bodies, 7.7.8). Depth-first in source order, so the prompt is a pure
+    function of the inputs."""
+    if isinstance(value, dict):
+        return {k: _hoist(v, f"{path}.{k}", out) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_hoist(v, f"{path}[{i}]", out) for i, v in enumerate(value)]
+    if isinstance(value, str) and "\n" in value and len(value.encode("utf-8")) > HOIST_BYTES:
+        out[path] = value
+        return f"<see input {path}>"
+    return value
+
+
+def _render_one(key: str, value) -> str:
+    if isinstance(value, (dict, list)):
+        body = "```json\n" + render_json(value) + "\n```"
+    elif value is None or isinstance(value, bool):
+        body = json.dumps(value)  # the worker reads JSON, not Python's None/True
+    else:
+        # A diff ends with its own newline; kept, it made three newlines before the
+        # next header, a run every observed dispatch collapsed in transit, so no
+        # review step with a later input could attest (LF-56). Only the section's
+        # trailing framing is trimmed; its interior lines stay exact.
+        body = str(value).rstrip("\n")
+    return f"### {key}\n{body}"
+
+
+def render_section(key: str, value) -> str:
+    """One input as the prompt shows it: its own section, then a section for each long
+    string hoisted out of it. E6 searches a prompt for exactly this text."""
+    hoisted: dict = {}
+    if isinstance(value, (dict, list)):
+        value = _hoist(value, key, hoisted)
+    return "\n\n".join([_render_one(key, value), *(_render_one(k, v) for k, v in hoisted.items())])
+
+
 def compose_prompt(role: Role, *, inputs: dict, result_path: Path, cwd: Path, phase: str) -> str:
     # The Agent tool has no working-directory parameter, so a worker starts in the
     # lead's checkout; three live workers edited, reset, or checked out there before
@@ -226,19 +271,7 @@ def compose_prompt(role: Role, *, inputs: dict, result_path: Path, cwd: Path, ph
     if contract:
         sections.append(f"## loop-spec contract\n{contract}")
 
-    input_sections = []
-    for key, value in inputs.items():
-        if isinstance(value, (dict, list)):
-            body = "```json\n" + render_json(value) + "\n```"
-        elif value is None or isinstance(value, bool):
-            body = json.dumps(value)  # the worker reads JSON, not Python's None/True
-        else:
-            # A diff ends with its own newline; kept, it made three newlines before the
-            # next header, a run every observed dispatch collapsed in transit, so no
-            # review step with a later input could attest (LF-56). Only the section's
-            # trailing framing is trimmed; its interior lines stay exact.
-            body = str(value).rstrip("\n")
-        input_sections.append(f"### {key}\n{body}")
+    input_sections = [render_section(key, value) for key, value in inputs.items()]
     sections.append("## Inputs\n\n" + "\n\n".join(input_sections))
 
     schema_json = render_json(role.schema)

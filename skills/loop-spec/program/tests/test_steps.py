@@ -317,13 +317,19 @@ class ReadScheduleTests(StepsTestCase):
         with self.assertRaisesRegex(LoopSpecError, "line 1 .* 57 bytes, over the supported 56-byte read budget"):
             steps.read_schedule(line, budget=56)
 
-    def test_an_over_budget_line_issues_nothing(self):
+    def test_a_line_the_host_would_cut_is_split_with_a_mark_and_issued(self):
+        # A minified line in a diff was over the read budget and refused; the Read tool
+        # also cuts any line over 2,000 characters. Every issued line now fits.
         with tempfile.TemporaryDirectory() as tmp:
             store, paths = self._store(tmp)
-            with self.assertRaisesRegex(LoopSpecError, "execute code-reviewer step not issued: line 2 "):
-                self._issue(store, paths, role="code-reviewer", prompt="ok\n" + "é" * 9000)
-            self.assertEqual(store.state["steps"]["open"], [])
-            self.assertEqual(list(paths.steps_dir.glob("*")) if paths.steps_dir.exists() else [], [])
+            long_line = "é" * 4000 + "🙂" * 1000
+            record = self._issue(store, paths, role="code-reviewer", prompt="ok\n" + long_line + "\nend")
+            lines = record["prompt"].split("\n")
+            self.assertTrue(all(len(line.encode("utf-16-le")) // 2 <= steps.WRAP_UNITS + 1 for line in lines))
+            joined = "".join(line[:-1] if line.endswith(steps.WRAP_MARK) else line + "\n" for line in lines[1:])
+            self.assertTrue(joined.startswith(long_line + "\nend"))
+            self.assertIn("continues on the next line", record["prompt"])
+            self.assertEqual(steps.wrap_long_lines("short\nlines"), "short\nlines")
 
     def test_the_bootstrap_lists_every_call_and_keeps_a_unicode_path(self):
         with tempfile.TemporaryDirectory() as tmp:

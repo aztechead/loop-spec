@@ -194,6 +194,25 @@ class ExecuteStepIssuesWholeWaveTests(unittest.TestCase):
         self.assertEqual(t3_task_id, "T-3")
 
 
+    def test_wave_review_prompt_keeps_a_large_diff_on_real_lines(self):
+        # A ~20 KB diff of short lines, nested in the `tasks` JSON, rendered as one
+        # escaped line over the read budget and blocked EXECUTE for good.
+        from loop_spec.steps import read_schedule
+        action = step(self.store, self.paths, self.ctx)
+        for request in action.requests:
+            worktree, task_id = self._worktree_and_task(request)
+            if task_id == "T-1":
+                Path(worktree, "big.txt").write_text("".join(f"line {i:04d} " + "x" * 60 + "\n" for i in range(300)))
+                _git(worktree, "add", "big.txt")
+            on_submit(self.store, self.paths, request | {"stepAttemptId": f"impl-{task_id}"},
+                      _implementer_result(task_id, worktree, f"{task_id}.txt"))
+        action = step(self.store, self.paths, self.ctx)
+        self.assertEqual(action.request["role"], "code-reviewer")
+        prompt = action.request["prompt"]
+        read_schedule(prompt)
+        self.assertIn("### diff:T-1", prompt)
+        self.assertIn("### diff:T-2", prompt)
+
     def test_a_refused_wave_review_sends_every_task_back_to_review(self):
         from loop_spec.execute import on_step_refused
         from loop_spec.jsonio import atomic_write_json

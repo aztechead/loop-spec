@@ -97,6 +97,35 @@ _DISPATCH_PROMPT = (
 )
 
 
+# The host Read tool cuts a line longer than 2,000 characters (UTF-16 units), so a worker
+# could never read such a line whole and its step could never attest. The program splits
+# it, with margin, and marks each split so the text is still exact to a reader.
+WRAP_UNITS = 1_800
+WRAP_MARK = "\u21a9"  # ↩
+_WRAP_NOTE = (f"\n\nNOTE: lines longer than {WRAP_UNITS} characters are split for reading; a line ending in "
+              f"{WRAP_MARK} continues on the next line with no character added or removed.")
+
+
+def _wrap_line(line: str) -> list[str]:
+    pieces, units, start = [], 0, 0
+    for i, ch in enumerate(line):
+        width = 2 if ord(ch) > 0xFFFF else 1
+        if units + width > WRAP_UNITS:
+            pieces.append(line[start:i] + WRAP_MARK)
+            start, units = i, 0
+        units += width
+    return [*pieces, line[start:]]
+
+
+def wrap_long_lines(prompt: str) -> str:
+    """Every line of a role prompt readable in one piece (7.7.8): a minified file in a
+    diff used to be a line no Read returned whole, over the read budget and refused."""
+    lines = prompt.split("\n")
+    if all(len(line) <= WRAP_UNITS // 2 or len(line.encode("utf-16-le")) // 2 <= WRAP_UNITS for line in lines):
+        return prompt
+    return "\n".join(piece for line in lines for piece in _wrap_line(line)) + _WRAP_NOTE
+
+
 def read_schedule(prompt: str, budget: int = READ_BUDGET_BYTES) -> list[dict]:
     """LF-61: contiguous Read ranges covering every line of `prompt` once, in order,
     each rendering to at most `budget` bytes. A line that alone exceeds the budget
@@ -148,6 +177,8 @@ def issue(store, paths, *, phase: str, attempt_id: str, kind: str, role: str | N
         result_path = paths.results_dir / f"{step_id}.json"
     issued_at = now_iso()
 
+    if kind == "role":
+        prompt = wrap_long_lines(prompt)
     full_prompt = prompt + _STEP_TRAILER.format(
         step_id=step_id, inputs_digest=inputs_digest, phase=phase, result_path=str(result_path),
     )

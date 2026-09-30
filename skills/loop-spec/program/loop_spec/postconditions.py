@@ -22,10 +22,11 @@ from loop_spec import budget as budget_module
 from loop_spec import ledger as ledger_module
 from loop_spec import repo as repo_module
 from loop_spec import repo_checks
+from loop_spec import roles
 from loop_spec.contract import load_config
 from loop_spec.entries import ENTRIES, ROUTABLE
 from loop_spec.ids import digest
-from loop_spec.jsonio import read_json, render_json
+from loop_spec.jsonio import read_json
 from loop_spec.schema import load_schema, validate
 
 RETRY_LIMIT_DEFAULT = 3
@@ -771,7 +772,7 @@ class Boundary:
         _, step_id = review_evidence(self.store, task)
         step_path = self.paths.steps_dir / str(step_id) / "step.json"
         prompt = read_json(step_path).get("prompt", "") if step_id and step_path.is_file() else ""
-        if render_json(close_out_view(entry)) not in prompt:
+        if roles.render_section("closeOut", close_out_view(entry)) not in prompt:
             return f"close-out {cid}: its review step was not issued for this close-out"
         return None
 

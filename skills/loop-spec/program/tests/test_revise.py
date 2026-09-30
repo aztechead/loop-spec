@@ -137,6 +137,14 @@ class StepTests(unittest.TestCase):
         # and the prompt carries the key with no delivering run found.
         self.assertIn("### prior\nnull", action.request["prompt"])
 
+    def test_step_keeps_a_large_comment_body_on_real_lines(self):
+        from loop_spec.steps import read_schedule
+        log = "".join(f"FAILED tests/test_a.py::test_{i:04d} - AssertionError\n" for i in range(500))
+        self.store.state["revise"]["gaps"][0]["body"] = log
+        action = step(self.store, self.paths, self.ctx)
+        read_schedule(action.request["prompt"])
+        self.assertIn("### gap:G-1\nFAILED tests/test_a.py::test_0000", action.request["prompt"])
+
     def test_step_carries_prior_spec_and_plan_when_found(self):
         # LF-37: controller._find_delivering_run_products fills adoption.prior (core
         # state, D4) before the step is ever issued; the request passes it through.

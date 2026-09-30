@@ -519,7 +519,7 @@ def _wave_review_request(store, paths, ctx, task_ids: list[str]) -> dict:
     execute_state = store.state["execute"]
     ensure_results_dir(paths)
     result_path = paths.results_dir / f"wave-{'_'.join(task_ids)}-review-{new_id('step').split('-', 1)[1]}.json"
-    entries, first_cwd = [], None
+    entries, diffs, first_cwd = [], {}, None
     for task_id in task_ids:
         task_state = execute_state["tasks"][task_id]
         plan_task = _task_spec(store, task_id)
@@ -528,16 +528,21 @@ def _wave_review_request(store, paths, ctx, task_ids: list[str]) -> dict:
         first_cwd = first_cwd or review_cwd
         review_from, task_head, diff = _review_range(paths, execute_state, task_state, task_id, ctx["attempt"]["id"])
         entry = {"task": plan_task, "cwd": str(review_cwd), "range": {"from": review_from, "to": task_head},
-                 "diff": diff, "probes": task_state["probes"]}
+                 "probes": task_state["probes"]}
+        diffs[f"diff:{task_id}"] = diff
         if task_state.get("reason"):
             entry["reason"] = task_state["reason"]
         entries.append(entry)
         task_state.update({"reviewCandidate": task_head, "status": "reviewing", "waveReview": str(result_path)})
     inputs = {
         "tasks": entries,
+        # LF-63 for the wave review: each task's diff is its own top-level string input,
+        # so it renders as real lines. Nested in `tasks`, JSON put a whole diff on one
+        # escaped line, over the read budget.
+        **diffs,
         "ledger": store.state.get("ledger", {}),
         "wave": (f"This step reviews {len(task_ids)} tasks of one wave together. Review each task on its own: "
-                 "its range, diff and files, read in its own `cwd`, judged on its own criteria; one task's "
+                 "its range, its diff (the `diff:<task id>` input) and files, read in its own `cwd`, judged on its own criteria; one task's "
                  "verdict never decides another's. Write one result per task in `tasks`, each naming its "
                  "`task` id, in the shape the Method describes for a single review."),
     }
