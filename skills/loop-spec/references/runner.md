@@ -157,7 +157,10 @@ and re-runs the entry with `--slug <slug>` and no request to resume.
 
 ## `result`
 
-Report the result file to the user in the chat shape. Stop.
+Report the result file to the user in the chat shape. Then, if the result's `after`
+lists skills, invoke each one in order with the `Skill` tool, passing the URLs in the
+result's `prs` as its arguments, separated by spaces. The run is final by then:
+nothing these skills do is part of its result. Stop.
 
 ## Rules
 

@@ -30,6 +30,12 @@ session with agent teams.
   after its method, bundled or bound. A plugin that helps a phase no longer has to
   replace the role's whole method. For example, `{"roles": {"reviser": {"with":
   ["my-plugin:pr-reviews"]}}}` has REVISE use it on a PR's reviews.
+- `deliver.after`: a list of skills to run on the delivered PR once the run is final.
+  A run that ends with a PR lists them under `after` in `result.json`, and the lead
+  invokes each with the PR URLs after it reports the result (runner.md `result`). This
+  is the place for a skill that pushes, comments, resolves review threads or loops on
+  a PR. Inside the run, such a skill would stop DELIVER, which requires the PR head to
+  be the verified commit.
 - README: how to use your own skill or plugin in a phase, with the role each phase
   runs.
 - llms.txt: the phase-to-role binding, every config key and environment control from

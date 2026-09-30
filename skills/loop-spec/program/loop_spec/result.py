@@ -151,6 +151,8 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         "result": classification,
         "rewinds": len(store.state["budget"]["transitions"]),
         "prs": prs,
+        # Outside the run's proof: the lead invokes these after reporting, on these PRs.
+        "after": store.state["implementations"].get("after", []) if prs else [],
         "reviewed": {t["id"]: {"level": level, "stepId": step_id}
                      for t in _accepted_tasks(execute_entry)
                      for level, step_id in [review_evidence(store, t)]},

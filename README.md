@@ -162,6 +162,7 @@ environment variables take precedence over it.
 |---|---|
 | `phases.<phase>` (config) | bind a phase to `"external"` instead of its default implementation |
 | `roles.<role>` (config), `LOOP_SPEC_ROLE_<ROLE>` | bind a role to a skill other than the bundled default |
+| `deliver.after` (config) | skills to run on the delivered PR after the result is reported, e.g. `["my-plugin:pr-follow-up"]` |
 | `deliver.readiness` (config) | `"checks"` waits on required PR checks before DELIVER finishes |
 | `deliver.acceptRemotePaths` (config) | path globs, e.g. `["CHANGELOG.md"]`: accept a bot's commits on the PR branch that touch only these paths and none of the verified change |
 | `LOOP_SPEC_HOME` | state home root; default `~/.loop-spec` |
@@ -190,6 +191,11 @@ method or in its place. Each phase's method is a role, so you configure the role
 
 DELIVER has no role. The program performs it, so you can only bind it to
 `"external"` under `phases`.
+
+A skill in a role runs inside the run. It reads the role's inputs and writes the
+role's result. It must not push, comment on the PR, or loop on its own: DELIVER
+delivers only the commit that VERIFY checked, so a push made during the run stops
+delivery. A skill that acts on the PR belongs in `deliver.after` (below).
 
 To add your skill to the bundled method, list it under `with`. For example, to have
 REVISE use a plugin that helps work through a PR's reviews:
@@ -220,6 +226,17 @@ to it.
 
 A role's configuration applies wherever the role runs. Only `code-reviewer` runs in
 two phases, EXECUTE and VERIFY, so configuring it changes both.
+
+To act on the PR after the run delivers it (reply to or resolve review threads,
+trigger a review bot, push further rounds), list the skill under `deliver.after`:
+
+```json
+{"deliver": {"after": ["my-plugin:pr-follow-up"]}}
+```
+
+When a run ends with a PR, its result lists these skills under `after`, and the
+session invokes each one with the PR URLs once it has reported the result. The run is
+already final, so what they do is not part of what loop-spec verified.
 
 ### Run your own reviewer during VERIFY
 

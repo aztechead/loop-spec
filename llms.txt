@@ -65,6 +65,8 @@ product, schema and postconditions do not change. Full how-to:
 - Only each skill's body is used. The program resolves `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` in it, still prepends `roles/principles.md`, appends the bundled role's `contract.md`, and validates the result against the bundled `schema.json`.
 - A role's configuration applies in every phase where the role runs. Only `code-reviewer` runs in two phases, EXECUTE and VERIFY.
 - `phases.<phase>: "external"` hands the whole phase to a person or tool, which submits the product.
+- A skill in a role stays inside the run: it reads the role's inputs and writes the role's result. A skill that pushes, comments on the PR, resolves threads, or loops on its own breaks DELIVER's first postcondition (the PR head must be the verified commit), so it belongs in `deliver.after`.
+- `{"deliver": {"after": ["my-plugin:pr-follow-up"]}}`: when a run ends with a PR, `result.json` lists these under `after`, and the lead invokes each with the `Skill` tool after reporting, passing the `prs[].url` values. The run is already final, so these skills are outside its postconditions.
 
 ## Controls
 
@@ -76,7 +78,7 @@ Config keys (`.loop-spec/config.json`):
 - `phases.<phase>`: `"default"` or `"external"`.
 - `roles.<role>`: the skill bound in the role's place, as a string, or `{"binding", "model", "effort", "with"}`. `with` is a list of skills that follow the method. `effort` is one of `low`, `medium`, `high`, `xhigh`, `max`. An explicit `null` inherits the dispatcher's own model or effort.
 - `spec.approval`: `"ask"` (the default) or `"policy"` (approve the requirements without asking).
-- `deliver.base`: the PR's target branch. `deliver.readiness`: `"checks"` waits on required PR checks. `deliver.acceptRemotePaths`: path globs where a bot's commits are accepted. `deliver.escalatedPartialDraft`: `true` makes an escalated ITERATE open a draft PR.
+- `deliver.base`: the PR's target branch. `deliver.readiness`: `"checks"` waits on required PR checks. `deliver.acceptRemotePaths`: path globs where a bot's commits are accepted. `deliver.escalatedPartialDraft`: `true` makes an escalated ITERATE open a draft PR. `deliver.after`: skills the lead invokes on the delivered PRs after the result.
 - `evidence.review.accept`, `evidence.judgment.accept`: `"unattested"` accepts an unattested review, or plan-critic and iterate-judge result, and records it in `weakenedAssurance`.
 
 Environment:

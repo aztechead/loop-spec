@@ -75,6 +75,10 @@ def load_config(project_root: Path) -> dict:
     if accept is not None and not (isinstance(accept, list) and all(isinstance(g, str) and g for g in accept)):
         raise LoopSpecError(f"{path}: deliver.acceptRemotePaths is {accept!r}; it is a list of path globs",
                             repair='set it to a list such as ["CHANGELOG.md"], or remove it')
+    after = (config.get("deliver") or {}).get("after")
+    if after is not None and not (isinstance(after, list) and all(isinstance(s, str) and s for s in after)):
+        raise LoopSpecError(f"{path}: deliver.after is {after!r}; it is a list of skill names",
+                            repair='set it to a list such as ["my-plugin:pr-follow-up"], or remove it')
     approval = (config.get("spec") or {}).get("approval")
     if approval is not None and approval not in SPEC_APPROVALS:
         raise LoopSpecError(f"{path}: spec.approval is {approval!r}; it is \"ask\" or \"policy\"",

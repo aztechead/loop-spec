@@ -389,7 +389,10 @@ def _resolve_implementations(store: StateStore, project_root: Path) -> None:
     # Every phase, including debug/revise (each entry's own first phase), gets an
     # implementation resolved once up front so _drive_phase's lookup never misses.
     phases = {p: contract.resolve_implementation(project_root, p) for p in contract.DEFAULT_IMPLEMENTATIONS}
-    store.state["implementations"] = {"phases": phases, "roles": {}}
+    # deliver.after: skills the lead invokes on the delivered PR once the result is
+    # final (runner.md `result`), captured with the rest so the result records them.
+    after = (contract.load_config(project_root).get("deliver") or {}).get("after") or []
+    store.state["implementations"] = {"phases": phases, "roles": {}, "after": after}
 
 
 _PHASE_PRECONDITIONS = {
