@@ -11,7 +11,7 @@ All notable changes documented here. Format follows Keep a Changelog.
 - EXECUTE could not get past a wave of two or more tasks when a task's diff was over
   about 16 KB. The wave's one code-reviewer step carried each task's diff inside the
   `tasks` input list, which the prompt renders as JSON, so each diff became one escaped
-  line; `steps.read_schedule` refuses any prompt line over the 16,000-byte read budget,
+  line; `steps.read_schedule` refused any prompt line over the 16,000-byte read budget,
   and every retry built the same prompt. Each task's diff is now its own top-level
   input, `diff:<task id>`, rendered as real lines, the layout the ITERATE judge adopted
   in LF-63. The wave schema and the per-task results are unchanged.
@@ -23,10 +23,12 @@ All notable changes documented here. Format follows Keep a Changelog.
   its own (`### <input>.<path>`), right after its parent, and leaves
   `<see input <path>>` in the JSON. No input can put a whole document on one line
   again. E6 finds a close-out obligation by the same rendering.
-- `steps.read_schedule` no longer refuses a prompt with a line over the read budget (a
-  minified file in a diff). That line gets a Read of its own and a warning on stderr;
-  the step is issued, and if the host cuts the line short the worker stops, the step
-  fails attestation and takes the ordinary retry path instead of blocking the phase.
+- A single long line still blocked a step: a minified file in a diff was refused over
+  the read budget, and any line over 2,000 characters was cut short by the host Read
+  tool, so its worker could never read the prompt whole and the step could never attest.
+  `steps.issue` now splits every role prompt line over 1,800 characters (UTF-16 units),
+  ends each piece but the last with `↩`, and adds a note that says so. The text is
+  unchanged apart from the marks, and every line can be read whole.
 
 ## [7.7.7] - 2026-09-30
 

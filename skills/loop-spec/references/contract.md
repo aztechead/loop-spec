@@ -128,9 +128,11 @@ on Claude Code 2.1.280, not a token guarantee. `dispatchPrompt` states the line 
 and lists every call, plus the recovery rules: after a short read, continue from the
 line after the last one returned to that range's end. After a read refused as too
 large, read the first half of what is left of the range. When a one-line read fails,
-stop and write no result. A prompt line that alone renders over the budget is over
-the supported budget, so the step is not issued (nothing is written or opened), and
-the error names the line to shorten. A step with no `transport` is a legacy step
+stop and write no result. The Read tool cuts a line longer than 2,000 characters, so
+before scheduling the program splits every role prompt line longer than
+`steps.WRAP_UNITS` (1,800 UTF-16 units), ends each piece but the last with `↩`, and
+adds a note saying so; the split prompt is the step's `prompt`. No line then renders
+over the budget; one that still did would be refused, the step not issued. A step with no `transport` is a legacy step
 whose Agent prompt is `prompt` itself. An SDK or
 supervisor runner still sends `prompt` directly and is attested by its own receipt,
 not by a Read. In the composed prompt each input section's trailing

@@ -314,18 +314,22 @@ class ReadScheduleTests(StepsTestCase):
     def test_multibyte_lines_and_the_budget_boundary(self):
         line = "é" * 27  # 54 bytes; rendered "1\t" + 54 + "\n" = 57
         self.assertEqual(steps.read_schedule(line + "\n" + line, budget=57), [{"offset": 1, "limit": 1}, {"offset": 2, "limit": 1}])
+        with self.assertRaisesRegex(LoopSpecError, "line 1 .* 57 bytes, over the supported 56-byte read budget"):
+            steps.read_schedule(line, budget=56)
 
-    def test_an_over_budget_line_is_scheduled_alone_and_the_step_issued(self):
-        # Fail open (7.x): the Read tool reads by line, so a line over the budget gets a
-        # range of its own; refusing left a run that no retry could move.
-        line = "é" * 27
-        self.assertEqual(steps.read_schedule("a\n" + line + "\nb", budget=56),
-                         [{"offset": 1, "limit": 1}, {"offset": 2, "limit": 1}, {"offset": 3, "limit": 1}])
+    def test_a_line_the_host_would_cut_is_split_with_a_mark_and_issued(self):
+        # A minified line in a diff was over the read budget and refused; the Read tool
+        # also cuts any line over 2,000 characters. Every issued line now fits.
         with tempfile.TemporaryDirectory() as tmp:
             store, paths = self._store(tmp)
-            record = self._issue(store, paths, role="code-reviewer", prompt="ok\n" + "é" * 9000)
-            self.assertIn({"offset": 2, "limit": 1}, record["readSchedule"])
-            self.assertEqual(sum(r["limit"] for r in record["readSchedule"]), len(record["prompt"].split("\n")))
+            long_line = "é" * 4000 + "🙂" * 1000
+            record = self._issue(store, paths, role="code-reviewer", prompt="ok\n" + long_line + "\nend")
+            lines = record["prompt"].split("\n")
+            self.assertTrue(all(len(line.encode("utf-16-le")) // 2 <= steps.WRAP_UNITS + 1 for line in lines))
+            joined = "".join(line[:-1] if line.endswith(steps.WRAP_MARK) else line + "\n" for line in lines[1:])
+            self.assertTrue(joined.startswith(long_line + "\nend"))
+            self.assertIn("continues on the next line", record["prompt"])
+            self.assertEqual(steps.wrap_long_lines("short\nlines"), "short\nlines")
 
     def test_the_bootstrap_lists_every_call_and_keeps_a_unicode_path(self):
         with tempfile.TemporaryDirectory() as tmp:
