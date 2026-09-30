@@ -4,6 +4,18 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.7.8] - 2026-09-30
+
+### Fixed
+
+- EXECUTE could not get past a wave of two or more tasks when a task's diff was over
+  about 16 KB. The wave's one code-reviewer step carried each task's diff inside the
+  `tasks` input list, which the prompt renders as JSON, so each diff became one escaped
+  line; `steps.read_schedule` refuses any prompt line over the 16,000-byte read budget,
+  and every retry built the same prompt. Each task's diff is now its own top-level
+  input, `diff:<task id>`, rendered as real lines, the layout the ITERATE judge adopted
+  in LF-63. The wave schema and the per-task results are unchanged.
+
 ## [7.7.7] - 2026-09-30
 
 Role steps attest in Claude Code's auto mode.
