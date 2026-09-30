@@ -6,8 +6,10 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [7.7.6] - 2026-09-30
 
-A skill or plugin bound to a phase's role now loads, and role steps attest in a
-session with agent teams.
+Your own skills and plugins in a run: `roles.<role>.with` adds a skill to a phase's
+method, `deliver.after` runs one on the PR once the run completes, and a plugin loaded
+by path resolves. Role steps attest again in an interactive session with agent teams,
+and E3 no longer rejects a remediation that reopens a dependency.
 
 ### Fixed
 
