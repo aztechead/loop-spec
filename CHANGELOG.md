@@ -4,6 +4,27 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.8.0] - 2026-09-30
+
+### Added
+
+- DELIVER handles a base that moved under the run. When two agents work on one
+  repository and the other's PR merges first, this run's verified head can conflict
+  with the new base, and the PR it opened could not merge. Before its first push,
+  DELIVER now fetches origin's PR base for every touched repo. When the verified head
+  no longer merges into the new tip, DELIVER pushes nothing and exits `base moved`
+  (D9), which routes back to EXECUTE. EXECUTE merges the new base into the feature
+  branch, and a new `resolver` role (sonnet, medium) resolves the conflicts git
+  leaves. The run's base SHA then moves to the new tip, and VERIFY (a full review of
+  new base..head), ITERATE, and DELIVER run again, so the delivered head is verified
+  as it will merge. It is a merge, not a rebase: every task commit keeps its SHA, the
+  task evidence (E4, E8) stays true, and a branch that was already pushed only
+  fast-forwards, never force-pushed. A resolver that cannot resolve reports
+  `unresolvable`; the merge is aborted and EXECUTE pauses (fix-and-re-enter retries).
+  A base that moved but still merges cleanly is delivered as before. Each base move
+  spends one backward transition from the shared budget, so a base that keeps moving
+  escalates. Needs git 2.38 or later (`git merge-tree --write-tree`).
+
 ## [7.7.8] - 2026-09-30
 
 ### Fixed

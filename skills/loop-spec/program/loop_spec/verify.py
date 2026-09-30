@@ -169,7 +169,9 @@ def _init(store, paths, ctx) -> dict:
             emit(paths, "review_untrusted", {"repo": name, "rangeId": prior["id"], "byStep": prior.get("byStep")},
                  phase="verify", attempt_id=ctx["attempt"]["id"])
             prior = None
-        repo_full = final_pass or prior is None
+        # A base move (DELIVER `base moved`) merges the new base in: a delta from the last
+        # reviewed head would show the base's own change as the run's, so review in full.
+        repo_full = final_pass or prior is None or not repo_module.is_ancestor(repo_path, repo_info["baseSha"], prior["to"])
         # LF-47: an empty delta (nothing changed since the last reviewed SHA)
         # needs no reviewer step at all; a final pass reuses the same prior
         # entry too, but only once some earlier pass already reviewed base..head

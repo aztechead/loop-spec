@@ -4,7 +4,7 @@ For a developer installing loop-spec in Claude Code, or embedding it in a Python
 app on the Claude Agent SDK. Use this guide to install it, run an entry, and read
 a result.
 
-Current version: 7.7.8
+Current version: 7.8.0
 
 ## Contents
 
@@ -167,7 +167,7 @@ environment variables take precedence over it.
 | `deliver.acceptRemotePaths` (config) | path globs, e.g. `["CHANGELOG.md"]`: accept a bot's commits on the PR branch that touch only these paths and none of the verified change |
 | `LOOP_SPEC_HOME` | state home root; default `~/.loop-spec` |
 | `LOOP_SPEC_PLUGIN_DIRS` | plugin directories, separated by `:`, where `plugin:skill` names resolve first; for a plugin loaded by path, such as the Agent SDK's local plugins (`examples/sdk-plugin --plugin` sets it) |
-| `roles.<role>.model` (config), `LOOP_SPEC_MODEL_<ROLE>` | model for every dispatch of that role, e.g. `LOOP_SPEC_MODEL_CODE_REVIEWER=haiku`. By default the judgment workers (router, plan-critic, code-reviewer, iterate-judge) run on `opus` and the implementation workers (implementer, verifier) on `sonnet`; a `null` in config inherits your session's model instead. SPEC, PLAN, debug, revise and direct run in the session itself, so in Claude Code run it on the model you want for them; an Agent SDK runner can switch the session to a lead step's model instead (`examples/sdk-plugin`, `examples/supervisor`) |
+| `roles.<role>.model` (config), `LOOP_SPEC_MODEL_<ROLE>` | model for every dispatch of that role, e.g. `LOOP_SPEC_MODEL_CODE_REVIEWER=haiku`. By default the judgment workers (router, plan-critic, code-reviewer, iterate-judge) run on `opus` and the implementation workers (implementer, verifier, resolver) on `sonnet`; a `null` in config inherits your session's model instead. SPEC, PLAN, debug, revise and direct run in the session itself, so in Claude Code run it on the model you want for them; an Agent SDK runner can switch the session to a lead step's model instead (`examples/sdk-plugin`, `examples/supervisor`) |
 | `LOOP_SPEC_PHASE_MODEL_<PHASE>` | model for every step of that phase (`SPEC`, `PLAN`, `EXECUTE`, ...) whose role has no model of its own set, e.g. `LOOP_SPEC_PHASE_MODEL_PLAN=opus`. For SPEC and PLAN it takes effect under an Agent SDK runner, as above |
 | `roles.<role>.effort` (config), `LOOP_SPEC_EFFORT_<ROLE>` | effort (`low`, `medium`, `high`, `xhigh`, `max`) for every worker that role dispatches, e.g. `LOOP_SPEC_EFFORT_CODE_REVIEWER=low`. By default the router runs at `low`, and every other worker at `medium`; a `null` in config inherits. The worker runs as the plugin's `loop-spec:worker-<effort>` agent. It does not apply to a step the lead runs itself (SPEC, PLAN, debug, revise, direct), which uses the session's `--effort`. A mismatched agent type stops a plan-critic, code-reviewer, iterate-judge or router step; for implementer and verifier it is recorded and the run goes on |
 | `spec.approval` (config), `LOOP_SPEC_SPEC_APPROVAL` | `policy` approves SPEC's requirements without asking, as 6.x's default `auto` style did; the interview and every other question are still asked. Default `ask` |
@@ -183,7 +183,7 @@ method or in its place. Each phase's method is a role, so you configure the role
 |---|---|---|
 | SPEC | `spec-writer` | lead |
 | PLAN | `planner`, `plan-critic` | lead, worker |
-| EXECUTE | `implementer`, `code-reviewer` | worker |
+| EXECUTE | `implementer`, `code-reviewer`, `resolver` | worker |
 | VERIFY | `verifier`, `code-reviewer` | worker |
 | ITERATE | `iterate-judge` | worker |
 | debug | `debugger` | lead |

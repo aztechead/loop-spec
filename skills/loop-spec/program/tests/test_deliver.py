@@ -215,6 +215,54 @@ class DeliverTests(unittest.TestCase):
         self.assertEqual(action.product["repos"][0]["state"], "failed")
         self.assertIn("push rejected", action.product["repos"][0]["caveats"][0])
 
+    def _merge_upstream(self, filename):
+        # Another agent's PR lands on main after this run forked.
+        other = self.tmp / "other"
+        _git(self.tmp, "clone", "-q", str(self.remote), str(other))
+        _git(other, "config", "user.name", "Other")
+        _git(other, "config", "user.email", "other@example.com")
+        Path(other, filename).write_text("upstream\n")
+        _git(other, "add", filename)
+        _git(other, "commit", "-q", "-m", "someone else's PR")
+        _git(other, "push", "-q", "origin", "main")
+        return _head(other)
+
+    def test_a_moved_base_that_conflicts_exits_base_moved_and_publishes_nothing(self):
+        from loop_spec import postconditions
+        tip = self._merge_upstream("b.py")
+        with self._run_gh_reconcile():
+            action = deliver.run(self.store, self.paths, self.ctx)
+        row = action.product["repos"][0]
+        self.assertEqual((action.product["exit"], row["state"]), ("base moved", "base moved"))
+        self.assertEqual((row["newBase"], row["conflicts"]), (tip, ["b.py"]))
+        self.assertEqual(validate(action.product, load_schema("deliver")), [])
+        self.assertEqual(subprocess.run(["git", "rev-parse", "--verify", "-q", "feature"], cwd=self.remote).returncode, 1)
+        boundary = postconditions.Boundary(self.store, self.paths, phase="deliver", product=action.product,
+                                           exit="base moved", project_root=self.repo)
+        self.assertIsNone(boundary._d9())
+        row["conflicts"] = ["a.py"]
+        self.assertIn("conflicts", boundary._d9())
+
+    def test_a_rewritten_base_fails_the_row_instead_of_claiming_a_base_move(self):
+        # origin/main no longer contains the run's base (force-pushed): D9 could never hold.
+        other = self.tmp / "rewriter"
+        _git(self.tmp, "clone", "-q", str(self.remote), str(other))
+        _git(other, "checkout", "-q", "--orphan", "rewritten")
+        _commit(other, "b.py", "rewritten history")
+        _git(other, "push", "-q", "-f", "origin", "rewritten:main")
+        with self._run_gh_reconcile():
+            action = deliver.run(self.store, self.paths, self.ctx)
+        row = action.product["repos"][0]
+        self.assertEqual((action.product["exit"], row["state"]), ("delivery blocked", "failed"))
+        self.assertIn("no longer contains this run's base", row["caveats"][0])
+
+    def test_a_moved_base_that_merges_cleanly_still_delivers(self):
+        self._merge_upstream("c.py")
+        with self._run_gh_reconcile():
+            action = deliver.run(self.store, self.paths, self.ctx)
+        self.assertEqual(action.product["exit"], "delivered")
+        self.assertEqual(_head(self.remote, "feature"), self.head_sha)
+
     def test_a_locally_moved_feature_branch_is_not_pushed_and_the_row_is_failed(self):
         # R8: a commit landed on the feature branch after VERIFY's accepted head
         # must never get pushed just because it is what the branch currently

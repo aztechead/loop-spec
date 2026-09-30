@@ -37,10 +37,10 @@ Each role is a directory under [skills/loop-spec/roles/](skills/loop-spec/roles/
 `SKILL.md` (the prompt body), `schema.json` (the result shape), and an optional
 `contract.md` the program always appends. The SKILL.md frontmatter names the role's
 default `model` and `effort` and, for a judgment role, the `evidence` family that needs
-host attestation. The eleven roles are `router`, `spec-writer`, `planner`,
+host attestation. The twelve roles are `router`, `spec-writer`, `planner`,
 `plan-critic`, `implementer`, `code-reviewer`, `verifier`, `iterate-judge`, `debugger`,
-`reviser`, and `direct`. By default the judgment workers run on Opus and the
-implementer and verifier on Sonnet; lead roles run at the session's own model.
+`reviser`, `direct`, and `resolver`. By default the judgment workers run on Opus and the
+implementer, verifier, and resolver on Sonnet; lead roles run at the session's own model.
 
 ## Use your own skill or plugin in a phase
 
@@ -52,7 +52,7 @@ product, schema and postconditions do not change. Full how-to:
 |---|---|
 | SPEC | `spec-writer` (lead) |
 | PLAN | `planner` (lead), `plan-critic` (worker) |
-| EXECUTE | `implementer`, `code-reviewer` (workers) |
+| EXECUTE | `implementer`, `code-reviewer`, `resolver` (workers) |
 | VERIFY | `verifier`, `code-reviewer` (workers) |
 | ITERATE | `iterate-judge` (worker) |
 | debug / revise | `debugger` / `reviser` (lead) |

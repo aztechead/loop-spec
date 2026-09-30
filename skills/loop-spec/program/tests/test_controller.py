@@ -375,6 +375,16 @@ class EdgeCaseTests(_QuietStdout):
         store.state["implementations"] = {"phases": {p: "external" for p in ("spec", "plan", "execute", "verify", "iterate", "deliver")}, "roles": {}}
         return store, paths
 
+    def test_a_moved_base_makes_the_baseline_stale(self):
+        # DELIVER `base moved` -> EXECUTE moves the repo's base; the baseline taken at the
+        # old base must be re-run, or the other change's failures read as this run's.
+        with tempfile.TemporaryDirectory() as tmp:
+            store, _ = self._minimal_store(Path(tmp))
+            store.state["baseline"] = {"planRevision": "r", "repos": {"repo": {"baseSha": "a" * 40}}}
+            self.assertFalse(controller._baseline_stale(store, "r"))
+            store.move_base("repo", "b" * 40)
+            self.assertTrue(controller._baseline_stale(store, "r"))
+
     def test_stale_revision_product_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)

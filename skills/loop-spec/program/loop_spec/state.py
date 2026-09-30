@@ -89,3 +89,9 @@ class StateStore:
         if self.state["run"].get("runner") != runner:
             self.state["run"]["runner"] = runner
             self.save()
+
+    def move_base(self, repo: str, base_sha: str) -> None:
+        """Move `repo`'s base to `base_sha` after EXECUTE merged that moved
+        PR base into the feature branch (DELIVER `base moved`); VERIFY onward judge base..head."""
+        self.state["repos"][repo]["baseSha"] = base_sha
+        self.save()

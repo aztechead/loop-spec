@@ -1140,6 +1140,132 @@ def _self_heal_commits(store, execute_state: dict) -> bool:
 
 # --- the two entry points ---------------------------------------------
 
+_CONFLICT_MARKER = r"^(<<<<<<<|>>>>>>>)( |$)"
+
+
+def _is_merge_of(store, name: str, move: dict, sha: str | None, head: str) -> bool:
+    """`sha` is a finished, clean merge of `move["onto"]` into `head`: exactly those two
+    parents, no merge in progress, no conflict marker left in a path that conflicted."""
+    worktree = Path(store.state["execute"]["repos"][name]["worktree"])
+    if sha is None or repo_module._git(worktree, "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0:
+        return False
+    if repo_module.run_git(worktree, "rev-list", "--parents", "-n", "1", sha).split()[1:] != [head, move["onto"]]:
+        return False
+    conflicts = move.get("conflicts") or []
+    markers = conflicts and repo_module._git(worktree, "grep", "-q", "-E", _CONFLICT_MARKER, sha, "--", *conflicts).returncode == 0
+    # Untracked files (a test run's cache) are not part of the commit; tracked changes are.
+    return not markers and repo_module.run_git(worktree, "status", "--porcelain", "--untracked-files=no").strip() == ""
+
+
+def _finish_base_move(store, paths, ctx, name: str, move: dict, new_head: str) -> None:
+    # The merge keeps every task commit's SHA (E4, E8 still hold) and moves the run's
+    # base, so VERIFY and ITERATE judge newBase..head: the change as it will merge.
+    store.state["execute"]["repos"][name]["head"] = new_head
+    move["status"] = "done"
+    store.move_base(name, move["onto"])
+    emit(paths, "base_merged", {"summary": f"merged {move['onto'][:12]} into {name}'s feature branch at {new_head[:12]}",
+                                "repo": name, "onto": move["onto"], "head": new_head},
+         phase="execute", attempt_id=ctx["attempt"]["id"])
+
+
+def _resolver_request(store, paths, ctx, name: str, move: dict) -> dict:
+    project_root = Path(ctx["paths"]["projectRoot"])
+    role = load_role("resolver", project_root)
+    repo_info = store.state["repos"][name]
+    repo_state = store.state["execute"]["repos"][name]
+    worktree = Path(repo_state["worktree"])
+    ensure_results_dir(paths)
+    move["attempts"] = move.get("attempts", 0) + 1
+    result_path = paths.results_dir / f"resolve-{name}-{move['onto'][:12]}-{move['attempts']}.json"
+    inputs = {
+        "goal": store.state["products"]["spec"]["product"]["goal"],
+        "merge": {"branch": repo_info["featureBranch"], "head": repo_state["head"], "runBase": repo_info["baseSha"],
+                  "onto": move["onto"], "baseBranch": repo_info["defaultBranch"]},
+        "conflicts": move["conflicts"],
+    }
+    prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=worktree, phase="execute")
+    return step_request("role", "resolver", "execute", project_root=project_root, ctx=ctx, cwd=worktree, prompt=prompt,
+                        result_path=result_path, schema=role.schema, reason=move.get("reason"))
+
+
+def _handle_base_moves(store, paths, ctx, execute_state: dict):
+    """DELIVER's `base moved`: merge the moved PR base into each named repo's feature
+    branch before anything else, so the run re-verifies the change as it will merge.
+    A merge, not a rebase: every task commit keeps its SHA, so the task evidence E4 to
+    E8 check stays true, and a branch already pushed only fast-forwards (never force).
+    Conflicts git cannot settle go to one resolver step; one it cannot resolve pauses."""
+    rewind = ((ctx.get("entry") or {}).get("payload") or {}).get("rewind") or {}
+    handled = execute_state.setdefault("handledBaseMoves", [])
+    if rewind.get("from") == "deliver" and rewind.get("exit") == "base moved" and rewind["attemptId"] not in handled:
+        handled.append(rewind["attemptId"])
+        execute_state["baseMoves"] = {name: {"onto": sha, "status": "pending"} for name, sha in rewind["baseMoves"].items()}
+        store.save()
+    for name, move in (execute_state.get("baseMoves") or {}).items():
+        if move["status"] == "done":
+            continue
+        repo_info = store.state["repos"][name]
+        repo_state = execute_state["repos"][name]
+        worktree, head = Path(repo_state["worktree"]), repo_state["head"]
+        if move["status"] == "blocked":
+            # Asked once; a fix-and-re-enter answer retries from whatever the operator left.
+            move["status"] = "pending"
+            store.save()
+            return Pause(_blocked_pause_request(ctx, move["reason"], {"repo": name, "expected": head, "onto": move["onto"]}))
+        current = repo_module.branch_sha(worktree, repo_info["featureBranch"])
+        if _is_merge_of(store, name, move, current, head):
+            _finish_base_move(store, paths, ctx, name, move, current)
+            continue
+        if current != head:
+            return Pause(_pause_request(ctx, name, head, current or "missing"))
+        if repo_module._git(worktree, "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode != 0:
+            merge = repo_module._git(worktree, "merge", "--no-ff", "--no-edit", "-m",
+                                     f"Merge {repo_info['defaultBranch']} ({move['onto'][:12]}) into {repo_info['featureBranch']}",
+                                     move["onto"])
+            if merge.returncode == 0:
+                _finish_base_move(store, paths, ctx, name, move, repo_module.branch_sha(worktree, repo_info["featureBranch"]))
+                continue
+            if not repo_module.run_git(worktree, "diff", "--name-only", "--diff-filter=U").split():
+                repo_module._git(worktree, "merge", "--abort")
+                raise LoopSpecError(f"merging {move['onto'][:12]} into {repo_info['featureBranch']} failed: {merge.stderr.strip()}",
+                                    repair=f"merge it by hand in {worktree}, then re-enter EXECUTE")
+        # Read from the merge in progress every time, so a replay after a crash (or a
+        # retired resolver step) never works from a missing or stale list.
+        move["conflicts"] = repo_module.run_git(worktree, "diff", "--name-only", "--diff-filter=U").split() or move.get("conflicts", [])
+        open_id = next((s["stepAttemptId"] for s in store.state["steps"]["open"]
+                        if s.get("role") == "resolver" and s["cwd"] == str(worktree)), None)
+        if open_id is not None:
+            return Wait([open_id])
+        move["status"] = "resolving"
+        store.save()
+        return IssueStep(_resolver_request(store, paths, ctx, name, move))
+    return None
+
+
+def _on_resolver_submit(store, paths, step_record: dict, result: dict) -> None:
+    execute_state = store.state["execute"]
+    name, move = next(((n, m) for n, m in (execute_state.get("baseMoves") or {}).items()
+                       if execute_state["repos"][n]["worktree"] == step_record["cwd"]), (None, None))
+    if move is None:
+        raise LoopSpecError(f"execute has no base move in {step_record['cwd']}", repair="check the submitted step's cwd")
+    if move["status"] == "done":
+        return  # step() already accepted the merge this resolver committed
+    worktree = Path(step_record["cwd"])
+    head = execute_state["repos"][name]["head"]
+    branch = store.state["repos"][name]["featureBranch"]
+    current = repo_module.branch_sha(worktree, branch)
+    if result["status"] == "resolved" and _is_merge_of(store, name, move, current, head):
+        _finish_base_move(store, paths, {"attempt": {"id": step_record.get("attempt")}}, name, move, current)
+        return
+    why = result["summary"] if result["status"] == "unresolvable" else \
+        f"the resolver reported resolved, but {branch} is not a clean merge of {move['onto'][:12]} into {head[:12]}"
+    if repo_module._git(worktree, "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0:
+        repo_module._git(worktree, "merge", "--abort")
+    move.update(status="blocked", reason=(
+        f"{branch} cannot take {store.state['repos'][name]['defaultBranch']} at {move['onto'][:12]}: {why}. "
+        f"Conflicted: {', '.join(move['conflicts'])}. Merge {move['onto'][:12]} into {branch} yourself in {worktree} "
+        f"(or reset it to {head[:12]} to retry the resolver), then fix-and-re-enter, or stop"))
+
+
 def step(store, paths, ctx):
     execute_state = store.state.get("execute")
     if execute_state is None:
@@ -1148,6 +1274,10 @@ def step(store, paths, ctx):
 
     if _self_heal_commits(store, execute_state):
         store.save()
+
+    outcome = _handle_base_moves(store, paths, ctx, execute_state)
+    if outcome is not None:
+        return outcome
 
     drift = _drifted_repo(store, paths, execute_state, ctx["attempt"]["id"])
     if drift is not None:
@@ -1422,6 +1552,11 @@ def on_submit(store, paths, step, result: dict) -> None:
     # this implementation has no need for it yet. `step` is the registered step
     # record (has cwd/role/stepAttemptId), not this module's own step() function.
     execute_state = store.state["execute"]
+    if step["role"] == "resolver":
+        # Before the drift check: the resolver's merge commit is the branch move it was asked for.
+        _on_resolver_submit(store, paths, step, result)
+        store.save()
+        return
     if _drifted_repo(store, paths, execute_state, step.get("attempt")) is not None:
         # LF-15: a repo drifted underneath this submission. Folding it into task
         # state would trust a possibly-compromised worktree; leave the task

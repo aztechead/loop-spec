@@ -67,7 +67,7 @@ Exit values, from `external.PHASE_EXITS`:
 | execute | `integrated`, `no change`, `blocked`, `plan gap` |
 | verify | `passed`, `implementation gap`, `plan gap`, `intent gap`, `evidence incomplete`, `blocked` |
 | iterate | `converged`, `converged with caveats`, `rewind`, `escalated` |
-| deliver | `delivered`, `partially delivered`, `delivery blocked` |
+| deliver | `delivered`, `partially delivered`, `delivery blocked`, `base moved` |
 | debug | `reproduced`, `blocked reproduction` |
 
 Fields beyond the common three, per phase (see `schemas/<phase>.json` for the full
@@ -307,7 +307,7 @@ optional:
 |---|---|
 | `phases.<phase>` | binds that phase's implementation (`"external"`, or a phase name is otherwise `"default"`) |
 | `roles.<role>` | binds that role to a skill other than the bundled default (`roles.load_role`); a plain string is the binding, or an object `{"binding": ..., "model": ..., "effort": ..., "with": [...]}` also names a model and an effort (`low`, `medium`, `high`, `xhigh`, `max`; `contract.load_config` refuses another) for that role's dispatches (`roles.dispatch_settings`), reachable without also rebinding the skill; an explicit `null` model or effort inherits the dispatcher's own instead of the role's default |
-| (default) | with neither env nor config set, the role's own `SKILL.md` frontmatter applies (`contract.role_meta`): `router` `opus`/`low`; `plan-critic`, `code-reviewer`, `iterate-judge` `opus`/`medium`; `implementer`, `verifier` `sonnet`/`medium`. Lead roles (`spec-writer`, `planner`, `debugger`, `reviser`, `direct`) name none and run at the lead session's model and effort |
+| (default) | with neither env nor config set, the role's own `SKILL.md` frontmatter applies (`contract.role_meta`): `router` `opus`/`low`; `plan-critic`, `code-reviewer`, `iterate-judge` `opus`/`medium`; `implementer`, `verifier`, `resolver` `sonnet`/`medium`. Lead roles (`spec-writer`, `planner`, `debugger`, `reviser`, `direct`) name none and run at the lead session's model and effort |
 | `spec.approval` | `"ask"` (default) opens SPEC's requirements approval for a person; `"policy"` answers it with its default, `approve`, as soon as it opens, recorded `by: "policy"` (S2), and leaves every other question to be asked. 6.x's default `auto` style skipped the same gate. Any other value is a config error |
 | `deliver.base` | overrides the branch DELIVER's PR targets, instead of the repo's detected default branch |
 | `deliver.readiness` | `"checks"` makes D3 wait on `gh pr checks`; default `"none"` skips that wait |
@@ -362,7 +362,7 @@ prompt body only, with
 the skill's own paths. `roles.load_role` still validates the result against the
 *default* role's schema, and `roles.role_contract` appends the default role's
 `contract.md` whatever the source; every role's prompt, bound or not, also opens its
-method with `roles/principles.md` (`roles.principles`). The eleven roles that ship
+method with `roles/principles.md` (`roles.principles`). The twelve roles that ship
 under `skills/loop-spec/roles/`: `spec-writer`, `planner`, `plan-critic`,
 `implementer`, `code-reviewer`, `verifier`, `iterate-judge`, `debugger`, `reviser`,
-`router`, `direct`.
+`router`, `direct`, `resolver`.

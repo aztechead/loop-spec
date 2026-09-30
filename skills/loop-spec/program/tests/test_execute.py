@@ -497,6 +497,59 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertEqual(done_task["review"]["verdict"], "pass")
         assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product)
 
+    def _move_base(self):
+        """Both tasks integrated, then another PR lands T-1.txt on the base: DELIVER's
+        `base moved` re-enters EXECUTE, which merges the new base and asks the resolver."""
+        self.test_full_success_lifecycle()
+        self.store.state["products"]["spec"]["product"]["goal"] = "add a widget"
+        old_head = self.store.state["execute"]["repos"]["repo"]["head"]
+        _git(self.repo, "checkout", "-q", "-b", "upstream", self.base_sha)
+        Path(self.repo, "T-1.txt").write_text("upstream\n")
+        _git(self.repo, "add", "T-1.txt")
+        _git(self.repo, "commit", "-q", "-m", "someone else's PR")
+        tip = _head(self.repo)
+        _git(self.repo, "checkout", "-q", "main")
+        self.ctx["entry"] = {"mode": "remediation", "payload": {"rewind": {
+            "from": "deliver", "exit": "base moved", "attemptId": "deliver-1", "baseMoves": {"repo": tip}}}}
+        action = step(self.store, self.paths, self.ctx)
+        self.assertEqual(action.request["role"], "resolver")
+        self.assertIn('### conflicts\n```json\n[\n  "T-1.txt"', action.request["prompt"])
+        return action, old_head, tip
+
+    def test_a_moved_base_is_merged_in_by_the_resolver_and_the_product_holds(self):
+        action, old_head, tip = self._move_base()
+        worktree = action.request["cwd"]
+        Path(worktree, "T-1.txt").write_text("upstream\nT-1.txt\n")
+        _git(worktree, "add", "T-1.txt")
+        _git(worktree, "commit", "-q", "--no-edit")
+        merge = _head(worktree)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "resolve-1"},
+                  {"status": "resolved", "summary": "kept both lines"})
+        self.assertEqual(self.store.state["repos"]["repo"]["baseSha"], tip)
+
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, Product)
+        self.assertEqual(action.product["heads"]["repo"], merge)
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product)
+        # A re-entry with the same payload does not merge again.
+        self.assertIsInstance(step(self.store, self.paths, self.ctx), Product)
+        self.assertEqual(_head(worktree), merge)
+        self.assertIn(old_head, repo_module.run_git(Path(worktree), "rev-list", "--parents", "-n", "1", merge))
+
+    def test_an_unresolvable_base_move_pauses_with_the_merge_aborted(self):
+        action, old_head, tip = self._move_base()
+        worktree = action.request["cwd"]
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "resolve-1"},
+                  {"status": "unresolvable", "summary": "both rewrote T-1.txt"})
+        self.assertEqual(_head(worktree), old_head)
+        self.assertNotEqual(repo_module._git(Path(worktree), "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode, 0)
+        pause = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(pause, Pause)
+        self.assertIn("both rewrote T-1.txt", pause.question_request["text"])
+        # fix-and-re-enter retries the merge and the resolver.
+        self.assertEqual(step(self.store, self.paths, self.ctx).request["role"], "resolver")
+        self.assertEqual(self.store.state["repos"]["repo"]["baseSha"], self.base_sha)
+
     def test_review_fail_reissues_implement_with_the_finding_in_reason(self):
         action = step(self.store, self.paths, self.ctx)
         worktree = action.request["cwd"]
