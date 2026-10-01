@@ -385,7 +385,7 @@ ITERATE exit at the current revisions.
 | Program outcome | `result` | Existing schema-1 fields (section 15) |
 |---|---|---|
 | DELIVER `delivered` after ITERATE `converged` | `converged` | `status: completed`, `outcome: delivered`, `converged: true`, `workDelivered: true` |
-| DELIVER `delivered` after `converged with caveats` | `converged-with-caveats` | `outcome: delivered-draft`, `converged: false`, findings in `warnings` |
+| DELIVER `delivered` after `converged with caveats` | `converged-with-caveats` | `outcome: delivered-draft`, `converged: false`, `implementationConverged: true`, findings in `warnings` |
 | ITERATE `converged` on a `no change` head | `no-change` | `outcome: no-change-needed`, `noChangeReason: already-satisfied`, `converged: true`, `workDelivered: false`; `prUrl` names the adopted PR when the run adopted one |
 | ITERATE `escalated`; T1 refused at PLAN, EXECUTE, or VERIFY, written by the controller | `escalated` | `status: escalated`, `converged: false` |
 | process exit 1; environment cannot run the plan | `failed` | `status: failed`, `converged: false` |

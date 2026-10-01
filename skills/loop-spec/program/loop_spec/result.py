@@ -85,6 +85,12 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
     # converged -- a draft left for human sign-off (converged-with-caveats) is not
     # that, whatever its own workDelivered value.
     converged = classification in ("converged", "no-change")
+    # implementationConverged is the 6.x fact "the work converged": ITERATE converged, even
+    # when the PR is a draft or DELIVER stopped (push rejected, credentials) afterward.
+    # The phase test excludes a run that rewound from DELIVER to EXECUTE and escalated there.
+    iterate_exit = (store.state["products"].get("iterate") or {}).get("exit")
+    implementation_converged = classification in ("converged", "converged-with-caveats", "no-change") or (
+        store.state["phase"]["current"] == "deliver" and iterate_exit in ("converged", "converged with caveats"))
 
     pr_url, prs, delivery = None, [], None
     if deliver_entry is not None:
@@ -147,7 +153,7 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
             "status": _verification_status(store),
             "command": None,
         },
-        "implementationConverged": converged,
+        "implementationConverged": implementation_converged,
         "eligibleTargets": [{"branch": info["featureBranch"], "targetSha": verified_sha} for info in repos.values()] if verified_sha else [],
         "retryable": classification == "failed",
         "retryPhase": store.state["phase"]["current"] if classification == "failed" else None,

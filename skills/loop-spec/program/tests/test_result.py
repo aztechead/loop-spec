@@ -108,6 +108,24 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(record["verification"]["status"], "passed")
         self.assertTrue(record["partiallyDelivered"])
 
+    def test_implementation_converged_follows_iterate_not_the_draft(self):
+        delivered = [{"repo": "repo", "state": "delivered", "pr": _pr(1), "deliveredSha": "a" * 40, "caveats": []}]
+        store, paths = _new_run(self.tmp / "caveats", "caveats", "deliver")
+        _verify_passed(store)
+        _deliver(store, delivered)
+        record = read_json(result_module.write(store, paths, "converged-with-caveats"))
+        self.assertEqual((record["converged"], record["implementationConverged"]), (False, True))
+        # Escalated at DELIVER after ITERATE converged (push rejected): the work converged.
+        store, paths = _new_run(self.tmp / "at-deliver", "at-deliver", "deliver")
+        store.state["products"]["iterate"] = {"exit": "converged"}
+        record = read_json(result_module.write(store, paths, "escalated"))
+        self.assertTrue(record["implementationConverged"])
+        # Escalated at EXECUTE (rewound from DELIVER, or never got further): it did not.
+        store, paths = _new_run(self.tmp / "at-execute", "at-execute", "execute")
+        store.state["products"]["iterate"] = {"exit": "converged"}
+        record = read_json(result_module.write(store, paths, "escalated"))
+        self.assertFalse(record["implementationConverged"])
+
     def test_revise_feature_title_is_the_adopted_prs_title(self):
         store, paths = _new_run(self.tmp / "revise", "revise-7", "deliver", request_text="revise PR #7: https://example/pull/7")
         store.state["run"]["cycleType"] = "revise"
