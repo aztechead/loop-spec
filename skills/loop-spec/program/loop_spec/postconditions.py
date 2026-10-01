@@ -1055,8 +1055,8 @@ class Boundary:
                 return f"caveat {finding_id} is not a finding in the ledger"
             if finding["severity"] == "Critical":
                 return f"caveat {finding_id} is Critical; only non-Critical findings may be caveats"
-            if finding["disposition"] not in ("rejected", "deferred", "fixed"):
-                return f"caveat {finding_id} has no recorded disposition"
+            if finding["disposition"] != "deferred":
+                return f"caveat {finding_id} is not deferred; only an unresolved finding is a caveat"
         if self.exit == "converged with caveats" and not self.product.get("caveats"):
             return "converged with caveats needs at least one caveat"
         return None

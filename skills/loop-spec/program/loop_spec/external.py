@@ -76,7 +76,7 @@ POSTCONDITION_TEXT: dict[str, str] = {
     "I3": "T1 holds for this rewind",
     "I4": "a rewind is needed and T1 refuses it, or the verdict is unmet and the judge names no gap any route can close",
     "I5": "VERIFY passed at this SHA and no open gap against the original goal; the shared convergence predicate",
-    "I6": "no Critical finding open; the caveats list contains only accepted non-Critical review findings, each with a recorded disposition, and nothing else",
+    "I6": "no Critical finding open; the caveats list contains only deferred non-Critical review findings (a fixed or rejected finding is closed, not a caveat), and nothing else",
     "D1": "per touched repo, deliveredSha is the verified (EXECUTE) head, and the remote head ref's SHA is either that SHA or, with deliver.acceptRemotePaths configured, the head of an accepted extension: commits after the verified SHA, every path they touch in any commit matching the list and none changed by the verified change (base..verified), recomputed now and equal to the row's acceptedRemote",
     "D2": "per touched repo, the PR is open, its head ref matches, its head SHA (observed and in the product) is the head D1 observed, and its base target matches configuration",
     "D3": "required checks satisfy the configured readiness policy (6.9's exact-SHA and required-check behavior)",

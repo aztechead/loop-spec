@@ -798,6 +798,8 @@ class PostconditionsTests(unittest.TestCase):
         self.store.state["ledger"]["findings"] = [{"id": "f-1", "location": "a.txt:1", "cause": "c", "severity": "Minor", "disposition": "deferred", "reason": "acceptable", "supersedes": None}]
         with_caveats["caveats"] = ["f-1"]
         self.assertIsNone(self._boundary("iterate", with_caveats, "converged with caveats")._i6())
+        self.store.state["ledger"]["findings"][0]["disposition"] = "fixed"  # closed, so not a caveat
+        self.assertIn("not deferred", self._boundary("iterate", with_caveats, "converged with caveats")._i6())
 
     # -- D: DELIVER ----------------------------------------------------------
 

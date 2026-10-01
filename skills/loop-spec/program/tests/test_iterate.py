@@ -103,6 +103,18 @@ class IterateTests(unittest.TestCase):
         self.assertEqual(action.product["caveats"], ["F-1"])
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
+    def _assert_closed_finding_is_no_caveat(self, disposition):
+        self.store.state["ledger"]["findings"] = [_finding("F-1", "Minor", disposition)]
+        action = self._judge_result("met", [])
+        self.assertEqual((action.product["exit"], action.product["caveats"]), ("converged", []))
+        assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
+
+    def test_met_with_a_fixed_finding_converges_without_caveats(self):
+        self._assert_closed_finding_is_no_caveat("fixed")
+
+    def test_met_with_a_rejected_finding_converges_without_caveats(self):
+        self._assert_closed_finding_is_no_caveat("rejected")
+
     def test_met_with_critical_open_finding_and_budget_room_rewinds(self):
         # A "met" verdict over an open Critical finding is reconciled to "unmet"
         # with a synthesized gap (_final_product) before the four exit rules ever
