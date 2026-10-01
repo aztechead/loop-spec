@@ -398,7 +398,7 @@ ITERATE exit at the current revisions.
 | DELIVER `delivered` after ITERATE `converged` | `converged` | `status: completed`, `outcome: delivered`, `converged: true`, `workDelivered: true` |
 | DELIVER `delivered` after `converged with caveats` | `converged-with-caveats` | `outcome: delivered-draft`, `converged: false`, `implementationConverged: true`, findings in `warnings` |
 | ITERATE `converged` on a `no change` head | `no-change` | `outcome: no-change-needed`, `noChangeReason: already-satisfied`, `converged: true`, `workDelivered: false`; `prUrl` names the adopted PR when the run adopted one |
-| ITERATE `escalated`; T1 refused at PLAN, EXECUTE, or VERIFY, written by the controller | `escalated` | `status: escalated`, `converged: false` |
+| ITERATE `escalated`; T1 refused at PLAN, EXECUTE, or VERIFY, written by the controller | `escalated` | `status: escalated`, `converged: false`; for ITERATE, the verdict and its open gaps in `reason` |
 | process exit 1; environment cannot run the plan | `failed` | `status: failed`, `converged: false` |
 | process exit 3 outstanding, including every `blocked` exit | question pending | `status: paused`, `reason` names the question id and, for a blocked exit, the cause |
 | a `blocked` exit answered stop | `escalated` | `status: escalated`, `converged: false`, the cause in `reason` |

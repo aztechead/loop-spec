@@ -124,6 +124,10 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
     # feature_title, so it carries the PR's own title instead.
     adopted_title = (store.state.get("adoption") or {}).get("title")
     feature_title = adopted_title if run.get("cycleType") == "revise" and adopted_title else (request_text.splitlines()[0] if request_text else "")
+    summary = summary or f"{run.get('cycleType', 'run')} {classification} at {store.state['phase']['current']}"
+    # An escalated or failed result always says why; with no named cause, the summary does.
+    if reason is None and classification in ("escalated", "failed"):
+        reason = summary
     record = {
         "schema": 1,
         "loopSpecVersion": VERSION,
@@ -132,7 +136,7 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         "status": _STATUS[classification],
         "outcome": _OUTCOME[classification],
         "reason": reason,
-        "summary": summary or f"{run.get('cycleType', 'run')} {classification} at {store.state['phase']['current']}",
+        "summary": summary,
         # A debug run that ends in DEBUG changed nothing: it only diagnosed.
         "noChangeReason": "diagnostic-only" if store.state["phase"]["current"] == "debug" else ("already-satisfied" if classification == "no-change" else None),
         "phaseReached": store.state["phase"]["current"],

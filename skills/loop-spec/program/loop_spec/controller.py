@@ -1782,6 +1782,14 @@ def _finish_run(store: StateStore, paths: FeaturePaths, classification: str, *, 
                                 warnings=warnings, announce=announce)
 
 
+def _iterate_escalation_reason(store: StateStore) -> str:
+    gaps = store.state["products"]["iterate"]["product"].get("gaps") or []
+    if not gaps:
+        return "ITERATE judged the requirements unmet with no gap to close"
+    return ("ITERATE judged the requirements unmet and the rewind budget has no room; open gaps: "
+            + "; ".join(g["text"][:300] for g in gaps))
+
+
 def _write_terminal_result(store: StateStore, paths: FeaturePaths, phase: str, exit_: str) -> None:
     if phase == "direct":
         product = store.state["products"]["direct"]["product"]
@@ -1794,13 +1802,18 @@ def _write_terminal_result(store: StateStore, paths: FeaturePaths, phase: str, e
                     warnings=["no gate ran: a direct run has no spec, plan, review, or verification"])
         return
     if phase == "iterate" and exit_ == "escalated":
-        _finish_run(store, paths, "escalated")
+        _finish_run(store, paths, "escalated", reason=_iterate_escalation_reason(store))
         return
     if store.state.get("escalatedDraft"):
         # This run reached DELIVER only because escalatedPartialDraft routed an
         # escalated ITERATE forward; it still classifies as escalated, DELIVER just
         # fills in `delivery` with whatever it managed to publish (roadmap 15).
-        _finish_run(store, paths, "escalated", partially_delivered=(exit_ == "partially delivered"))
+        reason = _iterate_escalation_reason(store)
+        if exit_ == "partially delivered":
+            not_delivered = [entry["repo"] for entry in store.state["products"]["deliver"]["product"]["repos"]
+                              if entry["state"] != "delivered"]
+            reason = f"did not deliver: {', '.join(not_delivered)}; {reason}"
+        _finish_run(store, paths, "escalated", partially_delivered=(exit_ == "partially delivered"), reason=reason)
         return
     if exit_ == "partially delivered":
         # R7: a converged ITERATE whose DELIVER only reached some repos is not
