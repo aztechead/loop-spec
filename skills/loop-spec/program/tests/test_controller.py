@@ -1739,6 +1739,18 @@ class AutoRouteTests(_QuietStdout):
             self.assertEqual(store.state["run"]["routedTo"]["entry"], "cycle")
             self.assertEqual((next_.kind, next_.slug), ("step", "auto-1"))
 
+    def test_hand_off_picks_a_branch_origin_does_not_have(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+            tmp = Path(tmp)
+            repo_dir, paths, next_ = self._start(tmp)
+            _git(repo_dir, "branch", "feat/auto-1")
+            _add_origin(tmp, repo_dir, "main", "feat/auto-1")  # an earlier run's branch, pushed
+            _git(repo_dir, "branch", "-D", "feat/auto-1")
+            self._route(repo_dir, paths, next_, "cycle")
+            store = _open(paths)
+            name = next(iter(store.state["repos"]))
+            self.assertEqual(store.state["repos"][name]["featureBranch"], "feat/auto-1-2")
+
     def test_micro_on_a_named_pr_adopts_it(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
             tmp = Path(tmp)

@@ -231,6 +231,20 @@ def branch_sha(repo: Path, branch: str) -> str | None:
     return proc.stdout.strip() if proc.returncode == 0 else None
 
 
+def free_branch(repo: Path, name: str) -> str:
+    # A branch name neither this clone nor origin has: `name`, else `name-2`, `name-3`...
+    # An unreachable origin leaves the name alone; DELIVER reports the push as it does today.
+    proc = _git(repo, "ls-remote", "--heads", "origin", f"refs/heads/{name}", f"refs/heads/{name}-*")
+    taken = set()
+    if proc.returncode == 0:
+        taken = {line.split("\t", 1)[1].removeprefix("refs/heads/") for line in proc.stdout.splitlines() if "\t" in line}
+    candidate, n = name, 1
+    while candidate in taken or branch_sha(repo, candidate) is not None:
+        n += 1
+        candidate = f"{name}-{n}"
+    return candidate
+
+
 def create_feature_branch(repo: Path, name: str, at_sha: str) -> None:
     existing = branch_sha(repo, name)
     if existing is not None:

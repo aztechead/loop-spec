@@ -21,6 +21,7 @@ from loop_spec.repo import (
     fetch_pr_head,
     files_added_by,
     find_pr_reference,
+    free_branch,
     head_sha,
     init_in_place,
     is_ancestor,
@@ -387,6 +388,49 @@ class CheckCredentialsTests(unittest.TestCase):
             self.assertTrue(status.gh_ok)
             self.assertIn("gh auth status --hostname ghe.example.com", status.checked)
             self.assertNotIn("gh auth status", status.checked)
+
+
+class FreeBranchTests(unittest.TestCase):
+    def _clone_with_origin(self, tmp, origin_branches=()):
+        repo = Path(tmp) / "repo"
+        origin = Path(tmp) / "origin.git"
+        repo.mkdir()
+        _init_repo(repo)
+        _commit(repo, "README", "init")
+        _git(tmp, "init", "-q", "--bare", str(origin))
+        _git(repo, "remote", "add", "origin", str(origin))
+        for name in origin_branches:
+            _git(repo, "push", "-q", "origin", f"HEAD:refs/heads/{name}")
+        return repo
+
+    def test_free_name_is_returned_as_is(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(free_branch(self._clone_with_origin(tmp), "feat/x"), "feat/x")
+
+    def test_name_on_origin_gets_the_next_suffix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(free_branch(self._clone_with_origin(tmp, ["feat/x"]), "feat/x"), "feat/x-2")
+
+    def test_suffixed_names_on_origin_are_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(free_branch(self._clone_with_origin(tmp, ["feat/x", "feat/x-2"]), "feat/x"), "feat/x-3")
+
+    def test_local_branch_without_a_remote_gets_the_next_suffix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self._clone_with_origin(tmp)
+            _git(repo, "branch", "feat/x")
+            self.assertEqual(free_branch(repo, "feat/x"), "feat/x-2")
+
+    def test_unreachable_origin_leaves_the_name_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self._clone_with_origin(tmp)
+            _git(repo, "remote", "set-url", "origin", str(Path(tmp) / "missing.git"))
+            self.assertEqual(free_branch(repo, "feat/x"), "feat/x")
+
+    def test_a_longer_sibling_name_is_not_taken(self):
+        # The ls-remote glob `feat/x-*` does not match `feat/xy`, so `feat/x` stays free.
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(free_branch(self._clone_with_origin(tmp, ["feat/xy"]), "feat/x"), "feat/x")
 
 
 if __name__ == "__main__":

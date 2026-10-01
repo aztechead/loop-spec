@@ -357,7 +357,7 @@ def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, hom
                 continue
         base_sha = repo_module.head_sha(entry.path)
         repos[entry.name] = {
-            "path": str(entry.path), "baseSha": base_sha, "featureBranch": f"feat/{slug}",
+            "path": str(entry.path), "baseSha": base_sha, "featureBranch": repo_module.free_branch(entry.path, f"feat/{slug}"),
             "defaultBranch": repo_module.default_branch(entry.path), "lastKnownHead": base_sha,
         }
     store.state["repos"] = repos
