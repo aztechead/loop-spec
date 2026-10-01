@@ -71,11 +71,14 @@ accepted or opted in. See `skills/loop-spec/references/contract.md`'s evidence s
 ### Backward-transition budget
 
 One postcondition, checked centrally by the program on every exit that routes to an
-earlier phase or re-enters the same one. It appears in each such exit's `Requires`.
+earlier phase or re-enters the same one. It appears in each such exit's `Requires`. A
+DELIVER `base moved` is the one exception: the base is moved by someone outside the run, so
+it does not spend this budget and has its own limit (T2).
 
 | Id | Postcondition | Gates |
 |---|---|---|
 | T1 | the shared feature-level budget has room and this transition was counted once against it; default two, operator override, persisted across sessions, never reset by a fresh attempt. When the budget is spent the program refuses the backward exit and escalates directly from the controller: it writes the terminal `escalated` result itself, naming the refused exit, the gap, and the budget record, without entering any phase. ITERATE is not involved, because its inputs may not exist yet | PLAN `spec gap`; EXECUTE `plan gap`; VERIFY `implementation gap`, `plan gap`, `intent gap`, `evidence incomplete`; ITERATE `rewind` |
+| T2 | the run's base-move count is below the fixed limit of three; a base move is recorded as a transition but never counted against T1. At the limit the program escalates directly from the controller, as for T1 | DELIVER `base moved` |
 
 ### Commands
 
@@ -296,7 +299,7 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | `delivered` | D1 to D4, D6 to D8 for every repo | terminal `converged` or `converged-with-caveats`; terminal `no-change` after a `no change` EXECUTE |
 | `partially delivered` | at least one repo `delivered` and at least one `failed`; D1, D2, D4, D5, D7, D8 for every repo whose remote write was attempted | terminal `escalated` (never `converged`, whatever ITERATE's own verdict was) with `partiallyDelivered: true`, `workDelivered: true`, and `reason` naming the repos that did not deliver |
 | `delivery blocked` | D4; a credential refusal (D7), or no touched repo delivered | pause: a question naming the failed command and repair, with the answers fix-and-re-enter DELIVER or stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` with `result: escalated` and per-repo state |
-| `base moved` | D4, D9, T1 | EXECUTE, `remediation`, carrying each moved repo's `newBase`; then VERIFY (a full review of new base..head, since the last reviewed head no longer descends from the base), ITERATE, and DELIVER again. Counted against the shared backward budget, so a base that keeps moving escalates |
+| `base moved` | D4, D9, T2 | EXECUTE, `remediation`, carrying each moved repo's `newBase`; then VERIFY (a full review of new base..head, since the last reviewed head no longer descends from the base), ITERATE, and DELIVER again. Bounded by its own limit of three (T2), not by the shared backward budget, so a base that keeps moving escalates |
 
 ## debug
 
@@ -407,7 +410,8 @@ The four routes the first version left for M1, answered from the M1 fixtures rev
   DELIVER, and for a pause a phase raises mid-attempt (EXECUTE's out-of-band branch,
   leftover task branch, and unmapped-commit pauses): each offers `fix-and-re-enter` or
   `stop`, and `fix-and-re-enter` re-runs the phase's own check once.
-- One shared budget bounds every backward transition (T1, referenced by I3). Exhaustion
+- One shared budget bounds every backward transition except a base move (T1, referenced by I3;
+  a base move has its own limit of three, T2). Exhaustion
   at any exit escalates directly from the controller; only ITERATE's own refused rewind
   goes through I4 (after the re-audit at `8d45bbb`).
 - Both converged outcomes share one predicate (I5); caveats hold only accepted

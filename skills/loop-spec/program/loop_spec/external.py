@@ -94,6 +94,7 @@ POSTCONDITION_TEXT: dict[str, str] = {
     "X1": "product validates against the DIRECT schema; an incomplete exit names its blocker",
     "X2": "every push action's SHA is the remote branch's head, and every pr action's SHA is that PR's head",
     "T1": "the shared feature-level budget has room and this transition was counted once against it; default two, operator override, persisted across sessions, never reset by a fresh attempt",
+    "T2": "the run's base-move count is below the fixed limit of three; a base move is recorded as a transition but never counted against T1",
 }
 
 

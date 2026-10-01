@@ -904,6 +904,16 @@ class PostconditionsTests(unittest.TestCase):
         budget_module.spend(self.store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-2", reason="gap")
         self.assertIsNotNone(self._boundary("iterate", self.iterate_product, "converged")._t1())
 
+    def test_a_base_move_requires_t2_not_t1_and_t2_refuses_the_fourth(self):
+        requires = postconditions.ROUTES["deliver"]["base moved"]["requires"]
+        self.assertIn("T2", requires)
+        self.assertNotIn("T1", requires)
+        boundary = self._boundary("deliver", {}, "base moved")
+        for n in range(1, budget_module.BASE_MOVE_LIMIT + 1):
+            self.assertIsNone(boundary._t2())
+            budget_module.spend(self.store, from_phase="deliver", exit="base moved", to_phase="execute", attempt_id=f"d-{n}", reason="moved")
+        self.assertIn("base-move limit", boundary._t2())
+
     # --- LF-55: close-outs --------------------------------------------------
 
     def _close_out(self, cid="C-1", repo="repo", closure=None):

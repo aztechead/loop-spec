@@ -1462,6 +1462,10 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
         # named exception (its "rewind" exit gates on I3/I4 instead of T1).
         _finish_run(store, paths, "escalated", reason=f"the rewind budget has no room for {phase} {exit_}")
         return
+    if "T2" in route["requires"] and not budget_module.base_move_room(store):
+        _finish_run(store, paths, "escalated", reason=f"the base moved {budget_module.BASE_MOVE_LIMIT} times; "
+                    "resolve with the base owner, then start a revise run")
+        return
 
     if phase == "verify":
         # V10 reads only program records; every VERIFY implementation gets them here.

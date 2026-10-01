@@ -104,7 +104,7 @@ ROUTES: dict[str, dict[str, dict]] = {
         "delivered": {"requires": ["D1", "D2", "D3", "D4", "D6", "D7", "D8"], "next": (None, "terminal"), "backward": False},
         "partially delivered": {"requires": ["D1", "D2", "D4", "D5", "D7", "D8"], "next": (None, "terminal"), "backward": False},
         "delivery blocked": {"requires": ["D4"], "next": ("deliver", "remediation"), "backward": False, "pause": True},
-        "base moved": {"requires": ["D4", "D9", "T1"], "next": ("execute", "remediation"), "backward": True},
+        "base moved": {"requires": ["D4", "D9", "T2"], "next": ("execute", "remediation"), "backward": True},
     },
     "debug": {
         "reproduced": {"requires": ["B1", "B2", "S1", "S2", "S3", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"], "next": ("execute", "fresh"), "backward": False},
@@ -1343,3 +1343,8 @@ class Boundary:
 
     def _t1(self) -> str | None:
         return None if budget_module.has_room(self.store) else "the rewind budget has no room"
+
+    def _t2(self) -> str | None:
+        if budget_module.base_move_room(self.store):
+            return None
+        return f"the base moved {budget_module.BASE_MOVE_LIMIT} times; the base-move limit is {budget_module.BASE_MOVE_LIMIT}"
