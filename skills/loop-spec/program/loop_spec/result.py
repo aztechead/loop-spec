@@ -114,6 +114,10 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         verified_sha = verified_head(store)
 
     request_text = store.state["request"]["text"] or ""
+    # A revise run's request text is "revise PR #n: <url>"; the host titles the PR from
+    # feature_title, so it carries the PR's own title instead.
+    adopted_title = (store.state.get("adoption") or {}).get("title")
+    feature_title = adopted_title if run.get("cycleType") == "revise" and adopted_title else (request_text.splitlines()[0] if request_text else "")
     record = {
         "schema": 1,
         "loopSpecVersion": VERSION,
@@ -136,7 +140,7 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         "iterations": {"used": store.state["budget"]["spent"], "max": store.state["budget"]["limit"]},
         "warnings": warnings,
         "autonomous": store.state["questions"].get("policy") == "default",
-        "feature_title": request_text.splitlines()[0] if request_text else "",
+        "feature_title": feature_title,
         "createdAt": run.get("createdAt"),
         "finishedAt": now_iso(),
         "verification": {

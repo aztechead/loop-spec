@@ -380,7 +380,7 @@ def _adopt(repo_name: str, repo_path: Path, candidate, home: Path) -> tuple[dict
     adoption = {
         "repo": repo_name, "number": candidate.number, "url": candidate.url, "headRef": candidate.branch,
         "baseBranch": candidate.base_branch, "baseSha": base_sha, "headSha": candidate.head_sha,
-        "reason": candidate.reason,
+        "reason": candidate.reason, "title": candidate.title,
     }
     return repo_entry, adoption
 
