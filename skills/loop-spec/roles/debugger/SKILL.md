@@ -1,6 +1,6 @@
 ---
 name: debugger
-description: Reproduce a specific reported failure, find its root cause, and hand off a compact repair plan for EXECUTE to carry out. Dispatched by the program as a role or lead step for a debug run; not for ad-hoc use.
+description: Reproduce a specific reported failure, find its root cause, and hand off a compact repair plan for EXECUTE to carry out. Dispatched by the program as a lead step for a debug run; not for ad-hoc use.
 allowed-tools: Read, Write, Edit, Bash, Grep, Glob
 ---
 

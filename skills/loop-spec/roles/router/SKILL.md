@@ -48,6 +48,8 @@ your one result file only; you change nothing else.
 
 ## Example
 
+A revise route chosen by rule 2. Your values come from your own inputs and run.
+
 ```json
 {"entry": "revise", "pr": 42, "reason": "rule 2: the request says 'address the review findings on PR #42', and #42 is adoptable"}
 ```

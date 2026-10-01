@@ -1,6 +1,6 @@
 ---
 name: spec-writer
-description: Draft or revise the SPEC product (goal, boundaries, acceptance criteria, decisions, open questions) for a loop-spec run. Dispatched by the program as a lead or role step; not for ad-hoc use.
+description: Draft or revise the SPEC product (goal, boundaries, acceptance criteria, decisions, open questions) for a loop-spec run. Dispatched by the program as a lead step; not for ad-hoc use.
 allowed-tools: Read, Write, Grep, Glob, WebFetch, WebSearch
 ---
 

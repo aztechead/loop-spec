@@ -42,6 +42,8 @@ can re-verify its change on top of the new base.
 
 ## Example
 
+One conflicted file resolved by carrying the run's edit onto the base's renamed code. Your values come from your own inputs and run.
+
 ```json
 {
   "status": "resolved",

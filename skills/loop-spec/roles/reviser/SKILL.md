@@ -1,6 +1,6 @@
 ---
 name: reviser
-description: Turn a pull request's review comments into a compact SPEC and PLAN update so the run can re-enter without re-deriving the whole request. Dispatched by the program as a role or lead step for a revise run; not for ad-hoc use.
+description: Turn a pull request's review comments into a compact SPEC and PLAN update so the run can re-enter without re-deriving the whole request. Dispatched by the program as a lead step for a revise run; not for ad-hoc use.
 allowed-tools: Read, Grep, Glob, Bash, Write
 ---
 
