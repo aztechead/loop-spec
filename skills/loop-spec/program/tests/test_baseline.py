@@ -144,6 +144,30 @@ class FingerprintTests(unittest.TestCase):
         self.assertEqual(len(result), 1)
 
 
+class SilentPassFingerprintTests(unittest.TestCase):
+    def test_exit_zero_with_no_output_has_no_candidates(self):
+        self.assertEqual(fingerprint_candidates("", Path("/root"), exit_status=0), [])
+
+    def test_exit_zero_marker_free_line_keeps_last_line(self):
+        self.assertEqual(fingerprint_candidates("ok\n", Path("/root"), exit_status=0), ["ok"])
+
+    def test_nonzero_or_unknown_exit_keeps_placeholder(self):
+        self.assertEqual(fingerprint_candidates("", Path("/root"), exit_status=1), ["<no failure output>"])
+        self.assertEqual(fingerprint_candidates("", Path("/root")), ["<no failure output>"])
+
+    def test_exit_zero_with_failure_line_still_fingerprints_it(self):
+        self.assertEqual(fingerprint_candidates("FAILED x\n", Path("/root"), exit_status=0), ["FAILED x"])
+
+    def test_failing_base_and_silent_passing_candidate_is_no_regression(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = _run("python3 -c \"assert False\"", tmp)
+            candidate = _run("python3 -c \"pass\"", tmp)
+            self.assertEqual(base.exit_status, 1)
+            self.assertEqual(candidate.fingerprints, [])
+            entry = BaselineEntry(command=base.command, task=None, status="ran", run=base)
+            self.assertEqual(compare_to_baseline(entry, candidate).verdict, "no-regression")
+
+
 class RunCommandTests(unittest.TestCase):
     def test_nonzero_exit_recorded(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -392,6 +416,44 @@ class EvidenceMatchesTests(unittest.TestCase):
         self.assertEqual(reason, "exitStatus differs")
 
 
+    def _rerun(self, runner, identities):
+        return CommandRun(
+            command="pytest", cwd="/x", sha="deadbeef", exit_status=1, runner=runner,
+            failure_identities=identities, fingerprints=["fp"], output_digest="sha256:" + "1" * 64,
+            normalized_digest="sha256:" + "2" * 64, normalization_version=1,
+            started_at="2026-01-01T00:00:00+00:00", elapsed_seconds=0.1, error_class=None,
+            tests_ran=1, log_path=None,
+        )
+
+    def test_identity_mismatch_names_both_sides(self):
+        claimed = {"command": "pytest", "sha": "deadbeef", "exitStatus": 1, "failureIdentities": ["a::t1", "a::t2"]}
+        ok, reason = evidence_matches(claimed, self._rerun("pytest", ["tests/t.py::test_x"]))
+        self.assertFalse(ok)
+        self.assertEqual(
+            reason, "failureIdentities differ: claimed [a::t1, a::t2], re-run (pytest) parsed [tests/t.py::test_x]")
+
+    def test_identity_mismatch_caps_the_list(self):
+        ids = [f"t{i:02d}" for i in range(12)]
+        claimed = {"command": "pytest", "sha": "deadbeef", "exitStatus": 1, "failureIdentities": ids}
+        ok, reason = evidence_matches(claimed, self._rerun("pytest", []))
+        self.assertFalse(ok)
+        self.assertIn("(+2 more)", reason)
+        self.assertNotIn("t11", reason)
+
+    def test_no_runner_skips_the_identity_comparison(self):
+        claimed = {"command": "pytest", "sha": "deadbeef", "exitStatus": 1, "failureIdentities": ["a::t1"]}
+        self.assertEqual(evidence_matches(claimed, self._rerun(None, [])), (True, ""))
+
+    def test_sh_c_command_matches_with_or_without_claimed_identities(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            command = "sh -c \"echo 'FAILED tests/t.py::test_x'\""
+            rerun = _run(command, tmp)
+            self.assertIsNone(rerun.runner)
+            for ids in ([], ["tests/t.py::test_x"]):
+                claimed = {"command": command, "sha": rerun.sha, "exitStatus": 0, "failureIdentities": ids}
+                self.assertEqual(evidence_matches(claimed, rerun), (True, ""))
+
+
 class CaptureBaselineTests(unittest.TestCase):
     def test_capture_and_cleanup(self):
         with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as checkouts_dir:
@@ -418,6 +480,17 @@ class CaptureBaselineTests(unittest.TestCase):
 
             checkout_dest = Path(checkouts_dir) / f"baseline-{sha[:12]}"
             self.assertFalse(checkout_dest.exists())
+
+    def test_a_feature_added_path_that_exists_at_base_is_recorded_not_raised(self):
+        with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as checkouts_dir:
+            _init_repo(repo_dir)
+            sha = subprocess.run(
+                ["git", "-C", repo_dir, "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+            ).stdout.strip()
+            baseline = capture_baseline(
+                Path(repo_dir), sha, [("echo unused", "T-1", "README.md")], None, Path(checkouts_dir), "myrepo"
+            )
+            self.assertEqual(baseline.entries["echo unused"].status, "no-baseline")
 
 
 if __name__ == "__main__":

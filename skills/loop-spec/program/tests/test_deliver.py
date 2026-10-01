@@ -48,6 +48,25 @@ PR_VIEW_JSON = json.dumps({"number": 42, "url": "https://x/pull/42", "headRefNam
                             "headRefOid": "deadbeef", "baseRefName": "main"})
 
 
+def _lagging_gh(heads):
+    """A fake run_gh whose successive `pr view` reads report `heads` in order (the last
+    one repeats), to model a hosting server that lags the push."""
+    reads = []
+
+    def fake_run_gh(repo, *args):
+        if args[:2] == ("pr", "list"):
+            return 0, "[]", ""
+        if args[:2] == ("pr", "create"):
+            return 0, "https://x/pull/42\n", ""
+        if args[:2] == ("pr", "view"):
+            head = heads[min(len(reads), len(heads) - 1)]
+            reads.append(head)
+            return 0, json.dumps({"number": 42, "url": "https://x/pull/42", "headRefName": "feature",
+                                  "headRefOid": head, "baseRefName": "main"}), ""
+        raise AssertionError(f"unexpected gh call: {args}")
+    return fake_run_gh
+
+
 class DeliverTests(unittest.TestCase):
     # simplicity: setUp/tearDown are unittest's fixed method names, not a naming
     # choice; house-style.sh's camelCase deviation here is the same pre-existing
@@ -468,6 +487,25 @@ class DeliverTests(unittest.TestCase):
         self.assertEqual((record["pr"]["number"], record["attemptId"]), (42, "attempt-retry"))
         self.assertNotEqual(record["prAttemptId"], "attempt-retry")  # the PR was not re-seen this attempt
 
+    def test_a_lagging_pr_head_is_re_read_until_it_settles(self):
+        gh = _lagging_gh([self.base_sha, self.head_sha])
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=gh), \
+             patch("loop_spec.deliver.time.sleep") as sleep:
+            action = deliver.run(self.store, self.paths, self.ctx)
+        row = action.product["repos"][0]
+        self.assertEqual((row["state"], row["pr"]["headSha"]), ("delivered", self.head_sha))
+        self.assertEqual([c.args for c in sleep.call_args_list], [(2,)])
+
+    def test_a_pr_head_that_never_catches_up_refuses_after_four_waits(self):
+        gh = _lagging_gh([self.base_sha])
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=gh), \
+             patch("loop_spec.deliver.time.sleep") as sleep:
+            action = deliver.run(self.store, self.paths, self.ctx)
+        row = action.product["repos"][0]
+        self.assertEqual(row["state"], "failed")
+        self.assertIn("has not caught up", row["caveats"][0])
+        self.assertEqual([c.args for c in sleep.call_args_list], [(2,), (4,), (8,), (16,)])
+
     def test_push_repair_names_divergence_only_when_git_says_so(self):
         self.assertIn("fetch, reconcile", deliver._push_repair("! [rejected] feature -> feature (non-fast-forward)"))
         self.assertIn("fetch, reconcile", deliver._push_repair("! [rejected] feature -> feature (fetch first)"))
@@ -575,6 +613,15 @@ class AcceptedRemoteTests(DeliverTests.__bases__[0]):
             action = deliver.run(self.store, self.paths, self.ctx)
         row = action.product["repos"][0]
         self.assertEqual((row["state"], row["acceptedRemote"]["head"], len(calls)), ("delivered", bot_head, 2))
+
+    def test_a_lagging_pr_head_settles_with_accept_remote_paths_configured(self):
+        gh = _lagging_gh([self.base_sha, self.head_sha])
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=gh), \
+             patch("loop_spec.deliver.time.sleep") as sleep:
+            action = deliver.run(self.store, self.paths, self.ctx)
+        row = action.product["repos"][0]
+        self.assertEqual((row["state"], row["pr"]["headSha"]), ("delivered", self.head_sha))
+        self.assertEqual(sleep.call_count, 1)
 
     def test_a_bot_commit_on_a_verified_path_is_refused(self):
         self._bot_commit("b.py")

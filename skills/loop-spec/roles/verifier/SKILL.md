@@ -21,8 +21,11 @@ one result file only; you do not edit the code under test.
    a clean checkout of the head with nothing but the repository's own files;
    use an absolute interpreter path (the venv's python, never bare `python`),
    since the program re-runs your command itself and rejects a criterion whose
-   re-run differs. Capture the exit status, record the failure identities a
-   runner reported, and report the exact command you ran.
+   re-run differs. Capture the exit status, record failure identities only when the
+   command's own argv invokes a runner the program parses (pytest or
+   `python -m pytest`, jest, vitest, `go test`, `cargo test`, ruff, mypy, tsc,
+   flake8); for any other command, including `sh -c`, record `[]`. Report the
+   exact command you ran.
 3. Report `pass` only on evidence you actually captured this run; report `fail`
    with the cause; report `blocked` only for a cause you personally observed, and
    only after trying an offline stand-in and saying what you tried. A command that

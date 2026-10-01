@@ -399,6 +399,15 @@ class Boundary:
         for check in self.product.get("checks") or []:
             if why := baseline_module.shell_syntax(check["command"]):
                 return f"check {check['command']!r}: {why}; commands run as argv with no shell"
+        # A featureAdded target must be absent at base; a path that exists there is a plan
+        # error to reject here, never a raise out of the baseline capture.
+        repos = self._repo_entries()
+        for task in self.product["tasks"]:
+            path, info = task.get("featureAdded"), repos.get(task["repo"])
+            if path and info is not None and self._show(info["path"], info["baseSha"], path) is not None:
+                return (f"task {task['id']}: featureAdded target {path} already exists at base "
+                        f"{info['baseSha'][:12]}; pick a new path, or drop featureAdded so the verify "
+                        "command runs at base")
         return None
 
     def _p3(self) -> str | None:

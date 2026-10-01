@@ -1193,6 +1193,39 @@ class DebugAndReviseEntryTests(_QuietStdout):
                 replan_step = read_json(next_.path)
                 self.assertIn("P2", replan_step["reason"])
 
+    def test_debug_entry_plan_with_a_feature_added_path_at_base_is_replanned_with_the_reason(self):
+        # A featureAdded target that exists at base is a rejected plan with a reason the
+        # replan step names, never a raise out of the baseline capture.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            markers = io.StringIO()
+            repro_command = "python3 -c \"import sys; print('boom'); sys.exit(1)\""
+
+            with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+                next_, paths, store, repo_name = _start_debug_run(
+                    repo_dir, home, markers, "the greeting script crashes", "debugexists",
+                )
+                debug_step = read_json(next_.path)
+                spec, plan = _minimal_spec_and_plan(repo_name, "Fix the crash", "the crash no longer reproduces", "fix the crash")
+                plan["tasks"][0]["featureAdded"] = "README.md"  # committed at base
+                debug_product = {
+                    "exit": "reproduced", "inputsDigest": "sha256:" + "0" * 64,
+                    "boundTo": {"requirements": None, "plan": None},
+                    "reproduction": {"command": repro_command, "failureDigest": digest_bytes(b"boom\n"), "reason": None},
+                    "original": None,
+                    "diagnosis": "the greeting script exits nonzero",
+                    "spec": spec, "plan": plan,
+                }
+                atomic_write_json(Path(debug_step["resultPath"]), debug_product)
+                next_ = _submit_and_continue(paths, repo_dir, markers, debug_step["stepAttemptId"])
+                next_ = _answer_approve_and_continue(paths, repo_dir, markers, next_)
+
+                self.assertEqual(_open(paths).state["phase"]["current"], "plan")
+                self.assertEqual(next_.kind, "step")
+                self.assertIn("already exists at base", read_json(next_.path)["reason"])
+
     def test_debug_blocked_reproduction_pauses(self):
         # B3 (a blocked-reproduction product carries no reproduction) needs
         # debug.json's own "reproduction" nullable; this pins the pause path it gates.
@@ -1674,6 +1707,66 @@ def _run_one_full_external_cycle(repo_dir, home, markers, slug: str, request_tex
     return paths
 
 
+class ReviseRequestTextTests(_QuietStdout):
+    """An instruction that came with the PR reference stays on the revise run's request."""
+
+    URL = "https://github.com/example/repo/pull/42"
+
+    def _fixture(self, tmp: Path):
+        repo_dir = _init_repo(tmp)
+        _git(repo_dir, "checkout", "-q", "-b", "pr-branch")
+        (repo_dir / "greet.py").write_text("print('hi')\n", encoding="utf-8")
+        _git(repo_dir, "add", "greet.py")
+        _git(repo_dir, "commit", "-q", "-m", "add greeting")
+        head_sha = repo_module.head_sha(repo_dir)
+        _git(repo_dir, "checkout", "-q", "main")
+        _add_origin(tmp, repo_dir, "main", "pr-branch")
+        adoption = repo_module.PrAdoption(adopt=True, number=42, url=self.URL, branch="pr-branch",
+                                          base_branch="main", head_sha=head_sha, reason="open")
+        return repo_dir, tmp / "home", adoption
+
+    def _revise(self, repo_dir, home, adoption, request):
+        with patch.object(repo_module, "adopt_pr", return_value=adoption), \
+             patch.object(revise_module, "gaps_from_pr", return_value=[]), \
+             patch.dict("os.environ", _EXTERNAL_ENV, clear=False), contextlib.redirect_stdout(io.StringIO()):
+            return controller.run_entry("revise", project_root=repo_dir, request_text=request, slug=None,
+                                        state_home=str(home), answer_policy="default", pr="42")
+
+    def _text(self, repo_dir, home, slug="revise-42"):
+        paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), slug))
+        return _open(paths).state["request"]["text"]
+
+    def test_an_instruction_is_kept_after_the_first_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir, home, adoption = self._fixture(Path(tmp))
+            self._revise(repo_dir, home, adoption, f"Revise {self.URL}: strip the period ")
+            text = self._text(repo_dir, home)
+        self.assertEqual(text.splitlines()[0], f"revise PR #42: {self.URL}")
+        self.assertTrue(text.endswith(f"\n\nRevise {self.URL}: strip the period"))
+
+    def test_no_request_or_a_bare_url_keeps_the_one_line_text(self):
+        for request in (None, f" {self.URL} "):
+            with self.subTest(request=request), tempfile.TemporaryDirectory() as tmp:
+                repo_dir, home, adoption = self._fixture(Path(tmp))
+                self._revise(repo_dir, home, adoption, request)
+                self.assertEqual(self._text(repo_dir, home), f"revise PR #42: {self.URL}")
+
+    def test_an_unfinished_run_without_the_instruction_refuses_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir, home, adoption = self._fixture(Path(tmp))
+            self._revise(repo_dir, home, adoption, None)
+            with self.assertRaises(LoopSpecError) as caught:
+                self._revise(repo_dir, home, adoption, "also strip the period")
+        self.assertIn("unfinished revise run revise-42", str(caught.exception))
+
+    def test_an_unfinished_run_that_already_carries_the_instruction_resumes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir, home, adoption = self._fixture(Path(tmp))
+            self._revise(repo_dir, home, adoption, "also strip the period")
+            again = self._revise(repo_dir, home, adoption, "also strip the period")
+        self.assertEqual(again.slug, "revise-42")
+
+
 class RequestAdoptionTests(unittest.TestCase):
     """EA-runs item 1b: a cycle or micro request naming an open PR continues that PR's
     branch through the same adoption revise uses (the record EXECUTE's adopted review
@@ -1819,6 +1912,7 @@ class AutoRouteTests(_QuietStdout):
             self.assertFalse(paths.last_result_json.exists())
             revise_paths = FeaturePaths(root=paths.root.parent / "revise-42", project_root=repo_dir)
             self.assertEqual(_open(revise_paths).state["questions"]["policy"], "default")
+            self.assertTrue(_open(revise_paths).state["request"]["text"].endswith("\n\ndo the thing"))
             with contextlib.redirect_stdout(self.markers):
                 again = controller.continue_run(_open(paths), paths, project_root=repo_dir)
             self.assertEqual(again.slug, "revise-42")

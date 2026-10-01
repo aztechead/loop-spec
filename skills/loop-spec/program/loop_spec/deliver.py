@@ -10,6 +10,7 @@ product exit, the same way EXECUTE's `blocked` exit is a product, not a raw paus
 import json
 import re
 import tempfile
+import time
 from pathlib import Path
 
 from loop_spec import render
@@ -97,13 +98,44 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
         store.state["deliver"]["creating"].pop(repo_name, None)
         store.save()
 
+    pr, error = _view_pr(worktree, branch)
+    return pr, error, caveats
+
+
+def _view_pr(worktree: Path, branch: str) -> tuple[dict | None, str | None]:
     code, out, err = repo_module.run_gh(worktree, "pr", "view", branch,
                                          "--json", "number,url,headRefName,headRefOid,baseRefName")
     if code != 0:
-        return None, f"gh pr view failed: {err.strip()}", caveats
-    data = json.loads(out)
+        return None, f"gh pr view failed: {err.strip()}"
+    try:
+        data = json.loads(out)
+    except ValueError as exc:
+        return None, f"gh pr view failed: {exc}"
     return {"number": data["number"], "url": data["url"], "headRef": data["headRefName"],
-            "headSha": data["headRefOid"], "base": data["baseRefName"]}, None, caveats
+            "headSha": data["headRefOid"], "base": data["baseRefName"]}, None
+
+
+# Seconds slept before each re-read of a PR head that is an ancestor of the pushed head
+# (the hosting server lagging the push): 30 s worst case per repo.
+_PR_HEAD_WAITS = (2, 4, 8, 16)
+
+
+def _stale_pr_head(worktree: Path, pr: dict, expected: str) -> bool:
+    return pr["headSha"] != expected and repo_module.is_ancestor(worktree, pr["headSha"], expected)
+
+
+def _stale_head_refusal(worktree: Path, repo_info: dict, action: str, stale: str, expected: str) -> str:
+    branch = repo_info["featureBranch"]
+    origin = repo_module.remote_head(worktree, "origin", branch)
+    if origin is None:
+        return (f"{action}; could not read origin/{branch} after the PR kept reporting {stale[:12]}; "
+                "repair: check origin's push URL, network, and access, then re-enter (never force)")
+    if origin == expected:
+        return (f"{action}; the PR still reports head {stale[:12]}, an ancestor of {expected[:12]}, after "
+                f"{len(_PR_HEAD_WAITS) + 1} reads over {sum(_PR_HEAD_WAITS)} s; repair: the hosting server "
+                "has not caught up with the push; re-enter DELIVER to read it again")
+    return (f"{action}; origin's branch is at {origin[:12]}, not the pushed head; someone moved it back; "
+            "repair: re-enter DELIVER to push again")
 
 
 def _push_repair(stderr: str) -> str:
@@ -314,7 +346,23 @@ def run(store, paths, ctx):
             # The branch IS on the remote: record what was published and where it stopped.
             repos_out.append(failed(f"{action}; the PR step failed: {error}"))
             continue
-        if globs and pr["headSha"] != (accepted or {}).get("head", verified_sha):
+        # A hosting server can lag the push: a PR head that is an ancestor of the pushed
+        # head is re-read a few times before it is recorded or judged.
+        expected = (accepted or {}).get("head", verified_sha)
+        for wait in _PR_HEAD_WAITS:
+            if not _stale_pr_head(worktree, pr, expected):
+                break
+            time.sleep(wait)
+            pr, error = _view_pr(worktree, repo_info["featureBranch"])
+            if error:
+                break
+        if error:
+            repos_out.append(failed(f"{action}; the PR step failed: {error}"))
+            continue
+        if _stale_pr_head(worktree, pr, expected):
+            repos_out.append(failed(_stale_head_refusal(worktree, repo_info, action, pr["headSha"], expected)))
+            continue
+        if globs and pr["headSha"] != expected:
             # The PR names another head than the one observed: accept it only as the
             # same allowed extension, observed at exactly that head.
             later, refusal = _accept_extension(worktree, repo_info, verified_sha, globs)

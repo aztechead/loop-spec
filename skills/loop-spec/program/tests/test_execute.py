@@ -99,9 +99,8 @@ class ExecuteLifecycleTests(unittest.TestCase):
         }
         self.plan_tasks = [_plan_task("T-1"), _plan_task("T-2", depends_on=["T-1"])]
         self.store.state["products"]["plan"] = {"exit": "ready", "product": {"tasks": self.plan_tasks}}
-        # A real run_command call, not a hand-built CommandRun: fingerprints() hashes
-        # even a clean run's "<no failure output>" marker, so a guessed empty list
-        # would never match compare_to_baseline's real candidate fingerprints.
+        # A real run_command call, not a hand-built CommandRun, so the baseline carries
+        # the fingerprints compare_to_baseline's real candidate runs are compared to.
         baseline_run = run_command("sh verify.sh", self.repo, self.base_sha)
         entry = BaselineEntry(command="sh verify.sh", task=None, status="ran", run=baseline_run)
         self.store.state["baseline"] = {"entries": {"sh verify.sh": entry.to_dict()}}
@@ -708,10 +707,8 @@ class ExecuteLifecycleTests(unittest.TestCase):
             if action.request["role"] == "implementer":
                 _commit(worktree, f"T-1-{attempt}.txt", f"implement T-1 {attempt}")
                 if not broken:
-                    # A silent `exit 1` fingerprints identically to the baseline's
-                    # silent `exit 0` (fingerprints() hashes output text, never exit
-                    # status), so the break needs distinct output to register as a
-                    # new failure identity.
+                    # A silent exit 0 hashes nothing, so the break needs output to
+                    # register as a new failure identity.
                     Path(worktree, "verify.sh").write_text("#!/bin/sh\necho 'regression detected'\nexit 1\n")
                     _git(worktree, "add", "verify.sh")
                     _git(worktree, "commit", "-q", "-m", "break verify")

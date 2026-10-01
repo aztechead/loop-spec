@@ -71,6 +71,7 @@ def _reviser_request(store, paths, ctx) -> dict:
 
     gaps = store.state["revise"]["gaps"]
     inputs = {
+        "request": store.state["request"]["text"],
         # LF-63 for the reviser: each gap's body is its own top-level string input, so
         # it renders as real lines. Nested in `gaps`, JSON put a whole comment (a pasted
         # CI log, say) on one escaped line, over the read budget.

@@ -101,5 +101,44 @@ class WriteTerminalResultPartialDeliveryTests(unittest.TestCase):
             self.assertNotIn("repo-a", record["reason"])
 
 
+class EscalationReasonTests(unittest.TestCase):
+    def _escalated_store(self, tmp, gaps):
+        paths = FeaturePaths(root=Path(tmp) / "state" / "feature-a")
+        store = StateStore.create(paths, dict(_RUN_FIELDS, slug="feature-a"), "do the thing")
+        store.state["phase"]["current"] = "iterate"
+        store.state["repos"] = {}
+        store.state["products"]["execute"] = {"exit": "integrated", "product": {"tasks": [], "heads": {}}}
+        store.state["products"]["iterate"] = {"exit": "escalated", "product": {"verdict": "unmet", "gaps": gaps, "caveats": []}}
+        store.save()
+        return store, paths
+
+    def _write(self, store, paths):
+        with contextlib.redirect_stdout(io.StringIO()):
+            controller._write_terminal_result(store, paths, "iterate", "escalated")
+        return read_json(paths.result_json)
+
+    def test_an_iterate_escalation_names_the_open_gaps_as_its_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._escalated_store(tmp, [{"target": "execute", "text": "greet() does not strip the period"}])
+            record = self._write(store, paths)
+        self.assertEqual(record["result"], "escalated")
+        self.assertIn("greet() does not strip the period", record["reason"])
+
+    def test_an_iterate_escalation_with_no_gap_says_so(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._escalated_store(tmp, [])
+            record = self._write(store, paths)
+        self.assertEqual(record["reason"], "ITERATE judged the requirements unmet with no gap to close")
+
+    def test_a_result_with_no_named_reason_falls_back_to_its_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._escalated_store(tmp, [])
+            with contextlib.redirect_stdout(io.StringIO()):
+                controller._finish_run(store, paths, "failed")
+            record = read_json(paths.result_json)
+        self.assertEqual(record["reason"], record["summary"])
+        self.assertTrue(record["reason"])
+
+
 if __name__ == "__main__":
     unittest.main()

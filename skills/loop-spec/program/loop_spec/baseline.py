@@ -173,7 +173,9 @@ def detect_runner(command: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 # v2: counts on a whole summary line are stripped (7.1.0); the diagnostics parser.
-NORMALIZATION_VERSION = 3
+# v4: an exit-0 run that printed nothing has no fingerprints, so a silent pass at base and
+# a silent failure at the candidate compare as a regression (7.8.3).
+NORMALIZATION_VERSION = 4
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _HEX = re.compile(r"\b0x[0-9a-f]+\b", re.IGNORECASE)
@@ -221,8 +223,9 @@ def _fingerprint_hash(line: str) -> str:
     return hashlib.sha256(line.encode()).hexdigest()[:16]
 
 
-def fingerprint_candidates(text: str, root: Path) -> list[str]:
-    """The normalized lines `fingerprints` hashes, in output order."""
+def fingerprint_candidates(text: str, root: Path, exit_status: int | None = None) -> list[str]:
+    """The normalized lines `fingerprints` hashes, in output order. An exit-0 run that
+    printed nothing has none: a silent pass is not a failure identity."""
     root_str = str(root)
     lines = text.splitlines()
     # The marker check runs on the RAW line, before normalization, matching the 6.9
@@ -232,13 +235,15 @@ def fingerprint_candidates(text: str, root: Path) -> list[str]:
                   if not _PASS_LINE.search(_ANSI.sub("", line)) and _FAILURE_MARKER.search(line)]
     candidates = [c for c in candidates if c]
     if not candidates:
+        if exit_status == 0 and not any(line.strip() for line in lines):
+            return []
         last = next((line for line in reversed(lines) if line.strip()), None)
         candidates = [_normalize_line(last, root_str)] if last is not None else ["<no failure output>"]
     return candidates
 
 
-def fingerprints(text: str, root: Path) -> list[str]:
-    return sorted({_fingerprint_hash(c) for c in fingerprint_candidates(text, root)})
+def fingerprints(text: str, root: Path, exit_status: int | None = None) -> list[str]:
+    return sorted({_fingerprint_hash(c) for c in fingerprint_candidates(text, root, exit_status)})
 
 
 _LINE_CAP = 300  # display characters kept per line; the hash is of the whole line
@@ -495,7 +500,7 @@ def run_command(
         # below still comes from the bytes, not the file, so it is correct even if the
         # write fails or the file is later moved.
         Path(log_path).write_text(output)
-    candidates = fingerprint_candidates(output, root)
+    candidates = fingerprint_candidates(output, root, exit_status=exit_status)
     fingerprint_lines: dict[str, str] = {}
     for line in candidates:
         fingerprint_lines.setdefault(_fingerprint_hash(line), line[:_LINE_CAP])
@@ -591,12 +596,6 @@ def capture_baseline(
             if command in entries:
                 continue  # identical command strings run once; the dict is keyed by command
             if feature_added_path is not None:
-                target = checkout_dest / feature_added_path
-                if target.exists():
-                    raise LoopSpecError(
-                        f"featureAdded target {feature_added_path} already exists at base",
-                        repair=f"pick a path for task {task_id} that does not exist at {base_sha}",
-                    )
                 entries[command] = BaselineEntry(command=command, task=task_id, status="no-baseline", run=None)
                 continue
             entries[command] = BaselineEntry(
@@ -770,6 +769,11 @@ def compare_to_baseline(entry: BaselineEntry, candidate: CommandRun, *, feature_
     return Comparison("no-regression", [], "no new failure identity versus base; exit status alone never decides")
 
 
+def _id_list(ids: list[str]) -> str:
+    shown = ", ".join(i[:200] for i in ids[:10])
+    return f"{shown} (+{len(ids) - 10} more)" if len(ids) > 10 else shown
+
+
 def evidence_matches(claimed: dict, rerun: CommandRun) -> tuple[bool, str]:
     try:
         claimed_command = " ".join(shlex.split(claimed.get("command", "")))
@@ -782,8 +786,13 @@ def evidence_matches(claimed: dict, rerun: CommandRun) -> tuple[bool, str]:
         return False, "sha differs"
     if claimed.get("exitStatus") != rerun.exit_status:
         return False, "exitStatus differs"
-    if sorted(claimed.get("failureIdentities") or []) != sorted(rerun.failure_identities):
-        return False, "failureIdentities differ"
+    # With no recognized runner the program parses no identities, so a claimed list
+    # can never be checked against the re-run.
+    if rerun.runner is not None:
+        claimed_ids = sorted(claimed.get("failureIdentities") or [])
+        if claimed_ids != sorted(rerun.failure_identities):
+            return False, (f"failureIdentities differ: claimed [{_id_list(claimed_ids)}], "
+                           f"re-run ({rerun.runner}) parsed [{_id_list(sorted(rerun.failure_identities))}]")
     if "normalizedDigest" in claimed and claimed["normalizedDigest"] != rerun.normalized_digest:
         return False, "normalizedDigest differs"
     return True, ""

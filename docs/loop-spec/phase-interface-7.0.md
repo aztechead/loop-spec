@@ -137,7 +137,7 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 |---|---|---|
 | P1 | product validates; bound to the current requirements revision | every exit |
 | P2 | every criterion id in the requirements revision is covered by at least one task | `ready` |
-| P3 | every verify command, every repo check command, and the prepare command pass the plain-argv format check (Commands, above), checked before any baseline command runs; every verify command either ran at the base SHA from a bare worktree root during baseline capture, or is declared `featureAdded` with a target path that does not exist at base; every repo check (`checks`) ran at the base SHA without an execution error | `ready` |
+| P3 | every verify command, every repo check command, and the prepare command pass the plain-argv format check (Commands, above), checked, with every `featureAdded` target path, before any baseline command runs; every verify command either ran at the base SHA from a bare worktree root during baseline capture, or is declared `featureAdded` with a target path that does not exist at base; every repo check (`checks`) ran at the base SHA without an execution error | `ready` |
 | P4 | the baseline is captured (section 11) with the prepare command applied; environment health recorded once per failing command | `ready` |
 | P5 | the task graph is acyclic and every `dependsOn` names a task in the plan | `ready` |
 | P6 | workspace resolved once and the repo list stored in state; every task names a repo in it; every repo check names a repo some task changes, appears once per repo, and is not a `featureAdded` task's verify command in that repo | `ready` |
@@ -300,6 +300,8 @@ the row, never a failed delivery. A draft delivery never converts a ready PR bac
 | D8 | the product's repos cover exactly the set of repos EXECUTE touched with an accepted task's commits, no duplicates; a `skipped` row is only valid for a repo EXECUTE did not touch; every row marked `delivered` has a non-null PR | `delivered`, `partially delivered` |
 | D9 | before any push, origin's PR base was fetched for every touched repo; each `base moved` row names a `newBase` on origin's base branch that descends from the run's base SHA and conflicts with the EXECUTE head in exactly the listed `conflicts`, recomputed now; every other row is `skipped`; no row names a PR or a `deliveredSha` | `base moved` |
 
+A hosting server can lag a push. DELIVER re-reads a PR whose head is a strict ancestor of the pushed head up to four more times (after waits of 2, 4, 8 and 16 seconds) before recording it, and fails that repo's row if the head is still behind.
+
 | Exit | Requires | Route |
 |---|---|---|
 | `delivered` | D1 to D4, D6 to D8 for every repo | terminal `converged` or `converged-with-caveats`; terminal `no-change` after a `no change` EXECUTE |
@@ -345,7 +347,7 @@ The first phase of an `auto` run (7.3.0).
 
 | Exit | Requires | Route |
 |---|---|---|
-| `routed` | A1, A2 | `cycle`, `micro`, `debug`: the same run continues at SPEC (DEBUG for `debug`) with that entry's cycle type, adopting `pr` when set. `direct`: the same run continues at DIRECT. `revise`: the `revise` run for `pr` starts or resumes, with this run's answer policy; this run ends with result `routed` and `routedTo` naming that run |
+| `routed` | A1, A2 | `cycle`, `micro`, `debug`: the same run continues at SPEC (DEBUG for `debug`) with that entry's cycle type, adopting `pr` when set. `direct`: the same run continues at DIRECT. `revise`: the `revise` run for `pr` starts or resumes, with this run's answer policy and its request text (an instruction given with the PR reference is kept on the revise run's request after its first line; resuming an unfinished run whose request lacks that instruction is refused); this run ends with result `routed` and `routedTo` naming that run |
 
 A refused choice is a rejected product: the router step is issued again with the
 failed rule as its reason. Past the retry limit, the run pauses with the usual
@@ -384,7 +386,7 @@ itself, with no SPEC, PLAN, review, or verification.
 | `auto` | ROUTE, then the chosen entry's order | request text present |
 | `direct` | DIRECT only | request text present |
 | `status` | nothing; read-only | none |
-| `revise` | a compact SPEC and PLAN in the lead whose criteria are the PR comments mapped to gaps, with the PR's base as base SHA. The PLAN carries one `adopted` range task for the existing `base..head` commits plus one task per gap. At EXECUTE entry the program runs a full review step over the adopted range when a task is adopted (a plan task matching the delivering run's, or any task an external EXECUTE may claim), which becomes that task's review record (E5, E6); findings on the adopted code join the gaps. Then EXECUTE on the adopted PR branch, and VERIFY onward over the whole PR | an open PR the repo module can adopt; a PR with no prior loop-spec state gets a fresh run id bound to the PR identity; nothing in the adopted range is exempt from E4 to E7 |
+| `revise` | a request `revise PR #n: <url>`, followed after a blank line by any instruction given with the PR reference; a compact SPEC and PLAN in the lead whose criteria are the PR comments mapped to gaps, with the PR's base as base SHA. The PLAN carries one `adopted` range task for the existing `base..head` commits plus one task per gap. At EXECUTE entry the program runs a full review step over the adopted range when a task is adopted (a plan task matching the delivering run's, or any task an external EXECUTE may claim), which becomes that task's review record (E5, E6); findings on the adopted code join the gaps. Then EXECUTE on the adopted PR branch, and VERIFY onward over the whole PR | an open PR the repo module can adopt; a PR with no prior loop-spec state gets a fresh run id bound to the PR identity; nothing in the adopted range is exempt from E4 to E7 |
 
 A standalone `deliver` cannot bypass VERIFY or ITERATE: its preconditions require an
 ITERATE exit at the current revisions.
@@ -396,7 +398,7 @@ ITERATE exit at the current revisions.
 | DELIVER `delivered` after ITERATE `converged` | `converged` | `status: completed`, `outcome: delivered`, `converged: true`, `workDelivered: true` |
 | DELIVER `delivered` after `converged with caveats` | `converged-with-caveats` | `outcome: delivered-draft`, `converged: false`, `implementationConverged: true`, findings in `warnings` |
 | ITERATE `converged` on a `no change` head | `no-change` | `outcome: no-change-needed`, `noChangeReason: already-satisfied`, `converged: true`, `workDelivered: false`; `prUrl` names the adopted PR when the run adopted one |
-| ITERATE `escalated`; T1 refused at PLAN, EXECUTE, or VERIFY, written by the controller | `escalated` | `status: escalated`, `converged: false` |
+| ITERATE `escalated`; T1 refused at PLAN, EXECUTE, or VERIFY, written by the controller | `escalated` | `status: escalated`, `converged: false`; for ITERATE, the verdict and its open gaps in `reason` |
 | process exit 1; environment cannot run the plan | `failed` | `status: failed`, `converged: false` |
 | process exit 3 outstanding, including every `blocked` exit | question pending | `status: paused`, `reason` names the question id and, for a blocked exit, the cause |
 | a `blocked` exit answered stop | `escalated` | `status: escalated`, `converged: false`, the cause in `reason` |
