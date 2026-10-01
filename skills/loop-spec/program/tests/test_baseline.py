@@ -144,6 +144,30 @@ class FingerprintTests(unittest.TestCase):
         self.assertEqual(len(result), 1)
 
 
+class SilentPassFingerprintTests(unittest.TestCase):
+    def test_exit_zero_with_no_output_has_no_candidates(self):
+        self.assertEqual(fingerprint_candidates("", Path("/root"), exit_status=0), [])
+
+    def test_exit_zero_marker_free_line_keeps_last_line(self):
+        self.assertEqual(fingerprint_candidates("ok\n", Path("/root"), exit_status=0), ["ok"])
+
+    def test_nonzero_or_unknown_exit_keeps_placeholder(self):
+        self.assertEqual(fingerprint_candidates("", Path("/root"), exit_status=1), ["<no failure output>"])
+        self.assertEqual(fingerprint_candidates("", Path("/root")), ["<no failure output>"])
+
+    def test_exit_zero_with_failure_line_still_fingerprints_it(self):
+        self.assertEqual(fingerprint_candidates("FAILED x\n", Path("/root"), exit_status=0), ["FAILED x"])
+
+    def test_failing_base_and_silent_passing_candidate_is_no_regression(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = _run("python3 -c \"assert False\"", tmp)
+            candidate = _run("python3 -c \"pass\"", tmp)
+            self.assertEqual(base.exit_status, 1)
+            self.assertEqual(candidate.fingerprints, [])
+            entry = BaselineEntry(command=base.command, task=None, status="ran", run=base)
+            self.assertEqual(compare_to_baseline(entry, candidate).verdict, "no-regression")
+
+
 class RunCommandTests(unittest.TestCase):
     def test_nonzero_exit_recorded(self):
         with tempfile.TemporaryDirectory() as tmp:

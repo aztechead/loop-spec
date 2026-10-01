@@ -173,7 +173,9 @@ def detect_runner(command: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 # v2: counts on a whole summary line are stripped (7.1.0); the diagnostics parser.
-NORMALIZATION_VERSION = 3
+# v4: an exit-0 run that printed nothing has no fingerprints, so a silent pass at base and
+# a silent failure at the candidate compare as a regression (7.8.3).
+NORMALIZATION_VERSION = 4
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _HEX = re.compile(r"\b0x[0-9a-f]+\b", re.IGNORECASE)
@@ -221,8 +223,9 @@ def _fingerprint_hash(line: str) -> str:
     return hashlib.sha256(line.encode()).hexdigest()[:16]
 
 
-def fingerprint_candidates(text: str, root: Path) -> list[str]:
-    """The normalized lines `fingerprints` hashes, in output order."""
+def fingerprint_candidates(text: str, root: Path, exit_status: int | None = None) -> list[str]:
+    """The normalized lines `fingerprints` hashes, in output order. An exit-0 run that
+    printed nothing has none: a silent pass is not a failure identity."""
     root_str = str(root)
     lines = text.splitlines()
     # The marker check runs on the RAW line, before normalization, matching the 6.9
@@ -232,13 +235,15 @@ def fingerprint_candidates(text: str, root: Path) -> list[str]:
                   if not _PASS_LINE.search(_ANSI.sub("", line)) and _FAILURE_MARKER.search(line)]
     candidates = [c for c in candidates if c]
     if not candidates:
+        if exit_status == 0 and not any(line.strip() for line in lines):
+            return []
         last = next((line for line in reversed(lines) if line.strip()), None)
         candidates = [_normalize_line(last, root_str)] if last is not None else ["<no failure output>"]
     return candidates
 
 
-def fingerprints(text: str, root: Path) -> list[str]:
-    return sorted({_fingerprint_hash(c) for c in fingerprint_candidates(text, root)})
+def fingerprints(text: str, root: Path, exit_status: int | None = None) -> list[str]:
+    return sorted({_fingerprint_hash(c) for c in fingerprint_candidates(text, root, exit_status)})
 
 
 _LINE_CAP = 300  # display characters kept per line; the hash is of the whole line
@@ -495,7 +500,7 @@ def run_command(
         # below still comes from the bytes, not the file, so it is correct even if the
         # write fails or the file is later moved.
         Path(log_path).write_text(output)
-    candidates = fingerprint_candidates(output, root)
+    candidates = fingerprint_candidates(output, root, exit_status=exit_status)
     fingerprint_lines: dict[str, str] = {}
     for line in candidates:
         fingerprint_lines.setdefault(_fingerprint_hash(line), line[:_LINE_CAP])
