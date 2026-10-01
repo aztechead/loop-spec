@@ -1823,6 +1823,43 @@ class AutoRouteTests(_QuietStdout):
                 again = controller.continue_run(_open(paths), paths, project_root=repo_dir)
             self.assertEqual(again.slug, "revise-42")
 
+    def test_the_same_request_after_a_finished_revise_starts_the_next_round(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+            tmp = Path(tmp)
+            url = "https://example.invalid/o/r/pull/42"
+            repo_dir, paths, next_ = self._start(tmp, refs=[{"ref": url, "number": 42, "url": url, "repo": "repo",
+                                                             "adoptable": True, "reason": "open"}], policy="default")
+            _git(repo_dir, "checkout", "-q", "-b", "pr-branch")
+            (repo_dir / "greet.py").write_text("print('hi')\n", encoding="utf-8")
+            _git(repo_dir, "add", "greet.py")
+            _git(repo_dir, "commit", "-q", "-m", "add greeting")
+            head_sha = repo_module.head_sha(repo_dir)
+            _git(repo_dir, "checkout", "-q", "main")
+            _add_origin(tmp, repo_dir, "main", "pr-branch")
+            adoption = repo_module.PrAdoption(adopt=True, number=42, url=url, branch="pr-branch", base_branch="main",
+                                              head_sha=head_sha, reason="open")
+            store = _open(paths)
+            store.state["routeFacts"]["prRefs"][0]["repo"] = next(iter(store.state["repos"]))
+            store.save()
+            with patch.object(repo_module, "adopt_pr", return_value=adoption), \
+                 patch.object(revise_module, "gaps_from_pr", return_value=[]):
+                next_ = self._route(repo_dir, paths, next_, "revise", 42)
+                self.assertEqual(next_.slug, "revise-42")
+                # Round 1 unfinished: the same request resumes it.
+                with contextlib.redirect_stdout(self.markers):
+                    again = controller.run_entry("auto", project_root=repo_dir, request_text="do the thing", slug="auto-1",
+                                                 state_home=str(tmp / "home"), answer_policy="default", pr=None)
+                self.assertEqual(again.slug, "revise-42")
+                # Round 1 finished: the same request is the next review round.
+                revise_paths = FeaturePaths(root=paths.root.parent / "revise-42", project_root=repo_dir)
+                revise_store = _open(revise_paths)
+                revise_store.state["result"] = {"classification": "converged"}
+                revise_store.save()
+                with contextlib.redirect_stdout(self.markers):
+                    again = controller.run_entry("auto", project_root=repo_dir, request_text="do the thing", slug="auto-1",
+                                                 state_home=str(tmp / "home"), answer_policy="default", pr=None)
+            self.assertEqual(again.slug, "revise-42-2")
+
     def test_direct_ends_with_a_direct_result_and_no_gate(self):
         for exit_, blocker, expected in (("done", None, "direct"), ("incomplete", "the conflict needs a design call", "escalated")):
             with self.subTest(exit=exit_), tempfile.TemporaryDirectory() as tmp:

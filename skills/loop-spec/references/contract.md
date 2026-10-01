@@ -263,6 +263,9 @@ source: "plan" | "answer", reason}`; an opted-in unattested judgment step is
 `{kind: "evidence.unattested-step", step, role, attempts, policy, source: "config"}`,
 once per step.
 
+A `routed` auto run whose revise run has finished is not replayed: running the same request
+text again starts the next review round (`revise-<n>-2`), and `last-result.json` names it.
+
 ## State home layout
 
 `<state home>/<repo id>/<slug>/`:

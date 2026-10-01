@@ -123,6 +123,13 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
         _clear_stale_last_result(paths, slug)
         if store.state["request"]["digest"] != digest(request_text):
             raise LoopSpecError(f"slug {slug} is in use by another request", repair="pass --slug to choose a different slug")
+        routed = store.state["run"].get("routedTo") or {}
+        if store.state.get("result") is not None and routed.get("entry") == "revise" and routed.get("pr") and routed.get("slug"):
+            revise_paths = FeaturePaths(root=feature_dir(home, rid, routed["slug"]), project_root=project_root)
+            if revise_paths.state_json.exists() and _open_existing(revise_paths).state.get("result") is not None:
+                # A repeated revise request is the next review round, not a replay of the last.
+                return _ENTRY_START["revise"](project_root=project_root, request_text=None, slug=None, home=home, rid=rid,
+                                              answer_policy=answer_policy, pr=routed["pr"])
     else:
         _clear_stale_last_result(paths, slug)
         run_fields = {
