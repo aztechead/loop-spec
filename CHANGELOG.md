@@ -4,6 +4,41 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.8.3] - 2026-10-01
+
+### Fixed
+
+Issues a host's local end-to-end runs of 7.8.2 found (Agent SDK in a container, a red
+base branch, `deliver.acceptRemotePaths`), plus one more its reproduction turned up.
+
+- A check that passes silently is no longer a regression. A non-runner command that exits
+  0 and prints nothing has no failure fingerprint, so a task verify that fails at base
+  and passes afterward compares as `no-regression`, not as a new `<no failure output>`
+  identity. A passing check that prints a line with no failure marker still compares its
+  last line, so grep-style checks that exit 0 when they find a problem keep working.
+  The comparison rules are now v4: a run started on an earlier version is refused on
+  resume, as on every rules change.
+- VERIFY no longer rejects a claim over failure identities it cannot parse. Identities
+  are compared only when the re-run's command invokes a runner the program parses; an
+  `sh -c` pipeline has none. A mismatch now names both lists and the runner. The
+  verifier prompt says to record identities only for those runners.
+- DELIVER waits out a PR head the hosting server has not caught up on. A head that is an
+  ancestor of the pushed head is re-read up to four more times (2, 4, 8 and 16 seconds
+  apart) before it is recorded or refused. A refusal says whether the server is still
+  behind or origin's branch was moved back.
+- A revise run keeps the instruction given with the PR reference. The request reads
+  `revise PR #n: <url>`, then the requester's text, so the ITERATE judge and the SPEC
+  critic see what the reviser saw; the reviser gets it as `inputs.request`. A new
+  instruction for a PR whose revise run is unfinished is refused with the slug to
+  finish first, rather than dropped; a run handed off under 7.8.2 and still unfinished
+  hits that refusal on resume.
+- An escalated result always has a `reason`. An ITERATE escalation names its open gaps,
+  and the result writer falls back to the summary for any escalated or failed result
+  with no named cause.
+- A plan whose `featureAdded` target already exists at base is rejected and re-planned
+  with the reason (P3), instead of stopping the run with an error after SPEC approval.
+  This hit revise runs most: the reviser's plan was lost with the error.
+
 ## [7.8.2] - 2026-09-30
 
 ### Fixed
