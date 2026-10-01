@@ -91,7 +91,8 @@ def _request_start(entry: str):
 
 
 def _revise_start(*, project_root, request_text, slug, home, rid, answer_policy, pr) -> Next:
-    return _run_revise_entry(project_root=project_root, pr=pr, slug=slug, home=home, rid=rid, answer_policy=answer_policy)
+    return _run_revise_entry(project_root=project_root, pr=pr, slug=slug, home=home, rid=rid, answer_policy=answer_policy,
+                             request=request_text)
 
 
 # How the core starts each registered entry (entries.ENTRIES): a request entry from its
@@ -128,7 +129,7 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
             revise_paths = FeaturePaths(root=feature_dir(home, rid, routed["slug"]), project_root=project_root)
             if revise_paths.state_json.exists() and _open_existing(revise_paths).state.get("result") is not None:
                 # A repeated revise request is the next review round, not a replay of the last.
-                return _ENTRY_START["revise"](project_root=project_root, request_text=None, slug=None, home=home, rid=rid,
+                return _ENTRY_START["revise"](project_root=project_root, request_text=request_text, slug=None, home=home, rid=rid,
                                               answer_policy=answer_policy, pr=routed["pr"])
     else:
         _clear_stale_last_result(paths, slug)
@@ -253,7 +254,7 @@ def _find_delivering_run_products(home: Path, rid: str, pr_url: str, project_roo
 
 
 def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, home: Path, rid: str,
-                       answer_policy: str | None) -> Next:
+                       answer_policy: str | None, request: str | None = None) -> Next:
     if not pr:
         if not slug:
             raise LoopSpecError("revise requires --pr, or --slug to resume", repair="pass --pr <number-or-url>, or --slug to resume one")
@@ -278,14 +279,24 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
     slug = slug or existing_slug or _next_revise_slug(home, rid, adoption.number)
     paths = FeaturePaths(root=feature_dir(home, rid, slug), project_root=project_root)
 
+    # An instruction given with the PR reference (anything beyond the reference itself)
+    # is kept on the run's request after its first line.
+    instruction = (request or "").strip()
+    if instruction in ("", adoption.url):
+        instruction = ""
+
     if paths.state_json.exists():
         store = _open_existing(paths)
+        if instruction and instruction not in store.state["request"]["text"]:
+            raise LoopSpecError(
+                f"PR #{adoption.number} has an unfinished revise run {slug}; its request does not carry this instruction",
+                repair=f"resume it with --slug {slug} and finish it (or answer its pause question 'stop'), then repeat the request")
         _clear_stale_last_result(paths, slug)
         return _continue_with_policy(store, paths, project_root, answer_policy)
     _clear_stale_last_result(paths, slug)
 
     repo_entry, adoption_record = _adopt(repo_name, repo_path, adoption, home)
-    request_text = f"revise PR #{adoption.number}: {adoption.url}"
+    request_text = f"revise PR #{adoption.number}: {adoption.url}" + (f"\n\n{instruction}" if instruction else "")
     run_fields = {"id": new_id("run"), "entry": "revise", "createdAt": now_iso(), "slug": slug, "repoId": rid, "cycleType": "revise"}
     store = StateStore.create(paths, run_fields, request_text)
     store.state["repos"] = {repo_name: repo_entry}
@@ -971,8 +982,8 @@ def _start_handoff(store: StateStore, paths: FeaturePaths, project_root: Path, h
     a `routed` result that neither moves the last-result pointer nor prints a result
     marker: the request is not finished, the revise run carries it on."""
     next_ = _ENTRY_START["revise"](
-        project_root=project_root, request_text=None, slug=None, home=paths.root.parent.parent,
-        rid=paths.root.parent.name, answer_policy=store.state["questions"].get("policy"), pr=handoff["pr"],
+        project_root=project_root, request_text=store.state["request"]["text"], slug=None,
+        home=paths.root.parent.parent, rid=paths.root.parent.name, answer_policy=store.state["questions"].get("policy"), pr=handoff["pr"],
     )
     store.state["run"]["routedTo"] = {**handoff, "slug": next_.slug}
     store.state["phase"]["handoff"] = None

@@ -347,7 +347,7 @@ The first phase of an `auto` run (7.3.0).
 
 | Exit | Requires | Route |
 |---|---|---|
-| `routed` | A1, A2 | `cycle`, `micro`, `debug`: the same run continues at SPEC (DEBUG for `debug`) with that entry's cycle type, adopting `pr` when set. `direct`: the same run continues at DIRECT. `revise`: the `revise` run for `pr` starts or resumes, with this run's answer policy; this run ends with result `routed` and `routedTo` naming that run |
+| `routed` | A1, A2 | `cycle`, `micro`, `debug`: the same run continues at SPEC (DEBUG for `debug`) with that entry's cycle type, adopting `pr` when set. `direct`: the same run continues at DIRECT. `revise`: the `revise` run for `pr` starts or resumes, with this run's answer policy and its request text (an instruction given with the PR reference is kept on the revise run's request after its first line; resuming an unfinished run whose request lacks that instruction is refused); this run ends with result `routed` and `routedTo` naming that run |
 
 A refused choice is a rejected product: the router step is issued again with the
 failed rule as its reason. Past the retry limit, the run pauses with the usual
@@ -386,7 +386,7 @@ itself, with no SPEC, PLAN, review, or verification.
 | `auto` | ROUTE, then the chosen entry's order | request text present |
 | `direct` | DIRECT only | request text present |
 | `status` | nothing; read-only | none |
-| `revise` | a compact SPEC and PLAN in the lead whose criteria are the PR comments mapped to gaps, with the PR's base as base SHA. The PLAN carries one `adopted` range task for the existing `base..head` commits plus one task per gap. At EXECUTE entry the program runs a full review step over the adopted range when a task is adopted (a plan task matching the delivering run's, or any task an external EXECUTE may claim), which becomes that task's review record (E5, E6); findings on the adopted code join the gaps. Then EXECUTE on the adopted PR branch, and VERIFY onward over the whole PR | an open PR the repo module can adopt; a PR with no prior loop-spec state gets a fresh run id bound to the PR identity; nothing in the adopted range is exempt from E4 to E7 |
+| `revise` | a request `revise PR #n: <url>`, followed after a blank line by any instruction given with the PR reference; a compact SPEC and PLAN in the lead whose criteria are the PR comments mapped to gaps, with the PR's base as base SHA. The PLAN carries one `adopted` range task for the existing `base..head` commits plus one task per gap. At EXECUTE entry the program runs a full review step over the adopted range when a task is adopted (a plan task matching the delivering run's, or any task an external EXECUTE may claim), which becomes that task's review record (E5, E6); findings on the adopted code join the gaps. Then EXECUTE on the adopted PR branch, and VERIFY onward over the whole PR | an open PR the repo module can adopt; a PR with no prior loop-spec state gets a fresh run id bound to the PR identity; nothing in the adopted range is exempt from E4 to E7 |
 
 A standalone `deliver` cannot bypass VERIFY or ITERATE: its preconditions require an
 ITERATE exit at the current revisions.
