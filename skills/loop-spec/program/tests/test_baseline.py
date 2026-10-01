@@ -481,6 +481,17 @@ class CaptureBaselineTests(unittest.TestCase):
             checkout_dest = Path(checkouts_dir) / f"baseline-{sha[:12]}"
             self.assertFalse(checkout_dest.exists())
 
+    def test_a_feature_added_path_that_exists_at_base_is_recorded_not_raised(self):
+        with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as checkouts_dir:
+            _init_repo(repo_dir)
+            sha = subprocess.run(
+                ["git", "-C", repo_dir, "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+            ).stdout.strip()
+            baseline = capture_baseline(
+                Path(repo_dir), sha, [("echo unused", "T-1", "README.md")], None, Path(checkouts_dir), "myrepo"
+            )
+            self.assertEqual(baseline.entries["echo unused"].status, "no-baseline")
+
 
 if __name__ == "__main__":
     unittest.main()

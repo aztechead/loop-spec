@@ -137,7 +137,7 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 |---|---|---|
 | P1 | product validates; bound to the current requirements revision | every exit |
 | P2 | every criterion id in the requirements revision is covered by at least one task | `ready` |
-| P3 | every verify command, every repo check command, and the prepare command pass the plain-argv format check (Commands, above), checked before any baseline command runs; every verify command either ran at the base SHA from a bare worktree root during baseline capture, or is declared `featureAdded` with a target path that does not exist at base; every repo check (`checks`) ran at the base SHA without an execution error | `ready` |
+| P3 | every verify command, every repo check command, and the prepare command pass the plain-argv format check (Commands, above), checked, with every `featureAdded` target path, before any baseline command runs; every verify command either ran at the base SHA from a bare worktree root during baseline capture, or is declared `featureAdded` with a target path that does not exist at base; every repo check (`checks`) ran at the base SHA without an execution error | `ready` |
 | P4 | the baseline is captured (section 11) with the prepare command applied; environment health recorded once per failing command | `ready` |
 | P5 | the task graph is acyclic and every `dependsOn` names a task in the plan | `ready` |
 | P6 | workspace resolved once and the repo list stored in state; every task names a repo in it; every repo check names a repo some task changes, appears once per repo, and is not a `featureAdded` task's verify command in that repo | `ready` |

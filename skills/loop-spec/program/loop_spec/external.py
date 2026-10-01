@@ -44,7 +44,7 @@ POSTCONDITION_TEXT: dict[str, str] = {
     "S3": "the product's own fields did not create the approval record; only the program writes it",
     "P1": "product validates; bound to the current requirements revision",
     "P2": "every criterion id in the requirements revision is covered by at least one task",
-    "P3": "every verify command, every repo check command, and the prepare command pass the plain-argv format check (commands run as argv with no shell), checked before any baseline command runs; every verify command either ran at the base SHA from a bare worktree root during baseline capture, or is declared featureAdded with a target path that does not exist at base; every repo check ran at the base SHA without an execution error",
+    "P3": "every verify command, every repo check command, and the prepare command pass the plain-argv format check (commands run as argv with no shell), checked, with every featureAdded target path, before any baseline command runs; every verify command either ran at the base SHA from a bare worktree root during baseline capture, or is declared featureAdded with a target path that does not exist at base; every repo check ran at the base SHA without an execution error",
     "P4": "the baseline is captured (section 11) with the prepare command applied; environment health recorded once per failing command",
     "P5": "the task graph is acyclic and every dependsOn names a task in the plan",
     "P6": "workspace resolved once and the repo list stored in state; every task names a repo in it; every repo check names a repo some task changes, appears once per repo, and is not a featureAdded task's verify command in that repo",

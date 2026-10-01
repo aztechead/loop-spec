@@ -596,12 +596,6 @@ def capture_baseline(
             if command in entries:
                 continue  # identical command strings run once; the dict is keyed by command
             if feature_added_path is not None:
-                target = checkout_dest / feature_added_path
-                if target.exists():
-                    raise LoopSpecError(
-                        f"featureAdded target {feature_added_path} already exists at base",
-                        repair=f"pick a path for task {task_id} that does not exist at {base_sha}",
-                    )
                 entries[command] = BaselineEntry(command=command, task=task_id, status="no-baseline", run=None)
                 continue
             entries[command] = BaselineEntry(

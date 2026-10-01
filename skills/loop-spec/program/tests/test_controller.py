@@ -1193,6 +1193,39 @@ class DebugAndReviseEntryTests(_QuietStdout):
                 replan_step = read_json(next_.path)
                 self.assertIn("P2", replan_step["reason"])
 
+    def test_debug_entry_plan_with_a_feature_added_path_at_base_is_replanned_with_the_reason(self):
+        # A featureAdded target that exists at base is a rejected plan with a reason the
+        # replan step names, never a raise out of the baseline capture.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            markers = io.StringIO()
+            repro_command = "python3 -c \"import sys; print('boom'); sys.exit(1)\""
+
+            with patch.dict("os.environ", _EXTERNAL_ENV, clear=False):
+                next_, paths, store, repo_name = _start_debug_run(
+                    repo_dir, home, markers, "the greeting script crashes", "debugexists",
+                )
+                debug_step = read_json(next_.path)
+                spec, plan = _minimal_spec_and_plan(repo_name, "Fix the crash", "the crash no longer reproduces", "fix the crash")
+                plan["tasks"][0]["featureAdded"] = "README.md"  # committed at base
+                debug_product = {
+                    "exit": "reproduced", "inputsDigest": "sha256:" + "0" * 64,
+                    "boundTo": {"requirements": None, "plan": None},
+                    "reproduction": {"command": repro_command, "failureDigest": digest_bytes(b"boom\n"), "reason": None},
+                    "original": None,
+                    "diagnosis": "the greeting script exits nonzero",
+                    "spec": spec, "plan": plan,
+                }
+                atomic_write_json(Path(debug_step["resultPath"]), debug_product)
+                next_ = _submit_and_continue(paths, repo_dir, markers, debug_step["stepAttemptId"])
+                next_ = _answer_approve_and_continue(paths, repo_dir, markers, next_)
+
+                self.assertEqual(_open(paths).state["phase"]["current"], "plan")
+                self.assertEqual(next_.kind, "step")
+                self.assertIn("already exists at base", read_json(next_.path)["reason"])
+
     def test_debug_blocked_reproduction_pauses(self):
         # B3 (a blocked-reproduction product carries no reproduction) needs
         # debug.json's own "reproduction" nullable; this pins the pause path it gates.

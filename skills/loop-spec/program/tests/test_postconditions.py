@@ -236,6 +236,16 @@ class PostconditionsTests(unittest.TestCase):
         bad["prepare"] = "cd x && make"
         self.assertIn("prepare command uses the shell operator '&&'", self._boundary("plan", bad, "ready")._p3())
 
+    def test_p3_form_rejects_a_feature_added_path_that_exists_at_base(self):
+        bad = copy.deepcopy(self.plan_product)
+        bad["tasks"][0]["featureAdded"] = "README.md"  # committed at base
+        message = self._boundary("plan", bad, "ready")._p3_form()
+        self.assertIn(f"task {bad['tasks'][0]['id']}: featureAdded target README.md already exists at base", message)
+
+        fresh = copy.deepcopy(self.plan_product)
+        fresh["tasks"][0]["featureAdded"] = "tests/test_new.py"
+        self.assertIsNone(self._boundary("plan", fresh, "ready")._p3_form())
+
     def test_p4(self):
         self.assertIsNone(self._boundary("plan", self.plan_product, "ready")._p4())
         self.store.state["baseline"]["baseSha"] = "z" * 40
