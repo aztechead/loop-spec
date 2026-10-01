@@ -1,5 +1,7 @@
 """Unit tests for loop_spec.repo: workspace detection, git mechanics, PR adoption."""
 import json
+import os
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -10,6 +12,7 @@ from loop_spec.errors import LoopSpecError
 from loop_spec.repo import (
     add_worktree,
     adopt_pr,
+    check_credentials,
     clean_checkout,
     commits_between,
     create_feature_branch,
@@ -22,6 +25,7 @@ from loop_spec.repo import (
     init_in_place,
     is_ancestor,
     is_clean,
+    remote_host,
     remove_worktree,
     remove_worktrees,
 )
@@ -353,6 +357,36 @@ class AdoptPrTests(unittest.TestCase):
                 result = adopt_pr(Path(tmp), 123)
             self.assertFalse(result.adopt)
             self.assertEqual(result.reason, "gh is not installed")
+
+
+class RemoteHostTests(unittest.TestCase):
+    def test_remote_host_forms(self):
+        self.assertEqual(remote_host("git@ghe.example.com:o/r.git"), "ghe.example.com")
+        self.assertEqual(remote_host("https://ghe.example.com/o/r"), "ghe.example.com")
+        self.assertEqual(remote_host("ssh://git@ghe.example.com:22/o/r"), "ghe.example.com")
+        self.assertIsNone(remote_host("/tmp/x.git"))
+        self.assertIsNone(remote_host("file:///tmp/x.git"))
+        self.assertIsNone(remote_host(None))
+
+
+class CheckCredentialsTests(unittest.TestCase):
+    def test_gh_is_checked_for_the_configured_origin_host(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            bin_dir = Path(tmp) / "bin"
+            repo.mkdir()
+            bin_dir.mkdir()
+            _init_repo(repo)
+            _git(repo, "remote", "add", "origin", "git@ghe.example.com:o/r.git")
+            # gh exits 0 only for the host-scoped check; the bare check fails.
+            gh = bin_dir / "gh"
+            gh.write_text('#!/bin/sh\n[ "$*" = "auth status --hostname ghe.example.com" ]\n')
+            gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
+            with patch.dict(os.environ, {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}):
+                status = check_credentials(repo)
+            self.assertTrue(status.gh_ok)
+            self.assertIn("gh auth status --hostname ghe.example.com", status.checked)
+            self.assertNotIn("gh auth status", status.checked)
 
 
 if __name__ == "__main__":
