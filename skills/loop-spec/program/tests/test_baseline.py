@@ -416,6 +416,44 @@ class EvidenceMatchesTests(unittest.TestCase):
         self.assertEqual(reason, "exitStatus differs")
 
 
+    def _rerun(self, runner, identities):
+        return CommandRun(
+            command="pytest", cwd="/x", sha="deadbeef", exit_status=1, runner=runner,
+            failure_identities=identities, fingerprints=["fp"], output_digest="sha256:" + "1" * 64,
+            normalized_digest="sha256:" + "2" * 64, normalization_version=1,
+            started_at="2026-01-01T00:00:00+00:00", elapsed_seconds=0.1, error_class=None,
+            tests_ran=1, log_path=None,
+        )
+
+    def test_identity_mismatch_names_both_sides(self):
+        claimed = {"command": "pytest", "sha": "deadbeef", "exitStatus": 1, "failureIdentities": ["a::t1", "a::t2"]}
+        ok, reason = evidence_matches(claimed, self._rerun("pytest", ["tests/t.py::test_x"]))
+        self.assertFalse(ok)
+        self.assertEqual(
+            reason, "failureIdentities differ: claimed [a::t1, a::t2], re-run (pytest) parsed [tests/t.py::test_x]")
+
+    def test_identity_mismatch_caps_the_list(self):
+        ids = [f"t{i:02d}" for i in range(12)]
+        claimed = {"command": "pytest", "sha": "deadbeef", "exitStatus": 1, "failureIdentities": ids}
+        ok, reason = evidence_matches(claimed, self._rerun("pytest", []))
+        self.assertFalse(ok)
+        self.assertIn("(+2 more)", reason)
+        self.assertNotIn("t11", reason)
+
+    def test_no_runner_skips_the_identity_comparison(self):
+        claimed = {"command": "pytest", "sha": "deadbeef", "exitStatus": 1, "failureIdentities": ["a::t1"]}
+        self.assertEqual(evidence_matches(claimed, self._rerun(None, [])), (True, ""))
+
+    def test_sh_c_command_matches_with_or_without_claimed_identities(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            command = "sh -c \"echo 'FAILED tests/t.py::test_x'\""
+            rerun = _run(command, tmp)
+            self.assertIsNone(rerun.runner)
+            for ids in ([], ["tests/t.py::test_x"]):
+                claimed = {"command": command, "sha": rerun.sha, "exitStatus": 0, "failureIdentities": ids}
+                self.assertEqual(evidence_matches(claimed, rerun), (True, ""))
+
+
 class CaptureBaselineTests(unittest.TestCase):
     def test_capture_and_cleanup(self):
         with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as checkouts_dir:

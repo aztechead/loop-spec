@@ -775,6 +775,11 @@ def compare_to_baseline(entry: BaselineEntry, candidate: CommandRun, *, feature_
     return Comparison("no-regression", [], "no new failure identity versus base; exit status alone never decides")
 
 
+def _id_list(ids: list[str]) -> str:
+    shown = ", ".join(i[:200] for i in ids[:10])
+    return f"{shown} (+{len(ids) - 10} more)" if len(ids) > 10 else shown
+
+
 def evidence_matches(claimed: dict, rerun: CommandRun) -> tuple[bool, str]:
     try:
         claimed_command = " ".join(shlex.split(claimed.get("command", "")))
@@ -787,8 +792,13 @@ def evidence_matches(claimed: dict, rerun: CommandRun) -> tuple[bool, str]:
         return False, "sha differs"
     if claimed.get("exitStatus") != rerun.exit_status:
         return False, "exitStatus differs"
-    if sorted(claimed.get("failureIdentities") or []) != sorted(rerun.failure_identities):
-        return False, "failureIdentities differ"
+    # With no recognized runner the program parses no identities, so a claimed list
+    # can never be checked against the re-run.
+    if rerun.runner is not None:
+        claimed_ids = sorted(claimed.get("failureIdentities") or [])
+        if claimed_ids != sorted(rerun.failure_identities):
+            return False, (f"failureIdentities differ: claimed [{_id_list(claimed_ids)}], "
+                           f"re-run ({rerun.runner}) parsed [{_id_list(sorted(rerun.failure_identities))}]")
     if "normalizedDigest" in claimed and claimed["normalizedDigest"] != rerun.normalized_digest:
         return False, "normalizedDigest differs"
     return True, ""
