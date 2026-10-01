@@ -4,6 +4,49 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.8.2] - 2026-09-30
+
+### Fixed
+
+Regressions a host found porting from 6.x to 7.x (local E2E of 7.8.1 through the Agent
+SDK), plus the differences a sweep of the 6.x host surface turned up.
+
+- A second run with the same request no longer pushes over the first run's branch.
+  A new run takes `feat/<slug>`, or `feat/<slug>-<n>` when origin or the clone already
+  has that name, so an open PR from an earlier run is never the push target and DELIVER
+  is no longer blocked by a non-fast-forward rejection.
+- A revise run accepts an adopted PR whose branch already merged its base. E5 tested
+  range membership with two ancestor checks, which rejected every adopted commit made
+  before the merge as "outside its reviewed range" on every EXECUTE attempt. It now
+  tests membership in `from..to` the way git defines a range.
+- `gh auth status` is checked for the configured origin URL's host first, so a GitHub
+  Enterprise token in `GH_TOKEN` no longer fails DELIVER's credential check.
+- A revise run's `feature_title` is the PR's own title, not `revise PR #<n>: <url>`.
+- `implementationConverged` is true when ITERATE converged, including a draft delivery
+  and a run that then escalated at DELIVER, as 6.x reported it.
+- A DELIVER base move no longer spends the shared rewind budget; it has its own limit
+  of three per run (T2).
+- Review nits no longer make every PR a draft. Only a deferred Important finding makes
+  the run `converged-with-caveats` and its PR a draft; a Minor finding is deferred and
+  listed in the PR body and `warnings` on a ready PR with `converged: true`, as 6.x
+  reported it, and a fixed or withdrawn finding is closed. A clean delivery marks an
+  existing draft PR ready.
+- `deliver.base` is read once, into the repo's base branch, so PR creation and D2 agree;
+  an adopted PR on a non-default base no longer fails D2.
+- Sending the same request again after a finished run that routed to revise starts the
+  next review round instead of returning the previous round's result.
+- D3 and D7 state what they check: one `gh pr checks` call with no wait, and a
+  credential check with no refresh step.
+- Role prompts follow the Opus 5.5 and Sonnet 5.5 guides: lead-only roles say so,
+  runner notes are one sentence in the same message as the next tool call, a
+  trait-claim clause is gone, and every role example is captioned.
+
+### Documentation
+
+- The migration guide has a section for host authors: what a 6.x host reads or sets
+  (result fields, readiness, PR text, branch, budget, credentials, environment
+  variables) and what 7.x does instead.
+
 ## [7.8.1] - 2026-09-30
 
 ### Fixed
