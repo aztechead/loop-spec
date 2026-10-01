@@ -183,6 +183,37 @@ class DeliverTests(unittest.TestCase):
         self.assertEqual((row["state"], row["pr"]["number"]), ("delivered", 42))
         self.assertIn("PR body was not updated", row["caveats"][0])
 
+    def test_a_non_draft_delivery_marks_an_existing_draft_pr_ready(self):
+        def deliver_with(exit_, ready_result=(0, "", "")):
+            self.store.state["products"]["iterate"]["exit"] = exit_
+            self.store.save()
+            calls = []
+
+            def fake_run_gh(repo, *args):
+                calls.append(args)
+                if args[:2] == ("pr", "list"):
+                    return 0, json.dumps([{"number": 42, "url": "https://x/pull/42", "headRefOid": self.head_sha,
+                                            "baseRefName": "main", "isDraft": True}]), ""
+                if args[:2] == ("pr", "view"):
+                    return 0, PR_VIEW_JSON, ""
+                if args[:2] == ("pr", "edit"):
+                    return 0, "", ""
+                if args[:2] == ("pr", "ready"):
+                    return ready_result
+                raise AssertionError(f"unexpected gh call: {args}")
+
+            with patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh):
+                action = deliver.run(self.store, self.paths, self.ctx)
+            return calls, action.product["repos"][0]
+
+        calls, _ = deliver_with("converged with caveats")
+        self.assertFalse(any(c[:2] == ("pr", "ready") for c in calls))  # a draft delivery leaves it alone
+        calls, _ = deliver_with("converged")
+        self.assertIn(("pr", "ready", "42"), calls)
+        calls, row = deliver_with("converged", ready_result=(1, "", "HTTP 403"))
+        self.assertEqual(row["state"], "delivered")
+        self.assertIn("the PR is still a draft", row["caveats"][0])
+
     def test_failed_credential_check_blocks_delivery(self):
         check = self.store.state["credentialChecks"]["repo"]
         check["gh_ok"] = False

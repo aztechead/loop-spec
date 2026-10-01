@@ -282,6 +282,9 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | Preconditions | ITERATE `converged` or `converged with caveats`; or `escalated` with an operator policy allowing partial delivery as a draft |
 | Runs as | program code: every touched repo's credentials are checked before the first remote write; then origin's PR base is fetched for every touched repo, and when one has moved to a tip the verified head no longer merges into cleanly, DELIVER pushes nothing and exits `base moved`; a base that moved but still merges cleanly is delivered as before; otherwise each repo is pushed and its PR reconciled (a `no change` run touches no repo, so nothing is pushed), and a rejected push or failed PR step is that repo's `failed` row while the other repos are still attempted |
 
+A non-draft delivery marks an existing draft PR ready (`gh pr ready`); a failure is a caveat on
+the row, never a failed delivery. A draft delivery never converts a ready PR back to a draft.
+
 | Id | Postcondition | Gates |
 |---|---|---|
 | D1 | per touched repo, `deliveredSha` is the verified (EXECUTE) head, and the remote head ref's SHA is either that SHA or, with `deliver.acceptRemotePaths` configured, the head of an accepted extension: commits after the verified SHA, every path they touch in any commit matching the list and none changed by the verified change (base..verified), recomputed now and equal to the row's `acceptedRemote` | `delivered` |
