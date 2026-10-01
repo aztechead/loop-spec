@@ -25,6 +25,7 @@ from loop_spec import repo_checks
 from loop_spec import roles
 from loop_spec.contract import load_config
 from loop_spec.entries import ENTRIES, ROUTABLE
+from loop_spec.errors import LoopSpecError
 from loop_spec.ids import digest
 from loop_spec.jsonio import read_json
 from loop_spec.schema import load_schema, validate
@@ -723,9 +724,14 @@ class Boundary:
                 return f"task {task['id']} has no passing review"
             repo_path = Path(repos[repo_of[task["id"]]]["path"])
             reviewed_from, reviewed_to = review["reviewedRange"]["from"], review["reviewedRange"]["to"]
+            # Range membership as git defines `from..to`: two ancestor tests are wrong for
+            # a branch that merged its base, whose earlier commits do not descend from `from`.
+            try:
+                in_range = set(repo_module.commits_between(repo_path, reviewed_from, reviewed_to))
+            except LoopSpecError:
+                in_range = set()  # an unresolvable range covers nothing: the same rejection as before
             for commit in task["commits"]:
-                sha = repo_module.head_sha(repo_path, commit)
-                if not repo_module.is_ancestor(repo_path, reviewed_from, sha) or not repo_module.is_ancestor(repo_path, sha, reviewed_to):
+                if repo_module.head_sha(repo_path, commit) not in in_range:
                     return f"task {task['id']}: commit {commit} is outside its reviewed range"
             if task["disposition"] == "adopted" and not self.store.state.get("adoptedReview"):
                 return f"task {task['id']} is adopted with no full range review recorded"

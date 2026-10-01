@@ -393,6 +393,27 @@ class PostconditionsTests(unittest.TestCase):
         bad["tasks"][0]["review"] = None
         self.assertIsNotNone(self._boundary("execute", bad, "integrated")._e5())
 
+    def test_e5_accepts_a_task_commit_made_before_the_branch_merged_its_base(self):
+        # An adopted PR that merged its base: baseSha = merge-base = the merged base tip,
+        # so the PR's own task commit is in baseSha..head but baseSha is not its ancestor.
+        _git(self.repo_dir, "checkout", "-q", "main")
+        (self.repo_dir / "m1.txt").write_text("m1\n", encoding="utf-8")
+        _git(self.repo_dir, "add", "m1.txt")
+        _git(self.repo_dir, "commit", "-q", "-m", "M1")
+        m1 = _rev_parse(self.repo_dir)
+        _git(self.repo_dir, "checkout", "-q", "feat/x")
+        _git(self.repo_dir, "merge", "-q", "--no-ff", "-m", "merge main", "main")
+        head = _rev_parse(self.repo_dir)
+        adopted_review = {"reviewedRange": {"from": m1, "to": head}, "verdict": "pass",
+                          "findings": [], "securityDispositions": [], "sha": head}
+        product = copy.deepcopy(self.execute_product)
+        product["tasks"][0].update({"disposition": "adopted", "review": copy.deepcopy(adopted_review)})
+        self.store.state["adoptedReview"] = adopted_review
+        self.assertIsNone(self._boundary("execute", product, "integrated")._e5())
+        # `from` itself is outside `from..to`.
+        product["tasks"][0]["commits"] = [m1]
+        self.assertIn("outside its reviewed range", self._boundary("execute", product, "integrated")._e5())
+
     def test_e6(self):
         self.assertIsNone(self._boundary("execute", self.execute_product, "integrated")._e6())
         self.store.state["implementations"]["phases"]["execute"] = "default"
