@@ -249,7 +249,10 @@ The program, not the judge role, dispositions every non-Critical open finding
 before deciding the exit: Minor is always deferred; Important becomes an `execute`
 gap (a close-out) while the rewind budget has room, and is deferred once it does not;
 Critical is never deferred and always becomes an `execute` gap (decided 2026-09-22,
-LF-46; Important moved from PLAN to EXECUTE in LF-68).
+LF-46; Important moved from PLAN to EXECUTE in LF-68). A deferred Minor finding does
+not make the exit `converged with caveats`; only a deferred Important one does, so a
+run whose only open findings are Minor converges and DELIVER opens a ready PR that
+lists them.
 
 | Id | Postcondition | Gates |
 |---|---|---|
@@ -258,7 +261,7 @@ LF-46; Important moved from PLAN to EXECUTE in LF-68).
 | I3 | T1 holds for this rewind | `rewind` |
 | I4 | a rewind is needed and T1 refuses it, or the verdict is unmet and the judge names no gap any route can close | `escalated` |
 | I5 | VERIFY `passed` at this SHA and no open gap against the original goal; the shared convergence predicate | `converged`, `converged with caveats` |
-| I6 | no Critical finding open; the caveats list contains only deferred non-Critical review findings (a fixed or rejected finding is closed, not a caveat), and nothing else | `converged with caveats` |
+| I6 | no Critical finding open; the caveats list contains only deferred Important review findings (a deferred Minor finding is reported in warnings and the PR body, never a caveat; a fixed or rejected finding is closed), and nothing else | `converged with caveats` |
 
 | Exit | Requires | Route |
 |---|---|---|
@@ -418,7 +421,7 @@ The four routes the first version left for M1, answered from the M1 fixtures rev
   at any exit escalates directly from the controller; only ITERATE's own refused rewind
   goes through I4 (after the re-audit at `8d45bbb`).
 - Both converged outcomes share one predicate (I5); caveats hold only deferred
-  non-Critical review findings (I6); a fixed or rejected finding is closed, not a caveat.
+  Important review findings (I6); a fixed or rejected finding is closed, not a caveat.
 - A Critical critic finding closes only as fixed-and-rechecked or rejected-with-reason
   (P7).
 - D7 is required for every repo whose remote write was attempted.

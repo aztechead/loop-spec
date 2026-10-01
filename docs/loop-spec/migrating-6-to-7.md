@@ -278,7 +278,7 @@ This section is for someone whose program runs loop-spec headless and reads `res
 
 | 6.x | 7.x | Host action |
 |---|---|---|
-| Created a draft, waited for CI, then always marked it ready. | Creates a draft only when the run has deferred (unresolved) non-Critical review findings or `deliver.escalatedPartialDraft` is set. A fixed or withdrawn finding does not make a draft. | Treat `converged-with-caveats` as needing human sign-off. |
+| Created a draft, waited for CI, then always marked it ready. | Creates a draft only when an Important review finding was deferred or `deliver.escalatedPartialDraft` is set. Minor findings are deferred, listed in the PR body's findings table and in `warnings`, and the run reports `converged: true` (as 6.x reported review nits as warnings on a ready PR). A fixed or withdrawn finding does not make a draft. | Treat `converged-with-caveats` as needing human sign-off. |
 | Marked every PR it handled ready. | A clean delivery marks an existing draft PR ready. | To keep a draft, run `gh pr ready --undo` after the result. |
 | `LOOP_SPEC_CHECKS_*` waited for checks. | Nothing waits for CI. `deliver.readiness: "checks"` makes one `gh pr checks` call, and a non-zero exit fails DELIVER's postcondition. | Poll CI yourself. `converged: true` does not imply green CI. |
 

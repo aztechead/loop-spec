@@ -78,10 +78,12 @@ def _final_product(store, paths, ctx, iterate_state: dict) -> dict:
     judge = iterate_state["judge"]
     ledger_findings = store.state["ledger"]["findings"]
     open_findings = [f for f in ledger_findings if f["disposition"] == "open"]
-    # A caveat is an unresolved finding: `fixed` (a later review confirmed it) and
-    # `rejected` (the reviewer withdrew it with a reason) are closed, not caveats.
-    deferred_non_critical = [f["id"] for f in ledger_findings
-                             if f["disposition"] == "deferred" and f["severity"] != "Critical"]
+    # A caveat is an unresolved Important finding: `fixed` (a later review confirmed
+    # it) and `rejected` (the reviewer withdrew it with a reason) are closed, and a
+    # deferred Minor one is reported (ledger, warnings, PR body) but never a caveat,
+    # so it cannot make the PR a draft.
+    deferred_important = [f["id"] for f in ledger_findings
+                          if f["disposition"] == "deferred" and f["severity"] == "Important"]
 
     # A "met" verdict over an open ledger finding is not met: reconciled here,
     # before the four rules below ever see it, rather than left as a fifth rule of
@@ -95,7 +97,8 @@ def _final_product(store, paths, ctx, iterate_state: dict) -> dict:
     # just re-runs, and the run never converges. The program now dispositions each
     # one itself: Critical always forces a gap (unchanged); Important forces one
     # while the rewind budget has room; Minor, and Important once the budget is
-    # out of room, are deferred by policy and counted as a caveat. A forced gap is
+    # out of room, are deferred by policy. Only a deferred Important one is a
+    # caveat; a deferred Minor one is reported but converges cleanly. A forced gap is
     # an EXECUTE close-out (LF-55), never a re-plan: a review finding names code to
     # fix, and a PLAN round for it cost 8 to 12 minutes in the timing runs.
     if judge["verdict"] == "met" and open_findings:
@@ -113,7 +116,8 @@ def _final_product(store, paths, ctx, iterate_state: dict) -> dict:
                 ledger_module.disposition(store, f["id"], "deferred", "left open at ITERATE; deferred by policy")
                 emit(paths, "finding_deferred", {"id": f["id"], "severity": f["severity"]},
                      phase="iterate", attempt_id=ctx["attempt"]["id"])
-                deferred_non_critical.append(f["id"])
+                if f["severity"] == "Important":
+                    deferred_important.append(f["id"])
         verdict = "unmet" if forced_gaps else "met"
         gaps = judge["gaps"] + forced_gaps
         if acted_on:
@@ -129,8 +133,8 @@ def _final_product(store, paths, ctx, iterate_state: dict) -> dict:
     # the reconciliation above already means no Critical or budget-backed
     # Important finding is left unresolved, so this no longer re-checks
     # open_findings itself.
-    if verdict == "met" and deferred_non_critical:
-        exit_, caveats = "converged with caveats", deferred_non_critical
+    if verdict == "met" and deferred_important:
+        exit_, caveats = "converged with caveats", deferred_important
     elif verdict == "met":
         exit_, caveats = "converged", []
     elif verdict == "unmet" and gaps and has_room(store):

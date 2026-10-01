@@ -795,11 +795,14 @@ class PostconditionsTests(unittest.TestCase):
         with_caveats = copy.deepcopy(self.iterate_product)
         with_caveats["exit"] = "converged with caveats"
         self.assertIsNotNone(self._boundary("iterate", with_caveats, "converged with caveats")._i6())  # no caveats named
-        self.store.state["ledger"]["findings"] = [{"id": "f-1", "location": "a.txt:1", "cause": "c", "severity": "Minor", "disposition": "deferred", "reason": "acceptable", "supersedes": None}]
+        self.store.state["ledger"]["findings"] = [{"id": "f-1", "location": "a.txt:1", "cause": "c", "severity": "Important", "disposition": "deferred", "reason": "acceptable", "supersedes": None}]
         with_caveats["caveats"] = ["f-1"]
         self.assertIsNone(self._boundary("iterate", with_caveats, "converged with caveats")._i6())
+        self.store.state["ledger"]["findings"][0]["severity"] = "Minor"  # reported, never a caveat
+        self.assertIn("not a deferred Important finding", self._boundary("iterate", with_caveats, "converged with caveats")._i6())
+        self.store.state["ledger"]["findings"][0]["severity"] = "Important"
         self.store.state["ledger"]["findings"][0]["disposition"] = "fixed"  # closed, so not a caveat
-        self.assertIn("not deferred", self._boundary("iterate", with_caveats, "converged with caveats")._i6())
+        self.assertIn("not a deferred Important finding", self._boundary("iterate", with_caveats, "converged with caveats")._i6())
 
     # -- D: DELIVER ----------------------------------------------------------
 
