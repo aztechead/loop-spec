@@ -289,11 +289,11 @@ the row, never a failed delivery. A draft delivery never converts a ready PR bac
 |---|---|---|
 | D1 | per touched repo, `deliveredSha` is the verified (EXECUTE) head, and the remote head ref's SHA is either that SHA or, with `deliver.acceptRemotePaths` configured, the head of an accepted extension: commits after the verified SHA, every path they touch in any commit matching the list and none changed by the verified change (base..verified), recomputed now and equal to the row's `acceptedRemote` | `delivered` |
 | D2 | per touched repo, the PR is open, its head ref matches, its head SHA (observed and in the product) is the head D1 observed, and its base target matches configuration | `delivered` |
-| D3 | required checks satisfy the configured readiness policy (6.9's exact-SHA and required-check behavior) | `delivered` |
+| D3 | required checks satisfy the configured readiness policy: with `deliver.readiness` `"checks"`, one `gh pr checks` call on the PR exits zero; nothing waits for checks to finish | `delivered` |
 | D4 | a retried creation was reconciled by identity against existing remote state; no duplicate PR | every exit |
 | D5 | partial publication is recorded per repo and never reported as all delivered | `partially delivered` |
 | D6 | on a `no change` EXECUTE every row is `skipped` with no `deliveredSha`; only the adopted repo's row names a PR, the adopted PR, at the verified head, and `gh pr view` shows it open at that head | `delivered` |
-| D7 | before the first remote write the program checked git and `gh` credentials and attempted the host's own refresh; a failure exits `delivery blocked` naming the command | `delivered`, `partially delivered` |
+| D7 | before the first remote write the program checked git and `gh` credentials (`gh auth status` for the configured origin URL's host, then the bare check); there is no refresh step; a failure exits `delivery blocked` naming the command | `delivered`, `partially delivered` |
 | D8 | the product's repos cover exactly the set of repos EXECUTE touched with an accepted task's commits, no duplicates; a `skipped` row is only valid for a repo EXECUTE did not touch; every row marked `delivered` has a non-null PR | `delivered`, `partially delivered` |
 | D9 | before any push, origin's PR base was fetched for every touched repo; each `base moved` row names a `newBase` on origin's base branch that descends from the run's base SHA and conflicts with the EXECUTE head in exactly the listed `conflicts`, recomputed now; every other row is `skipped`; no row names a PR or a `deliveredSha` | `base moved` |
 
