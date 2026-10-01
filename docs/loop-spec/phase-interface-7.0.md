@@ -300,6 +300,8 @@ the row, never a failed delivery. A draft delivery never converts a ready PR bac
 | D8 | the product's repos cover exactly the set of repos EXECUTE touched with an accepted task's commits, no duplicates; a `skipped` row is only valid for a repo EXECUTE did not touch; every row marked `delivered` has a non-null PR | `delivered`, `partially delivered` |
 | D9 | before any push, origin's PR base was fetched for every touched repo; each `base moved` row names a `newBase` on origin's base branch that descends from the run's base SHA and conflicts with the EXECUTE head in exactly the listed `conflicts`, recomputed now; every other row is `skipped`; no row names a PR or a `deliveredSha` | `base moved` |
 
+A hosting server can lag a push. DELIVER re-reads a PR whose head is a strict ancestor of the pushed head up to four more times (after waits of 2, 4, 8 and 16 seconds) before recording it, and fails that repo's row if the head is still behind.
+
 | Exit | Requires | Route |
 |---|---|---|
 | `delivered` | D1 to D4, D6 to D8 for every repo | terminal `converged` or `converged-with-caveats`; terminal `no-change` after a `no change` EXECUTE |
