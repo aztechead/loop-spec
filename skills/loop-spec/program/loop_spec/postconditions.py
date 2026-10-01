@@ -1107,7 +1107,7 @@ class Boundary:
             if code != 0:
                 return f"repo {entry['repo']}: gh pr view failed: {err.strip() or code}"
             data = json.loads(out)
-            base = load_config(self.project_root).get("deliver", {}).get("base") or repo_module.default_branch(Path(repo_info["path"]))
+            base = repo_info["defaultBranch"]  # the one source of truth: deliver.base, an adopted PR's base, or the default branch
             observed = entry["deliveredSha"] if entry.get("acceptedRemote") is None else entry["acceptedRemote"]["head"]
             if data.get("state") != "OPEN" or data.get("headRefName") != entry["pr"]["headRef"] or \
                data.get("headRefOid") != observed or entry["pr"]["headSha"] != observed or data.get("baseRefName") != base:

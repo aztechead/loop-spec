@@ -812,6 +812,17 @@ class PostconditionsTests(unittest.TestCase):
         with patch.object(repo_module, "run_gh", lambda *a: (1, "", "no such pr")):
             self.assertIsNotNone(self._boundary("deliver", self.deliver_product, "delivered")._d2())
 
+    def test_d2_holds_a_pr_to_the_repos_base_branch_not_the_detected_default(self):
+        # An adopted PR targeting `release` (or a configured deliver.base) records that
+        # branch as the repo's defaultBranch; D2 compares the PR's base with it.
+        self.store.state["repos"]["repo"]["defaultBranch"] = "release"
+        view = {"state": "OPEN", "headRefName": "feat/x", "headRefOid": self.sha_b, "baseRefName": "release"}
+        with patch.object(repo_module, "run_gh", lambda *a: (0, json.dumps(view), "")):
+            self.assertIsNone(self._boundary("deliver", self.deliver_product, "delivered")._d2())
+        view["baseRefName"] = "main"
+        with patch.object(repo_module, "run_gh", lambda *a: (0, json.dumps(view), "")):
+            self.assertIn("does not match", self._boundary("deliver", self.deliver_product, "delivered")._d2())
+
     def test_d3_record_missing(self):
         config_dir = self.repo_dir / ".loop-spec"
         config_dir.mkdir()
