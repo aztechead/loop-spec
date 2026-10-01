@@ -25,6 +25,7 @@ from loop_spec import repo_checks
 from loop_spec import roles
 from loop_spec.contract import load_config
 from loop_spec.entries import ENTRIES, ROUTABLE
+from loop_spec.errors import LoopSpecError
 from loop_spec.ids import digest
 from loop_spec.jsonio import read_json
 from loop_spec.schema import load_schema, validate
@@ -103,7 +104,7 @@ ROUTES: dict[str, dict[str, dict]] = {
         "delivered": {"requires": ["D1", "D2", "D3", "D4", "D6", "D7", "D8"], "next": (None, "terminal"), "backward": False},
         "partially delivered": {"requires": ["D1", "D2", "D4", "D5", "D7", "D8"], "next": (None, "terminal"), "backward": False},
         "delivery blocked": {"requires": ["D4"], "next": ("deliver", "remediation"), "backward": False, "pause": True},
-        "base moved": {"requires": ["D4", "D9", "T1"], "next": ("execute", "remediation"), "backward": True},
+        "base moved": {"requires": ["D4", "D9", "T2"], "next": ("execute", "remediation"), "backward": True},
     },
     "debug": {
         "reproduced": {"requires": ["B1", "B2", "S1", "S2", "S3", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"], "next": ("execute", "fresh"), "backward": False},
@@ -723,9 +724,14 @@ class Boundary:
                 return f"task {task['id']} has no passing review"
             repo_path = Path(repos[repo_of[task["id"]]]["path"])
             reviewed_from, reviewed_to = review["reviewedRange"]["from"], review["reviewedRange"]["to"]
+            # Range membership as git defines `from..to`: two ancestor tests are wrong for
+            # a branch that merged its base, whose earlier commits do not descend from `from`.
+            try:
+                in_range = set(repo_module.commits_between(repo_path, reviewed_from, reviewed_to))
+            except LoopSpecError:
+                in_range = set()  # an unresolvable range covers nothing: the same rejection as before
             for commit in task["commits"]:
-                sha = repo_module.head_sha(repo_path, commit)
-                if not repo_module.is_ancestor(repo_path, reviewed_from, sha) or not repo_module.is_ancestor(repo_path, sha, reviewed_to):
+                if repo_module.head_sha(repo_path, commit) not in in_range:
                     return f"task {task['id']}: commit {commit} is outside its reviewed range"
             if task["disposition"] == "adopted" and not self.store.state.get("adoptedReview"):
                 return f"task {task['id']} is adopted with no full range review recorded"
@@ -1047,10 +1053,8 @@ class Boundary:
             finding = ledger_findings.get(finding_id)
             if finding is None:
                 return f"caveat {finding_id} is not a finding in the ledger"
-            if finding["severity"] == "Critical":
-                return f"caveat {finding_id} is Critical; only non-Critical findings may be caveats"
-            if finding["disposition"] not in ("rejected", "deferred", "fixed"):
-                return f"caveat {finding_id} has no recorded disposition"
+            if finding["disposition"] != "deferred" or finding["severity"] != "Important":
+                return f"caveat {finding_id} is not a deferred Important finding"
         if self.exit == "converged with caveats" and not self.product.get("caveats"):
             return "converged with caveats needs at least one caveat"
         return None
@@ -1101,7 +1105,7 @@ class Boundary:
             if code != 0:
                 return f"repo {entry['repo']}: gh pr view failed: {err.strip() or code}"
             data = json.loads(out)
-            base = load_config(self.project_root).get("deliver", {}).get("base") or repo_module.default_branch(Path(repo_info["path"]))
+            base = repo_info["defaultBranch"]  # the one source of truth: deliver.base, an adopted PR's base, or the default branch
             observed = entry["deliveredSha"] if entry.get("acceptedRemote") is None else entry["acceptedRemote"]["head"]
             if data.get("state") != "OPEN" or data.get("headRefName") != entry["pr"]["headRef"] or \
                data.get("headRefOid") != observed or entry["pr"]["headSha"] != observed or data.get("baseRefName") != base:
@@ -1337,3 +1341,8 @@ class Boundary:
 
     def _t1(self) -> str | None:
         return None if budget_module.has_room(self.store) else "the rewind budget has no room"
+
+    def _t2(self) -> str | None:
+        if budget_module.base_move_room(self.store):
+            return None
+        return f"the base moved {budget_module.BASE_MOVE_LIMIT} times; the base-move limit is {budget_module.BASE_MOVE_LIMIT}"

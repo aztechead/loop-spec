@@ -263,6 +263,9 @@ source: "plan" | "answer", reason}`; an opted-in unattested judgment step is
 `{kind: "evidence.unattested-step", step, role, attempts, policy, source: "config"}`,
 once per step.
 
+A `routed` auto run whose revise run has finished is not replayed: running the same request
+text again starts the next review round (`revise-<n>-2`), and `last-result.json` names it.
+
 ## State home layout
 
 `<state home>/<repo id>/<slug>/`:
@@ -309,8 +312,8 @@ optional:
 | `roles.<role>` | binds that role to a skill other than the bundled default (`roles.load_role`); a plain string is the binding, or an object `{"binding": ..., "model": ..., "effort": ..., "with": [...]}` also names a model and an effort (`low`, `medium`, `high`, `xhigh`, `max`; `contract.load_config` refuses another) for that role's dispatches (`roles.dispatch_settings`), reachable without also rebinding the skill; an explicit `null` model or effort inherits the dispatcher's own instead of the role's default |
 | (default) | with neither env nor config set, the role's own `SKILL.md` frontmatter applies (`contract.role_meta`): `router` `opus`/`low`; `plan-critic`, `code-reviewer`, `iterate-judge` `opus`/`medium`; `implementer`, `verifier`, `resolver` `sonnet`/`medium`. Lead roles (`spec-writer`, `planner`, `debugger`, `reviser`, `direct`) name none and run at the lead session's model and effort |
 | `spec.approval` | `"ask"` (default) opens SPEC's requirements approval for a person; `"policy"` answers it with its default, `approve`, as soon as it opens, recorded `by: "policy"` (S2), and leaves every other question to be asked. 6.x's default `auto` style skipped the same gate. Any other value is a config error |
-| `deliver.base` | overrides the branch DELIVER's PR targets, instead of the repo's detected default branch |
-| `deliver.readiness` | `"checks"` makes D3 wait on `gh pr checks`; default `"none"` skips that wait |
+| `deliver.base` | overrides the branch DELIVER's PR targets, instead of the repo's detected default branch; the checkout must be at that branch (the run's base is the checkout's HEAD) |
+| `deliver.readiness` | `"checks"` makes D3 run `gh pr checks` once and fail the delivery when it exits non-zero (nothing waits for checks to finish); default `"none"` skips it |
 | `deliver.acceptRemotePaths` | a list of path globs (repo-relative, every repo of a workspace); commits someone else put on the PR branch after the verified SHA, such as a changelog bot's, are accepted when every path they touch in any commit matches and none is changed by the verified change. DELIVER then skips the push, keeps `deliveredSha` as the verified SHA, and records the commits as `acceptedRemote` (D1/D2). Absent or `[]`: any such commit blocks delivery. Anything but a list of strings is a config error |
 | `deliver.after` | a list of skill names (`plugin:skill` or a plain name the Skill tool resolves), captured in `implementations.after` when the run starts; a result with status `completed` and at least one PR lists them under `after` (an escalated or failed run never does, since a blocked or partial delivery keeps a PR row whose head may not be the verified commit), and the lead invokes each on those PRs once it has reported the result (runner.md `result`). They run after the run is final, outside its postconditions; `contract.load_config` refuses anything but a list of non-empty strings |
 | `deliver.escalatedPartialDraft` | `true` routes an escalated ITERATE forward into DELIVER for a draft PR instead of terminating |

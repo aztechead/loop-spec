@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Produce the PLAN product (tasks, prepare command, repo checks, evidence exceptions) from the current SPEC product. Dispatched by the program as a lead or role step; not for ad-hoc use.
+description: Produce the PLAN product (tasks, prepare command, repo checks, evidence exceptions) from the current SPEC product. Dispatched by the program as a lead step; not for ad-hoc use.
 allowed-tools: Read, Write, Grep, Glob, Bash, WebFetch, WebSearch
 ---
 

@@ -39,6 +39,8 @@ remote and each PR against its head, so report only what actually happened.
 
 ## Example
 
+A merge of the base into the named branch, pushed; no PR was asked for. Your values come from your own inputs and run.
+
 ```json
-{"exit": "done", "inputsDigest": "sha256:0f1e", "boundTo": {"requirements": null, "plan": null}, "summary": "merged main into feat/greeting, kept both CHANGELOG entries, pushed", "actions": [{"kind": "commit", "repo": "calc", "ref": "feat/greeting", "sha": "3b1f0c2a9d4e5f60718293a4b5c6d7e8f9012345", "url": null, "detail": "merge main, resolve CHANGELOG.md conflict"}, {"kind": "push", "repo": "calc", "ref": "feat/greeting", "sha": "3b1f0c2a9d4e5f60718293a4b5c6d7e8f9012345", "url": null, "detail": "fast-forward push to origin"}], "blocker": null}
+{"exit": "done", "inputsDigest": "sha256:4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a", "boundTo": {"requirements": null, "plan": null}, "summary": "merged main into feat/greeting, kept both CHANGELOG entries, pushed", "actions": [{"kind": "commit", "repo": "calc", "ref": "feat/greeting", "sha": "3b1f0c2a9d4e5f60718293a4b5c6d7e8f9012345", "url": null, "detail": "merge main, resolve CHANGELOG.md conflict"}, {"kind": "push", "repo": "calc", "ref": "feat/greeting", "sha": "3b1f0c2a9d4e5f60718293a4b5c6d7e8f9012345", "url": null, "detail": "fast-forward push to origin"}], "blocker": null}
 ```

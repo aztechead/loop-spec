@@ -35,7 +35,7 @@ it, never on a vague feeling.
 
 When an answer is settled, stop working on it. A sub-answer derived and checked once
 is settled; move on. Rereading a conclusion to see whether it still feels right is
-not a check, and repeated self-checking is the main source of errors on easy steps.
+not a check.
 
 Doubt is not evidence. A vague sense of uncertainty, or the mere possibility of an
 unseen objection, never reopens a settled conclusion. To change one, name a concrete

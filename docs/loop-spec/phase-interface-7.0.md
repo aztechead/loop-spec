@@ -71,11 +71,14 @@ accepted or opted in. See `skills/loop-spec/references/contract.md`'s evidence s
 ### Backward-transition budget
 
 One postcondition, checked centrally by the program on every exit that routes to an
-earlier phase or re-enters the same one. It appears in each such exit's `Requires`.
+earlier phase or re-enters the same one. It appears in each such exit's `Requires`. A
+DELIVER `base moved` is the one exception: the base is moved by someone outside the run, so
+it does not spend this budget and has its own limit (T2).
 
 | Id | Postcondition | Gates |
 |---|---|---|
 | T1 | the shared feature-level budget has room and this transition was counted once against it; default two, operator override, persisted across sessions, never reset by a fresh attempt. When the budget is spent the program refuses the backward exit and escalates directly from the controller: it writes the terminal `escalated` result itself, naming the refused exit, the gap, and the budget record, without entering any phase. ITERATE is not involved, because its inputs may not exist yet | PLAN `spec gap`; EXECUTE `plan gap`; VERIFY `implementation gap`, `plan gap`, `intent gap`, `evidence incomplete`; ITERATE `rewind` |
+| T2 | the run's base-move count is below the fixed limit of three; a base move is recorded as a transition but never counted against T1. At the limit the program escalates directly from the controller, as for T1 | DELIVER `base moved` |
 
 ### Commands
 
@@ -161,7 +164,7 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 | E2 | every required task has an accepted disposition; every registered close-out appears exactly once as `done` (with commits) or `already-satisfied` (with none), a closed one with the same disposition and commits as its closure and, if `done`, the review its closure accepted; no id appears twice and no `C-n` id is unregistered | `integrated`, `no change` |
 | E3 | for every task, its dependencies completed before it was dispatched; a task done with the same implement steps in the EXECUTE product last accepted as `integrated` against the same plan revision keeps the order that product proved, when a remediation later reopens its dependency | `integrated` |
 | E4 | every commit in `base..head` maps to exactly one `done` or `adopted` task; in a revise run the adopted PR's own commits count as mapped by the adoption; merge commits the program records during integration are not task commits and are excluded from `base..head` on both sides | `integrated` |
-| E5 | every `done` or `adopted` task has a review record whose reviewed range covers all of that task's commits; for an `adopted` task the record comes from a full review step the program ran over the adopted range at entry, never from the PR's own history | `integrated` |
+| E5 | every `done` or `adopted` task has a review record whose reviewed range covers all of that task's commits (in `from..to` as git defines a range, so a merge of the base into the branch keeps earlier commits in range); for an `adopted` task the record comes from a full review step the program ran over the adopted range at entry, never from the PR's own history | `integrated` |
 | E6 | every such review record's evidence level meets the accepted class for review steps; otherwise the task is listed in `unreviewed`. An `already-satisfied` close-out needs the same, plus a passing review of the empty range at the head the product exits on, whose attested prompt carries this close-out as its `closeOut` input | `integrated` |
 | E7 | each task's verify command produced no new failure identity against its baseline; a `featureAdded` command had a meaningful first success (exit zero, at least one parsed test identity where a test-runner parser exists) that became its task-local baseline; a `mustFlip` command failed at baseline with the recorded digest and passes at integration; a registered close-out has no verify command and is exempt | `integrated` |
 | E8 | the feature head is reachable from base and was not moved out of band | `integrated`, `no change` |
@@ -246,7 +249,10 @@ The program, not the judge role, dispositions every non-Critical open finding
 before deciding the exit: Minor is always deferred; Important becomes an `execute`
 gap (a close-out) while the rewind budget has room, and is deferred once it does not;
 Critical is never deferred and always becomes an `execute` gap (decided 2026-09-22,
-LF-46; Important moved from PLAN to EXECUTE in LF-68).
+LF-46; Important moved from PLAN to EXECUTE in LF-68). A deferred Minor finding does
+not make the exit `converged with caveats`; only a deferred Important one does, so a
+run whose only open findings are Minor converges and DELIVER opens a ready PR that
+lists them.
 
 | Id | Postcondition | Gates |
 |---|---|---|
@@ -255,7 +261,7 @@ LF-46; Important moved from PLAN to EXECUTE in LF-68).
 | I3 | T1 holds for this rewind | `rewind` |
 | I4 | a rewind is needed and T1 refuses it, or the verdict is unmet and the judge names no gap any route can close | `escalated` |
 | I5 | VERIFY `passed` at this SHA and no open gap against the original goal; the shared convergence predicate | `converged`, `converged with caveats` |
-| I6 | no Critical finding open; the caveats list contains only accepted non-Critical review findings, each with a recorded disposition, and nothing else | `converged with caveats` |
+| I6 | no Critical finding open; the caveats list contains only deferred Important review findings (a deferred Minor finding is reported in warnings and the PR body, never a caveat; a fixed or rejected finding is closed), and nothing else | `converged with caveats` |
 
 | Exit | Requires | Route |
 |---|---|---|
@@ -279,15 +285,18 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | Preconditions | ITERATE `converged` or `converged with caveats`; or `escalated` with an operator policy allowing partial delivery as a draft |
 | Runs as | program code: every touched repo's credentials are checked before the first remote write; then origin's PR base is fetched for every touched repo, and when one has moved to a tip the verified head no longer merges into cleanly, DELIVER pushes nothing and exits `base moved`; a base that moved but still merges cleanly is delivered as before; otherwise each repo is pushed and its PR reconciled (a `no change` run touches no repo, so nothing is pushed), and a rejected push or failed PR step is that repo's `failed` row while the other repos are still attempted |
 
+A non-draft delivery marks an existing draft PR ready (`gh pr ready`); a failure is a caveat on
+the row, never a failed delivery. A draft delivery never converts a ready PR back to a draft.
+
 | Id | Postcondition | Gates |
 |---|---|---|
 | D1 | per touched repo, `deliveredSha` is the verified (EXECUTE) head, and the remote head ref's SHA is either that SHA or, with `deliver.acceptRemotePaths` configured, the head of an accepted extension: commits after the verified SHA, every path they touch in any commit matching the list and none changed by the verified change (base..verified), recomputed now and equal to the row's `acceptedRemote` | `delivered` |
 | D2 | per touched repo, the PR is open, its head ref matches, its head SHA (observed and in the product) is the head D1 observed, and its base target matches configuration | `delivered` |
-| D3 | required checks satisfy the configured readiness policy (6.9's exact-SHA and required-check behavior) | `delivered` |
+| D3 | required checks satisfy the configured readiness policy: with `deliver.readiness` `"checks"`, one `gh pr checks` call on the PR exits zero; nothing waits for checks to finish | `delivered` |
 | D4 | a retried creation was reconciled by identity against existing remote state; no duplicate PR | every exit |
 | D5 | partial publication is recorded per repo and never reported as all delivered | `partially delivered` |
 | D6 | on a `no change` EXECUTE every row is `skipped` with no `deliveredSha`; only the adopted repo's row names a PR, the adopted PR, at the verified head, and `gh pr view` shows it open at that head | `delivered` |
-| D7 | before the first remote write the program checked git and `gh` credentials and attempted the host's own refresh; a failure exits `delivery blocked` naming the command | `delivered`, `partially delivered` |
+| D7 | before the first remote write the program checked git and `gh` credentials (`gh auth status` for the configured origin URL's host, then the bare check); there is no refresh step; a failure exits `delivery blocked` naming the command | `delivered`, `partially delivered` |
 | D8 | the product's repos cover exactly the set of repos EXECUTE touched with an accepted task's commits, no duplicates; a `skipped` row is only valid for a repo EXECUTE did not touch; every row marked `delivered` has a non-null PR | `delivered`, `partially delivered` |
 | D9 | before any push, origin's PR base was fetched for every touched repo; each `base moved` row names a `newBase` on origin's base branch that descends from the run's base SHA and conflicts with the EXECUTE head in exactly the listed `conflicts`, recomputed now; every other row is `skipped`; no row names a PR or a `deliveredSha` | `base moved` |
 
@@ -296,7 +305,7 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | `delivered` | D1 to D4, D6 to D8 for every repo | terminal `converged` or `converged-with-caveats`; terminal `no-change` after a `no change` EXECUTE |
 | `partially delivered` | at least one repo `delivered` and at least one `failed`; D1, D2, D4, D5, D7, D8 for every repo whose remote write was attempted | terminal `escalated` (never `converged`, whatever ITERATE's own verdict was) with `partiallyDelivered: true`, `workDelivered: true`, and `reason` naming the repos that did not deliver |
 | `delivery blocked` | D4; a credential refusal (D7), or no touched repo delivered | pause: a question naming the failed command and repair, with the answers fix-and-re-enter DELIVER or stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` with `result: escalated` and per-repo state |
-| `base moved` | D4, D9, T1 | EXECUTE, `remediation`, carrying each moved repo's `newBase`; then VERIFY (a full review of new base..head, since the last reviewed head no longer descends from the base), ITERATE, and DELIVER again. Counted against the shared backward budget, so a base that keeps moving escalates |
+| `base moved` | D4, D9, T2 | EXECUTE, `remediation`, carrying each moved repo's `newBase`; then VERIFY (a full review of new base..head, since the last reviewed head no longer descends from the base), ITERATE, and DELIVER again. Bounded by its own limit of three (T2), not by the shared backward budget, so a base that keeps moving escalates |
 
 ## debug
 
@@ -385,7 +394,7 @@ ITERATE exit at the current revisions.
 | Program outcome | `result` | Existing schema-1 fields (section 15) |
 |---|---|---|
 | DELIVER `delivered` after ITERATE `converged` | `converged` | `status: completed`, `outcome: delivered`, `converged: true`, `workDelivered: true` |
-| DELIVER `delivered` after `converged with caveats` | `converged-with-caveats` | `outcome: delivered-draft`, `converged: false`, findings in `warnings` |
+| DELIVER `delivered` after `converged with caveats` | `converged-with-caveats` | `outcome: delivered-draft`, `converged: false`, `implementationConverged: true`, findings in `warnings` |
 | ITERATE `converged` on a `no change` head | `no-change` | `outcome: no-change-needed`, `noChangeReason: already-satisfied`, `converged: true`, `workDelivered: false`; `prUrl` names the adopted PR when the run adopted one |
 | ITERATE `escalated`; T1 refused at PLAN, EXECUTE, or VERIFY, written by the controller | `escalated` | `status: escalated`, `converged: false` |
 | process exit 1; environment cannot run the plan | `failed` | `status: failed`, `converged: false` |
@@ -407,11 +416,12 @@ The four routes the first version left for M1, answered from the M1 fixtures rev
   DELIVER, and for a pause a phase raises mid-attempt (EXECUTE's out-of-band branch,
   leftover task branch, and unmapped-commit pauses): each offers `fix-and-re-enter` or
   `stop`, and `fix-and-re-enter` re-runs the phase's own check once.
-- One shared budget bounds every backward transition (T1, referenced by I3). Exhaustion
+- One shared budget bounds every backward transition except a base move (T1, referenced by I3;
+  a base move has its own limit of three, T2). Exhaustion
   at any exit escalates directly from the controller; only ITERATE's own refused rewind
   goes through I4 (after the re-audit at `8d45bbb`).
-- Both converged outcomes share one predicate (I5); caveats hold only accepted
-  non-Critical review findings (I6).
+- Both converged outcomes share one predicate (I5); caveats hold only deferred
+  Important review findings (I6); a fixed or rejected finding is closed, not a caveat.
 - A Critical critic finding closes only as fixed-and-rechecked or rejected-with-reason
   (P7).
 - D7 is required for every repo whose remote write was attempted.

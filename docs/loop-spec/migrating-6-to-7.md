@@ -3,7 +3,7 @@
 How-to for a person or agent that runs loop-spec 6.9 today, in Claude Code or from a
 script, and wants the same work running on 7.x. Follow the sections in order; each
 ends with a check you can run. Sections 1 to 5 apply to everyone. Section 6 is for a
-script or service that drove 6.9 itself, and section 7 is for unattended runs. Why
+script or service that drove 6.9 itself, and section 7 is for unattended runs. The host-author reference after section 7 lists what a 6.x host read or set and what 7.x does instead. Why
 7.x is shaped this way is in [ROADMAP-7.0.md](ROADMAP-7.0.md).
 
 Applies to 7.0.2. Every name, flag, and path below is the shipped one.
@@ -59,7 +59,7 @@ or one slug per line if a 7.x run already exists there.
 | `/loop-spec:status` | unchanged |
 | `/loop-spec:auto` | `/loop-spec:auto <request>` (7.3.0). A router picks the entry, including `direct` for a mechanical git or PR operation that needs no cycle |
 | `oneshot`, `spec-lite` | removed; name the entry you want, `micro` for a small change |
-| `assess`, `sentinel`, `watch`, `retro`, `rules`, `forensics`, `walkthrough`, `quality-loop`, `checking-gates`, `specifying-gates`, `onboard`, `settings`, `rollback`, `loop-runner` | removed; see the inventory for what, if anything, replaces each |
+| `assess`, `sentinel`, `watch`, `retro`, `rules`, `forensics`, `walkthrough`, `quality-loop`, `checking-gates`, `specifying-gates`, `onboard`, `settings`, `rollback`, `loop-runner` | removed; 7.x has no command for these (settings live in `.loop-spec/config.json`, see [contract.md](../../skills/loop-spec/references/contract.md)) |
 
 From a script, the same entries are launcher subcommands, each with
 `--project-root <repo>`: `"$LS" cycle` and `micro` take `--request <text>` or
@@ -96,12 +96,12 @@ written by the planner and applied before every baseline capture and re-verifica
 | `style:auto` (6.x's default), `LOOP_SPEC_ANSWER_STYLE=auto` | 7.x asks for requirements approval by default, which 6.x's `auto` style skipped. Set `spec.approval: "policy"` in config or `LOOP_SPEC_SPEC_APPROVAL=policy` to skip it again; `style:step`/`interactive` behavior (asking) is 7.x's default |
 | `LOOP_SPEC_ITERATE_MAX_ITERATIONS` | `LOOP_SPEC_REWIND_BUDGET` (the shared T1 budget's limit; default 2) |
 | `LOOP_SPEC_REDO_MAX`, `LOOP_SPEC_RALPH_THRESHOLD` | `LOOP_SPEC_STEP_RETRIES` (per-phase retry limit; default 3) |
-| `LOOP_SPEC_CHECKS_*`, `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | `deliver.readiness`/`deliver.base` in config; no configurable timeout in this release |
+| `LOOP_SPEC_CHECKS_*`, `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | removed; nothing in 7.x waits on CI. `deliver.readiness: "checks"` in config makes one `gh pr checks` call, `deliver.base` sets the PR base, and there is no configurable timeout in this release |
 | `LOOP_SPEC_WORKTREES`, `LOOP_SPEC_WORKTREE_DIR` | removed; worktrees live in the state home |
 | `LOOP_SPEC_CREDENTIAL_REFRESH_*` | removed; DELIVER checks credentials before its first push and exits `delivery blocked` if they fail |
 | `LOOP_SPEC_HARNESS`, `LOOP_SPEC_TEAMS_MODE`, `LOOP_SPEC_EXECUTE_WORKFLOW`, every `*_GUARD` | removed |
 
-Anything not listed here is in the inventory's environment table, each with its fate.
+Variables a 6.x host set that have no 7.x equivalent are listed under "For host authors" below.
 
 Commands the program runs are now checked for form. PLAN `verify` and `prepare`, a
 debug reproduction, and VERIFY evidence run as argv with no shell. A command using
@@ -149,9 +149,10 @@ state home and `git status` in the consumer repository is clean.
 
 ## 5. Update your result consumer
 
-The terminal result keeps schema 1: every existing field keeps its name and meaning,
-and the object allows extra fields. One field is added, `result`, with one of
-`converged`, `converged-with-caveats`, `no-change`, `escalated`, `failed`, `paused`, and, from
+The terminal result keeps schema 1: every existing field keeps its name, and all
+but the ones listed under "For host authors" below keep their meaning. The object
+allows extra fields. One field is added, `result`, with one of `converged`,
+`converged-with-caveats`, `no-change`, `escalated`, `failed`, `paused`, and, from
 7.3.0, `direct` and `routed`.
 Read `result` for the 7.x classification and keep reading `converged` for what 6.9
 meant by it. `status` is `completed`, `paused`, `escalated`, or `failed`. A `paused`
@@ -256,6 +257,72 @@ Issue-to-PR wiring is no longer shipped; compose it around either script.
 Check: one headless run on a scratch repository ends with a `result.json` whose
 `status` is `completed` and a PR at the verified head, with no prompt answered by
 hand.
+
+## For host authors: what a 6.x host reads or sets, and what 7.x does instead
+
+This section is for someone whose program runs loop-spec headless and reads `result.json`. It describes 7.8.2. Field definitions are in [contract.md, Result](../../skills/loop-spec/references/contract.md#result).
+
+### result.json fields and outcomes
+
+| 6.x | 7.x | Host action |
+|---|---|---|
+| Outcomes `delivery-blocked`, `delivered-unready`, `completed-with-gaps` | Gone. A delivery block ends `escalated` with `retryable: false`. Only a `failed` run has `retryable: true`. | Branch on `result`. A finished run is never resumed; start a new run. |
+| `checkpointPrUrl` | Always `null`. 7.x opens no checkpoint PRs. | Stop reading it. |
+| `delivery.targets[]` | `{repo, pr, deliveredSha, caveats, state}` per repo. | Read `state` per row. |
+| `prUrl` | Set only for a delivered row, or for the PR a `no-change` run adopted. | After a partial or failed delivery, read `delivery.targets[]`. |
+| `iterations` | `{used, max}` of the shared rewind budget, not ITERATE rounds. | Expect `max` 2. |
+| `implementationConverged`: true once the cycle reached delivery; false for a local preflight stop such as a credential failure | True when ITERATE converged (with or without caveats) or the run is `no-change`, including a run that then escalated at DELIVER. A credential failure now reports true. This is a stated divergence from 6.x. | Use it for "the code is done". Use `result` and `workDelivered` for "a PR exists". |
+| `feature_title`: the original goal in the user's words | On a revise run, the adopted PR's own title. Otherwise the request's first line. | Do not retitle the PR from it. |
+
+### PR readiness and drafts
+
+| 6.x | 7.x | Host action |
+|---|---|---|
+| Created a draft, waited for CI, then always marked it ready. | Creates a draft only when an Important review finding was deferred or `deliver.escalatedPartialDraft` is set. Minor findings are deferred, listed in the PR body's findings table and in `warnings`, and the run reports `converged: true` (as 6.x reported review nits as warnings on a ready PR). A fixed or withdrawn finding does not make a draft. | Treat `converged-with-caveats` as needing human sign-off. |
+| Marked every PR it handled ready. | A clean delivery marks an existing draft PR ready. | To keep a draft, run `gh pr ready --undo` after the result. |
+| `LOOP_SPEC_CHECKS_*` waited for checks. | Nothing waits for CI. `deliver.readiness: "checks"` makes one `gh pr checks` call, and a non-zero exit fails DELIVER's postcondition. | Poll CI yourself. `converged: true` does not imply green CI. |
+
+### PR title, body and branch
+
+| 6.x | 7.x | Host action |
+|---|---|---|
+| Title prefixed `feat:`. | The SPEC goal on one line, cut at 70 characters, no prefix. An existing PR's title and base are never edited. | Add a prefix yourself. |
+| A revise posted a summary comment. | A revise refreshes the PR body and posts no comment. | Read the body. |
+| Revise skipped CI and dependabot-style bot comments unless `LOOP_SPEC_REVIEW_BOT_ALLOWLIST` named the login. | Revise reads every comment. | Filter yourself. |
+| Branch `feat/<slug>`. | `feat/<slug>` (slug cut at 40 characters), or `feat/<slug>-<n>` when origin or the clone already has that branch, so a repeated request never pushes over an earlier run's PR. In a workspace each repo picks its own suffix. | Read the branch from `result.json`, not the slug. |
+| Hosts resent the same request text for each review round. | After a finished run that was routed to revise, the same text starts the next review round instead of returning the old result. | None. |
+
+### Rewind budget
+
+| 6.x | 7.x | Host action |
+|---|---|---|
+| `LOOP_SPEC_ITERATE_MAX_ITERATIONS`, default 10. | Gone. `LOOP_SPEC_REWIND_BUDGET`, default 2, is shared by every backward route. | Set it if you need more. |
+| No base move. | DELIVER `base moved` does not spend the rewind budget. It has its own fixed limit of three per run. | A fourth move escalates. |
+| Spent budget, unmet goal. | Escalates with no PR unless `deliver.escalatedPartialDraft` is true. | Check `result` before looking for a PR. |
+
+### Credentials and tooling
+
+| 6.x | 7.x | Host action |
+|---|---|---|
+| Checked git and `gh` credentials, then tried a refresh (`LOOP_SPEC_CREDENTIAL_REFRESH_*`). | No refresh hook. `gh auth status` runs for the configured origin URL's host. | Issue a token that outlives the run, and log `gh` into that host. |
+| A missing `gh` pushed and reported `pushed-no-pr`. | A missing `gh` blocks DELIVER. | Install `gh`. |
+| n/a | git 2.38 or later (`merge-tree --write-tree`, since 7.8.0). | Check `git --version`. |
+| `LOOP_SPEC_PHASE_TIMEOUT_MINS`, 60 minutes by default. | The program has no wall clock. | Time out the session in the host. |
+
+### Environment variables with no 7.x equivalent
+
+| 6.x variable | 6.x use |
+|---|---|
+| `LOOP_SPEC_CHECKPOINT_PR`, `LOOP_SPEC_CHECKPOINT_EACH_PHASE` | WIP checkpoint PRs. |
+| `LOOP_SPEC_RESULT_ROOT` | Where result files were written. |
+| `LOOP_SPEC_PR_FEEDBACK_MODE`, `LOOP_SPEC_PR_FEEDBACK_OWNER` | `local` or `external` ownership of PR feedback. |
+| `LOOP_SPEC_REVIEW_BOT_ALLOWLIST` | Bot logins whose comments were kept. |
+| `LOOP_SPEC_DEFERRAL_LINT` | DELIVER gate on deferred-scope text in the PR body. |
+| `LOOP_SPEC_PHASE_TIMEOUT_MINS` | Per-phase time limit. |
+| `LOOP_SPEC_MAX_FEATURES` | Features an autonomous chain ran. |
+| `LOOP_SPEC_PR_BODY_VERBOSE` | Expanded the PR body's collapsed Run details. |
+
+`LOOP_SPEC_DELIVER_ACCEPT_REMOTE_PATHS` became config `deliver.acceptRemotePaths`.
 
 ## Roll back
 

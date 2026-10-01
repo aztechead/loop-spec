@@ -393,6 +393,27 @@ class PostconditionsTests(unittest.TestCase):
         bad["tasks"][0]["review"] = None
         self.assertIsNotNone(self._boundary("execute", bad, "integrated")._e5())
 
+    def test_e5_accepts_a_task_commit_made_before_the_branch_merged_its_base(self):
+        # An adopted PR that merged its base: baseSha = merge-base = the merged base tip,
+        # so the PR's own task commit is in baseSha..head but baseSha is not its ancestor.
+        _git(self.repo_dir, "checkout", "-q", "main")
+        (self.repo_dir / "m1.txt").write_text("m1\n", encoding="utf-8")
+        _git(self.repo_dir, "add", "m1.txt")
+        _git(self.repo_dir, "commit", "-q", "-m", "M1")
+        m1 = _rev_parse(self.repo_dir)
+        _git(self.repo_dir, "checkout", "-q", "feat/x")
+        _git(self.repo_dir, "merge", "-q", "--no-ff", "-m", "merge main", "main")
+        head = _rev_parse(self.repo_dir)
+        adopted_review = {"reviewedRange": {"from": m1, "to": head}, "verdict": "pass",
+                          "findings": [], "securityDispositions": [], "sha": head}
+        product = copy.deepcopy(self.execute_product)
+        product["tasks"][0].update({"disposition": "adopted", "review": copy.deepcopy(adopted_review)})
+        self.store.state["adoptedReview"] = adopted_review
+        self.assertIsNone(self._boundary("execute", product, "integrated")._e5())
+        # `from` itself is outside `from..to`.
+        product["tasks"][0]["commits"] = [m1]
+        self.assertIn("outside its reviewed range", self._boundary("execute", product, "integrated")._e5())
+
     def test_e6(self):
         self.assertIsNone(self._boundary("execute", self.execute_product, "integrated")._e6())
         self.store.state["implementations"]["phases"]["execute"] = "default"
@@ -774,9 +795,14 @@ class PostconditionsTests(unittest.TestCase):
         with_caveats = copy.deepcopy(self.iterate_product)
         with_caveats["exit"] = "converged with caveats"
         self.assertIsNotNone(self._boundary("iterate", with_caveats, "converged with caveats")._i6())  # no caveats named
-        self.store.state["ledger"]["findings"] = [{"id": "f-1", "location": "a.txt:1", "cause": "c", "severity": "Minor", "disposition": "deferred", "reason": "acceptable", "supersedes": None}]
+        self.store.state["ledger"]["findings"] = [{"id": "f-1", "location": "a.txt:1", "cause": "c", "severity": "Important", "disposition": "deferred", "reason": "acceptable", "supersedes": None}]
         with_caveats["caveats"] = ["f-1"]
         self.assertIsNone(self._boundary("iterate", with_caveats, "converged with caveats")._i6())
+        self.store.state["ledger"]["findings"][0]["severity"] = "Minor"  # reported, never a caveat
+        self.assertIn("not a deferred Important finding", self._boundary("iterate", with_caveats, "converged with caveats")._i6())
+        self.store.state["ledger"]["findings"][0]["severity"] = "Important"
+        self.store.state["ledger"]["findings"][0]["disposition"] = "fixed"  # closed, so not a caveat
+        self.assertIn("not a deferred Important finding", self._boundary("iterate", with_caveats, "converged with caveats")._i6())
 
     # -- D: DELIVER ----------------------------------------------------------
 
@@ -788,6 +814,17 @@ class PostconditionsTests(unittest.TestCase):
     def test_d2_record_missing(self):
         with patch.object(repo_module, "run_gh", lambda *a: (1, "", "no such pr")):
             self.assertIsNotNone(self._boundary("deliver", self.deliver_product, "delivered")._d2())
+
+    def test_d2_holds_a_pr_to_the_repos_base_branch_not_the_detected_default(self):
+        # An adopted PR targeting `release` (or a configured deliver.base) records that
+        # branch as the repo's defaultBranch; D2 compares the PR's base with it.
+        self.store.state["repos"]["repo"]["defaultBranch"] = "release"
+        view = {"state": "OPEN", "headRefName": "feat/x", "headRefOid": self.sha_b, "baseRefName": "release"}
+        with patch.object(repo_module, "run_gh", lambda *a: (0, json.dumps(view), "")):
+            self.assertIsNone(self._boundary("deliver", self.deliver_product, "delivered")._d2())
+        view["baseRefName"] = "main"
+        with patch.object(repo_module, "run_gh", lambda *a: (0, json.dumps(view), "")):
+            self.assertIn("does not match", self._boundary("deliver", self.deliver_product, "delivered")._d2())
 
     def test_d3_record_missing(self):
         config_dir = self.repo_dir / ".loop-spec"
@@ -882,6 +919,16 @@ class PostconditionsTests(unittest.TestCase):
         budget_module.spend(self.store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-1", reason="gap")
         budget_module.spend(self.store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-2", reason="gap")
         self.assertIsNotNone(self._boundary("iterate", self.iterate_product, "converged")._t1())
+
+    def test_a_base_move_requires_t2_not_t1_and_t2_refuses_the_fourth(self):
+        requires = postconditions.ROUTES["deliver"]["base moved"]["requires"]
+        self.assertIn("T2", requires)
+        self.assertNotIn("T1", requires)
+        boundary = self._boundary("deliver", {}, "base moved")
+        for n in range(1, budget_module.BASE_MOVE_LIMIT + 1):
+            self.assertIsNone(boundary._t2())
+            budget_module.spend(self.store, from_phase="deliver", exit="base moved", to_phase="execute", attempt_id=f"d-{n}", reason="moved")
+        self.assertIn("base-move limit", boundary._t2())
 
     # --- LF-55: close-outs --------------------------------------------------
 

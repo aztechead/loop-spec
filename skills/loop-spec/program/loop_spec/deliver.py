@@ -60,7 +60,7 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
                    draft: bool, title: str, body: str) -> tuple[dict | None, str | None, list[str]]:
     branch = repo_info["featureBranch"]
     code, out, err = repo_module.run_gh(worktree, "pr", "list", "--head", branch, "--state", "open",
-                                         "--json", "number,url,headRefOid,baseRefName")
+                                         "--json", "number,url,headRefOid,baseRefName,isDraft")
     if code != 0:
         return None, f"gh pr list failed: {err.strip()}", []
 
@@ -76,6 +76,13 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
         code, _, err = repo_module.run_gh(worktree, "pr", "edit", str(existing[0]["number"]), "--body-file", str(body_path))
         if code != 0:
             caveats.append(f"the PR body was not updated: gh pr edit failed: {err.strip()}")
+        # A non-draft delivery marks an existing draft ready (a revise that cleanly
+        # addresses review on an earlier caveats run's draft); a draft delivery never
+        # converts a ready PR back. Like the body edit, a failure is a caveat only.
+        if existing[0].get("isDraft") and not draft:
+            code, _, err = repo_module.run_gh(worktree, "pr", "ready", str(existing[0]["number"]))
+            if code != 0:
+                caveats.append(f"the PR is still a draft: gh pr ready failed: {err.strip()}")
     else:
         # A crash-recovery marker, not a control-flow gate: `gh pr list` above already
         # reconciles a lost create response on its own, so nothing reads this back.

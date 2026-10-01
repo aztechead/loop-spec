@@ -97,11 +97,23 @@ class IterateTests(unittest.TestCase):
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
     def test_met_with_accepted_finding_converges_with_caveats(self):
-        self.store.state["ledger"]["findings"] = [_finding("F-1", "Minor", "deferred")]
+        self.store.state["ledger"]["findings"] = [_finding("F-1", "Important", "deferred")]
         action = self._judge_result("met", [])
         self.assertEqual(action.product["exit"], "converged with caveats")
         self.assertEqual(action.product["caveats"], ["F-1"])
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
+
+    def _assert_closed_finding_is_no_caveat(self, disposition):
+        self.store.state["ledger"]["findings"] = [_finding("F-1", "Minor", disposition)]
+        action = self._judge_result("met", [])
+        self.assertEqual((action.product["exit"], action.product["caveats"]), ("converged", []))
+        assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
+
+    def test_met_with_a_fixed_finding_converges_without_caveats(self):
+        self._assert_closed_finding_is_no_caveat("fixed")
+
+    def test_met_with_a_rejected_finding_converges_without_caveats(self):
+        self._assert_closed_finding_is_no_caveat("rejected")
 
     def test_met_with_critical_open_finding_and_budget_room_rewinds(self):
         # A "met" verdict over an open Critical finding is reconciled to "unmet"
@@ -123,13 +135,13 @@ class IterateTests(unittest.TestCase):
         self.assertEqual(action.product["verdict"], "unmet")
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
-    def test_met_with_minor_open_finding_converges_with_caveats_and_defers_it(self):
+    def test_met_with_minor_open_finding_converges_and_defers_it(self):
         # LF-46: nobody used to disposition a non-Critical open finding, so it
-        # forced "unmet" forever. The program now defers a Minor one itself.
+        # forced "unmet" forever. The program now defers a Minor one itself, and F11:
+        # a deferred Minor finding is reported but is not a caveat.
         self.store.state["ledger"]["findings"] = [_finding("F-1", "Minor", "open")]
         action = self._judge_result("met", [])
-        self.assertEqual(action.product["exit"], "converged with caveats")
-        self.assertEqual(action.product["caveats"], ["F-1"])
+        self.assertEqual((action.product["exit"], action.product["caveats"]), ("converged", []))
         finding = self.store.state["ledger"]["findings"][0]
         self.assertEqual(finding["disposition"], "deferred")
         self.assertEqual(finding["reason"], "left open at ITERATE; deferred by policy")

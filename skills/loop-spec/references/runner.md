@@ -34,7 +34,10 @@ in any of these ways while the program still has a line for you to act on:
   `question` line is the only way the run asks the user anything);
 - a report because a phase finished or the run has been long.
 
-Status notes are welcome. Put each one in the same message as your next tool call.
+Before your first command, say in a line what you are about to do; brief notes while
+you work help the user follow along. Put every note in the same message as your next
+tool call, and keep it to a sentence: a longer note is returned as thinking, not as
+text the user sees.
 
 ## Markers
 

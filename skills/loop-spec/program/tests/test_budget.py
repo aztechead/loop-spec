@@ -40,6 +40,21 @@ class BudgetTests(unittest.TestCase):
             self.assertEqual(first, second)
             self.assertEqual(store.state["budget"]["spent"], 1)
 
+    def test_base_moves_have_their_own_limit_and_never_spend_the_rewind_budget(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {}, clear=True):
+            store = _store(tmp)
+            budget.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="attempt-1", reason="gap")
+            budget.spend(store, from_phase="verify", exit="plan gap", to_phase="plan", attempt_id="attempt-2", reason="gap")
+            self.assertFalse(budget.has_room(store))  # two counted spends: T1 is spent...
+            for n in range(budget.BASE_MOVE_LIMIT):  # ...yet a base move still has room, up to its own limit
+                self.assertTrue(budget.base_move_room(store))
+                budget.spend(store, from_phase="deliver", exit="base moved", to_phase="execute", attempt_id=f"deliver-{n}", reason="moved")
+            self.assertEqual(store.state["budget"]["spent"], 2)
+            self.assertEqual(len(store.state["budget"]["transitions"]), 2 + budget.BASE_MOVE_LIMIT)
+            self.assertFalse(budget.base_move_room(store))
+            with self.assertRaises(budget.BudgetExhausted):
+                budget.spend(store, from_phase="deliver", exit="base moved", to_phase="execute", attempt_id="deliver-x", reason="moved")
+
     def test_transitions_recorded(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {}, clear=True):
             store = _store(tmp)

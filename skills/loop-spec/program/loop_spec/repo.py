@@ -13,6 +13,7 @@ import json
 import re
 import shutil
 import subprocess
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -228,6 +229,20 @@ def commits_between(repo: Path, base_sha: str, head_sha: str) -> list[str]:
 def branch_sha(repo: Path, branch: str) -> str | None:
     proc = _git(repo, "rev-parse", "--verify", branch)
     return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def free_branch(repo: Path, name: str) -> str:
+    # A branch name neither this clone nor origin has: `name`, else `name-2`, `name-3`...
+    # An unreachable origin leaves the name alone; DELIVER reports the push as it does today.
+    proc = _git(repo, "ls-remote", "--heads", "origin", f"refs/heads/{name}", f"refs/heads/{name}-*")
+    taken = set()
+    if proc.returncode == 0:
+        taken = {line.split("\t", 1)[1].removeprefix("refs/heads/") for line in proc.stdout.splitlines() if "\t" in line}
+    candidate, n = name, 1
+    while candidate in taken or branch_sha(repo, candidate) is not None:
+        n += 1
+        candidate = f"{name}-{n}"
+    return candidate
 
 
 def create_feature_branch(repo: Path, name: str, at_sha: str) -> None:
@@ -466,6 +481,7 @@ class PrAdoption:
     base_branch: str | None
     head_sha: str | None
     reason: str
+    title: str | None = None
 
 
 _PR_URL = re.compile(r"https://github\.com/[^\s]+?/pull/\d+\S*")
@@ -492,7 +508,7 @@ def adopt_pr(repo: Path, ref: int | str) -> PrAdoption:
         return _no_adopt("gh is not installed")
 
     code, out, err = run_gh(
-        repo, "pr", "view", str(ref), "--json", "number,url,headRefName,baseRefName,state,isCrossRepository,headRefOid"
+        repo, "pr", "view", str(ref), "--json", "number,url,headRefName,baseRefName,state,isCrossRepository,headRefOid,title"
     )
     if code != 0:
         return _no_adopt(err.strip() or f"gh pr view failed (rc={code})")
@@ -511,7 +527,7 @@ def adopt_pr(repo: Path, ref: int | str) -> PrAdoption:
     number, url, branch, base = data.get("number"), data.get("url"), data.get("headRefName"), data.get("baseRefName")
     return PrAdoption(
         adopt=True, number=number, url=url, branch=branch, base_branch=base,
-        head_sha=data.get("headRefOid"), reason=f"named open PR #{number} on {branch}",
+        head_sha=data.get("headRefOid"), reason=f"named open PR #{number} on {branch}", title=data.get("title"),
     )
 
 
@@ -524,8 +540,33 @@ class CredentialStatus:
     repair: str | None
 
 
+def remote_host(url: str | None) -> str | None:
+    # The credential host a remote URL names; None for a local path, file://, or no URL.
+    if not url:
+        return None
+    scp = re.match(r"^[^@/]+@([^:/]+):", url)
+    if scp:
+        return scp.group(1).lower()
+    try:
+        host = urllib.parse.urlparse(url).hostname
+    except ValueError:
+        return None
+    return host.lower() if host else None
+
+
+def _configured_remote_host(repo: Path, remote: str) -> str | None:
+    # The CONFIGURED push or fetch URL, as 6.x read it: `git remote get-url` expands
+    # url.<base>.insteadOf, which can yield an SSH alias host gh does not know.
+    for key in ("pushurl", "url"):
+        proc = _git(repo, "config", "--get", f"remote.{remote}.{key}")
+        if proc.returncode == 0 and proc.stdout.strip():
+            return remote_host(proc.stdout.strip())
+    return None
+
+
 def check_credentials(repo: Path, remote: str = "origin") -> CredentialStatus:
-    checked: list[str] = [f"git ls-remote --exit-code {remote} HEAD", "gh auth status"]
+    host = _configured_remote_host(repo, remote)
+    checked: list[str] = [f"git ls-remote --exit-code {remote} HEAD"]
 
     git_ok = _git(repo, "ls-remote", "--exit-code", remote, "HEAD").returncode == 0
     failed_command: str | None = None
@@ -534,13 +575,21 @@ def check_credentials(repo: Path, remote: str = "origin") -> CredentialStatus:
         failed_command = f"git ls-remote {remote} HEAD"
         repair = f"run: git ls-remote {remote} and fix the credential helper"
 
-    gh_code, _, _ = run_gh(repo, "auth", "status")
+    # A bare `gh auth status` checks every host, so a token for one host fails on
+    # another. Scope to the remote's host first; fall back to the bare check, which
+    # is what passed before when the URL names an SSH alias gh does not know.
+    gh_command = f"gh auth status --hostname {host}" if host else "gh auth status"
+    checked.append(gh_command)
+    gh_code, _, _ = run_gh(repo, *gh_command.split()[1:])
+    if gh_code != 0 and host:
+        checked.append("gh auth status")
+        gh_code, _, _ = run_gh(repo, "auth", "status")
     gh_ok = gh_code == 0
     if not gh_ok and failed_command is None:
         # `gh auth refresh` is interactive, so there is no non-interactive refresh to
         # attempt for gh: the auth-status check above IS the attempt; the repair is
         # the interactive login the operator has to run themselves.
-        failed_command = "gh auth status"
+        failed_command = gh_command
         repair = "run: gh auth login"
 
     return CredentialStatus(git_ok=git_ok, gh_ok=gh_ok, checked=checked, failed_command=failed_command, repair=repair)

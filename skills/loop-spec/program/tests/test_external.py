@@ -49,8 +49,9 @@ class ExternalRunTests(unittest.TestCase):
 
     def test_postcondition_text_covers_every_id_in_phase_postconditions(self):
         # T1 is the shared cross-phase budget postcondition (referenced by several
-        # phases' backward exits, not owned by any one phase's list), so
-        # POSTCONDITION_TEXT legitimately has one entry beyond PHASE_POSTCONDITIONS.
+        # phases' backward exits, not owned by any one phase's list), and T2 is
+        # DELIVER's base-move limit, so POSTCONDITION_TEXT legitimately has entries
+        # beyond PHASE_POSTCONDITIONS.
         every_id = {pid for ids in PHASE_POSTCONDITIONS.values() for pid in ids}
         self.assertTrue(every_id.issubset(POSTCONDITION_TEXT.keys()))
 

@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "loop-spec",
   "description": "Loop-driven development from a spec file or prose prompt for Claude Code. A router picks the full six-phase cycle, a small change, a debug, a PR revision, or a direct git operation, then delivers a verified PR.",
-  "version": "7.8.1",
+  "version": "7.8.2",
   "author": {
     "name": "aztechead",
     "email": "nctightend@gmail.com"

@@ -123,6 +123,13 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
         _clear_stale_last_result(paths, slug)
         if store.state["request"]["digest"] != digest(request_text):
             raise LoopSpecError(f"slug {slug} is in use by another request", repair="pass --slug to choose a different slug")
+        routed = store.state["run"].get("routedTo") or {}
+        if store.state.get("result") is not None and routed.get("entry") == "revise" and routed.get("pr") and routed.get("slug"):
+            revise_paths = FeaturePaths(root=feature_dir(home, rid, routed["slug"]), project_root=project_root)
+            if revise_paths.state_json.exists() and _open_existing(revise_paths).state.get("result") is not None:
+                # A repeated revise request is the next review round, not a replay of the last.
+                return _ENTRY_START["revise"](project_root=project_root, request_text=None, slug=None, home=home, rid=rid,
+                                              answer_policy=answer_policy, pr=routed["pr"])
     else:
         _clear_stale_last_result(paths, slug)
         run_fields = {
@@ -357,8 +364,10 @@ def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, hom
                 continue
         base_sha = repo_module.head_sha(entry.path)
         repos[entry.name] = {
-            "path": str(entry.path), "baseSha": base_sha, "featureBranch": f"feat/{slug}",
-            "defaultBranch": repo_module.default_branch(entry.path), "lastKnownHead": base_sha,
+            "path": str(entry.path), "baseSha": base_sha, "featureBranch": repo_module.free_branch(entry.path, f"feat/{slug}"),
+            "defaultBranch": (contract.load_config(project_root).get("deliver") or {}).get("base")
+                             or repo_module.default_branch(entry.path),
+            "lastKnownHead": base_sha,
         }
     store.state["repos"] = repos
     store.state.pop("adoption", None)
@@ -380,7 +389,7 @@ def _adopt(repo_name: str, repo_path: Path, candidate, home: Path) -> tuple[dict
     adoption = {
         "repo": repo_name, "number": candidate.number, "url": candidate.url, "headRef": candidate.branch,
         "baseBranch": candidate.base_branch, "baseSha": base_sha, "headSha": candidate.head_sha,
-        "reason": candidate.reason,
+        "reason": candidate.reason, "title": candidate.title,
     }
     return repo_entry, adoption
 
@@ -1461,6 +1470,10 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
         # "Backward-transition budget"). ITERATE's own refused rewind is the one
         # named exception (its "rewind" exit gates on I3/I4 instead of T1).
         _finish_run(store, paths, "escalated", reason=f"the rewind budget has no room for {phase} {exit_}")
+        return
+    if "T2" in route["requires"] and not budget_module.base_move_room(store):
+        _finish_run(store, paths, "escalated", reason=f"the base moved {budget_module.BASE_MOVE_LIMIT} times; "
+                    "resolve with the base owner, then start a revise run")
         return
 
     if phase == "verify":

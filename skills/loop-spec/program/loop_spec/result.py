@@ -85,6 +85,12 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
     # converged -- a draft left for human sign-off (converged-with-caveats) is not
     # that, whatever its own workDelivered value.
     converged = classification in ("converged", "no-change")
+    # implementationConverged is the 6.x fact "the work converged": ITERATE converged, even
+    # when the PR is a draft or DELIVER stopped (push rejected, credentials) afterward.
+    # The phase test excludes a run that rewound from DELIVER to EXECUTE and escalated there.
+    iterate_exit = (store.state["products"].get("iterate") or {}).get("exit")
+    implementation_converged = classification in ("converged", "converged-with-caveats", "no-change") or (
+        store.state["phase"]["current"] == "deliver" and iterate_exit in ("converged", "converged with caveats"))
 
     pr_url, prs, delivery = None, [], None
     if deliver_entry is not None:
@@ -114,6 +120,10 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         verified_sha = verified_head(store)
 
     request_text = store.state["request"]["text"] or ""
+    # A revise run's request text is "revise PR #n: <url>"; the host titles the PR from
+    # feature_title, so it carries the PR's own title instead.
+    adopted_title = (store.state.get("adoption") or {}).get("title")
+    feature_title = adopted_title if run.get("cycleType") == "revise" and adopted_title else (request_text.splitlines()[0] if request_text else "")
     record = {
         "schema": 1,
         "loopSpecVersion": VERSION,
@@ -136,14 +146,14 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         "iterations": {"used": store.state["budget"]["spent"], "max": store.state["budget"]["limit"]},
         "warnings": warnings,
         "autonomous": store.state["questions"].get("policy") == "default",
-        "feature_title": request_text.splitlines()[0] if request_text else "",
+        "feature_title": feature_title,
         "createdAt": run.get("createdAt"),
         "finishedAt": now_iso(),
         "verification": {
             "status": _verification_status(store),
             "command": None,
         },
-        "implementationConverged": converged,
+        "implementationConverged": implementation_converged,
         "eligibleTargets": [{"branch": info["featureBranch"], "targetSha": verified_sha} for info in repos.values()] if verified_sha else [],
         "retryable": classification == "failed",
         "retryPhase": store.state["phase"]["current"] if classification == "failed" else None,
