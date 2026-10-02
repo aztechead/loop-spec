@@ -33,9 +33,9 @@ All notable changes documented here. Format follows Keep a Changelog.
 - A configured `deliver.branch` no longer tells the spec-writer the branch is taken.
 - The `loop-spec` launcher runs its own program whatever the current directory
   (`python3 -P`); run from a directory holding a `loop_spec` package, it ran that copy.
-- A repository that commits `.pyc` files: tracked caches a test run rewrites no longer
-  reject an implement step or keep a worktree from cleanup, and the rejection for a
-  dirty worktree names the paths.
+- A test run's caches (`__pycache__`, rewritten tracked `.pyc` in a repo that commits
+  them) no longer reject an implement step, keep a worktree from cleanup, or stop a
+  retired worktree's removal; the rejection for a dirty worktree names the paths.
 - The code reviewer reads the approved spec, so a change its decisions or criteria
   require is no longer a Critical finding.
 - The PR body's acceptance table keeps a multi-line criterion's line breaks.

@@ -330,10 +330,12 @@ def add_worktree(repo: Path, dest: Path, *, branch: str) -> Path:
 
 def remove_worktree(repo: Path, dest: Path, *, force: bool = False) -> None:
     args = ["worktree", "remove"]
+    if not force and not uncommitted(dest):
+        # Only a test run's caches remain, which git refuses without --force (untracked
+        # or rewritten); is_clean already counts them as clean. Real changes still refuse.
+        force = True
     if force:
         args.append("--force")
-    else:
-        restore_tracked_caches(dest)  # git refuses a modified tracked file; is_clean already passed it
     args.append(str(dest))
     run_git(repo, *args)
 

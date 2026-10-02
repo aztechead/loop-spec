@@ -177,6 +177,8 @@ class WorktreeTests(unittest.TestCase):
             add_worktree(Path(tmp), wt_dest, branch="feat/x")
             self.assertTrue(wt_dest.is_dir())
             self.assertTrue(is_clean(wt_dest))
+            Path(wt_dest, "__pycache__").mkdir()
+            Path(wt_dest, "__pycache__", "a.cpython-313.pyc").write_bytes(b"\0")  # a test run's leftovers
             remove_worktree(Path(tmp), wt_dest)
             self.assertFalse(wt_dest.exists())
 
