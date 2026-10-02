@@ -39,6 +39,8 @@ All notable changes documented here. Format follows Keep a Changelog.
 - The code reviewer reads the approved spec, so a change its decisions or criteria
   require is no longer a Critical finding.
 - The PR body's acceptance table keeps a multi-line criterion's line breaks.
+- The PR body's How to test shows a machine-local interpreter path (a pyenv shim) as its
+  bare name; a path inside the repo, such as `.venv/bin/python`, is kept.
 - revise moves a local PR branch that is only behind the PR head (a teammate pushed)
   instead of refusing; a branch with its own commits is still refused.
 - revise drops comments from the GitHub Actions bot, which `gh pr view` names without a

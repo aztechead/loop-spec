@@ -7,6 +7,7 @@ VERIFY would push a head that is not the verified SHA). Every function reads
 `store.state["products"]` and the ledger; none of them mutate anything.
 """
 import re
+import shutil
 from pathlib import Path
 
 from loop_spec import VERSION
@@ -83,8 +84,18 @@ def test_commands(verify_product: dict) -> list[str]:
     return seen
 
 
-def _how_to_test(verify_product: dict) -> list[str]:
-    commands = test_commands(verify_product)
+def _portable(command: str, roots: list[Path]) -> str:
+    """A reviewer cannot run this machine's interpreter path (a pyenv shim): show its bare
+    name when that name is on PATH. A path inside a repo (`.venv/bin/python`) is kept."""
+    head, sep, rest = command.partition(" ")
+    path = Path(head)
+    if not path.is_absolute() or any(path.is_relative_to(r) for r in roots) or not shutil.which(path.name):
+        return command
+    return path.name + sep + rest
+
+
+def _how_to_test(verify_product: dict, roots: list[Path] = ()) -> list[str]:
+    commands = [_portable(c, list(roots)) for c in test_commands(verify_product)]
     if not commands:
         return []
     lines = ["### How to test", "", "```sh"] + commands + ["```", ""]
@@ -111,12 +122,16 @@ def _section_marks(name: str) -> tuple[str, str]:
     return f"<!-- loop-spec:{name} -->", f"<!-- loop-spec:/{name} -->"
 
 
+def _roots(store) -> list[Path]:
+    return [Path(info["path"]).resolve() for info in (store.state.get("repos") or {}).values()]
+
+
 def pr_sections(store) -> dict[str, str]:
     """What fills a PR template's Summary-like and Test-like sections: the goal with the Why
     bullets, and the How-to-test commands with the SHA they were verified at."""
     spec = store.state["products"]["spec"]["product"]
     summary = "\n".join([spec["goal"], ""] + [f"- {d['text']}" for d in spec["decisions"]]).strip("\n")
-    testing = "\n".join(_how_to_test(store.state["products"]["verify"]["product"])[2:]).strip("\n")
+    testing = "\n".join(_how_to_test(store.state["products"]["verify"]["product"], _roots(store))[2:]).strip("\n")
     return {"summary": summary, "testing": testing}
 
 
@@ -143,7 +158,7 @@ def pr_body(store, repo_name: str | None = None, siblings: list[tuple[str, str]]
         lines += ["### Boundaries", ""] + [f"- {b}" for b in spec["boundaries"]] + [""]
     lines += ["### Acceptance", ""] + _criteria_table(spec, verify_product) + [""]
     if "testing" not in omit:
-        lines += _how_to_test(verify_product)
+        lines += _how_to_test(verify_product, _roots(store))
     if spec["openQuestions"]:
         lines += ["### Open questions", ""] + [f"- {q['text']}" for q in spec["openQuestions"]] + [""]
 

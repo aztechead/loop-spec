@@ -204,3 +204,12 @@ class ReviewerBodyTests(unittest.TestCase):
         self.assertEqual(merged.count("add a better widget"), 2)  # the block's heading and the Summary section
         self.assertNotIn("\nadd a widget\n", merged)
         self.assertIn("- [x] ticked by me", merged)
+
+
+class PortableCommandTests(unittest.TestCase):
+    def test_a_machine_local_interpreter_shows_its_name_and_a_repo_venv_keeps_its_path(self):
+        import shutil
+        from loop_spec.render import _portable
+        local = shutil.which("python3")
+        self.assertEqual(_portable(f"{local} -m unittest", [Path("/nonexistent")]), "python3 -m unittest")
+        self.assertEqual(_portable("/repo/.venv/bin/python -m x", [Path("/repo")]), "/repo/.venv/bin/python -m x")
