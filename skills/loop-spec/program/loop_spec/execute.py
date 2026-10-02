@@ -147,8 +147,9 @@ def _retry_or_block(execute_state: dict, task_id: str, task_state: dict, reason_
 
 
 def _handle_operator_reentry(execute_state: dict, ctx) -> None:
-    """The operator answered `fix-and-re-enter` to a block this module raised for a
-    repeated or churning task: reopen it with a clean reason history, once per attempt."""
+    """The operator answered a block this module raised for a repeated or churning task:
+    `fix-and-re-enter` reopens it with a clean reason history, `plan gap` marks it PLAN's
+    to fix (the exit goes back to PLAN). Once per attempt."""
     entry = ctx["entry"]
     if entry.get("mode") != "remediation" or not (entry.get("payload") or {}).get("operatorReentry"):
         return
@@ -156,8 +157,15 @@ def _handle_operator_reentry(execute_state: dict, ctx) -> None:
     if ctx["attempt"]["id"] in handled:
         return
     handled.append(ctx["attempt"]["id"])
+    plan_gap = bool(entry["payload"].get("operatorPlanGap"))
     for issue in [i for i in execute_state["issues"] if i.get("repeated") or i.get("churn")]:
         task_state = execute_state["tasks"][issue["task"]]
+        if plan_gap:
+            # The operator judged no retry can clear it: the task is PLAN's to fix, and the
+            # issue stays on the product so the planner reads why.
+            task_state.update(status="planGap", reason=None)
+            issue["text"] = f"the operator sent this back to PLAN: {issue['text']}"
+            continue
         execute_state["issues"].remove(issue)
         execute_state.setdefault("issueHistory", []).append(issue)
         task_state.update(status="pending", reason=issue["text"], reasons=[])

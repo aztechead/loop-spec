@@ -72,6 +72,18 @@ class RetryOrBlockTests(unittest.TestCase):
         _retry_or_block(execute_state, "T-1", task_state, "first problem")  # a clean history: new again
         self.assertEqual(task_state["status"], "pending")
 
+    def test_an_operator_plan_gap_sends_a_blocked_task_to_plan_with_its_reason(self):
+        execute_state, task_state = self._state()
+        execute_state["tasks"] = {"T-1": task_state}
+        for _ in range(2):
+            _retry_or_block(execute_state, "T-1", task_state, "uncommitted: calc/_ext.so")
+        ctx = {"entry": {"mode": "remediation", "payload": {"operatorReentry": True, "operatorPlanGap": True}},
+               "attempt": {"id": "attempt-9"}}
+        _handle_operator_reentry(execute_state, ctx)
+        self.assertEqual(task_state["status"], "planGap")
+        self.assertIn("sent this back to PLAN", execute_state["issues"][0]["text"])
+        self.assertIn("calc/_ext.so", execute_state["issues"][0]["text"])
+
 
 class DagWavesTests(unittest.TestCase):
     def test_diamond(self):

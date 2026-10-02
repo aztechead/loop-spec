@@ -22,6 +22,10 @@ BLOCKED_OPTIONS = [
 
 # A recurred-problem question's answers (the progress rule): `continue` routes the run
 # back again, `stop` ends it. `stop` is first and the default, as for a blocked question.
+# EXECUTE's blocked exit adds a third answer: a block no retry can clear (the plan's
+# verify cannot pass, a build output the plan never ignored) goes back to PLAN.
+EXECUTE_BLOCKED_OPTIONS = [*BLOCKED_OPTIONS, {"value": "plan gap", "label": "Plan gap (re-plan)"}]
+
 RECURRED_OPTIONS = [
     {"value": "stop", "label": "Stop"},
     {"value": "continue", "label": "Continue"},

@@ -194,7 +194,7 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 |---|---|---|
 | `integrated` | E1 to E8, E11; E9 false | VERIFY at the integrated head |
 | `no change` | E1, E2, E8, E9 | VERIFY at the head, over `base..head` |
-| `blocked` | E1, E10 | pause: a question to the operator naming the cause, with the answers fix-and-re-enter EXECUTE or stop; `status: paused` until answered; a stop answer, or a `run`-scoped default policy, exits terminal `escalated` with the cause |
+| `blocked` | E1, E10 | pause: a question to the operator naming the cause, with the answers fix-and-re-enter EXECUTE, stop, or plan gap (the blocked tasks become PLAN's to fix and EXECUTE exits `plan gap` with the cause in its issues); `status: paused` until answered; a stop answer, or a `run`-scoped default policy, exits terminal `escalated` with the cause |
 | `plan gap` | E1, T1 | PLAN, `remediation` |
 
 An out-of-band change to the feature branch pauses the phase for reconciliation; it is

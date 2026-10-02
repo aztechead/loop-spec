@@ -579,6 +579,8 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
                 payload = dict(store.state["phase"].get("entryPayload") or {})
                 if store.state["phase"]["current"] == "execute":
                     payload["operatorReentry"] = True
+                    if answered["value"] == "plan gap":
+                        payload["operatorPlanGap"] = True  # the blocked tasks go back to PLAN
                     store.state["phase"]["entryPayload"] = payload
                 store.state["phase"]["blockedAnswered"] = True
                 store.save()
@@ -1872,7 +1874,8 @@ def _ask_pause_question(store: StateStore, paths: FeaturePaths, phase: str, exit
     record = questions.ask(
         store, paths, phase=phase, attempt_id=attempt_id,
         text=f"{phase.upper()} exited {exit_}: {cause}",
-        kind="blocked", options=questions.BLOCKED_OPTIONS,
+        kind="blocked",
+        options=questions.EXECUTE_BLOCKED_OPTIONS if (phase, exit_) == ("execute", "blocked") else questions.BLOCKED_OPTIONS,
         default_value="stop", payload={"phase": phase, "exit": exit_},
     )
     store.state["phase"]["blockedQuestionId"] = record["questionId"]
