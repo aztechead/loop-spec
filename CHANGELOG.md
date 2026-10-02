@@ -10,11 +10,19 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 - `deliver.branch` in `.loop-spec/config.json` names the feature branch, for a host whose
   repos enforce a branch-naming rule (`feature/AVP-1234`). Unset keeps `feat/<slug>`. The
-  `-2`/`-3` suffixing of a name this clone or `origin` already has still applies, every
-  repo of a workspace gets the same name, and a run that adopts a PR keeps the PR's own
-  branch. `contract.load_config` refuses a value that is not a non-empty string, that
-  `git check-ref-format --branch` rejects, that starts with `-` or `refs/`, or that is
-  `HEAD`; a run refuses a name equal to its base branch before creating any branch.
+  `-2`/`-3` suffixing of a name this clone or `origin` already has (or holds a branch
+  under) still applies, every repo of a workspace starts from the same name and picks its
+  own suffix, and a run that adopts a PR keeps the PR's own branch. `contract.load_config`
+  refuses a value that is not a non-empty string, that starts with `-`, `refs/` or `task/`,
+  or that is `HEAD` or `task`; a run refuses, before creating any branch, a name that
+  `git check-ref-format --branch` rejects or that equals its base branch.
+
+### Fixed
+
+- `repo.free_branch` treats a branch nested under a name (`feat/x/y` for `feat/x`) as
+  taking it, and refuses a name whose parent path is a branch here or on `origin`
+  (`feature` for `feature/AVP-1234`) when the run starts, instead of EXECUTE failing on
+  `cannot lock ref`.
 
 ## [7.8.3] - 2026-10-01
 

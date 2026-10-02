@@ -285,6 +285,7 @@ class DeliverBranchConfigTests(unittest.TestCase):
 
     def test_refuses_an_invalid_value(self):
         from loop_spec.errors import LoopSpecError
-        for bad in ("bad..name", "x.lock", "-x", "refs/heads/x", "HEAD", "", "has space", "@{-1}", 7, ["a"]):
+        # `git check-ref-format` runs once per run in controller._resolve_repos, not here.
+        for bad in ("-x", "refs/heads/x", "HEAD", "task", "task/x", "", 7, ["a"]):
             with self.subTest(bad=bad), self.assertRaises(LoopSpecError):
                 self._load({"branch": bad})

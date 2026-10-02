@@ -9,7 +9,6 @@ module never decides a route; that is postconditions.py/controller.py (wave D).
 import functools
 import importlib
 import os
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -62,18 +61,18 @@ def role_meta(name: str) -> dict[str, str]:
     return meta
 
 
-def _check_feature_branch(path: Path, branch, project_root: Path) -> None:
+def _check_feature_branch(path: Path, branch) -> None:
+    # The checks that need no git; controller._resolve_repos runs `git check-ref-format`
+    # once per run, since this runs on every load_config call.
     repair = 'set deliver.branch to a branch name such as "feature/AVP-1234", or remove it'
     if not (isinstance(branch, str) and branch):
         raise LoopSpecError(f"{path}: deliver.branch is {branch!r}; it is a non-empty branch name", repair=repair)
     if branch.startswith(("-", "refs/")) or branch == "HEAD":
         raise LoopSpecError(f"{path}: deliver.branch is {branch!r}; it cannot start with '-' or 'refs/', or be HEAD",
                             repair=repair)
-    # --branch also expands `@{-1}` to a prior branch's name; a name it rewrites is no name.
-    proc = subprocess.run(["git", "check-ref-format", "--branch", branch], cwd=project_root,
-                          capture_output=True, text=True)
-    if proc.returncode != 0 or proc.stdout.strip() != branch:
-        raise LoopSpecError(f"{path}: deliver.branch is {branch!r}; git check-ref-format --branch refuses it",
+    # EXECUTE's task branches are task/<slug>/<id>; git cannot hold them beside a `task` branch.
+    if branch == "task" or branch.startswith("task/"):
+        raise LoopSpecError(f"{path}: deliver.branch is {branch!r}; task/ holds the run's task branches",
                             repair=repair)
 
 
@@ -93,7 +92,7 @@ def load_config(project_root: Path) -> dict:
                             repair='set it to a list such as ["CHANGELOG.md"], or remove it')
     branch = (config.get("deliver") or {}).get("branch")
     if branch is not None:
-        _check_feature_branch(path, branch, project_root)
+        _check_feature_branch(path, branch)
     after = (config.get("deliver") or {}).get("after")
     if after is not None and not (isinstance(after, list) and all(isinstance(s, str) and s for s in after)):
         raise LoopSpecError(f"{path}: deliver.after is {after!r}; it is a list of skill names",

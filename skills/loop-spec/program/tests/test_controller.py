@@ -433,6 +433,31 @@ class ConfiguredFeatureBranchTests(_QuietStdout):
                     self._resolve(repo_dir, tmp)
                 self.assertEqual(self._heads(repo_dir), ["main"])
 
+    def test_a_name_git_refuses_or_cannot_hold_is_refused_before_any_branch_exists(self):
+        for name in ("bad..name", "x.lock", "has space", "@{-1}", "feature/AVP-1234"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                repo_dir = _init_repo(tmp)
+                _git(repo_dir, "branch", "feature")  # the parent path of feature/AVP-1234
+                self._configure(repo_dir, {"branch": name})
+                with self.assertRaises(LoopSpecError):
+                    self._resolve(repo_dir, tmp)
+                self.assertEqual(self._heads(repo_dir), ["feature", "main"])
+
+    def test_every_workspace_repo_starts_from_the_name_and_suffixes_on_its_own(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            ws = tmp / "ws"
+            ws.mkdir()
+            for name in ("a-repo", "b-repo"):
+                (tmp / name).mkdir()
+                _init_repo(tmp / name).rename(ws / name)
+            _git(ws / "b-repo", "branch", "feature/AVP-1234")
+            self._configure(ws, {"branch": "feature/AVP-1234"})
+            state = self._resolve(ws, tmp)
+            self.assertEqual({name: info["featureBranch"] for name, info in state["repos"].items()},
+                             {"a-repo": "feature/AVP-1234", "b-repo": "feature/AVP-1234-2"})
+
     def test_adopting_a_pr_ignores_the_setting(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)

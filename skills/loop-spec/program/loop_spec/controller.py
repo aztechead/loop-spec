@@ -377,6 +377,10 @@ def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, hom
                 continue
         base_sha = repo_module.head_sha(entry.path)
         default_branch = deliver_config.get("base") or repo_module.default_branch(entry.path)
+        if configured_branch is not None and not repo_module.is_branch_name(entry.path, configured_branch):
+            raise LoopSpecError(
+                f"deliver.branch is {configured_branch!r}; git check-ref-format --branch refuses it",
+                repair='set deliver.branch to a branch name such as "feature/AVP-1234", or remove it')
         if configured_branch == default_branch:
             raise LoopSpecError(
                 f"deliver.branch is {configured_branch!r}, the branch the PR targets in {entry.path}",

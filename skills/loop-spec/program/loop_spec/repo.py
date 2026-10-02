@@ -231,15 +231,35 @@ def branch_sha(repo: Path, branch: str) -> str | None:
     return proc.stdout.strip() if proc.returncode == 0 else None
 
 
+def is_branch_name(repo: Path, name: str) -> bool:
+    # --branch also expands `@{-1}` to a prior branch's name; a name it rewrites is no name.
+    proc = _git(repo, "check-ref-format", "--branch", name)
+    return proc.returncode == 0 and proc.stdout.strip() == name
+
+
 def free_branch(repo: Path, name: str) -> str:
     # A branch name neither this clone nor origin has: `name`, else `name-2`, `name-3`...
+    # Git stores a branch as a path, so a branch nested under a name (`name/x`) takes it
+    # too, and no suffix frees a name whose parent path is a branch (`feature` for
+    # `feature/AVP-1234`): that raises here, before EXECUTE's `git branch` would fail.
     # An unreachable origin leaves the name alone; DELIVER reports the push as it does today.
-    proc = _git(repo, "ls-remote", "--heads", "origin", f"refs/heads/{name}", f"refs/heads/{name}-*")
+    parts = name.split("/")
+    parents = ["/".join(parts[:i]) for i in range(1, len(parts))]
+    proc = _git(repo, "ls-remote", "--heads", "origin", f"refs/heads/{name}", f"refs/heads/{name}-*",
+                f"refs/heads/{name}/*", *(f"refs/heads/{p}" for p in parents))
     taken = set()
     if proc.returncode == 0:
         taken = {line.split("\t", 1)[1].removeprefix("refs/heads/") for line in proc.stdout.splitlines() if "\t" in line}
+    taken |= {ref.removeprefix("refs/heads/") for ref in run_git(repo, "for-each-ref", "--format=%(refname)", "refs/heads").split()}
+    clash = next((p for p in parents if p in taken), None)
+    if clash is not None:
+        raise LoopSpecError(
+            f"branch {name!r} cannot be created in {repo}: branch {clash!r} exists here or on origin, "
+            "and git cannot hold a branch and a branch under it",
+            repair=f"name the feature branch outside '{clash}/' (deliver.branch in .loop-spec/config.json), or delete branch {clash!r}")
     candidate, n = name, 1
-    while candidate in taken or branch_sha(repo, candidate) is not None:
+    while (candidate in taken or any(ref.startswith(f"{candidate}/") for ref in taken)
+           or branch_sha(repo, candidate) is not None):
         n += 1
         candidate = f"{name}-{n}"
     return candidate
