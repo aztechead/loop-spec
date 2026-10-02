@@ -63,7 +63,8 @@ or one slug per line if a 7.x run already exists there.
 
 From a script, the same entries are launcher subcommands, each with
 `--project-root <repo>`: `"$LS" cycle` and `micro` take `--request <text>` or
-`--request-file <path>`, `debug` takes `--request`, `revise` takes `--pr <n-or-url>`,
+`--request-file <path>`, `debug` takes `--request`, `revise` takes `--pr <n-or-url>` (and `--request <text>` for an
+instruction given with the PR),
 and `status` and the phase entries take `--slug`. Section 6 covers what to do with
 their output.
 
@@ -297,7 +298,7 @@ This section is for someone whose program runs loop-spec headless and reads `res
 | 6.x | 7.x | Host action |
 |---|---|---|
 | `LOOP_SPEC_ITERATE_MAX_ITERATIONS`, default 10. | Gone. From 7.0.0 to 7.8.x `LOOP_SPEC_REWIND_BUDGET` (default 2) bounded every backward route; since 7.9.0 no count does. A run stops by itself only when a rewind would re-run an identical state, and asks you when the same problem comes back after a change. | Answer the `recurred` question, or set `--answer-policy default` (it answers `stop`). |
-| No base move. | DELIVER `base moved` is counted apart from rewinds, three per run. | A fourth move asks whether to merge again; `continue` restarts the count. |
+| No base move. | DELIVER `base moved` (the base, or a teammate's push to the PR branch) is counted apart from rewinds, three per run. | A fourth move asks whether to merge again; `continue` restarts the count. |
 | Spent budget, unmet goal. | A repeated identical state escalates with no PR unless `deliver.escalatedPartialDraft` is true. | Check `result` before looking for a PR. |
 
 ### Credentials and tooling

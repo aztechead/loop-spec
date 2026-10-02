@@ -187,13 +187,15 @@ already had (volatile ids and numbers ignored). On a repeat, or at once when no 
 accepted only when config opts the role in (`evidence.review.accept` for
 `code-reviewer`, `evidence.judgment.accept` for `plan-critic` and `iterate-judge`);
 an `attestationWaivers` entry then records it, surfaced in the result's
-`weakenedAssurance`. Otherwise it is refused (LF-60): `submit` accepts nothing (no
-`submissions` entry, no `steps/<id>/result.json`; the bytes stay at
+`weakenedAssurance`. Otherwise it is refused (LF-60), as is a role step whose worker
+wrote no result at all (a denied tool call or dispatch): `submit` accepts nothing (no
+`submissions` entry, no `steps/<id>/result.json`; any bytes stay at
 `steps/<id>/refused-result.json` as a diagnostic), retires the step (a worktree or
 checkout it ran in is quarantined), and records `steps.refused[<id>]` in the same
 state write. The controller then drops the owning phase's reference to the step
 (PLAN's critic step, the adopted-range review, an EXECUTE task review, a VERIFY
-repo review, the ITERATE judge) and asks one blocked question per refused step,
+repo review, the ITERATE judge; an EXECUTE implementer's task is reforked and a
+resolver's merge retried) and asks one blocked question per refused step,
 `fix-and-re-enter` or `stop`, with no default: `--answer-policy default` stops
 there. `fix-and-re-enter` issues a fresh step (a re-issued review reads a fresh
 checkout of the same candidate; a task whose branch moved meanwhile is blocked);
