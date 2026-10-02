@@ -569,7 +569,9 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
                     cause = json.loads(asked.read_text())["text"] if asked.is_file() else None
                     _finish_run(
                         store, paths, "escalated",
-                        reason=f"{refused}{store.state['phase']['current']} paused" + (f": {cause}" if cause else "") + f"; operator chose {answered['value']!r}",
+                        # A refusal's question text is the refusal itself; say it once.
+                        reason=f"{refused}{store.state['phase']['current']} paused"
+                               + (f": {cause}" if cause and not refused else "") + f"; operator chose {answered['value']!r}",
                     )
                     continue
                 # fix-and-re-enter / spec gap: phase.entry is already "remediation". EXECUTE
