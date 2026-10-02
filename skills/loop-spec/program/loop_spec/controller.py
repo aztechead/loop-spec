@@ -371,6 +371,8 @@ def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, hom
 
     repos: dict = {}
     adoption = None
+    deliver_config = contract.load_config(project_root).get("deliver") or {}
+    configured_branch = deliver_config.get("branch")
     for entry in workspace.repos:
         if pr_ref is not None and adoption is None:
             candidate = repo_module.adopt_pr(entry.path, pr_ref)
@@ -378,10 +380,16 @@ def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, hom
                 repos[entry.name], adoption = _adopt(entry.name, entry.path, candidate, home)
                 continue
         base_sha = repo_module.head_sha(entry.path)
-        default_branch = ((contract.load_config(project_root).get("deliver") or {}).get("base")
-                          or repo_module.default_branch(entry.path))
-        prefix = (contract.load_config(project_root).get("deliver") or {}).get("branchPrefix") or (
-            "fix/" if cycle_type == "debug" else "feat/")
+        default_branch = deliver_config.get("base") or repo_module.default_branch(entry.path)
+        if configured_branch is not None and not repo_module.is_branch_name(entry.path, configured_branch):
+            raise LoopSpecError(
+                f"deliver.branch is {configured_branch!r}; git check-ref-format --branch refuses it",
+                repair='set deliver.branch to a branch name such as "feature/AVP-1234", or remove it')
+        if configured_branch == default_branch:
+            raise LoopSpecError(
+                f"deliver.branch is {configured_branch!r}, the branch the PR targets in {entry.path}",
+                repair="set deliver.branch to a name other than the base branch, or remove it")
+        prefix = deliver_config.get("branchPrefix") or ("fix/" if cycle_type == "debug" else "feat/")
         try:
             # The run starts from origin's integration branch, not from whatever is checked out.
             tip = repo_module.fetch_base(entry.path, default_branch)
@@ -393,7 +401,7 @@ def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, hom
                                 f"({tip[:12]}); the run starts from origin")
             base_sha = tip
         repos[entry.name] = {
-            "path": str(entry.path), "baseSha": base_sha, "featureBranch": repo_module.free_branch(entry.path, f"{prefix}{slug}"),
+            "path": str(entry.path), "baseSha": base_sha, "featureBranch": repo_module.free_branch(entry.path, configured_branch or f"{prefix}{slug}"),
             "defaultBranch": default_branch,
             "lastKnownHead": base_sha,
         }

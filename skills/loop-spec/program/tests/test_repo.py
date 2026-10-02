@@ -447,6 +447,23 @@ class FreeBranchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(free_branch(self._clone_with_origin(tmp, ["feat/xy"]), "feat/x"), "feat/x")
 
+    def test_a_branch_nested_under_the_name_takes_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(free_branch(self._clone_with_origin(tmp, ["feat/x/y"]), "feat/x"), "feat/x-2")
+            repo = Path(tmp) / "repo"
+            _git(repo, "branch", "feat/x-2/y")
+            self.assertEqual(free_branch(repo, "feat/x"), "feat/x-3")
+
+    def test_a_parent_path_branch_is_refused_here_or_on_origin(self):
+        # No suffix frees feature/AVP-1234 while a `feature` branch exists.
+        for local in (True, False):
+            with self.subTest(local=local), tempfile.TemporaryDirectory() as tmp:
+                repo = self._clone_with_origin(tmp, [] if local else ["feature"])
+                if local:
+                    _git(repo, "branch", "feature")
+                with self.assertRaisesRegex(LoopSpecError, "'feature' exists"):
+                    free_branch(repo, "feature/AVP-1234")
+
 
 class FindIssueTests(unittest.TestCase):
     def _find(self, text, exclude=(), view=None, calls=None):

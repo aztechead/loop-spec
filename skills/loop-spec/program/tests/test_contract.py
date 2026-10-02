@@ -1,4 +1,6 @@
 """Unit tests for loop_spec.contract: resolution precedence and the process contract."""
+import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -288,3 +290,27 @@ class StartFactsEnvelopeTests(unittest.TestCase):
             self.assertEqual(validate(envelope, load_schema("context")), [])
             envelope.update(issue={"number": 1}, openWork={"repo": {"openPrs": [], "takenBranch": False}})
             self.assertEqual(validate(envelope, load_schema("context")), [])
+
+
+class DeliverBranchConfigTests(unittest.TestCase):
+    def _load(self, deliver):
+        from loop_spec.contract import load_config
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / ".loop-spec").mkdir()
+            (root / ".loop-spec" / "config.json").write_text(json.dumps({"deliver": deliver}))
+            return load_config(root)
+
+    def test_accepts_a_valid_name(self):
+        self.assertEqual(self._load({"branch": "feature/AVP-1234"})["deliver"]["branch"], "feature/AVP-1234")
+
+    def test_unset_is_accepted(self):
+        self.assertNotIn("branch", self._load({"base": "main"})["deliver"])
+
+    def test_refuses_an_invalid_value(self):
+        from loop_spec.errors import LoopSpecError
+        # `git check-ref-format` runs once per run in controller._resolve_repos, not here.
+        for bad in ("-x", "refs/heads/x", "HEAD", "task", "task/x", "", 7, ["a"]):
+            with self.subTest(bad=bad), self.assertRaises(LoopSpecError):
+                self._load({"branch": bad})
