@@ -165,6 +165,7 @@ environment variables take precedence over it.
 | `deliver.after` (config) | skills to run on the delivered PR after the result is reported, e.g. `["my-plugin:pr-follow-up"]` |
 | `deliver.readiness` (config) | `"checks"` (default) reads the PR's CI once after the push, never waiting: pending is a caveat, a failing check drafts the PR and blocks the delivery; `"none"` skips it |
 | `deliver.base` (config) | the integration branch PRs target; default origin's default branch. Runs start from its fetched tip, not the checked-out commit |
+| `deliver.branch` (config) | the feature branch name, for repos with a naming rule (e.g. `feature/AVP-1234`); wins over the prefix and the issue-derived name, still suffixed `-2`, `-3` when taken (contributed by George Muresan, #132) |
 | `deliver.branchPrefix` (config) | prefix for new feature branches, ending in `/`; default `fix/` for debug runs, else `feat/` |
 | `deliver.reviewers`, `deliver.labels` (config) | lists of reviewers and labels set on a new PR (it is always assigned to you); names the repository rejects are dropped with a caveat |
 | `deliver.acceptRemotePaths` (config) | path globs, e.g. `["CHANGELOG.md"]`: accept a bot's commits on the PR branch that touch only these paths and none of the verified change |

@@ -2096,6 +2096,20 @@ class StartFactsTests(unittest.TestCase):
         self.assertEqual(store.state["repos"]["repo"]["featureBranch"], "feat/7-add-a-lerp-helper")
         self.assertFalse(store.state["openWork"]["repo"]["takenBranch"])
 
+    def test_a_configured_branch_is_not_renamed_for_an_issue(self):
+        def gh(repo, *args):
+            if args[0] == "issue":
+                return 0, json.dumps({"number": 7, "title": "Add a lerp helper", "url": "u", "state": "OPEN", "body": ""}), ""
+            return 0, ("ada\n" if args[0] == "api" else "[]"), ""
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(Path(tmp), "https://github.com/example/repo.git")
+            (store.paths.project_root / ".loop-spec").mkdir(exist_ok=True)
+            (store.paths.project_root / ".loop-spec" / "config.json").write_text('{"deliver": {"branch": "feature/AVP-1"}}')
+            store.state["repos"]["repo"]["featureBranch"] = "feature/AVP-1"
+            with patch.object(repo_module, "run_gh", side_effect=gh):
+                controller._record_start_facts(store, "fix #7")
+        self.assertEqual(store.state["repos"]["repo"]["featureBranch"], "feature/AVP-1")
+
     def test_an_adopted_pr_keeps_the_issue_it_closes(self):
         def gh(repo, *args):
             if args[:2] == ("pr", "view"):
