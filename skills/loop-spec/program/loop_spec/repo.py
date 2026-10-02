@@ -405,9 +405,25 @@ def _is_cache(path: str) -> bool:
     return not _CACHE_DIRS.isdisjoint(path.rstrip("/").split("/")) or path.endswith((".pyc", ".pyo"))
 
 
-def is_clean(worktree: Path) -> bool:
+def uncommitted(worktree: Path) -> list[str]:
+    """`git status` paths other than an untracked cache (a test run's leftovers)."""
     lines = run_git(worktree, "status", "--porcelain").splitlines()
-    return all(line.startswith("?? ") and _is_cache(line[3:].strip('"')) for line in lines if line.strip())
+    return [line[3:].strip('"') for line in lines
+            if line.strip() and not (line.startswith("?? ") and _is_cache(line[3:].strip('"')))]
+
+
+def is_clean(worktree: Path) -> bool:
+    return not uncommitted(worktree)
+
+
+def restore_tracked_caches(worktree: Path) -> None:
+    """Put back tracked cache files a test run rewrote (a repo that commits `.pyc`), so they
+    never read as a step's uncommitted change."""
+    lines = run_git(worktree, "status", "--porcelain").splitlines()
+    paths = [line[3:].strip('"') for line in lines
+             if line.strip() and not line.startswith("?? ") and " -> " not in line and _is_cache(line[3:].strip('"'))]
+    if paths:
+        run_git(worktree, "checkout", "HEAD", "--", *paths)
 
 
 def files_added_by(repo: Path, base_sha: str, head_sha: str) -> list[str]:

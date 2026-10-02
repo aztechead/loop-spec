@@ -1426,8 +1426,11 @@ def _on_implement_submit(store, paths, task_id: str, task_state: dict, step_reco
                              + "; taking the commit path"},
                  phase="execute", attempt_id=step_record.get("attempt"))
 
-    if not repo_module.is_clean(worktree):
-        _retry_or_block(execute_state, task_id, task_state, "the worktree has uncommitted changes after the implement step")
+    repo_module.restore_tracked_caches(worktree)
+    dirty = repo_module.uncommitted(worktree)
+    if dirty:
+        _retry_or_block(execute_state, task_id, task_state,
+                        f"the worktree has uncommitted changes after the implement step: {', '.join(dirty[:10])}")
         return
 
     feature_head = execute_state["repos"][task_state["repo"]]["head"]

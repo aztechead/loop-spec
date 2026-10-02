@@ -28,6 +28,8 @@ from loop_spec.repo import (
     init_in_place,
     is_ancestor,
     is_clean,
+    restore_tracked_caches,
+    uncommitted,
     pr_checks,
     remote_host,
     remove_worktree,
@@ -151,6 +153,18 @@ class WorktreeTests(unittest.TestCase):
             self.assertTrue(is_clean(Path(tmp)))
             Path(tmp, "b.py").write_text("y = 2\n")
             self.assertFalse(is_clean(Path(tmp)))
+
+    def test_a_rewritten_tracked_cache_is_restored_and_other_changes_are_named(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _init_repo(tmp)
+            Path(tmp, "__pycache__").mkdir()
+            _commit(tmp, "__pycache__/a.cpython-313.pyc", "tracked bytecode")
+            _commit(tmp, "a.py", "add a")
+            Path(tmp, "__pycache__", "a.cpython-313.pyc").write_text("new")
+            Path(tmp, "a.py").write_text("x = 2\n")
+            restore_tracked_caches(Path(tmp))
+            self.assertEqual(Path(tmp, "__pycache__", "a.cpython-313.pyc").read_text(), "__pycache__/a.cpython-313.pyc\n")
+            self.assertEqual(uncommitted(Path(tmp)), ["a.py"])
 
     def test_add_clean_checkout_and_remove(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as workdir:
