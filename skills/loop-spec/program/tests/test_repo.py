@@ -361,6 +361,16 @@ class FetchPrHeadTests(unittest.TestCase):
                 fetch_pr_head(clone, "feat/pr", "main", pr_head, managed_root=tmp / "home")
             self.assertIn("checkout --detach", caught.exception.repair)
 
+    def test_a_local_pr_branch_behind_the_pr_head_is_moved_up(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            origin, pr_head = self._origin_with_pr(tmp)
+            clone = tmp / "clone"
+            _git(tmp, "clone", "-q", origin.as_uri(), str(clone))
+            _git(clone, "branch", "feat/pr", f"{pr_head}~1")
+            fetch_pr_head(clone, "feat/pr", "main", pr_head, managed_root=tmp / "home")
+            self.assertEqual(head_sha(clone, "refs/heads/feat/pr"), pr_head)
+
 
 class FindPrReferenceTests(unittest.TestCase):
     def test_hash_number(self):

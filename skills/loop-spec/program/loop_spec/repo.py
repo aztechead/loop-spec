@@ -544,8 +544,9 @@ def fetch_pr_head(repo: Path, head_ref: str, base_ref: str, head_sha: str, *, ma
         run_git(repo, "branch", head_ref, head_sha)
     elif local != head_sha:
         if is_ancestor(repo, local, head_sha):
-            raise LoopSpecError(f"local branch {head_ref} is at {local[:12]}, behind the PR head {head_sha[:12]}",
-                                 repair=f"git -C {repo} branch -f {head_ref} origin/{head_ref}")
+            # Behind only (a teammate pushed to the PR): nothing local is lost by moving it up.
+            run_git(repo, "branch", "-f", head_ref, head_sha)
+            return
         raise LoopSpecError(f"local branch {head_ref} ({local[:12]}) has commits the PR head {head_sha[:12]} lacks",
                              repair=f"push {head_ref} to the PR or rename it, then re-run")
 
