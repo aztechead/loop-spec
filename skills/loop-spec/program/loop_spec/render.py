@@ -68,7 +68,7 @@ def _criteria_table(spec: dict, verify_product: dict) -> list[str]:
     texts = {c["id"]: c["text"] for c in spec["criteria"]}
     lines = ["| Criterion | Text | Verdict |", "| --- | --- | --- |"]
     for verdict in verify_product["verdicts"]:
-        text = texts.get(verdict["criterion"], "").replace("|", "\\|").replace("\n", " ")
+        text = texts.get(verdict["criterion"], "").replace("|", "\\|").replace("\n", "<br>")
         lines.append(f"| {verdict['criterion']} | {text} | {verdict['verdict']} |")
     return lines
 
