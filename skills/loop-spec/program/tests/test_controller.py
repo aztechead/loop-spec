@@ -2849,6 +2849,9 @@ class CriticFactsAndDefaultTests(unittest.TestCase):
             self.assertEqual((closed["disposition"], closed["reason"]), ("rejected", answered["value"]))
             boundary = postconditions.Boundary(store, paths, phase="plan", product={}, exit="ready", project_root=Path(tmp))
             self.assertIsNone(boundary._p7())
+            # A later plan revision's critic reads the rejection.
+            self.assertEqual(store.state["criticRejections"],
+                             [{"id": "F-1", "location": "T-2.verify", "cause": "exits non-zero at base", "reason": answered["value"]}])
 
 
 class FindDeliveringRunProductsTests(unittest.TestCase):

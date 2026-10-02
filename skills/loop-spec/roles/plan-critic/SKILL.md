@@ -73,6 +73,10 @@ classes an endpoint uses, how a module is laid out) is checked by the code revie
 that reads the source of every task, so a verify command that cannot prove it is
 not a finding.
 
+A finding in `inputs.operatorRejected` was rejected by the operator, with the reason
+given. Do not raise it again unless the plan changed what it cites; when you still
+see it, report it as Minor and name the rejected finding.
+
 ## What counts as Critical
 
 - A criterion with no task covering it.

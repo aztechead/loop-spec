@@ -47,6 +47,8 @@ All notable changes documented here. Format follows Keep a Changelog.
   the issue states becomes a question naming both sides.
 - A `prepare` command that fails at base returns the plan to the planner with the
   reason instead of stopping the run.
+- A plan critic finding the operator rejected reaches every later critic pass, so a
+  re-plan does not ask the same question again.
 - The plan critic no longer flags a verify command with no test runner (a script or a
   grep) for running no tests; EXECUTE compares such a command by its output.
 

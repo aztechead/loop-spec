@@ -1234,6 +1234,8 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
     spec_product = store.state["products"]["spec"]["product"]
     inputs = {"specCriteria": spec_product["criteria"], "planTasks": plan_product["tasks"], "baseline": facts,
               "repos": repo_map(store.state["repos"])}
+    if store.state.get("criticRejections"):
+        inputs["operatorRejected"] = store.state["criticRejections"]
     inputs_digest = digest({"plan": plan_product, "spec": spec_product, "baseline": facts})
 
     role = load_role("plan-critic", project_root)
@@ -1366,6 +1368,10 @@ def _close_critic_rejections(store: StateStore, reason: str) -> None:
         if finding.get("severity") == "Critical" and finding.get("disposition") == "open":
             finding["disposition"] = "rejected"
             finding["reason"] = reason
+            # Kept past this plan revision: a later critic pass reads it, so a re-plan
+            # never asks the operator the same thing again.
+            store.state.setdefault("criticRejections", []).append(
+                {k: finding.get(k) for k in ("id", "location", "cause", "reason")})
 
 
 def _migrate_legacy_baseline(store: StateStore, paths: FeaturePaths) -> None:
