@@ -80,6 +80,8 @@ def _implementer_result(task_id, worktree, filename):
 class ExecuteStepIssuesWholeWaveTests(unittest.TestCase):
     """T-1 and T-2 independent (both wave 1), T-3 depends on both (wave 2)."""
 
+    FEATURE = "feature"
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(self._tmp.name)
@@ -87,12 +89,12 @@ class ExecuteStepIssuesWholeWaveTests(unittest.TestCase):
         self.repo.mkdir()
         _init_repo(self.repo)
         self.base_sha = _head(self.repo)
-        _git(self.repo, "branch", "feature", self.base_sha)
+        _git(self.repo, "branch", self.FEATURE, self.base_sha)
 
         self.paths = FeaturePaths(root=self.tmp / "run")
         self.store = StateStore.create(self.paths, {"id": "run-1", "slug": "add-widgets"}, "add widgets")
         self.store.state["repos"] = {
-            "repo": {"path": str(self.repo), "baseSha": self.base_sha, "featureBranch": "feature",
+            "repo": {"path": str(self.repo), "baseSha": self.base_sha, "featureBranch": self.FEATURE,
                      "defaultBranch": "main", "lastKnownHead": self.base_sha},
         }
         self.store.state["products"]["spec"] = {
@@ -230,6 +232,21 @@ class ExecuteStepIssuesWholeWaveTests(unittest.TestCase):
             self.assertEqual((task_state["status"], task_state["retries"]), ("probing", 1))
             self.assertNotIn("waveReview", task_state)
             self.assertIn(f"review-{tid}-rev-wave", task_state["reviewCheckout"])
+
+
+class ConfiguredSlashBranchWaveTests(ExecuteStepIssuesWholeWaveTests):
+    """deliver.branch can name `feature/AVP-1234`: the same wave, worktrees and merges."""
+
+    FEATURE = "feature/AVP-1234"
+
+    def test_task_branches_are_valid_refs_beside_a_slash_feature_branch(self):
+        action = step(self.store, self.paths, self.ctx)
+        self.assertEqual(len(action.requests), 2)
+        heads = subprocess.run(["git", "for-each-ref", "--format=%(refname:short)", "refs/heads"], cwd=self.repo,
+                               check=True, capture_output=True, text=True).stdout.split()
+        self.assertIn(self.FEATURE, heads)
+        for ref in heads:
+            self.assertEqual(subprocess.run(["git", "check-ref-format", "--branch", ref], cwd=self.repo).returncode, 0)
 
 
 class ConflictDuringIntegrationTests(unittest.TestCase):

@@ -9,6 +9,7 @@ module never decides a route; that is postconditions.py/controller.py (wave D).
 import functools
 import importlib
 import os
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -61,6 +62,21 @@ def role_meta(name: str) -> dict[str, str]:
     return meta
 
 
+def _check_feature_branch(path: Path, branch, project_root: Path) -> None:
+    repair = 'set deliver.branch to a branch name such as "feature/AVP-1234", or remove it'
+    if not (isinstance(branch, str) and branch):
+        raise LoopSpecError(f"{path}: deliver.branch is {branch!r}; it is a non-empty branch name", repair=repair)
+    if branch.startswith(("-", "refs/")) or branch == "HEAD":
+        raise LoopSpecError(f"{path}: deliver.branch is {branch!r}; it cannot start with '-' or 'refs/', or be HEAD",
+                            repair=repair)
+    # --branch also expands `@{-1}` to a prior branch's name; a name it rewrites is no name.
+    proc = subprocess.run(["git", "check-ref-format", "--branch", branch], cwd=project_root,
+                          capture_output=True, text=True)
+    if proc.returncode != 0 or proc.stdout.strip() != branch:
+        raise LoopSpecError(f"{path}: deliver.branch is {branch!r}; git check-ref-format --branch refuses it",
+                            repair=repair)
+
+
 def load_config(project_root: Path) -> dict:
     path = Path(project_root) / ".loop-spec" / "config.json"
     if not path.is_file():
@@ -75,6 +91,9 @@ def load_config(project_root: Path) -> dict:
     if accept is not None and not (isinstance(accept, list) and all(isinstance(g, str) and g for g in accept)):
         raise LoopSpecError(f"{path}: deliver.acceptRemotePaths is {accept!r}; it is a list of path globs",
                             repair='set it to a list such as ["CHANGELOG.md"], or remove it')
+    branch = (config.get("deliver") or {}).get("branch")
+    if branch is not None:
+        _check_feature_branch(path, branch, project_root)
     after = (config.get("deliver") or {}).get("after")
     if after is not None and not (isinstance(after, list) and all(isinstance(s, str) and s for s in after)):
         raise LoopSpecError(f"{path}: deliver.after is {after!r}; it is a list of skill names",

@@ -96,7 +96,7 @@ written by the planner and applied before every baseline capture and re-verifica
 | `style:auto` (6.x's default), `LOOP_SPEC_ANSWER_STYLE=auto` | 7.x asks for requirements approval by default, which 6.x's `auto` style skipped. Set `spec.approval: "policy"` in config or `LOOP_SPEC_SPEC_APPROVAL=policy` to skip it again; `style:step`/`interactive` behavior (asking) is 7.x's default |
 | `LOOP_SPEC_ITERATE_MAX_ITERATIONS` | `LOOP_SPEC_REWIND_BUDGET` (the shared T1 budget's limit; default 2) |
 | `LOOP_SPEC_REDO_MAX`, `LOOP_SPEC_RALPH_THRESHOLD` | `LOOP_SPEC_STEP_RETRIES` (per-phase retry limit; default 3) |
-| `LOOP_SPEC_CHECKS_*`, `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | removed; nothing in 7.x waits on CI. `deliver.readiness: "checks"` in config makes one `gh pr checks` call, `deliver.base` sets the PR base, and there is no configurable timeout in this release |
+| `LOOP_SPEC_CHECKS_*`, `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | removed; nothing in 7.x waits on CI. `deliver.readiness: "checks"` in config makes one `gh pr checks` call, `deliver.base` sets the PR base, `deliver.branch` (7.9.0) names the feature branch instead of `feat/<slug>`, and there is no configurable timeout in this release |
 | `LOOP_SPEC_WORKTREES`, `LOOP_SPEC_WORKTREE_DIR` | removed; worktrees live in the state home |
 | `LOOP_SPEC_CREDENTIAL_REFRESH_*` | removed; DELIVER checks credentials before its first push and exits `delivery blocked` if they fail |
 | `LOOP_SPEC_HARNESS`, `LOOP_SPEC_TEAMS_MODE`, `LOOP_SPEC_EXECUTE_WORKFLOW`, every `*_GUARD` | removed |

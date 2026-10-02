@@ -4,6 +4,18 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.9.0] - 2026-10-02
+
+### Added
+
+- `deliver.branch` in `.loop-spec/config.json` names the feature branch, for a host whose
+  repos enforce a branch-naming rule (`feature/AVP-1234`). Unset keeps `feat/<slug>`. The
+  `-2`/`-3` suffixing of a name this clone or `origin` already has still applies, every
+  repo of a workspace gets the same name, and a run that adopts a PR keeps the PR's own
+  branch. `contract.load_config` refuses a value that is not a non-empty string, that
+  `git check-ref-format --branch` rejects, that starts with `-` or `refs/`, or that is
+  `HEAD`; a run refuses a name equal to its base branch before creating any branch.
+
 ## [7.8.3] - 2026-10-01
 
 ### Fixed

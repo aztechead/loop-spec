@@ -367,6 +367,8 @@ def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, hom
 
     repos: dict = {}
     adoption = None
+    deliver_config = contract.load_config(project_root).get("deliver") or {}
+    configured_branch = deliver_config.get("branch")
     for entry in workspace.repos:
         if pr_ref is not None and adoption is None:
             candidate = repo_module.adopt_pr(entry.path, pr_ref)
@@ -374,10 +376,15 @@ def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, hom
                 repos[entry.name], adoption = _adopt(entry.name, entry.path, candidate, home)
                 continue
         base_sha = repo_module.head_sha(entry.path)
+        default_branch = deliver_config.get("base") or repo_module.default_branch(entry.path)
+        if configured_branch == default_branch:
+            raise LoopSpecError(
+                f"deliver.branch is {configured_branch!r}, the branch the PR targets in {entry.path}",
+                repair="set deliver.branch to a name other than the base branch, or remove it")
         repos[entry.name] = {
-            "path": str(entry.path), "baseSha": base_sha, "featureBranch": repo_module.free_branch(entry.path, f"feat/{slug}"),
-            "defaultBranch": (contract.load_config(project_root).get("deliver") or {}).get("base")
-                             or repo_module.default_branch(entry.path),
+            "path": str(entry.path), "baseSha": base_sha,
+            "featureBranch": repo_module.free_branch(entry.path, configured_branch or f"feat/{slug}"),
+            "defaultBranch": default_branch,
             "lastKnownHead": base_sha,
         }
     store.state["repos"] = repos

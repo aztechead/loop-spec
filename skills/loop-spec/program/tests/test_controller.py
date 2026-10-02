@@ -207,9 +207,20 @@ class _QuietStdout(unittest.TestCase):
 
 class FullExternalCycleTests(_QuietStdout):
     def test_full_external_cycle_converges_and_delivers(self):
+        self._full_cycle(None, "feat/greeting")
+
+    def test_configured_feature_branch_is_the_prs_head(self):
+        self._full_cycle("feature/AVP-1234", "feature/AVP-1234")
+
+    def _full_cycle(self, configured_branch, expected_branch):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             repo_dir = _init_repo(tmp)
+            if configured_branch is not None:
+                (repo_dir / ".loop-spec").mkdir()
+                (repo_dir / ".loop-spec" / "config.json").write_text(json.dumps({"deliver": {"branch": configured_branch}}))
+                _git(repo_dir, "add", ".loop-spec")
+                _git(repo_dir, "commit", "-q", "-m", "config")
             origin = tmp / "origin.git"
             _git(tmp, "init", "-q", "--bare", str(origin))
             _git(repo_dir, "remote", "add", "origin", str(origin))
@@ -225,6 +236,7 @@ class FullExternalCycleTests(_QuietStdout):
                 store = _open(paths)
                 base_sha = store.state["repos"][repo_name]["baseSha"]
                 feature_branch = store.state["repos"][repo_name]["featureBranch"]
+                self.assertEqual(feature_branch, expected_branch)
                 self.assertEqual(next_.kind, "step")
 
                 # --- PLAN ---
@@ -361,10 +373,85 @@ class FullExternalCycleTests(_QuietStdout):
             self.assertEqual(result["status"], "completed")
             self.assertTrue(result["converged"])
             self.assertTrue(result["workDelivered"])
+            self.assertEqual(_open(paths).state["repos"][repo_name]["featureBranch"], expected_branch)
 
             printed = markers.getvalue()
             for marker in ("LOOP_SPEC_PHASE_START", "LOOP_SPEC_PHASE_END", "LOOP_SPEC_QUESTION", "LOOP_SPEC_RESULT"):
                 self.assertIn(marker, printed)
+
+
+class ConfiguredFeatureBranchTests(_QuietStdout):
+    """deliver.branch names the feature branch (_resolve_repos); unset keeps feat/<slug>."""
+
+    def _resolve(self, repo_dir: Path, tmp: Path, pr_ref=None, slug="widgets") -> dict:
+        paths = FeaturePaths(root=tmp / "run")
+        store = StateStore.create(paths, {"id": "run-1", "slug": slug}, "add widgets")
+        controller._resolve_repos(store, repo_dir, slug, pr_ref, tmp / "home")
+        return store.state
+
+    def _configure(self, repo_dir: Path, deliver: dict) -> None:
+        (repo_dir / ".loop-spec").mkdir(exist_ok=True)
+        (repo_dir / ".loop-spec" / "config.json").write_text(json.dumps({"deliver": deliver}))
+
+    def _heads(self, repo_dir: Path) -> list[str]:
+        return subprocess.run(["git", "for-each-ref", "--format=%(refname:short)", "refs/heads"], cwd=repo_dir,
+                              check=True, capture_output=True, text=True).stdout.split()
+
+    def test_unset_is_feat_slug(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            state = self._resolve(repo_dir, tmp)
+            self.assertEqual(next(iter(state["repos"].values()))["featureBranch"], "feat/widgets")
+
+    def test_configured_name_is_stored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            self._configure(repo_dir, {"branch": "feature/AVP-1234"})
+            state = self._resolve(repo_dir, tmp)
+            self.assertEqual(next(iter(state["repos"].values()))["featureBranch"], "feature/AVP-1234")
+
+    def test_name_taken_on_origin_gets_a_suffix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            _git(repo_dir, "branch", "feature/AVP-1234")
+            _add_origin(tmp, repo_dir, "main", "feature/AVP-1234")
+            _git(repo_dir, "branch", "-D", "feature/AVP-1234")  # only origin holds it
+            self._configure(repo_dir, {"branch": "feature/AVP-1234"})
+            state = self._resolve(repo_dir, tmp)
+            self.assertEqual(next(iter(state["repos"].values()))["featureBranch"], "feature/AVP-1234-2")
+
+    def test_base_branch_name_is_refused_before_any_branch_exists(self):
+        for deliver in ({"branch": "main"}, {"branch": "release", "base": "release"}):
+            with self.subTest(deliver=deliver), tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                repo_dir = _init_repo(tmp)
+                self._configure(repo_dir, deliver)
+                with self.assertRaises(LoopSpecError):
+                    self._resolve(repo_dir, tmp)
+                self.assertEqual(self._heads(repo_dir), ["main"])
+
+    def test_adopting_a_pr_ignores_the_setting(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            _git(repo_dir, "checkout", "-q", "-b", "pr-branch")
+            (repo_dir / "greet.py").write_text("print('hi')\n", encoding="utf-8")
+            _git(repo_dir, "add", "greet.py")
+            _git(repo_dir, "commit", "-q", "-m", "add greeting")
+            head_sha = repo_module.head_sha(repo_dir)
+            _git(repo_dir, "checkout", "-q", "main")
+            _add_origin(tmp, repo_dir, "main", "pr-branch")
+            self._configure(repo_dir, {"branch": "feature/AVP-1234"})
+            adoption = repo_module.PrAdoption(
+                adopt=True, number=42, url="https://github.com/example/repo/pull/42", branch="pr-branch",
+                base_branch="main", head_sha=head_sha, reason="named open PR #42")
+            with patch.object(repo_module, "adopt_pr", return_value=adoption):
+                state = self._resolve(repo_dir, tmp, pr_ref="42")
+            self.assertEqual(next(iter(state["repos"].values()))["featureBranch"], "pr-branch")
+            self.assertNotIn("feature/AVP-1234", self._heads(repo_dir))
 
 
 class EdgeCaseTests(_QuietStdout):
