@@ -409,7 +409,8 @@ def shell_syntax(command: str) -> str | None:
                     # sh drops this backslash, shlex keeps it: `sh -c "awk '{print \$1}'"`
                     # gave awk a literal `\$1` here and a different exit than the shell.
                     return (f"escapes {command[i + 1]!r} inside double quotes (a shell drops the backslash, "
-                            "this program keeps it); put that text in single quotes instead")
+                            "this program keeps it); single-quote the whole script instead, `sh -c '... | awk \"{print \\$1}\"'`, "
+                            "where both pass the backslash to sh, or do the check in `python3 -c`")
                 i += 2
                 continue
             if c == '"':
