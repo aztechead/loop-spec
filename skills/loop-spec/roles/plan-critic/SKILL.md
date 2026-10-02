@@ -87,7 +87,9 @@ see it, report it as Minor and name the rejected finding.
   (`runner` not null) yet ran no tests (`testsRan` 0), or is `incomplete`, such as a
   filter that selects only a test the task adds: EXECUTE cannot compare it, so the
   run returns to PLAN. A command with no runner (`runner` null, a script or a grep)
-  is compared by its output instead, so its zero count is not a finding.
+  is compared by its output lines instead: its zero count is not a finding when it
+  exits 0 at base, but when it exits non-zero at base any output it prints once it
+  passes reads as a new failure, so that task needs a test-runner verify.
 - A destructive or irreversible change with no boundary or rollback named.
 - A task graph that cannot execute as written (a cycle, an unresolvable
   dependency, two tasks that silently collide on the same file).

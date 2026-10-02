@@ -50,7 +50,8 @@ All notable changes documented here. Format follows Keep a Changelog.
 - A plan critic finding the operator rejected reaches every later critic pass, so a
   re-plan does not ask the same question again.
 - The plan critic no longer flags a verify command with no test runner (a script or a
-  grep) for running no tests; EXECUTE compares such a command by its output.
+  grep) that passes at base for running no tests; EXECUTE compares such a command by
+  its output. One that fails at base still needs a test-runner verify.
 
 ### Changed
 
