@@ -1194,7 +1194,11 @@ def _finish_base_move(store, paths, ctx, name: str, move: dict, new_head: str) -
     # base, so VERIFY and ITERATE judge newBase..head: the change as it will merge.
     store.state["execute"]["repos"][name]["head"] = new_head
     move["status"] = "done"
-    if move.get("kind") != "branch":  # a teammate's commits on the PR branch leave the run's base where it was
+    if move.get("kind") == "branch":
+        # A teammate's commits on the PR branch leave the run's base where it was; E4
+        # counts them as no task's (postconditions.adopted_commits).
+        store.state["repos"][name].setdefault("mergedRemoteHeads", []).append(move["onto"])
+    else:
         store.move_base(name, move["onto"])
     emit(paths, "base_merged", {"summary": f"merged {move['onto'][:12]} into {name}'s feature branch at {new_head[:12]}",
                                 "repo": name, "onto": move["onto"], "head": new_head},

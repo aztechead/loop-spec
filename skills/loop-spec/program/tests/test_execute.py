@@ -585,6 +585,8 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertIn(f"Merge origin/{self.store.state['repos']['repo']['featureBranch']} ({remote_head[:12]})",
                       repo_module.run_git(worktree, "log", "-1", "--format=%s", merge))
         self.assertEqual(self.store.state["repos"]["repo"]["baseSha"], self.base_sha)
+        # The teammate's commit is in base..head but no task's; E4 still holds.
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product)
 
     def test_an_unresolvable_base_move_pauses_with_the_merge_aborted(self):
         action, old_head, tip = self._move_base()

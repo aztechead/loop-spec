@@ -220,13 +220,18 @@ def adoptable_task_ids(state: dict, plan_tasks: list[dict]) -> set[str]:
 
 
 def adopted_commits(store, repo_name: str, repo_path: Path) -> set[str]:
-    """The adopted PR's commits (adoption.baseSha..headSha) when this run adopted one
-    in `repo_name`; empty otherwise. E4 and EXECUTE's unmapped-commits pause both
-    treat them as already accounted for (LF-44)."""
+    """Commits on the feature branch no task made: the adopted PR's own
+    (adoption.baseSha..headSha, LF-44) and those a branch move merged in from origin's
+    PR branch (a teammate's push). E4 and EXECUTE's unmapped-commits pause both treat
+    them as already accounted for."""
+    commits: set[str] = set()
     adoption = store.state.get("adoption")
-    if not adoption or adoption.get("repo") != repo_name:
-        return set()
-    return set(repo_module.commits_between(repo_path, adoption["baseSha"], adoption["headSha"]))
+    if adoption and adoption.get("repo") == repo_name:
+        commits.update(repo_module.commits_between(repo_path, adoption["baseSha"], adoption["headSha"]))
+    repo_info = store.state["repos"].get(repo_name) or {}
+    for remote_head in repo_info.get("mergedRemoteHeads") or []:
+        commits.update(repo_module.commits_between(repo_path, repo_info["baseSha"], remote_head))
+    return commits
 
 
 def ran_default(store, phase: str) -> bool:
