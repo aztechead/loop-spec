@@ -670,7 +670,8 @@ class PostconditionsTests(unittest.TestCase):
         self.store.state["ledger"]["reviewedRanges"] = [{"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.sha_a, "full": False}]
         finding = {"id": "f-1", "location": "a.txt:1", "cause": "c", "severity": "Minor", "disposition": "open", "reason": None, "supersedes": None}
         product = dict(self.verify_product, findings=[finding])
-        self.assertIsNotNone(self._boundary("verify", product, "passed")._v8())
+        # The rejection names the fix the reviewer can apply.
+        self.assertIn('{"kind": "range", "id": "range-1"}', self._boundary("verify", product, "passed")._v8())
         finding["supersedes"] = {"kind": "range", "id": "range-1"}
         self.assertIsNone(self._boundary("verify", product, "passed")._v8())
 

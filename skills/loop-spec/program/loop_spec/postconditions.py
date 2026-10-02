@@ -312,12 +312,16 @@ def _check_supersedes(store, findings: list[dict], repos: dict[str, Path]) -> st
     # against a different repo's git history is meaningless, so files are tracked
     # per repo, never pooled across the workspace.
     touched_by_repo: dict[str, set[str]] = {}
+    ranges_by_path: dict[tuple[str, str], list[str]] = {}  # (repo, path) -> range ids, for the message
     for reviewed_range in reviewed_ranges:
         repo_path = repos.get(reviewed_range.get("repo"))
         if repo_path is None:
             continue
         out = repo_module.run_git(repo_path, "diff", "--name-only", f"{reviewed_range['from']}..{reviewed_range['to']}")
-        touched_by_repo.setdefault(reviewed_range["repo"], set()).update(line for line in out.splitlines() if line)
+        files = [line for line in out.splitlines() if line]
+        touched_by_repo.setdefault(reviewed_range["repo"], set()).update(files)
+        for path in files:
+            ranges_by_path.setdefault((reviewed_range["repo"], path), []).append(reviewed_range.get("id"))
     known_ids = {f["id"] for f in ledger["findings"]} | {r["id"] for r in reviewed_ranges if "id" in r}
     # ponytail: a finding with no repo tag in a multi-repo product can't be matched
     # to one repo's touched files; a single-repo product needs no tag at all.
@@ -336,7 +340,15 @@ def _check_supersedes(store, findings: list[dict], repos: dict[str, Path]) -> st
             continue
         supersedes = finding.get("supersedes")
         if not supersedes or supersedes.get("id") not in known_ids:
-            return f"finding {finding.get('id')} touches previously reviewed code with no valid supersedes"
+            # Name the fix: the reviewer never sees the program's finding ids, only its own.
+            ranges = [r for r in ranges_by_path.get((repo_name, path), []) if r]
+            earlier = [f["id"] for f in ledger["findings"]
+                       if f.get("repo") in (repo_name, None) and f.get("location", "").split(":", 1)[0] == path]
+            return (f"finding at {finding.get('location')} touches {path}, which an earlier pass reviewed "
+                    f"(ranges {', '.join(ranges) or 'unknown'}); set its supersedes to "
+                    f'{{"kind": "range", "id": "{ranges[-1] if ranges else "<range id>"}"}}'
+                    + (f', or {{"kind": "finding", "id": ...}} naming the earlier finding it repeats ({", ".join(earlier)})'
+                       if earlier else ""))
     return None
 
 

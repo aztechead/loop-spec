@@ -290,7 +290,7 @@ class VerifyTests(unittest.TestCase):
         finding = {"id": "F-9", "repo": "repo", "location": "feature.py:1", "cause": "c", "severity": "Minor",
                    "disposition": "open", "reason": None, "supersedes": None}
         self.assertEqual(product["reviewedRanges"][0]["from"], new_base)
-        self.assertIn("no valid supersedes", postconditions._check_supersedes(self.store, [finding], {"repo": self.repo}))
+        self.assertIn("set its supersedes to", postconditions._check_supersedes(self.store, [finding], {"repo": self.repo}))
 
     def test_a_base_move_that_touches_a_feature_file_is_reviewed_in_full(self):
         self._base_move(touch_feature=True)
