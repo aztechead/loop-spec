@@ -1906,6 +1906,18 @@ class StartFactsTests(unittest.TestCase):
         self.assertEqual(store.state["openWork"]["repo"]["openPrs"][0]["number"], 3)
         self.assertTrue(store.state["openWork"]["repo"]["takenBranch"])
 
+    def test_an_adopted_pr_keeps_the_issue_it_closes(self):
+        def gh(repo, *args):
+            if args[:2] == ("pr", "view"):
+                return 0, json.dumps({"closingIssuesReferences": [{"number": 7, "url": "u7"}]}), ""
+            return 0, "ada\n", ""
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(Path(tmp), "https://github.com/example/repo.git")
+            store.state["adoption"] = {"repo": "repo", "number": 3}
+            with patch.object(repo_module, "run_gh", side_effect=gh):
+                controller._record_start_facts(store, "revise PR #3", intake=False)
+        self.assertEqual((store.state["issue"]["repo"], store.state["issue"]["number"]), ("repo", 7))
+
     def test_a_local_origin_makes_no_gh_call(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = self._store(Path(tmp), None)

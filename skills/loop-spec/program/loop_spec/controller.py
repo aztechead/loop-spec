@@ -414,12 +414,27 @@ def _record_start_facts(store: StateStore, request_text: str, *, intake: bool = 
     code, out, _ = repo_module.run_gh(next(iter(hosted.values())), "api", "user", "--jq", ".login")
     if code == 0 and out.strip():
         store.state["operator"] = {"login": out.strip()}
+    adoption = store.state.get("adoption")
+    if adoption and adoption["repo"] in hosted:
+        # An adopted PR keeps the issue it already closes: a revise re-render of the body
+        # dropped `Closes #n` when only the request text was searched (live run, 7.9.0).
+        code, out, _ = repo_module.run_gh(hosted[adoption["repo"]], "pr", "view", str(adoption["number"]),
+                                          "--json", "closingIssuesReferences")
+        try:
+            linked = (json.loads(out).get("closingIssuesReferences") or []) if code == 0 else []
+        except ValueError:
+            linked = []
+        if linked:
+            store.state["issue"] = {"repo": adoption["repo"], "number": linked[0]["number"],
+                                    "title": linked[0].get("title"), "url": linked[0].get("url"), "body": ""}
     if not intake:
         return
     exclude = {r["number"] for r in (store.state.get("routeFacts") or {}).get("prRefs", [])}
-    if store.state.get("adoption"):
-        exclude.add(store.state["adoption"]["number"])
+    if adoption:
+        exclude.add(adoption["number"])
     for name, path in hosted.items():
+        if store.state.get("issue"):
+            break
         issue = repo_module.find_issue(path, request_text, exclude)
         if issue is not None:
             store.state["issue"] = {"repo": name, "number": issue["number"], "title": issue.get("title"),

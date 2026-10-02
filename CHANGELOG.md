@@ -46,6 +46,8 @@ finding in [teammate-alignment-audit.md](docs/loop-spec/teammate-alignment-audit
 - A test run's caches (`__pycache__`, `.pytest_cache`, and the like) no longer make a
   worktree dirty in a repository that does not ignore them. A live run on such a
   repository rejected every implement step as "uncommitted changes".
+- A run that adopts a PR keeps the issue that PR already closes, so a revise no longer
+  drops `Closes #n` when it refreshes the body.
 
 ## [7.8.3] - 2026-10-01
 
