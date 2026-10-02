@@ -2109,6 +2109,7 @@ class StartFactsTests(unittest.TestCase):
             with patch.object(repo_module, "run_gh", side_effect=gh):
                 controller._record_start_facts(store, "fix #7")
         self.assertEqual(store.state["repos"]["repo"]["featureBranch"], "feature/AVP-1")
+        self.assertFalse(store.state["openWork"]["repo"]["takenBranch"])
 
     def test_an_adopted_pr_keeps_the_issue_it_closes(self):
         def gh(repo, *args):

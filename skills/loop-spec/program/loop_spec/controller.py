@@ -450,10 +450,11 @@ def _record_start_facts(store: StateStore, request_text: str, *, intake: bool = 
             break
     slug = store.state["run"]["slug"]
     adopted = (store.state.get("adoption") or {}).get("repo")
-    wanted = {name: slug for name in hosted}
-    issue = store.state.get("issue") or {}
     # A configured deliver.branch is the host's naming rule; an issue never renames it (#132).
     configured = (contract.load_config(store.paths.project_root).get("deliver") or {}).get("branch")
+    # The name each repo asked for, so `takenBranch` is true only when free_branch suffixed it.
+    wanted = {name: (configured or slug).rsplit("/", 1)[-1] for name in hosted}
+    issue = store.state.get("issue") or {}
     if issue.get("repo") in hosted and issue["repo"] != adopted and issue.get("number") and not configured:
         # A branch a teammate would name: `<prefix>7-add-a-lerp-helper`. EXECUTE creates the
         # feature branch and worktree later, so nothing on disk exists to move yet.
