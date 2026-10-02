@@ -275,6 +275,9 @@ def _reviewer_request(store, paths, ctx, verify_state: dict, repo_name: str) -> 
                                      if f["disposition"] == "open" and f.get("repo") == repo_name]},
         "rangeProbes": verify_state["rangeProbes"][repo_name], "full": range_["full"],
     }
+    spec = (store.state["products"].get("spec") or {}).get("product")
+    if spec:
+        inputs["spec"] = spec  # what the operator approved: a change it requires is not a finding
     reason = verify_state.get("reviewerReasons", {}).get(repo_name)
     if reason:
         inputs["retryReason"] = reason  # a re-issued step says why the last was rejected

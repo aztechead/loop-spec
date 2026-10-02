@@ -17,8 +17,11 @@ Read-only over the codebase; Write is for your one result file only.
 
 1. Read the full diff for the named range (`git diff <from>..<to>`), then read the
    changed files with enough surrounding context to judge them.
-2. Check the diff against the task's boundaries: a behavior the SPEC forbade is
-   always a Critical finding.
+2. Check the diff against the approved spec (`inputs.spec`, when given): a
+   behavior its boundaries forbid is always a Critical finding. A change its
+   decisions or criteria require is not a finding, even where a code comment or
+   docstring objects; the operator approved it. Cite the decision or criterion id
+   instead, and never suggest a change that would break a criterion.
 3. Scan for a shortcut that fakes quality: a suppressed diagnostic, a weakened or
    deleted assertion, a stub standing in for required logic — each is Critical.
 4. For every entry in the probe findings' `securitySignals` (`inputs.probes` in

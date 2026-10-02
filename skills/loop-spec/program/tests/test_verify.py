@@ -359,6 +359,15 @@ class VerifyTests(unittest.TestCase):
         self.assertNotEqual(product["findings"][0]["id"], "finding-known")
         self.assertTrue(product["findings"][0]["id"].startswith("finding-"))
 
+    def test_the_reviewer_reads_the_approved_spec(self):
+        action = step(self.store, self.paths, self.ctx)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "v-step"},
+                  _verifier_result([_verdict("AC-1", "pass")]))
+        reviewer = step(self.store, self.paths, self.ctx).request
+        self.assertEqual(reviewer["role"], "code-reviewer")
+        self.assertIn("### spec", reviewer["prompt"])
+        self.assertIn('"it works"', reviewer["prompt"])
+
     def test_legacy_verify_state_reinitializes_and_emits_module_state_reset(self):
         # A run whose state.verify predates the per-repo shape (LF-28) has no
         # "reviewers" key at all; a hand-built dict in that old shape stands in

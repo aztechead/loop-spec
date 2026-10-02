@@ -498,6 +498,9 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
         "probes": task_state["probes"],
         "ledger": store.state.get("ledger", {}),
     }
+    spec = (store.state["products"].get("spec") or {}).get("product")
+    if spec:
+        inputs["spec"] = spec  # what the operator approved: a change it requires is not a finding
     if task_state.get("closeOut"):
         # E6 finds this exact input in the attested prompt: the review is for this obligation.
         inputs["closeOut"] = close_out_view(close_outs(store)[plan_task["id"]])
