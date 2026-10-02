@@ -27,6 +27,7 @@ every line the program prints.
 
 - [docs/loop-spec/architecture.md](docs/loop-spec/architecture.md): the core, the plug-in kinds (phase implementation, role, runner, entry), their registries, and who owns each part of `state.json`.
 - [skills/loop-spec/program/loop_spec/](skills/loop-spec/program/loop_spec/): the implementation, stdlib-only Python >= 3.11. `controller.py` is the only place a phase transitions; `contract.py` holds the registries and invokes one implementation; `postconditions.py` checks a claimed exit; `steps.py` and `questions.py` are the worker and human handoffs; `schemas/` holds every product, envelope, and step shape.
+- [docs/loop-spec/teammate-alignment-audit.md](docs/loop-spec/teammate-alignment-audit.md): how a run behaves on a shared repository: the issue it links (`Closes #n`), open work it checks, the marked PR body that keeps human edits, a filled PR template, threaded review replies and review re-requests, and its CI read.
 - [skills/loop-spec/references/runner.md](skills/loop-spec/references/runner.md): the runner protocol a lead follows for each `LOOP_SPEC_NEXT` line, including how to dispatch a role step and when a turn may end.
 - [skills/loop-spec/references/contract.md](skills/loop-spec/references/contract.md): the process contract (files, fields, exit codes, config, environment) for an implementer or a harness author.
 - [agents/](agents/): the `loop-spec:worker-<effort>` agents a role step with an effort is dispatched as.
@@ -79,7 +80,7 @@ Config keys (`.loop-spec/config.json`):
 - `phases.<phase>`: `"default"` or `"external"`.
 - `roles.<role>`: the skill bound in the role's place, as a string, or `{"binding", "model", "effort", "with"}`. `with` is a list of skills that follow the method. `effort` is one of `low`, `medium`, `high`, `xhigh`, `max`. An explicit `null` inherits the dispatcher's own model or effort.
 - `spec.approval`: `"ask"` (the default) or `"policy"` (approve the requirements without asking).
-- `deliver.base`: the PR's target branch. `deliver.readiness`: `"checks"` waits on required PR checks. `deliver.acceptRemotePaths`: path globs where a bot's commits are accepted. `deliver.escalatedPartialDraft`: `true` makes an escalated ITERATE open a draft PR. `deliver.after`: skills the lead invokes on the delivered PRs after the result.
+- `deliver.base`: the PR's target branch (default: origin's default branch); a run starts from its fetched tip, not the checked-out commit. `deliver.readiness`: `"checks"` (the default) reads each PR's CI once after the push, waiting up to 26 s for checks to register; pending is a caveat, a failing check drafts the PR; `"none"` skips it. `deliver.branchPrefix`: prefix for new branches (default `fix/` for debug, else `feat/`; a branch for an issue is named `<prefix><n>-<issue title>`). `deliver.reviewers`, `deliver.labels`: set on a new PR, which is always assigned to the operator. `deliver.acceptRemotePaths`: path globs where a bot's commits are accepted. `deliver.escalatedPartialDraft`: `true` makes an escalated ITERATE open a draft PR. `deliver.after`: skills the lead invokes on the delivered PRs after the result.
 - `evidence.review.accept`, `evidence.judgment.accept`: `"unattested"` accepts an unattested review, or plan-critic and iterate-judge result, and records it in `weakenedAssurance`.
 
 Environment:
