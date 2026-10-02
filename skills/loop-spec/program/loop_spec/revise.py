@@ -56,40 +56,34 @@ def _failing_checks(repo_path: Path, number: int) -> list[dict]:
         return []
 
 
+def _rest_pages(repo_path: Path, number: int, endpoint: str) -> list[dict]:
+    # The REST default page is 30; --slurp wraps every page's array in one array. REST, not
+    # `gh pr view`: its `user.type` names a bot whose GraphQL login has no `[bot]` suffix.
+    code, out, err = repo_module.run_gh(repo_path, "api", "--paginate", "--slurp", f"repos/{{owner}}/{{repo}}/{endpoint}")
+    if code != 0:
+        raise LoopSpecError(f"gh api {endpoint} failed for PR #{number}: {err.strip()}",
+                            repair="check gh auth and that the PR number exists")
+    return [item for page in json.loads(out) for item in page]
+
+
 def gaps_from_pr(repo_path: Path, number: int) -> list[dict]:
-    code, out, err = repo_module.run_gh(repo_path, "pr", "view", str(number), "--json", "comments,reviews")
-    if code != 0:
-        raise LoopSpecError(f"gh pr view failed for PR #{number}: {err.strip()}",
-                             repair="check gh auth and that the PR number exists")
-    data = json.loads(out)
-
     gaps = []
-    for kind, items in (("comment", data.get("comments", [])), ("review", data.get("reviews", []))):
-        for comment in items:
-            body = (comment.get("body") or "").strip()
-            author = comment.get("author") or {}
-            login = author.get("login", "unknown")
-            if _skip(body) or _is_bot(login, author.get("is_bot")):
-                continue
-            gaps.append({"id": f"G-{len(gaps) + 1}", "author": login, "kind": kind,
-                         "body": body, "path": None, "line": None, "url": comment.get("url"),
-                         "createdAt": comment.get("createdAt") or comment.get("submittedAt")})
-
-    # The REST default page is 30 comments; --slurp wraps every page's array in one array.
-    code, out, err = repo_module.run_gh(repo_path, "api", "--paginate", "--slurp",
-                                        f"repos/{{owner}}/{{repo}}/pulls/{number}/comments")
-    if code != 0:
-        raise LoopSpecError(f"gh api pull comments failed for PR #{number}: {err.strip()}", repair="check gh auth")
     closed = _closed_inline_ids(repo_path, number)
-    for inline in (comment for page in json.loads(out) for comment in page):
-        body = (inline.get("body") or "").strip()
-        user = inline.get("user") or {}
-        login = user.get("login", "unknown")
-        if _skip(body) or _is_bot(login, user.get("type") == "Bot") or inline.get("id") in closed:
-            continue
-        gaps.append({"id": f"G-{len(gaps) + 1}", "author": login, "kind": "inline", "commentId": inline.get("id"),
-                     "body": body, "path": inline.get("path"), "line": inline.get("line"), "url": inline.get("html_url"),
-                     "createdAt": inline.get("created_at")})
+    for kind, endpoint in (("comment", f"issues/{number}/comments"), ("review", f"pulls/{number}/reviews"),
+                           ("inline", f"pulls/{number}/comments")):
+        for item in _rest_pages(repo_path, number, endpoint):
+            body = (item.get("body") or "").strip()
+            user = item.get("user") or {}
+            login = user.get("login", "unknown")
+            if _skip(body) or _is_bot(login, user.get("type") == "Bot") or (kind == "inline" and item.get("id") in closed):
+                continue
+            gap = {"id": f"G-{len(gaps) + 1}", "author": login, "kind": kind, "body": body,
+                   "path": item.get("path") if kind == "inline" else None,
+                   "line": item.get("line") if kind == "inline" else None, "url": item.get("html_url"),
+                   "createdAt": item.get("created_at") or item.get("submitted_at")}
+            if kind == "inline":
+                gap["commentId"] = item.get("id")
+            gaps.append(gap)
     for check in _failing_checks(repo_path, number):
         gaps.append({"id": f"G-{len(gaps) + 1}", "author": "ci", "kind": "check",
                      "body": f"CI check {check.get('name')} failed: {check.get('link')}", "path": None, "line": None,
