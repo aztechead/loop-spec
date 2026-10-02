@@ -52,6 +52,10 @@ All notable changes documented here. Format follows Keep a Changelog.
   the cause.
 - The plan critic's question takes `replan`, which hands the open Critical findings to
   the planner for one more pass, besides a rejection reason or `spec gap`.
+- The progress rule's question and no-progress reason show the cause as the phase wrote
+  it, not the lower-cased comparison key.
+- A V8 rejection tells the code reviewer which earlier range or finding to name in
+  `supersedes`, so its retry can comply.
 - A plan critic finding the operator rejected reaches every later critic pass, so a
   re-plan does not ask the same question again.
 - The plan critic no longer flags a verify command with no test runner (a script or a
