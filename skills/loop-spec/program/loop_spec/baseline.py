@@ -382,8 +382,7 @@ def shell_syntax(command: str) -> str | None:
     backticks. A format validator, not a sandbox or a shell emulator: `sh -c '...'` is
     plain argv and passes.
     """
-    # ponytail: brace expansion ({a,b}) and "\$" inside double quotes (the shell passes
-    # `$`, shlex passes `\$`) are not flagged; add them if a live command needs it.
+    # ponytail: brace expansion ({a,b}) is not flagged; add it if a live command needs it.
     try:
         tokens = shlex.split(command)
     except ValueError as exc:
@@ -406,6 +405,11 @@ def shell_syntax(command: str) -> str | None:
             continue
         if quote == '"':
             if c == "\\":
+                if command[i + 1:i + 2] in ("$", "`"):
+                    # sh drops this backslash, shlex keeps it: `sh -c "awk '{print \$1}'"`
+                    # gave awk a literal `\$1` here and a different exit than the shell.
+                    return (f"escapes {command[i + 1]!r} inside double quotes (a shell drops the backslash, "
+                            "this program keeps it); put that text in single quotes instead")
                 i += 2
                 continue
             if c == '"':

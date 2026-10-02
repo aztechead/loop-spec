@@ -258,13 +258,15 @@ class ShellSyntaxTests(unittest.TestCase):
         "echo ok # note && false", "pytest\nfalse", "pytest \\\nfalse", "echo #x",
         "pytest tests/*.py", "ls ?", "pytest t[1]", "cat ~/x", "PYTHONPATH=. pytest",
         'bad "quote', "", "   ", '"" pytest',
+        # a shell drops these backslashes and shlex keeps them (a live V4 mismatch)
+        'echo "\\$HOME"', 'sh -c "python3 -V | awk \'{print \\$2}\'"', 'echo "\\`x\\`"',
     ]
     ACCEPTED = [
         "pytest -q tests/test_clamp.py", 'pytest -k ""', 'pytest -k "a or b"', "rg 'a$' file.txt",
         "python -c 'print(\"$HOME\")'", "echo \\&", "echo '&&'", 'echo "a|b"', "echo 'a`b`'",
         "echo a$", "echo a#b", "pytest 'tests/x.py::t[1]'", "rg '*.py'", "pytest tests/x.py::t\\[1\\]",
         "python3 -m unittest discover -s tests -p test_reverse.py", "echo 'a b' c", "env X=1 pytest", "pytest a=b",
-        '.venv/bin/python -m pytest -q "tests/test x.py"', 'echo "\\$HOME"',
+        '.venv/bin/python -m pytest -q "tests/test x.py"'
     ]
 
     def test_rejects_shell_syntax(self):

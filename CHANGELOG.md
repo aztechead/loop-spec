@@ -56,6 +56,9 @@ All notable changes documented here. Format follows Keep a Changelog.
   it, not the lower-cased comparison key.
 - A V8 rejection tells the code reviewer which earlier range or finding to name in
   `supersedes`, so its retry can comply.
+- The plain-argv check refuses `\$` or a backslash-backtick inside double quotes: a shell drops
+  that backslash and the program keeps it, so a `sh -c "... awk '{print \$1}'"` criterion
+  passed for the verifier and exited 2 in the program's re-run.
 - A plan critic finding the operator rejected reaches every later critic pass, so a
   re-plan does not ask the same question again.
 - The plan critic no longer flags a verify command with no test runner (a script or a
