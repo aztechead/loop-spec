@@ -1616,6 +1616,9 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
     if is_rewind and not proceed:
         cause = postconditions.cause_key(phase, exit_, product)
         repeat = budget_module.repeat_of(store, phase, exit_, cause, postconditions.fingerprint(store, product))
+        # The key compares; the operator reads the cause as the phase wrote it.
+        readable = _pause_cause(phase, product, exit_)
+        shown = cause if readable == exit_ else readable
         if repeat == "identical" and phase == "iterate":
             # ITERATE's own `escalated` exit already routes to a partial DELIVER when
             # configured (below); a refused rewind takes that same path, so the config
@@ -1624,11 +1627,11 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
             route = postconditions.ROUTES[phase][exit_]
         elif repeat == "identical":
             _finish_run(store, paths, "escalated", reason=(
-                f"no progress: {phase.upper()} exited {exit_} on {cause} again and nothing changed since "
+                f"no progress: {phase.upper()} exited {exit_} on {shown} again and nothing changed since "
                 f"the last time (same tree and revisions)"))
             return
         elif repeat == "recurred":
-            recurred_text = f"{phase.upper()} exited {exit_} on {cause} again after a change; continue (route it back again) or stop?"
+            recurred_text = f"{phase.upper()} exited {exit_} on {shown} again after a change; continue (route it back again) or stop?"
             recurred_payload = {"recurred": {"phase": phase, "exit": exit_, "cause": cause}}
     if recurred_text is None and "T2" in route["requires"] and not budget_module.base_move_room(store) and not proceed:
         repos = ", ".join(r["repo"] for r in product.get("repos") or [] if r.get("state") in ("base moved", "branch moved")) or "a repo"
