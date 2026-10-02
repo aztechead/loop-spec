@@ -216,6 +216,13 @@ class StepTests(unittest.TestCase):
         self.assertIn("delivered-run", action.request["prompt"])
         self.assertIn("the greeting is friendly", action.request["prompt"])
 
+    def test_step_carries_the_issue_the_pr_closes(self):
+        self.store.state["issue"] = {"repo": "repo", "number": 9, "title": "Add a percent helper",
+                                     "url": "u", "body": "whole == 0 raises ValueError"}
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIn("### issue", action.request["prompt"])
+        self.assertIn("whole == 0 raises ValueError", action.request["prompt"])
+
     def test_step_fetches_the_comments_once_when_its_bucket_has_none(self):
         # D4: revise fetches its own gaps on its first step; an empty list is a PR
         # with no comments and is never fetched again.

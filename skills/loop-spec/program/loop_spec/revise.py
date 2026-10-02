@@ -129,6 +129,8 @@ def _reviser_request(store, paths, ctx) -> dict:
         "repos": repo_map(store.state["repos"]),
         "probes": ctx.get("probes", {}),
     }
+    if store.state.get("issue"):
+        inputs["issue"] = store.state["issue"]  # the issue the PR closes: a comment may contradict it
     # 7.4.2: the reviser reads and runs in the code checkout at the PR head.
     code_path = Path((store.state["repos"][adoption["repo"]].get("codeCheckout") or {}).get("path") or repo_path)
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=code_path, phase="revise")

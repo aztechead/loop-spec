@@ -44,7 +44,10 @@ the codebase; Write is for your one result file only.
    the next free id (`T-<n+1>` after the highest prior id, or `R-<n>`), never a prior
    task's id.
 5. A comment you cannot resolve into a concrete criterion or task is a question,
-   not a silent guess — name it rather than inventing an answer.
+   not a silent guess — name it rather than inventing an answer. So is a comment
+   that reverses a requirement the issue the PR closes states (`inputs.issue`):
+   neither adopt nor decline it yourself; the question names both sides (what the
+   issue asks, what the comment asks) for the operator to decide.
 6. Answer every input gap with one entry in `responses` (`gap`, `disposition`,
    `note`). `addressed`: a criterion or task covers it; the note says what changed and where.
    `declined`: you will not change anything, and the note gives a reason the
