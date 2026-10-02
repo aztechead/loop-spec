@@ -579,6 +579,36 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertEqual(step(self.store, self.paths, self.ctx).request["role"], "resolver")
         self.assertEqual(self.store.state["repos"]["repo"]["baseSha"], self.base_sha)
 
+    def test_a_refused_resolver_leaves_its_move_pending_with_the_merge_aborted(self):
+        action, old_head, tip = self._move_base()
+        worktree = action.request["cwd"]
+        on_step_refused(self.store, self.paths, "resolve-1", {"role": "resolver", "cwd": worktree, "reason": "no result"})
+        move = self.store.state["execute"]["baseMoves"]["repo"]
+        self.assertEqual((move["status"], move["conflicts"]), ("pending", ["T-1.txt"]))
+        self.assertNotEqual(repo_module._git(Path(worktree), "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode, 0)
+
+    def test_a_refused_implementer_reforks_its_task(self):
+        action = step(self.store, self.paths, self.ctx)
+        self.assertEqual(action.request["role"], "implementer")
+        task = self.store.state["execute"]["tasks"]["T-1"]
+        old_branch, old_worktree = task["branch"], task["worktree"]
+        on_step_refused(self.store, self.paths, "impl-1", {"role": "implementer", "cwd": old_worktree, "reason": "no result"})
+        self.assertNotEqual(task["branch"], old_branch)
+        self.assertNotEqual(task["worktree"], old_worktree)
+        self.assertEqual(task["status"], "pending")
+        self.assertEqual(step(self.store, self.paths, self.ctx).request["role"], "implementer")
+
+    def test_a_refused_implementer_whose_worktree_was_quarantined_keeps_one_entry(self):
+        action = step(self.store, self.paths, self.ctx)
+        task = self.store.state["execute"]["tasks"]["T-1"]
+        old_worktree = task["worktree"]
+        self.store.state["steps"]["quarantined"].append(
+            {"stepAttemptId": "impl-1", "path": old_worktree, "reason": "refused", "at": "now"})
+        on_step_refused(self.store, self.paths, "impl-1", {"role": "implementer", "cwd": old_worktree, "reason": "no result"})
+        entries = [q for q in self.store.state["steps"]["quarantined"] if Path(q["path"]).resolve() == Path(old_worktree).resolve()]
+        self.assertEqual(len(entries), 1)
+        self.assertNotEqual(task["worktree"], old_worktree)
+
     def test_review_fail_reissues_implement_with_the_finding_in_reason(self):
         action = step(self.store, self.paths, self.ctx)
         worktree = action.request["cwd"]

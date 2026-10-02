@@ -121,7 +121,9 @@ program reads it from there.
      that ran;
    - model: only when the marker's `model` is not null.
 2. The worker's prompt names its own `resultPath`.
-3. Run the role `submit` command.
+3. Run the role `submit` command. If the worker returned without writing its result
+   (for example a denied tool call), still run `submit`: the program refuses the step
+   and asks the operator.
 
 The program checks three things about the worker's transcript: it opens with exactly
 the dispatched text, the worker read the whole instruction file it names, and its closing

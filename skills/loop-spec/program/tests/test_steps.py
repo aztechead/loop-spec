@@ -85,12 +85,25 @@ class IssueTests(StepsTestCase):
 
 
 class SubmitTests(StepsTestCase):
-    def test_submit_missing_result(self):
+    def test_a_lead_step_with_no_result_still_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._issue(store, paths, kind="lead", role=None)
+            with self.assertRaises(LoopSpecError):
+                steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name=None, host=None)
+
+    def test_a_role_step_with_no_result_is_refused_and_retired(self):
         with tempfile.TemporaryDirectory() as tmp:
             store, paths = self._store(tmp)
             record = self._issue(store, paths)
-            with self.assertRaises(LoopSpecError):
-                steps.submit(store, paths, step_id=record["stepAttemptId"], dispatch_name=None, host=None)
+            step_id = record["stepAttemptId"]
+            submission = steps.submit(store, paths, step_id=step_id, dispatch_name=None, host=None)
+            self.assertIn("without writing its result", submission.refused)
+            self.assertIn(step_id, store.state["steps"]["retired"])
+            refused = store.state["steps"]["refused"][step_id]
+            self.assertEqual((refused["role"], refused["attempts"], refused["ownerReset"]), ("implementer", 0, False))
+            with self.assertRaisesRegex(LoopSpecError, "was refused"):
+                steps.submit(store, paths, step_id=step_id, dispatch_name=None, host=None)
 
     def test_submit_partial_json(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -400,7 +413,7 @@ class AttestationRequiredRoleTests(StepsTestCase):
             self.assertIsNone(reopened.state.get("attestationWaivers"))
             self.assertFalse((paths.steps_dir / step_id / "result.json").exists())
             self.assertTrue((paths.steps_dir / step_id / "refused-result.json").is_file())
-            with self.assertRaisesRegex(LoopSpecError, "retired"):  # a late result for it
+            with self.assertRaisesRegex(LoopSpecError, "was refused"):  # a late result for it
                 steps.submit(store, paths, step_id=step_id, dispatch_name="worker-3", host=host, project_root=Path(tmp))
 
     def test_each_opt_in_key_covers_its_own_roles_only(self):

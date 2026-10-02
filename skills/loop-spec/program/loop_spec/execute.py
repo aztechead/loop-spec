@@ -755,6 +755,8 @@ def _retire_worktree(store, paths, repo_path: Path, worktree, *, last_step: str 
     actually removed."""
     if worktree is None or not Path(worktree).exists():
         return False
+    if any(Path(q["path"]).resolve() == Path(worktree).resolve() for q in store.state["steps"]["quarantined"]):
+        return False  # steps.retire already quarantined it; a second entry would outlive confirm_terminated
     try:
         dirty = not repo_module.is_clean(worktree)
     except LoopSpecError:
@@ -1636,6 +1638,33 @@ def _moved_after_refusal(task_state: dict) -> bool:
     return candidate is not None and repo_module.branch_sha(Path(task_state["worktree"]), task_state["branch"]) != candidate
 
 
+def _reset_refused_implementer(store, paths, execute_state: dict, refused: dict) -> None:
+    """The implementer returned without a result: refork its task so fix-and-re-enter
+    issues a new implement step in a fresh worktree. The operator question already
+    gates the retry, so _retry_or_block is not called."""
+    found = next(((tid, t) for tid, t in execute_state.get("tasks", {}).items()
+                  if t.get("worktree") and Path(t["worktree"]).resolve() == Path(refused["cwd"]).resolve()), None)
+    if found is None:
+        return
+    task_id, task_state = found
+    _refork(store, paths, task_id, task_state, _task_spec(store, task_id),
+            execute_state["repos"][task_state["repo"]]["head"], refused["reason"])
+
+
+def _reset_refused_resolver(execute_state: dict, refused: dict) -> None:
+    """The resolver returned without a result: leave the base move pending (not blocked;
+    the refusal's own question already asks the operator) so re-entry re-merges and
+    issues a fresh resolver. A merge left in progress is aborted."""
+    found = next((m for n, m in (execute_state.get("baseMoves") or {}).items()
+                  if Path(execute_state["repos"][n]["worktree"]).resolve() == Path(refused["cwd"]).resolve()), None)
+    if found is None:
+        return
+    worktree = Path(refused["cwd"])
+    if worktree.exists() and repo_module._git(worktree, "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0:
+        repo_module._git(worktree, "merge", "--abort")
+    found["status"] = "pending"
+
+
 def on_step_refused(store, paths, step_id: str, refused: dict) -> None:
     """LF-60: a task review refused for want of evidence. The task keeps no reference
     to the dead step: it returns to review (one retry spent, as E6's rejection does)
@@ -1643,6 +1672,12 @@ def on_step_refused(store, paths, step_id: str, refused: dict) -> None:
     worktree is never reused while its worker's termination is unknown. Mutates
     state only; the controller saves it with the ownerReset flag."""
     execute_state = store.state.get("execute") or {}
+    if refused["role"] == "implementer":
+        _reset_refused_implementer(store, paths, execute_state, refused)
+        return
+    if refused["role"] == "resolver":
+        _reset_refused_resolver(execute_state, refused)
+        return
     if refused["role"] != "code-reviewer":
         return
     tasks = execute_state.get("tasks", {})

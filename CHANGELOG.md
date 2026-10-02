@@ -23,6 +23,28 @@ All notable changes documented here. Format follows Keep a Changelog.
   taking it, and refuses a name whose parent path is a branch here or on `origin`
   (`feature` for `feature/AVP-1234`) when the run starts, instead of EXECUTE failing on
   `cannot lock ref`. Contributed by George Muresan (@gmuresan, #132).
+- A role worker that returns without writing its result (a denied tool call, a crash)
+  no longer dead-ends the run: `submit` refuses the step, resets its owner, and asks
+  the operator to fix and re-enter or stop.
+- A base move reuses the prior review when the feature's own diff is unchanged and the
+  base's change touches none of the feature's files, instead of a full re-review.
+- A configured `deliver.branch` no longer tells the spec-writer the branch is taken.
+- The `loop-spec` launcher runs its own program whatever the current directory
+  (`python3 -P`); run from a directory holding a `loop_spec` package, it ran that copy.
+- A repository that commits `.pyc` files: tracked caches a test run rewrites no longer
+  reject an implement step or keep a worktree from cleanup, and the rejection for a
+  dirty worktree names the paths.
+- The code reviewer reads the approved spec, so a change its decisions or criteria
+  require is no longer a Critical finding.
+- The PR body's acceptance table keeps a multi-line criterion's line breaks.
+- revise moves a local PR branch that is only behind the PR head (a teammate pushed)
+  instead of refusing; a branch with its own commits is still refused.
+- revise drops comments from the GitHub Actions bot, which `gh pr view` names without a
+  `[bot]` suffix; comments and reviews are read over the REST API.
+- The reviser reads the issue the PR closes, and a comment that reverses a requirement
+  the issue states becomes a question naming both sides.
+- The plan critic no longer flags a verify command with no test runner (a script or a
+  grep) for running no tests; EXECUTE compares such a command by its output.
 
 ### Changed
 

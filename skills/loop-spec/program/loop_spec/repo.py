@@ -21,13 +21,13 @@ from typing import Literal
 from loop_spec.errors import LoopSpecError
 
 
-def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+def _git(repo: Path, *args: str, input: str | None = None) -> subprocess.CompletedProcess:
     # The only subprocess.run call site for git. A probe (is a branch present? is
     # one sha an ancestor of another?) reads a non-zero exit as a plain "no", so it
     # calls this directly; run_git wraps it with the raise for operations that are
     # only ever meant to succeed.
     return subprocess.run(
-        ["git", "-C", str(repo), *args], capture_output=True, text=True, check=False
+        ["git", "-C", str(repo), *args], capture_output=True, text=True, check=False, input=input
     )
 
 
@@ -46,6 +46,13 @@ LOCKFILES = ("uv.lock", "poetry.lock", "Pipfile.lock", "pdm.lock", "package-lock
 
 
 REVIEW_DIFF_CAP = 200_000  # ponytail: a flat cap, raise it if a real diff gets truncated in practice
+
+
+def patch_id(repo: Path, from_sha: str, to_sha: str) -> str | None:
+    """The stable patch id of from_sha..to_sha, or None for an empty diff."""
+    diff = run_git(repo, "diff", from_sha, to_sha)
+    out = _git(repo, "patch-id", "--stable", input=diff).stdout.split()
+    return out[0] if out else None
 
 
 def review_diff(repo: Path, rev_range: str) -> str:
