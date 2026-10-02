@@ -402,7 +402,10 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
     }
     store.state["steps"]["open"] = [s for s in store.state["steps"]["open"] if s["stepAttemptId"] != step_id]
     store.state["steps"]["retired"].append(step_id)
-    emit(paths, "step_accepted", {"stepAttemptId": step_id, "summary": f"{step_id} {evidence_level}"},
+    # A lead step runs in the session itself, so no worker transcript exists to attest; a
+    # bare "unattested" read as a failure to every live lead (7.9.0 runs), so say why.
+    note = "run by the lead, nothing to attest" if step["kind"] == "lead" else evidence_level
+    emit(paths, "step_accepted", {"stepAttemptId": step_id, "summary": f"{step_id} accepted ({note})"},
          phase=step["phase"], attempt_id=step["attempt"], source="program")
     store.save()
     return Submission(step=step, result=result, result_digest=result_digest, evidence_level=evidence_level)

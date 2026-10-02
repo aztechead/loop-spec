@@ -59,6 +59,12 @@ finding in [teammate-alignment-audit.md](docs/loop-spec/teammate-alignment-audit
 
 ### Fixed
 
+- A filled PR template carries the summary and test commands between its own markers,
+  refreshed in place by later deliveries; loop-spec's block leaves out whatever the
+  template already carries, so nothing appears twice. The findings table drops the
+  internal finding id.
+- A lead step's acceptance line says it was run by the lead, instead of a bare
+  `unattested` every live lead stopped to question.
 - A test run's caches (`__pycache__`, `.pytest_cache`, and the like) no longer make a
   worktree dirty in a repository that does not ignore them. A live run on such a
   repository rejected every implement step as "uncommitted changes".

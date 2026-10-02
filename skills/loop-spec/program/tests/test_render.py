@@ -4,7 +4,8 @@ import unittest
 from pathlib import Path
 
 from loop_spec.paths import FeaturePaths
-from loop_spec.render import BODY_BEGIN, BODY_END, fill_template, merge_body, plan_md, pr_body, pr_template, spec_md, verification_md
+from loop_spec.render import (BODY_BEGIN, BODY_END, fill_template, merge_body, plan_md, pr_body, pr_sections, pr_template,
+                              sections_in, spec_md, verification_md)
 from loop_spec.state import StateStore
 
 
@@ -182,10 +183,24 @@ class ReviewerBodyTests(unittest.TestCase):
     def test_a_template_fills_placeholder_sections_and_leaves_checklists(self):
         template = ("## Summary\n\n<!-- what changed -->\n\n## How to test\n\n<!-- steps -->\n\n"
                     "## Checklist\n\n- [ ] docs updated\n")
-        filled = fill_template(template, self.store, ["sh verify.sh"])
-        self.assertIn("## Summary\n\nadd a widget\n\n- use the existing renderer", filled)
-        self.assertIn("## How to test\n\n```sh\nsh verify.sh\n```", filled)
+        filled = fill_template(template, self.store)
+        self.assertIn("## Summary\n\n<!-- loop-spec:summary -->\nadd a widget\n\n- use the existing renderer", filled)
+        self.assertIn("```sh\nsh verify.sh\n```", filled)
         self.assertIn("## Checklist\n\n- [ ] docs updated\n", filled)
-        self.assertNotIn("<!--", filled)
-        kept = fill_template("## Summary\n\nmy own text\n", self.store, [])
+        self.assertNotIn("what changed", filled)
+        kept = fill_template("## Summary\n\nmy own text\n", self.store)
         self.assertEqual(kept, "## Summary\n\nmy own text\n")
+
+    def test_sections_a_template_carries_are_written_once_and_refreshed_in_place(self):
+        filled = fill_template("## Summary\n\n<!-- x -->\n\n## Testing\n\n<!-- y -->\n\n- [x] ticked by me\n", self.store)
+        omit = sections_in(filled)
+        self.assertEqual(omit, frozenset({"summary"}))  # Testing had a checklist, so it stays the author's
+        body = pr_body(self.store, omit=omit)
+        self.assertNotIn("### Why", body)
+        self.assertIn("### How to test", body)
+        existing = body + "\n" + filled
+        self.store.state["products"]["spec"]["product"]["goal"] = "add a better widget"
+        merged = merge_body(existing, pr_body(self.store, omit=omit), pr_sections(self.store))
+        self.assertEqual(merged.count("add a better widget"), 2)  # the block's heading and the Summary section
+        self.assertNotIn("\nadd a widget\n", merged)
+        self.assertIn("- [x] ticked by me", merged)

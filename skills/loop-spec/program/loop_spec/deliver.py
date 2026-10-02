@@ -72,9 +72,15 @@ def _without_metadata(args: list[str]) -> list[str]:
     return kept
 
 
-def _edit_body(worktree: Path, number: int, generated: str, caveats: list[str]) -> None:
+def _body_for(body):
+    """`body` as a function of the template sections to omit; a plain string ignores them."""
+    return body if callable(body) else (lambda omit: body)
+
+
+def _edit_body(worktree: Path, number: int, body, caveats: list[str], store=None) -> None:
     # The body is refreshed through its markers, so text a person added survives. A body
-    # that cannot be read is never overwritten blind.
+    # that cannot be read is never overwritten blind. Template sections loop-spec filled
+    # are refreshed in place and left out of the generated block.
     code, out, err = repo_module.run_gh(worktree, "pr", "view", str(number), "--json", "body")
     try:
         existing = (json.loads(out).get("body") or "") if code == 0 else None
@@ -84,14 +90,16 @@ def _edit_body(worktree: Path, number: int, generated: str, caveats: list[str]) 
         caveats.append(f"the PR body was not updated: gh pr view --json body failed: {err.strip() or 'unreadable'}")
         return
     body_path = Path(tempfile.mkstemp(prefix="loop-spec-pr-body-", suffix=".md")[1])
-    body_path.write_text(render.merge_body(existing, generated))
+    present = render.sections_in(existing)
+    sections = render.pr_sections(store) if present and store is not None else None
+    body_path.write_text(render.merge_body(existing, _body_for(body)(present), sections))
     code, _, err = repo_module.run_gh(worktree, "pr", "edit", str(number), "--body-file", str(body_path))
     if code != 0:
         caveats.append(f"the PR body was not updated: gh pr edit failed: {err.strip()}")
 
 
 def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: str,
-                   draft: bool, title: str, body: str, verified_sha: str,
+                   draft: bool, title: str, body, verified_sha: str,
                    reviewers: list[str] = (), labels: list[str] = (),
                    retitle_from: str | None = None) -> tuple[dict | None, str | None, list[str]]:
     branch = repo_info["featureBranch"]
@@ -106,7 +114,7 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
         number = existing[0]["number"]
         # 7.1.0: a re-entry or a revise run refreshes the body it rendered; a failed
         # edit leaves the old body and says so, it never fails the delivery.
-        _edit_body(worktree, number, body, caveats)
+        _edit_body(worktree, number, body, caveats, store)
         # D3: the title is refreshed only while it is still the one loop-spec set
         # (`retitle_from` is that title, passed only then); a person's edit is never touched.
         if retitle_from is not None and retitle_from != pr_title(title):
@@ -126,13 +134,16 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
             if code != 0:
                 caveats.append(f"the PR is not a draft: gh pr ready --undo failed: {err.strip()}")
     else:
+        body_for = _body_for(body)
         # LF-48: the body file lives outside the worktree; an untracked file inside it
         # made the feature checkout "dirty" and terminal cleanup kept it as backlog.
         template = render.pr_template(worktree, verified_sha)
         body_path = Path(tempfile.mkstemp(prefix="loop-spec-pr-body-", suffix=".md")[1])
-        if template is not None:
-            template = render.fill_template(template, store, render.test_commands(store.state["products"]["verify"]["product"]))
-        body_path.write_text(body if template is None else body.rstrip("\n") + "\n\n" + template)
+        if template is None:
+            body_path.write_text(body_for(frozenset()))
+        else:
+            template = render.fill_template(template, store)
+            body_path.write_text(body_for(render.sections_in(template)).rstrip("\n") + "\n\n" + template)
         # A crash-recovery marker, not a control-flow gate: `gh pr list` above already
         # reconciles a lost create response on its own, so nothing reads this back.
         store.state.setdefault("deliver", {}).setdefault("creating", {})[repo_name] = {"at": now_iso(), "branch": branch}
@@ -495,7 +506,9 @@ def run(store, paths, ctx):
 
         pr, error, pr_caveats = _reconcile_pr(store, repo_name, worktree, repo_info, repo_info["defaultBranch"], draft,
                                                spec_product.get("title") or spec_product["goal"],
-                                               render.pr_body(store, repo_name, number=adoption.get("number") if adoption.get("repo") == repo_name else None),
+                                               lambda omit, name=repo_name: render.pr_body(
+                                                   store, name, number=adoption.get("number") if adoption.get("repo") == name else None,
+                                                   omit=omit),
                                                verified_sha,
                                                reviewers, labels, _retitle_from(adoption, repo_name))
         if error:
@@ -546,7 +559,10 @@ def run(store, paths, ctx):
             worktree = paths.feature_worktree(row["repo"])
             if not worktree.is_dir():
                 worktree = Path(store.state["repos"][row["repo"]]["path"])
-            _edit_body(worktree, row["pr"]["number"], render.pr_body(store, row["repo"], siblings, number=row["pr"]["number"]), row["caveats"])
+            _edit_body(worktree, row["pr"]["number"],
+                       lambda omit, row=row, siblings=siblings: render.pr_body(store, row["repo"], siblings,
+                                                                                number=row["pr"]["number"], omit=omit),
+                       row["caveats"], store)
 
     # Mixed is partial; nothing delivered is blocked (the rows name why); an
     # untouched (skipped) repo never makes a delivery partial.

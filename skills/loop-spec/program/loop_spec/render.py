@@ -107,28 +107,50 @@ def _cut(text: str) -> str:
     return text if len(text) <= _CRITIC_TEXT_LIMIT else text[:_CRITIC_TEXT_LIMIT - 3].rstrip() + "..."
 
 
+def _section_marks(name: str) -> tuple[str, str]:
+    return f"<!-- loop-spec:{name} -->", f"<!-- loop-spec:/{name} -->"
+
+
+def pr_sections(store) -> dict[str, str]:
+    """What fills a PR template's Summary-like and Test-like sections: the goal with the Why
+    bullets, and the How-to-test commands with the SHA they were verified at."""
+    spec = store.state["products"]["spec"]["product"]
+    summary = "\n".join([spec["goal"], ""] + [f"- {d['text']}" for d in spec["decisions"]]).strip("\n")
+    testing = "\n".join(_how_to_test(store.state["products"]["verify"]["product"])[2:]).strip("\n")
+    return {"summary": summary, "testing": testing}
+
+
+def sections_in(body: str) -> frozenset[str]:
+    """The template sections a PR body already carries loop-spec's text in."""
+    return frozenset(name for name in ("summary", "testing") if _section_marks(name)[0] in body)
+
+
 def pr_body(store, repo_name: str | None = None, siblings: list[tuple[str, str]] | None = None,
-            number: int | None = None) -> str:
+            number: int | None = None, omit: frozenset[str] = frozenset()) -> str:
     """The generated PR description, between markers so `merge_body` can refresh it without
     touching what a person wrote around it. `siblings` is (repo, PR url) for the run's other
-    delivered repos; `number` is an adopted PR's number, for the owner line."""
+    delivered repos; `number` is an adopted PR's number, for the owner line. `omit` names the
+    sections (`summary`, `testing`) a filled PR template already carries, so they are not
+    written twice (7.9.0 live run)."""
     spec = store.state["products"]["spec"]["product"]
     verify_product = store.state["products"]["verify"]["product"]
     findings = store.state["ledger"]["findings"]
 
     lines = [BODY_BEGIN, f"## {spec['goal']}", ""]
-    if spec["decisions"]:
+    if spec["decisions"] and "summary" not in omit:
         lines += ["### Why", ""] + [f"- {d['text']}" for d in spec["decisions"]] + [""]
     if spec["boundaries"]:
         lines += ["### Boundaries", ""] + [f"- {b}" for b in spec["boundaries"]] + [""]
     lines += ["### Acceptance", ""] + _criteria_table(spec, verify_product) + [""]
-    lines += _how_to_test(verify_product)
+    if "testing" not in omit:
+        lines += _how_to_test(verify_product)
     if spec["openQuestions"]:
         lines += ["### Open questions", ""] + [f"- {q['text']}" for q in spec["openQuestions"]] + [""]
 
     if findings:
-        lines += ["### Findings", "", "| ID | Severity | Disposition | Cause |", "| --- | --- | --- | --- |"]
-        lines += [f"| {f['id']} | {f['severity']} | {f['disposition']} | {f['cause']} |" for f in findings]
+        # No finding id: it names a record in the operator's state home, which no reviewer has.
+        lines += ["### Findings", "", "| Severity | Disposition | Cause |", "| --- | --- | --- |"]
+        lines += [f"| {f['severity']} | {f['disposition']} | {f['cause']} |" for f in findings]
         lines.append("")
 
     # 7.1.0: a Critical PLAN-critic finding the run rejected is a decision a reviewer
@@ -159,10 +181,16 @@ def pr_body(store, repo_name: str | None = None, siblings: list[tuple[str, str]]
     return "\n".join(lines) + "\n"
 
 
-def merge_body(existing: str, generated: str) -> str:
+def merge_body(existing: str, generated: str, sections: dict[str, str] | None = None) -> str:
     """`generated` placed into a PR body a person may have edited: between its markers when
     it has them; around a pre-7.9 generated body (from its first `## ` line to its
-    `Generated with loop-spec` line), keeping the text outside; else after the human text."""
+    `Generated with loop-spec` line), keeping the text outside; else after the human text.
+    Each of `sections` replaces the text between that template section's own markers."""
+    for name, text in (sections or {}).items():
+        begin, end = _section_marks(name)
+        b, e = existing.find(begin), existing.find(end)
+        if b != -1 and e > b:
+            existing = existing[:b + len(begin)] + "\n" + text + "\n" + existing[e:]
     generated = generated.strip("\n")
     begin, end = existing.find(BODY_BEGIN), existing.find(BODY_END)
     if begin != -1 and end > begin:
@@ -195,13 +223,12 @@ _TEST_HEADING = re.compile(r"test|verification", re.IGNORECASE)
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
-def fill_template(template: str, store, commands: list[str]) -> str:
+def fill_template(template: str, store) -> str:
     """The PR template with each placeholder-only Summary-like section filled with the goal
-    and the Why bullets, and each Test-like section with the How-to-test commands. A section
-    that has any other content (a checklist, text) stays as written."""
-    spec = store.state["products"]["spec"]["product"]
-    summary = "\n".join([spec["goal"], ""] + [f"- {d['text']}" for d in spec["decisions"]]).strip("\n")
-    testing = "```sh\n" + "\n".join(commands) + "\n```" if commands else ""
+    and the Why bullets, and each Test-like section with the How-to-test commands, each
+    between its own markers so a later delivery refreshes it. A section that has any other
+    content (a checklist, text) stays as written."""
+    fills = pr_sections(store)
     lines = template.split("\n")
     out, i = [], 0
     while i < len(lines):
@@ -214,8 +241,9 @@ def fill_template(template: str, store, commands: list[str]) -> str:
         while j < len(lines) and not _HEADING.match(lines[j]):
             j += 1
         section = "\n".join(lines[i:j])
-        fill = testing if _TEST_HEADING.search(m.group(1)) else summary if _SUMMARY_HEADING.search(m.group(1)) else ""
-        if fill and not _COMMENT.sub("", section).strip():
-            out += ["", fill, ""]
+        name = "testing" if _TEST_HEADING.search(m.group(1)) else "summary" if _SUMMARY_HEADING.search(m.group(1)) else None
+        if name and fills[name] and not _COMMENT.sub("", section).strip():
+            begin, end = _section_marks(name)
+            out += ["", begin, fills[name], end, ""]
             i = j
     return "\n".join(out)
