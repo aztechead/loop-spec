@@ -119,8 +119,22 @@ def parse_diagnostics(text: str, root: str = "") -> list[str]:
     return sorted(identities)
 
 
+_UNITTEST_LINE = re.compile(r"^(?:FAIL|ERROR): (\S+) \(([^)]+)\)")
+
+
+def parse_unittest(text: str) -> list[str]:
+    identities = set()
+    for line in text.splitlines():
+        if m := _UNITTEST_LINE.match(line.strip()):
+            name, paren = m.groups()
+            # Python 3.11+ prints `test_x (pkg.mod.Class.test_x)`; older prints `(pkg.mod.Class)`.
+            identities.add(paren if paren.endswith("." + name) else f"{paren}.{name}")
+    return sorted(identities)
+
+
 PARSERS = {
     "pytest": parse_pytest,
+    "unittest": parse_unittest,
     "vitest": parse_vitest_jest,
     "jest": parse_vitest_jest,
     "go": parse_go_test,
@@ -153,6 +167,8 @@ def detect_runner(command: str) -> str | None:
             return "pytest"
         if re.fullmatch(r"python[0-9.]*", name) and names[i + 1:i + 3] == ["-m", "pytest"]:
             return "pytest"
+        if re.fullmatch(r"python[0-9.]*", name) and names[i + 1:i + 3] == ["-m", "unittest"]:
+            return "unittest"
         if name == "vitest":
             return "vitest"
         if name == "jest":
@@ -321,12 +337,16 @@ _TESTS_RAN_PATTERNS = {
     "go": re.compile(r"^--- PASS|^ok\s"),
     "cargo": re.compile(r"^test result:.*\bok\b|\.\.\. ok$"),
     "diagnostics": re.compile(r"(?!)"),  # a check runs no tests
+    "unittest": re.compile(r"(?!)"),  # counted from `Ran N tests` in _count_tests_ran
 }
+_UNITTEST_RAN = re.compile(r"^Ran (\d+) tests?\b")
 
 
 def _count_tests_ran(output: str, runner: str | None) -> int:
     if runner is None:
         return 0
+    if runner == "unittest":
+        return sum(int(m.group(1)) for line in output.splitlines() if (m := _UNITTEST_RAN.match(line)))
     pattern = _TESTS_RAN_PATTERNS[runner]
     return sum(1 for line in output.splitlines() if pattern.search(line))
 

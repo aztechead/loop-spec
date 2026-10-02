@@ -6,6 +6,7 @@ here is committed to the consumer's repository (the audit's R8: a docs commit af
 VERIFY would push a head that is not the verified SHA). Every function reads
 `store.state["products"]` and the ledger; none of them mutate anything.
 """
+import re
 from pathlib import Path
 
 from loop_spec import VERSION
@@ -65,19 +66,52 @@ _GENERATED_LINE = "Generated with loop-spec"
 
 def _criteria_table(spec: dict, verify_product: dict) -> list[str]:
     texts = {c["id"]: c["text"] for c in spec["criteria"]}
-    lines = ["| Criterion | Text | Verdict | Command | SHA |", "| --- | --- | --- | --- | --- |"]
+    lines = ["| Criterion | Text | Verdict |", "| --- | --- | --- |"]
     for verdict in verify_product["verdicts"]:
-        evidence = verdict["evidence"] or {}
         text = texts.get(verdict["criterion"], "").replace("|", "\\|").replace("\n", " ")
-        lines.append(f"| {verdict['criterion']} | {text} | {verdict['verdict']} | "
-                     f"`{evidence.get('command', '')}` | {evidence.get('sha', '')} |")
+        lines.append(f"| {verdict['criterion']} | {text} | {verdict['verdict']} |")
     return lines
 
 
-def pr_body(store, repo_name: str | None = None, siblings: list[tuple[str, str]] | None = None) -> str:
+def test_commands(verify_product: dict) -> list[str]:
+    """Each distinct evidence command once, in the order the verdicts name them."""
+    seen = []
+    for verdict in verify_product["verdicts"]:
+        command = (verdict["evidence"] or {}).get("command")
+        if command and command not in seen:
+            seen.append(command)
+    return seen
+
+
+def _how_to_test(verify_product: dict) -> list[str]:
+    commands = test_commands(verify_product)
+    if not commands:
+        return []
+    lines = ["### How to test", "", "```sh"] + commands + ["```", ""]
+    by_sha: dict[str, list[str]] = {}
+    for verdict in verify_product["verdicts"]:
+        sha = (verdict["evidence"] or {}).get("sha")
+        if sha:
+            by_sha.setdefault(sha, []).append(verdict["criterion"])
+    if len(by_sha) == 1:
+        lines += [f"Verified at {next(iter(by_sha))}", ""]
+    elif by_sha:
+        lines += ["Verified at:", ""] + [f"- {sha} ({', '.join(ids)})" for sha, ids in by_sha.items()] + [""]
+    return lines
+
+
+_CRITIC_TEXT_LIMIT = 300
+
+
+def _cut(text: str) -> str:
+    return text if len(text) <= _CRITIC_TEXT_LIMIT else text[:_CRITIC_TEXT_LIMIT - 3].rstrip() + "..."
+
+
+def pr_body(store, repo_name: str | None = None, siblings: list[tuple[str, str]] | None = None,
+            number: int | None = None) -> str:
     """The generated PR description, between markers so `merge_body` can refresh it without
     touching what a person wrote around it. `siblings` is (repo, PR url) for the run's other
-    delivered repos."""
+    delivered repos; `number` is an adopted PR's number, for the owner line."""
     spec = store.state["products"]["spec"]["product"]
     verify_product = store.state["products"]["verify"]["product"]
     findings = store.state["ledger"]["findings"]
@@ -88,6 +122,7 @@ def pr_body(store, repo_name: str | None = None, siblings: list[tuple[str, str]]
     if spec["boundaries"]:
         lines += ["### Boundaries", ""] + [f"- {b}" for b in spec["boundaries"]] + [""]
     lines += ["### Acceptance", ""] + _criteria_table(spec, verify_product) + [""]
+    lines += _how_to_test(verify_product)
     if spec["openQuestions"]:
         lines += ["### Open questions", ""] + [f"- {q['text']}" for q in spec["openQuestions"]] + [""]
 
@@ -103,7 +138,7 @@ def pr_body(store, repo_name: str | None = None, siblings: list[tuple[str, str]]
         rejected = [f for f in critic.get("findings", []) if f.get("severity") == "Critical" and f.get("disposition") == "rejected"]
         if rejected:
             lines += ["### Plan critic", "", "Critical findings on the delivered plan that the run rejected, with the reason:", ""]
-            lines += [f"- {f['id']} at {f['location']}: {f['cause']} Rejected: {f.get('reason') or '(no reason recorded)'}"
+            lines += [f"- {f['id']} at {f['location']}: {_cut(f['cause'])} Rejected: {_cut(f.get('reason') or '(no reason recorded)')}"
                       for f in rejected]
             lines.append("")
 
@@ -114,7 +149,8 @@ def pr_body(store, repo_name: str | None = None, siblings: list[tuple[str, str]]
         lines += [f"Closes #{issue['number']}", ""]
     login = (store.state.get("operator") or {}).get("login")
     if login:
-        lines += [f"Opened by loop-spec for @{login}; review follow-up: `/loop-spec:revise <pr>`", ""]
+        follow_up = f"`/loop-spec:revise {number}`" if number else "`/loop-spec:revise` with this PR's number"
+        lines += [f"Opened by loop-spec for @{login}; review follow-up: {follow_up}", ""]
 
     outstanding = result_module.outstanding(store)
     lines += [f"### Outstanding\n{', '.join(outstanding) if outstanding else 'none'}", ""]
@@ -151,3 +187,35 @@ def pr_template(worktree: Path, sha: str) -> str | None:
         if proc.returncode == 0:
             return proc.stdout
     return None
+
+
+_HEADING = re.compile(r"^#{1,6}\s+(.*?)\s*$")
+_SUMMARY_HEADING = re.compile(r"summary|description|overview|what|changes", re.IGNORECASE)
+_TEST_HEADING = re.compile(r"test|verification", re.IGNORECASE)
+_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def fill_template(template: str, store, commands: list[str]) -> str:
+    """The PR template with each placeholder-only Summary-like section filled with the goal
+    and the Why bullets, and each Test-like section with the How-to-test commands. A section
+    that has any other content (a checklist, text) stays as written."""
+    spec = store.state["products"]["spec"]["product"]
+    summary = "\n".join([spec["goal"], ""] + [f"- {d['text']}" for d in spec["decisions"]]).strip("\n")
+    testing = "```sh\n" + "\n".join(commands) + "\n```" if commands else ""
+    lines = template.split("\n")
+    out, i = [], 0
+    while i < len(lines):
+        out.append(lines[i])
+        m = _HEADING.match(lines[i])
+        i += 1
+        if not m:
+            continue
+        j = i
+        while j < len(lines) and not _HEADING.match(lines[j]):
+            j += 1
+        section = "\n".join(lines[i:j])
+        fill = testing if _TEST_HEADING.search(m.group(1)) else summary if _SUMMARY_HEADING.search(m.group(1)) else ""
+        if fill and not _COMMENT.sub("", section).strip():
+            out += ["", fill, ""]
+            i = j
+    return "\n".join(out)

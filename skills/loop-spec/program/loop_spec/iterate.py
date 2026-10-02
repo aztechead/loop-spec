@@ -95,17 +95,18 @@ def _final_product(store, paths, ctx, iterate_state: dict) -> dict:
     # LF-46: nobody dispositions a non-Critical open finding, so it used to force
     # "unmet" forever -- EXECUTE has nothing to do with a Minor finding, VERIFY
     # just re-runs, and the run never converges. The program now dispositions each
-    # one itself: Critical always forces a gap (unchanged); Important forces one
-    # while the rewind budget has room; Minor, and Important once the budget is
-    # out of room, are deferred by policy. Only a deferred Important one is a
-    # caveat; a deferred Minor one is reported but converges cleanly. A forced gap is
+    # one itself: Critical always forces a gap (unchanged); Important and Minor
+    # force one while the rewind budget has room (7.9.0: a teammate fixes a Minor
+    # finding while there is room); once the budget is out of room they are deferred
+    # by policy. Only a deferred Important one is a caveat; a deferred Minor one is
+    # reported but converges cleanly. A forced gap is
     # an EXECUTE close-out (LF-55), never a re-plan: a review finding names code to
     # fix, and a PLAN round for it cost 8 to 12 minutes in the timing runs.
     if judge["verdict"] == "met" and open_findings:
         forced_gaps = []
         acted_on = []
         for f in open_findings:
-            if f["severity"] == "Critical" or (f["severity"] == "Important" and has_room(store)):
+            if f["severity"] == "Critical" or has_room(store):
                 gap = {"target": "execute", "text": f"open finding {f['id']} ({f['severity']}) at {f['location']}: {f['cause']}",
                        "findingId": f["id"]}
                 if f.get("repo"):

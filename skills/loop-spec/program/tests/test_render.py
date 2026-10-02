@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from loop_spec.paths import FeaturePaths
-from loop_spec.render import BODY_BEGIN, BODY_END, merge_body, plan_md, pr_body, pr_template, spec_md, verification_md
+from loop_spec.render import BODY_BEGIN, BODY_END, fill_template, merge_body, plan_md, pr_body, pr_template, spec_md, verification_md
 from loop_spec.state import StateStore
 
 
@@ -144,3 +144,48 @@ class CriticSectionTests(unittest.TestCase):
             self.assertNotIn("F-2", body)
             store.state["critic"]["planRevision"] = "sha256:older"
             self.assertNotIn("### Plan critic", pr_body(store))
+
+
+class ReviewerBodyTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.store = _store(Path(self._tmp.name))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_the_table_has_no_command_column_and_how_to_test_lists_each_command_once(self):
+        verdicts = self.store.state["products"]["verify"]["product"]["verdicts"]
+        verdicts.append(dict(verdicts[0], criterion="AC-2"))
+        self.store.state["products"]["spec"]["product"]["criteria"].append({"id": "AC-2", "text": "two"})
+        body = pr_body(self.store)
+        self.assertIn("| Criterion | Text | Verdict |", body)
+        self.assertNotIn("| Command |", body)
+        self.assertEqual(body.count("sh verify.sh"), 1)
+        self.assertIn("### How to test\n\n```sh\nsh verify.sh\n```\n\nVerified at abc123", body)
+
+    def test_a_long_critic_cause_is_truncated(self):
+        self.store.state["revisions"]["plan"] = "sha256:plan"
+        self.store.state["critic"] = {"planRevision": "sha256:plan", "findings": [
+            {"id": "F-1", "location": "T-1", "cause": "c" * 500, "severity": "Critical",
+             "disposition": "rejected", "reason": "r" * 500}]}
+        body = pr_body(self.store)
+        self.assertNotIn("c" * 301, body)
+        self.assertNotIn("r" * 301, body)
+        self.assertIn("c" * 290 + "...", body)
+
+    def test_the_owner_line_names_the_pr_number_when_known(self):
+        self.store.state["operator"] = {"login": "ada"}
+        self.assertIn("`/loop-spec:revise 7`", pr_body(self.store, number=7))
+        self.assertIn("`/loop-spec:revise` with this PR's number", pr_body(self.store))
+
+    def test_a_template_fills_placeholder_sections_and_leaves_checklists(self):
+        template = ("## Summary\n\n<!-- what changed -->\n\n## How to test\n\n<!-- steps -->\n\n"
+                    "## Checklist\n\n- [ ] docs updated\n")
+        filled = fill_template(template, self.store, ["sh verify.sh"])
+        self.assertIn("## Summary\n\nadd a widget\n\n- use the existing renderer", filled)
+        self.assertIn("## How to test\n\n```sh\nsh verify.sh\n```", filled)
+        self.assertIn("## Checklist\n\n- [ ] docs updated\n", filled)
+        self.assertNotIn("<!--", filled)
+        kept = fill_template("## Summary\n\nmy own text\n", self.store, [])
+        self.assertEqual(kept, "## Summary\n\nmy own text\n")

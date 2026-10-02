@@ -92,7 +92,8 @@ def _edit_body(worktree: Path, number: int, generated: str, caveats: list[str]) 
 
 def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: str,
                    draft: bool, title: str, body: str, verified_sha: str,
-                   reviewers: list[str] = (), labels: list[str] = ()) -> tuple[dict | None, str | None, list[str]]:
+                   reviewers: list[str] = (), labels: list[str] = (),
+                   retitle_from: str | None = None) -> tuple[dict | None, str | None, list[str]]:
     branch = repo_info["featureBranch"]
     code, out, err = repo_module.run_gh(worktree, "pr", "list", "--head", branch, "--state", "open",
                                          "--json", "number,url,headRefOid,baseRefName,isDraft")
@@ -106,6 +107,12 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
         # 7.1.0: a re-entry or a revise run refreshes the body it rendered; a failed
         # edit leaves the old body and says so, it never fails the delivery.
         _edit_body(worktree, number, body, caveats)
+        # D3: the title is refreshed only while it is still the one loop-spec set
+        # (`retitle_from` is that title, passed only then); a person's edit is never touched.
+        if retitle_from is not None and retitle_from != pr_title(title):
+            code, _, err = repo_module.run_gh(worktree, "pr", "edit", str(number), "--title", pr_title(title))
+            if code != 0:
+                caveats.append(f"the PR title was not updated: gh pr edit --title failed: {err.strip()}")
         # The PR's draft state follows this delivery's verdict both ways: a non-draft
         # delivery marks an existing draft ready (a revise that cleanly addresses review
         # on an earlier caveats run's draft), a draft delivery converts a ready PR back.
@@ -123,6 +130,8 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
         # made the feature checkout "dirty" and terminal cleanup kept it as backlog.
         template = render.pr_template(worktree, verified_sha)
         body_path = Path(tempfile.mkstemp(prefix="loop-spec-pr-body-", suffix=".md")[1])
+        if template is not None:
+            template = render.fill_template(template, store, render.test_commands(store.state["products"]["verify"]["product"]))
         body_path.write_text(body if template is None else body.rstrip("\n") + "\n\n" + template)
         # A crash-recovery marker, not a control-flow gate: `gh pr list` above already
         # reconciles a lost create response on its own, so nothing reads this back.
@@ -150,14 +159,46 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
     return pr, error, caveats
 
 
-def _read_ci(worktree: Path, row: dict) -> None:
-    """One read of the PR's CI after the push (DELIVER runs under a host tool call with a
-    time cap, so it never waits). Pending and error are caveats; a failing check drafts
-    the PR, and the revise entry is the way back once the author fixes it."""
+# Seconds slept before re-reading a PR whose CI shows no checks while the verified SHA has
+# workflows (checks register a moment after the push). One budget for the whole DELIVER
+# call, shared by every repo: 26 s on top of _PR_HEAD_WAITS, never per repo.
+_CI_REGISTER_WAITS = (3, 5, 8, 10)
+
+
+def _has_workflows(worktree: Path, sha: str) -> bool:
+    return bool(repo_module._git(worktree, "ls-tree", "--name-only", sha, ".github/workflows/").stdout.strip())
+
+
+def _retitle_from(adoption: dict, repo_name: str) -> str | None:
+    """The adopted PR's current title when it is still the one loop-spec generated from the
+    prior SPEC, else None (a title a person changed, or a PR loop-spec did not open)."""
+    prior = adoption.get("prior")
+    if adoption.get("repo") != repo_name or not prior:
+        return None
+    old = pr_title(prior["spec"].get("title") or prior["spec"]["goal"])
+    return adoption.get("title") if adoption.get("title") == old else None
+
+
+def _read_ci(worktree: Path, row: dict, sha: str = "", budget: int = 0) -> int:
+    """Read the PR's CI after the push. A `none` read on a SHA that has workflows is
+    re-read after a short wait (checks register late), within `budget` seconds; returns
+    the seconds slept. Pending and error are caveats; a failing check drafts the PR, and
+    the revise entry is the way back once the author fixes it."""
     pr = row["pr"]
     state, detail = repo_module.pr_checks(worktree, pr["number"])
+    slept = 0
+    workflows = state == "none" and bool(sha) and _has_workflows(worktree, sha)
+    if workflows:
+        for wait in _CI_REGISTER_WAITS:
+            if state != "none" or slept + wait > budget:
+                break
+            time.sleep(wait)
+            slept += wait
+            state, detail = repo_module.pr_checks(worktree, pr["number"])
     row["checks"] = {"state": state, "detail": detail}
-    if state == "pending":
+    if state == "none" and workflows:
+        row["caveats"].append("CI workflows exist but no checks had registered when DELIVER read them")
+    elif state == "pending":
         row["caveats"].append(f"CI is still running: {detail or pr['url']}")
     elif state == "error":
         row["caveats"].append(f"CI was not read: {detail}")
@@ -166,6 +207,7 @@ def _read_ci(worktree: Path, row: dict) -> None:
         code, _, err = repo_module.run_gh(worktree, "pr", "ready", str(pr["number"]), "--undo")
         if code != 0:
             row["caveats"].append(f"the PR is not a draft: gh pr ready --undo failed: {err.strip()}")
+    return slept
 
 
 def _view_pr(worktree: Path, branch: str) -> tuple[dict | None, str | None]:
@@ -328,6 +370,7 @@ def run(store, paths, ctx):
     touched = {} if no_change else _touched_repos(store)
     adoption = store.state.get("adoption") or {}
     repos_out = []
+    ci_budget = sum(_CI_REGISTER_WAITS)
     bound_to = {"requirements": store.state["revisions"]["requirements"], "plan": store.state["revisions"]["plan"]}
 
     # D7: every touched repo's credentials are checked before the FIRST remote write,
@@ -451,8 +494,10 @@ def run(store, paths, ctx):
                  f"pushed {verified_sha[:12]} to {repo_info['featureBranch']}"
 
         pr, error, pr_caveats = _reconcile_pr(store, repo_name, worktree, repo_info, repo_info["defaultBranch"], draft,
-                                               spec_product["goal"], render.pr_body(store, repo_name), verified_sha,
-                                               reviewers, labels)
+                                               spec_product.get("title") or spec_product["goal"],
+                                               render.pr_body(store, repo_name, number=adoption.get("number") if adoption.get("repo") == repo_name else None),
+                                               verified_sha,
+                                               reviewers, labels, _retitle_from(adoption, repo_name))
         if error:
             # The branch IS on the remote: record what was published and where it stopped.
             repos_out.append(failed(f"{action}; the PR step failed: {error}"))
@@ -488,7 +533,7 @@ def run(store, paths, ctx):
             row["acceptedRemote"] = accepted
             row["caveats"].append("accepted remote commits under deliver.acceptRemotePaths: " + _accepted_text(accepted))
         if readiness == "checks":
-            _read_ci(worktree, row)
+            ci_budget -= _read_ci(worktree, row, verified_sha, ci_budget)
         if repo_module._configured_remote_host(Path(repo_info["path"]), "origin") is not None:
             _post_replies(store, worktree, row)
         repos_out.append(row)
@@ -501,7 +546,7 @@ def run(store, paths, ctx):
             worktree = paths.feature_worktree(row["repo"])
             if not worktree.is_dir():
                 worktree = Path(store.state["repos"][row["repo"]]["path"])
-            _edit_body(worktree, row["pr"]["number"], render.pr_body(store, row["repo"], siblings), row["caveats"])
+            _edit_body(worktree, row["pr"]["number"], render.pr_body(store, row["repo"], siblings, number=row["pr"]["number"]), row["caveats"])
 
     # Mixed is partial; nothing delivered is blocked (the rows name why); an
     # untouched (skipped) repo never makes a delivery partial.

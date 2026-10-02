@@ -378,6 +378,55 @@ class DeliverTests(unittest.TestCase):
             self.assertTrue(row["caveats"])
             _git(self.remote, "update-ref", "-d", "refs/heads/feature")  # the next pass pushes afresh
 
+    def test_ci_read_waits_for_checks_to_register_when_workflows_exist(self):
+        reads = iter([("none", "no checks reported"), ("pending", "build")])
+        with self._run_gh_reconcile(), \
+             patch("loop_spec.deliver._has_workflows", return_value=True), \
+             patch("loop_spec.deliver.repo_module.pr_checks", side_effect=lambda *a: next(reads)), \
+             patch("loop_spec.deliver.time.sleep") as sleep:
+            action = deliver.run(self.store, self.paths, self.ctx)
+        self.assertEqual(action.product["repos"][0]["checks"]["state"], "pending")
+        self.assertEqual([c.args for c in sleep.call_args_list], [(3,)])
+
+    def _gh_calls_for_adopted(self, title):
+        spec = self.store.state["products"]["spec"]["product"]
+        self.store.state["adoption"] = {"repo": "repo", "number": 42, "url": "https://x/pull/42", "headRef": "feature",
+                                         "baseBranch": "main", "baseSha": self.base_sha, "headSha": self.head_sha,
+                                         "title": title,
+                                         "prior": {"slug": "old", "spec": {"goal": "old goal"}, "plan": {}, "commentsCutoff": None}}
+        spec["title"] = "feat: new title"
+        self.store.save()
+        calls = []
+
+        def fake_run_gh(repo, *args):
+            calls.append(args)
+            if args[:2] == ("pr", "list"):
+                return 0, json.dumps([{"number": 42, "url": "https://x/pull/42",
+                                        "headRefOid": self.head_sha, "baseRefName": "main"}]), ""
+            if args[:2] == ("pr", "view"):
+                return 0, PR_VIEW_JSON, ""
+            if args[:2] == ("pr", "checks"):
+                return 1, "", "no checks reported"
+            return 0, "", ""
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh):
+            deliver.run(self.store, self.paths, self.ctx)
+        return [c for c in calls if c[:2] == ("pr", "edit") and "--title" in c]
+
+    def test_an_adopted_pr_is_retitled_while_it_is_still_the_generated_title(self):
+        self.assertEqual(self._gh_calls_for_adopted("old goal"),
+                         [("pr", "edit", "42", "--title", "feat: new title")])
+
+    def test_an_adopted_pr_title_a_person_changed_is_left_alone(self):
+        self.assertEqual(self._gh_calls_for_adopted("Fix the thing"), [])
+
+    def test_the_spec_title_names_a_new_pr(self):
+        self.store.state["products"]["spec"]["product"]["title"] = "feat: add lerp helper"
+        self.store.save()
+        with self._run_gh_reconcile() as run_gh:
+            deliver.run(self.store, self.paths, self.ctx)
+        create = next(c.args for c in run_gh.call_args_list if c.args[1:3] == ("pr", "create"))
+        self.assertEqual(create[create.index("--title") + 1], "feat: add lerp helper")
+
     def test_a_clean_base_move_exits_base_moved_with_no_conflicts(self):
         self._merge_upstream("c.py")
         with self._run_gh_reconcile():

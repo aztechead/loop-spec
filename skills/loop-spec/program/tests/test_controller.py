@@ -768,6 +768,21 @@ class PlanCriticTests(_QuietStdout):
                 self.assertEqual((step["cwd"], critic_step["cwd"]), (code_path, code_path))
                 self.assertIn(f'"codePath": "{code_path}"', step["prompt"])
 
+    def test_spec_lead_runs_in_the_code_checkout_not_the_operators_tree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            with contextlib.redirect_stdout(io.StringIO()):
+                controller.run_entry("cycle", project_root=repo_dir, request_text="Add a greeting message",
+                                     slug="greeting", state_home=str(home), answer_policy=None, pr=None)
+            paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "greeting"))
+            store = _open(paths)
+            step = read_json(paths.steps_dir / store.state["steps"]["open"][0]["stepAttemptId"] / "step.json")
+            info = next(iter(store.state["repos"].values()))
+            self.assertEqual(step["cwd"], info["codeCheckout"]["path"])
+            self.assertNotEqual(step["cwd"], str(repo_dir))
+
     def test_critic_result_in_review_tool_shape_is_rejected(self):
         # LF-32: the plan-critic worker wrote a review-tool-shaped result (the bug
         # this finding is about); submit must reject it naming what the schema wants.
@@ -1904,7 +1919,20 @@ class StartFactsTests(unittest.TestCase):
         self.assertEqual((store.state["issue"]["repo"], store.state["issue"]["number"], len(store.state["issue"]["body"])),
                          ("repo", 12, 4000))
         self.assertEqual(store.state["openWork"]["repo"]["openPrs"][0]["number"], 3)
-        self.assertTrue(store.state["openWork"]["repo"]["takenBranch"])
+
+    def test_an_issue_names_the_feature_branch(self):
+        def gh(repo, *args):
+            if args[0] == "api":
+                return 0, "ada\n", ""
+            if args[0] == "issue":
+                return 0, json.dumps({"number": 7, "title": "Add a lerp helper", "url": "u", "state": "OPEN", "body": ""}), ""
+            return 0, "[]", ""
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(Path(tmp), "https://github.com/example/repo.git")
+            with patch.object(repo_module, "run_gh", side_effect=gh):
+                controller._record_start_facts(store, "fix #7")
+        self.assertEqual(store.state["repos"]["repo"]["featureBranch"], "feat/7-add-a-lerp-helper")
+        self.assertFalse(store.state["openWork"]["repo"]["takenBranch"])
 
     def test_an_adopted_pr_keeps_the_issue_it_closes(self):
         def gh(repo, *args):

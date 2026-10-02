@@ -87,7 +87,7 @@ These behaviors meet the standard. Do not re-report them as gaps.
 | TA-11 | Low | Handoff | Commit history carries run-internal IDs | Fixed (prompt) |
 | TA-12 | Low | Handoff | Branch names are hard-coded | Fixed |
 | TA-13 | Low | Handoff | No reviewers, labels, or assignee | Fixed |
-| TA-14 | High | Integration | CI is not followed after the PR opens | Partial: one CI read, no wait |
+| TA-14 | High | Integration | CI is not followed after the PR opens | Partial: one read, then a short wait for checks to register |
 | TA-15 | High | Integration | A clean base move is not re-verified | Fixed |
 | TA-16 | Medium | Conventions | Team instruction files are barely read | Fixed (prompt) |
 | TA-17 | Medium | Completeness | No change-impact duty beyond the diff | Fixed (prompt) |

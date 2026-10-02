@@ -262,6 +262,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "answer":
             store, paths = _open_store(args)
+            recorded = store.state["questions"]["answered"].get(args.question)
+            if recorded is not None and recorded["value"] == args.answer:
+                log.stdout.info("already answered")
             questions.answer(store, paths, question_id=args.question, value=args.answer, scope=args.scope, by="human")
             next_ = controller.continue_run(store, paths, project_root=Path(args.project_root))
             _print_next(paths, next_, args)

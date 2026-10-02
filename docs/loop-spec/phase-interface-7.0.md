@@ -246,13 +246,13 @@ outright incorrect implementations; the PR review catches the rest.
 | Runs as | a fresh goal-judgment role |
 
 The program, not the judge role, dispositions every non-Critical open finding
-before deciding the exit: Minor is always deferred; Important becomes an `execute`
-gap (a close-out) while the rewind budget has room, and is deferred once it does not;
+before deciding the exit: Important and Minor each become an `execute` gap (a
+close-out) while the rewind budget has room, and are deferred once it does not;
 Critical is never deferred and always becomes an `execute` gap (decided 2026-09-22,
 LF-46; Important moved from PLAN to EXECUTE in LF-68). A deferred Minor finding does
 not make the exit `converged with caveats`; only a deferred Important one does, so a
-run whose only open findings are Minor converges and DELIVER opens a ready PR that
-lists them.
+run whose only open findings are Minor and out of rewind room converges and DELIVER
+opens a ready PR that lists them.
 
 | Id | Postcondition | Gates |
 |---|---|---|

@@ -152,7 +152,9 @@ the operator's answer, set before the run (`--answer-policy default`, or
 approval). Follow the next `LOOP_SPEC_NEXT` line as usual.
 
 1. Ask the user the question in `question.json` with `AskUserQuestion`.
-2. Run the `answer` command with their answer.
+2. Run the `answer` command with their answer. The run has already moved on once it
+   returns; on a resume, follow the next `LOOP_SPEC_NEXT` and never answer again.
+   An answer replayed with the same text is a no-op (`already answered`).
 
 If you have no way to ask the user (no AskUserQuestion tool, or a headless run),
 stop. Print the question file path and its text. The operator answers with
@@ -174,4 +176,6 @@ nothing these skills do is part of its result. Stop.
   you have and let the program re-issue it with the reason.
 - Never edit the project or dispatch a worker the program did not issue. A
   `fix-and-re-enter` option is the operator's fix, not yours.
+- `status` is read-only: run it whenever you need the run's state, without asking,
+  before you stop on any non-zero exit.
 - On a non-zero exit, report the program's output and stop.

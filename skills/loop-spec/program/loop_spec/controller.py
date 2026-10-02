@@ -442,9 +442,19 @@ def _record_start_facts(store: StateStore, request_text: str, *, intake: bool = 
             break
     slug = store.state["run"]["slug"]
     adopted = (store.state.get("adoption") or {}).get("repo")
+    wanted = {name: slug for name in hosted}
+    issue = store.state.get("issue") or {}
+    if issue.get("repo") in hosted and issue["repo"] != adopted and issue.get("number"):
+        # A branch a teammate would name: `<prefix>7-add-a-lerp-helper`. EXECUTE creates the
+        # feature branch and worktree later, so nothing on disk exists to move yet.
+        info = store.state["repos"][issue["repo"]]
+        prefix = info["featureBranch"].rpartition("/")[0]
+        prefix = prefix + "/" if prefix else ""
+        wanted[issue["repo"]] = f"{issue['number']}-{slug_from_request(issue.get('title') or '')}"
+        info["featureBranch"] = repo_module.free_branch(hosted[issue["repo"]], f"{prefix}{wanted[issue['repo']]}")
     store.state["openWork"] = {
         name: {"openPrs": repo_module.open_prs(path),
-               "takenBranch": name != adopted and store.state["repos"][name]["featureBranch"].rsplit("/", 1)[-1] != slug}
+               "takenBranch": name != adopted and store.state["repos"][name]["featureBranch"].rsplit("/", 1)[-1] != wanted[name]}
         for name, path in hosted.items()}
 
 
@@ -755,7 +765,7 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
         store.save()
         marker_phase_start(paths, phase, attempt_id)
         emit(paths, "phase_start", {"summary": f"{phase} attempt {attempt_id}"}, phase=phase, attempt_id=attempt_id)
-        if phase in ("plan", "debug", "revise"):
+        if phase in ("spec", "plan", "debug", "revise"):
             _ensure_code_checkouts(store, paths)
         envelope = build_envelope(store, paths, phase, attempt_id, project_root)
         contract.write_context(paths, attempt_id, envelope)

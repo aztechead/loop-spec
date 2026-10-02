@@ -63,6 +63,13 @@ Write your result to the path the step names; write nowhere else.
 - **The reader decides whether the work is right.** Say what changes for them and
   what it costs; never describe behavior you have not read.
 
+## PR title
+
+Write `title` as the PR title a teammate would write, in the repository's own
+convention: read `git log --oneline -15` and match it (for example
+`feat: add lerp helper`). Keep it under 70 characters; name the issue number only
+if the convention does. It is optional, but the PR is opened with it.
+
 ## What NOT to do
 
 - Do not propose implementation details; that is PLAN's job.
@@ -82,6 +89,7 @@ A request to add `lerp` to a `calc` package. `inputsDigest` and `boundTo` copy t
   "inputsDigest": "sha256:4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a4f2a",
   "boundTo": {"requirements": null, "plan": null},
   "goal": "calc exposes lerp(a, b, t), returning a + (b - a) * t.",
+  "title": "feat: add lerp helper",
   "boundaries": ["No change to existing calc functions."],
   "criteria": [{"id": "AC-1", "text": "lerp(0, 10, 0.5) returns 5.0"}],
   "decisions": [],

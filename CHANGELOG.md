@@ -16,8 +16,9 @@ finding in [teammate-alignment-audit.md](docs/loop-spec/teammate-alignment-audit
   from `git ls-remote --symref origin HEAD`, never the current branch (TA-19).
 - Every base move is merged in and re-verified, not only a conflicting one (TA-15).
 - `deliver.readiness` defaults to `"checks"`: DELIVER reads each published PR's CI
-  once, including on a partial delivery (TA-14, TA-21). It never waits; a failing
-  check drafts the PR, and revise reads failing checks as review input.
+  once, including on a partial delivery (TA-14, TA-21). When the verified commit has
+  workflows and no check has registered yet, it re-reads for up to 26 seconds in
+  total (one budget per DELIVER call, not per repo); a failing check drafts the PR, and revise reads failing checks as review input.
 - The PR body sits between `<!-- loop-spec:begin -->` markers, so a later delivery
   refreshes only its own section and keeps what people wrote (TA-5). It now carries
   the SPEC's decisions, criterion text, open questions, `Closes #n` for an issue the
@@ -40,6 +41,21 @@ finding in [teammate-alignment-audit.md](docs/loop-spec/teammate-alignment-audit
   in code route to micro (TA-6, TA-20).
 - Roles read `AGENTS.md`, `CLAUDE.md`, and `CONTRIBUTING*`; the planner covers docs
   and callers a change affects, and the code reviewer flags them (TA-16, TA-17).
+- A PR title a teammate would write: the SPEC carries an optional `title` (at most 72
+  characters, in the repository's convention), DELIVER opens the PR with it, and an
+  adopted PR is retitled only while its title is still the one loop-spec generated.
+- The PR body is shorter to read: the criteria table drops the Command and SHA columns,
+  `### How to test` lists each evidence command once with `Verified at <sha>`, long
+  plan-critic text is cut to 300 characters, the owner line names the PR number on a
+  revise, and a repository PR template's Summary-like and Test-like sections are filled
+  when they hold only placeholders (checklists stay as written).
+- A run that names an issue branches as `<prefix>7-add-a-lerp-helper`.
+- SPEC reads and runs in a clean checkout at the run's base commit, as PLAN does.
+- Every open Minor review finding now costs one close-out rewind (EXECUTE then VERIFY)
+  while the rewind budget has room; once out of room it is deferred and reported, never
+  a caveat, as before.
+- The reviser's replies are addressed to the reviewer: what changed and where, with no
+  internal ids.
 
 ### Fixed
 
@@ -48,6 +64,12 @@ finding in [teammate-alignment-audit.md](docs/loop-spec/teammate-alignment-audit
   repository rejected every implement step as "uncommitted changes".
 - A run that adopts a PR keeps the issue that PR already closes, so a revise no longer
   drops `Closes #n` when it refreshes the body.
+- `python -m unittest` is a recognized test runner: base runs no longer report
+  `testsRan 0` (a false Critical in every stdlib-unittest repository), and FAIL/ERROR
+  lines give failure identities.
+- `loop-spec answer` replayed with the answer it already recorded exits 0 (`already
+  answered`) instead of failing on the retired question. The runner protocol says
+  `status` is read-only and free to run.
 
 ## [7.8.3] - 2026-10-01
 

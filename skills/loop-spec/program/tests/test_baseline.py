@@ -15,6 +15,7 @@ from loop_spec.baseline import (
     compare_to_baseline,
     describe_failure,
     detect_runner,
+    parse_unittest,
     evidence_matches,
     fingerprints,
     normalize_output,
@@ -97,6 +98,29 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse_cargo_test(text), ["module::tests::add", "module::tests::mul"])
 
 
+class UnittestParserTests(unittest.TestCase):
+    def test_fail_and_error_identities(self):
+        text = (
+            "FAIL: test_a (pkg.mod.Case.test_a)\n"
+            "ERROR: test_b (pkg.mod.Case)\n"
+            "Ran 2 tests in 0.1s\n"
+        )
+        self.assertEqual(parse_unittest(text), ["pkg.mod.Case.test_a", "pkg.mod.Case.test_b"])
+
+    def test_ran_line_counts_tests(self):
+        self.assertEqual(_count_tests_ran("..\nRan 2 tests in 0.001s\n\nOK\n", "unittest"), 2)
+
+    def test_passing_base_run_is_not_zero_tests(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "test_ok.py").write_text(
+                "import unittest\nclass T(unittest.TestCase):\n"
+                "    def test_a(self): pass\n    def test_b(self): pass\n"
+            )
+            run = _run("python3 -m unittest test_ok", tmp)
+            self.assertEqual(run.runner, "unittest")
+            self.assertEqual(run.tests_ran, 2)
+
+
 class DetectRunnerTests(unittest.TestCase):
     def test_matches(self):
         self.assertEqual(detect_runner("pytest -k foo"), "pytest")
@@ -108,6 +132,10 @@ class DetectRunnerTests(unittest.TestCase):
 
     def test_no_match(self):
         self.assertIsNone(detect_runner("make check"))
+
+    def test_unittest_runner(self):
+        self.assertEqual(detect_runner("python3 -m unittest discover -s tests -t ."), "unittest")
+        self.assertEqual(detect_runner("uv run python -m unittest tests.test_x"), "unittest")
 
 
 class NormalizeTests(unittest.TestCase):

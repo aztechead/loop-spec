@@ -135,11 +135,21 @@ class IterateTests(unittest.TestCase):
         self.assertEqual(action.product["verdict"], "unmet")
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
-    def test_met_with_minor_open_finding_converges_and_defers_it(self):
-        # LF-46: nobody used to disposition a non-Critical open finding, so it
-        # forced "unmet" forever. The program now defers a Minor one itself, and F11:
-        # a deferred Minor finding is reported but is not a caveat.
+    def test_met_with_minor_open_finding_and_room_rewinds_to_an_execute_close_out(self):
         self.store.state["ledger"]["findings"] = [_finding("F-1", "Minor", "open")]
+        action = self._judge_result("met", [])
+        self.assertEqual((action.product["exit"], action.product["verdict"]), ("rewind", "unmet"))
+        self.assertEqual(action.product["gaps"][0]["target"], "execute")
+        self.assertEqual(action.product["gaps"][0]["findingId"], "F-1")
+        self.assertEqual(self.store.state["ledger"]["findings"][0]["disposition"], "open")
+
+    def test_met_with_minor_open_finding_and_no_room_converges_and_defers_it(self):
+        # LF-46: the program defers a non-Critical open finding itself once the rewind
+        # budget is out of room, and F11: a deferred Minor finding is reported but is
+        # not a caveat.
+        self.store.state["ledger"]["findings"] = [_finding("F-1", "Minor", "open")]
+        self.store.state["budget"]["spent"] = self.store.state["budget"]["limit"]
+        self.store.save()
         action = self._judge_result("met", [])
         self.assertEqual((action.product["exit"], action.product["caveats"]), ("converged", []))
         finding = self.store.state["ledger"]["findings"][0]

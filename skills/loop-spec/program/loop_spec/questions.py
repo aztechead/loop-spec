@@ -63,6 +63,9 @@ def ask(store, paths, *, phase: str, attempt_id: str, text: str, kind: str,
 def answer(store, paths, *, question_id: str, value: str, scope: str = "question", by: str = "human",
            save: bool = True) -> dict:
     if question_id in store.state["questions"]["retired"]:
+        recorded = store.state["questions"]["answered"].get(question_id)
+        if recorded is not None and recorded["value"] == value:
+            return recorded  # a replayed answer (a lead retrying after the run moved on) is a no-op
         raise LoopSpecError(
             f"question {question_id} is retired",
             repair="answer the open question, see `loop-spec status`",
