@@ -509,6 +509,17 @@ class CaptureBaselineTests(unittest.TestCase):
             checkout_dest = Path(checkouts_dir) / f"baseline-{sha[:12]}"
             self.assertFalse(checkout_dest.exists())
 
+    def test_a_failed_prepare_is_recorded_for_the_plan_boundary_and_runs_nothing_after_it(self):
+        with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as checkouts_dir:
+            _init_repo(repo_dir)
+            sha = subprocess.run(
+                ["git", "-C", repo_dir, "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+            ).stdout.strip()
+            baseline = capture_baseline(Path(repo_dir), sha, [("true", "T-1", None)],
+                                        "python3 build_added_by_a_task.py", Path(checkouts_dir), "myrepo")
+            self.assertNotEqual(baseline.prepare_run.exit_status, 0)
+            self.assertEqual(baseline.entries, {})
+
     def test_a_feature_added_path_that_exists_at_base_is_recorded_not_raised(self):
         with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as checkouts_dir:
             _init_repo(repo_dir)

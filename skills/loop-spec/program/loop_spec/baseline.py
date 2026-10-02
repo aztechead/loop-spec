@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Literal
 
 from loop_spec import repo as repo_module
-from loop_spec.errors import LoopSpecError
 from loop_spec.ids import digest_bytes, now_iso
 
 # ---------------------------------------------------------------------------
@@ -606,9 +605,11 @@ def capture_baseline(
         if prepare:
             prepare_run = run_command(prepare, checkout_dest, base_sha)
             if prepare_run.exit_status != 0:
-                raise LoopSpecError(
-                    f"prepare command failed at base: {prepare}",
-                    repair=f"run `{prepare}` by hand in {checkout_dest} against {base_sha} and fix it",
+                # A PLAN defect, not an operator's: the failed run is recorded and the PLAN
+                # boundary rejects it back to the planner, so no command runs after it.
+                return Baseline(
+                    base_sha=base_sha, repo=repo_name, prepare=prepare, prepare_run=prepare_run,
+                    entries={}, captured_at=now_iso(), normalization_version=NORMALIZATION_VERSION,
                 )
 
         entries: dict[str, BaselineEntry] = {}

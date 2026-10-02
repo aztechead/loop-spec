@@ -505,7 +505,9 @@ class Boundary:
                 return f"baseline for repo {repo_name!r}: prepare command does not match the plan's"
             prepare_run = repo_dict.get("prepareRun")
             if prepare_run is not None and prepare_run.get("exitStatus") != 0:
-                return f"baseline for repo {repo_name!r}: prepare command failed"
+                return (f"baseline for repo {repo_name!r}: prepare command failed at base (exit "
+                        f"{prepare_run.get('exitStatus')}): {self.product.get('prepare')}; it runs before any task "
+                        "in a checkout of the base, so it cannot use a file a task adds")
             repo_health = health.get(repo_name, {})
             for entry in repo_dict.get("entries", {}).values():
                 run = entry.get("run")
