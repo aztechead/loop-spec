@@ -20,6 +20,13 @@ BLOCKED_OPTIONS = [
     {"value": "fix-and-re-enter", "label": "Fix and re-enter"},
 ]
 
+# A recurred-problem question's answers (the progress rule): `continue` routes the run
+# back again, `stop` ends it. `stop` is first and the default, as for a blocked question.
+RECURRED_OPTIONS = [
+    {"value": "stop", "label": "Stop"},
+    {"value": "continue", "label": "Continue"},
+]
+
 
 def ask(store, paths, *, phase: str, attempt_id: str, text: str, kind: str,
         options: list[dict], default_value: str | None, payload: dict | None, save: bool = True,

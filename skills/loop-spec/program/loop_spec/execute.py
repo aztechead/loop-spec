@@ -19,7 +19,6 @@ from loop_spec import baseline as baseline_module
 from loop_spec import probes as probes_module
 from loop_spec import repo as repo_module
 from loop_spec import steps as steps_module
-from loop_spec.budget import has_room
 from loop_spec.contract import validate_request
 from loop_spec.errors import LoopSpecError
 from loop_spec.events import emit
@@ -28,7 +27,7 @@ from loop_spec.jsonio import read_json
 from loop_spec.paths import ensure_results_dir
 from loop_spec.questions import BLOCKED_OPTIONS
 from loop_spec.postconditions import (PLAN_IDENTITY_FIELDS as _PLAN_IDENTITY_FIELDS, adoptable_task_ids, adopted_commits,
-                                      close_out_view, close_outs, retry_limit)
+                                      close_out_view, close_outs, reason_key)
 from loop_spec.roles import compose_prompt, load_role, step_request
 from loop_spec.steps import IssueStep, IssueSteps, Pause, Product, Wait
 
@@ -125,14 +124,43 @@ def _refresh_stale_close_outs(store, paths, execute_state: dict) -> bool:
 
 
 def _retry_or_block(execute_state: dict, task_id: str, task_state: dict, reason_text: str, *, retry_status: str = "pending") -> None:
+    """Retry while each rejection says something new. A reason whose key was already seen
+    for this task blocks it (re-running cannot change that); so does the third distinct
+    reason since the operator last answered (the task keeps changing without passing).
+    Either way EXECUTE exits `blocked` and the operator is asked, never silently stopped."""
     task_state["retries"] += 1
-    if task_state["retries"] > retry_limit():
+    key = reason_key(reason_text)
+    seen = task_state.setdefault("reasons", [])
+    repeated = key in seen
+    churn = not repeated and len(set(seen)) + 1 >= 3
+    seen.append(key)
+    if repeated or churn:
         task_state["status"] = "blocked"
         task_state["reason"] = None
-        execute_state["issues"].append({"task": task_id, "retries": task_state["retries"], "text": reason_text})
+        text = (f"the same rejection came back after a retry: {reason_text}" if repeated else
+                f"changed three times without passing; the reasons were: {'; '.join(dict.fromkeys(seen))}")
+        execute_state["issues"].append({"task": task_id, "retries": task_state["retries"], "text": text,
+                                        "repeated" if repeated else "churn": True})
     else:
         task_state["status"] = retry_status
         task_state["reason"] = reason_text
+
+
+def _handle_operator_reentry(execute_state: dict, ctx) -> None:
+    """The operator answered `fix-and-re-enter` to a block this module raised for a
+    repeated or churning task: reopen it with a clean reason history, once per attempt."""
+    entry = ctx["entry"]
+    if entry.get("mode") != "remediation" or not (entry.get("payload") or {}).get("operatorReentry"):
+        return
+    handled = execute_state.setdefault("handledReentries", [])
+    if ctx["attempt"]["id"] in handled:
+        return
+    handled.append(ctx["attempt"]["id"])
+    for issue in [i for i in execute_state["issues"] if i.get("repeated") or i.get("churn")]:
+        task_state = execute_state["tasks"][issue["task"]]
+        execute_state["issues"].remove(issue)
+        execute_state.setdefault("issueHistory", []).append(issue)
+        task_state.update(status="pending", reason=issue["text"], reasons=[])
 
 
 def repo_checks(store, repo_name: str) -> list[str]:
@@ -189,7 +217,7 @@ def _route_verify_comparison(execute_state: dict, task_id: str, task_state: dict
                               label: str = "verify") -> None:
     """`baseline-error` and a `mustFlip-failed` baseline that never failed are PLAN's
     own mistake (see `_MUST_FLIP_BASELINE_DETAIL` above): route straight to plan gap,
-    spending none of the task's retry budget on an outcome no retry can change. Every
+    spending no retry on an outcome no retry can change. Every
     other failing verdict (`regression`, `featureAdded-failed`, a `mustFlip-failed`
     whose reproduction still fails at the candidate) is still the implementer's to fix
     and keeps the retry-then-block path."""
@@ -417,7 +445,6 @@ def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, tas
         "task": plan_task,
         "criteria": [c for c in spec["criteria"] if c["id"] in plan_task["criteria"]],
         "probes": ctx.get("probes", {}),
-        "minimalDiff": not has_room(store),
         "checks": repo_checks(store, task_state["repo"]),
     }
     if task_state.get("closeOut"):
@@ -703,7 +730,7 @@ def _handle_rejection(store, paths, ctx, execute_state: dict) -> Pause | None:
             for task_id in _rejection_task_ids(failure["message"], execute_state):
                 task_state = execute_state["tasks"][task_id]
                 task_state["review"] = None
-                # A re-issued review counts against the same retry limit as a
+                # A re-issued review is retried like a
                 # re-implementation; without it a host that never attests a
                 # review re-issued it forever (LF-35).
                 _retry_or_block(execute_state, task_id, task_state, failure["message"], retry_status="probing")
@@ -1286,6 +1313,7 @@ def step(store, paths, ctx):
     rejection_pause = _handle_rejection(store, paths, ctx, execute_state)
     if rejection_pause is not None:
         return rejection_pause
+    _handle_operator_reentry(execute_state, ctx)
 
     _handle_rewind(store, paths, ctx, execute_state)
     if _schedule_close_outs(store, execute_state):

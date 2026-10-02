@@ -16,7 +16,7 @@ from loop_spec.events import emit
 from loop_spec.ids import digest_bytes, new_id, now_iso
 from loop_spec.jsonio import atomic_write_json, read_json
 from loop_spec.paths import ensure_results_dir
-from loop_spec.postconditions import retry_limit
+from loop_spec.postconditions import reason_key
 from loop_spec.repo import remove_worktree
 from loop_spec.schema import validate, validate_or_raise
 
@@ -358,14 +358,18 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
         step["attestationAttempts"] = attempts
         step["reason"] = reason_text
         atomic_write_json(step_path, step)
-        limit = retry_limit()
+        # A reason this step already failed attestation with, once volatile ids are
+        # dropped, is a repeat: re-dispatching cannot change it.
+        keys = open_record.setdefault("attestationReasonKeys", [])
+        repeated = reason_key(reason_text) in keys
+        keys.append(reason_key(reason_text))
         # Only a host can attest a fresh dispatch; an SDK receipt mismatch or no host
         # at all goes straight to the policy below.
-        if host is not None and not receipt_path.is_file() and attempts <= limit:
+        if host is not None and not receipt_path.is_file() and not repeated:
             redispatch = f"{step_id}-{attempts + 1}"
             emit(paths, "step_redispatch", {
                 "stepAttemptId": step_id, "attempt": attempts, "dispatch": redispatch, "reason": reason_text,
-                "summary": f"{step_id} unattested ({attempts}/{limit}): re-dispatch as {redispatch}",
+                "summary": f"{step_id} unattested (attempt {attempts}): re-dispatch as {redispatch}",
             }, phase=step["phase"], attempt_id=step["attempt"], source="program")
             store.save()
             return Submission(step=step, result=result, result_digest=result_digest,

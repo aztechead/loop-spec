@@ -50,7 +50,7 @@ class StateStore:
             "approval": None,
             "baseline": None,
             "ledger": {"findings": [], "reviewedRanges": [], "reviews": []},
-            "budget": {"limit": 2, "spent": 0, "transitions": []},
+            "budget": {"transitions": []},
             "repos": None,
             "questions": {"open": None, "answered": {}, "retired": [], "policy": None, "policyAnswered": []},
             "steps": {"open": [], "retired": [], "quarantined": [], "submissions": {}},

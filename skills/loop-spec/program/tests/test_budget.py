@@ -1,8 +1,7 @@
-"""Unit tests for loop_spec.budget: the shared rewind budget (T1)."""
+"""Unit tests for loop_spec.budget: the backward-transition progress rule (T1, T2)."""
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from loop_spec import budget
 from loop_spec.paths import FeaturePaths
@@ -14,54 +13,67 @@ def _store(tmp) -> StateStore:
     return StateStore.create(paths, {"id": "run-1", "entry": "cycle"}, "do the thing")
 
 
-class BudgetTests(unittest.TestCase):
-    def test_default_limit_is_two(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {}, clear=True):
-            self.assertEqual(budget.limit(_store(tmp)), 2)
+def _spend(store, n, exit="plan gap", frm="verify", cause="c", fp="f"):
+    return budget.spend(store, from_phase=frm, exit=exit, to_phase="plan", attempt_id=f"attempt-{n}",
+                        reason="gap", cause=cause, fingerprint=fp)
 
-    def test_env_override(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {"LOOP_SPEC_REWIND_BUDGET": "5"}, clear=True):
-            self.assertEqual(budget.limit(_store(tmp)), 5)
 
-    def test_spend_twice_then_raise(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {}, clear=True):
+class RepeatOfTests(unittest.TestCase):
+    def test_a_new_cause_never_repeats_however_many_came_before(self):
+        with tempfile.TemporaryDirectory() as tmp:
             store = _store(tmp)
-            budget.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="attempt-1", reason="gap")
-            budget.spend(store, from_phase="verify", exit="plan gap", to_phase="plan", attempt_id="attempt-2", reason="gap")
-            self.assertFalse(budget.has_room(store))
-            with self.assertRaises(budget.BudgetExhausted):
-                budget.spend(store, from_phase="verify", exit="plan gap", to_phase="plan", attempt_id="attempt-3", reason="gap")
+            for n in range(6):
+                self.assertIsNone(budget.repeat_of(store, "verify", "plan gap", f"cause-{n}", f"fp-{n}"))
+                _spend(store, n, cause=f"cause-{n}", fp=f"fp-{n}")
 
+    def test_same_cause_on_a_changed_state_recurred(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = _store(tmp)
+            _spend(store, 1)
+            self.assertEqual(budget.repeat_of(store, "verify", "plan gap", "c", "other"), "recurred")
+
+    def test_same_state_is_identical_whatever_the_cause(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = _store(tmp)
+            _spend(store, 1)
+            self.assertEqual(budget.repeat_of(store, "verify", "plan gap", "c", "f"), "identical")
+            self.assertEqual(budget.repeat_of(store, "verify", "plan gap", "reworded", "f"), "identical")
+            self.assertIsNone(budget.repeat_of(store, "verify", "intent gap", "c", "f"))  # another exit
+
+    def test_a_transition_recorded_without_cause_or_fingerprint_never_matches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = _store(tmp)
+            store.state["budget"]["transitions"].append(
+                {"from": "verify", "exit": "plan gap", "to": "plan", "attemptId": "a", "reason": "gap", "at": "t"})
+            self.assertIsNone(budget.repeat_of(store, "verify", "plan gap", "c", "f"))
+
+
+class SpendTests(unittest.TestCase):
     def test_idempotent_replay_of_same_attempt_and_exit(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {}, clear=True):
+        with tempfile.TemporaryDirectory() as tmp:
             store = _store(tmp)
-            first = budget.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="attempt-1", reason="gap")
-            second = budget.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="attempt-1", reason="gap")
+            first = _spend(store, 1, exit="spec gap", frm="plan")
+            second = _spend(store, 1, exit="spec gap", frm="plan")
             self.assertEqual(first, second)
-            self.assertEqual(store.state["budget"]["spent"], 1)
+            self.assertEqual(len(store.state["budget"]["transitions"]), 1)
 
-    def test_base_moves_have_their_own_limit_and_never_spend_the_rewind_budget(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {}, clear=True):
+    def test_transitions_record_cause_and_fingerprint(self):
+        with tempfile.TemporaryDirectory() as tmp:
             store = _store(tmp)
-            budget.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="attempt-1", reason="gap")
-            budget.spend(store, from_phase="verify", exit="plan gap", to_phase="plan", attempt_id="attempt-2", reason="gap")
-            self.assertFalse(budget.has_room(store))  # two counted spends: T1 is spent...
-            for n in range(budget.BASE_MOVE_LIMIT):  # ...yet a base move still has room, up to its own limit
-                self.assertTrue(budget.base_move_room(store))
-                budget.spend(store, from_phase="deliver", exit="base moved", to_phase="execute", attempt_id=f"deliver-{n}", reason="moved")
-            self.assertEqual(store.state["budget"]["spent"], 2)
-            self.assertEqual(len(store.state["budget"]["transitions"]), 2 + budget.BASE_MOVE_LIMIT)
-            self.assertFalse(budget.base_move_room(store))
-            with self.assertRaises(budget.BudgetExhausted):
-                budget.spend(store, from_phase="deliver", exit="base moved", to_phase="execute", attempt_id="deliver-x", reason="moved")
-
-    def test_transitions_recorded(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {}, clear=True):
-            store = _store(tmp)
-            record = budget.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="attempt-1", reason="gap")
+            record = _spend(store, 1, exit="spec gap", frm="plan", cause="x", fp="y")
             self.assertEqual(store.state["budget"]["transitions"], [record])
-            self.assertEqual(record["from"], "plan")
-            self.assertEqual(record["to"], "spec")
+            self.assertEqual((record["from"], record["to"], record["cause"], record["fingerprint"]), ("plan", "plan", "x", "y"))
+
+    def test_base_moves_count_to_their_limit_and_restart_after_the_operator_continues(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = _store(tmp)
+            for n in range(budget.BASE_MOVE_LIMIT):
+                self.assertTrue(budget.base_move_room(store))
+                _spend(store, n, exit="base moved", frm="deliver", cause=None, fp=None)
+            self.assertFalse(budget.base_move_room(store))
+            store.state["budget"]["baseMovesContinuedAt"] = len(store.state["budget"]["transitions"])
+            self.assertTrue(budget.base_move_room(store))
+            self.assertEqual(budget.base_moves(store), 0)
 
 
 if __name__ == "__main__":

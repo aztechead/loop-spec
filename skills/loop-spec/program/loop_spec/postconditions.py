@@ -12,7 +12,6 @@ about an adopted PR that the checks and the phases share (`start_sha`,
 `Boundary.weakened_assurance` after a passing check to fold into state and the result.
 """
 import json
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,12 +29,56 @@ from loop_spec.ids import digest
 from loop_spec.jsonio import read_json
 from loop_spec.schema import load_schema, validate
 
-RETRY_LIMIT_DEFAULT = 3
+_VOLATILE = [
+    re.compile(r"\b(?:step|attempt|range|finding|question|run)-[0-9a-f]+(?:-\d+)?\b"),
+    re.compile(r"\b(?=[0-9a-f]*\d)[0-9a-f]{7,}\b"),
+    re.compile(r"\b\d+\b"),
+]
 
 
-def retry_limit() -> int:
-    env = os.environ.get("LOOP_SPEC_STEP_RETRIES")
-    return int(env) if env else RETRY_LIMIT_DEFAULT
+def reason_key(text: str) -> str:
+    """A rejection reason with its volatile parts removed (step and attempt ids, hex
+    runs of 7 or more, bare numbers), lower-cased and whitespace-collapsed, so the same
+    problem reported twice compares equal."""
+    text = str(text).lower()
+    for pattern in _VOLATILE:
+        text = pattern.sub("", text)
+    return " ".join(text.split())
+
+
+def cause_key(phase: str, exit_: str, product: dict) -> str:
+    """What sent the run back, as a comparable string (the progress rule's `cause`)."""
+    verdicts = product.get("verdicts") or []
+    findings = product.get("findings") or []
+    if phase == "iterate":
+        parts = [g.get("findingId") or f"{g.get('target')}:{reason_key(g.get('text', ''))}"
+                 for g in product.get("gaps") or []]
+    elif exit_ == "implementation gap":
+        parts = [f"fail:{v['criterion']}" for v in verdicts if v.get("verdict") == "fail"]
+        parts += [f"critical:{f['id']}" for f in findings if f.get("severity") == "Critical" and f.get("disposition") == "open"]
+    elif exit_ == "evidence incomplete":
+        parts = [f"no-evidence:{v['criterion']}" for v in verdicts if v.get("verdict") != "blocked" and not v.get("evidence")]
+    else:
+        texts = [i.get("text") for i in product.get("issues") or []]
+        texts += [v.get("cause") for v in verdicts] + [f.get("cause") for f in findings]
+        parts = [reason_key(t) for t in texts if t]
+    return "|".join(sorted(set(parts))) or exit_
+
+
+def fingerprint(store, product: dict) -> str:
+    """The state a backward exit leaves: per-repo tree of the verified head plus the
+    requirements and plan revisions. Tree, not commit, so an oscillation that lands back
+    on identical content is the same fingerprint."""
+    executed = (store.state["products"].get("execute") or {}).get("product") or {}
+    trees = {}
+    for name, head in sorted((product.get("heads") or executed.get("heads") or {}).items()):
+        info = (store.state.get("repos") or {}).get(name)
+        try:
+            trees[name] = repo_module.head_sha(Path(info["path"]), f"{head}^{{tree}}") if info else head
+        except LoopSpecError:
+            trees[name] = head
+    revisions = store.state["revisions"]
+    return digest({"trees": trees, "requirements": revisions.get("requirements"), "plan": revisions.get("plan")})
 
 
 def requirements_revision(spec_product: dict) -> str:
@@ -838,15 +881,13 @@ class Boundary:
         if not issues:
             return "no issues recorded for the blocked exit"
         has_permission_denied = any(_PERMISSION_DENIED_MARKER in i["text"] for i in issues)
-        # A task that exhausted its own per-step retries is what E10 means by "up to
-        # the per-step retry limit"; counting only the phase's product rejections made
-        # a correctly blocked product re-run three empty attempts first (LF-40).
-        step_retries_exhausted = ran_default(self.store, "execute") and any(
-            i.get("retries", 0) > retry_limit() for i in issues
-        )
-        if (self.store.state["phase"].get("retries", 0) < retry_limit() and not has_permission_denied
-                and not step_retries_exhausted):
-            return f"blocked claimed before the retry limit ({retry_limit()}) or a permission-denied issue"
+        # A task whose rejection reason repeated, or that changed three times without
+        # passing, is what E10 means by "retried until it stopped changing". Only the
+        # default EXECUTE records that, so an external product cannot vouch for itself;
+        # it needs one rejected round and an answered blocked question first.
+        repeated = ran_default(self.store, "execute") and any(i.get("repeated") or i.get("churn") for i in issues)
+        if not (repeated or has_permission_denied or self.store.state["phase"].get("blockedAnswered")):
+            return "blocked claimed before a task repeated a rejection reason, a permission-denied issue, or an answered blocked question"
         return None
 
     def _e11(self) -> str | None:
@@ -1032,13 +1073,19 @@ class Boundary:
                     return f"gap {i} targets EXECUTE with no repo; name one of {', '.join(repos)}"
         return None
 
+    def _repeat(self, exit_: str | None = None) -> str | None:
+        exit_ = exit_ or self.exit
+        return budget_module.repeat_of(self.store, self.phase, exit_, cause_key(self.phase, exit_, self.product),
+                                       fingerprint(self.store, self.product))
+
     def _i3(self) -> str | None:
-        return None if budget_module.has_room(self.store) else "the rewind budget has no room"
+        return None if self._repeat() != "identical" else "the rewind repeats an identical state; no progress"
 
     def _i4(self) -> str | None:
-        rewind_refused = self.product.get("verdict") == "unmet" and not budget_module.has_room(self.store)
+        rewind_refused = (self.product.get("verdict") == "unmet" and bool(self.product.get("gaps"))
+                          and self._repeat("rewind") == "identical")
         unclosable_gap = self.product.get("verdict") == "unmet" and not self.product.get("gaps")
-        return None if (rewind_refused or unclosable_gap) else "escalated claimed with budget remaining and every gap routable"
+        return None if (rewind_refused or unclosable_gap) else "escalated claimed with every gap routable and no repeated state"
 
     def _i5(self) -> str | None:
         verify_entry = self.store.state["products"]["verify"]
@@ -1348,12 +1395,10 @@ class Boundary:
                     return f"PR {action['url']} head is {(head or err.strip() or 'unreadable')[:40]}, not the claimed {action['sha'][:12]}"
         return None
 
-    # -- T1: shared budget -----------------------------------------------
+    # -- T1: no repeat of an identical state -------------------------------
 
     def _t1(self) -> str | None:
-        return None if budget_module.has_room(self.store) else "the rewind budget has no room"
+        return None if self._repeat() != "identical" else "no progress: the same exit on an unchanged tree"
 
     def _t2(self) -> str | None:
-        if budget_module.base_move_room(self.store):
-            return None
-        return f"the base moved {budget_module.BASE_MOVE_LIMIT} times; the base-move limit is {budget_module.BASE_MOVE_LIMIT}"
+        return None if budget_module.base_move_room(self.store) else "the base-move count is at its limit and the operator has not continued"

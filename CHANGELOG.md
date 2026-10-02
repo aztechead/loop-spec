@@ -51,14 +51,41 @@ finding in [teammate-alignment-audit.md](docs/loop-spec/teammate-alignment-audit
   when they hold only placeholders (checklists stay as written).
 - A run that names an issue branches as `<prefix>7-add-a-lerp-helper`.
 - SPEC reads and runs in a clean checkout at the run's base commit, as PLAN does.
-- Every open Minor review finding now costs one close-out rewind (EXECUTE then VERIFY)
-  while the rewind budget has room; once out of room it is deferred and reported, never
-  a caveat, as before.
+- Every open Minor review finding now costs one close-out rewind (EXECUTE then VERIFY);
+  a finding still open after a close-out already targeted it is deferred and reported,
+  never a caveat, as before. Important findings follow the same one-close-out rule;
+  Critical findings are never deferred.
+- A progress rule replaces the rewind count (T1). The program stops a run by itself only
+  on proof of no progress: a backward exit that would re-run an identical state (same
+  exit, same per-repo git tree and revisions). When the same cause comes back after a
+  change it asks `continue` or `stop` (default `stop`) instead of ending the run, and a
+  new cause never asks. A refused ITERATE rewind still routes to a partial draft
+  delivery when `deliver.escalatedPartialDraft` is set. Escalation reasons name the
+  repeated exit and cause.
+- A DELIVER `base moved` past three moves asks whether to merge again instead of
+  escalating (T2); `continue` restarts the count.
+- Step and product retries follow the same rule: a task whose rejection reason repeats
+  (step and attempt ids, hashes, and numbers ignored) is blocked; one that changes
+  three times without passing is blocked as well, so EXECUTE asks `fix-and-re-enter` or
+  `stop`. A rejected product asks when the same failed checks come back, and an
+  unattested judgment step is re-dispatched until its reason repeats. E10 holds for
+  those blocks, a permission-denied issue, or an answered blocked question; an external
+  EXECUTE needs one rejected round first.
+- Headless runs with `--answer-policy default` answer every one of these questions
+  `stop`, so an unattended run ends at the first recurrence, and never for a new reason.
 - The reviser's replies are addressed to the reviewer: what changed and where, with no
   internal ids.
 
+### Removed
+
+- `LOOP_SPEC_REWIND_BUDGET` and `LOOP_SPEC_STEP_RETRIES`, the rewind count (`budget.limit`
+  and `spent`; `iterations.max` in the result is now `null`), and the `minimalDiff`
+  implementer flag. `loop-spec status` prints `rewinds: <n>`.
+
 ### Fixed
 
+- The `minimalDiff` flag never reached the implementer (the code set `inputs.minimalDiff`,
+  the role contract read `inputs.flags.minimalDiff`); it is gone with the count it keyed on.
 - A filled PR template carries the summary and test commands between its own markers,
   refreshed in place by later deliveries; loop-spec's block leaves out whatever the
   template already carries, so nothing appears twice. The findings table drops the

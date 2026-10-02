@@ -552,7 +552,9 @@ integrator on either side.
   never stand in for a new SHA. Both VERIFY gates are evaluated at the same SHA, and
   convergence also requires an ITERATE verdict for that SHA and the current spec
   digest.
-- One budget bounds every backward transition: ITERATE rewinds, VERIFY's routes back
+- (Superseded in 7.9.0 by the progress rule in `phase-interface-7.0.md`: no count; an
+  identical state escalates and a recurring cause asks the operator. The decision below
+  stands as history.) One budget bounds every backward transition: ITERATE rewinds, VERIFY's routes back
   to EXECUTE, PLAN, or SPEC, and evidence-incomplete re-entry. Default two, operator
   override, counted once per accepted transition, persisted across sessions, never
   reset by a fresh attempt (decided 2026-09-22 from the M1 fixtures review, which

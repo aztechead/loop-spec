@@ -413,35 +413,112 @@ class EdgeCaseTests(_QuietStdout):
             self.assertEqual(store.state["phase"]["entry"], "remediation")
             self.assertIn("rejected", store.state["phase"]["entryPayload"])
 
-    def test_t1_exhaustion_writes_escalated_without_entering_a_phase(self):
+    def _plan_store(self, tmp):
+        store, paths = self._minimal_store(tmp)
+        store.state["products"]["spec"] = {
+            "attemptId": "attempt-0", "inputsDigest": "sha256:" + "0" * 64,
+            "boundTo": {"requirements": None, "plan": None}, "exit": "approved",
+            "product": {"goal": "g", "boundaries": [], "criteria": [], "decisions": []},
+            "receivedAt": "2026-01-01T00:00:00+00:00", "evidenceLevel": "human-attested",
+        }
+        store.state["revisions"]["requirements"] = postconditions.requirements_revision(store.state["products"]["spec"]["product"])
+        store.state["phase"]["current"] = "plan"
+        store.state["phase"]["attemptId"] = "attempt-3"
+        store.save()
+        product = {
+            "exit": "spec gap", "inputsDigest": "sha256:" + "0" * 64,
+            "boundTo": {"requirements": store.state["revisions"]["requirements"], "plan": None},
+            "tasks": [], "prepare": None, "evidenceExceptions": [],
+        }
+        return store, paths, product
+
+    def _earlier_spec_gap(self, store, product, *, fingerprint=None):
+        budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="attempt-1", reason="gap",
+                            cause=postconditions.cause_key("plan", "spec gap", product),
+                            fingerprint=fingerprint or postconditions.fingerprint(store, product))
+
+    def test_an_identical_repeat_writes_escalated_without_entering_a_phase(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths, product = self._plan_store(tmp)
+            self._earlier_spec_gap(store, product)
+
+            controller._accept_product(store, paths, tmp, "plan", "attempt-3", product)
+
+            self.assertEqual(store.state["result"]["classification"], "escalated")
+            self.assertIn("no progress", read_json(paths.result_json)["reason"])
+            self.assertEqual(store.state["phase"]["current"], "plan")  # never entered spec
+
+    def test_a_recurred_cause_asks_and_continue_routes_back_and_spends(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths, product = self._plan_store(tmp)
+            self._earlier_spec_gap(store, product, fingerprint="sha256:an-earlier-state")
+
+            controller._accept_product(store, paths, tmp, "plan", "attempt-3", product)
+
+            open_question = store.state["questions"]["open"]
+            self.assertEqual(open_question["kind"], "recurred")
+            self.assertEqual(open_question["defaultValue"], "stop")
+            self.assertEqual(store.state["phase"]["attemptId"], "attempt-3")  # unlike a blocked pause
+            self.assertEqual(len(store.state["budget"]["transitions"]), 1)  # nothing spent yet
+            questions.answer(store, paths, question_id=open_question["questionId"], value="continue")
+            with patch.object(controller, "_ensure_code_checkouts"):
+                controller.continue_run(store, paths, project_root=tmp)
+            self.assertEqual(len(store.state["budget"]["transitions"]), 2)
+            self.assertEqual(store.state["phase"]["current"], "spec")
+            self.assertIsNone(store.state["phase"]["recurred"])
+            self.assertIsNone(store.state.get("result"))
+
+    def test_a_recurred_cause_answered_stop_escalates_with_the_recurrence_as_the_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths, product = self._plan_store(tmp)
+            self._earlier_spec_gap(store, product, fingerprint="sha256:an-earlier-state")
+            controller._accept_product(store, paths, tmp, "plan", "attempt-3", product)
+            questions.answer(store, paths, question_id=store.state["questions"]["open"]["questionId"], value="stop")
+            controller.continue_run(store, paths, project_root=tmp)
+            self.assertEqual(store.state["result"]["classification"], "escalated")
+            self.assertIn("again after a change", read_json(paths.result_json)["reason"])
+            self.assertEqual(len(store.state["budget"]["transitions"]), 1)
+
+    def test_a_base_move_past_its_limit_asks_and_continue_restarts_the_count(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             store, paths = self._minimal_store(tmp)
-            store.state["products"]["spec"] = {
-                "attemptId": "attempt-0", "inputsDigest": "sha256:" + "0" * 64,
-                "boundTo": {"requirements": None, "plan": None}, "exit": "approved",
-                "product": {"goal": "g", "boundaries": [], "criteria": [], "decisions": []},
-                "receivedAt": "2026-01-01T00:00:00+00:00", "evidenceLevel": "human-attested",
-            }
-            store.state["revisions"]["requirements"] = postconditions.requirements_revision(store.state["products"]["spec"]["product"])
-            store.state["phase"]["current"] = "plan"
-            store.state["phase"]["attemptId"] = "attempt-3"
+            store.state["phase"]["current"] = "deliver"
+            for n in range(budget_module.BASE_MOVE_LIMIT):
+                budget_module.spend(store, from_phase="deliver", exit="base moved", to_phase="execute", attempt_id=f"d-{n}", reason="moved")
             store.save()
+            product = {"repos": [{"repo": "repo", "state": "base moved", "newBase": "b" * 40}]}
 
-            budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="attempt-1", reason="gap")
-            budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="attempt-2", reason="gap")
-            self.assertFalse(budget_module.has_room(store))
+            controller._finalize(store, paths, tmp, "deliver", "attempt-9", product, "base moved")
 
-            plan_gap_product = {
-                "exit": "spec gap", "inputsDigest": "sha256:" + "0" * 64,
-                "boundTo": {"requirements": store.state["revisions"]["requirements"], "plan": None},
-                "tasks": [], "prepare": None, "evidenceExceptions": [],
-            }
-            controller._accept_product(store, paths, tmp, "plan", "attempt-3", plan_gap_product)
+            question = store.state["questions"]["open"]
+            self.assertEqual(question["kind"], "recurred")
+            self.assertIsNone(store.state.get("result"))
+            self.assertEqual(store.state["phase"]["current"], "deliver")
+            questions.answer(store, paths, question_id=question["questionId"], value="continue")
+            with patch.object(controller, "_finalize") as finalize:
+                finalize.side_effect = lambda *a, **k: store.state.update(result={"classification": "stub"})
+                controller.continue_run(store, paths, project_root=tmp)
+            self.assertEqual(finalize.call_args.kwargs, {"proceed": True})  # the deliver boundary needs a real run
+            self.assertEqual(store.state["budget"]["baseMovesContinuedAt"], budget_module.BASE_MOVE_LIMIT)
+            self.assertTrue(budget_module.base_move_room(store))
 
-            self.assertIsNotNone(store.state["result"])
-            self.assertEqual(store.state["result"]["classification"], "escalated")
-            self.assertEqual(store.state["phase"]["current"], "plan")  # never entered spec
+    def test_a_rejected_product_asks_when_the_same_failed_checks_come_back(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths = self._minimal_store(tmp)
+            failure = [postconditions.Failure("E1", "task T-1 at 1234567 is wrong")]
+            controller._reject_product(store, paths, "execute", "attempt-1", "integrated", failure)
+            self.assertIsNone(store.state["questions"]["open"])
+            controller._reject_product(store, paths, "execute", "attempt-2", "integrated",
+                                       [postconditions.Failure("E2", "other")])  # a different set: still retrying
+            self.assertIsNone(store.state["questions"]["open"])
+            controller._reject_product(store, paths, "execute", "attempt-3", "integrated",
+                                       [postconditions.Failure("E1", "task T-1 at 7654321 is wrong")])  # same ids
+            self.assertEqual(store.state["questions"]["open"]["kind"], "blocked")
 
     def test_duplicate_accept_does_not_double_transition(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -692,7 +769,7 @@ class PlanCriticTests(_QuietStdout):
             self.assertEqual(store.state["questions"]["answered"][critic_questions[0]]["by"], "policy")
             self.assertEqual(store.state["questions"]["policyAnswered"].count(critic_questions[0]), 1)
             self.assertEqual(store.state["phase"]["current"], "spec")  # the backward route
-            self.assertEqual(store.state["budget"]["spent"], 1)
+            self.assertEqual(len(store.state["budget"]["transitions"]), 1)
             self.assertIsNone(store.state["phase"]["criticQuestionId"])
 
     def test_the_default_policy_closes_findings_with_the_recommended_reason(self):
@@ -830,10 +907,6 @@ class EscalatedPartialDraftTests(_QuietStdout):
         store.save()
         return store, paths
 
-    def _exhaust_budget(self, store: StateStore) -> None:
-        budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-1", reason="gap")
-        budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-2", reason="gap")
-
     def _escalated_iterate_product(self) -> dict:
         return {
             "exit": "escalated", "inputsDigest": "sha256:" + "0" * 64,
@@ -845,7 +918,6 @@ class EscalatedPartialDraftTests(_QuietStdout):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             store, paths = self._minimal_store(tmp)
-            self._exhaust_budget(store)
 
             controller._finalize(store, paths, tmp, "iterate", "attempt-1", self._escalated_iterate_product(), "escalated")
 
@@ -856,7 +928,6 @@ class EscalatedPartialDraftTests(_QuietStdout):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             store, paths = self._minimal_store(tmp, config={"deliver": {"escalatedPartialDraft": True}})
-            self._exhaust_budget(store)
 
             controller._finalize(store, paths, tmp, "iterate", "attempt-1", self._escalated_iterate_product(), "escalated")
 
@@ -909,12 +980,12 @@ class CloseOutTransitionTests(_QuietStdout):
             self.assertEqual(save.call_count, 1)  # product, spend, close-outs and route in one write
             on_disk = StateStore.open(paths).state
             self.assertEqual(on_disk["phase"]["current"], "plan")
-            self.assertEqual(on_disk["budget"]["spent"], 1)
+            self.assertEqual(len(on_disk["budget"]["transitions"]), 1)
             self.assertEqual([(e["id"], e["repo"], e["source"]["gapIndex"], e["status"]) for e in on_disk["closeOuts"]],
                              [("C-1", "repo", 1, "active")])
 
             controller._accept_product(store, paths, tmp, "iterate", "attempt-1", self._rewind())  # replay
-            self.assertEqual(store.state["budget"]["spent"], 1)
+            self.assertEqual(len(store.state["budget"]["transitions"]), 1)
             self.assertEqual(len(store.state["closeOuts"]), 1)
 
     def test_crash_before_the_transition_save_persists_nothing_and_the_last_rewind_replays(self):
@@ -922,18 +993,18 @@ class CloseOutTransitionTests(_QuietStdout):
             tmp = Path(tmp)
             store, paths = self._store(tmp)
             budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-1", reason="gap")
-            store.save()  # one rewind left: this one is the last allowed
+            store.save()
             with patch.object(store, "save", side_effect=RuntimeError("killed")):
                 with self.assertRaises(RuntimeError):
                     controller._accept_product(store, paths, tmp, "iterate", "attempt-1", self._rewind())
             store = StateStore.open(paths)
-            self.assertEqual(store.state["budget"]["spent"], 1)
+            self.assertEqual(len(store.state["budget"]["transitions"]), 1)
             self.assertIsNone(store.state["products"]["iterate"])
             self.assertFalse(store.state.get("closeOuts"))
 
             controller._accept_product(store, paths, tmp, "iterate", "attempt-1", self._rewind())
             store = StateStore.open(paths)
-            self.assertEqual(store.state["budget"]["spent"], 2)
+            self.assertEqual(len(store.state["budget"]["transitions"]), 2)
             self.assertEqual(store.state["phase"]["current"], "plan")
             self.assertEqual([e["id"] for e in store.state["closeOuts"]], ["C-1"])
 
@@ -941,10 +1012,14 @@ class CloseOutTransitionTests(_QuietStdout):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             store, paths = self._store(tmp)
-            EscalatedPartialDraftTests._exhaust_budget(self, store)
-            controller._accept_product(store, paths, tmp, "iterate", "attempt-1", self._rewind())
+            rewind = self._rewind()
+            budget_module.spend(store, from_phase="iterate", exit="rewind", to_phase="plan", attempt_id="a-0", reason="rewind",
+                                cause=postconditions.cause_key("iterate", "rewind", rewind),
+                                fingerprint=postconditions.fingerprint(store, rewind))
+            controller._accept_product(store, paths, tmp, "iterate", "attempt-1", rewind)
             self.assertFalse(store.state.get("closeOuts"))
-            self.assertEqual(store.state["budget"]["spent"], 2)
+            self.assertEqual(len(store.state["budget"]["transitions"]), 1)
+            self.assertEqual(store.state["result"]["classification"], "escalated")
 
     def test_execute_acceptance_closes_and_a_refreshed_closure_keeps_its_history(self):
         with tempfile.TemporaryDirectory() as tmp:

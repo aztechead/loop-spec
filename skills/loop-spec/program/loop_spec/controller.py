@@ -2,8 +2,8 @@
 
 Use `run_entry` once per CLI invocation of a controller entry (cycle, micro, or a
 single-phase resume) and `continue_run` after `submit`/`answer` record a step or
-question result. This module is the ONLY place that transitions a phase, spends the
-T1 rewind budget, writes the SPEC approval record, or writes a terminal result;
+question result. This module is the ONLY place that transitions a phase, records the
+backward-transition ledger, writes the SPEC approval record, or writes a terminal result;
 `postconditions.py` only answers whether a claimed exit's requirements hold.
 """
 import json
@@ -561,7 +561,29 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
                         reason=f"{refused}{store.state['phase']['current']} paused" + (f": {cause}" if cause else "") + f"; operator chose {answered['value']!r}",
                     )
                     continue
-                store.save()  # fix-and-re-enter / spec gap: phase.entry is already "remediation"
+                # fix-and-re-enter / spec gap: phase.entry is already "remediation". EXECUTE
+                # reopens a task it blocked for a repeated or churning reason (execute.py).
+                payload = dict(store.state["phase"].get("entryPayload") or {})
+                if store.state["phase"]["current"] == "execute":
+                    payload["operatorReentry"] = True
+                    store.state["phase"]["entryPayload"] = payload
+                store.state["phase"]["blockedAnswered"] = True
+                store.save()
+                continue
+
+        recurred = store.state["phase"].get("recurred")
+        if recurred is not None:
+            answered = store.state["questions"]["answered"].get(recurred["questionId"])
+            if answered is not None:
+                store.state["phase"]["recurred"] = None
+                if answered["value"] == "stop":
+                    _finish_run(store, paths, "escalated", reason=f"{recurred['reason']} operator chose 'stop'")
+                    continue
+                if recurred["baseMove"]:
+                    # T2 counts only base moves after this index (budget.base_moves).
+                    store.state["budget"]["baseMovesContinuedAt"] = len(store.state["budget"]["transitions"])
+                _finalize(store, paths, project_root, recurred["phase"], recurred["attemptId"], recurred["product"],
+                          recurred["exit"], proceed=True)
                 continue
 
         spec_question_id = store.state["phase"].get("specQuestionId")
@@ -1549,19 +1571,49 @@ def _record_deliver_credentials(store: StateStore, attempt_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase: str, attempt_id: str, product: dict, exit_: str) -> None:
+def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase: str, attempt_id: str, product: dict,
+              exit_: str, proceed: bool = False) -> None:
+    """`proceed` is the operator's `continue` to a recurred-problem question: the repeat
+    check for this transition is already answered."""
     route = postconditions.ROUTES[phase][exit_]
-    if "T1" in route["requires"] and not budget_module.has_room(store):
-        # T1 exhaustion is not an ordinary rejected postcondition: the controller
-        # refuses the backward exit and escalates directly, without entering any
-        # phase or looping the product back into remediation (phase-interface-7.0.md
-        # "Backward-transition budget"). ITERATE's own refused rewind is the one
-        # named exception (its "rewind" exit gates on I3/I4 instead of T1).
-        _finish_run(store, paths, "escalated", reason=f"the rewind budget has no room for {phase} {exit_}")
-        return
-    if "T2" in route["requires"] and not budget_module.base_move_room(store):
-        _finish_run(store, paths, "escalated", reason=f"the base moved {budget_module.BASE_MOVE_LIMIT} times; "
-                    "resolve with the base owner, then start a revise run")
+    # The progress rule (phase-interface-7.0.md "Backward-transition progress rule"),
+    # decided before the boundary check so the boundary never refuses what is decided here.
+    # Tier 1: an earlier transition left this exact state; re-running cannot differ, the only
+    # case the program ends a run on its own. Tier 2: the cause came back after a change; ask.
+    is_rewind = "T1" in route["requires"] or (phase == "iterate" and exit_ == "rewind")
+    recurred_text, recurred_payload = None, None
+    if is_rewind and not proceed:
+        cause = postconditions.cause_key(phase, exit_, product)
+        repeat = budget_module.repeat_of(store, phase, exit_, cause, postconditions.fingerprint(store, product))
+        if repeat == "identical" and phase == "iterate":
+            # ITERATE's own `escalated` exit already routes to a partial DELIVER when
+            # configured (below); a refused rewind takes that same path, so the config
+            # option stays reachable for a no-progress loop. I4 holds for it.
+            exit_, product = "escalated", dict(product, exit="escalated")
+            route = postconditions.ROUTES[phase][exit_]
+        elif repeat == "identical":
+            _finish_run(store, paths, "escalated", reason=(
+                f"no progress: {phase.upper()} exited {exit_} on {cause} again and nothing changed since "
+                f"the last time (same tree and revisions)"))
+            return
+        elif repeat == "recurred":
+            recurred_text = f"{phase.upper()} exited {exit_} on {cause} again after a change; continue (route it back again) or stop?"
+            recurred_payload = {"recurred": {"phase": phase, "exit": exit_, "cause": cause}}
+    if recurred_text is None and "T2" in route["requires"] and not budget_module.base_move_room(store) and not proceed:
+        repos = ", ".join(r["repo"] for r in product.get("repos") or [] if r.get("state") == "base moved") or "a repo"
+        recurred_text = (f"{repos}'s base moved {budget_module.base_moves(store)} times during this run; "
+                         "merge it in again (continue) or stop?")
+        recurred_payload = {"recurred": {"phase": phase, "exit": exit_, "repo": repos}}
+    if recurred_text is not None:
+        # Unlike a blocked pause this keeps the attempt: `continue` re-enters this very
+        # function with the stored product, `stop` finishes the run with this text.
+        record = questions.ask(
+            store, paths, phase=phase, attempt_id=attempt_id, text=recurred_text, kind="recurred",
+            options=questions.RECURRED_OPTIONS, default_value="stop", payload=recurred_payload, save=False)
+        store.state["phase"]["recurred"] = {"questionId": record["questionId"], "phase": phase, "exit": exit_,
+                                            "attemptId": attempt_id, "product": product, "reason": recurred_text,
+                                            "baseMove": "T2" in route["requires"]}
+        store.save()
         return
 
     if phase == "verify":
@@ -1624,11 +1676,9 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
         return
 
     if route["backward"]:
-        try:
-            budget_module.spend(store, from_phase=phase, exit=exit_, to_phase=next_phase, attempt_id=attempt_id, reason=exit_)
-        except budget_module.BudgetExhausted as exc:
-            _finish_run(store, paths, "escalated", reason=str(exc))
-            return
+        budget_module.spend(store, from_phase=phase, exit=exit_, to_phase=next_phase, attempt_id=attempt_id, reason=exit_,
+                            cause=postconditions.cause_key(phase, exit_, product),
+                            fingerprint=postconditions.fingerprint(store, product))
         # LF-55: registered after the spend and before the one save below, so the
         # accepted product, spend, close-outs and route reach disk together. A replay
         # of this attempt stops at _accept_product's already-recorded check, before
@@ -1744,6 +1794,8 @@ def _record_accepted_product(store: StateStore, phase: str, attempt_id: str, pro
                     "requirementsRevision": store.state["revisions"]["requirements"], "attemptId": attempt_id,
                 }
     store.state["phase"]["retries"] = 0
+    store.state["phase"]["rejectionKeys"] = []
+    store.state["phase"].pop("blockedAnswered", None)
     if boundary.unreviewed:
         store.state["unreviewed"] = boundary.unreviewed
     if boundary.weakened_assurance:
@@ -1758,10 +1810,16 @@ def _reject_product(store: StateStore, paths: FeaturePaths, phase: str, attempt_
     store.state["phase"]["entry"] = "remediation"
     store.state["phase"]["entryPayload"] = {"rejected": {"exit": exit_, "failures": [{"id": f.id, "message": f.message} for f in failures]}}
     store.state["phase"]["attemptId"] = None
-    if store.state["phase"]["retries"] > postconditions.retry_limit():
+    # The same set of failed checks as an earlier rejection in this phase: re-entering
+    # cannot change it, so ask. Keyed on ids only (messages embed shas and paths).
+    key = "|".join(sorted({f.id for f in failures}))
+    seen = store.state["phase"].setdefault("rejectionKeys", [])
+    repeated = key in seen
+    seen.append(key)
+    if repeated:
         record = questions.ask(
             store, paths, phase=phase, attempt_id=attempt_id,
-            text=f"{phase.upper()} product rejected {store.state['phase']['retries']} times: {'; '.join(f.message for f in failures)}",
+            text=f"{phase.upper()} product rejected again for {key} ({store.state['phase']['retries']} rejections): {'; '.join(f.message for f in failures)}",
             kind="blocked", options=questions.BLOCKED_OPTIONS,
             default_value="stop", payload={"phase": phase},
         )
@@ -1893,7 +1951,7 @@ def _iterate_escalation_reason(store: StateStore) -> str:
     gaps = store.state["products"]["iterate"]["product"].get("gaps") or []
     if not gaps:
         return "ITERATE judged the requirements unmet with no gap to close"
-    return ("ITERATE judged the requirements unmet and the rewind budget has no room; open gaps: "
+    return ("ITERATE judged the requirements unmet and the rewind repeats an earlier one on an unchanged tree; open gaps: "
             + "; ".join(g["text"][:300] for g in gaps))
 
 

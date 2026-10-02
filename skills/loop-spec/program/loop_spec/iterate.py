@@ -13,7 +13,6 @@ from loop_spec import ledger as ledger_module
 from loop_spec import postconditions
 from loop_spec import repo as repo_module
 from loop_spec import steps as steps_module
-from loop_spec.budget import has_room
 from loop_spec.errors import LoopSpecError
 from loop_spec.events import emit
 from loop_spec.steps import IssueStep, Product
@@ -56,12 +55,10 @@ def _judge_request(store, paths, ctx, heads: dict[str, str]) -> dict:
     ensure_results_dir(paths)
     result_path = paths.results_dir / f"iterate-{ctx['attempt']['id']}.json"
 
-    budget_state = store.state["budget"]
     inputs = {
         "request": store.state["request"]["text"], "spec": store.state["products"]["spec"]["product"],
         **diff_inputs, "verify": store.state["products"]["verify"]["product"],
         "priorGaps": store.state["iterate"]["priorGaps"],
-        "budget": {"spent": budget_state["spent"], "limit": budget_state["limit"], "hasRoom": has_room(store)},
     }
     if store.state.get("closeOuts"):
         # LF-55: what earlier rewinds asked EXECUTE to close out, and how each closed.
@@ -87,8 +84,8 @@ def _final_product(store, paths, ctx, iterate_state: dict) -> dict:
 
     # A "met" verdict over an open ledger finding is not met: reconciled here,
     # before the four rules below ever see it, rather than left as a fifth rule of
-    # its own. I4 only accepts "escalated" for a refused rewind (unmet, no budget
-    # room) or an unclosable gap (unmet, no gap at all) -- routing a met-but-open
+    # its own. I4 only accepts "escalated" for a refused rewind (unmet, repeating an
+    # identical state) or an unclosable gap (unmet, no gap at all) -- routing a met-but-open
     # verdict to "unmet" with a synthesized gap keeps it on one of those two paths
     # instead of needing a justification of its own.
     #
@@ -96,17 +93,17 @@ def _final_product(store, paths, ctx, iterate_state: dict) -> dict:
     # "unmet" forever -- EXECUTE has nothing to do with a Minor finding, VERIFY
     # just re-runs, and the run never converges. The program now dispositions each
     # one itself: Critical always forces a gap (unchanged); Important and Minor
-    # force one while the rewind budget has room (7.9.0: a teammate fixes a Minor
-    # finding while there is room); once the budget is out of room they are deferred
-    # by policy. Only a deferred Important one is a caveat; a deferred Minor one is
+    # force one close-out (7.9.0: a teammate fixes a Minor finding); one still open
+    # after a close-out already targeted it is deferred by policy. Only a deferred Important one is a caveat; a deferred Minor one is
     # reported but converges cleanly. A forced gap is
     # an EXECUTE close-out (LF-55), never a re-plan: a review finding names code to
     # fix, and a PLAN round for it cost 8 to 12 minutes in the timing runs.
     if judge["verdict"] == "met" and open_findings:
+        closed_out = {(e.get("source") or {}).get("findingId") for e in store.state.get("closeOuts") or []}
         forced_gaps = []
         acted_on = []
         for f in open_findings:
-            if f["severity"] == "Critical" or has_room(store):
+            if f["severity"] == "Critical" or f["id"] not in closed_out:
                 gap = {"target": "execute", "text": f"open finding {f['id']} ({f['severity']}) at {f['location']}: {f['cause']}",
                        "findingId": f["id"]}
                 if f.get("repo"):
@@ -131,19 +128,19 @@ def _final_product(store, paths, ctx, iterate_state: dict) -> dict:
     # Order matters: "at least one accepted finding" must be checked before the
     # plain "met" rule, or a met verdict with only deferred findings would never
     # reach "converged with caveats". A "met" verdict past
-    # the reconciliation above already means no Critical or budget-backed
+    # the reconciliation above already means no Critical or close-out-pending
     # Important finding is left unresolved, so this no longer re-checks
     # open_findings itself.
     if verdict == "met" and deferred_important:
         exit_, caveats = "converged with caveats", deferred_important
     elif verdict == "met":
         exit_, caveats = "converged", []
-    elif verdict == "unmet" and gaps and has_room(store):
+    elif verdict == "unmet" and gaps:
         exit_, caveats = "rewind", []
     else:
         # The reconciliation above means "met" only ever reaches here with no
         # unresolved finding left to explain, so this now only ever covers
-        # "unmet": no gap at all, or a gap but no budget room left to rewind into.
+        # "unmet" with no gap at all (the controller, not this module, refuses a repeated rewind).
         exit_, caveats = "escalated", []
 
     return {

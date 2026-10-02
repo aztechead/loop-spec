@@ -174,8 +174,6 @@ environment variables take precedence over it.
 | `LOOP_SPEC_PHASE_MODEL_<PHASE>` | model for every step of that phase (`SPEC`, `PLAN`, `EXECUTE`, ...) whose role has no model of its own set, e.g. `LOOP_SPEC_PHASE_MODEL_PLAN=opus`. For SPEC and PLAN it takes effect under an Agent SDK runner, as above |
 | `roles.<role>.effort` (config), `LOOP_SPEC_EFFORT_<ROLE>` | effort (`low`, `medium`, `high`, `xhigh`, `max`) for every worker that role dispatches, e.g. `LOOP_SPEC_EFFORT_CODE_REVIEWER=low`. By default the router runs at `low`, and every other worker at `medium`; a `null` in config inherits. The worker runs as the plugin's `loop-spec:worker-<effort>` agent. It does not apply to a step the lead runs itself (SPEC, PLAN, debug, revise, direct), which uses the session's `--effort`. A mismatched agent type stops a plan-critic, code-reviewer, iterate-judge or router step; for implementer and verifier it is recorded and the run goes on |
 | `spec.approval` (config), `LOOP_SPEC_SPEC_APPROVAL` | `policy` approves SPEC's requirements without asking, as 6.x's default `auto` style did; the interview and every other question are still asked. Default `ask` |
-| `LOOP_SPEC_REWIND_BUDGET` | how many backward transitions one run may spend; default 2 |
-| `LOOP_SPEC_STEP_RETRIES` | retries before a rejected product asks you to fix and re-enter or stop; default 3 |
 
 ### Use your own skill or plugin in a phase
 

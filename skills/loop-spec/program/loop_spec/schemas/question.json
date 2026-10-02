@@ -20,7 +20,7 @@
       }
     },
     "defaultValue": {"type": ["string", "null"]},
-    "kind": {"type": "string", "enum": ["approval", "choice", "text", "blocked"]},
+    "kind": {"type": "string", "enum": ["approval", "choice", "text", "blocked", "recurred"]},
     "payload": {"type": ["object", "null"]},
     "askedAt": {"type": "string"}
   }

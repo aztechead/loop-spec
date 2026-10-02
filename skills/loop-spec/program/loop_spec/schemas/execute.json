@@ -287,6 +287,14 @@
           },
           "retries": {
             "type": "integer"
+          },
+          "repeated": {
+            "type": "boolean",
+            "description": "The program blocked the task because the same rejection reason came back after a retry."
+          },
+          "churn": {
+            "type": "boolean",
+            "description": "The program blocked the task because it changed three times without passing."
           }
         }
       }

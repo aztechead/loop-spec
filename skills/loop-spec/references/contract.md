@@ -181,8 +181,8 @@ A `role` step whose `role` is `plan-critic`, `code-reviewer`, or `iterate-judge`
 unattested submission for one of these leaves the step open, bumps its
 `attestationAttempts`, emits `step_redispatch`, and `submit` returns a `redispatch`
 name (`<stepId>-<n+1>`) for a fresh worker dispatched with that exact name as its
-`description`, no `name`, and the same prompt, up to `retry_limit()` (`LOOP_SPEC_STEP_RETRIES`, default 3)
-attempts. Past the bound, or at once when no host can attest (no
+`description`, no `name`, and the same prompt, until a failure reason repeats one this step
+already had (volatile ids and numbers ignored). On a repeat, or at once when no host can attest (no
 `CLAUDE_CODE_SESSION_ID`) or an SDK receipt names another digest, the submission is
 accepted only when config opts the role in (`evidence.review.accept` for
 `code-reviewer`, `evidence.judgment.accept` for `plan-critic` and `iterate-judge`);
@@ -205,7 +205,7 @@ role is opted in; a reviewed range with no accepted step is re-reviewed in full.
 
 A question is `schemas/question.json`: `questionId`, `attempt`, `phase`, `text`,
 `options[]` (`{value, label}`), `defaultValue`, `kind` (`approval`, `choice`,
-`text`, or `blocked`), `payload`, `askedAt`. Only one question may be open per run.
+`text`, `blocked`, or `recurred`), `payload`, `askedAt`. Only one question may be open per run.
 Answer with `loop-spec answer --question <id> --answer <value> --slug <slug>
 [--scope question|run]` (`schemas/answer.json`: `questionId`, `value`, `scope`,
 `answeredAt`, `by`: `human` or `policy`). `--scope run` also sets the run's answer
@@ -335,9 +335,7 @@ Environment variables, precedence over config where both apply:
 | `LOOP_SPEC_MODEL_<ROLE>` | sets the model on that role's step request (`roles.resolve_model`, read by every role dispatch: execute.py, controller.py's critic and adopted review, verify.py, iterate.py, debug.py, revise.py, defaults.py); `<ROLE>` has hyphens replaced with underscores (`SPEC_WRITER`). Overrides `roles.<role>.model` when both are set |
 | `LOOP_SPEC_PHASE_MODEL_<PHASE>` | sets the model on every step request of that phase (`<PHASE>` uppercased: `SPEC`, `PLAN`, `EXECUTE`, ...) for a role with neither `LOOP_SPEC_MODEL_<ROLE>` nor `roles.<role>.model` set (an explicit `null` there counts as set and inherits); the role's own default applies when it is unset. A lead step's model is applied only by a host that can switch the lead's model, such as `examples/sdk-plugin` (`ClaudeSDKClient.set_model`) or `examples/supervisor` (a fresh session per lead step) |
 | `LOOP_SPEC_EFFORT_<ROLE>` | sets the effort on that role's step request (`roles.resolve_effort`, same readers and `<ROLE>` spelling as `LOOP_SPEC_MODEL_<ROLE>`); overrides `roles.<role>.effort`. A role step with an effort is dispatched as `loop-spec:worker-<effort>` (the plugin's `agents/`), since the Agent tool takes no per-call effort, and attests only when its transcript's `.meta.json` names that agent type. A lead step runs in the lead's own session at the session's `--effort`; the SDK runner passes the effort to `ClaudeAgentOptions.effort` |
-| `LOOP_SPEC_STEP_RETRIES` | per-phase retry limit before a rejected product asks a `fix-and-re-enter`/`stop` question; default 3 |
 | `LOOP_SPEC_SPEC_APPROVAL` | `ask` or `policy`; overrides `spec.approval` (`contract.spec_approval`) |
-| `LOOP_SPEC_REWIND_BUDGET` | the shared T1 budget's limit; default 2, never resets within a run |
 | `LOOP_SPEC_EXECUTE_WIDTH` | EXECUTE's max tasks per wave; default 3 |
 | `LOOP_SPEC_CONSOLE_EVENTS` | `0` silences the `[PHASE] summary` progress lines |
 | `LOOP_SPEC_CONSOLE_STREAM` | `stdout` or `stderr`, overriding the Cloud Run auto-detect |
