@@ -59,6 +59,8 @@ All notable changes documented here. Format follows Keep a Changelog.
 - The plain-argv check refuses `\$` or a backslash-backtick inside double quotes: a shell drops
   that backslash and the program keeps it, so a `sh -c "... awk '{print \$1}'"` criterion
   passed for the verifier and exited 2 in the program's re-run.
+- `revise` takes `--request`, and the revise stub passes the user's instruction with it,
+  so every phase reads it; the iterate judge called a requested criterion invented.
 - A plan critic finding the operator rejected reaches every later critic pass, so a
   re-plan does not ask the same question again.
 - The plan critic no longer flags a verify command with no test runner (a script or a

@@ -1939,6 +1939,11 @@ class ReviseRequestTextTests(_QuietStdout):
         self.assertEqual(text.splitlines()[0], f"revise PR #42: {self.URL}")
         self.assertTrue(text.endswith(f"\n\nRevise {self.URL}: strip the period"))
 
+    def test_the_revise_command_takes_an_instruction(self):
+        from loop_spec import cli
+        args = cli._build_parser().parse_args(["revise", "--project-root", ".", "--pr", "42", "--request", "strip it"])
+        self.assertEqual(cli._request_text(args), "strip it")
+
     def test_no_request_or_a_bare_url_keeps_the_one_line_text(self):
         for request in (None, f" {self.URL} "):
             with self.subTest(request=request), tempfile.TemporaryDirectory() as tmp:

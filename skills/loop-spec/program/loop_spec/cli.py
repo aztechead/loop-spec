@@ -46,6 +46,7 @@ def _build_parser() -> argparse.ArgumentParser:
             p.add_argument("--request-file")
         elif takes == "pr":
             p.add_argument("--pr")
+            p.add_argument("--request")  # an instruction given with the PR, kept on the run's request
 
     _add_common(sub.add_parser("status"))
 
