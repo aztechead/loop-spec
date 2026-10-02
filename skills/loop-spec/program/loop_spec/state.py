@@ -95,3 +95,9 @@ class StateStore:
         PR base into the feature branch (DELIVER `base moved`); VERIFY onward judge base..head."""
         self.state["repos"][repo]["baseSha"] = base_sha
         self.save()
+
+    def record_merged_remote_head(self, repo: str, sha: str) -> None:
+        """EXECUTE merged origin's PR branch at `sha` into `repo`'s feature branch (a
+        teammate's push, DELIVER `branch moved`); its commits are no task's (E4)."""
+        self.state["repos"][repo].setdefault("mergedRemoteHeads", []).append(sha)
+        self.save()

@@ -1205,7 +1205,7 @@ def _finish_base_move(store, paths, ctx, name: str, move: dict, new_head: str) -
     if move.get("kind") == "branch":
         # A teammate's commits on the PR branch leave the run's base where it was; E4
         # counts them as no task's (postconditions.adopted_commits).
-        store.state["repos"][name].setdefault("mergedRemoteHeads", []).append(move["onto"])
+        store.record_merged_remote_head(name, move["onto"])
     else:
         store.move_base(name, move["onto"])
     emit(paths, "base_merged", {"summary": f"merged {move['onto'][:12]} into {name}'s feature branch at {new_head[:12]}",
