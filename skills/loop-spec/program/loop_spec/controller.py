@@ -1613,8 +1613,8 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
             recurred_text = f"{phase.upper()} exited {exit_} on {cause} again after a change; continue (route it back again) or stop?"
             recurred_payload = {"recurred": {"phase": phase, "exit": exit_, "cause": cause}}
     if recurred_text is None and "T2" in route["requires"] and not budget_module.base_move_room(store) and not proceed:
-        repos = ", ".join(r["repo"] for r in product.get("repos") or [] if r.get("state") == "base moved") or "a repo"
-        recurred_text = (f"{repos}'s base moved {budget_module.base_moves(store)} times during this run; "
+        repos = ", ".join(r["repo"] for r in product.get("repos") or [] if r.get("state") in ("base moved", "branch moved")) or "a repo"
+        recurred_text = (f"{repos}'s base or PR branch moved {budget_module.base_moves(store)} times during this run; "
                          "merge it in again (continue) or stop?")
         recurred_payload = {"recurred": {"phase": phase, "exit": exit_, "repo": repos}}
     if recurred_text is not None:
@@ -1663,6 +1663,7 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
             "remediationTasks": list(product.get("remediationTasks") or []),
             "verdicts": [v for v in (product.get("verdicts") or []) if v.get("verdict") == "fail"],
             "baseMoves": {r["repo"]: r["newBase"] for r in (product.get("repos") or []) if r.get("state") == "base moved"},
+            "branchMoves": {r["repo"]: r["remoteHead"] for r in (product.get("repos") or []) if r.get("state") == "branch moved"},
         }}
     else:
         store.state["phase"]["entryPayload"] = None

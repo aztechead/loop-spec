@@ -464,12 +464,13 @@ def remote_extension(repo: Path, branch: str, verified: str, base: str, globs: l
     every commit in verified..head with every path each one touches in any parent's
     diff (renames as both sides), and `refused` names each path outside `globs` or
     changed by the verified change itself (base..verified, final tree)."""
-    fetch = _git(repo, "fetch", "--no-tags", "origin", f"refs/heads/{branch}")
+    ref = f"refs/remotes/origin/{branch}"
+    fetch = _git(repo, "fetch", "--no-tags", "origin", f"+refs/heads/{branch}:{ref}")
     if fetch.returncode != 0:
         if "couldn't find remote ref" in fetch.stderr:
             return {"state": "absent"}
         return {"state": "error", "why": fetch.stderr.strip() or "git fetch failed"}
-    head = run_git(repo, "rev-parse", "FETCH_HEAD").strip()
+    head = run_git(repo, "rev-parse", ref).strip()
     if head == verified:
         return {"state": "equal", "head": head}
     if not is_ancestor(repo, verified, head):

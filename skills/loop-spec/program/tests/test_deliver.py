@@ -306,21 +306,37 @@ class DeliverTests(unittest.TestCase):
         self.assertIn("gh credential check failed: gh auth status", entry["caveats"][0])
         self.assertIn("run: gh auth login", entry["caveats"][0])
 
-    def test_a_real_push_rejection_blocks_delivery_without_forcing(self):
-        # A second clone pushes a divergent commit to origin/feature first, so our
-        # repo's own push is a genuine non-fast-forward rejection, not a mock.
+    def test_a_teammate_commit_on_the_pr_branch_exits_base_moved_and_pushes_nothing(self):
+        # A second clone pushes a divergent commit to origin/feature after VERIFY (a
+        # teammate's push during a revise): EXECUTE merges it in, nothing is published.
+        from loop_spec import postconditions
         other = self.tmp / "other"
         _git(self.tmp, "clone", "-q", str(self.remote), str(other))
         _git(other, "checkout", "-q", "-b", "feature")
         _commit(other, "c.py", "someone else's change")
         _git(other, "push", "-q", "origin", "feature")
+        remote_head = _head(other)
 
         with self._run_gh_reconcile():
             action = deliver.run(self.store, self.paths, self.ctx)
 
-        self.assertEqual(action.product["exit"], "delivery blocked")
-        self.assertEqual(action.product["repos"][0]["state"], "failed")
-        self.assertIn("push rejected", action.product["repos"][0]["caveats"][0])
+        row = action.product["repos"][0]
+        self.assertEqual((action.product["exit"], row["state"]), ("base moved", "branch moved"))
+        self.assertEqual((row["remoteHead"], row["conflicts"]), (remote_head, []))
+        self.assertEqual(validate(action.product, load_schema("deliver")), [])
+        self.assertEqual(_head(self.remote, "feature"), remote_head)  # nothing pushed
+        boundary = postconditions.Boundary(self.store, self.paths, phase="deliver", product=action.product,
+                                           exit="base moved", project_root=self.repo)
+        self.assertIsNone(boundary._d9())
+        row["remoteHead"] = self.head_sha
+        self.assertIn("remoteHead", boundary._d9())
+
+    def test_an_older_pr_head_the_verified_head_descends_from_still_pushes(self):
+        _git(self.repo, "push", "-q", "origin", f"{self.base_sha}:refs/heads/feature")
+        with self._run_gh_reconcile():
+            action = deliver.run(self.store, self.paths, self.ctx)
+        self.assertEqual((action.product["exit"], action.product["repos"][0]["state"]), ("delivered", "delivered"))
+        self.assertEqual(_head(self.remote, "feature"), self.head_sha)
 
     def _merge_upstream(self, filename):
         # Another agent's PR lands on main after this run forked.
@@ -827,13 +843,12 @@ class AcceptedRemoteTests(DeliverTests.__bases__[0]):
         self.assertEqual((row["state"], row["pr"]["headSha"]), ("delivered", self.head_sha))
         self.assertEqual(sleep.call_count, 1)
 
-    def test_a_bot_commit_on_a_verified_path_is_refused(self):
-        self._bot_commit("b.py")
+    def test_a_bot_commit_on_a_verified_path_is_merged_in_not_pushed_over(self):
+        bot_head = self._bot_commit("b.py")
         with patch("loop_spec.deliver.repo_module.run_gh", side_effect=self._gh("x")):
             action = deliver.run(self.store, self.paths, self.ctx)
         row = action.product["repos"][0]
-        self.assertEqual((action.product["exit"], row["state"]), ("delivery blocked", "failed"))
-        self.assertIn("touch b.py", row["caveats"][0])
+        self.assertEqual((action.product["exit"], row["state"], row["remoteHead"]), ("base moved", "branch moved", bot_head))
 
     def test_accepted_extension_is_kept_when_the_pr_step_then_fails(self):
         self._bot_commit("CHANGELOG.md")
@@ -845,12 +860,12 @@ class AcceptedRemoteTests(DeliverTests.__bases__[0]):
         published = self.store.state["deliver"]["published"]["repo"]
         self.assertEqual((published["observed"], published["acceptedRemote"]["paths"]), (True, ["CHANGELOG.md"]))
 
-    def test_without_the_config_key_a_bot_commit_still_blocks(self):
+    def test_without_the_config_key_a_bot_commit_is_merged_in_not_accepted(self):
         (self.repo / ".loop-spec" / "config.json").write_text("{}")
         self._bot_commit("CHANGELOG.md")
         with patch("loop_spec.deliver.repo_module.run_gh", side_effect=self._gh("x")):
             action = deliver.run(self.store, self.paths, self.ctx)
-        self.assertIn("push rejected", action.product["repos"][0]["caveats"][0])
+        self.assertEqual((action.product["exit"], action.product["repos"][0]["state"]), ("base moved", "branch moved"))
 
 
 class RemoteExtensionTests(unittest.TestCase):

@@ -1273,11 +1273,11 @@ class Boundary:
         # Nothing is published on a base move, so every row is either a moved repo or
         # skipped; a moved row's conflicts are recomputed now against the EXECUTE head.
         heads = self.store.state["products"]["execute"]["product"].get("heads", {})
-        moved = [e for e in self.product["repos"] if e["state"] == "base moved"]
+        moved = [e for e in self.product["repos"] if e["state"] in ("base moved", "branch moved")]
         if not moved:
-            return "base moved names no repo whose base moved"
+            return "base moved names no repo whose base or PR branch moved"
         for entry in self.product["repos"]:
-            if entry["state"] not in ("base moved", "skipped") or entry.get("pr") or entry.get("deliveredSha"):
+            if entry["state"] not in ("base moved", "branch moved", "skipped") or entry.get("pr") or entry.get("deliveredSha"):
                 return f"repo {entry['repo']}: a base-moved product publishes nothing"
         for entry in moved:
             repo_info = self._repo_entries().get(entry["repo"])
@@ -1285,6 +1285,17 @@ class Boundary:
             if repo_info is None or head is None:
                 return f"repo {entry['repo']}: not a repo EXECUTE touched"
             path = Path(repo_info["path"])
+            if entry["state"] == "branch moved":
+                ref = f"refs/remotes/origin/{repo_info['featureBranch']}"
+                proc = repo_module._git(path, "rev-parse", "-q", "--verify", ref)
+                remote = proc.stdout.strip()
+                if proc.returncode != 0 or entry.get("remoteHead") != remote:
+                    return f"repo {entry['repo']}: remoteHead is not origin/{repo_info['featureBranch']}'s head"
+                if repo_module.is_ancestor(path, remote, head):
+                    return f"repo {entry['repo']}: origin/{repo_info['featureBranch']} holds nothing the EXECUTE head lacks"
+                if sorted(repo_module.merge_conflicts(path, head, remote)) != sorted(entry.get("conflicts") or []):
+                    return f"repo {entry['repo']}: the recorded conflicts are not what merging remoteHead into the head leaves"
+                continue
             new_base = entry.get("newBase") or ""
             if not repo_module.is_ancestor(path, repo_info["baseSha"], new_base) or \
                     not repo_module.is_ancestor(path, new_base, f"refs/remotes/origin/{repo_info['defaultBranch']}"):

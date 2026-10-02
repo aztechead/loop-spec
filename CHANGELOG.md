@@ -19,6 +19,8 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ### Fixed
 
+- DELIVER treats commits a teammate pushed to the PR branch after VERIFY like a moved base: it publishes nothing,
+  EXECUTE merges them in, and the run re-verifies, instead of a rejected push no repair could clear.
 - `repo.free_branch` treats a branch nested under a name (`feat/x/y` for `feat/x`) as
   taking it, and refuses a name whose parent path is a branch here or on `origin`
   (`feature` for `feature/AVP-1234`) when the run starts, instead of EXECUTE failing on
@@ -43,6 +45,8 @@ All notable changes documented here. Format follows Keep a Changelog.
   `[bot]` suffix; comments and reviews are read over the REST API.
 - The reviser reads the issue the PR closes, and a comment that reverses a requirement
   the issue states becomes a question naming both sides.
+- A `prepare` command that fails at base returns the plan to the planner with the
+  reason instead of stopping the run.
 - The plan critic no longer flags a verify command with no test runner (a script or a
   grep) for running no tests; EXECUTE compares such a command by its output.
 

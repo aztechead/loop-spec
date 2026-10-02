@@ -119,7 +119,8 @@
               "delivered",
               "failed",
               "skipped",
-              "base moved"
+              "base moved",
+              "branch moved"
             ]
           },
           "checks": {
@@ -183,8 +184,12 @@
             "description": "On a `base moved` row: the PR base's tip that conflicts with the verified head.",
             "type": "string"
           },
+          "remoteHead": {
+            "description": "On a `branch moved` row: origin's feature branch tip, which holds commits the verified head lacks.",
+            "type": "string"
+          },
           "conflicts": {
-            "description": "On a `base moved` row: the paths a merge of newBase into the verified head leaves conflicted.",
+            "description": "On a `base moved` or `branch moved` row: the paths a merge of newBase (or remoteHead) into the verified head leaves conflicted.",
             "type": "array",
             "items": {
               "type": "string"

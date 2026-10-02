@@ -415,6 +415,18 @@ def run(store, paths, ctx):
         except LoopSpecError as exc:
             fetch_failed[repo_name] = f"{exc.message}; repair: {exc.repair}"
             continue
+        # A teammate's commit on origin's feature branch (a revise) is merged in like a
+        # moved base; the verified head is still pushed when origin only holds an older PR head.
+        ext = repo_module.remote_extension(path, repo_info["featureBranch"], head, repo_info["baseSha"], globs)
+        if ext["state"] == "error":
+            fetch_failed[repo_name] = (f"could not read origin/{repo_info['featureBranch']}: {ext['why']}; "
+                                       "repair: check origin's push URL, network, and access, then re-enter (never force)")
+            continue
+        if (ext["state"] == "diverged" and not repo_module.is_ancestor(path, ext["head"], head)) or \
+                (ext["state"] == "extension" and ext["refused"]):
+            moved[repo_name] = {"state": "branch moved", "remoteHead": ext["head"],
+                                "conflicts": repo_module.merge_conflicts(path, head, ext["head"])}
+            continue
         if repo_module.is_ancestor(path, tip, head):
             continue
         if not repo_module.is_ancestor(path, repo_info["baseSha"], tip):
@@ -424,16 +436,18 @@ def run(store, paths, ctx):
             continue
         # Any move is merged in and re-verified, conflicts or not: a clean merge can still
         # break what the verified head did.
-        moved[repo_name] = {"newBase": tip, "conflicts": repo_module.merge_conflicts(path, head, tip)}
+        moved[repo_name] = {"state": "base moved", "newBase": tip, "conflicts": repo_module.merge_conflicts(path, head, tip)}
     if moved:
         for repo_name, repo_info in store.state["repos"].items():
             if repo_name not in moved:
-                note = [f"not attempted: the base moved under {', '.join(sorted(moved))}"] if repo_name in touched else []
+                note = [f"not attempted: the base or PR branch moved under {', '.join(sorted(moved))}"] if repo_name in touched else []
                 repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "caveats": note, "state": "skipped"})
                 continue
             move = moved[repo_name]
-            repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "state": "base moved", **move, "caveats": [
-                f"{repo_info['defaultBranch']} moved to {move['newBase'][:12]}; EXECUTE merges it in "
+            what = (f"origin/{repo_info['featureBranch']} has commits the verified head lacks ({move['remoteHead'][:12]})"
+                    if move["state"] == "branch moved" else f"{repo_info['defaultBranch']} moved to {move['newBase'][:12]}")
+            repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, **move, "caveats": [
+                f"{what}; EXECUTE merges it in "
                 f"(conflicts: {', '.join(move['conflicts']) or 'none'}), then the run re-verifies"]})
         return Product({"exit": "base moved", "inputsDigest": ctx["inputs"]["digest"], "boundTo": bound_to, "repos": repos_out})
 

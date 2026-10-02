@@ -565,6 +565,27 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertEqual(_head(worktree), merge)
         self.assertIn(old_head, repo_module.run_git(Path(worktree), "rev-list", "--parents", "-n", "1", merge))
 
+    def test_a_branch_move_merges_the_remote_head_and_leaves_the_base(self):
+        self.test_full_success_lifecycle()
+        old_head = self.store.state["execute"]["repos"]["repo"]["head"]
+        _git(self.repo, "checkout", "-q", "-b", "teammate", old_head)
+        Path(self.repo, "mate.txt").write_text("teammate\n")
+        _git(self.repo, "add", "mate.txt")
+        _git(self.repo, "commit", "-q", "-m", "teammate")
+        remote_head = _head(self.repo)
+        _git(self.repo, "checkout", "-q", "main")
+        self.ctx["entry"] = {"mode": "remediation", "payload": {"rewind": {
+            "from": "deliver", "exit": "base moved", "attemptId": "deliver-1", "baseMoves": {},
+            "branchMoves": {"repo": remote_head}}}}
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, Product)
+        worktree = Path(self.store.state["execute"]["repos"]["repo"]["worktree"])
+        merge = _head(worktree)
+        self.assertEqual(repo_module.run_git(worktree, "rev-list", "--parents", "-n", "1", merge).split()[1:], [old_head, remote_head])
+        self.assertIn(f"Merge origin/{self.store.state['repos']['repo']['featureBranch']} ({remote_head[:12]})",
+                      repo_module.run_git(worktree, "log", "-1", "--format=%s", merge))
+        self.assertEqual(self.store.state["repos"]["repo"]["baseSha"], self.base_sha)
+
     def test_an_unresolvable_base_move_pauses_with_the_merge_aborted(self):
         action, old_head, tip = self._move_base()
         worktree = action.request["cwd"]

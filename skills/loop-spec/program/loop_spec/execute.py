@@ -1194,7 +1194,8 @@ def _finish_base_move(store, paths, ctx, name: str, move: dict, new_head: str) -
     # base, so VERIFY and ITERATE judge newBase..head: the change as it will merge.
     store.state["execute"]["repos"][name]["head"] = new_head
     move["status"] = "done"
-    store.move_base(name, move["onto"])
+    if move.get("kind") != "branch":  # a teammate's commits on the PR branch leave the run's base where it was
+        store.move_base(name, move["onto"])
     emit(paths, "base_merged", {"summary": f"merged {move['onto'][:12]} into {name}'s feature branch at {new_head[:12]}",
                                 "repo": name, "onto": move["onto"], "head": new_head},
          phase="execute", attempt_id=ctx["attempt"]["id"])
@@ -1212,7 +1213,8 @@ def _resolver_request(store, paths, ctx, name: str, move: dict) -> dict:
     inputs = {
         "goal": store.state["products"]["spec"]["product"]["goal"],
         "merge": {"branch": repo_info["featureBranch"], "head": repo_state["head"], "runBase": repo_info["baseSha"],
-                  "onto": move["onto"], "baseBranch": repo_info["defaultBranch"]},
+                  "onto": move["onto"], "kind": move.get("kind", "base"),
+                  "baseBranch": f"origin/{repo_info['featureBranch']}" if move.get("kind") == "branch" else repo_info["defaultBranch"]},
         "conflicts": move["conflicts"],
     }
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=worktree, phase="execute")
@@ -1231,6 +1233,8 @@ def _handle_base_moves(store, paths, ctx, execute_state: dict):
     if rewind.get("from") == "deliver" and rewind.get("exit") == "base moved" and rewind["attemptId"] not in handled:
         handled.append(rewind["attemptId"])
         execute_state["baseMoves"] = {name: {"onto": sha, "status": "pending"} for name, sha in rewind["baseMoves"].items()}
+        execute_state["baseMoves"].update({name: {"onto": sha, "status": "pending", "kind": "branch"}
+                                           for name, sha in (rewind.get("branchMoves") or {}).items()})
         store.save()
     for name, move in (execute_state.get("baseMoves") or {}).items():
         if move["status"] == "done":
@@ -1251,7 +1255,8 @@ def _handle_base_moves(store, paths, ctx, execute_state: dict):
             return Pause(_pause_request(ctx, name, head, current or "missing"))
         if repo_module._git(worktree, "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode != 0:
             merge = repo_module._git(worktree, "merge", "--no-ff", "--no-edit", "-m",
-                                     f"Merge {repo_info['defaultBranch']} ({move['onto'][:12]}) into {repo_info['featureBranch']}",
+                                     f"Merge {'origin/' + repo_info['featureBranch'] if move.get('kind') == 'branch' else repo_info['defaultBranch']} "
+                                     f"({move['onto'][:12]}) into {repo_info['featureBranch']}",
                                      move["onto"])
             if merge.returncode == 0:
                 _finish_base_move(store, paths, ctx, name, move, repo_module.branch_sha(worktree, repo_info["featureBranch"]))
@@ -1293,7 +1298,8 @@ def _on_resolver_submit(store, paths, step_record: dict, result: dict) -> None:
     if repo_module._git(worktree, "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0:
         repo_module._git(worktree, "merge", "--abort")
     move.update(status="blocked", reason=(
-        f"{branch} cannot take {store.state['repos'][name]['defaultBranch']} at {move['onto'][:12]}: {why}. "
+        f"{branch} cannot take {'origin/' + branch if move.get('kind') == 'branch' else store.state['repos'][name]['defaultBranch']} "
+        f"at {move['onto'][:12]}: {why}. "
         f"Conflicted: {', '.join(move['conflicts'])}. Merge {move['onto'][:12]} into {branch} yourself in {worktree} "
         f"(or reset it to {head[:12]} to retry the resolver), then fix-and-re-enter, or stop"))
 
