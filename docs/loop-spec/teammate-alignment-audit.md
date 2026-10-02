@@ -3,7 +3,8 @@
 For a reviewer or planner deciding which gaps to fix. The document lists where
 loop-spec's default behavior falls short of working like a human engineer on a
 shared repository. Each finding makes one claim, cites the code behind it, and
-gives one final rank. It proposes no fixes.
+gives one final rank. The 7.9.0 column records what that release changed;
+see `CHANGELOG.md` for how.
 
 This is one consolidated list. It merges the original audit with an
 independent review that corrected, re-ranked, and added findings. Where the two
@@ -71,32 +72,32 @@ These behaviors meet the standard. Do not re-report them as gaps.
 
 ## Findings
 
-| ID | Rank | Stage | Gap |
-| --- | --- | --- | --- |
-| TA-1 | High | Intake | Branches from local HEAD without fetching |
-| TA-2 | Medium | Intake | No check for duplicate or claimed work |
-| TA-3 | Medium | Intake | No structured issue association |
-| TA-4 | Medium | Others' work | Cannot tell review help from branch edits |
-| TA-5 | High | Others' work | Re-delivery overwrites the PR description |
-| TA-6 | High when shared | Others' work | `direct` may force-push a shared branch |
-| TA-7 | High | Review | revise never replies to review |
-| TA-8 | Medium | Review | No reasoned decline of a review comment |
-| TA-9 | Medium | Review | Review comments are not filtered |
-| TA-10 | Medium | Handoff | PR body omits decisions and criterion text |
-| TA-11 | Low | Handoff | Commit history carries run-internal IDs |
-| TA-12 | Low | Handoff | Branch names are hard-coded |
-| TA-13 | Low | Handoff | No reviewers, labels, or assignee |
-| TA-14 | High | Integration | CI is not followed after the PR opens |
-| TA-15 | High | Integration | A clean base move is not re-verified |
-| TA-16 | Medium | Conventions | Team instruction files are barely read |
-| TA-17 | Medium | Completeness | No change-impact duty beyond the diff |
-| TA-18 | Low | Handoff | Blocked runs say nothing on the PR |
-| TA-19 | High | Intake | Missing `origin/HEAD` makes the current branch the PR target |
-| TA-20 | Medium; High for code conflicts | Integration | `direct` conflict resolution ships untested |
-| TA-21 | High | Integration | Partial delivery skips configured CI readiness |
-| TA-22 | Medium | Handoff | Caveats never return a ready PR to draft |
-| TA-23 | Medium | Handoff | Workspace PRs lack sibling links |
-| TA-24 | Medium | Lifecycle | The run ends at an open PR with no named owner |
+| ID | Rank | Stage | Gap | 7.9.0 |
+| --- | --- | --- | --- | --- |
+| TA-1 | High | Intake | Branches from local HEAD without fetching | Fixed |
+| TA-2 | Medium | Intake | No check for duplicate or claimed work | Fixed |
+| TA-3 | Medium | Intake | No structured issue association | Fixed |
+| TA-4 | Medium | Others' work | Cannot tell review help from branch edits | Disclosed in the reply comment; not gated |
+| TA-5 | High | Others' work | Re-delivery overwrites the PR description | Fixed |
+| TA-6 | High when shared | Others' work | `direct` may force-push a shared branch | Fixed (prompt) |
+| TA-7 | High | Review | revise never replies to review | Fixed; threads left to reviewers |
+| TA-8 | Medium | Review | No reasoned decline of a review comment | Fixed |
+| TA-9 | Medium | Review | Review comments are not filtered | Fixed |
+| TA-10 | Medium | Handoff | PR body omits decisions and criterion text | Fixed; template appended, not filled |
+| TA-11 | Low | Handoff | Commit history carries run-internal IDs | Fixed (prompt) |
+| TA-12 | Low | Handoff | Branch names are hard-coded | Fixed |
+| TA-13 | Low | Handoff | No reviewers, labels, or assignee | Fixed |
+| TA-14 | High | Integration | CI is not followed after the PR opens | Partial: one CI read, no wait |
+| TA-15 | High | Integration | A clean base move is not re-verified | Fixed |
+| TA-16 | Medium | Conventions | Team instruction files are barely read | Fixed (prompt) |
+| TA-17 | Medium | Completeness | No change-impact duty beyond the diff | Fixed (prompt) |
+| TA-18 | Low | Handoff | Blocked runs say nothing on the PR | Fixed |
+| TA-19 | High | Intake | Missing `origin/HEAD` makes the current branch the PR target | Fixed |
+| TA-20 | Medium; High for code conflicts | Integration | `direct` conflict resolution ships untested | Fixed (prompt, router) |
+| TA-21 | High | Integration | Partial delivery skips configured CI readiness | Fixed |
+| TA-22 | Medium | Handoff | Caveats never return a ready PR to draft | Fixed |
+| TA-23 | Medium | Handoff | Workspace PRs lack sibling links | Fixed |
+| TA-24 | Medium | Lifecycle | The run ends at an open PR with no named owner | Partial: assignee and owner line |
 
 ### Intake
 

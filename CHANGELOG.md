@@ -4,6 +4,43 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.9.0] - 2026-10-02
+
+### Changed
+
+loop-spec now works more like an engineer on a shared repository. Each item fixes a
+finding in [teammate-alignment-audit.md](docs/loop-spec/teammate-alignment-audit.md).
+
+- A run starts from origin's integration branch, fetched, not from whatever the
+  checkout has checked out (TA-1). With no `origin/HEAD`, the default branch comes
+  from `git ls-remote --symref origin HEAD`, never the current branch (TA-19).
+- Every base move is merged in and re-verified, not only a conflicting one (TA-15).
+- `deliver.readiness` defaults to `"checks"`: DELIVER reads each published PR's CI
+  once, including on a partial delivery (TA-14, TA-21). It never waits; a failing
+  check drafts the PR, and revise reads failing checks as review input.
+- The PR body sits between `<!-- loop-spec:begin -->` markers, so a later delivery
+  refreshes only its own section and keeps what people wrote (TA-5). It now carries
+  the SPEC's decisions, criterion text, open questions, `Closes #n` for an issue the
+  request names, links to sibling PRs in a workspace, and an owner line (TA-3, TA-10,
+  TA-23, TA-24). A repository PR template is appended for the author to fill.
+- New PRs are assigned to you and take `deliver.reviewers` and `deliver.labels`;
+  debug runs branch as `fix/`, and `deliver.branchPrefix` overrides (TA-12, TA-13).
+  A draft delivery converts an existing ready PR back to draft (TA-22).
+- At start a run records the issue the request names and the repository's open PRs;
+  the spec-writer asks before duplicating open work (TA-2, TA-3).
+- An escalated run comments on its PR with the reason (TA-18).
+- revise drops bot comments, its own comments, and resolved or outdated threads;
+  the reviser answers every comment as addressed, declined with a reason, a
+  question, or acknowledged; DELIVER posts inline replies and one summary comment
+  and re-requests review from the human reviewers (TA-4, TA-7, TA-8, TA-9).
+- Commit messages follow the repository's convention with the task id in a
+  `Loop-Spec-Task:` trailer; task merges are named by task title (TA-11).
+- `direct` never force-pushes a branch with other people's commits, uses
+  `--force-with-lease`, and tests a resolved code conflict before pushing; conflicts
+  in code route to micro (TA-6, TA-20).
+- Roles read `AGENTS.md`, `CLAUDE.md`, and `CONTRIBUTING*`; the planner covers docs
+  and callers a change affects, and the code reviewer flags them (TA-16, TA-17).
+
 ## [7.8.3] - 2026-10-01
 
 ### Fixed
