@@ -162,9 +162,9 @@ class WorktreeTests(unittest.TestCase):
             _commit(tmp, "a.py", "add a")
             Path(tmp, "__pycache__", "a.cpython-313.pyc").write_text("new")
             Path(tmp, "a.py").write_text("x = 2\n")
+            self.assertEqual(uncommitted(Path(tmp)), ["a.py"])
             restore_tracked_caches(Path(tmp))
             self.assertEqual(Path(tmp, "__pycache__", "a.cpython-313.pyc").read_text(), "__pycache__/a.cpython-313.pyc\n")
-            self.assertEqual(uncommitted(Path(tmp)), ["a.py"])
 
     def test_add_clean_checkout_and_remove(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as workdir:

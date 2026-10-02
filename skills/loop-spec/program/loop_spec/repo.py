@@ -325,6 +325,8 @@ def remove_worktree(repo: Path, dest: Path, *, force: bool = False) -> None:
     args = ["worktree", "remove"]
     if force:
         args.append("--force")
+    else:
+        restore_tracked_caches(dest)  # git refuses a modified tracked file; is_clean already passed it
     args.append(str(dest))
     run_git(repo, *args)
 
@@ -406,10 +408,11 @@ def _is_cache(path: str) -> bool:
 
 
 def uncommitted(worktree: Path) -> list[str]:
-    """`git status` paths other than an untracked cache (a test run's leftovers)."""
+    """`git status` paths other than a cache a test run wrote, tracked or not (a repo that
+    commits `.pyc` sees them rewritten on every run)."""
     lines = run_git(worktree, "status", "--porcelain").splitlines()
     return [line[3:].strip('"') for line in lines
-            if line.strip() and not (line.startswith("?? ") and _is_cache(line[3:].strip('"')))]
+            if line.strip() and (" -> " in line or not _is_cache(line[3:].strip('"')))]
 
 
 def is_clean(worktree: Path) -> bool:
