@@ -50,6 +50,8 @@ All notable changes documented here. Format follows Keep a Changelog.
 - An EXECUTE block a retry cannot clear (a verify that cannot pass, a build output the
   plan never ignored) can be answered `plan gap`, which sends the run back to PLAN with
   the cause.
+- The plan critic's question takes `replan`, which hands the open Critical findings to
+  the planner for one more pass, besides a rejection reason or `spec gap`.
 - A plan critic finding the operator rejected reaches every later critic pass, so a
   re-plan does not ask the same question again.
 - The plan critic no longer flags a verify command with no test runner (a script or a

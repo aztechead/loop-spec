@@ -866,6 +866,15 @@ class PlanCriticTests(_QuietStdout):
             closed = store.state["critic"]["findings"][0]
             self.assertEqual((closed["id"], closed["disposition"], closed["reason"]), ("F-1", "rejected", "F-1: base facts cover it"))
 
+    def test_a_replan_answer_sends_the_findings_back_to_the_planner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, _ = self._second_pass_critic(Path(tmp), None)
+            questions.answer(store, store.paths, question_id=store.state["phase"]["criticQuestionId"], value="replan")
+            controller.continue_run(store, store.paths, project_root=store.paths.project_root)
+            self.assertEqual(store.state["phase"]["current"], "plan")
+            self.assertEqual([f["id"] for f in store.state["phase"]["entryPayload"]["criticFindings"]], ["F-1"])
+            self.assertIsNone(store.state["phase"]["criticQuestionId"])
+
     def test_the_critic_question_stays_open_without_a_default_or_the_policy(self):
         for recommendation, policy in ((None, "default"), ({"action": "spec gap", "reason": "AC-2 is untestable"}, None)):
             with self.subTest(policy=policy), tempfile.TemporaryDirectory() as tmp:

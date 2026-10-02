@@ -625,6 +625,15 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
                 attempt_id = store.state["phase"]["attemptId"]
                 if answered["value"] == "spec gap":
                     _finalize(store, paths, project_root, "plan", attempt_id, dict(product, exit="spec gap"), "spec gap")
+                elif answered["value"] == "replan":
+                    # The operator grants the planner one more corrected pass, as after the
+                    # first critic pass; a Critical that survives it asks again.
+                    store.state["phase"]["entry"] = "remediation"
+                    store.state["phase"]["entryPayload"] = {"criticFindings": [
+                        f for f in store.state["critic"]["findings"]
+                        if f.get("severity") == "Critical" and f.get("disposition") == "open"]}
+                    store.state["phase"]["attemptId"] = None
+                    store.save()
                 else:
                     # Any other non-empty answer is the operator's reason for rejecting
                     # the still-open Critical finding(s); P7 accepts "rejected" with a
@@ -1343,8 +1352,9 @@ def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, pro
             text=(f"PLAN critic still finds Critical issues after {passes} passes: "
                   f"{', '.join(f['id'] for f in open_critical)}. "
                   + (f"Recommended: {recommended}. " if recommended else "")
-                  + "Answer with your reason to reject and close, or 'spec gap' to send this back to SPEC."),
-            kind="text", options=[{"value": "spec gap", "label": "Spec gap"}],
+                  + "Answer with your reason to reject and close, 'replan' to have the planner fix them, "
+                    "or 'spec gap' to send this back to SPEC."),
+            kind="text", options=[{"value": "replan", "label": "Re-plan"}, {"value": "spec gap", "label": "Spec gap"}],
             default_value=recommended, payload={"findings": open_critical}, save=False,
         )
         # LF-62: the judgment, the question, its policy answer (if any) and this link
