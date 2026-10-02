@@ -281,31 +281,32 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | | |
 |---|---|
 | Inputs | ITERATE product; per-repo verified SHA; rendered summary; delivery configuration and readiness policy; existing remote state |
-| Product | per repo `pr` identity, `deliveredSha`, `caveats[]`, `state` (`delivered`, `failed`, `skipped`, `base moved`); a `base moved` row carries `newBase` and `conflicts`; a `failed` row carries `publishedSha` (and the PR, if one was opened) when this or an earlier DELIVER attempt put the branch on the remote, so a re-entry never erases what was published; on a `no change` run the adopted repo's `skipped` row carries the adopted PR |
+| Product | per repo `pr` identity, `deliveredSha`, `caveats[]`, `state` (`delivered`, `failed`, `skipped`, `base moved`); a `base moved` row carries `newBase` and `conflicts` (possibly none); a `delivered` row carries `checks` (`state` and `detail` of the one CI read made after the push); a `failed` row carries `publishedSha` (and the PR, if one was opened) when this or an earlier DELIVER attempt put the branch on the remote, so a re-entry never erases what was published; on a `no change` run the adopted repo's `skipped` row carries the adopted PR |
 | Preconditions | ITERATE `converged` or `converged with caveats`; or `escalated` with an operator policy allowing partial delivery as a draft |
-| Runs as | program code: every touched repo's credentials are checked before the first remote write; then origin's PR base is fetched for every touched repo, and when one has moved to a tip the verified head no longer merges into cleanly, DELIVER pushes nothing and exits `base moved`; a base that moved but still merges cleanly is delivered as before; otherwise each repo is pushed and its PR reconciled (a `no change` run touches no repo, so nothing is pushed), and a rejected push or failed PR step is that repo's `failed` row while the other repos are still attempted |
+| Runs as | program code: every touched repo's credentials are checked before the first remote write; then origin's PR base is fetched for every touched repo, and when one has moved to a tip the verified head does not already contain (conflicts or not), DELIVER pushes nothing and exits `base moved`, so EXECUTE merges it in and the run re-verifies; otherwise each repo is pushed and its PR reconciled (a `no change` run touches no repo, so nothing is pushed), and a rejected push or failed PR step is that repo's `failed` row while the other repos are still attempted |
 
-A non-draft delivery marks an existing draft PR ready (`gh pr ready`); a failure is a caveat on
-the row, never a failed delivery. A draft delivery never converts a ready PR back to a draft.
+A non-draft delivery marks an existing draft PR ready (`gh pr ready`), and a draft delivery
+converts an existing ready PR back to a draft (`gh pr ready --undo`) so the PR's state says what
+the run's verdict was; a failure of either is a caveat on the row, never a failed delivery.
 
 | Id | Postcondition | Gates |
 |---|---|---|
 | D1 | per touched repo, `deliveredSha` is the verified (EXECUTE) head, and the remote head ref's SHA is either that SHA or, with `deliver.acceptRemotePaths` configured, the head of an accepted extension: commits after the verified SHA, every path they touch in any commit matching the list and none changed by the verified change (base..verified), recomputed now and equal to the row's `acceptedRemote` | `delivered` |
 | D2 | per touched repo, the PR is open, its head ref matches, its head SHA (observed and in the product) is the head D1 observed, and its base target matches configuration | `delivered` |
-| D3 | required checks satisfy the configured readiness policy: with `deliver.readiness` `"checks"`, one `gh pr checks` call on the PR exits zero; nothing waits for checks to finish | `delivered` |
+| D3 | required checks satisfy the configured readiness policy: with `deliver.readiness` `"checks"` (the default), one `gh pr checks` read of the PR is not a failure; passing, pending, none and unreadable all hold (pending and unreadable are caveats on the row), and nothing waits for checks to finish. A check that fails later is addressed through `revise` | `delivered`, `partially delivered` |
 | D4 | a retried creation was reconciled by identity against existing remote state; no duplicate PR | every exit |
 | D5 | partial publication is recorded per repo and never reported as all delivered | `partially delivered` |
 | D6 | on a `no change` EXECUTE every row is `skipped` with no `deliveredSha`; only the adopted repo's row names a PR, the adopted PR, at the verified head, and `gh pr view` shows it open at that head | `delivered` |
 | D7 | before the first remote write the program checked git and `gh` credentials (`gh auth status` for the configured origin URL's host, then the bare check); there is no refresh step; a failure exits `delivery blocked` naming the command | `delivered`, `partially delivered` |
 | D8 | the product's repos cover exactly the set of repos EXECUTE touched with an accepted task's commits, no duplicates; a `skipped` row is only valid for a repo EXECUTE did not touch; every row marked `delivered` has a non-null PR | `delivered`, `partially delivered` |
-| D9 | before any push, origin's PR base was fetched for every touched repo; each `base moved` row names a `newBase` on origin's base branch that descends from the run's base SHA and conflicts with the EXECUTE head in exactly the listed `conflicts`, recomputed now; every other row is `skipped`; no row names a PR or a `deliveredSha` | `base moved` |
+| D9 | before any push, origin's PR base was fetched for every touched repo; each `base moved` row names a `newBase` on origin's base branch that descends from the run's base SHA and conflicts with the EXECUTE head in exactly the listed `conflicts` (possibly none), recomputed now; every other row is `skipped`; no row names a PR or a `deliveredSha` | `base moved` |
 
 A hosting server can lag a push. DELIVER re-reads a PR whose head is a strict ancestor of the pushed head up to four more times (after waits of 2, 4, 8 and 16 seconds) before recording it, and fails that repo's row if the head is still behind.
 
 | Exit | Requires | Route |
 |---|---|---|
 | `delivered` | D1 to D4, D6 to D8 for every repo | terminal `converged` or `converged-with-caveats`; terminal `no-change` after a `no change` EXECUTE |
-| `partially delivered` | at least one repo `delivered` and at least one `failed`; D1, D2, D4, D5, D7, D8 for every repo whose remote write was attempted | terminal `escalated` (never `converged`, whatever ITERATE's own verdict was) with `partiallyDelivered: true`, `workDelivered: true`, and `reason` naming the repos that did not deliver |
+| `partially delivered` | at least one repo `delivered` and at least one `failed`; D1, D2, D3, D4, D5, D7, D8 for every repo whose remote write was attempted | terminal `escalated` (never `converged`, whatever ITERATE's own verdict was) with `partiallyDelivered: true`, `workDelivered: true`, and `reason` naming the repos that did not deliver |
 | `delivery blocked` | D4; a credential refusal (D7), or no touched repo delivered | pause: a question naming the failed command and repair, with the answers fix-and-re-enter DELIVER or stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` with `result: escalated` and per-repo state |
 | `base moved` | D4, D9, T2 | EXECUTE, `remediation`, carrying each moved repo's `newBase`; then VERIFY (a full review of new base..head, since the last reviewed head no longer descends from the base), ITERATE, and DELIVER again. Bounded by its own limit of three (T2), not by the shared backward budget, so a base that keeps moving escalates |
 

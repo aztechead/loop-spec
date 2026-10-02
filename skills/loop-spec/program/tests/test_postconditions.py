@@ -840,8 +840,14 @@ class PostconditionsTests(unittest.TestCase):
         config_dir = self.repo_dir / ".loop-spec"
         config_dir.mkdir()
         atomic_write_json(config_dir / "config.json", {"deliver": {"readiness": "checks"}})
-        with patch.object(repo_module, "run_gh", lambda *a: (1, "", "checks pending")):
+        with patch.object(repo_module, "run_gh", lambda *a: (1, "", "build\tfail\t1m")):
             self.assertIsNotNone(self._boundary("deliver", self.deliver_product, "delivered")._d3())
+
+    def test_d3_holds_on_pending_checks_and_runs_on_a_partial_delivery(self):
+        # readiness defaults to "checks"; CI still running is the row's caveat, not a refusal.
+        with patch.object(repo_module, "run_gh", lambda *a: (8, "build\tpending\t0", "")):
+            self.assertIsNone(self._boundary("deliver", self.deliver_product, "delivered")._d3())
+        self.assertIn("D3", postconditions.ROUTES["deliver"]["partially delivered"]["requires"])
 
     def test_d4(self):
         self.assertIsNone(self._boundary("deliver", self.deliver_product, "delivered")._d4())

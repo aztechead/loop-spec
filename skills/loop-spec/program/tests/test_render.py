@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from loop_spec.paths import FeaturePaths
-from loop_spec.render import plan_md, pr_body, spec_md, verification_md
+from loop_spec.render import BODY_BEGIN, BODY_END, merge_body, plan_md, pr_body, pr_template, spec_md, verification_md
 from loop_spec.state import StateStore
 
 
@@ -65,6 +65,54 @@ class RenderTests(unittest.TestCase):
         self.assertIn("no new dependencies", text)
         self.assertIn("Generated with loop-spec", text)
         self.assertIn("### Outstanding\nnone", text)
+
+    def test_pr_body_is_marked_and_carries_why_criteria_text_issue_owner_and_siblings(self):
+        self.store.state["issue"] = {"repo": "repo", "number": 12}
+        self.store.state["operator"] = {"login": "ada"}
+        text = pr_body(self.store, "repo", [("web", "https://x/pull/9")])
+        self.assertTrue(text.startswith(BODY_BEGIN) and text.rstrip().endswith(BODY_END))
+        for needle in ("### Why", "use the existing renderer", "| the widget renders |", "Closes #12",
+                       "for @ada", "- web: https://x/pull/9"):
+            self.assertIn(needle, text)
+        self.assertNotIn("Rewinds used", text)
+        other = pr_body(self.store, "elsewhere")
+        self.assertNotIn("Closes #", other)
+
+    def test_merge_body_keeps_human_text_in_each_of_the_three_shapes(self):
+        new = pr_body(self.store)
+        marked = "intro\n\n" + pr_body(self.store).replace("add a widget", "old") + "\nfooter\n"
+        merged = merge_body(marked, new)
+        self.assertTrue(merged.startswith("intro\n\n" + BODY_BEGIN))
+        self.assertTrue(merged.endswith(BODY_END + "\n\nfooter\n"))
+        self.assertNotIn("## old", merged)
+        legacy = "intro\n\n## old goal\n\n### Acceptance\n\nGenerated with loop-spec 7.8.3\n\nmy note\n"
+        merged = merge_body(legacy, new)
+        self.assertTrue(merged.startswith("intro\n\n" + BODY_BEGIN))
+        self.assertTrue(merged.endswith(BODY_END + "\n\nmy note\n"))
+        self.assertNotIn("old goal", merged)
+        plain = merge_body("Fixes the thing.\n", new)
+        self.assertTrue(plain.startswith("Fixes the thing.\n\n" + BODY_BEGIN))
+
+    def test_pr_template_is_read_at_the_given_commit(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as t:
+            repo = Path(t)
+            git = lambda *a: subprocess.run(["git", "-C", t, *a], check=True, capture_output=True, text=True)
+            git("init", "-q", "-b", "main")
+            git("config", "user.name", "T")
+            git("config", "user.email", "t@example.com")
+            (repo / "README").write_text("r\n")
+            git("add", ".")
+            git("commit", "-q", "-m", "first")
+            first = git("rev-parse", "HEAD").stdout.strip()
+            (repo / ".github").mkdir()
+            (repo / ".github" / "pull_request_template.md").write_text("## Checklist\n")
+            git("add", ".")
+            git("commit", "-q", "-m", "x")
+            sha = git("rev-parse", "HEAD").stdout.strip()
+            (repo / ".github" / "pull_request_template.md").write_text("changed in the working tree\n")
+            self.assertEqual(pr_template(repo, sha), "## Checklist\n")
+            self.assertIsNone(pr_template(repo, first))
 
     def test_pr_body_lists_open_findings_and_gaps_as_outstanding(self):
         self.store.state["ledger"]["findings"] = [

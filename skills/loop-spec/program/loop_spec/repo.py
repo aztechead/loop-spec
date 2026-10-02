@@ -80,14 +80,38 @@ def exclude_path(repo_path: Path, relative: str) -> None:
         f.write(relative + "\n")
 
 
+_GH_CHECKS_TIMEOUT = 60
+
+
 def run_gh(repo: Path, *args: str) -> tuple[int, str, str]:
+    # `gh pr checks` is the one call bounded in time: it is read once and never waited on.
+    timeout = _GH_CHECKS_TIMEOUT if args[:2] == ("pr", "checks") else None
     try:
-        proc = subprocess.run(["gh", *args], cwd=repo, capture_output=True, text=True, check=False)
+        proc = subprocess.run(["gh", *args], cwd=repo, capture_output=True, text=True, check=False, timeout=timeout)
     except OSError as exc:
         # gh missing from PATH is data for the caller (adopt_pr, check_credentials),
         # not a program error, so this never raises.
         return 127, "", str(exc)
+    except subprocess.TimeoutExpired:
+        return 124, "", f"gh {' '.join(args)} timed out after {timeout} s"
     return proc.returncode, proc.stdout, proc.stderr
+
+
+def pr_checks(repo: Path, number: int) -> tuple[str, str]:
+    """One read of a PR's CI: (`pass`|`pending`|`fail`|`none`|`error`, text). Never waits.
+    Order matters: `gh pr checks` exits 8 for pending and exits 1 for a PR with no checks,
+    so the exit code is read before the text, and the text before a generic failure."""
+    code, out, err = run_gh(repo, "pr", "checks", str(number))
+    text = (out + err).strip()[:2000]
+    if code == 0:
+        return "pass", text
+    if code == 8:
+        return "pending", text
+    if "no checks reported" in text:
+        return "none", text
+    if code in (124, 127):  # timed out, or gh could not run
+        return "error", text
+    return "fail", text
 
 
 @dataclass
@@ -208,7 +232,18 @@ def default_branch(repo: Path) -> str:
     proc = _git(repo, "symbolic-ref", "refs/remotes/origin/HEAD")
     if proc.returncode == 0:
         return proc.stdout.strip().rsplit("/", 1)[-1]
-    return run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    # origin/HEAD is unset in a clone made without it; ask origin which branch HEAD is.
+    # The symref line is `ref: refs/heads/<name>\tHEAD`; the next line is the SHA.
+    remote = _git(repo, "ls-remote", "--symref", "origin", "HEAD")
+    if remote.returncode == 0:
+        for line in remote.stdout.splitlines():
+            if line.startswith("ref:"):
+                return line.split("\t", 1)[0].removeprefix("ref:").strip().removeprefix("refs/heads/")
+    current = run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    if current == "HEAD":
+        raise LoopSpecError(f"{repo} is on a detached HEAD and origin did not name its default branch",
+                             repair="set deliver.base in the loop-spec config to the integration branch")
+    return current
 
 
 def is_ancestor(repo: Path, ancestor_sha: str, descendant_sha: str) -> bool:
@@ -497,6 +532,41 @@ def find_pr_reference(text: str) -> int | str | None:
         if match:
             return int(match.group(1))
     return None
+
+
+_ISSUE_REF = re.compile(r"github\.com/[\w.-]+/[\w.-]+/issues/(\d+)|#(\d+)")
+
+
+def find_issue(repo: Path, text: str, exclude: set[int] | frozenset = frozenset()) -> dict | None:
+    """The open GitHub issue `text` names (`#<n>` or an issues URL): the first reference
+    whose number is not in `exclude` (the PR numbers the run adopted or was routed to).
+    None when it is closed, is really a PR, or gh cannot read it."""
+    for match in _ISSUE_REF.finditer(text):
+        number = int(match.group(1) or match.group(2))
+        if number in exclude:
+            continue
+        code, out, _ = run_gh(repo, "issue", "view", str(number), "--json", "number,title,url,state,body")
+        if code != 0:
+            return None
+        try:
+            data = json.loads(out)
+        except ValueError:
+            return None
+        # The issues API also serves PRs; either marker means this number is one.
+        if "pull_request" in data or "/pull/" in (data.get("url") or ""):
+            continue
+        return data if data.get("state") == "OPEN" else None
+    return None
+
+
+def open_prs(repo: Path) -> list[dict]:
+    """Open PRs on the repository (first 30), [] when gh cannot list them."""
+    code, out, _ = run_gh(repo, "pr", "list", "--state", "open", "--limit", "30",
+                          "--json", "number,title,headRefName,author,url")
+    try:
+        return json.loads(out) if code == 0 else []
+    except ValueError:
+        return []
 
 
 def _no_adopt(reason: str) -> PrAdoption:

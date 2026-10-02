@@ -63,6 +63,8 @@ def _lagging_gh(heads):
             reads.append(head)
             return 0, json.dumps({"number": 42, "url": "https://x/pull/42", "headRefName": "feature",
                                   "headRefOid": head, "baseRefName": "main"}), ""
+        if args[:2] == ("pr", "checks"):
+            return 1, "", "no checks reported"
         raise AssertionError(f"unexpected gh call: {args}")
     return fake_run_gh
 
@@ -115,7 +117,7 @@ class DeliverTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def _run_gh_reconcile(self, existing=None):
+    def _run_gh_reconcile(self, existing=None, checks=(1, "", "no checks reported on the 'feature' branch")):
         existing_json = json.dumps(existing or [])
 
         def fake_run_gh(repo, *args):
@@ -125,6 +127,10 @@ class DeliverTests(unittest.TestCase):
                 return 0, "https://x/pull/42\n", ""
             if args[:2] == ("pr", "view"):
                 return 0, PR_VIEW_JSON, ""
+            if args[:2] == ("pr", "checks"):
+                return checks
+            if args[:2] == ("pr", "ready"):
+                return 0, "", ""
             raise AssertionError(f"unexpected gh call: {args}")
         return patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh)
 
@@ -185,6 +191,8 @@ class DeliverTests(unittest.TestCase):
                 return 0, PR_VIEW_JSON, ""
             if args[:2] == ("pr", "edit"):
                 return edit_result
+            if args[:2] == ("pr", "checks"):
+                return 1, "", "no checks reported"
             raise AssertionError(f"unexpected gh call: {args}")
 
         edit_result = (0, "", "")
@@ -219,6 +227,8 @@ class DeliverTests(unittest.TestCase):
                     return 0, "", ""
                 if args[:2] == ("pr", "ready"):
                     return ready_result
+                if args[:2] == ("pr", "checks"):
+                    return 1, "", "no checks reported"
                 raise AssertionError(f"unexpected gh call: {args}")
 
             with patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh):
@@ -306,12 +316,32 @@ class DeliverTests(unittest.TestCase):
         self.assertEqual((action.product["exit"], row["state"]), ("delivery blocked", "failed"))
         self.assertIn("no longer contains this run's base", row["caveats"][0])
 
-    def test_a_moved_base_that_merges_cleanly_still_delivers(self):
+    def test_ci_is_read_once_pending_is_a_caveat_and_failure_drafts_the_pr(self):
+        for checks, state in (((8, "build\tpending", ""), "pending"), ((1, "build\tfail", ""), "fail")):
+            calls = []
+            fake = self._run_gh_reconcile(checks=checks)
+            with fake as run_gh:
+                action = deliver.run(self.store, self.paths, self.ctx)
+                calls = [c.args for c in run_gh.call_args_list]
+            row = action.product["repos"][0]
+            self.assertEqual(row["checks"]["state"], state)
+            self.assertEqual(validate(action.product, load_schema("deliver")), [])
+            self.assertEqual(sum(1 for c in calls if c[1:3] == ("pr", "checks")), 1)
+            self.assertEqual(any(c[1:4] == ("pr", "ready", "42") and "--undo" in c for c in calls), state == "fail")
+            self.assertTrue(row["caveats"])
+            _git(self.remote, "update-ref", "-d", "refs/heads/feature")  # the next pass pushes afresh
+
+    def test_a_clean_base_move_exits_base_moved_with_no_conflicts(self):
         self._merge_upstream("c.py")
         with self._run_gh_reconcile():
             action = deliver.run(self.store, self.paths, self.ctx)
-        self.assertEqual(action.product["exit"], "delivered")
-        self.assertEqual(_head(self.remote, "feature"), self.head_sha)
+        row = action.product["repos"][0]
+        self.assertEqual((action.product["exit"], row["state"], row["conflicts"]), ("base moved", "base moved", []))
+        self.assertIsNone(repo_module.branch_sha(self.remote, "feature"))  # nothing pushed
+        from loop_spec import postconditions
+        boundary = postconditions.Boundary(self.store, self.paths, phase="deliver", product=action.product,
+                                           exit="base moved", project_root=self.repo)
+        self.assertIsNone(boundary._d9())  # D9 holds on an empty conflicts list
 
     def test_a_locally_moved_feature_branch_is_not_pushed_and_the_row_is_failed(self):
         # R8: a commit landed on the feature branch after VERIFY's accepted head
@@ -355,12 +385,88 @@ class DeliverTests(unittest.TestCase):
                 return 0, "https://x/pull/42\n", ""
             if args[:2] == ("pr", "view"):
                 return 0, PR_VIEW_JSON, ""
+            if args[:2] == ("pr", "checks"):
+                return 1, "", "no checks reported"
             raise AssertionError(f"unexpected gh call: {args}")
 
         with patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh):
             deliver.run(self.store, self.paths, self.ctx)
 
         self.assertIn("--draft", create_args)
+
+    def _recording_gh(self, existing=None, body="", create=(0, "https://x/pull/42\n", ""), ready=(0, "", "")):
+        """A fake run_gh that records every call and the body file each create/edit sent."""
+        calls, bodies = [], []
+
+        def fake_run_gh(repo, *args):
+            calls.append(args)
+            if args[:2] in (("pr", "create"), ("pr", "edit")):
+                bodies.append(Path(args[args.index("--body-file") + 1]).read_text())
+            if args[:2] == ("pr", "list"):
+                return 0, json.dumps(existing or []), ""
+            if args[:2] == ("pr", "create"):
+                return create if "--reviewer" in args or "--label" in args or create[0] == 0 else (0, "", "")
+            if args[:2] == ("pr", "view"):
+                return 0, json.dumps({**json.loads(PR_VIEW_JSON), "body": body}), ""
+            if args[:2] == ("pr", "checks"):
+                return 1, "", "no checks reported"
+            if args[:2] in (("pr", "edit"), ("pr", "ready")):
+                return ready if args[:2] == ("pr", "ready") else (0, "", "")
+            raise AssertionError(f"unexpected gh call: {args}")
+        return calls, bodies, patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh)
+
+    def test_create_carries_assignee_reviewers_labels_and_the_repos_template(self):
+        (self.repo / ".loop-spec").mkdir()
+        (self.repo / ".loop-spec" / "config.json").write_text(json.dumps({"deliver": {"reviewers": ["ada"], "labels": ["bot"]}}))
+        calls, bodies, fake = self._recording_gh()
+        with fake, patch("loop_spec.deliver.render.pr_template", return_value="## Checklist\n"):
+            deliver.run(self.store, self.paths, self.ctx)
+        create = next(c for c in calls if c[:2] == ("pr", "create"))
+        for flag, value in (("--assignee", "@me"), ("--reviewer", "ada"), ("--label", "bot")):
+            self.assertEqual(create[create.index(flag) + 1], value)
+        self.assertTrue(bodies[0].startswith("<!-- loop-spec:begin -->"))
+        self.assertTrue(bodies[0].rstrip().endswith("## Checklist"))
+
+    def test_a_create_refused_over_a_reviewer_is_retried_without_the_metadata(self):
+        (self.repo / ".loop-spec").mkdir()
+        (self.repo / ".loop-spec" / "config.json").write_text(json.dumps({"deliver": {"reviewers": ["nobody"]}}))
+        calls, _, fake = self._recording_gh(create=(1, "", "could not resolve reviewer nobody"))
+        with fake:
+            row = deliver.run(self.store, self.paths, self.ctx).product["repos"][0]
+        creates = [c for c in calls if c[:2] == ("pr", "create")]
+        self.assertEqual((len(creates), "--reviewer" in creates[1], row["state"]), (2, False, "delivered"))
+        self.assertIn("opened without its assignee", row["caveats"][0])
+
+    def test_an_edit_keeps_the_text_a_person_wrote_around_the_markers(self):
+        existing = [{"number": 42, "url": "https://x/pull/42", "headRefOid": self.head_sha, "baseRefName": "main", "isDraft": False}]
+        human = "Please look at the retry logic first.\n\n<!-- loop-spec:begin -->\nOLD\n<!-- loop-spec:end -->\n\nTODO: docs\n"
+        _, bodies, fake = self._recording_gh(existing=existing, body=human)
+        with fake:
+            deliver.run(self.store, self.paths, self.ctx)
+        self.assertTrue(bodies[0].startswith("Please look at the retry logic first."))
+        self.assertTrue(bodies[0].endswith("TODO: docs\n"))
+        self.assertNotIn("OLD", bodies[0])
+        self.assertIn("add a widget", bodies[0])
+
+    def test_a_draft_delivery_converts_a_ready_pr_back_to_a_draft(self):
+        self.store.state["products"]["iterate"]["exit"] = "converged with caveats"
+        self.store.save()
+        existing = [{"number": 42, "url": "https://x/pull/42", "headRefOid": self.head_sha, "baseRefName": "main", "isDraft": False}]
+        calls, _, fake = self._recording_gh(existing=existing, ready=(1, "", "HTTP 403"))
+        with fake:
+            row = deliver.run(self.store, self.paths, self.ctx).product["repos"][0]
+        self.assertIn(("pr", "ready", "42", "--undo"), calls)
+        self.assertTrue(any("gh pr ready --undo failed" in c for c in row["caveats"]))
+
+    def test_a_two_repo_delivery_links_each_pr_to_the_other(self):
+        self._add_second_repo()
+        _, bodies, fake = self._recording_gh()
+        with fake:
+            deliver.run(self.store, self.paths, self.ctx)
+        # two creates, then one refreshed body per delivered repo carrying "Related PRs"
+        self.assertEqual(len(bodies), 4)
+        self.assertTrue(all("### Related PRs" in b for b in bodies[2:]))
+        self.assertTrue(all("### Related PRs" not in b for b in bodies[:2]))
 
     # --- LF-58: one repo's failure never stops the others --------------------
 
@@ -565,6 +671,8 @@ class AcceptedRemoteTests(DeliverTests.__bases__[0]):
                 return create
             if args[:2] == ("pr", "view"):
                 return 0, view, ""
+            if args[:2] == ("pr", "checks"):
+                return 1, "", "no checks reported"
             raise AssertionError(f"unexpected gh call: {args}")
         return fake_run_gh
 

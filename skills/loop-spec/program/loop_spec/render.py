@@ -6,7 +6,10 @@ here is committed to the consumer's repository (the audit's R8: a docs commit af
 VERIFY would push a head that is not the verified SHA). Every function reads
 `store.state["products"]` and the ledger; none of them mutate anything.
 """
+from pathlib import Path
+
 from loop_spec import VERSION
+from loop_spec import repo as repo_module
 from loop_spec import result as result_module
 
 
@@ -55,15 +58,38 @@ def verification_md(store) -> str:
     return "\n".join(lines) + "\n"
 
 
-def pr_body(store) -> str:
+BODY_BEGIN = "<!-- loop-spec:begin -->"
+BODY_END = "<!-- loop-spec:end -->"
+_GENERATED_LINE = "Generated with loop-spec"
+
+
+def _criteria_table(spec: dict, verify_product: dict) -> list[str]:
+    texts = {c["id"]: c["text"] for c in spec["criteria"]}
+    lines = ["| Criterion | Text | Verdict | Command | SHA |", "| --- | --- | --- | --- | --- |"]
+    for verdict in verify_product["verdicts"]:
+        evidence = verdict["evidence"] or {}
+        text = texts.get(verdict["criterion"], "").replace("|", "\\|").replace("\n", " ")
+        lines.append(f"| {verdict['criterion']} | {text} | {verdict['verdict']} | "
+                     f"`{evidence.get('command', '')}` | {evidence.get('sha', '')} |")
+    return lines
+
+
+def pr_body(store, repo_name: str | None = None, siblings: list[tuple[str, str]] | None = None) -> str:
+    """The generated PR description, between markers so `merge_body` can refresh it without
+    touching what a person wrote around it. `siblings` is (repo, PR url) for the run's other
+    delivered repos."""
     spec = store.state["products"]["spec"]["product"]
     verify_product = store.state["products"]["verify"]["product"]
     findings = store.state["ledger"]["findings"]
 
-    lines = [f"## {spec['goal']}", ""]
+    lines = [BODY_BEGIN, f"## {spec['goal']}", ""]
+    if spec["decisions"]:
+        lines += ["### Why", ""] + [f"- {d['text']}" for d in spec["decisions"]] + [""]
     if spec["boundaries"]:
         lines += ["### Boundaries", ""] + [f"- {b}" for b in spec["boundaries"]] + [""]
-    lines += ["### Acceptance", ""] + _acceptance_table(verify_product) + [""]
+    lines += ["### Acceptance", ""] + _criteria_table(spec, verify_product) + [""]
+    if spec["openQuestions"]:
+        lines += ["### Open questions", ""] + [f"- {q['text']}" for q in spec["openQuestions"]] + [""]
 
     if findings:
         lines += ["### Findings", "", "| ID | Severity | Disposition | Cause |", "| --- | --- | --- | --- |"]
@@ -81,8 +107,47 @@ def pr_body(store) -> str:
                       for f in rejected]
             lines.append("")
 
+    if siblings:
+        lines += ["### Related PRs", ""] + [f"- {name}: {url}" for name, url in siblings] + [""]
+    issue = store.state.get("issue") or {}
+    if repo_name is not None and issue.get("repo") == repo_name and issue.get("number"):
+        lines += [f"Closes #{issue['number']}", ""]
+    login = (store.state.get("operator") or {}).get("login")
+    if login:
+        lines += [f"Opened by loop-spec for @{login}; review follow-up: `/loop-spec:revise <pr>`", ""]
+
     outstanding = result_module.outstanding(store)
     lines += [f"### Outstanding\n{', '.join(outstanding) if outstanding else 'none'}", ""]
-    lines += [f"Rewinds used: {store.state['budget']['spent']}/{store.state['budget']['limit']}", ""]
-    lines.append(f"Generated with loop-spec {VERSION}")
+    lines.append(f"{_GENERATED_LINE} {VERSION}")
+    lines.append(BODY_END)
     return "\n".join(lines) + "\n"
+
+
+def merge_body(existing: str, generated: str) -> str:
+    """`generated` placed into a PR body a person may have edited: between its markers when
+    it has them; around a pre-7.9 generated body (from its first `## ` line to its
+    `Generated with loop-spec` line), keeping the text outside; else after the human text."""
+    generated = generated.strip("\n")
+    begin, end = existing.find(BODY_BEGIN), existing.find(BODY_END)
+    if begin != -1 and end > begin:
+        return existing[:begin] + generated + existing[end + len(BODY_END):]
+    lines = existing.split("\n")
+    start = next((i for i, line in enumerate(lines) if line.startswith("## ")), None)
+    last = next((i for i in range(len(lines) - 1, -1, -1) if lines[i].startswith(_GENERATED_LINE)), None)
+    if start is not None and last is not None and start <= last:
+        before, after = "\n".join(lines[:start]).rstrip(), "\n".join(lines[last + 1:]).strip("\n")
+        return (before + "\n\n" if before else "") + generated + ("\n\n" + after if after else "") + "\n"
+    return existing.rstrip() + "\n\n" + generated + "\n"
+
+
+_PR_TEMPLATES = (".github/pull_request_template.md", ".github/PULL_REQUEST_TEMPLATE.md",
+                 "docs/pull_request_template.md", "pull_request_template.md", "PULL_REQUEST_TEMPLATE.md")
+
+
+def pr_template(worktree: Path, sha: str) -> str | None:
+    """The repository's PR template as committed at `sha` (never the working tree), else None."""
+    for name in _PR_TEMPLATES:
+        proc = repo_module._git(worktree, "show", f"{sha}:{name}")
+        if proc.returncode == 0:
+            return proc.stdout
+    return None

@@ -102,7 +102,7 @@ ROUTES: dict[str, dict[str, dict]] = {
     },
     "deliver": {
         "delivered": {"requires": ["D1", "D2", "D3", "D4", "D6", "D7", "D8"], "next": (None, "terminal"), "backward": False},
-        "partially delivered": {"requires": ["D1", "D2", "D4", "D5", "D7", "D8"], "next": (None, "terminal"), "backward": False},
+        "partially delivered": {"requires": ["D1", "D2", "D3", "D4", "D5", "D7", "D8"], "next": (None, "terminal"), "backward": False},
         "delivery blocked": {"requires": ["D4"], "next": ("deliver", "remediation"), "backward": False, "pause": True},
         "base moved": {"requires": ["D4", "D9", "T2"], "next": ("execute", "remediation"), "backward": True},
     },
@@ -1122,15 +1122,17 @@ class Boundary:
         return None
 
     def _d3(self) -> str | None:
-        if load_config(self.project_root).get("deliver", {}).get("readiness", "none") != "checks":
+        if (load_config(self.project_root).get("deliver") or {}).get("readiness", "checks") != "checks":
             return None
         for entry in self.product["repos"]:
             if entry["state"] != "delivered" or entry.get("pr") is None:
                 continue
             repo_info = self._repo_entries()[entry["repo"]]
-            code, _, err = repo_module.run_gh(Path(repo_info["path"]), "pr", "checks", str(entry["pr"]["number"]))
-            if code != 0:
-                return f"repo {entry['repo']}: required checks are not satisfied: {err.strip()}"
+            # pending, none and error are the row's caveats, not refusals: DELIVER reads CI
+            # once and never waits; a check that fails after that is revise's to handle.
+            state, detail = repo_module.pr_checks(Path(repo_info["path"]), entry["pr"]["number"])
+            if state == "fail":
+                return f"repo {entry['repo']}: required checks are not satisfied: {detail}"
         return None
 
     def _d4(self) -> str | None:
@@ -1239,7 +1241,7 @@ class Boundary:
                     not repo_module.is_ancestor(path, new_base, f"refs/remotes/origin/{repo_info['defaultBranch']}"):
                 return f"repo {entry['repo']}: newBase is not origin/{repo_info['defaultBranch']} moved forward from the base"
             conflicts = repo_module.merge_conflicts(path, head, new_base)
-            if not conflicts or sorted(conflicts) != sorted(entry.get("conflicts") or []):
+            if sorted(conflicts) != sorted(entry.get("conflicts") or []):
                 return f"repo {entry['repo']}: the recorded conflicts are not what merging newBase into the head leaves"
         return None
 

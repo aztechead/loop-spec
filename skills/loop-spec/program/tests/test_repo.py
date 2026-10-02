@@ -16,16 +16,19 @@ from loop_spec.repo import (
     clean_checkout,
     commits_between,
     create_feature_branch,
+    default_branch,
     detect_workspace,
     exclude_path,
     fetch_pr_head,
     files_added_by,
+    find_issue,
     find_pr_reference,
     free_branch,
     head_sha,
     init_in_place,
     is_ancestor,
     is_clean,
+    pr_checks,
     remote_host,
     remove_worktree,
     remove_worktrees,
@@ -433,5 +436,80 @@ class FreeBranchTests(unittest.TestCase):
             self.assertEqual(free_branch(self._clone_with_origin(tmp, ["feat/xy"]), "feat/x"), "feat/x")
 
 
+class FindIssueTests(unittest.TestCase):
+    def _find(self, text, exclude=(), view=None, calls=None):
+        view = view or (0, json.dumps({"number": 12, "title": "t", "url": "https://github.com/o/r/issues/12",
+                                        "state": "OPEN", "body": "b"}), "")
+
+        def gh(repo, *args):
+            if calls is not None:
+                calls.append(args)
+            return view
+        with patch("loop_spec.repo.run_gh", side_effect=gh):
+            return find_issue(Path("."), text, set(exclude))
+
+    def test_the_first_reference_outside_the_excluded_pr_numbers_is_read(self):
+        calls = []
+        issue = self._find("fix #7 as in #12", exclude={7}, calls=calls)
+        self.assertEqual(issue["number"], 12)
+        self.assertEqual(calls[0][:3], ("issue", "view", "12"))
+        self.assertEqual(self._find("see github.com/o/r/issues/12")["number"], 12)
+
+    def test_closed_pr_and_unreadable_issues_are_none(self):
+        closed = (0, json.dumps({"number": 12, "url": "u", "state": "CLOSED"}), "")
+        a_pr = (0, json.dumps({"number": 12, "url": "https://github.com/o/r/pull/12", "state": "OPEN"}), "")
+        self.assertIsNone(self._find("#12", view=closed))
+        self.assertIsNone(self._find("#12", view=a_pr))
+        self.assertIsNone(self._find("#12", view=(1, "", "not found")))
+        self.assertIsNone(self._find("no reference here"))
+
+
+class PrChecksTests(unittest.TestCase):
+    def _classify(self, code, out="", err=""):
+        with patch("loop_spec.repo.run_gh", return_value=(code, out, err)):
+            return pr_checks(Path("."), 7)[0]
+
+    def test_the_exit_code_then_the_text_decide_the_state(self):
+        self.assertEqual(self._classify(0, "build\tpass"), "pass")
+        self.assertEqual(self._classify(8, "build\tpending"), "pending")
+        self.assertEqual(self._classify(1, "", "no checks reported on the 'x' branch"), "none")
+        self.assertEqual(self._classify(1, "build\tfail"), "fail")
+        self.assertEqual(self._classify(127, "", "gh: not found"), "error")
+
+    def test_a_timeout_is_an_error_not_a_hang(self):
+        with patch("loop_spec.repo.subprocess.run", side_effect=subprocess.TimeoutExpired("gh", 60)):
+            self.assertEqual(pr_checks(Path("."), 7)[0], "error")
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class DefaultBranchTests(unittest.TestCase):
+    def _repo_with_origin(self, tmp):
+        repo = Path(tmp) / "repo"
+        origin = Path(tmp) / "origin.git"
+        repo.mkdir()
+        _init_repo(repo)
+        _commit(repo, "README", "init")
+        _git(tmp, "init", "-q", "--bare", "-b", "main", str(origin))
+        _git(repo, "remote", "add", "origin", str(origin))
+        _git(repo, "push", "-q", "origin", "main")
+        return repo
+
+    def test_ls_remote_names_main_while_a_feature_branch_is_checked_out(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self._repo_with_origin(tmp)
+            _git(repo, "checkout", "-q", "-b", "wip")
+            _git(repo, "remote", "set-head", "origin", "--delete")
+            self.assertEqual(default_branch(repo), "main")
+
+    def test_a_detached_head_with_no_origin_answer_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _init_repo(repo)
+            _commit(repo, "README", "init")
+            _git(repo, "checkout", "-q", "--detach")
+            with self.assertRaises(LoopSpecError):
+                default_branch(repo)

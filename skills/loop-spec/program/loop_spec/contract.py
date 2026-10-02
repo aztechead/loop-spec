@@ -79,6 +79,20 @@ def load_config(project_root: Path) -> dict:
     if after is not None and not (isinstance(after, list) and all(isinstance(s, str) and s for s in after)):
         raise LoopSpecError(f"{path}: deliver.after is {after!r}; it is a list of skill names",
                             repair='set it to a list such as ["my-plugin:pr-follow-up"], or remove it')
+    deliver = config.get("deliver") or {}
+    readiness = deliver.get("readiness")
+    if readiness is not None and readiness not in ("none", "checks"):
+        raise LoopSpecError(f"{path}: deliver.readiness is {readiness!r}; it is \"none\" or \"checks\"",
+                            repair='set deliver.readiness to "none" or "checks", or remove it')
+    prefix = deliver.get("branchPrefix")
+    if prefix is not None and not (isinstance(prefix, str) and prefix.endswith("/") and prefix != "/"):
+        raise LoopSpecError(f"{path}: deliver.branchPrefix is {prefix!r}; it is a non-empty string ending in \"/\"",
+                            repair='set it to a prefix such as "feature/", or remove it')
+    for key in ("reviewers", "labels"):
+        names = deliver.get(key)
+        if names is not None and not (isinstance(names, list) and all(isinstance(n, str) and n for n in names)):
+            raise LoopSpecError(f"{path}: deliver.{key} is {names!r}; it is a list of strings",
+                                repair=f"set deliver.{key} to a list of names, or remove it")
     approval = (config.get("spec") or {}).get("approval")
     if approval is not None and approval not in SPEC_APPROVALS:
         raise LoopSpecError(f"{path}: spec.approval is {approval!r}; it is \"ask\" or \"policy\"",

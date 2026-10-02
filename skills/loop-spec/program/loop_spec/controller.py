@@ -7,6 +7,7 @@ T1 rewind budget, writes the SPEC approval record, or writes a terminal result;
 `postconditions.py` only answers whether a claimed exit's requirements hold.
 """
 import json
+import tempfile
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import Literal
 from loop_spec import baseline as baseline_module
 from loop_spec import budget as budget_module
 from loop_spec import contract
+from loop_spec import log
 from loop_spec import ledger as ledger_module
 from loop_spec import postconditions
 from loop_spec import probes as probes_module
@@ -142,13 +144,14 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
         if entry == "auto":
             # The router decides which PR, if any, the work continues on; nothing is
             # adopted before it has chosen (the hand-off adopts through _adopt).
-            _resolve_repos(store, project_root, slug, None, home)
+            _resolve_repos(store, project_root, slug, None, home, cycle_type)
             repos = [(name, Path(info["path"])) for name, info in store.state["repos"].items()]
             store.state["routeFacts"] = {"prRefs": probes_module.pr_refs(repos, request_text)}
         elif entry == "direct":
-            _resolve_repos(store, project_root, slug, None, home)
+            _resolve_repos(store, project_root, slug, None, home, cycle_type)
         else:
-            _resolve_repos(store, project_root, slug, repo_module.find_pr_reference(request_text), home)
+            _resolve_repos(store, project_root, slug, repo_module.find_pr_reference(request_text), home, cycle_type)
+        _record_start_facts(store, request_text)
         _resolve_implementations(store, project_root)
         if answer_policy == "default":
             store.state["questions"]["policy"] = "default"
@@ -305,6 +308,7 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
     store.state["adoption"] = {**adoption_record,
                                "prior": _find_delivering_run_products(home, rid, adoption.url, project_root)}
     store.state["phase"]["current"] = "revise"
+    _record_start_facts(store, request_text, intake=False)
     _resolve_implementations(store, project_root)
     if answer_policy == "default":
         store.state["questions"]["policy"] = "default"
@@ -358,7 +362,7 @@ def _clear_stale_last_result(paths: FeaturePaths, slug: str) -> None:
             paths.last_result_json.unlink()
 
 
-def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, home: Path) -> None:
+def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, home: Path, cycle_type: str) -> None:
     """Every repo gets a fresh feature branch at its head, except the one that adopts
     `pr_ref` (a PR the request names), which continues that PR's branch (`_adopt`)."""
     workspace = repo_module.detect_workspace(project_root)
@@ -374,16 +378,59 @@ def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, hom
                 repos[entry.name], adoption = _adopt(entry.name, entry.path, candidate, home)
                 continue
         base_sha = repo_module.head_sha(entry.path)
+        default_branch = ((contract.load_config(project_root).get("deliver") or {}).get("base")
+                          or repo_module.default_branch(entry.path))
+        prefix = (contract.load_config(project_root).get("deliver") or {}).get("branchPrefix") or (
+            "fix/" if cycle_type == "debug" else "feat/")
+        try:
+            # The run starts from origin's integration branch, not from whatever is checked out.
+            tip = repo_module.fetch_base(entry.path, default_branch)
+        except LoopSpecError:
+            tip = None  # no origin, offline, hostless fixture: keep the checkout's HEAD
+        if tip is not None:
+            if tip != base_sha and not repo_module.is_ancestor(entry.path, base_sha, tip):
+                log.stderr.info(f"{entry.name}: local HEAD {base_sha[:12]} is not on origin/{default_branch} "
+                                f"({tip[:12]}); the run starts from origin")
+            base_sha = tip
         repos[entry.name] = {
-            "path": str(entry.path), "baseSha": base_sha, "featureBranch": repo_module.free_branch(entry.path, f"feat/{slug}"),
-            "defaultBranch": (contract.load_config(project_root).get("deliver") or {}).get("base")
-                             or repo_module.default_branch(entry.path),
+            "path": str(entry.path), "baseSha": base_sha, "featureBranch": repo_module.free_branch(entry.path, f"{prefix}{slug}"),
+            "defaultBranch": default_branch,
             "lastKnownHead": base_sha,
         }
     store.state["repos"] = repos
     store.state.pop("adoption", None)
     if adoption is not None:
         store.state["adoption"] = adoption
+
+
+def _record_start_facts(store: StateStore, request_text: str, *, intake: bool = True) -> None:
+    """What a teammate would look at before starting: who is running this, which issue the
+    request names, and what is already open. Every call needs a hosted origin, so a
+    local-path origin (every fixture) makes no gh call; each failure leaves its fact absent."""
+    hosted = {name: Path(info["path"]) for name, info in store.state["repos"].items()
+              if repo_module._configured_remote_host(Path(info["path"]), "origin") is not None}
+    if not hosted:
+        return
+    code, out, _ = repo_module.run_gh(next(iter(hosted.values())), "api", "user", "--jq", ".login")
+    if code == 0 and out.strip():
+        store.state["operator"] = {"login": out.strip()}
+    if not intake:
+        return
+    exclude = {r["number"] for r in (store.state.get("routeFacts") or {}).get("prRefs", [])}
+    if store.state.get("adoption"):
+        exclude.add(store.state["adoption"]["number"])
+    for name, path in hosted.items():
+        issue = repo_module.find_issue(path, request_text, exclude)
+        if issue is not None:
+            store.state["issue"] = {"repo": name, "number": issue["number"], "title": issue.get("title"),
+                                    "url": issue.get("url"), "body": (issue.get("body") or "")[:4000]}
+            break
+    slug = store.state["run"]["slug"]
+    adopted = (store.state.get("adoption") or {}).get("repo")
+    store.state["openWork"] = {
+        name: {"openPrs": repo_module.open_prs(path),
+               "takenBranch": name != adopted and store.state["repos"][name]["featureBranch"].rsplit("/", 1)[-1] != slug}
+        for name, path in hosted.items()}
 
 
 def _adopt(repo_name: str, repo_path: Path, candidate, home: Path) -> tuple[dict, dict]:
@@ -627,7 +674,10 @@ def build_envelope(store: StateStore, paths: FeaturePaths, phase: str, attempt_i
         # reads it without threading a separate "is this micro" field through state;
         # no phase's own remediation/rejection payload is dropped to make room for it.
         entry_payload = {**(entry_payload or {}), "preset": "micro"}
+    # Start-time facts, present only when the run collected them (issue, open work).
+    start_facts = {key: state[key] for key in ("issue", "openWork") if state.get(key)}
     return {
+        **start_facts,
         "run": {"id": state["run"]["id"]},
         "attempt": {"id": attempt_id},
         "inputs": {"digest": digest(inputs_source)},
@@ -971,7 +1021,7 @@ def _hand_off(store: StateStore, paths: FeaturePaths, project_root: Path, produc
         return
     cycle_type, first_phase = ENTRIES[entry].cycle_type, ENTRIES[entry].first_phase
     if entry != "direct":
-        _resolve_repos(store, project_root, store.state["run"]["slug"], url, paths.root.parent.parent)
+        _resolve_repos(store, project_root, store.state["run"]["slug"], url, paths.root.parent.parent, cycle_type)
     store.state["run"]["cycleType"] = cycle_type
     _enter_phase(store, first_phase)
     store.save()
@@ -1777,9 +1827,39 @@ def _finish_run(store: StateStore, paths: FeaturePaths, classification: str, *, 
                 store.state.setdefault("cleanupBacklog", []).extend(repo_skipped)
         if removed:
             emit(paths, "worktrees_removed", {"removed": removed}, phase=store.state["phase"]["current"])
+    if classification == "escalated":
+        warning = _comment_stop_on_pr(store, classification, reason)
+        if warning is not None:
+            warnings = [*(warnings or []), warning]
     return result_module.write(store, paths, classification, reason=reason, summary=summary,
                                 partially_delivered=partially_delivered, work_delivered=work_delivered,
                                 warnings=warnings, announce=announce)
+
+
+def _comment_stop_on_pr(store: StateStore, classification: str, reason: str | None) -> str | None:
+    """Say why a stopped run stopped, on the PR a reviewer is looking at: the adopted PR, else
+    the first PR DELIVER recorded. A failure to post is a warning, never an error; a repo
+    without a hosted origin (a local fixture) makes no gh call."""
+    repo_name, number = None, None
+    adoption = store.state.get("adoption")
+    if adoption:
+        repo_name, number = adoption["repo"], adoption["number"]
+    else:
+        deliver = (store.state["products"].get("deliver") or {}).get("product") or {}
+        for entry in deliver.get("repos", []):
+            if entry.get("pr"):
+                repo_name, number = entry["repo"], entry["pr"]["number"]
+                break
+    info = store.state.get("repos", {}).get(repo_name or "")
+    if info is None or repo_module._configured_remote_host(Path(info["path"]), "origin") is None:
+        return None
+    body = (f"<!-- loop-spec:status -->\nloop-spec stopped this run: **{classification}**.\n\n"
+            f"{(reason or 'no reason was recorded')[:3000]}\n")
+    body_path = Path(tempfile.mkstemp(prefix="loop-spec-status-", suffix=".md")[1])
+    body_path.write_text(body)
+    code, _, err = repo_module.run_gh(Path(info["path"]), "pr", "comment", str(number), "--body-file", str(body_path))
+    body_path.unlink(missing_ok=True)
+    return None if code == 0 else f"could not comment on PR #{number}: {err.strip() or code}"
 
 
 def _iterate_escalation_reason(store: StateStore) -> str:

@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from loop_spec import controller
 from loop_spec.jsonio import read_json
@@ -138,6 +139,53 @@ class EscalationReasonTests(unittest.TestCase):
             record = read_json(paths.result_json)
         self.assertEqual(record["reason"], record["summary"])
         self.assertTrue(record["reason"])
+
+
+class StopCommentTests(unittest.TestCase):
+    def _store(self, tmp, hosted=True):
+        repo = Path(tmp) / "repo"
+        repo.mkdir()
+        _init_repo(repo)
+        _commit(repo, "a.txt", "init")
+        if hosted:
+            _git(repo, "remote", "add", "origin", "https://github.com/example/repo.git")
+        paths = FeaturePaths(root=Path(tmp) / "state" / "revise-9")
+        store = StateStore.create(paths, dict(_RUN_FIELDS, slug="revise-9", cycleType="revise"), "revise PR #9")
+        store.state["phase"]["current"] = "revise"
+        store.state["repos"] = {"repo": {"path": str(repo), "baseSha": head_sha(repo), "featureBranch": "feat/x",
+                                         "defaultBranch": "main", "lastKnownHead": head_sha(repo)}}
+        store.state["adoption"] = {"repo": "repo", "number": 9, "url": "https://github.com/example/repo/pull/9"}
+        store.save()
+        return store, paths
+
+    def _finish(self, store, paths, gh):
+        with contextlib.redirect_stdout(io.StringIO()), patch("loop_spec.controller.repo_module.run_gh", side_effect=gh) as run_gh:
+            controller._finish_run(store, paths, "escalated", reason="the reviewer asked for a redesign")
+        return run_gh, read_json(paths.result_json)
+
+    def test_an_escalated_run_posts_one_status_comment_on_its_pr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            bodies = []
+
+            def gh(repo, *args):
+                bodies.append((args[:3], Path(args[args.index("--body-file") + 1]).read_text()))
+                return 0, "", ""
+            run_gh, _ = self._finish(store, paths, gh)
+        self.assertEqual(run_gh.call_count, 1)
+        self.assertEqual(bodies[0][0], ("pr", "comment", "9"))
+        self.assertIn("<!-- loop-spec:status -->", bodies[0][1])
+        self.assertIn("the reviewer asked for a redesign", bodies[0][1])
+
+    def test_a_failed_comment_is_a_warning_and_a_local_origin_makes_no_call(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            _, record = self._finish(store, paths, lambda repo, *args: (1, "", "HTTP 403"))
+            self.assertTrue(any("could not comment on PR #9" in w for w in record["warnings"]))
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp, hosted=False)
+            run_gh, _ = self._finish(store, paths, lambda repo, *args: (0, "", ""))
+            self.assertEqual(run_gh.call_count, 0)
 
 
 if __name__ == "__main__":

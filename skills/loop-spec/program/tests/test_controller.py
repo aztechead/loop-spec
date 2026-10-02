@@ -318,6 +318,8 @@ class FullExternalCycleTests(_QuietStdout):
                             "state": "OPEN", "headRefName": feature_branch, "headRefOid": commit_sha,
                             "baseRefName": "main", "number": 1, "url": "https://example.invalid/pull/1",
                         }), ""
+                    if args[:2] == ("pr", "checks"):
+                        return 1, "", "no checks reported"
                     return 1, "", "unexpected gh call in test"
 
                 with patch.object(repo_module, "run_gh", fake_run_gh):
@@ -1547,6 +1549,8 @@ class DebugAndReviseEntryTests(_QuietStdout):
                             "state": "OPEN", "headRefName": "pr-branch", "headRefOid": commit_sha2,
                             "baseRefName": "main", "number": 42, "url": pr_url,
                         }), ""
+                    if args[:2] == ("pr", "checks"):
+                        return 1, "", "no checks reported"
                     return 1, "", "unexpected gh call in test"
 
                 with patch.object(repo_module, "run_gh", fake_run_gh):
@@ -1679,6 +1683,8 @@ def _run_one_full_external_cycle(repo_dir, home, markers, slug: str, request_tex
                 "state": "OPEN", "headRefName": feature_branch, "headRefOid": commit_sha,
                 "baseRefName": "main", "number": 1, "url": f"https://example.invalid/pull/{slug}",
             }), ""
+        if args[:2] == ("pr", "checks"):
+            return 1, "", "no checks reported"
         return 1, "", "unexpected gh call in test"
 
     with patch.object(repo_module, "run_gh", fake_run_gh):
@@ -1794,12 +1800,116 @@ class RequestAdoptionTests(unittest.TestCase):
             store = StateStore.create(paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x",
                                               "createdAt": "2026-01-01T00:00:00+00:00"}, "fix it on #42")
             with patch.object(repo_module, "adopt_pr", return_value=adoption):
-                controller._resolve_repos(store, repo_dir, "x", 42, home)
+                controller._resolve_repos(store, repo_dir, "x", 42, home, "full")
             name = store.state["adoption"]["repo"]
             self.assertEqual(store.state["repos"][name]["featureBranch"], "pr-branch")
             self.assertEqual(store.state["repos"][name]["lastKnownHead"], head_sha)
             self.assertEqual(store.state["repos"][name]["baseSha"], base_sha)
             self.assertEqual(repo_module.head_sha(repo_dir, "refs/heads/pr-branch"), head_sha)
+
+
+class StartBaseTests(unittest.TestCase):
+    """A fresh run starts from origin's integration branch, not the checkout's HEAD."""
+
+    def _store(self, tmp, repo_dir):
+        home = tmp / "home"
+        paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "x"), project_root=repo_dir)
+        store = StateStore.create(paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x",
+                                          "createdAt": "2026-01-01T00:00:00+00:00"}, "do it")
+        return store, home
+
+    def test_an_unpushed_local_branch_starts_from_origins_tip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            _add_origin(tmp, repo_dir, "main")
+            tip = repo_module.head_sha(repo_dir)
+            _git(repo_dir, "checkout", "-q", "-b", "wip")
+            (repo_dir / "wip.txt").write_text("wip\n", encoding="utf-8")
+            _git(repo_dir, "add", "wip.txt")
+            _git(repo_dir, "commit", "-q", "-m", "wip")
+            _git(repo_dir, "remote", "set-head", "origin", "--delete")
+            store, home = self._store(tmp, repo_dir)
+            controller._resolve_repos(store, repo_dir, "x", None, home, "full")
+            repo = next(iter(store.state["repos"].values()))
+            self.assertEqual(repo["defaultBranch"], "main")
+            self.assertEqual(repo["baseSha"], tip)
+            self.assertEqual(repo["lastKnownHead"], tip)
+
+    def test_no_origin_keeps_the_local_head(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            store, home = self._store(tmp, repo_dir)
+            controller._resolve_repos(store, repo_dir, "x", None, home, "full")
+            repo = next(iter(store.state["repos"].values()))
+            self.assertEqual(repo["baseSha"], repo_module.head_sha(repo_dir))
+
+
+class BranchPrefixTests(unittest.TestCase):
+    def _branch(self, cycle_type, config=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            if config:
+                (repo_dir / ".loop-spec").mkdir()
+                (repo_dir / ".loop-spec" / "config.json").write_text(json.dumps(config), encoding="utf-8")
+            home = tmp / "home"
+            paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "x"), project_root=repo_dir)
+            store = StateStore.create(paths, {"id": "run-1", "entry": "cycle", "cycleType": cycle_type, "slug": "x",
+                                              "createdAt": "2026-01-01T00:00:00+00:00"}, "do it")
+            controller._resolve_repos(store, repo_dir, "x", None, home, cycle_type)
+            return next(iter(store.state["repos"].values()))["featureBranch"]
+
+    def test_a_debug_run_branches_under_fix(self):
+        self.assertEqual(self._branch("debug"), "fix/x")
+
+    def test_a_cycle_branches_under_feat(self):
+        self.assertEqual(self._branch("full"), "feat/x")
+
+    def test_the_configured_prefix_wins(self):
+        self.assertEqual(self._branch("debug", {"deliver": {"branchPrefix": "team/"}}), "team/x")
+
+
+class StartFactsTests(unittest.TestCase):
+    """Operator, issue, and open work are read only for a hosted origin."""
+
+    def _store(self, tmp, origin):
+        repo_dir = _init_repo(tmp)
+        if origin:
+            _git(repo_dir, "remote", "add", "origin", origin)
+        home = tmp / "home"
+        paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "x"), project_root=repo_dir)
+        store = StateStore.create(paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x",
+                                          "createdAt": "2026-01-01T00:00:00+00:00"}, "fix #12")
+        store.state["repos"] = {"repo": {"path": str(repo_dir), "baseSha": "a", "featureBranch": "feat/x-2",
+                                         "defaultBranch": "main", "lastKnownHead": "a"}}
+        return store
+
+    def test_a_hosted_origin_records_operator_issue_and_open_work(self):
+        def gh(repo, *args):
+            if args[0] == "api":
+                return 0, "ada\n", ""
+            if args[0] == "issue":
+                return 0, json.dumps({"number": 12, "title": "t", "url": "u", "state": "OPEN", "body": "b" * 5000}), ""
+            return 0, json.dumps([{"number": 3, "title": "same work"}]), ""
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(Path(tmp), "https://github.com/example/repo.git")
+            with patch.object(repo_module, "run_gh", side_effect=gh):
+                controller._record_start_facts(store, "fix #12")
+        self.assertEqual(store.state["operator"], {"login": "ada"})
+        self.assertEqual((store.state["issue"]["repo"], store.state["issue"]["number"], len(store.state["issue"]["body"])),
+                         ("repo", 12, 4000))
+        self.assertEqual(store.state["openWork"]["repo"]["openPrs"][0]["number"], 3)
+        self.assertTrue(store.state["openWork"]["repo"]["takenBranch"])
+
+    def test_a_local_origin_makes_no_gh_call(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(Path(tmp), None)
+            with patch.object(repo_module, "run_gh") as run_gh:
+                controller._record_start_facts(store, "fix #12")
+        self.assertEqual(run_gh.call_count, 0)
+        self.assertNotIn("operator", store.state)
 
 
 class AutoRouteTests(_QuietStdout):

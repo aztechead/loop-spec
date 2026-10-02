@@ -263,3 +263,28 @@ class AcceptRemotePathsConfigTests(unittest.TestCase):
             config.write_text('{"deliver": {"acceptRemotePaths": "CHANGELOG.md"}}')
             with self.assertRaises(LoopSpecError):
                 load_config(root)
+
+
+class DeliverConfigTests(unittest.TestCase):
+    def test_readiness_prefix_reviewers_and_labels_are_validated(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            (root / ".loop-spec").mkdir()
+            config = root / ".loop-spec" / "config.json"
+            config.write_text('{"deliver": {"readiness": "none", "branchPrefix": "team/", "reviewers": ["a"], "labels": ["b"]}}')
+            self.assertEqual(contract.load_config(root)["deliver"]["branchPrefix"], "team/")
+            for bad in ('{"readiness": "wait"}', '{"branchPrefix": "team"}', '{"branchPrefix": ""}',
+                        '{"reviewers": "a"}', '{"labels": [""]}'):
+                config.write_text('{"deliver": ' + bad + "}")
+                with self.assertRaises(LoopSpecError):
+                    contract.load_config(root)
+
+
+class StartFactsEnvelopeTests(unittest.TestCase):
+    def test_the_context_schema_accepts_issue_and_open_work(self):
+        from loop_spec.schema import load_schema, validate
+        with tempfile.TemporaryDirectory() as t:
+            envelope = _envelope("a-1", t, FeaturePaths(root=Path(t) / "run"))
+            self.assertEqual(validate(envelope, load_schema("context")), [])
+            envelope.update(issue={"number": 1}, openWork={"repo": {"openPrs": [], "takenBranch": False}})
+            self.assertEqual(validate(envelope, load_schema("context")), [])

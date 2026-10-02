@@ -37,6 +37,12 @@ Write your result to the path the step names; write nowhere else.
    prove the change (usually one or two), no open questions unless the request
    is ambiguous, and declare `approved` without an interview unless a boundary
    is unclear.
+7. When `inputs.issue` is present, the issue is part of the request: read its body
+   with the request text and cite its number in a decision or criterion it shapes.
+   When `inputs.openWork` shows an open PR that already does what the request asks,
+   or a repo with `takenBranch` true (a branch for this work already exists),
+   ask the requester whether to continue before writing criteria. When answers
+   come from a policy, record the overlap as an open question and continue.
 
 ## Engineering principles
 

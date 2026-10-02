@@ -122,6 +122,16 @@
               "base moved"
             ]
           },
+          "checks": {
+            "description": "7.9.0: one read of the PR's CI after the push (deliver.readiness \"checks\"); never waited on.",
+            "type": "object",
+            "required": ["state", "detail"],
+            "additionalProperties": false,
+            "properties": {
+              "state": {"type": "string", "enum": ["pass", "pending", "fail", "none", "error"]},
+              "detail": {"type": "string"}
+            }
+          },
           "acceptedRemote": {
             "description": "7.1.0: commits after the verified SHA on the remote branch, accepted under deliver.acceptRemotePaths; deliveredSha stays the verified SHA.",
             "type": "object",

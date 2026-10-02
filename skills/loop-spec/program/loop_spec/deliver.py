@@ -57,8 +57,42 @@ def pr_title(title: str, limit: int = 70) -> str:
     return head + "..."
 
 
+_METADATA_FLAGS = ("--assignee", "--reviewer", "--label")
+
+
+def _without_metadata(args: list[str]) -> list[str]:
+    kept, skip = [], False
+    for arg in args:
+        if skip:
+            skip = False
+        elif arg in _METADATA_FLAGS:
+            skip = True
+        else:
+            kept.append(arg)
+    return kept
+
+
+def _edit_body(worktree: Path, number: int, generated: str, caveats: list[str]) -> None:
+    # The body is refreshed through its markers, so text a person added survives. A body
+    # that cannot be read is never overwritten blind.
+    code, out, err = repo_module.run_gh(worktree, "pr", "view", str(number), "--json", "body")
+    try:
+        existing = (json.loads(out).get("body") or "") if code == 0 else None
+    except ValueError:
+        existing = None
+    if existing is None:
+        caveats.append(f"the PR body was not updated: gh pr view --json body failed: {err.strip() or 'unreadable'}")
+        return
+    body_path = Path(tempfile.mkstemp(prefix="loop-spec-pr-body-", suffix=".md")[1])
+    body_path.write_text(render.merge_body(existing, generated))
+    code, _, err = repo_module.run_gh(worktree, "pr", "edit", str(number), "--body-file", str(body_path))
+    if code != 0:
+        caveats.append(f"the PR body was not updated: gh pr edit failed: {err.strip()}")
+
+
 def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: str,
-                   draft: bool, title: str, body: str) -> tuple[dict | None, str | None, list[str]]:
+                   draft: bool, title: str, body: str, verified_sha: str,
+                   reviewers: list[str] = (), labels: list[str] = ()) -> tuple[dict | None, str | None, list[str]]:
     branch = repo_info["featureBranch"]
     code, out, err = repo_module.run_gh(worktree, "pr", "list", "--head", branch, "--state", "open",
                                          "--json", "number,url,headRefOid,baseRefName,isDraft")
@@ -67,32 +101,46 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
 
     caveats = []
     existing = json.loads(out)
-    # LF-48: the body file lives outside the worktree; an untracked file inside it
-    # made the feature checkout "dirty" and terminal cleanup kept it as backlog.
-    body_path = Path(tempfile.mkstemp(prefix="loop-spec-pr-body-", suffix=".md")[1])
-    body_path.write_text(body)
     if existing:
+        number = existing[0]["number"]
         # 7.1.0: a re-entry or a revise run refreshes the body it rendered; a failed
         # edit leaves the old body and says so, it never fails the delivery.
-        code, _, err = repo_module.run_gh(worktree, "pr", "edit", str(existing[0]["number"]), "--body-file", str(body_path))
-        if code != 0:
-            caveats.append(f"the PR body was not updated: gh pr edit failed: {err.strip()}")
-        # A non-draft delivery marks an existing draft ready (a revise that cleanly
-        # addresses review on an earlier caveats run's draft); a draft delivery never
-        # converts a ready PR back. Like the body edit, a failure is a caveat only.
+        _edit_body(worktree, number, body, caveats)
+        # The PR's draft state follows this delivery's verdict both ways: a non-draft
+        # delivery marks an existing draft ready (a revise that cleanly addresses review
+        # on an earlier caveats run's draft), a draft delivery converts a ready PR back.
+        # Like the body edit, a failure is a caveat only.
         if existing[0].get("isDraft") and not draft:
-            code, _, err = repo_module.run_gh(worktree, "pr", "ready", str(existing[0]["number"]))
+            code, _, err = repo_module.run_gh(worktree, "pr", "ready", str(number))
             if code != 0:
                 caveats.append(f"the PR is still a draft: gh pr ready failed: {err.strip()}")
+        elif draft and not existing[0].get("isDraft"):
+            code, _, err = repo_module.run_gh(worktree, "pr", "ready", str(number), "--undo")
+            if code != 0:
+                caveats.append(f"the PR is not a draft: gh pr ready --undo failed: {err.strip()}")
     else:
+        # LF-48: the body file lives outside the worktree; an untracked file inside it
+        # made the feature checkout "dirty" and terminal cleanup kept it as backlog.
+        template = render.pr_template(worktree, verified_sha)
+        body_path = Path(tempfile.mkstemp(prefix="loop-spec-pr-body-", suffix=".md")[1])
+        body_path.write_text(body if template is None else body.rstrip("\n") + "\n\n" + template)
         # A crash-recovery marker, not a control-flow gate: `gh pr list` above already
         # reconciles a lost create response on its own, so nothing reads this back.
         store.state.setdefault("deliver", {}).setdefault("creating", {})[repo_name] = {"at": now_iso(), "branch": branch}
         store.save()
-        args = ["pr", "create", "--base", base, "--head", branch, "--title", pr_title(title), "--body-file", str(body_path)]
+        args = ["pr", "create", "--base", base, "--head", branch, "--title", pr_title(title), "--body-file", str(body_path),
+                "--assignee", "@me"]
+        for name in reviewers:
+            args += ["--reviewer", name]
+        for name in labels:
+            args += ["--label", name]
         if draft:
             args.append("--draft")
         code, _, err = repo_module.run_gh(worktree, *args)
+        if code != 0 and re.search(r"reviewer|label|assignee", err, re.IGNORECASE):
+            # A name the repository does not know must not cost the PR: retry without them.
+            caveats.append(f"the PR was opened without its assignee, reviewers, and labels: {err.strip()}")
+            code, _, err = repo_module.run_gh(worktree, *_without_metadata(args))
         if code != 0:
             return None, f"gh pr create failed: {err.strip()}", caveats
         store.state["deliver"]["creating"].pop(repo_name, None)
@@ -100,6 +148,24 @@ def _reconcile_pr(store, repo_name: str, worktree: Path, repo_info: dict, base: 
 
     pr, error = _view_pr(worktree, branch)
     return pr, error, caveats
+
+
+def _read_ci(worktree: Path, row: dict) -> None:
+    """One read of the PR's CI after the push (DELIVER runs under a host tool call with a
+    time cap, so it never waits). Pending and error are caveats; a failing check drafts
+    the PR, and the revise entry is the way back once the author fixes it."""
+    pr = row["pr"]
+    state, detail = repo_module.pr_checks(worktree, pr["number"])
+    row["checks"] = {"state": state, "detail": detail}
+    if state == "pending":
+        row["caveats"].append(f"CI is still running: {detail or pr['url']}")
+    elif state == "error":
+        row["caveats"].append(f"CI was not read: {detail}")
+    elif state == "fail":
+        row["caveats"].append(f"CI checks failed: {detail}")
+        code, _, err = repo_module.run_gh(worktree, "pr", "ready", str(pr["number"]), "--undo")
+        if code != 0:
+            row["caveats"].append(f"the PR is not a draft: gh pr ready --undo failed: {err.strip()}")
 
 
 def _view_pr(worktree: Path, branch: str) -> tuple[dict | None, str | None]:
@@ -205,6 +271,9 @@ def run(store, paths, ctx):
     project_root = Path(ctx["paths"]["projectRoot"])
     config = load_config(project_root)
     globs = (config.get("deliver") or {}).get("acceptRemotePaths") or []
+    readiness = (config.get("deliver") or {}).get("readiness", "checks")
+    reviewers = (config.get("deliver") or {}).get("reviewers") or []
+    labels = (config.get("deliver") or {}).get("labels") or []
     iterate_exit = store.state["products"]["iterate"]["exit"]
     entry_payload = (ctx.get("entry") or {}).get("payload") or {}
     draft = bool(entry_payload.get("draft")) or iterate_exit == "converged with caveats"
@@ -241,7 +310,7 @@ def run(store, paths, ctx):
     # Base moved: something merged into the PR base after this run forked (another
     # agent's PR) and the verified head no longer merges into it. Checked for every
     # touched repo before the first push, so nothing is published; EXECUTE merges the
-    # new base in (a resolver settles the conflicts) and the run re-verifies (D9).
+    # new base in (a resolver settles any conflicts) and the run re-verifies (D9).
     moved, fetch_failed = {}, {}
     for repo_name, head in touched.items():
         repo_info = store.state["repos"][repo_name]
@@ -258,9 +327,9 @@ def run(store, paths, ctx):
                                        f"{repo_info['baseSha'][:12]} (rewritten history); repair: restore the base branch, or "
                                        "merge it into the feature branch by hand, then re-enter (never force)")
             continue
-        conflicts = repo_module.merge_conflicts(path, head, tip)
-        if conflicts:
-            moved[repo_name] = {"newBase": tip, "conflicts": conflicts}
+        # Any move is merged in and re-verified, conflicts or not: a clean merge can still
+        # break what the verified head did.
+        moved[repo_name] = {"newBase": tip, "conflicts": repo_module.merge_conflicts(path, head, tip)}
     if moved:
         for repo_name, repo_info in store.state["repos"].items():
             if repo_name not in moved:
@@ -269,8 +338,8 @@ def run(store, paths, ctx):
                 continue
             move = moved[repo_name]
             repos_out.append({"repo": repo_name, "pr": None, "deliveredSha": None, "state": "base moved", **move, "caveats": [
-                f"{repo_info['defaultBranch']} moved to {move['newBase'][:12]} and conflicts with the verified head in "
-                f"{', '.join(move['conflicts'])}; EXECUTE merges it in and resolves them, then the run re-verifies"]})
+                f"{repo_info['defaultBranch']} moved to {move['newBase'][:12]}; EXECUTE merges it in "
+                f"(conflicts: {', '.join(move['conflicts']) or 'none'}), then the run re-verifies"]})
         return Product({"exit": "base moved", "inputsDigest": ctx["inputs"]["digest"], "boundTo": bound_to, "repos": repos_out})
 
     for repo_name, repo_info in store.state["repos"].items():
@@ -341,7 +410,8 @@ def run(store, paths, ctx):
                  f"pushed {verified_sha[:12]} to {repo_info['featureBranch']}"
 
         pr, error, pr_caveats = _reconcile_pr(store, repo_name, worktree, repo_info, repo_info["defaultBranch"], draft,
-                                               spec_product["goal"], render.pr_body(store))
+                                               spec_product["goal"], render.pr_body(store, repo_name), verified_sha,
+                                               reviewers, labels)
         if error:
             # The branch IS on the remote: record what was published and where it stopped.
             repos_out.append(failed(f"{action}; the PR step failed: {error}"))
@@ -376,7 +446,19 @@ def run(store, paths, ctx):
         if accepted:
             row["acceptedRemote"] = accepted
             row["caveats"].append("accepted remote commits under deliver.acceptRemotePaths: " + _accepted_text(accepted))
+        if readiness == "checks":
+            _read_ci(worktree, row)
         repos_out.append(row)
+
+    # A workspace run opens one PR per repo; each body links the others once all exist.
+    delivered_rows = [r for r in repos_out if r["state"] == "delivered" and r["pr"]]
+    if len(delivered_rows) >= 2:
+        for row in delivered_rows:
+            siblings = [(o["repo"], o["pr"]["url"]) for o in delivered_rows if o is not row]
+            worktree = paths.feature_worktree(row["repo"])
+            if not worktree.is_dir():
+                worktree = Path(store.state["repos"][row["repo"]]["path"])
+            _edit_body(worktree, row["pr"]["number"], render.pr_body(store, row["repo"], siblings), row["caveats"])
 
     # Mixed is partial; nothing delivered is blocked (the rows name why); an
     # untouched (skipped) repo never makes a delivery partial.
