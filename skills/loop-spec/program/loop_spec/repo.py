@@ -375,8 +375,19 @@ def temp_checkout(repo: Path, sha: str, dest: Path):
         remove_worktree(repo, dest, force=True)
 
 
+# Caches a test or lint run writes into a repository with no .gitignore for them. They are
+# not work anyone forgot to commit, so they never make a worktree dirty (a live run on such
+# a repository rejected every implement step over `__pycache__`).
+_CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", "node_modules", ".venv"})
+
+
+def _is_cache(path: str) -> bool:
+    return not _CACHE_DIRS.isdisjoint(path.rstrip("/").split("/")) or path.endswith((".pyc", ".pyo"))
+
+
 def is_clean(worktree: Path) -> bool:
-    return run_git(worktree, "status", "--porcelain").strip() == ""
+    lines = run_git(worktree, "status", "--porcelain").splitlines()
+    return all(line.startswith("?? ") and _is_cache(line[3:].strip('"')) for line in lines if line.strip())
 
 
 def files_added_by(repo: Path, base_sha: str, head_sha: str) -> list[str]:

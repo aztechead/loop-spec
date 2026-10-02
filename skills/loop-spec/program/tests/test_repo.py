@@ -140,6 +140,18 @@ class InitInPlaceTests(unittest.TestCase):
 
 
 class WorktreeTests(unittest.TestCase):
+    def test_a_test_runs_cache_is_clean_but_an_uncommitted_file_is_not(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _init_repo(tmp)
+            _commit(tmp, "a.py", "x = 1\n")
+            Path(tmp, "__pycache__").mkdir()
+            Path(tmp, "__pycache__", "a.cpython-313.pyc").write_bytes(b"\0")
+            Path(tmp, ".pytest_cache").mkdir()
+            Path(tmp, ".pytest_cache", "README.md").write_text("cache\n")
+            self.assertTrue(is_clean(Path(tmp)))
+            Path(tmp, "b.py").write_text("y = 2\n")
+            self.assertFalse(is_clean(Path(tmp)))
+
     def test_add_clean_checkout_and_remove(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as workdir:
             _init_repo(tmp)

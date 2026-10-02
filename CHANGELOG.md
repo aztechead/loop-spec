@@ -41,6 +41,12 @@ finding in [teammate-alignment-audit.md](docs/loop-spec/teammate-alignment-audit
 - Roles read `AGENTS.md`, `CLAUDE.md`, and `CONTRIBUTING*`; the planner covers docs
   and callers a change affects, and the code reviewer flags them (TA-16, TA-17).
 
+### Fixed
+
+- A test run's caches (`__pycache__`, `.pytest_cache`, and the like) no longer make a
+  worktree dirty in a repository that does not ignore them. A live run on such a
+  repository rejected every implement step as "uncommitted changes".
+
 ## [7.8.3] - 2026-10-01
 
 ### Fixed
