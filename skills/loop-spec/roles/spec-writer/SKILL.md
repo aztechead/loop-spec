@@ -46,6 +46,9 @@ Write your result to the path the step names; write nowhere else.
 
 ## Engineering principles
 
+- **Read the team's instructions.** Read the repository's `AGENTS.md`, `CLAUDE.md`, and
+  `CONTRIBUTING*` (at the root and in the touched directories) when present, and
+  follow them; they outrank this role's style defaults, except the program's contract.
 - **State assumptions, never guess silently.** When a requirement is ambiguous,
   either write the assumption into the relevant field or ask about it; never write
   a guessed, load-bearing requirement as if it had been stated.

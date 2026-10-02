@@ -210,6 +210,53 @@ class DeliverTests(unittest.TestCase):
         self.assertEqual((row["state"], row["pr"]["number"]), ("delivered", 42))
         self.assertIn("PR body was not updated", row["caveats"][0])
 
+    def test_review_replies_post_inline_summary_and_rerequest_humans(self):
+        self.store.state["adoption"] = {"repo": "repo", "number": 42, "url": "https://x/pull/42", "headRef": "feature",
+                                         "baseBranch": "main", "baseSha": self.base_sha, "headSha": self.head_sha,
+                                         "author": "pat"}
+        self.store.state["operator"] = {"login": "sam"}
+        self.store.state["reviewReplies"] = [
+            {"gap": "G-1", "disposition": "addressed", "note": "fixed", "kind": "inline", "commentId": 11,
+             "url": "https://x/c/11", "author": "alice"},
+            {"gap": "G-2", "disposition": "acknowledged", "note": "thanks", "kind": "inline", "commentId": 12,
+             "url": "https://x/c/12", "author": "bob"},
+            {"gap": "G-3", "disposition": "declined", "note": "out of scope", "kind": "comment",
+             "url": "https://x/c/13", "author": "dependabot[bot]"},
+            {"gap": "G-4", "disposition": "addressed", "note": "ci fixed", "kind": "check", "url": None, "author": "ci"}]
+        self.store.save()
+        calls = []
+
+        def fake_run_gh(repo, *args):
+            calls.append(args)
+            if args[:2] == ("pr", "list"):
+                return 0, "[]", ""
+            if args[:2] == ("pr", "create"):
+                return 0, "https://x/pull/42\n", ""
+            if args[:2] == ("pr", "view"):
+                return 0, PR_VIEW_JSON, ""
+            if args[:2] == ("pr", "checks"):
+                return 1, "", "no checks reported"
+            if args[:2] in (("api", "repos/{owner}/{repo}/pulls/42/comments/11/replies"), ("pr", "comment")):
+                return 0, "", ""
+            if args[:2] == ("pr", "edit") and "--add-reviewer" in args:
+                return 0, "", ""
+            if args[:2] == ("pr", "edit"):
+                return 0, "", ""
+            raise AssertionError(f"unexpected gh call: {args}")
+
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh), \
+                patch("loop_spec.deliver.repo_module._configured_remote_host", return_value="github.com"):
+            action = deliver.run(self.store, self.paths, self.ctx)
+
+        self.assertEqual(action.product["repos"][0]["state"], "delivered")
+        inline = [c for c in calls if c[:1] == ("api",)]
+        self.assertEqual(len(inline), 1)  # G-2 acknowledged: no inline reply
+        self.assertIn("comments/11/replies", inline[0][1])
+        self.assertEqual(sum(c[:2] == ("pr", "comment") for c in calls), 1)
+        reviewers = [c for c in calls if "--add-reviewer" in c]
+        self.assertEqual(reviewers[0][-1], "alice")  # not the bot, not the check, not the operator
+        self.assertEqual(self.store.state["deliver"]["replied"], ["G-1", "G-2", "G-3", "G-4"])
+
     def test_a_non_draft_delivery_marks_an_existing_draft_pr_ready(self):
         def deliver_with(exit_, ready_result=(0, "", "")):
             self.store.state["products"]["iterate"]["exit"] = exit_

@@ -448,6 +448,7 @@ def _adopt(repo_name: str, repo_path: Path, candidate, home: Path) -> tuple[dict
         "repo": repo_name, "number": candidate.number, "url": candidate.url, "headRef": candidate.branch,
         "baseBranch": candidate.base_branch, "baseSha": base_sha, "headSha": candidate.head_sha,
         "reason": candidate.reason, "title": candidate.title,
+        "author": getattr(candidate, "author", None),
     }
     return repo_entry, adoption
 
@@ -975,6 +976,7 @@ def _accept_revise_product(store: StateStore, paths: FeaturePaths, project_root:
     # debug's compacted product below.
     inputs_digest = digest(product)
     spec_half, plan_half = contract.default_adapter("revise").compact(product)
+    store.state["reviewReplies"] = contract.default_adapter("revise").replies(store, product)
     spec_product = {**spec_half, "exit": "approved", "inputsDigest": inputs_digest, "boundTo": {"requirements": None, "plan": None}}
     plan_product = {**plan_half, "exit": "ready", "inputsDigest": inputs_digest}
     _begin_compaction(store, paths, project_root, spec_product, plan_product)

@@ -23,7 +23,10 @@ your one result file only; you change nothing else.
    1. The request asks for a mechanical git or PR operation and says, or plainly
       implies, that it needs no design or verification: resolve merge conflicts,
       rebase or sync a branch with its base, re-run CI, retitle or relabel a PR,
-      push. Choose `direct`.
+      push. Choose `direct`. A request to resolve conflicts goes to `direct` only
+      when the conflicting files are not code (lockfiles, changelogs, generated
+      files) or the request says verification is not wanted; otherwise choose
+      `micro`.
    2. It asks to address review comments, findings, or feedback on a PR that
       `inputs.prRefs` shows as adoptable. Choose `revise` with that PR's number.
    3. It reports a defect with a reproduction, a stack trace, or a failing test.

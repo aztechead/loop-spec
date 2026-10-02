@@ -267,6 +267,47 @@ def _record_published(store, repo_name: str, sha: str, pr: dict | None, attempt_
     store.save()
 
 
+def _post_replies(store, worktree: Path, row: dict) -> None:
+    """Answer the review the revise run read: one inline reply per non-acknowledged inline
+    comment, one summary PR comment, and a review re-request for the human reviewers whose
+    comments were addressed or declined. Core state only; each failure is a caveat."""
+    adoption = store.state.get("adoption") or {}
+    operator = (store.state.get("operator") or {}).get("login")
+    number, sha = row["pr"]["number"], row["deliveredSha"]
+    deliver_state = store.state.setdefault("deliver", {})
+    replied = deliver_state.setdefault("replied", [])
+    todo = [r for r in store.state.get("reviewReplies") or [] if r["gap"] not in replied]
+    if not todo or adoption.get("repo") != row["repo"]:
+        return
+    for reply in todo:
+        if reply.get("kind") == "inline" and reply.get("commentId") and reply["disposition"] != "acknowledged":
+            text = f"<!-- loop-spec:reply -->\n{reply['disposition']}: {reply['note']} ({sha[:12]})"
+            code, _, err = repo_module.run_gh(worktree, "api", f"repos/{{owner}}/{{repo}}/pulls/{number}/comments/"
+                                              f"{reply['commentId']}/replies", "-f", f"body={text}")
+            if code != 0:
+                row["caveats"].append(f"inline reply to {reply['url']} failed: {err.strip()}")
+    lines = ["<!-- loop-spec:reply -->", f"loop-spec answered this review at {sha[:12]}:", ""]
+    author = adoption.get("author")
+    if operator and author and author != operator:
+        lines.insert(2, f"Commits pushed to @{author}'s branch by @{operator} through loop-spec.\n")
+    lines += [f"- {r.get('url') or r['gap']} ({r['disposition']}): {r['note']}" for r in todo]
+    body_path = Path(tempfile.mkstemp(prefix="loop-spec-reply-", suffix=".md")[1])
+    body_path.write_text("\n".join(lines) + "\n")
+    code, _, err = repo_module.run_gh(worktree, "pr", "comment", str(number), "--body-file", str(body_path))
+    body_path.unlink(missing_ok=True)
+    if code != 0:
+        row["caveats"].append(f"the review reply comment failed: {err.strip()}")
+    people = sorted({r["author"] for r in todo if r["disposition"] in ("addressed", "declined")
+                     and r.get("kind") != "check" and r.get("author") and not r["author"].endswith("[bot]")
+                     and r["author"] not in (operator, author, "unknown")})
+    if people:
+        code, _, err = repo_module.run_gh(worktree, "pr", "edit", str(number), "--add-reviewer", ",".join(people))
+        if code != 0:
+            row["caveats"].append(f"review was not re-requested from {', '.join(people)}: {err.strip()}")
+    replied.extend(r["gap"] for r in todo)
+    store.save()
+
+
 def run(store, paths, ctx):
     project_root = Path(ctx["paths"]["projectRoot"])
     config = load_config(project_root)
@@ -448,6 +489,8 @@ def run(store, paths, ctx):
             row["caveats"].append("accepted remote commits under deliver.acceptRemotePaths: " + _accepted_text(accepted))
         if readiness == "checks":
             _read_ci(worktree, row)
+        if repo_module._configured_remote_host(Path(repo_info["path"]), "origin") is not None:
+            _post_replies(store, worktree, row)
         repos_out.append(row)
 
     # A workspace run opens one PR per repo; each body links the others once all exist.

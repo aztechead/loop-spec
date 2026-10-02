@@ -517,6 +517,7 @@ class PrAdoption:
     head_sha: str | None
     reason: str
     title: str | None = None
+    author: str | None = None
 
 
 _PR_URL = re.compile(r"https://github\.com/[^\s]+?/pull/\d+\S*")
@@ -578,7 +579,7 @@ def adopt_pr(repo: Path, ref: int | str) -> PrAdoption:
         return _no_adopt("gh is not installed")
 
     code, out, err = run_gh(
-        repo, "pr", "view", str(ref), "--json", "number,url,headRefName,baseRefName,state,isCrossRepository,headRefOid,title"
+        repo, "pr", "view", str(ref), "--json", "number,url,headRefName,baseRefName,state,isCrossRepository,headRefOid,title,author"
     )
     if code != 0:
         return _no_adopt(err.strip() or f"gh pr view failed (rc={code})")
@@ -598,6 +599,7 @@ def adopt_pr(repo: Path, ref: int | str) -> PrAdoption:
     return PrAdoption(
         adopt=True, number=number, url=url, branch=branch, base_branch=base,
         head_sha=data.get("headRefOid"), reason=f"named open PR #{number} on {branch}", title=data.get("title"),
+        author=(data.get("author") or {}).get("login"),
     )
 
 

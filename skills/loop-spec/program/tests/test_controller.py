@@ -1305,9 +1305,11 @@ class DebugAndReviseEntryTests(_QuietStdout):
                 reviser_step = read_json(next_.path)
                 self.assertEqual(reviser_step["role"], "reviser")
                 spec, plan = _minimal_spec_and_plan(repo_name, "Tighten the greeting", "the message is tighter", "tighten it")
-                reviser_product = {"spec": spec, "plan": plan}
+                reviser_product = {"spec": spec, "plan": plan,
+                                   "responses": [{"gap": g["id"], "disposition": "addressed", "note": "done"} for g in gaps]}
                 atomic_write_json(Path(reviser_step["resultPath"]), reviser_product)
                 next_ = _submit_and_continue(paths, repo_dir, markers, reviser_step["stepAttemptId"])
+                self.assertEqual([r["gap"] for r in StateStore.open(paths).state["reviewReplies"]], ["G-1"])
                 self.assertEqual(next_.kind, "question")  # the compacted SPEC's own approval question
                 next_ = _approve_compacted_spec_and_submit_critic(paths, repo_dir, markers, next_)
 
@@ -1417,7 +1419,8 @@ class DebugAndReviseEntryTests(_QuietStdout):
                     "decisions": [], "openQuestions": [],
                 }
                 reviser_plan = {"tasks": [t1, t2], "prepare": None, "evidenceExceptions": []}
-                reviser_product = {"spec": reviser_spec, "plan": reviser_plan}
+                reviser_product = {"spec": reviser_spec, "plan": reviser_plan,
+                                   "responses": [{"gap": g["id"], "disposition": "addressed", "note": "done"} for g in gaps]}
                 atomic_write_json(Path(reviser_step["resultPath"]), reviser_product)
                 next_ = _submit_and_continue(paths, repo_dir, markers, reviser_step["stepAttemptId"])
                 self.assertEqual(next_.kind, "question")  # the compacted SPEC's own approval question

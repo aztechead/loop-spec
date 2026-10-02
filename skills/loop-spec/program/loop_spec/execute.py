@@ -1439,6 +1439,11 @@ def _restore_after_checks(paths, worktree: Path, task_id: str, attempt_id) -> No
          phase="execute", attempt_id=attempt_id)
 
 
+def _task_title(store, task_id: str) -> str:
+    # A close-out task is not in the plan's task list; its id stands in for a title.
+    return (_plan_tasks(store).get(task_id) or {}).get("title") or task_id
+
+
 def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record: dict, result: dict) -> None:
     task_state["reviewSteps"].append(step_record["stepAttemptId"])
     execute_state = store.state["execute"]
@@ -1513,7 +1518,7 @@ def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record:
         # reviewed commits.
         try:
             repo_module.run_git(feature_worktree, "merge", "--no-ff", "--no-edit",
-                                 "-m", f"loop-spec: integrate {task_id}", task_head)
+                                 "-m", f"Merge {_task_title(store, task_id)} ({task_id})", task_head)
         except LoopSpecError:
             repo_module.run_git(feature_worktree, "merge", "--abort")
             # The task's own commits conflict with a sibling's on the new head:

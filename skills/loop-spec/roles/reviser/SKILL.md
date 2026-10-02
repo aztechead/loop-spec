@@ -45,6 +45,12 @@ the codebase; Write is for your one result file only.
    task's id.
 5. A comment you cannot resolve into a concrete criterion or task is a question,
    not a silent guess — name it rather than inventing an answer.
+6. Answer every input gap with one entry in `responses` (`gap`, `disposition`,
+   `note`). `addressed`: a criterion or task covers it; the note says which.
+   `declined`: you will not change anything, and the note gives a reason the
+   reviewer can answer. `question`: you cannot resolve it; the note asks the
+   question, and it also goes in the SPEC's `openQuestions`. `acknowledged`:
+   praise, approval, or a remark with no task; the note is a short thanks.
 
 ## Engineering principles
 
@@ -58,8 +64,9 @@ the codebase; Write is for your one result file only.
 
 ## What NOT to do
 
-- Do not drop a review comment silently; every comment maps to a criterion, a
-  task, or a named open question.
+- Do not drop a review comment silently; every gap gets one `responses` entry, and
+  maps to a criterion, a task, a named open question, a stated reason for
+  declining, or an acknowledgement.
 - Do not expand scope beyond what the comments raised.
 - Do not rewrite SPEC or PLAN sections the comments did not touch.
 
@@ -70,6 +77,7 @@ A revised SPEC and PLAN after a review comment asked for `clamp` next to `lerp`;
 ```json
 {
   "spec": {"goal": "calc exposes lerp(a, b, t), returning a + (b - a) * t.", "boundaries": ["No change to existing calc functions."], "criteria": [{"id": "AC-1", "text": "lerp(0, 10, 0.5) returns 5.0"}, {"id": "AC-2", "text": "clamp(15, 0, 10) returns 10"}], "decisions": [], "openQuestions": []},
-  "plan": {"tasks": [{"id": "T-1", "title": "Add lerp with its tests", "dependsOn": [], "files": ["calc/__init__.py", "tests/test_lerp.py"], "repo": "calc", "verify": "/work/calc/.venv/bin/python -m pytest -q tests/test_lerp.py", "criteria": ["AC-1"], "featureAdded": "tests/test_lerp.py", "mustFlip": false}, {"id": "T-2", "title": "Add clamp with its tests", "dependsOn": ["T-1"], "files": ["calc/__init__.py", "tests/test_clamp.py"], "repo": "calc", "verify": "/work/calc/.venv/bin/python -m pytest -q tests/test_clamp.py", "criteria": ["AC-2"], "featureAdded": "tests/test_clamp.py", "mustFlip": false}], "prepare": null, "checks": [], "evidenceExceptions": []}
+  "plan": {"tasks": [{"id": "T-1", "title": "Add lerp with its tests", "dependsOn": [], "files": ["calc/__init__.py", "tests/test_lerp.py"], "repo": "calc", "verify": "/work/calc/.venv/bin/python -m pytest -q tests/test_lerp.py", "criteria": ["AC-1"], "featureAdded": "tests/test_lerp.py", "mustFlip": false}, {"id": "T-2", "title": "Add clamp with its tests", "dependsOn": ["T-1"], "files": ["calc/__init__.py", "tests/test_clamp.py"], "repo": "calc", "verify": "/work/calc/.venv/bin/python -m pytest -q tests/test_clamp.py", "criteria": ["AC-2"], "featureAdded": "tests/test_clamp.py", "mustFlip": false}], "prepare": null, "checks": [], "evidenceExceptions": []},
+  "responses": [{"gap": "G-1", "disposition": "addressed", "note": "AC-2 and T-2 add clamp."}]
 }
 ```

@@ -47,6 +47,9 @@ Read-only over the codebase; Write is for your one result file only.
   its boundary, a unit carrying two reasons to change, and a change pattern the
   diff makes expensive (the next obvious param or case would ripple across
   files).
+- **Impact beyond the diff.** Flag, each with a location: a changed public symbol
+  whose callers outside the diff now break; a doc that now describes the old
+  behavior; a breaking change the SPEC does not name.
 - **Code for humans.** Judge against the file's OWN neighbors, not your own
   taste: a deviation you can point at (different indent, different naming
   convention, a comment that only narrates the diff) is a real finding; a
