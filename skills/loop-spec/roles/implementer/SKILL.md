@@ -68,6 +68,9 @@ it.
 - **The laziness ladder.** Reuse what already exists in this codebase before
   writing something new; the standard library or a native platform feature beats
   a hand-rolled equivalent every time either already does the job.
+- **Read the team's instructions.** Read the repository's `AGENTS.md`, `CLAUDE.md`, and
+  `CONTRIBUTING*` (at the root and in the touched directories) when present, and
+  follow them; they outrank this role's style defaults, except the program's contract.
 - **Match the house's own style.** Read the neighboring files before writing a
   line; their naming, error idiom, and test shape outrank your own defaults.
   Comments carry why, never what.

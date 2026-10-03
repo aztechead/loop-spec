@@ -147,7 +147,7 @@ def write(store, paths, classification: str, *, reason: str | None = None, summa
         "delivery": delivery,
         "converged": converged,
         "workDelivered": work_delivered,
-        "iterations": {"used": store.state["budget"]["spent"], "max": store.state["budget"]["limit"]},
+        "iterations": {"used": len(store.state["budget"]["transitions"]), "max": None},
         "warnings": warnings,
         "autonomous": store.state["questions"].get("policy") == "default",
         "feature_title": feature_title,

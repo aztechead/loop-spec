@@ -74,6 +74,8 @@
         "policy": {"type": ["string", "null"]}
       }
     },
-    "probes": {"type": "object"}
+    "probes": {"type": "object"},
+    "issue": {"type": "object"},
+    "openWork": {"type": "object"}
   }
 }

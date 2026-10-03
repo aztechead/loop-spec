@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Literal
 
 from loop_spec import repo as repo_module
-from loop_spec.errors import LoopSpecError
 from loop_spec.ids import digest_bytes, now_iso
 
 # ---------------------------------------------------------------------------
@@ -119,8 +118,22 @@ def parse_diagnostics(text: str, root: str = "") -> list[str]:
     return sorted(identities)
 
 
+_UNITTEST_LINE = re.compile(r"^(?:FAIL|ERROR): (\S+) \(([^)]+)\)")
+
+
+def parse_unittest(text: str) -> list[str]:
+    identities = set()
+    for line in text.splitlines():
+        if m := _UNITTEST_LINE.match(line.strip()):
+            name, paren = m.groups()
+            # Python 3.11+ prints `test_x (pkg.mod.Class.test_x)`; older prints `(pkg.mod.Class)`.
+            identities.add(paren if paren.endswith("." + name) else f"{paren}.{name}")
+    return sorted(identities)
+
+
 PARSERS = {
     "pytest": parse_pytest,
+    "unittest": parse_unittest,
     "vitest": parse_vitest_jest,
     "jest": parse_vitest_jest,
     "go": parse_go_test,
@@ -153,6 +166,8 @@ def detect_runner(command: str) -> str | None:
             return "pytest"
         if re.fullmatch(r"python[0-9.]*", name) and names[i + 1:i + 3] == ["-m", "pytest"]:
             return "pytest"
+        if re.fullmatch(r"python[0-9.]*", name) and names[i + 1:i + 3] == ["-m", "unittest"]:
+            return "unittest"
         if name == "vitest":
             return "vitest"
         if name == "jest":
@@ -321,12 +336,16 @@ _TESTS_RAN_PATTERNS = {
     "go": re.compile(r"^--- PASS|^ok\s"),
     "cargo": re.compile(r"^test result:.*\bok\b|\.\.\. ok$"),
     "diagnostics": re.compile(r"(?!)"),  # a check runs no tests
+    "unittest": re.compile(r"(?!)"),  # counted from `Ran N tests` in _count_tests_ran
 }
+_UNITTEST_RAN = re.compile(r"^Ran (\d+) tests?\b")
 
 
 def _count_tests_ran(output: str, runner: str | None) -> int:
     if runner is None:
         return 0
+    if runner == "unittest":
+        return sum(int(m.group(1)) for line in output.splitlines() if (m := _UNITTEST_RAN.match(line)))
     pattern = _TESTS_RAN_PATTERNS[runner]
     return sum(1 for line in output.splitlines() if pattern.search(line))
 
@@ -363,8 +382,7 @@ def shell_syntax(command: str) -> str | None:
     backticks. A format validator, not a sandbox or a shell emulator: `sh -c '...'` is
     plain argv and passes.
     """
-    # ponytail: brace expansion ({a,b}) and "\$" inside double quotes (the shell passes
-    # `$`, shlex passes `\$`) are not flagged; add them if a live command needs it.
+    # ponytail: brace expansion ({a,b}) is not flagged; add it if a live command needs it.
     try:
         tokens = shlex.split(command)
     except ValueError as exc:
@@ -387,6 +405,12 @@ def shell_syntax(command: str) -> str | None:
             continue
         if quote == '"':
             if c == "\\":
+                if command[i + 1:i + 2] in ("$", "`"):
+                    # sh drops this backslash, shlex keeps it: `sh -c "awk '{print \$1}'"`
+                    # gave awk a literal `\$1` here and a different exit than the shell.
+                    return (f"escapes {command[i + 1]!r} inside double quotes (a shell drops the backslash, "
+                            "this program keeps it); single-quote the whole script instead, `sh -c '... | awk \"{print \\$1}\"'`, "
+                            "where both pass the backslash to sh, or do the check in `python3 -c`")
                 i += 2
                 continue
             if c == '"':
@@ -586,9 +610,11 @@ def capture_baseline(
         if prepare:
             prepare_run = run_command(prepare, checkout_dest, base_sha)
             if prepare_run.exit_status != 0:
-                raise LoopSpecError(
-                    f"prepare command failed at base: {prepare}",
-                    repair=f"run `{prepare}` by hand in {checkout_dest} against {base_sha} and fix it",
+                # A PLAN defect, not an operator's: the failed run is recorded and the PLAN
+                # boundary rejects it back to the planner, so no command runs after it.
+                return Baseline(
+                    base_sha=base_sha, repo=repo_name, prepare=prepare, prepare_run=prepare_run,
+                    entries={}, captured_at=now_iso(), normalization_version=NORMALIZATION_VERSION,
                 )
 
         entries: dict[str, BaselineEntry] = {}

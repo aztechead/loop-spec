@@ -50,7 +50,7 @@ class StateStore:
             "approval": None,
             "baseline": None,
             "ledger": {"findings": [], "reviewedRanges": [], "reviews": []},
-            "budget": {"limit": 2, "spent": 0, "transitions": []},
+            "budget": {"transitions": []},
             "repos": None,
             "questions": {"open": None, "answered": {}, "retired": [], "policy": None, "policyAnswered": []},
             "steps": {"open": [], "retired": [], "quarantined": [], "submissions": {}},
@@ -94,4 +94,10 @@ class StateStore:
         """Move `repo`'s base to `base_sha` after EXECUTE merged that moved
         PR base into the feature branch (DELIVER `base moved`); VERIFY onward judge base..head."""
         self.state["repos"][repo]["baseSha"] = base_sha
+        self.save()
+
+    def record_merged_remote_head(self, repo: str, sha: str) -> None:
+        """EXECUTE merged origin's PR branch at `sha` into `repo`'s feature branch (a
+        teammate's push, DELIVER `branch moved`); its commits are no task's (E4)."""
+        self.state["repos"][repo].setdefault("mergedRemoteHeads", []).append(sha)
         self.save()

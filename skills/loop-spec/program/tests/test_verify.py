@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from loop_spec import postconditions
 from loop_spec.errors import LoopSpecError
 from loop_spec.steps import IssueStep, Product
 from loop_spec.paths import FeaturePaths
@@ -225,6 +226,93 @@ class VerifyTests(unittest.TestCase):
         self.assertIn('"review_reused"', events_text)
         assert_product_holds(self, self.store, self.paths, self.repo, "verify", product)
 
+    def test_a_refused_verifier_is_issued_again(self):
+        action = step(self.store, self.paths, self.ctx)
+        self.assertEqual(action.request["role"], "verifier")
+        on_step_refused(self.store, self.paths, "v-x", {"role": "verifier", "cwd": action.request["cwd"], "reason": "no result"})
+        self.assertEqual(step(self.store, self.paths, self.ctx).request["role"], "verifier")
+
+    def _base_move(self, *, touch_feature=False, rewrite_feature=False, ranges=None):
+        """A prior full review of base..head, then the base moves: another commit lands
+        on main and head merges it. Returns the new base sha."""
+        self.store.state["ledger"]["reviewedRanges"] = ranges or [
+            {"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.head_sha, "full": True, "byStep": "r-prior"}]
+        self.store.state["steps"]["submissions"]["r-prior"] = {"evidenceLevel": "host-attested"}
+        self.store.state["ledger"]["findings"] = [
+            {"id": "F-1", "repo": "repo", "location": "feature.py:1", "cause": "c", "severity": "Minor",
+             "disposition": "open", "reason": None, "supersedes": None}]
+        _git(self.repo, "checkout", "-q", "-b", "upstream", self.base_sha)
+        Path(self.repo, "feature.py" if touch_feature else "other.py").write_text("y = 2\n")
+        _git(self.repo, "add", "-A")
+        _git(self.repo, "commit", "-q", "-m", "someone else's PR")
+        new_base = _head(self.repo)
+        _git(self.repo, "checkout", "-q", "main")
+        if touch_feature:
+            _git(self.repo, "merge", "-q", "-X", "ours", "--no-edit", "upstream")
+        else:
+            _git(self.repo, "merge", "-q", "--no-edit", "upstream")
+        if rewrite_feature:
+            Path(self.repo, "feature.py").write_text("x = 3\n")
+            _git(self.repo, "commit", "-q", "-am", "resolution rewrote the feature")
+        head = _head(self.repo)
+        self.store.state["repos"]["repo"].update(baseSha=new_base, lastKnownHead=head)
+        self.store.state["products"]["execute"]["product"]["heads"]["repo"] = head
+        self.head_sha = head
+        self.store.save()
+        return new_base
+
+    def _verify_after_base_move(self):
+        action = step(self.store, self.paths, self.ctx)
+        verifier_result = _verifier_result([_verdict("AC-1", "pass")])
+        verifier_result["verdicts"][0]["evidence"]["sha"] = self.head_sha
+        self.store.state.setdefault("verifyRuns", {})["AC-1"] = {"matched": True}
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "v-step"}, verifier_result)
+        return step(self.store, self.paths, self.ctx)
+
+    def test_a_clean_base_move_with_an_unchanged_feature_diff_reuses_the_prior_review(self):
+        new_base = self._base_move()
+        action = self._verify_after_base_move()
+        self.assertIsInstance(action, Product)  # no code-reviewer step
+        self.assertEqual(action.product["reviewedRanges"], [
+            {"repo": "repo", "from": new_base, "to": self.head_sha, "full": True,
+             "reviewStep": "r-prior", "reusedRangeId": "range-1"}])
+        self.assertIn("base moved; feature diff unchanged", self.paths.events_jsonl.read_text())
+        self.assertEqual([f["id"] for f in self.store.state["ledger"]["findings"] if f["disposition"] == "open"], ["F-1"])
+        assert_product_holds(self, self.store, self.paths, self.repo, "verify", action.product)
+
+    def test_a_finding_on_reviewed_code_after_a_reused_pass_needs_supersedes(self):
+        # V8 reads the ledger's ranges; once the reused range is recorded, a new finding
+        # on a file it covers still needs a valid supersedes.
+        new_base = self._base_move()
+        product = self._verify_after_base_move().product
+        self.store.state["ledger"]["reviewedRanges"].append({"id": "range-2", "repo": "repo", **{
+            k: product["reviewedRanges"][0][k] for k in ("from", "to", "full")}, "byStep": "r-prior"})
+        finding = {"id": "F-9", "repo": "repo", "location": "feature.py:1", "cause": "c", "severity": "Minor",
+                   "disposition": "open", "reason": None, "supersedes": None}
+        self.assertEqual(product["reviewedRanges"][0]["from"], new_base)
+        self.assertIn("set its supersedes to", postconditions._check_supersedes(self.store, [finding], {"repo": self.repo}))
+
+    def test_a_base_move_that_touches_a_feature_file_is_reviewed_in_full(self):
+        self._base_move(touch_feature=True)
+        self.assertEqual(self._verify_after_base_move().request["role"], "code-reviewer")
+
+    def test_a_merge_that_changed_the_feature_diff_is_reviewed_in_full(self):
+        self._base_move(rewrite_feature=True)
+        self.assertEqual(self._verify_after_base_move().request["role"], "code-reviewer")
+
+    def test_a_base_move_after_a_delta_pass_still_reuses_the_prior_review(self):
+        # The latest range is a delta over the first one; the feature diff is the chain's.
+        self._base_move(ranges=[
+            {"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.base_sha, "full": True, "byStep": "r-prior"},
+            {"id": "range-2", "repo": "repo", "from": self.base_sha, "to": self.head_sha, "full": False, "byStep": "r-prior"}])
+        self.assertIsInstance(self._verify_after_base_move(), Product)
+
+    def test_an_unchained_ledger_is_reviewed_in_full(self):
+        self._base_move(ranges=[
+            {"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.base_sha, "full": True, "byStep": "r-prior"},
+            {"id": "range-2", "repo": "repo", "from": self.head_sha, "to": self.head_sha, "full": False, "byStep": "r-prior"}])
+        self.assertEqual(self._verify_after_base_move().request["role"], "code-reviewer")
+
     def test_all_pass_exits_passed(self):
         product = self._run_pass(_verifier_result([_verdict("AC-1", "pass")]))
         self.assertEqual(product["exit"], "passed")
@@ -358,6 +446,15 @@ class VerifyTests(unittest.TestCase):
         self.assertEqual(len(product["findings"]), 1)
         self.assertNotEqual(product["findings"][0]["id"], "finding-known")
         self.assertTrue(product["findings"][0]["id"].startswith("finding-"))
+
+    def test_the_reviewer_reads_the_approved_spec(self):
+        action = step(self.store, self.paths, self.ctx)
+        on_submit(self.store, self.paths, action.request | {"stepAttemptId": "v-step"},
+                  _verifier_result([_verdict("AC-1", "pass")]))
+        reviewer = step(self.store, self.paths, self.ctx).request
+        self.assertEqual(reviewer["role"], "code-reviewer")
+        self.assertIn("### spec", reviewer["prompt"])
+        self.assertIn('"it works"', reviewer["prompt"])
 
     def test_legacy_verify_state_reinitializes_and_emits_module_state_reset(self):
         # A run whose state.verify predates the per-repo shape (LF-28) has no

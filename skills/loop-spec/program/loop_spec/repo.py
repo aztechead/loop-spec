@@ -21,13 +21,13 @@ from typing import Literal
 from loop_spec.errors import LoopSpecError
 
 
-def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+def _git(repo: Path, *args: str, input: str | None = None) -> subprocess.CompletedProcess:
     # The only subprocess.run call site for git. A probe (is a branch present? is
     # one sha an ancestor of another?) reads a non-zero exit as a plain "no", so it
     # calls this directly; run_git wraps it with the raise for operations that are
     # only ever meant to succeed.
     return subprocess.run(
-        ["git", "-C", str(repo), *args], capture_output=True, text=True, check=False
+        ["git", "-C", str(repo), *args], capture_output=True, text=True, check=False, input=input
     )
 
 
@@ -46,6 +46,13 @@ LOCKFILES = ("uv.lock", "poetry.lock", "Pipfile.lock", "pdm.lock", "package-lock
 
 
 REVIEW_DIFF_CAP = 200_000  # ponytail: a flat cap, raise it if a real diff gets truncated in practice
+
+
+def patch_id(repo: Path, from_sha: str, to_sha: str) -> str | None:
+    """The stable patch id of from_sha..to_sha, or None for an empty diff."""
+    diff = run_git(repo, "diff", from_sha, to_sha)
+    out = _git(repo, "patch-id", "--stable", input=diff).stdout.split()
+    return out[0] if out else None
 
 
 def review_diff(repo: Path, rev_range: str) -> str:
@@ -80,14 +87,38 @@ def exclude_path(repo_path: Path, relative: str) -> None:
         f.write(relative + "\n")
 
 
+_GH_CHECKS_TIMEOUT = 60
+
+
 def run_gh(repo: Path, *args: str) -> tuple[int, str, str]:
+    # `gh pr checks` is the one call bounded in time: it is read once and never waited on.
+    timeout = _GH_CHECKS_TIMEOUT if args[:2] == ("pr", "checks") else None
     try:
-        proc = subprocess.run(["gh", *args], cwd=repo, capture_output=True, text=True, check=False)
+        proc = subprocess.run(["gh", *args], cwd=repo, capture_output=True, text=True, check=False, timeout=timeout)
     except OSError as exc:
         # gh missing from PATH is data for the caller (adopt_pr, check_credentials),
         # not a program error, so this never raises.
         return 127, "", str(exc)
+    except subprocess.TimeoutExpired:
+        return 124, "", f"gh {' '.join(args)} timed out after {timeout} s"
     return proc.returncode, proc.stdout, proc.stderr
+
+
+def pr_checks(repo: Path, number: int) -> tuple[str, str]:
+    """One read of a PR's CI: (`pass`|`pending`|`fail`|`none`|`error`, text). Never waits.
+    Order matters: `gh pr checks` exits 8 for pending and exits 1 for a PR with no checks,
+    so the exit code is read before the text, and the text before a generic failure."""
+    code, out, err = run_gh(repo, "pr", "checks", str(number))
+    text = (out + err).strip()[:2000]
+    if code == 0:
+        return "pass", text
+    if code == 8:
+        return "pending", text
+    if "no checks reported" in text:
+        return "none", text
+    if code in (124, 127):  # timed out, or gh could not run
+        return "error", text
+    return "fail", text
 
 
 @dataclass
@@ -208,7 +239,18 @@ def default_branch(repo: Path) -> str:
     proc = _git(repo, "symbolic-ref", "refs/remotes/origin/HEAD")
     if proc.returncode == 0:
         return proc.stdout.strip().rsplit("/", 1)[-1]
-    return run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    # origin/HEAD is unset in a clone made without it; ask origin which branch HEAD is.
+    # The symref line is `ref: refs/heads/<name>\tHEAD`; the next line is the SHA.
+    remote = _git(repo, "ls-remote", "--symref", "origin", "HEAD")
+    if remote.returncode == 0:
+        for line in remote.stdout.splitlines():
+            if line.startswith("ref:"):
+                return line.split("\t", 1)[0].removeprefix("ref:").strip().removeprefix("refs/heads/")
+    current = run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    if current == "HEAD":
+        raise LoopSpecError(f"{repo} is on a detached HEAD and origin did not name its default branch",
+                             repair="set deliver.base in the loop-spec config to the integration branch")
+    return current
 
 
 def is_ancestor(repo: Path, ancestor_sha: str, descendant_sha: str) -> bool:
@@ -231,15 +273,35 @@ def branch_sha(repo: Path, branch: str) -> str | None:
     return proc.stdout.strip() if proc.returncode == 0 else None
 
 
+def is_branch_name(repo: Path, name: str) -> bool:
+    # --branch also expands `@{-1}` to a prior branch's name; a name it rewrites is no name.
+    proc = _git(repo, "check-ref-format", "--branch", name)
+    return proc.returncode == 0 and proc.stdout.strip() == name
+
+
 def free_branch(repo: Path, name: str) -> str:
     # A branch name neither this clone nor origin has: `name`, else `name-2`, `name-3`...
+    # Git stores a branch as a path, so a branch nested under a name (`name/x`) takes it
+    # too, and no suffix frees a name whose parent path is a branch (`feature` for
+    # `feature/AVP-1234`): that raises here, before EXECUTE's `git branch` would fail.
     # An unreachable origin leaves the name alone; DELIVER reports the push as it does today.
-    proc = _git(repo, "ls-remote", "--heads", "origin", f"refs/heads/{name}", f"refs/heads/{name}-*")
+    parts = name.split("/")
+    parents = ["/".join(parts[:i]) for i in range(1, len(parts))]
+    proc = _git(repo, "ls-remote", "--heads", "origin", f"refs/heads/{name}", f"refs/heads/{name}-*",
+                f"refs/heads/{name}/*", *(f"refs/heads/{p}" for p in parents))
     taken = set()
     if proc.returncode == 0:
         taken = {line.split("\t", 1)[1].removeprefix("refs/heads/") for line in proc.stdout.splitlines() if "\t" in line}
+    taken |= {ref.removeprefix("refs/heads/") for ref in run_git(repo, "for-each-ref", "--format=%(refname)", "refs/heads").split()}
+    clash = next((p for p in parents if p in taken), None)
+    if clash is not None:
+        raise LoopSpecError(
+            f"branch {name!r} cannot be created in {repo}: branch {clash!r} exists here or on origin, "
+            "and git cannot hold a branch and a branch under it",
+            repair=f"name the feature branch outside '{clash}/' (deliver.branch in .loop-spec/config.json), or delete branch {clash!r}")
     candidate, n = name, 1
-    while candidate in taken or branch_sha(repo, candidate) is not None:
+    while (candidate in taken or any(ref.startswith(f"{candidate}/") for ref in taken)
+           or branch_sha(repo, candidate) is not None):
         n += 1
         candidate = f"{name}-{n}"
     return candidate
@@ -268,6 +330,10 @@ def add_worktree(repo: Path, dest: Path, *, branch: str) -> Path:
 
 def remove_worktree(repo: Path, dest: Path, *, force: bool = False) -> None:
     args = ["worktree", "remove"]
+    if not force and not uncommitted(dest):
+        # Only a test run's caches remain, which git refuses without --force (untracked
+        # or rewritten); is_clean already counts them as clean. Real changes still refuse.
+        force = True
     if force:
         args.append("--force")
     args.append(str(dest))
@@ -340,8 +406,36 @@ def temp_checkout(repo: Path, sha: str, dest: Path):
         remove_worktree(repo, dest, force=True)
 
 
+# Caches a test or lint run writes into a repository with no .gitignore for them. They are
+# not work anyone forgot to commit, so they never make a worktree dirty (a live run on such
+# a repository rejected every implement step over `__pycache__`).
+_CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", "node_modules", ".venv"})
+
+
+def _is_cache(path: str) -> bool:
+    return not _CACHE_DIRS.isdisjoint(path.rstrip("/").split("/")) or path.endswith((".pyc", ".pyo"))
+
+
+def uncommitted(worktree: Path) -> list[str]:
+    """`git status` paths other than a cache a test run wrote, tracked or not (a repo that
+    commits `.pyc` sees them rewritten on every run)."""
+    lines = run_git(worktree, "status", "--porcelain").splitlines()
+    return [line[3:].strip('"') for line in lines
+            if line.strip() and (" -> " in line or not _is_cache(line[3:].strip('"')))]
+
+
 def is_clean(worktree: Path) -> bool:
-    return run_git(worktree, "status", "--porcelain").strip() == ""
+    return not uncommitted(worktree)
+
+
+def restore_tracked_caches(worktree: Path) -> None:
+    """Put back tracked cache files a test run rewrote (a repo that commits `.pyc`), so they
+    never read as a step's uncommitted change."""
+    lines = run_git(worktree, "status", "--porcelain").splitlines()
+    paths = [line[3:].strip('"') for line in lines
+             if line.strip() and not line.startswith("?? ") and " -> " not in line and _is_cache(line[3:].strip('"'))]
+    if paths:
+        run_git(worktree, "checkout", "HEAD", "--", *paths)
 
 
 def files_added_by(repo: Path, base_sha: str, head_sha: str) -> list[str]:
@@ -372,12 +466,13 @@ def remote_extension(repo: Path, branch: str, verified: str, base: str, globs: l
     every commit in verified..head with every path each one touches in any parent's
     diff (renames as both sides), and `refused` names each path outside `globs` or
     changed by the verified change itself (base..verified, final tree)."""
-    fetch = _git(repo, "fetch", "--no-tags", "origin", f"refs/heads/{branch}")
+    ref = f"refs/remotes/origin/{branch}"
+    fetch = _git(repo, "fetch", "--no-tags", "origin", f"+refs/heads/{branch}:{ref}")
     if fetch.returncode != 0:
         if "couldn't find remote ref" in fetch.stderr:
             return {"state": "absent"}
         return {"state": "error", "why": fetch.stderr.strip() or "git fetch failed"}
-    head = run_git(repo, "rev-parse", "FETCH_HEAD").strip()
+    head = run_git(repo, "rev-parse", ref).strip()
     if head == verified:
         return {"state": "equal", "head": head}
     if not is_ancestor(repo, verified, head):
@@ -459,8 +554,9 @@ def fetch_pr_head(repo: Path, head_ref: str, base_ref: str, head_sha: str, *, ma
         run_git(repo, "branch", head_ref, head_sha)
     elif local != head_sha:
         if is_ancestor(repo, local, head_sha):
-            raise LoopSpecError(f"local branch {head_ref} is at {local[:12]}, behind the PR head {head_sha[:12]}",
-                                 repair=f"git -C {repo} branch -f {head_ref} origin/{head_ref}")
+            # Behind only (a teammate pushed to the PR): nothing local is lost by moving it up.
+            run_git(repo, "branch", "-f", head_ref, head_sha)
+            return
         raise LoopSpecError(f"local branch {head_ref} ({local[:12]}) has commits the PR head {head_sha[:12]} lacks",
                              repair=f"push {head_ref} to the PR or rename it, then re-run")
 
@@ -482,6 +578,7 @@ class PrAdoption:
     head_sha: str | None
     reason: str
     title: str | None = None
+    author: str | None = None
 
 
 _PR_URL = re.compile(r"https://github\.com/[^\s]+?/pull/\d+\S*")
@@ -499,6 +596,41 @@ def find_pr_reference(text: str) -> int | str | None:
     return None
 
 
+_ISSUE_REF = re.compile(r"github\.com/[\w.-]+/[\w.-]+/issues/(\d+)|#(\d+)")
+
+
+def find_issue(repo: Path, text: str, exclude: set[int] | frozenset = frozenset()) -> dict | None:
+    """The open GitHub issue `text` names (`#<n>` or an issues URL): the first reference
+    whose number is not in `exclude` (the PR numbers the run adopted or was routed to).
+    None when it is closed, is really a PR, or gh cannot read it."""
+    for match in _ISSUE_REF.finditer(text):
+        number = int(match.group(1) or match.group(2))
+        if number in exclude:
+            continue
+        code, out, _ = run_gh(repo, "issue", "view", str(number), "--json", "number,title,url,state,body")
+        if code != 0:
+            return None
+        try:
+            data = json.loads(out)
+        except ValueError:
+            return None
+        # The issues API also serves PRs; either marker means this number is one.
+        if "pull_request" in data or "/pull/" in (data.get("url") or ""):
+            continue
+        return data if data.get("state") == "OPEN" else None
+    return None
+
+
+def open_prs(repo: Path) -> list[dict]:
+    """Open PRs on the repository (first 30), [] when gh cannot list them."""
+    code, out, _ = run_gh(repo, "pr", "list", "--state", "open", "--limit", "30",
+                          "--json", "number,title,headRefName,author,url")
+    try:
+        return json.loads(out) if code == 0 else []
+    except ValueError:
+        return []
+
+
 def _no_adopt(reason: str) -> PrAdoption:
     return PrAdoption(adopt=False, number=None, url=None, branch=None, base_branch=None, head_sha=None, reason=reason)
 
@@ -508,7 +640,7 @@ def adopt_pr(repo: Path, ref: int | str) -> PrAdoption:
         return _no_adopt("gh is not installed")
 
     code, out, err = run_gh(
-        repo, "pr", "view", str(ref), "--json", "number,url,headRefName,baseRefName,state,isCrossRepository,headRefOid,title"
+        repo, "pr", "view", str(ref), "--json", "number,url,headRefName,baseRefName,state,isCrossRepository,headRefOid,title,author"
     )
     if code != 0:
         return _no_adopt(err.strip() or f"gh pr view failed (rc={code})")
@@ -528,6 +660,7 @@ def adopt_pr(repo: Path, ref: int | str) -> PrAdoption:
     return PrAdoption(
         adopt=True, number=number, url=url, branch=branch, base_branch=base,
         head_sha=data.get("headRefOid"), reason=f"named open PR #{number} on {branch}", title=data.get("title"),
+        author=(data.get("author") or {}).get("login"),
     )
 
 

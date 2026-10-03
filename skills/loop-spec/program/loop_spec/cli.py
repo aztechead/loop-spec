@@ -19,7 +19,6 @@ from loop_spec.events import marker_next, marker_wait
 from loop_spec.contract import subagent_type
 from loop_spec.jsonio import read_json
 from loop_spec.paths import FeaturePaths, feature_dir, repo_id, state_home
-from loop_spec.postconditions import retry_limit
 from loop_spec.state import StateStore
 
 # Every run-starting entry (the registry) plus the phases a run resumes at by name.
@@ -47,6 +46,7 @@ def _build_parser() -> argparse.ArgumentParser:
             p.add_argument("--request-file")
         elif takes == "pr":
             p.add_argument("--pr")
+            p.add_argument("--request")  # an instruction given with the PR, kept on the run's request
 
     _add_common(sub.add_parser("status"))
 
@@ -97,7 +97,7 @@ def _print_summary(state: dict, paths: FeaturePaths) -> None:
     log.stdout.info(f"run: {run['id']} entry: {run['entry']}")
     log.stdout.info(f"phase: {phase['current']} attempt: {phase['attemptId']}")
     log.stdout.info(f"revisions: requirements={state['revisions']['requirements']} plan={state['revisions']['plan']}")
-    log.stdout.info(f"budget: {budget['spent']}/{budget['limit']}")
+    log.stdout.info(f"rewinds: {len(budget['transitions'])}")
     for entry in state.get("closeOuts") or []:
         if entry["status"] == "active":
             source = entry["source"]
@@ -250,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
                 step_path = paths.steps_dir / submission.step["stepAttemptId"] / "step.json"
                 tag = submission.step["phase"].upper()
                 attempts = submission.step["attestationAttempts"]
-                log.stdout.info(f"[{tag}] step {args.step} unattested ({attempts}/{retry_limit()}): "
+                log.stdout.info(f"[{tag}] step {args.step} unattested (attempt {attempts}): "
                                 f"{submission.step['reason']}; dispatch a fresh worker with description {submission.redispatch} "
                                 f"(no name), subagent_type {subagent_type(submission.step.get('effort'))} "
                                 f"and the same dispatchPrompt (or prompt, for a step without one) and submit again with --dispatch {submission.redispatch}")
@@ -262,6 +262,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "answer":
             store, paths = _open_store(args)
+            recorded = store.state["questions"]["answered"].get(args.question)
+            if recorded is not None and recorded["value"] == args.answer:
+                log.stdout.info("already answered")
             questions.answer(store, paths, question_id=args.question, value=args.answer, scope=args.scope, by="human")
             next_ = controller.continue_run(store, paths, project_root=Path(args.project_root))
             _print_next(paths, next_, args)

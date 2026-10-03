@@ -63,7 +63,8 @@ or one slug per line if a 7.x run already exists there.
 
 From a script, the same entries are launcher subcommands, each with
 `--project-root <repo>`: `"$LS" cycle` and `micro` take `--request <text>` or
-`--request-file <path>`, `debug` takes `--request`, `revise` takes `--pr <n-or-url>`,
+`--request-file <path>`, `debug` takes `--request`, `revise` takes `--pr <n-or-url>` (and `--request <text>` for an
+instruction given with the PR),
 and `status` and the phase entries take `--slug`. Section 6 covers what to do with
 their output.
 
@@ -94,9 +95,9 @@ written by the planner and applied before every baseline capture and re-verifica
 | `LOOP_SPEC_NON_INTERACTIVE` | nothing; a question ends the entry with a `question` file to answer (section 6) |
 | `LOOP_SPEC_AUTONOMOUS` | `--answer-policy default` at entry, or `--scope run` on any answer |
 | `style:auto` (6.x's default), `LOOP_SPEC_ANSWER_STYLE=auto` | 7.x asks for requirements approval by default, which 6.x's `auto` style skipped. Set `spec.approval: "policy"` in config or `LOOP_SPEC_SPEC_APPROVAL=policy` to skip it again; `style:step`/`interactive` behavior (asking) is 7.x's default |
-| `LOOP_SPEC_ITERATE_MAX_ITERATIONS` | `LOOP_SPEC_REWIND_BUDGET` (the shared T1 budget's limit; default 2) |
-| `LOOP_SPEC_REDO_MAX`, `LOOP_SPEC_RALPH_THRESHOLD` | `LOOP_SPEC_STEP_RETRIES` (per-phase retry limit; default 3) |
-| `LOOP_SPEC_CHECKS_*`, `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | removed; nothing in 7.x waits on CI. `deliver.readiness: "checks"` in config makes one `gh pr checks` call, `deliver.base` sets the PR base, and there is no configurable timeout in this release |
+| `LOOP_SPEC_ITERATE_MAX_ITERATIONS` | nothing; since 7.9.0 no count bounds rewinds (see "Rewind progress rule") |
+| `LOOP_SPEC_REDO_MAX`, `LOOP_SPEC_RALPH_THRESHOLD` | nothing; a rejection reason that repeats asks the operator (see "Rewind progress rule") |
+| `LOOP_SPEC_CHECKS_*`, `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | removed; nothing in 7.x waits on CI. `deliver.readiness: "checks"` in config makes one `gh pr checks` call, `deliver.base` sets the PR base, `deliver.branch` (7.9.0) names the feature branch, and there is no configurable timeout in this release |
 | `LOOP_SPEC_WORKTREES`, `LOOP_SPEC_WORKTREE_DIR` | removed; worktrees live in the state home |
 | `LOOP_SPEC_CREDENTIAL_REFRESH_*` | removed; DELIVER checks credentials before its first push and exits `delivery blocked` if they fail |
 | `LOOP_SPEC_HARNESS`, `LOOP_SPEC_TEAMS_MODE`, `LOOP_SPEC_EXECUTE_WORKFLOW`, every `*_GUARD` | removed |
@@ -270,7 +271,7 @@ This section is for someone whose program runs loop-spec headless and reads `res
 | `checkpointPrUrl` | Always `null`. 7.x opens no checkpoint PRs. | Stop reading it. |
 | `delivery.targets[]` | `{repo, pr, deliveredSha, caveats, state}` per repo. | Read `state` per row. |
 | `prUrl` | Set only for a delivered row, or for the PR a `no-change` run adopted. | After a partial or failed delivery, read `delivery.targets[]`. |
-| `iterations` | `{used, max}` of the shared rewind budget, not ITERATE rounds. | Expect `max` 2. |
+| `iterations` | `{used, max}`: `used` is the number of backward transitions the run made, not ITERATE rounds; `max` is `null` since 7.9.0 (no count bounds rewinds). | Do not read `max`. |
 | `implementationConverged`: true once the cycle reached delivery; false for a local preflight stop such as a credential failure | True when ITERATE converged (with or without caveats) or the run is `no-change`, including a run that then escalated at DELIVER. A credential failure now reports true. This is a stated divergence from 6.x. | Use it for "the code is done". Use `result` and `workDelivered` for "a PR exists". |
 | `feature_title`: the original goal in the user's words | On a revise run, the adopted PR's own title. Otherwise the request's first line. | Do not retitle the PR from it. |
 
@@ -278,9 +279,9 @@ This section is for someone whose program runs loop-spec headless and reads `res
 
 | 6.x | 7.x | Host action |
 |---|---|---|
-| Created a draft, waited for CI, then always marked it ready. | Creates a draft only when an Important review finding was deferred or `deliver.escalatedPartialDraft` is set. Minor findings are deferred, listed in the PR body's findings table and in `warnings`, and the run reports `converged: true` (as 6.x reported review nits as warnings on a ready PR). A fixed or withdrawn finding does not make a draft. | Treat `converged-with-caveats` as needing human sign-off. |
+| Created a draft, waited for CI, then always marked it ready. | Creates a draft only when an Important review finding was deferred or `deliver.escalatedPartialDraft` is set. Since 7.9.0 a Minor finding is fixed by one EXECUTE close-out; if it is still open after that, it is deferred, listed in the PR body's findings table and in `warnings`, and the run reports `converged: true`. A fixed or withdrawn finding does not make a draft. | Treat `converged-with-caveats` as needing human sign-off. |
 | Marked every PR it handled ready. | A clean delivery marks an existing draft PR ready. | To keep a draft, run `gh pr ready --undo` after the result. |
-| `LOOP_SPEC_CHECKS_*` waited for checks. | Nothing waits for CI. `deliver.readiness: "checks"` makes one `gh pr checks` call, and a non-zero exit fails DELIVER's postcondition. | Poll CI yourself. `converged: true` does not imply green CI. |
+| `LOOP_SPEC_CHECKS_*` waited for checks. | Since 7.9.0 `deliver.readiness` defaults to `"checks"`: DELIVER reads each PR's CI once, waiting up to 26 s for checks to register when the repository has workflows. Pending is a caveat; a failing check drafts the PR and fails DELIVER's postcondition. Nothing waits for CI to finish. | Watch CI yourself. `converged: true` does not imply green CI. |
 
 ### PR title, body and branch
 
@@ -292,13 +293,13 @@ This section is for someone whose program runs loop-spec headless and reads `res
 | Branch `feat/<slug>`. | `feat/<slug>` (slug cut at 40 characters), or `feat/<slug>-<n>` when origin or the clone already has that branch, so a repeated request never pushes over an earlier run's PR. In a workspace each repo picks its own suffix. | Read the branch from `result.json`, not the slug. |
 | Hosts resent the same request text for each review round. | After a finished run that was routed to revise, the same text starts the next review round instead of returning the old result. | None. |
 
-### Rewind budget
+### Rewind progress rule
 
 | 6.x | 7.x | Host action |
 |---|---|---|
-| `LOOP_SPEC_ITERATE_MAX_ITERATIONS`, default 10. | Gone. `LOOP_SPEC_REWIND_BUDGET`, default 2, is shared by every backward route. | Set it if you need more. |
-| No base move. | DELIVER `base moved` does not spend the rewind budget. It has its own fixed limit of three per run. | A fourth move escalates. |
-| Spent budget, unmet goal. | Escalates with no PR unless `deliver.escalatedPartialDraft` is true. | Check `result` before looking for a PR. |
+| `LOOP_SPEC_ITERATE_MAX_ITERATIONS`, default 10. | Gone. From 7.0.0 to 7.8.x `LOOP_SPEC_REWIND_BUDGET` (default 2) bounded every backward route; since 7.9.0 no count does. A run stops by itself only when a rewind would re-run an identical state, and asks you when the same problem comes back after a change. | Answer the `recurred` question, or set `--answer-policy default` (it answers `stop`). |
+| No base move. | DELIVER `base moved` (the base, or a teammate's push to the PR branch) is counted apart from rewinds, three per run. | A fourth move asks whether to merge again; `continue` restarts the count. |
+| Spent budget, unmet goal. | A repeated identical state escalates with no PR unless `deliver.escalatedPartialDraft` is true. | Check `result` before looking for a PR. |
 
 ### Credentials and tooling
 

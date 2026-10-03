@@ -207,9 +207,20 @@ class _QuietStdout(unittest.TestCase):
 
 class FullExternalCycleTests(_QuietStdout):
     def test_full_external_cycle_converges_and_delivers(self):
+        self._full_cycle(None, "feat/greeting")
+
+    def test_configured_feature_branch_is_the_prs_head(self):
+        self._full_cycle("feature/AVP-1234", "feature/AVP-1234")
+
+    def _full_cycle(self, configured_branch, expected_branch):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             repo_dir = _init_repo(tmp)
+            if configured_branch is not None:
+                (repo_dir / ".loop-spec").mkdir()
+                (repo_dir / ".loop-spec" / "config.json").write_text(json.dumps({"deliver": {"branch": configured_branch}}))
+                _git(repo_dir, "add", ".loop-spec")
+                _git(repo_dir, "commit", "-q", "-m", "config")
             origin = tmp / "origin.git"
             _git(tmp, "init", "-q", "--bare", str(origin))
             _git(repo_dir, "remote", "add", "origin", str(origin))
@@ -225,6 +236,7 @@ class FullExternalCycleTests(_QuietStdout):
                 store = _open(paths)
                 base_sha = store.state["repos"][repo_name]["baseSha"]
                 feature_branch = store.state["repos"][repo_name]["featureBranch"]
+                self.assertEqual(feature_branch, expected_branch)
                 self.assertEqual(next_.kind, "step")
 
                 # --- PLAN ---
@@ -318,6 +330,8 @@ class FullExternalCycleTests(_QuietStdout):
                             "state": "OPEN", "headRefName": feature_branch, "headRefOid": commit_sha,
                             "baseRefName": "main", "number": 1, "url": "https://example.invalid/pull/1",
                         }), ""
+                    if args[:2] == ("pr", "checks"):
+                        return 1, "", "no checks reported"
                     return 1, "", "unexpected gh call in test"
 
                 with patch.object(repo_module, "run_gh", fake_run_gh):
@@ -361,10 +375,85 @@ class FullExternalCycleTests(_QuietStdout):
             self.assertEqual(result["status"], "completed")
             self.assertTrue(result["converged"])
             self.assertTrue(result["workDelivered"])
+            self.assertEqual(_open(paths).state["repos"][repo_name]["featureBranch"], expected_branch)
 
             printed = markers.getvalue()
             for marker in ("LOOP_SPEC_PHASE_START", "LOOP_SPEC_PHASE_END", "LOOP_SPEC_QUESTION", "LOOP_SPEC_RESULT"):
                 self.assertIn(marker, printed)
+
+
+class ConfiguredFeatureBranchTests(_QuietStdout):
+    """deliver.branch names the feature branch (_resolve_repos); unset keeps feat/<slug>."""
+
+    def _resolve(self, repo_dir: Path, tmp: Path, pr_ref=None, slug="widgets") -> dict:
+        paths = FeaturePaths(root=tmp / "run")
+        store = StateStore.create(paths, {"id": "run-1", "slug": slug}, "add widgets")
+        controller._resolve_repos(store, repo_dir, slug, pr_ref, tmp / "home", "full")
+        return store.state
+
+    def _configure(self, repo_dir: Path, deliver: dict) -> None:
+        (repo_dir / ".loop-spec").mkdir(exist_ok=True)
+        (repo_dir / ".loop-spec" / "config.json").write_text(json.dumps({"deliver": deliver}))
+
+    def _heads(self, repo_dir: Path) -> list[str]:
+        return subprocess.run(["git", "for-each-ref", "--format=%(refname:short)", "refs/heads"], cwd=repo_dir,
+                              check=True, capture_output=True, text=True).stdout.split()
+
+    def test_unset_is_feat_slug(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            state = self._resolve(repo_dir, tmp)
+            self.assertEqual(next(iter(state["repos"].values()))["featureBranch"], "feat/widgets")
+
+    def test_configured_name_is_stored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            self._configure(repo_dir, {"branch": "feature/AVP-1234"})
+            state = self._resolve(repo_dir, tmp)
+            self.assertEqual(next(iter(state["repos"].values()))["featureBranch"], "feature/AVP-1234")
+
+    def test_name_taken_on_origin_gets_a_suffix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            _git(repo_dir, "branch", "feature/AVP-1234")
+            _add_origin(tmp, repo_dir, "main", "feature/AVP-1234")
+            _git(repo_dir, "branch", "-D", "feature/AVP-1234")  # only origin holds it
+            self._configure(repo_dir, {"branch": "feature/AVP-1234"})
+            state = self._resolve(repo_dir, tmp)
+            self.assertEqual(next(iter(state["repos"].values()))["featureBranch"], "feature/AVP-1234-2")
+
+    def test_base_branch_name_is_refused_before_any_branch_exists(self):
+        for deliver in ({"branch": "main"}, {"branch": "release", "base": "release"}):
+            with self.subTest(deliver=deliver), tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                repo_dir = _init_repo(tmp)
+                self._configure(repo_dir, deliver)
+                with self.assertRaises(LoopSpecError):
+                    self._resolve(repo_dir, tmp)
+                self.assertEqual(self._heads(repo_dir), ["main"])
+
+    def test_adopting_a_pr_ignores_the_setting(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            _git(repo_dir, "checkout", "-q", "-b", "pr-branch")
+            (repo_dir / "greet.py").write_text("print('hi')\n", encoding="utf-8")
+            _git(repo_dir, "add", "greet.py")
+            _git(repo_dir, "commit", "-q", "-m", "add greeting")
+            head_sha = repo_module.head_sha(repo_dir)
+            _git(repo_dir, "checkout", "-q", "main")
+            _add_origin(tmp, repo_dir, "main", "pr-branch")
+            self._configure(repo_dir, {"branch": "feature/AVP-1234"})
+            adoption = repo_module.PrAdoption(
+                adopt=True, number=42, url="https://github.com/example/repo/pull/42", branch="pr-branch",
+                base_branch="main", head_sha=head_sha, reason="named open PR #42")
+            with patch.object(repo_module, "adopt_pr", return_value=adoption):
+                state = self._resolve(repo_dir, tmp, pr_ref="42")
+            self.assertEqual(next(iter(state["repos"].values()))["featureBranch"], "pr-branch")
+            self.assertNotIn("feature/AVP-1234", self._heads(repo_dir))
 
 
 class EdgeCaseTests(_QuietStdout):
@@ -411,35 +500,112 @@ class EdgeCaseTests(_QuietStdout):
             self.assertEqual(store.state["phase"]["entry"], "remediation")
             self.assertIn("rejected", store.state["phase"]["entryPayload"])
 
-    def test_t1_exhaustion_writes_escalated_without_entering_a_phase(self):
+    def _plan_store(self, tmp):
+        store, paths = self._minimal_store(tmp)
+        store.state["products"]["spec"] = {
+            "attemptId": "attempt-0", "inputsDigest": "sha256:" + "0" * 64,
+            "boundTo": {"requirements": None, "plan": None}, "exit": "approved",
+            "product": {"goal": "g", "boundaries": [], "criteria": [], "decisions": []},
+            "receivedAt": "2026-01-01T00:00:00+00:00", "evidenceLevel": "human-attested",
+        }
+        store.state["revisions"]["requirements"] = postconditions.requirements_revision(store.state["products"]["spec"]["product"])
+        store.state["phase"]["current"] = "plan"
+        store.state["phase"]["attemptId"] = "attempt-3"
+        store.save()
+        product = {
+            "exit": "spec gap", "inputsDigest": "sha256:" + "0" * 64,
+            "boundTo": {"requirements": store.state["revisions"]["requirements"], "plan": None},
+            "tasks": [], "prepare": None, "evidenceExceptions": [],
+        }
+        return store, paths, product
+
+    def _earlier_spec_gap(self, store, product, *, fingerprint=None):
+        budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="attempt-1", reason="gap",
+                            cause=postconditions.cause_key("plan", "spec gap", product),
+                            fingerprint=fingerprint or postconditions.fingerprint(store, product))
+
+    def test_an_identical_repeat_writes_escalated_without_entering_a_phase(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths, product = self._plan_store(tmp)
+            self._earlier_spec_gap(store, product)
+
+            controller._accept_product(store, paths, tmp, "plan", "attempt-3", product)
+
+            self.assertEqual(store.state["result"]["classification"], "escalated")
+            self.assertIn("no progress", read_json(paths.result_json)["reason"])
+            self.assertEqual(store.state["phase"]["current"], "plan")  # never entered spec
+
+    def test_a_recurred_cause_asks_and_continue_routes_back_and_spends(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths, product = self._plan_store(tmp)
+            self._earlier_spec_gap(store, product, fingerprint="sha256:an-earlier-state")
+
+            controller._accept_product(store, paths, tmp, "plan", "attempt-3", product)
+
+            open_question = store.state["questions"]["open"]
+            self.assertEqual(open_question["kind"], "recurred")
+            self.assertEqual(open_question["defaultValue"], "stop")
+            self.assertEqual(store.state["phase"]["attemptId"], "attempt-3")  # unlike a blocked pause
+            self.assertEqual(len(store.state["budget"]["transitions"]), 1)  # nothing spent yet
+            questions.answer(store, paths, question_id=open_question["questionId"], value="continue")
+            with patch.object(controller, "_ensure_code_checkouts"):
+                controller.continue_run(store, paths, project_root=tmp)
+            self.assertEqual(len(store.state["budget"]["transitions"]), 2)
+            self.assertEqual(store.state["phase"]["current"], "spec")
+            self.assertIsNone(store.state["phase"]["recurred"])
+            self.assertIsNone(store.state.get("result"))
+
+    def test_a_recurred_cause_answered_stop_escalates_with_the_recurrence_as_the_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths, product = self._plan_store(tmp)
+            self._earlier_spec_gap(store, product, fingerprint="sha256:an-earlier-state")
+            controller._accept_product(store, paths, tmp, "plan", "attempt-3", product)
+            questions.answer(store, paths, question_id=store.state["questions"]["open"]["questionId"], value="stop")
+            controller.continue_run(store, paths, project_root=tmp)
+            self.assertEqual(store.state["result"]["classification"], "escalated")
+            self.assertIn("again after a change", read_json(paths.result_json)["reason"])
+            self.assertEqual(len(store.state["budget"]["transitions"]), 1)
+
+    def test_a_base_move_past_its_limit_asks_and_continue_restarts_the_count(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             store, paths = self._minimal_store(tmp)
-            store.state["products"]["spec"] = {
-                "attemptId": "attempt-0", "inputsDigest": "sha256:" + "0" * 64,
-                "boundTo": {"requirements": None, "plan": None}, "exit": "approved",
-                "product": {"goal": "g", "boundaries": [], "criteria": [], "decisions": []},
-                "receivedAt": "2026-01-01T00:00:00+00:00", "evidenceLevel": "human-attested",
-            }
-            store.state["revisions"]["requirements"] = postconditions.requirements_revision(store.state["products"]["spec"]["product"])
-            store.state["phase"]["current"] = "plan"
-            store.state["phase"]["attemptId"] = "attempt-3"
+            store.state["phase"]["current"] = "deliver"
+            for n in range(budget_module.BASE_MOVE_LIMIT):
+                budget_module.spend(store, from_phase="deliver", exit="base moved", to_phase="execute", attempt_id=f"d-{n}", reason="moved")
             store.save()
+            product = {"repos": [{"repo": "repo", "state": "base moved", "newBase": "b" * 40}]}
 
-            budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="attempt-1", reason="gap")
-            budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="attempt-2", reason="gap")
-            self.assertFalse(budget_module.has_room(store))
+            controller._finalize(store, paths, tmp, "deliver", "attempt-9", product, "base moved")
 
-            plan_gap_product = {
-                "exit": "spec gap", "inputsDigest": "sha256:" + "0" * 64,
-                "boundTo": {"requirements": store.state["revisions"]["requirements"], "plan": None},
-                "tasks": [], "prepare": None, "evidenceExceptions": [],
-            }
-            controller._accept_product(store, paths, tmp, "plan", "attempt-3", plan_gap_product)
+            question = store.state["questions"]["open"]
+            self.assertEqual(question["kind"], "recurred")
+            self.assertIsNone(store.state.get("result"))
+            self.assertEqual(store.state["phase"]["current"], "deliver")
+            questions.answer(store, paths, question_id=question["questionId"], value="continue")
+            with patch.object(controller, "_finalize") as finalize:
+                finalize.side_effect = lambda *a, **k: store.state.update(result={"classification": "stub"})
+                controller.continue_run(store, paths, project_root=tmp)
+            self.assertEqual(finalize.call_args.kwargs, {"proceed": True})  # the deliver boundary needs a real run
+            self.assertEqual(store.state["budget"]["baseMovesContinuedAt"], budget_module.BASE_MOVE_LIMIT)
+            self.assertTrue(budget_module.base_move_room(store))
 
-            self.assertIsNotNone(store.state["result"])
-            self.assertEqual(store.state["result"]["classification"], "escalated")
-            self.assertEqual(store.state["phase"]["current"], "plan")  # never entered spec
+    def test_a_rejected_product_asks_when_the_same_failed_checks_come_back(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            store, paths = self._minimal_store(tmp)
+            failure = [postconditions.Failure("E1", "task T-1 at 1234567 is wrong")]
+            controller._reject_product(store, paths, "execute", "attempt-1", "integrated", failure)
+            self.assertIsNone(store.state["questions"]["open"])
+            controller._reject_product(store, paths, "execute", "attempt-2", "integrated",
+                                       [postconditions.Failure("E2", "other")])  # a different set: still retrying
+            self.assertIsNone(store.state["questions"]["open"])
+            controller._reject_product(store, paths, "execute", "attempt-3", "integrated",
+                                       [postconditions.Failure("E1", "task T-1 at 7654321 is wrong")])  # same ids
+            self.assertEqual(store.state["questions"]["open"]["kind"], "blocked")
 
     def test_duplicate_accept_does_not_double_transition(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -690,7 +856,7 @@ class PlanCriticTests(_QuietStdout):
             self.assertEqual(store.state["questions"]["answered"][critic_questions[0]]["by"], "policy")
             self.assertEqual(store.state["questions"]["policyAnswered"].count(critic_questions[0]), 1)
             self.assertEqual(store.state["phase"]["current"], "spec")  # the backward route
-            self.assertEqual(store.state["budget"]["spent"], 1)
+            self.assertEqual(len(store.state["budget"]["transitions"]), 1)
             self.assertIsNone(store.state["phase"]["criticQuestionId"])
 
     def test_the_default_policy_closes_findings_with_the_recommended_reason(self):
@@ -699,6 +865,15 @@ class PlanCriticTests(_QuietStdout):
             self.assertEqual(store.state["phase"]["current"], "execute")
             closed = store.state["critic"]["findings"][0]
             self.assertEqual((closed["id"], closed["disposition"], closed["reason"]), ("F-1", "rejected", "F-1: base facts cover it"))
+
+    def test_a_replan_answer_sends_the_findings_back_to_the_planner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, _ = self._second_pass_critic(Path(tmp), None)
+            questions.answer(store, store.paths, question_id=store.state["phase"]["criticQuestionId"], value="replan")
+            controller.continue_run(store, store.paths, project_root=store.paths.project_root)
+            self.assertEqual(store.state["phase"]["current"], "plan")
+            self.assertEqual([f["id"] for f in store.state["phase"]["entryPayload"]["criticFindings"]], ["F-1"])
+            self.assertIsNone(store.state["phase"]["criticQuestionId"])
 
     def test_the_critic_question_stays_open_without_a_default_or_the_policy(self):
         for recommendation, policy in ((None, "default"), ({"action": "spec gap", "reason": "AC-2 is untestable"}, None)):
@@ -766,6 +941,21 @@ class PlanCriticTests(_QuietStdout):
                 self.assertEqual((step["cwd"], critic_step["cwd"]), (code_path, code_path))
                 self.assertIn(f'"codePath": "{code_path}"', step["prompt"])
 
+    def test_spec_lead_runs_in_the_code_checkout_not_the_operators_tree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            home = tmp / "home"
+            with contextlib.redirect_stdout(io.StringIO()):
+                controller.run_entry("cycle", project_root=repo_dir, request_text="Add a greeting message",
+                                     slug="greeting", state_home=str(home), answer_policy=None, pr=None)
+            paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "greeting"))
+            store = _open(paths)
+            step = read_json(paths.steps_dir / store.state["steps"]["open"][0]["stepAttemptId"] / "step.json")
+            info = next(iter(store.state["repos"].values()))
+            self.assertEqual(step["cwd"], info["codeCheckout"]["path"])
+            self.assertNotEqual(step["cwd"], str(repo_dir))
+
     def test_critic_result_in_review_tool_shape_is_rejected(self):
         # LF-32: the plan-critic worker wrote a review-tool-shaped result (the bug
         # this finding is about); submit must reject it naming what the schema wants.
@@ -813,10 +1003,6 @@ class EscalatedPartialDraftTests(_QuietStdout):
         store.save()
         return store, paths
 
-    def _exhaust_budget(self, store: StateStore) -> None:
-        budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-1", reason="gap")
-        budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-2", reason="gap")
-
     def _escalated_iterate_product(self) -> dict:
         return {
             "exit": "escalated", "inputsDigest": "sha256:" + "0" * 64,
@@ -828,7 +1014,6 @@ class EscalatedPartialDraftTests(_QuietStdout):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             store, paths = self._minimal_store(tmp)
-            self._exhaust_budget(store)
 
             controller._finalize(store, paths, tmp, "iterate", "attempt-1", self._escalated_iterate_product(), "escalated")
 
@@ -839,7 +1024,6 @@ class EscalatedPartialDraftTests(_QuietStdout):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             store, paths = self._minimal_store(tmp, config={"deliver": {"escalatedPartialDraft": True}})
-            self._exhaust_budget(store)
 
             controller._finalize(store, paths, tmp, "iterate", "attempt-1", self._escalated_iterate_product(), "escalated")
 
@@ -892,12 +1076,12 @@ class CloseOutTransitionTests(_QuietStdout):
             self.assertEqual(save.call_count, 1)  # product, spend, close-outs and route in one write
             on_disk = StateStore.open(paths).state
             self.assertEqual(on_disk["phase"]["current"], "plan")
-            self.assertEqual(on_disk["budget"]["spent"], 1)
+            self.assertEqual(len(on_disk["budget"]["transitions"]), 1)
             self.assertEqual([(e["id"], e["repo"], e["source"]["gapIndex"], e["status"]) for e in on_disk["closeOuts"]],
                              [("C-1", "repo", 1, "active")])
 
             controller._accept_product(store, paths, tmp, "iterate", "attempt-1", self._rewind())  # replay
-            self.assertEqual(store.state["budget"]["spent"], 1)
+            self.assertEqual(len(store.state["budget"]["transitions"]), 1)
             self.assertEqual(len(store.state["closeOuts"]), 1)
 
     def test_crash_before_the_transition_save_persists_nothing_and_the_last_rewind_replays(self):
@@ -905,18 +1089,18 @@ class CloseOutTransitionTests(_QuietStdout):
             tmp = Path(tmp)
             store, paths = self._store(tmp)
             budget_module.spend(store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-1", reason="gap")
-            store.save()  # one rewind left: this one is the last allowed
+            store.save()
             with patch.object(store, "save", side_effect=RuntimeError("killed")):
                 with self.assertRaises(RuntimeError):
                     controller._accept_product(store, paths, tmp, "iterate", "attempt-1", self._rewind())
             store = StateStore.open(paths)
-            self.assertEqual(store.state["budget"]["spent"], 1)
+            self.assertEqual(len(store.state["budget"]["transitions"]), 1)
             self.assertIsNone(store.state["products"]["iterate"])
             self.assertFalse(store.state.get("closeOuts"))
 
             controller._accept_product(store, paths, tmp, "iterate", "attempt-1", self._rewind())
             store = StateStore.open(paths)
-            self.assertEqual(store.state["budget"]["spent"], 2)
+            self.assertEqual(len(store.state["budget"]["transitions"]), 2)
             self.assertEqual(store.state["phase"]["current"], "plan")
             self.assertEqual([e["id"] for e in store.state["closeOuts"]], ["C-1"])
 
@@ -924,10 +1108,14 @@ class CloseOutTransitionTests(_QuietStdout):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             store, paths = self._store(tmp)
-            EscalatedPartialDraftTests._exhaust_budget(self, store)
-            controller._accept_product(store, paths, tmp, "iterate", "attempt-1", self._rewind())
+            rewind = self._rewind()
+            budget_module.spend(store, from_phase="iterate", exit="rewind", to_phase="plan", attempt_id="a-0", reason="rewind",
+                                cause=postconditions.cause_key("iterate", "rewind", rewind),
+                                fingerprint=postconditions.fingerprint(store, rewind))
+            controller._accept_product(store, paths, tmp, "iterate", "attempt-1", rewind)
             self.assertFalse(store.state.get("closeOuts"))
-            self.assertEqual(store.state["budget"]["spent"], 2)
+            self.assertEqual(len(store.state["budget"]["transitions"]), 1)
+            self.assertEqual(store.state["result"]["classification"], "escalated")
 
     def test_execute_acceptance_closes_and_a_refreshed_closure_keeps_its_history(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1303,9 +1491,11 @@ class DebugAndReviseEntryTests(_QuietStdout):
                 reviser_step = read_json(next_.path)
                 self.assertEqual(reviser_step["role"], "reviser")
                 spec, plan = _minimal_spec_and_plan(repo_name, "Tighten the greeting", "the message is tighter", "tighten it")
-                reviser_product = {"spec": spec, "plan": plan}
+                reviser_product = {"spec": spec, "plan": plan,
+                                   "responses": [{"gap": g["id"], "disposition": "addressed", "note": "done"} for g in gaps]}
                 atomic_write_json(Path(reviser_step["resultPath"]), reviser_product)
                 next_ = _submit_and_continue(paths, repo_dir, markers, reviser_step["stepAttemptId"])
+                self.assertEqual([r["gap"] for r in StateStore.open(paths).state["reviewReplies"]], ["G-1"])
                 self.assertEqual(next_.kind, "question")  # the compacted SPEC's own approval question
                 next_ = _approve_compacted_spec_and_submit_critic(paths, repo_dir, markers, next_)
 
@@ -1415,7 +1605,8 @@ class DebugAndReviseEntryTests(_QuietStdout):
                     "decisions": [], "openQuestions": [],
                 }
                 reviser_plan = {"tasks": [t1, t2], "prepare": None, "evidenceExceptions": []}
-                reviser_product = {"spec": reviser_spec, "plan": reviser_plan}
+                reviser_product = {"spec": reviser_spec, "plan": reviser_plan,
+                                   "responses": [{"gap": g["id"], "disposition": "addressed", "note": "done"} for g in gaps]}
                 atomic_write_json(Path(reviser_step["resultPath"]), reviser_product)
                 next_ = _submit_and_continue(paths, repo_dir, markers, reviser_step["stepAttemptId"])
                 self.assertEqual(next_.kind, "question")  # the compacted SPEC's own approval question
@@ -1547,6 +1738,8 @@ class DebugAndReviseEntryTests(_QuietStdout):
                             "state": "OPEN", "headRefName": "pr-branch", "headRefOid": commit_sha2,
                             "baseRefName": "main", "number": 42, "url": pr_url,
                         }), ""
+                    if args[:2] == ("pr", "checks"):
+                        return 1, "", "no checks reported"
                     return 1, "", "unexpected gh call in test"
 
                 with patch.object(repo_module, "run_gh", fake_run_gh):
@@ -1679,6 +1872,8 @@ def _run_one_full_external_cycle(repo_dir, home, markers, slug: str, request_tex
                 "state": "OPEN", "headRefName": feature_branch, "headRefOid": commit_sha,
                 "baseRefName": "main", "number": 1, "url": f"https://example.invalid/pull/{slug}",
             }), ""
+        if args[:2] == ("pr", "checks"):
+            return 1, "", "no checks reported"
         return 1, "", "unexpected gh call in test"
 
     with patch.object(repo_module, "run_gh", fake_run_gh):
@@ -1744,6 +1939,11 @@ class ReviseRequestTextTests(_QuietStdout):
         self.assertEqual(text.splitlines()[0], f"revise PR #42: {self.URL}")
         self.assertTrue(text.endswith(f"\n\nRevise {self.URL}: strip the period"))
 
+    def test_the_revise_command_takes_an_instruction(self):
+        from loop_spec import cli
+        args = cli._build_parser().parse_args(["revise", "--project-root", ".", "--pr", "42", "--request", "strip it"])
+        self.assertEqual(cli._request_text(args), "strip it")
+
     def test_no_request_or_a_bare_url_keeps_the_one_line_text(self):
         for request in (None, f" {self.URL} "):
             with self.subTest(request=request), tempfile.TemporaryDirectory() as tmp:
@@ -1794,12 +1994,156 @@ class RequestAdoptionTests(unittest.TestCase):
             store = StateStore.create(paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x",
                                               "createdAt": "2026-01-01T00:00:00+00:00"}, "fix it on #42")
             with patch.object(repo_module, "adopt_pr", return_value=adoption):
-                controller._resolve_repos(store, repo_dir, "x", 42, home)
+                controller._resolve_repos(store, repo_dir, "x", 42, home, "full")
             name = store.state["adoption"]["repo"]
             self.assertEqual(store.state["repos"][name]["featureBranch"], "pr-branch")
             self.assertEqual(store.state["repos"][name]["lastKnownHead"], head_sha)
             self.assertEqual(store.state["repos"][name]["baseSha"], base_sha)
             self.assertEqual(repo_module.head_sha(repo_dir, "refs/heads/pr-branch"), head_sha)
+
+
+class StartBaseTests(unittest.TestCase):
+    """A fresh run starts from origin's integration branch, not the checkout's HEAD."""
+
+    def _store(self, tmp, repo_dir):
+        home = tmp / "home"
+        paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "x"), project_root=repo_dir)
+        store = StateStore.create(paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x",
+                                          "createdAt": "2026-01-01T00:00:00+00:00"}, "do it")
+        return store, home
+
+    def test_an_unpushed_local_branch_starts_from_origins_tip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            _add_origin(tmp, repo_dir, "main")
+            tip = repo_module.head_sha(repo_dir)
+            _git(repo_dir, "checkout", "-q", "-b", "wip")
+            (repo_dir / "wip.txt").write_text("wip\n", encoding="utf-8")
+            _git(repo_dir, "add", "wip.txt")
+            _git(repo_dir, "commit", "-q", "-m", "wip")
+            _git(repo_dir, "remote", "set-head", "origin", "--delete")
+            store, home = self._store(tmp, repo_dir)
+            controller._resolve_repos(store, repo_dir, "x", None, home, "full")
+            repo = next(iter(store.state["repos"].values()))
+            self.assertEqual(repo["defaultBranch"], "main")
+            self.assertEqual(repo["baseSha"], tip)
+            self.assertEqual(repo["lastKnownHead"], tip)
+
+    def test_no_origin_keeps_the_local_head(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            store, home = self._store(tmp, repo_dir)
+            controller._resolve_repos(store, repo_dir, "x", None, home, "full")
+            repo = next(iter(store.state["repos"].values()))
+            self.assertEqual(repo["baseSha"], repo_module.head_sha(repo_dir))
+
+
+class BranchPrefixTests(unittest.TestCase):
+    def _branch(self, cycle_type, config=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo_dir = _init_repo(tmp)
+            if config:
+                (repo_dir / ".loop-spec").mkdir()
+                (repo_dir / ".loop-spec" / "config.json").write_text(json.dumps(config), encoding="utf-8")
+            home = tmp / "home"
+            paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "x"), project_root=repo_dir)
+            store = StateStore.create(paths, {"id": "run-1", "entry": "cycle", "cycleType": cycle_type, "slug": "x",
+                                              "createdAt": "2026-01-01T00:00:00+00:00"}, "do it")
+            controller._resolve_repos(store, repo_dir, "x", None, home, cycle_type)
+            return next(iter(store.state["repos"].values()))["featureBranch"]
+
+    def test_a_debug_run_branches_under_fix(self):
+        self.assertEqual(self._branch("debug"), "fix/x")
+
+    def test_a_cycle_branches_under_feat(self):
+        self.assertEqual(self._branch("full"), "feat/x")
+
+    def test_the_configured_prefix_wins(self):
+        self.assertEqual(self._branch("debug", {"deliver": {"branchPrefix": "team/"}}), "team/x")
+
+
+class StartFactsTests(unittest.TestCase):
+    """Operator, issue, and open work are read only for a hosted origin."""
+
+    def _store(self, tmp, origin):
+        repo_dir = _init_repo(tmp)
+        if origin:
+            _git(repo_dir, "remote", "add", "origin", origin)
+        home = tmp / "home"
+        paths = FeaturePaths(root=feature_dir(home, repo_id(repo_dir), "x"), project_root=repo_dir)
+        store = StateStore.create(paths, {"id": "run-1", "entry": "cycle", "cycleType": "full", "slug": "x",
+                                          "createdAt": "2026-01-01T00:00:00+00:00"}, "fix #12")
+        store.state["repos"] = {"repo": {"path": str(repo_dir), "baseSha": "a", "featureBranch": "feat/x-2",
+                                         "defaultBranch": "main", "lastKnownHead": "a"}}
+        return store
+
+    def test_a_hosted_origin_records_operator_issue_and_open_work(self):
+        def gh(repo, *args):
+            if args[0] == "api":
+                return 0, "ada\n", ""
+            if args[0] == "issue":
+                return 0, json.dumps({"number": 12, "title": "t", "url": "u", "state": "OPEN", "body": "b" * 5000}), ""
+            return 0, json.dumps([{"number": 3, "title": "same work"}]), ""
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(Path(tmp), "https://github.com/example/repo.git")
+            with patch.object(repo_module, "run_gh", side_effect=gh):
+                controller._record_start_facts(store, "fix #12")
+        self.assertEqual(store.state["operator"], {"login": "ada"})
+        self.assertEqual((store.state["issue"]["repo"], store.state["issue"]["number"], len(store.state["issue"]["body"])),
+                         ("repo", 12, 4000))
+        self.assertEqual(store.state["openWork"]["repo"]["openPrs"][0]["number"], 3)
+
+    def test_an_issue_names_the_feature_branch(self):
+        def gh(repo, *args):
+            if args[0] == "api":
+                return 0, "ada\n", ""
+            if args[0] == "issue":
+                return 0, json.dumps({"number": 7, "title": "Add a lerp helper", "url": "u", "state": "OPEN", "body": ""}), ""
+            return 0, "[]", ""
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(Path(tmp), "https://github.com/example/repo.git")
+            with patch.object(repo_module, "run_gh", side_effect=gh):
+                controller._record_start_facts(store, "fix #7")
+        self.assertEqual(store.state["repos"]["repo"]["featureBranch"], "feat/7-add-a-lerp-helper")
+        self.assertFalse(store.state["openWork"]["repo"]["takenBranch"])
+
+    def test_a_configured_branch_is_not_renamed_for_an_issue(self):
+        def gh(repo, *args):
+            if args[0] == "issue":
+                return 0, json.dumps({"number": 7, "title": "Add a lerp helper", "url": "u", "state": "OPEN", "body": ""}), ""
+            return 0, ("ada\n" if args[0] == "api" else "[]"), ""
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(Path(tmp), "https://github.com/example/repo.git")
+            (store.paths.project_root / ".loop-spec").mkdir(exist_ok=True)
+            (store.paths.project_root / ".loop-spec" / "config.json").write_text('{"deliver": {"branch": "feature/AVP-1"}}')
+            store.state["repos"]["repo"]["featureBranch"] = "feature/AVP-1"
+            with patch.object(repo_module, "run_gh", side_effect=gh):
+                controller._record_start_facts(store, "fix #7")
+        self.assertEqual(store.state["repos"]["repo"]["featureBranch"], "feature/AVP-1")
+        self.assertFalse(store.state["openWork"]["repo"]["takenBranch"])
+
+    def test_an_adopted_pr_keeps_the_issue_it_closes(self):
+        def gh(repo, *args):
+            if args[:2] == ("pr", "view"):
+                return 0, json.dumps({"closingIssuesReferences": [{"number": 7, "url": "u7"}]}), ""
+            return 0, "ada\n", ""
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(Path(tmp), "https://github.com/example/repo.git")
+            store.state["adoption"] = {"repo": "repo", "number": 3}
+            with patch.object(repo_module, "run_gh", side_effect=gh):
+                controller._record_start_facts(store, "revise PR #3", intake=False)
+        self.assertEqual((store.state["issue"]["repo"], store.state["issue"]["number"]), ("repo", 7))
+
+    def test_a_local_origin_makes_no_gh_call(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(Path(tmp), None)
+            with patch.object(repo_module, "run_gh") as run_gh:
+                controller._record_start_facts(store, "fix #12")
+        self.assertEqual(run_gh.call_count, 0)
+        self.assertNotIn("operator", store.state)
 
 
 class AutoRouteTests(_QuietStdout):
@@ -2519,6 +2863,9 @@ class CriticFactsAndDefaultTests(unittest.TestCase):
             self.assertEqual((closed["disposition"], closed["reason"]), ("rejected", answered["value"]))
             boundary = postconditions.Boundary(store, paths, phase="plan", product={}, exit="ready", project_root=Path(tmp))
             self.assertIsNone(boundary._p7())
+            # A later plan revision's critic reads the rejection.
+            self.assertEqual(store.state["criticRejections"],
+                             [{"id": "F-1", "location": "T-2.verify", "cause": "exits non-zero at base", "reason": answered["value"]}])
 
 
 class FindDeliveringRunProductsTests(unittest.TestCase):

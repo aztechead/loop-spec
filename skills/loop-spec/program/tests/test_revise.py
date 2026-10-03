@@ -37,19 +37,29 @@ def _commit(cwd, filename, message):
 
 
 class GapsFromPrTests(unittest.TestCase):
-    def test_collects_top_level_and_inline_comments(self):
-        view_json = ('{"comments": [{"author": {"login": "alice"}, "body": "please add a test", '
-                     '"url": "https://x/1", "createdAt": "2026-09-24T10:00:00Z"}], '
-                     '"reviews": [{"author": {"login": "bob"}, "body": "", "url": "https://x/2"}]}')
-        inline_json = ('[[{"user": {"login": "carol"}, "body": "off by one here", "path": "a.py", "line": 12, '
-                        '"html_url": "https://x/3", "created_at": "2026-09-24T11:00:00Z"}]]')
-
+    @staticmethod
+    def _gh(issue=(), reviews=(), inline=(), threads=None, checks=None, calls=None):
+        """A fake run_gh answering each REST endpoint gaps_from_pr reads with one page."""
         def fake_run_gh(repo, *args):
-            if args[:2] == ("pr", "view"):
-                return 0, view_json, ""
-            return 0, inline_json, ""
+            if calls is not None:
+                calls.append(args)
+            if args[:2] == ("api", "graphql"):
+                return (0, json.dumps(threads), "") if threads is not None else (1, "", "boom")
+            if args[:2] == ("pr", "checks"):
+                return (0, json.dumps(checks), "") if checks is not None else (1, "", "none")
+            endpoint = args[-1]
+            pages = inline if endpoint.endswith("pulls/7/comments") else reviews if endpoint.endswith("reviews") else issue
+            return 0, json.dumps(pages if pages and isinstance(pages[0], list) else [list(pages)]), ""
+        return fake_run_gh
 
-        with patch("loop_spec.revise.repo_module.run_gh", side_effect=fake_run_gh):
+    def test_collects_top_level_and_inline_comments(self):
+        issue = [{"user": {"login": "alice"}, "body": "please add a test", "html_url": "https://x/1",
+                  "created_at": "2026-09-24T10:00:00Z"}]
+        reviews = [{"user": {"login": "bob"}, "body": "", "html_url": "https://x/2"}]
+        inline = [{"user": {"login": "carol"}, "body": "off by one here", "path": "a.py", "line": 12,
+                   "html_url": "https://x/3", "created_at": "2026-09-24T11:00:00Z"}]
+
+        with patch("loop_spec.revise.repo_module.run_gh", side_effect=self._gh(issue, reviews, inline)):
             gaps = gaps_from_pr(Path("/fake/repo"), 7)
 
         self.assertEqual(len(gaps), 2)  # the empty-body review is dropped
@@ -67,25 +77,73 @@ class GapsFromPrTests(unittest.TestCase):
         pages = [[{"user": {"login": "u"}, "body": f"c{i}", "path": "a.py", "line": i} for i in range(30)],
                  [{"user": {"login": "u"}, "body": "c30", "path": "a.py", "line": 30}]]
         calls = []
-
-        def fake_run_gh(repo, *args):
-            calls.append(args)
-            if args[:2] == ("pr", "view"):
-                return 0, '{"comments": [], "reviews": []}', ""
-            return 0, json.dumps(pages), ""
-
-        with patch("loop_spec.revise.repo_module.run_gh", side_effect=fake_run_gh):
+        with patch("loop_spec.revise.repo_module.run_gh", side_effect=self._gh(inline=pages, calls=calls)):
             gaps = gaps_from_pr(Path("/fake/repo"), 7)
 
         self.assertEqual(len(gaps), 31)
         self.assertEqual(gaps[-1]["body"], "c30")
-        self.assertIn("--paginate", calls[1])
-        self.assertIn("--slurp", calls[1])
+        self.assertTrue(all("--paginate" in c and "--slurp" in c for c in calls if c[0] == "api" and c[1] != "graphql"))
 
-    def test_gh_pr_view_failure_raises(self):
+    def test_bot_and_marker_comments_dropped(self):
+        # A GitHub Actions comment's REST login ends in [bot]; its type is Bot either way.
+        issue = [{"user": {"login": "dependabot[bot]", "type": "Bot"}, "body": "bump"},
+                 {"user": {"login": "github-actions", "type": "Bot"}, "body": "coverage report"},
+                 {"user": {"login": "me"}, "body": "<!-- loop-spec:reply -->\nreplied"},
+                 {"user": {"login": "alice"}, "body": "real"}]
+        inline = [{"id": 5, "user": {"login": "app", "type": "Bot"}, "body": "bot inline", "path": "a.py"}]
+        with patch("loop_spec.revise.repo_module.run_gh", side_effect=self._gh(issue, inline=inline)):
+            gaps = gaps_from_pr(Path("/fake/repo"), 7)
+        self.assertEqual([(g["author"], g["kind"]) for g in gaps], [("alice", "comment")])
+
+    def test_resolved_and_outdated_threads_dropped(self):
+        pages = [[{"id": 1, "user": {"login": "u"}, "body": "resolved", "path": "a.py"},
+                  {"id": 2, "user": {"login": "u"}, "body": "outdated", "path": "a.py"},
+                  {"id": 3, "user": {"login": "u"}, "body": "open", "path": "a.py"}]]
+        threads = {"data": {"repository": {"pullRequest": {"reviewThreads": {"nodes": [
+            {"isResolved": True, "isOutdated": False, "comments": {"nodes": [{"databaseId": 1}]}},
+            {"isResolved": False, "isOutdated": True, "comments": {"nodes": [{"databaseId": 2}]}},
+            {"isResolved": False, "isOutdated": False, "comments": {"nodes": [{"databaseId": 3}]}}]}}}}}
+
+        with patch("loop_spec.revise.repo_module.run_gh", side_effect=self._gh(inline=pages, threads=threads)):
+            gaps = gaps_from_pr(Path("/fake/repo"), 7)
+        self.assertEqual([(g["body"], g["commentId"], g["kind"]) for g in gaps], [("open", 3, "inline")])
+
+    def test_failed_thread_read_keeps_inline_comments(self):
+        inline = [{"id": 9, "user": {"login": "u"}, "body": "kept", "path": "a.py"}]
+        with patch("loop_spec.revise.repo_module.run_gh", side_effect=self._gh(inline=inline)):
+            gaps = gaps_from_pr(Path("/fake/repo"), 7)
+        self.assertEqual([g["body"] for g in gaps], ["kept"])
+
+    def test_failing_check_becomes_gap(self):
+        checks = [{"name": "lint", "state": "FAILURE", "link": "https://ci/1", "bucket": "fail"},
+                  {"name": "unit", "state": "SUCCESS", "link": "https://ci/2", "bucket": "pass"}]
+        with patch("loop_spec.revise.repo_module.run_gh", side_effect=self._gh(checks=checks)):
+            gaps = gaps_from_pr(Path("/fake/repo"), 7)
+        self.assertEqual([(g["kind"], g["author"], g["body"]) for g in gaps],
+                         [("check", "ci", "CI check lint failed: https://ci/1")])
+
+    def test_gh_failure_raises(self):
         with patch("loop_spec.revise.repo_module.run_gh", return_value=(1, "", "not found")):
             with self.assertRaises(Exception):
                 gaps_from_pr(Path("/fake/repo"), 7)
+
+
+class RepliesTests(unittest.TestCase):
+    def test_replies_join_each_response_with_its_gap(self):
+        from types import SimpleNamespace
+        from loop_spec.revise import replies
+        store = SimpleNamespace(state={"revise": {"gaps": [
+            {"id": "G-1", "kind": "inline", "url": "https://x/1", "commentId": 4, "author": "alice", "body": "b"}]}})
+        product = {"responses": [{"gap": "G-1", "disposition": "declined", "note": "why"},
+                                 {"gap": "G-9", "disposition": "addressed", "note": "unknown gap"}]}
+        self.assertEqual(replies(store, product), [{"gap": "G-1", "disposition": "declined", "note": "why",
+                                                    "kind": "inline", "url": "https://x/1", "commentId": 4,
+                                                    "author": "alice"}])
+
+    def test_revise_schema_requires_responses_in_both_copies(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in (root / "loop_spec" / "schemas" / "revise.json", root.parent / "roles" / "reviser" / "schema.json"):
+            self.assertIn("responses", json.loads(path.read_text())["required"])
 
 
 class StepTests(unittest.TestCase):
@@ -157,6 +215,13 @@ class StepTests(unittest.TestCase):
         self.assertIn("### prior", action.request["prompt"])
         self.assertIn("delivered-run", action.request["prompt"])
         self.assertIn("the greeting is friendly", action.request["prompt"])
+
+    def test_step_carries_the_issue_the_pr_closes(self):
+        self.store.state["issue"] = {"repo": "repo", "number": 9, "title": "Add a percent helper",
+                                     "url": "u", "body": "whole == 0 raises ValueError"}
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIn("### issue", action.request["prompt"])
+        self.assertIn("whole == 0 raises ValueError", action.request["prompt"])
 
     def test_step_fetches_the_comments_once_when_its_bucket_has_none(self):
         # D4: revise fetches its own gaps on its first step; an empty list is a PR

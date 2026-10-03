@@ -135,6 +135,30 @@ def _current_inputs(store) -> dict:
     }
 
 
+def _base_move_review_holds(reviewed_ranges: list, name: str, prior: dict | None, repo_path: Path,
+                            base: str, head: str, final_pass: bool) -> bool:
+    """A base move re-reviews in full only when the base's change could alter the review:
+    the prior review still holds when the feature's own diff is byte-identical (patch id)
+    and the base's change touches none of the files the feature touches. The latest full
+    range must chain unbroken to `prior`, so an unchained ledger is never trusted."""
+    if prior is None or final_pass or repo_module.is_ancestor(repo_path, base, prior["to"]):
+        return False
+    chain = [e for e in reviewed_ranges if e.get("repo") == name]
+    firsts = [i for i, e in enumerate(chain) if e["full"]]
+    if not firsts or chain[-1]["id"] != prior["id"]:
+        return False
+    chain = chain[firsts[-1]:]
+    if any(later["from"] != earlier["to"] for earlier, later in zip(chain, chain[1:])):
+        return False
+    first = chain[0]
+    then = repo_module.patch_id(repo_path, first["from"], prior["to"])
+    if then is None or then != repo_module.patch_id(repo_path, base, head):
+        return False
+    base_files = set(repo_module.run_git(repo_path, "diff", "--name-only", first["from"], base).split())
+    feature_files = set(repo_module.run_git(repo_path, "diff", "--name-only", base, head).split())
+    return base_files.isdisjoint(feature_files)
+
+
 def _init(store, paths, ctx) -> dict:
     plan_product = store.state["products"]["plan"]["product"]
     heads = postconditions.verified_heads(store)
@@ -177,11 +201,17 @@ def _init(store, paths, ctx) -> dict:
         # entry too, but only once some earlier pass already reviewed base..head
         # in full -- a final pass still has to have SEEN the whole diff once.
         reused = prior is not None and prior["to"] == head and (not final_pass or prior["full"])
+        reason = None
+        if not reused and repo_full and _base_move_review_holds(reviewed_ranges, name, prior, repo_path, repo_info["baseSha"], head, final_pass):
+            reused, reason = True, "base moved; feature diff unchanged"
+            ranges[name] = {"repo": name, "from": repo_info["baseSha"], "to": head, "full": True}
         if reused:
-            ranges[name] = {"repo": prior["repo"], "from": prior["from"], "to": prior["to"], "full": prior["full"]}
+            if reason is None:
+                ranges[name] = {"repo": prior["repo"], "from": prior["from"], "to": prior["to"], "full": prior["full"]}
             reused_reviewers[name] = {"findings": []}
             reused_links[name] = {"rangeId": prior["id"], "byStep": prior.get("byStep")}
-            emit(paths, "review_reused", {"repo": name, "rangeId": prior["id"]}, phase="verify", attempt_id=ctx["attempt"]["id"])
+            emit(paths, "review_reused", {"repo": name, "rangeId": prior["id"], **({"reason": reason} if reason else {})},
+                 phase="verify", attempt_id=ctx["attempt"]["id"])
         else:
             range_from = repo_info["baseSha"] if repo_full else prior["to"]
             ranges[name] = {"repo": name, "from": range_from, "to": head, "full": repo_full}
@@ -275,6 +305,9 @@ def _reviewer_request(store, paths, ctx, verify_state: dict, repo_name: str) -> 
                                      if f["disposition"] == "open" and f.get("repo") == repo_name]},
         "rangeProbes": verify_state["rangeProbes"][repo_name], "full": range_["full"],
     }
+    spec = (store.state["products"].get("spec") or {}).get("product")
+    if spec:
+        inputs["spec"] = spec  # what the operator approved: a change it requires is not a finding
     reason = verify_state.get("reviewerReasons", {}).get(repo_name)
     if reason:
         inputs["retryReason"] = reason  # a re-issued step says why the last was rejected

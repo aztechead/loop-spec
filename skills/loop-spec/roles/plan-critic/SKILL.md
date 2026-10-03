@@ -73,15 +73,23 @@ classes an endpoint uses, how a module is laid out) is checked by the code revie
 that reads the source of every task, so a verify command that cannot prove it is
 not a finding.
 
+A finding in `inputs.operatorRejected` was rejected by the operator, with the reason
+given. Do not raise it again unless the plan changed what it cites; when you still
+see it, report it as Minor and name the rejected finding.
+
 ## What counts as Critical
 
 - A criterion with no task covering it.
 - A criterion that no command can prove at the head (a delivery, pull-request,
   CI, or branch fact -- DELIVER's own checks cover those).
 - A verify command that cannot test what the task claims it tests.
-- A `regression` task whose base run in `inputs.baseline` ran no tests (`testsRan` 0)
-  or is `incomplete`, such as a filter that selects only a test the task adds:
-  EXECUTE cannot compare it, so the run returns to PLAN.
+- A `regression` task whose base run in `inputs.baseline` has a test runner
+  (`runner` not null) yet ran no tests (`testsRan` 0), or is `incomplete`, such as a
+  filter that selects only a test the task adds: EXECUTE cannot compare it, so the
+  run returns to PLAN. A command with no runner (`runner` null, a script or a grep)
+  is compared by its output lines instead: its zero count is not a finding when it
+  exits 0 at base, but when it exits non-zero at base any output it prints once it
+  passes reads as a new failure, so that task needs a test-runner verify.
 - A destructive or irreversible change with no boundary or rollback named.
 - A task graph that cannot execute as written (a cycle, an unresolvable
   dependency, two tasks that silently collide on the same file).

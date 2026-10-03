@@ -4,6 +4,169 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [7.9.0] - 2026-10-02
+
+### Added
+
+- `deliver.branch` in `.loop-spec/config.json` names the feature branch, for a host whose
+  repos enforce a branch-naming rule (`feature/AVP-1234`). Unset keeps the default name (`deliver.branchPrefix` or `feat/`/`fix/`, plus the slug or the issue). The
+  `-2`/`-3` suffixing of a name this clone or `origin` already has (or holds a branch
+  under) still applies, every repo of a workspace starts from the same name and picks its
+  own suffix, and a run that adopts a PR keeps the PR's own branch. `contract.load_config`
+  refuses a value that is not a non-empty string, that starts with `-`, `refs/` or `task/`,
+  or that is `HEAD` or `task`; a run refuses, before creating any branch, a name that
+  `git check-ref-format --branch` rejects or that equals its base branch.
+
+### Fixed
+
+- DELIVER treats commits a teammate pushed to the PR branch after VERIFY like a moved base: it publishes nothing,
+  EXECUTE merges them in, and the run re-verifies, instead of a rejected push no repair could clear.
+- `repo.free_branch` treats a branch nested under a name (`feat/x/y` for `feat/x`) as
+  taking it, and refuses a name whose parent path is a branch here or on `origin`
+  (`feature` for `feature/AVP-1234`) when the run starts, instead of EXECUTE failing on
+  `cannot lock ref`. Contributed by George Muresan (@gmuresan, #132).
+- A role worker that returns without writing its result (a denied tool call, a crash)
+  no longer dead-ends the run: `submit` refuses the step, resets its owner, and asks
+  the operator to fix and re-enter or stop.
+- A base move reuses the prior review when the feature's own diff is unchanged and the
+  base's change touches none of the feature's files, instead of a full re-review.
+- A configured `deliver.branch` no longer tells the spec-writer the branch is taken.
+- The `loop-spec` launcher runs its own program whatever the current directory
+  (`python3 -P`); run from a directory holding a `loop_spec` package, it ran that copy.
+- A test run's caches (`__pycache__`, rewritten tracked `.pyc` in a repo that commits
+  them) no longer reject an implement step, keep a worktree from cleanup, or stop a
+  retired worktree's removal; the rejection for a dirty worktree names the paths.
+- The code reviewer reads the approved spec, so a change its decisions or criteria
+  require is no longer a Critical finding.
+- The PR body's acceptance table keeps a multi-line criterion's line breaks.
+- The PR body's How to test shows a machine-local interpreter path (a pyenv shim) as its
+  bare name; a path inside the repo, such as `.venv/bin/python`, is kept.
+- revise moves a local PR branch that is only behind the PR head (a teammate pushed)
+  instead of refusing; a branch with its own commits is still refused.
+- revise drops comments from the GitHub Actions bot, which `gh pr view` names without a
+  `[bot]` suffix; comments and reviews are read over the REST API.
+- The reviser reads the issue the PR closes, and a comment that reverses a requirement
+  the issue states becomes a question naming both sides.
+- A `prepare` command that fails at base returns the plan to the planner with the
+  reason instead of stopping the run.
+- An EXECUTE block a retry cannot clear (a verify that cannot pass, a build output the
+  plan never ignored) can be answered `plan gap`, which sends the run back to PLAN with
+  the cause.
+- The plan critic's question takes `replan`, which hands the open Critical findings to
+  the planner for one more pass, besides a rejection reason or `spec gap`.
+- The progress rule's question and no-progress reason show the cause as the phase wrote
+  it, not the lower-cased comparison key.
+- A V8 rejection tells the code reviewer which earlier range or finding to name in
+  `supersedes`, so its retry can comply.
+- The plain-argv check refuses `\$` or a backslash-backtick inside double quotes: a shell drops
+  that backslash and the program keeps it, so a `sh -c "... awk '{print \$1}'"` criterion
+  passed for the verifier and exited 2 in the program's re-run.
+- `revise` takes `--request`, and the revise stub passes the user's instruction with it,
+  so every phase reads it; the iterate judge called a requested criterion invented.
+- A plan critic finding the operator rejected reaches every later critic pass, so a
+  re-plan does not ask the same question again.
+- The plan critic no longer flags a verify command with no test runner (a script or a
+  grep) that passes at base for running no tests; EXECUTE compares such a command by
+  its output. One that fails at base still needs a test-runner verify.
+
+### Changed
+
+loop-spec now works more like an engineer on a shared repository. Each item fixes a
+finding in [teammate-alignment-audit.md](docs/loop-spec/teammate-alignment-audit.md).
+
+- A run starts from origin's integration branch, fetched, not from whatever the
+  checkout has checked out (TA-1). With no `origin/HEAD`, the default branch comes
+  from `git ls-remote --symref origin HEAD`, never the current branch (TA-19).
+- Every base move is merged in and re-verified, not only a conflicting one (TA-15).
+- `deliver.readiness` defaults to `"checks"`: DELIVER reads each published PR's CI
+  once, including on a partial delivery (TA-14, TA-21). When the verified commit has
+  workflows and no check has registered yet, it re-reads for up to 26 seconds in
+  total (one budget per DELIVER call, not per repo); a failing check drafts the PR, and revise reads failing checks as review input.
+- The PR body sits between `<!-- loop-spec:begin -->` markers, so a later delivery
+  refreshes only its own section and keeps what people wrote (TA-5). It now carries
+  the SPEC's decisions, criterion text, open questions, `Closes #n` for an issue the
+  request names, links to sibling PRs in a workspace, and an owner line (TA-3, TA-10,
+  TA-23, TA-24). A repository PR template is appended for the author to fill.
+- New PRs are assigned to you and take `deliver.reviewers` and `deliver.labels`;
+  debug runs branch as `fix/`, and `deliver.branchPrefix` overrides (TA-12, TA-13).
+  A draft delivery converts an existing ready PR back to draft (TA-22).
+- At start a run records the issue the request names and the repository's open PRs;
+  the spec-writer asks before duplicating open work (TA-2, TA-3).
+- An escalated run comments on its PR with the reason (TA-18).
+- revise drops bot comments, its own comments, and resolved or outdated threads;
+  the reviser answers every comment as addressed, declined with a reason, a
+  question, or acknowledged; DELIVER posts inline replies and one summary comment
+  and re-requests review from the human reviewers (TA-4, TA-7, TA-8, TA-9).
+- Commit messages follow the repository's convention with the task id in a
+  `Loop-Spec-Task:` trailer; task merges are named by task title (TA-11).
+- `direct` never force-pushes a branch with other people's commits, uses
+  `--force-with-lease`, and tests a resolved code conflict before pushing; conflicts
+  in code route to micro (TA-6, TA-20).
+- Roles read `AGENTS.md`, `CLAUDE.md`, and `CONTRIBUTING*`; the planner covers docs
+  and callers a change affects, and the code reviewer flags them (TA-16, TA-17).
+- A PR title a teammate would write: the SPEC carries an optional `title` (at most 72
+  characters, in the repository's convention), DELIVER opens the PR with it, and an
+  adopted PR is retitled only while its title is still the one loop-spec generated.
+- The PR body is shorter to read: the criteria table drops the Command and SHA columns,
+  `### How to test` lists each evidence command once with `Verified at <sha>`, long
+  plan-critic text is cut to 300 characters, the owner line names the PR number on a
+  revise, and a repository PR template's Summary-like and Test-like sections are filled
+  when they hold only placeholders (checklists stay as written).
+- A run that names an issue branches as `<prefix>7-add-a-lerp-helper`.
+- SPEC reads and runs in a clean checkout at the run's base commit, as PLAN does.
+- Every open Minor review finding now costs one close-out rewind (EXECUTE then VERIFY);
+  a finding still open after a close-out already targeted it is deferred and reported,
+  never a caveat, as before. Important findings follow the same one-close-out rule;
+  Critical findings are never deferred.
+- A progress rule replaces the rewind count (T1). The program stops a run by itself only
+  on proof of no progress: a backward exit that would re-run an identical state (same
+  exit, same per-repo git tree and revisions). When the same cause comes back after a
+  change it asks `continue` or `stop` (default `stop`) instead of ending the run, and a
+  new cause never asks. A refused ITERATE rewind still routes to a partial draft
+  delivery when `deliver.escalatedPartialDraft` is set. Escalation reasons name the
+  repeated exit and cause.
+- A DELIVER `base moved` past three moves asks whether to merge again instead of
+  escalating (T2); `continue` restarts the count.
+- Step and product retries follow the same rule: a task whose rejection reason repeats
+  (step and attempt ids, hashes, and numbers ignored) is blocked; one that changes
+  three times without passing is blocked as well, so EXECUTE asks `fix-and-re-enter` or
+  `stop`. A rejected product asks when the same failed checks come back, and an
+  unattested judgment step is re-dispatched until its reason repeats. E10 holds for
+  those blocks, a permission-denied issue, or an answered blocked question; an external
+  EXECUTE needs one rejected round first.
+- Headless runs with `--answer-policy default` answer every one of these questions
+  `stop`, so an unattended run ends at the first recurrence, and never for a new reason.
+- The reviser's replies are addressed to the reviewer: what changed and where, with no
+  internal ids.
+
+### Removed
+
+- `LOOP_SPEC_REWIND_BUDGET` and `LOOP_SPEC_STEP_RETRIES`, the rewind count (`budget.limit`
+  and `spent`; `iterations.max` in the result is now `null`), and the `minimalDiff`
+  implementer flag. `loop-spec status` prints `rewinds: <n>`.
+
+### Fixed
+
+- The `minimalDiff` flag never reached the implementer (the code set `inputs.minimalDiff`,
+  the role contract read `inputs.flags.minimalDiff`); it is gone with the count it keyed on.
+- A filled PR template carries the summary and test commands between its own markers,
+  refreshed in place by later deliveries; loop-spec's block leaves out whatever the
+  template already carries, so nothing appears twice. The findings table drops the
+  internal finding id.
+- A lead step's acceptance line says it was run by the lead, instead of a bare
+  `unattested` every live lead stopped to question.
+- A test run's caches (`__pycache__`, `.pytest_cache`, and the like) no longer make a
+  worktree dirty in a repository that does not ignore them. A live run on such a
+  repository rejected every implement step as "uncommitted changes".
+- A run that adopts a PR keeps the issue that PR already closes, so a revise no longer
+  drops `Closes #n` when it refreshes the body.
+- `python -m unittest` is a recognized test runner: base runs no longer report
+  `testsRan 0` (a false Critical in every stdlib-unittest repository), and FAIL/ERROR
+  lines give failure identities.
+- `loop-spec answer` replayed with the answer it already recorded exits 0 (`already
+  answered`) instead of failing on the retired question. The runner protocol says
+  `status` is read-only and free to run.
+
 ## [7.8.3] - 2026-10-01
 
 ### Fixed

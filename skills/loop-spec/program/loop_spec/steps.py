@@ -16,7 +16,7 @@ from loop_spec.events import emit
 from loop_spec.ids import digest_bytes, new_id, now_iso
 from loop_spec.jsonio import atomic_write_json, read_json
 from loop_spec.paths import ensure_results_dir
-from loop_spec.postconditions import retry_limit
+from loop_spec.postconditions import reason_key
 from loop_spec.repo import remove_worktree
 from loop_spec.schema import validate, validate_or_raise
 
@@ -265,6 +265,21 @@ def evidence_accepted(store, project_root, step_id: str | None, role: str) -> bo
     return True
 
 
+def _record_refusal(store, paths, step: dict, reason: str, attempts: int) -> None:
+    """LF-60: retire the step and record its refusal in one state write, so a resume
+    always finds both or neither."""
+    step_id = step["stepAttemptId"]
+    retire(store, paths, step_id=step_id, reason=f"refused: {reason}", save=False)
+    store.state["steps"].setdefault("refused", {})[step_id] = {
+        "role": step["role"], "phase": step["phase"], "cwd": step["cwd"], "reason": reason,
+        "attempts": attempts, "at": now_iso(), "questionId": None, "ownerReset": False,
+    }
+    emit(paths, "step_refused", {"stepAttemptId": step_id, "reason": reason,
+                                 "summary": f"{step_id} ({step['role']}) refused: {reason}"},
+         phase=step["phase"], attempt_id=step["attempt"], source="program")
+    store.save()
+
+
 def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
            result_file: str | Path | None = None, project_root: Path | None = None) -> Submission:
     step_path = paths.steps_dir / step_id / "step.json"
@@ -293,6 +308,12 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
             repair="check `loop-spec status`; the step may need a new attempt",
         )
 
+    refusal = store.state["steps"].get("refused", {}).get(step_id)
+    if refusal is not None:
+        raise LoopSpecError(
+            f"step {step_id} was refused: {refusal['reason']}",
+            repair="answer the open question (fix-and-re-enter or stop), then resume",
+        )
     if step_id in store.state["steps"]["retired"]:
         raise LoopSpecError(
             f"step {step_id} is retired; a new attempt was issued",
@@ -303,6 +324,13 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
         raise LoopSpecError(f"no open step {step_id}", repair="check `loop-spec status` for the open step id")
 
     if not result_path.is_file():
+        if step["kind"] == "role":
+            # A worker that returned without a result (a denied tool call, a crash) would
+            # otherwise leave the step open and the run stopped with no operator command.
+            reason = ("the worker ended without writing its result "
+                      "(a denied tool call, a crash, or a write outside resultPath)")
+            _record_refusal(store, paths, step, reason, open_record.get("attestationAttempts", 0))
+            return Submission(step=step, result={}, result_digest="", evidence_level="unattested", refused=reason)
         raise LoopSpecError(f"no result at {result_path}", repair="the worker must write it before submit")
     try:
         result = read_json(result_path)
@@ -358,14 +386,18 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
         step["attestationAttempts"] = attempts
         step["reason"] = reason_text
         atomic_write_json(step_path, step)
-        limit = retry_limit()
+        # A reason this step already failed attestation with, once volatile ids are
+        # dropped, is a repeat: re-dispatching cannot change it.
+        keys = open_record.setdefault("attestationReasonKeys", [])
+        repeated = reason_key(reason_text) in keys
+        keys.append(reason_key(reason_text))
         # Only a host can attest a fresh dispatch; an SDK receipt mismatch or no host
         # at all goes straight to the policy below.
-        if host is not None and not receipt_path.is_file() and attempts <= limit:
+        if host is not None and not receipt_path.is_file() and not repeated:
             redispatch = f"{step_id}-{attempts + 1}"
             emit(paths, "step_redispatch", {
                 "stepAttemptId": step_id, "attempt": attempts, "dispatch": redispatch, "reason": reason_text,
-                "summary": f"{step_id} unattested ({attempts}/{limit}): re-dispatch as {redispatch}",
+                "summary": f"{step_id} unattested (attempt {attempts}): re-dispatch as {redispatch}",
             }, phase=step["phase"], attempt_id=step["attempt"], source="program")
             store.save()
             return Submission(step=step, result=result, result_digest=result_digest,
@@ -377,15 +409,7 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
             # one state write, so a resume always finds both or neither.
             diagnostic = paths.steps_dir / step_id / "refused-result.json"
             diagnostic.write_bytes(result_bytes)
-            retire(store, paths, step_id=step_id, reason=f"refused: {reason_text}", save=False)
-            store.state["steps"].setdefault("refused", {})[step_id] = {
-                "role": step["role"], "phase": step["phase"], "cwd": step["cwd"], "reason": reason_text,
-                "attempts": attempts, "at": now_iso(), "questionId": None, "ownerReset": False,
-            }
-            emit(paths, "step_refused", {"stepAttemptId": step_id, "reason": reason_text,
-                                         "summary": f"{step_id} ({step['role']}) refused: {reason_text}"},
-                 phase=step["phase"], attempt_id=step["attempt"], source="program")
-            store.save()
+            _record_refusal(store, paths, step, reason_text, attempts)
             return Submission(step=step, result=result, result_digest=result_digest,
                                evidence_level=evidence_level, refused=reason_text)
         record_waiver(store, step_id, step["role"], policy, attempts)
@@ -402,7 +426,10 @@ def submit(store, paths, *, step_id: str, dispatch_name: str | None, host,
     }
     store.state["steps"]["open"] = [s for s in store.state["steps"]["open"] if s["stepAttemptId"] != step_id]
     store.state["steps"]["retired"].append(step_id)
-    emit(paths, "step_accepted", {"stepAttemptId": step_id, "summary": f"{step_id} {evidence_level}"},
+    # A lead step runs in the session itself, so no worker transcript exists to attest; a
+    # bare "unattested" read as a failure to every live lead (7.9.0 runs), so say why.
+    note = "run by the lead, nothing to attest" if step["kind"] == "lead" else evidence_level
+    emit(paths, "step_accepted", {"stepAttemptId": step_id, "summary": f"{step_id} accepted ({note})"},
          phase=step["phase"], attempt_id=step["attempt"], source="program")
     store.save()
     return Submission(step=step, result=result, result_digest=result_digest, evidence_level=evidence_level)

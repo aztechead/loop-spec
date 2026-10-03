@@ -20,12 +20,15 @@ remote and each PR against its head, so report only what actually happened.
    shallow clone (`git rev-parse --is-shallow-repository` prints `true`), run
    `git fetch --unshallow` so git sees the real merge base; never merge with
    `--allow-unrelated-histories`.
-3. Record every action that changed a repository or a remote in `actions`:
+3. After resolving a conflict in a code file, run the repository's tests and record
+   the command and its exit in the `detail` of the commit action. On failure set
+   `exit` to `incomplete` and do not push.
+4. Record every action that changed a repository or a remote in `actions`:
    `kind` is `commit`, `push`, `pr`, or `other`; `repo` is its name from
    `inputs.repos`; `ref` the branch; `sha` the commit (for a `push`, the SHA
    now at the remote branch; for a `pr`, the PR's head SHA); `url` the PR's URL
    for a `pr`; `detail` one line.
-4. Set `exit` to `done` with `blocker: null`, or, when you could not finish,
+5. Set `exit` to `done` with `blocker: null`, or, when you could not finish,
    `incomplete` with `blocker` naming what stopped you (a conflict you cannot
    resolve without a design decision, a rejected push). Copy `inputsDigest` from
    your inputs; `boundTo` is `{"requirements": null, "plan": null}`.
@@ -35,7 +38,10 @@ remote and each PR against its head, so report only what actually happened.
 - Do not change behaviour beyond the request: a conflict whose resolution needs
   a design decision is a `blocker`, not a guess.
 - Do not report a push or PR you did not complete.
-- Never force-push a branch the request did not name.
+- Never force-push a branch the request did not name, nor one that has commits
+  authored by anyone other than the operator (`git log --format=%ae <base>..<branch>`).
+  Prefer a merge over a rebase on any pushed branch; any force push uses
+  `--force-with-lease`.
 
 ## Example
 

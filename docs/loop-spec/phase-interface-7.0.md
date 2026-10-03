@@ -21,7 +21,7 @@ code at M1; this page fixes the shape they must have.
 | `run.id`, `attempt.id` | run id; this phase attempt's id |
 | `inputs.digest` | digest of every input below; products carry it back |
 | `products` | products of prior phases, each with the revisions it was bound to |
-| `state` | requirements revision and approval record, plan revision, baseline, finding ledger with reviewed ranges, rewind count and budget |
+| `state` | requirements revision and approval record, plan revision, baseline, finding ledger with reviewed ranges, backward-transition ledger |
 | `entry` | `fresh`; `remediation` with the gaps to close; or `rewind` with the findings that sent the run back |
 | `repos` | repository or workspace map, per-repo base SHA, feature branch, worktree root |
 | `paths` | state directory; paths the implementation may write to |
@@ -61,24 +61,42 @@ transcript checked against the step's entire composed prompt, not just its trail
 `host-attested`; `unattested` is accepted only under `evidence.review.accept:
 unattested` in config, and the result then carries `weakenedAssurance`. A judgment
 role (`plan-critic`, `code-reviewer`, `iterate-judge`) refuses an `unattested`
-submission outright and re-dispatches instead, up to the retry bound. Exhausting that
-bound is never a waiver: the step is refused, nothing it produced is accepted, and the
+submission outright and re-dispatches instead, until a refusal reason repeats one the step
+already had (volatile ids and numbers ignored). A repeated reason is never a waiver: the step is refused, nothing it produced is accepted, and the
 phase asks a blocked question (`stop` or `fix-and-re-enter`, default `stop`) unless config
 opts the role in (`evidence.review.accept` for reviews, `evidence.judgment.accept` for
 the critic and judge). A cached judgment is consumed only while its step's evidence is
 accepted or opted in. See `skills/loop-spec/references/contract.md`'s evidence section.
 
-### Backward-transition budget
+### Backward-transition progress rule
 
 One postcondition, checked centrally by the program on every exit that routes to an
-earlier phase or re-enters the same one. It appears in each such exit's `Requires`. A
-DELIVER `base moved` is the one exception: the base is moved by someone outside the run, so
-it does not spend this budget and has its own limit (T2).
+earlier phase or re-enters the same one. It appears in each such exit's `Requires`. There
+is no count and no configured number. Each accepted backward transition records its
+`cause` (what sent the run back, with volatile ids and numbers removed) and its
+`fingerprint` (per-repo git tree of the verified head, plus the requirements and plan
+revisions). A DELIVER `base moved` is the one exception: the base is moved by someone
+outside the run, so it has its own limit (T2) and asks the operator at it.
+
+Two tiers, decided by the controller before the boundary check:
+
+1. **Identical state: refuse and escalate.** An earlier transition with the same
+   `(from, exit)` left the same fingerprint, whatever its cause. Re-running one state through
+   one phase to the same exit cannot differ, so the program writes the terminal
+   `escalated` result itself, naming the exit, the cause, and the unchanged tree, without
+   entering any phase. This is the only case the program ends a run on its own. A refused
+   ITERATE `rewind` leaves as ITERATE's `escalated` exit, so `deliver.escalatedPartialDraft`
+   still routes it to a partial DELIVER.
+2. **Same cause, different fingerprint: ask.** The problem is back after a change. The
+   controller asks a `recurred` question (`continue` or `stop`, default `stop`); `continue`
+   routes the run back and records the transition, `stop` ends the run `escalated` with the
+   recurrence as the reason. A new cause never asks. `--answer-policy default` answers
+   `stop`, so an unattended run ends at the first recurrence and never for a new reason.
 
 | Id | Postcondition | Gates |
 |---|---|---|
-| T1 | the shared feature-level budget has room and this transition was counted once against it; default two, operator override, persisted across sessions, never reset by a fresh attempt. When the budget is spent the program refuses the backward exit and escalates directly from the controller: it writes the terminal `escalated` result itself, naming the refused exit, the gap, and the budget record, without entering any phase. ITERATE is not involved, because its inputs may not exist yet | PLAN `spec gap`; EXECUTE `plan gap`; VERIFY `implementation gap`, `plan gap`, `intent gap`, `evidence incomplete`; ITERATE `rewind` |
-| T2 | the run's base-move count is below the fixed limit of three; a base move is recorded as a transition but never counted against T1. At the limit the program escalates directly from the controller, as for T1 | DELIVER `base moved` |
+| T1 | no earlier transition has the same exit on the identical state (same per-repo tree and revisions); a transition whose cause returned after a change asks the operator, and the transition is recorded once. On an identical state the program refuses the backward exit and escalates directly from the controller: it writes the terminal `escalated` result itself, naming the refused exit, the cause, and the unchanged tree, without entering any phase | PLAN `spec gap`; EXECUTE `plan gap`; VERIFY `implementation gap`, `plan gap`, `intent gap`, `evidence incomplete`; ITERATE `rewind` |
+| T2 | the run's base-move count is below the fixed limit of three, or the operator chose to continue past it (the count then restarts); a base move is recorded as a transition but never checked against T1. At the limit the controller asks `<repo>'s base or PR branch moved <n> times during this run; merge it in again (continue) or stop?` (default `stop`), never stopping on its own | DELIVER `base moved` |
 
 ### Commands
 
@@ -141,7 +159,7 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 | P4 | the baseline is captured (section 11) with the prepare command applied; environment health recorded once per failing command | `ready` |
 | P5 | the task graph is acyclic and every `dependsOn` names a task in the plan | `ready` |
 | P6 | workspace resolved once and the repo list stored in state; every task names a repo in it; every repo check names a repo some task changes, appears once per repo, and is not a `featureAdded` task's verify command in that repo | `ready` |
-| P7 | the critic pass ran and every Critical finding is closed as `fixed` with the critic re-run once on the corrected product, or `rejected` with a stated reason recorded in state; `deferred` is not a disposition for Critical; a Critical finding still open after the one re-run exits `spec gap` or asks a question, whose default is the critic's own recommendation (`spec gap` if any open Critical recommends it, else every finding's stated `reject` reason; no default when any finding carries no recommendation), so an answer policy can close it. The critic judges on the plan, the requirements, and each task's baseline facts; a change to any of them re-issues it | `ready` |
+| P7 | the critic pass ran and every Critical finding is closed as `fixed` with the critic re-run once on the corrected product, or `rejected` with a stated reason recorded in state; `deferred` is not a disposition for Critical; a Critical finding still open after the one re-run exits `spec gap` or asks a question, whose default is the critic's own recommendation (`spec gap` if any open Critical recommends it, else every finding's stated `reject` reason; no default when any finding carries no recommendation), so an answer policy can close it; the operator may also answer `replan`, which sends the open Critical findings back to the planner for one more corrected pass. The critic judges on the plan, the requirements, and each task's baseline facts; a change to any of them re-issues it | `ready` |
 | P8 | every `existingCode` entry names a repo in state and tasks in the plan; a `reuse` or `extend` entry cites at least one range of existing code; every cite's path exists at the repo's plan commit (base, or the adopted PR head) or at the head of the accepted EXECUTE product, and its line range lies within that file; a task marked `alreadySatisfied` is not `mustFlip`, owns no integrated commits in the accepted EXECUTE product, and its cites pass the same check | `ready` |
 
 | Exit | Requires | Route |
@@ -153,7 +171,7 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 
 | | |
 |---|---|
-| Inputs | PLAN product; baseline; ledger; on `remediation` from a VERIFY `implementation gap`, the transition carries the failing verdicts and the remediation tasks; EXECUTE re-opens the plan task(s) owning each failed criterion, or for a Critical finding the task(s) owning its file (else the repo's last task), against the current feature head (a clean, terminated worktree that already contains the head is reused, anything else gets a new generation branch and worktree and the old one is kept); `remediationTasks` describe the gap and are not tasks of their own; on `remediation` from a DELIVER `base moved`, the new base per moved repo: before anything else EXECUTE merges it into that repo's feature branch (a merge, not a rebase, so every task commit keeps its SHA and a pushed branch only fast-forwards), dispatches one `resolver` step for conflicts git leaves, accepts only a merge commit whose parents are the old head and the new base with no conflict marker left and a clean worktree, and then moves the repo's base SHA to the new base; a resolver that cannot resolve leaves the merge aborted and pauses (fix-and-re-enter retries it); on `rewind`, the findings; always, the close-out registry (`state.closeOuts` in the envelope): every `execute` gap of an accepted ITERATE rewind, `C-n`, with its text, repo and source |
+| Inputs | PLAN product; baseline; ledger; on `remediation` from a VERIFY `implementation gap`, the transition carries the failing verdicts and the remediation tasks; EXECUTE re-opens the plan task(s) owning each failed criterion, or for a Critical finding the task(s) owning its file (else the repo's last task), against the current feature head (a clean, terminated worktree that already contains the head is reused, anything else gets a new generation branch and worktree and the old one is kept); `remediationTasks` describe the gap and are not tasks of their own; on `remediation` from a DELIVER `base moved`, the new base (or origin's feature branch head, for a `branch moved` repo, which leaves the base SHA unchanged) per moved repo: before anything else EXECUTE merges it into that repo's feature branch (a merge, not a rebase, so every task commit keeps its SHA and a pushed branch only fast-forwards), dispatches one `resolver` step for conflicts git leaves, accepts only a merge commit whose parents are the old head and the new base with no conflict marker left and a clean worktree, and then moves the repo's base SHA to the new base; a resolver that cannot resolve leaves the merge aborted and pauses (fix-and-re-enter retries it); on `rewind`, the findings; always, the close-out registry (`state.closeOuts` in the envelope): every `execute` gap of an accepted ITERATE rewind, `C-n`, with its text, repo and source |
 | Product | per task a `disposition` of `done`, `already-satisfied` with evidence, `removed` by an approved plan amendment, or `adopted` for the one range task a `revise` entry creates; one entry per registered close-out (`C-n`), `done` or `already-satisfied`; `commits[]` per task; `issues[]` unresolved; per-repo `head`. Evidence fields, read by the program only when EXECUTE ran its default implementation (an external product cannot vouch for its own evidence): per task `steps` (`implement[]`, `review[]` step ids, which E3 and E6 look up in the program's own step records) and `securitySignals[]` (what the reviewer was shown, for E11); per issue `retries` (for E10) |
 | Preconditions | PLAN bound to the current requirements revision; baseline present |
 | Runs as | program-run: a task PLAN marked `alreadySatisfied` is `already-satisfied` with no step; the rest in waves of at most three, one worktree per task, implement step, then the diff-mode probes on the task's commits, then the review step with the probe findings as inputs; tasks of one wave that are ready for review wait until no sibling is still implementing, then share one review step that returns one result per task, each applied as that task's own review (a lone task and a close-out keep a review step of their own); each close-out after the plan's waves, one per wave, with no verify command: its review is its proof, and a no-change claim is reviewed over the empty range at the head (re-reviewed if a later commit moves that head) |
@@ -169,14 +187,14 @@ and passes. It does not flag brace expansion (`{a,b}`), or `"\$"` inside double 
 | E7 | each task's verify command produced no new failure identity against its baseline; a `featureAdded` command had a meaningful first success (exit zero, at least one parsed test identity where a test-runner parser exists) that became its task-local baseline; a `mustFlip` command failed at baseline with the recorded digest and passes at integration; a registered close-out has no verify command and is exempt | `integrated` |
 | E8 | the feature head is reachable from base and was not moved out of band | `integrated`, `no change` |
 | E9 | `start..head` is empty, where start is the base, or the adopted PR's head in its own repo, and every task is `already-satisfied` or `removed` | `no change`; forbids `integrated` |
-| E10 | a rejected step was re-issued with its reason up to the per-step retry limit before `blocked` is claimed | `blocked` |
+| E10 | a task was blocked because a rejection reason repeated or it changed three times without passing (recorded as an issue the default EXECUTE flags `repeated` or `churn`), or a permission-denied issue is recorded, or the operator answered a blocked question; an external EXECUTE needs one rejected round and that answer first | `blocked` |
 | E11 | for a task whose probed diff touches a file with a security signal, the review record carries a disposition naming that file | `integrated` |
 
 | Exit | Requires | Route |
 |---|---|---|
 | `integrated` | E1 to E8, E11; E9 false | VERIFY at the integrated head |
 | `no change` | E1, E2, E8, E9 | VERIFY at the head, over `base..head` |
-| `blocked` | E1, E10 | pause: a question to the operator naming the cause, with the answers fix-and-re-enter EXECUTE or stop; `status: paused` until answered; a stop answer, or a `run`-scoped default policy, exits terminal `escalated` with the cause |
+| `blocked` | E1, E10 | pause: a question to the operator naming the cause, with the answers fix-and-re-enter EXECUTE, stop, or plan gap (the blocked tasks become PLAN's to fix and EXECUTE exits `plan gap` with the cause in its issues); `status: paused` until answered; a stop answer, or a `run`-scoped default policy, exits terminal `escalated` with the cause |
 | `plan gap` | E1, T1 | PLAN, `remediation` |
 
 An out-of-band change to the feature branch pauses the phase for reconciliation; it is
@@ -212,7 +230,7 @@ on such a task refuses the run.
 | V4 | every cited evidence command, an exempt criterion's included, passes the plain-argv format check and is never run otherwise; for every criterion without a V5 exception, its cited command was run by the program in a clean checkout of that SHA it created, with prepare fixtures applied (that execution may be reused across submissions naming the same repo, SHA, and command, but is re-matched against each submission's own claim, never a fact an earlier claim left recorded), and command identity, exit status, parsed failure identities, and normalized output digest matched | `passed` |
 | V5 | a criterion skipped V4 only under an exception declared in the PLAN product and approved with it, or granted by an operator answer at VERIFY; its verdict is recorded at assurance `claimed` and listed under `weakenedAssurance` | `passed` |
 | V6 | a `blocked` verdict cites a cause the program observed, in the baseline record or in its own re-run | `blocked` |
-| V7 | every verdict is `pass` and the review policy holds per repo: first and final passes, and the first pass after a base move (the base is no longer an ancestor of the last reviewed SHA), saw that repo's full diff, other passes the delta since its last reviewed SHA, no Critical finding open; evaluated over the ledger with the product's valid same-finding closures applied | `passed` |
+| V7 | every verdict is `pass` and the review policy holds per repo: first and final passes, and the first pass after a base move (the base is no longer an ancestor of the last reviewed SHA), saw that repo's full diff (a first pass after a base move may instead reuse the prior review when the feature's diff is unchanged and the base's change touches none of its files), other passes the delta since its last reviewed SHA, no Critical finding open; evaluated over the ledger with the product's valid same-finding closures applied | `passed` |
 | V8 | a finding on cleared code carries a typed `supersedes` naming a finding id or a reviewed-range id; a finding that repeats an open ledger finding by its id, in the same repo and file, is carried forward and needs no `supersedes`; repeating a closed finding is an echo the product drops; reopening one is a new finding with an explicit `supersedes` | every exit |
 | V9 | `blocked` for an offline-unavailable dependency was claimed only after a stand-in was tried | `blocked` |
 | V10 | every repo check the plan names ran by the program at its repo's verified head, against the current plan revision and baseline, with no new failure identity against its baseline (the program runs them before this check for every implementation) | `passed` |
@@ -230,36 +248,37 @@ names each changed lockfile in a trailing `--stat` block.
 | `evidence incomplete` | V1, T1 | VERIFY re-entry, new attempt |
 | `blocked` | V1, V2, V6, V8, V9 | pause: a question naming the observed cause, with the answers fix-and-re-enter VERIFY or stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` |
 
-T1 bounds every backward transition, including PLAN to SPEC and EXECUTE to PLAN, so a
-PLAN, EXECUTE, PLAN loop spends the same budget as the report's VERIFY, EXECUTE loop
-(decided 2026-09-22, coverage completed after the re-audit at `727b2b8`). The review
-and verify contract sections say what the budget is for: find show-stoppers and
-outright incorrect implementations; the PR review catches the rest.
+T1 covers every backward transition, including PLAN to SPEC and EXECUTE to PLAN, so a
+PLAN, EXECUTE, PLAN loop meets the same rule as the report's VERIFY, EXECUTE loop
+(decided 2026-09-22; the count was replaced by the progress rule in 7.9.0). The review and verify contract sections say what the loop is for:
+find show-stoppers and outright incorrect implementations; the PR review catches the
+rest.
 
 ## ITERATE
 
 | | |
 |---|---|
-| Inputs | the immutable original request; approved SPEC; integrated diff; VERIFY product; prior gaps; rewind count and budget |
+| Inputs | the immutable original request; approved SPEC; integrated diff; VERIFY product; prior gaps; backward-transition ledger |
 | Product | `verdict` against the original request; `gaps[]`, each `{target, text}` with an optional `repo` (and `findingId` on a gap the program adds for an open Critical finding); `route` |
 | Preconditions | VERIFY `passed` at the current revisions, including the `no change` head; the judgment is re-issued when the requirements revision, plan revision, heads or the accepted VERIFY attempt changed |
 | Runs as | a fresh goal-judgment role |
 
 The program, not the judge role, dispositions every non-Critical open finding
-before deciding the exit: Minor is always deferred; Important becomes an `execute`
-gap (a close-out) while the rewind budget has room, and is deferred once it does not;
+before deciding the exit: Important and Minor each become an `execute` gap (a
+close-out) once per finding id, and are deferred when a close-out already targeted that id
+and the finding is still open;
 Critical is never deferred and always becomes an `execute` gap (decided 2026-09-22,
 LF-46; Important moved from PLAN to EXECUTE in LF-68). A deferred Minor finding does
 not make the exit `converged with caveats`; only a deferred Important one does, so a
-run whose only open findings are Minor converges and DELIVER opens a ready PR that
-lists them.
+run whose only open findings are Minor and out of rewind room converges and DELIVER
+opens a ready PR that lists them.
 
 | Id | Postcondition | Gates |
 |---|---|---|
 | I1 | product validates; the verdict binds every repo's integrated SHA (`boundShas`), the requirements revision, and the plan revision | every exit |
 | I2 | every gap names a target of SPEC, PLAN, EXECUTE, or VERIFY; an EXECUTE gap names a repo of this run, or omits it only when the run has one repo | `rewind` |
-| I3 | T1 holds for this rewind | `rewind` |
-| I4 | a rewind is needed and T1 refuses it, or the verdict is unmet and the judge names no gap any route can close | `escalated` |
+| I3 | T1 holds for this rewind: it does not repeat an identical state | `rewind` |
+| I4 | a rewind is needed and T1 refuses it as a repeat of an identical state, or the verdict is unmet and the judge names no gap any route can close | `escalated` |
 | I5 | VERIFY `passed` at this SHA and no open gap against the original goal; the shared convergence predicate | `converged`, `converged with caveats` |
 | I6 | no Critical finding open; the caveats list contains only deferred Important review findings (a deferred Minor finding is reported in warnings and the PR body, never a caveat; a fixed or rejected finding is closed), and nothing else | `converged with caveats` |
 
@@ -270,8 +289,7 @@ lists them.
 | `rewind` | I1, I2, I3 | the named phase, `rewind`, with the findings; each `execute` gap is registered as a close-out in the same write as the budget spend and the route, and only EXECUTE's acceptance closes it |
 | `escalated` | I1, I4 | DELIVER as partial draft when operator policy allows; otherwise terminal `escalated` |
 
-Past the budget, remediation is restricted to minimal diffs and the implement role's
-input flags forbid new broad assertions. A blocked criterion or an open goal gap can
+A blocked criterion or an open goal gap can
 never leave as a caveat: incomplete acceptance reaches a draft PR only through the
 explicit escalated partial-delivery policy and keeps the `escalated` classification
 (decided 2026-09-22).
@@ -281,33 +299,34 @@ explicit escalated partial-delivery policy and keeps the `escalated` classificat
 | | |
 |---|---|
 | Inputs | ITERATE product; per-repo verified SHA; rendered summary; delivery configuration and readiness policy; existing remote state |
-| Product | per repo `pr` identity, `deliveredSha`, `caveats[]`, `state` (`delivered`, `failed`, `skipped`, `base moved`); a `base moved` row carries `newBase` and `conflicts`; a `failed` row carries `publishedSha` (and the PR, if one was opened) when this or an earlier DELIVER attempt put the branch on the remote, so a re-entry never erases what was published; on a `no change` run the adopted repo's `skipped` row carries the adopted PR |
+| Product | per repo `pr` identity, `deliveredSha`, `caveats[]`, `state` (`delivered`, `failed`, `skipped`, `base moved`, `branch moved`); a `base moved` row carries `newBase` and `conflicts` (possibly none); a `branch moved` row carries `remoteHead` (origin's feature branch tip, holding commits the verified head lacks) and `conflicts`; a `delivered` row carries `checks` (`state` and `detail` of the one CI read made after the push); a `failed` row carries `publishedSha` (and the PR, if one was opened) when this or an earlier DELIVER attempt put the branch on the remote, so a re-entry never erases what was published; on a `no change` run the adopted repo's `skipped` row carries the adopted PR |
 | Preconditions | ITERATE `converged` or `converged with caveats`; or `escalated` with an operator policy allowing partial delivery as a draft |
-| Runs as | program code: every touched repo's credentials are checked before the first remote write; then origin's PR base is fetched for every touched repo, and when one has moved to a tip the verified head no longer merges into cleanly, DELIVER pushes nothing and exits `base moved`; a base that moved but still merges cleanly is delivered as before; otherwise each repo is pushed and its PR reconciled (a `no change` run touches no repo, so nothing is pushed), and a rejected push or failed PR step is that repo's `failed` row while the other repos are still attempted |
+| Runs as | program code: every touched repo's credentials are checked before the first remote write; then origin's PR base and feature branch are fetched for every touched repo, and when the base has moved to a tip the verified head does not already contain (conflicts or not), or origin's feature branch holds commits the verified head lacks (a teammate's push; an older PR head the verified head descends from does not count, and an accepted `deliver.acceptRemotePaths` extension keeps its no-push path), DELIVER pushes nothing and exits `base moved`, so EXECUTE merges it in and the run re-verifies; otherwise each repo is pushed and its PR reconciled (a `no change` run touches no repo, so nothing is pushed), and a rejected push or failed PR step is that repo's `failed` row while the other repos are still attempted |
 
-A non-draft delivery marks an existing draft PR ready (`gh pr ready`); a failure is a caveat on
-the row, never a failed delivery. A draft delivery never converts a ready PR back to a draft.
+A non-draft delivery marks an existing draft PR ready (`gh pr ready`), and a draft delivery
+converts an existing ready PR back to a draft (`gh pr ready --undo`) so the PR's state says what
+the run's verdict was; a failure of either is a caveat on the row, never a failed delivery.
 
 | Id | Postcondition | Gates |
 |---|---|---|
 | D1 | per touched repo, `deliveredSha` is the verified (EXECUTE) head, and the remote head ref's SHA is either that SHA or, with `deliver.acceptRemotePaths` configured, the head of an accepted extension: commits after the verified SHA, every path they touch in any commit matching the list and none changed by the verified change (base..verified), recomputed now and equal to the row's `acceptedRemote` | `delivered` |
 | D2 | per touched repo, the PR is open, its head ref matches, its head SHA (observed and in the product) is the head D1 observed, and its base target matches configuration | `delivered` |
-| D3 | required checks satisfy the configured readiness policy: with `deliver.readiness` `"checks"`, one `gh pr checks` call on the PR exits zero; nothing waits for checks to finish | `delivered` |
+| D3 | required checks satisfy the configured readiness policy: with `deliver.readiness` `"checks"` (the default), one `gh pr checks` read of the PR is not a failure; passing, pending, none and unreadable all hold (pending and unreadable are caveats on the row), and nothing waits for checks to finish. A check that fails later is addressed through `revise` | `delivered`, `partially delivered` |
 | D4 | a retried creation was reconciled by identity against existing remote state; no duplicate PR | every exit |
 | D5 | partial publication is recorded per repo and never reported as all delivered | `partially delivered` |
 | D6 | on a `no change` EXECUTE every row is `skipped` with no `deliveredSha`; only the adopted repo's row names a PR, the adopted PR, at the verified head, and `gh pr view` shows it open at that head | `delivered` |
 | D7 | before the first remote write the program checked git and `gh` credentials (`gh auth status` for the configured origin URL's host, then the bare check); there is no refresh step; a failure exits `delivery blocked` naming the command | `delivered`, `partially delivered` |
 | D8 | the product's repos cover exactly the set of repos EXECUTE touched with an accepted task's commits, no duplicates; a `skipped` row is only valid for a repo EXECUTE did not touch; every row marked `delivered` has a non-null PR | `delivered`, `partially delivered` |
-| D9 | before any push, origin's PR base was fetched for every touched repo; each `base moved` row names a `newBase` on origin's base branch that descends from the run's base SHA and conflicts with the EXECUTE head in exactly the listed `conflicts`, recomputed now; every other row is `skipped`; no row names a PR or a `deliveredSha` | `base moved` |
+| D9 | before any push, origin's PR base and feature branch were fetched for every touched repo; each `branch moved` row names a `remoteHead` equal to `refs/remotes/origin/<featureBranch>` that the EXECUTE head does not contain, with `conflicts` recomputed against it; each `base moved` row names a `newBase` on origin's base branch that descends from the run's base SHA and conflicts with the EXECUTE head in exactly the listed `conflicts` (possibly none), recomputed now; every other row is `skipped`; no row names a PR or a `deliveredSha` | `base moved` |
 
 A hosting server can lag a push. DELIVER re-reads a PR whose head is a strict ancestor of the pushed head up to four more times (after waits of 2, 4, 8 and 16 seconds) before recording it, and fails that repo's row if the head is still behind.
 
 | Exit | Requires | Route |
 |---|---|---|
 | `delivered` | D1 to D4, D6 to D8 for every repo | terminal `converged` or `converged-with-caveats`; terminal `no-change` after a `no change` EXECUTE |
-| `partially delivered` | at least one repo `delivered` and at least one `failed`; D1, D2, D4, D5, D7, D8 for every repo whose remote write was attempted | terminal `escalated` (never `converged`, whatever ITERATE's own verdict was) with `partiallyDelivered: true`, `workDelivered: true`, and `reason` naming the repos that did not deliver |
+| `partially delivered` | at least one repo `delivered` and at least one `failed`; D1, D2, D3, D4, D5, D7, D8 for every repo whose remote write was attempted | terminal `escalated` (never `converged`, whatever ITERATE's own verdict was) with `partiallyDelivered: true`, `workDelivered: true`, and `reason` naming the repos that did not deliver |
 | `delivery blocked` | D4; a credential refusal (D7), or no touched repo delivered | pause: a question naming the failed command and repair, with the answers fix-and-re-enter DELIVER or stop; a stop answer or a `run`-scoped default policy exits terminal `escalated` with `result: escalated` and per-repo state |
-| `base moved` | D4, D9, T2 | EXECUTE, `remediation`, carrying each moved repo's `newBase`; then VERIFY (a full review of new base..head, since the last reviewed head no longer descends from the base), ITERATE, and DELIVER again. Bounded by its own limit of three (T2), not by the shared backward budget, so a base that keeps moving escalates |
+| `base moved` | D4, D9, T2 | EXECUTE, `remediation`, carrying each moved repo's `newBase` (or, when origin's feature branch holds a teammate's commits, its `remoteHead`, merged the same way without moving the run's base); then VERIFY (a full review of new base..head, since the last reviewed head no longer descends from the base, unless the feature's own diff is unchanged and the base's change touches none of its files, when the prior review is reused), ITERATE, and DELIVER again. Counted by its own limit of three (T2), not by the progress rule; at the limit the operator is asked whether to merge again |
 
 ## debug
 
@@ -350,8 +369,8 @@ The first phase of an `auto` run (7.3.0).
 | `routed` | A1, A2 | `cycle`, `micro`, `debug`: the same run continues at SPEC (DEBUG for `debug`) with that entry's cycle type, adopting `pr` when set. `direct`: the same run continues at DIRECT. `revise`: the `revise` run for `pr` starts or resumes, with this run's answer policy and its request text (an instruction given with the PR reference is kept on the revise run's request after its first line; resuming an unfinished run whose request lacks that instruction is refused); this run ends with result `routed` and `routedTo` naming that run |
 
 A refused choice is a rejected product: the router step is issued again with the
-failed rule as its reason. Past the retry limit, the run pauses with the usual
-stop-or-fix question, and `stop` is its default.
+failed rule as its reason. When the same set of failed rules comes back, the run pauses
+with the usual stop-or-fix question, and `stop` is its default.
 
 ## direct
 
@@ -418,10 +437,10 @@ The four routes the first version left for M1, answered from the M1 fixtures rev
   DELIVER, and for a pause a phase raises mid-attempt (EXECUTE's out-of-band branch,
   leftover task branch, and unmapped-commit pauses): each offers `fix-and-re-enter` or
   `stop`, and `fix-and-re-enter` re-runs the phase's own check once.
-- One shared budget bounds every backward transition except a base move (T1, referenced by I3;
-  a base move has its own limit of three, T2). Exhaustion
-  at any exit escalates directly from the controller; only ITERATE's own refused rewind
-  goes through I4 (after the re-audit at `8d45bbb`).
+- One progress rule covers every backward transition except a base move (T1, referenced
+  by I3; a base move has its own count of three, T2, which asks at the limit). An identical
+  state at any exit escalates directly from the controller; ITERATE's refused rewind leaves
+  as its `escalated` exit through I4.
 - Both converged outcomes share one predicate (I5); caveats hold only deferred
   Important review findings (I6); a fixed or rejected finding is closed, not a caveat.
 - A Critical critic finding closes only as fixed-and-rechecked or rejected-with-reason

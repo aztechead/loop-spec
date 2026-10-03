@@ -31,13 +31,22 @@ class QuestionsTests(unittest.TestCase):
             with self.assertRaises(LoopSpecError):
                 self._ask(store, paths)
 
-    def test_answer_retired_id_rejected(self):
+    def test_answer_retired_id_with_a_different_value_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             store, paths = self._store(tmp)
             record = self._ask(store, paths)
             questions.answer(store, paths, question_id=record["questionId"], value="approve")
             with self.assertRaises(LoopSpecError):
-                questions.answer(store, paths, question_id=record["questionId"], value="approve")
+                questions.answer(store, paths, question_id=record["questionId"], value="reject")
+
+    def test_answer_replayed_with_the_same_value_is_a_no_op(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store, paths = self._store(tmp)
+            record = self._ask(store, paths)
+            first = questions.answer(store, paths, question_id=record["questionId"], value="approve")
+            again = questions.answer(store, paths, question_id=record["questionId"], value="approve")
+            self.assertEqual(again, first)
+            self.assertEqual(store.state["questions"]["retired"], [record["questionId"]])
 
     def test_answer_wrong_id_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

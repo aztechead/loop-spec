@@ -12,7 +12,9 @@ The run's change was verified against an older base. Since then another change
 merged into the PR base (`inputs.merge.baseBranch`), and the two conflict. The
 program started `git merge <onto>` on the feature branch in your working directory
 and it stopped on the paths in `inputs.conflicts`. You finish that merge so the run
-can re-verify its change on top of the new base.
+can re-verify its change on top of the new base. When `inputs.merge.kind` is
+`branch`, the merge target is the PR branch's own remote commits (a teammate's push),
+not the base; carry both sides the same way.
 
 ## Procedure
 

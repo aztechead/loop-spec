@@ -45,8 +45,8 @@ def run_lead_phase(phase: str, role_name: str, context_path: Path, product_path:
     else:
         first_repo = next(iter(repos.values()), None)
     cwd = Path(first_repo["path"]) if first_repo else project_root
-    if phase == "plan" and first_repo and first_repo.get("codeCheckout"):
-        cwd = Path(first_repo["codeCheckout"]["path"])  # 7.4.2: plan in a clean checkout of the code
+    if phase in ("spec", "plan") and first_repo and first_repo.get("codeCheckout"):
+        cwd = Path(first_repo["codeCheckout"]["path"])  # 7.4.2: plan (and, 7.9.0, spec) in a clean checkout of the code at baseSha
 
     state = context.get("state", {})
     inputs = {
@@ -58,6 +58,7 @@ def run_lead_phase(phase: str, role_name: str, context_path: Path, product_path:
         "probes": context.get("probes", {}),
         "inputsDigest": context["inputs"]["digest"],
         **({"repos": repo_map(repos)} if phase in ("plan", "direct") else {}),
+        **{key: context[key] for key in ("issue", "openWork") if context.get(key)},
         "revisions": {
             "requirements": state.get("requirementsRevision"),
             "plan": state.get("planRevision"),

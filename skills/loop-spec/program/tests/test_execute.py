@@ -7,11 +7,11 @@ from pathlib import Path
 from loop_spec import repo as repo_module
 from loop_spec.baseline import BaselineEntry, run_command
 from loop_spec.errors import LoopSpecError
-from loop_spec.execute import _final_product, dag_waves, on_step_refused, on_submit, step
+from loop_spec.execute import (_final_product, _handle_operator_reentry, _retry_or_block, dag_waves, on_step_refused,
+                               on_submit, step)
 from loop_spec.steps import IssueStep, IssueSteps, Pause, Product
 from loop_spec.jsonio import atomic_write_json
 from loop_spec.paths import FeaturePaths
-from loop_spec.postconditions import retry_limit
 from loop_spec.state import StateStore
 
 from tests._product_checks import assert_product_holds
@@ -41,6 +41,48 @@ def _commit(cwd, filename, message):
 
 def _head(cwd):
     return subprocess.run(["git", "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()
+
+
+class RetryOrBlockTests(unittest.TestCase):
+    def _state(self):
+        return {"issues": []}, {"retries": 0, "status": "pending", "reason": None}
+
+    def test_new_reasons_retry_and_volatile_ids_do_not_make_a_repeat_look_new(self):
+        execute_state, task_state = self._state()
+        _retry_or_block(execute_state, "T-1", task_state, "step-1a2b3c4d review refused at deadbeef12 after 3 tries")
+        self.assertEqual(task_state["status"], "pending")
+        _retry_or_block(execute_state, "T-1", task_state, "a different problem")
+        self.assertEqual(task_state["status"], "pending")
+        _retry_or_block(execute_state, "T-1", task_state, "step-ffee9988 review refused at cafe0123ab after 9 tries")
+        self.assertEqual(task_state["status"], "blocked")
+        self.assertTrue(execute_state["issues"][0]["repeated"])
+
+    def test_three_distinct_reasons_block_as_churn_and_an_operator_reentry_reopens_the_task(self):
+        execute_state, task_state = self._state()
+        execute_state["tasks"] = {"T-1": task_state}
+        for reason in ("first problem", "second problem"):
+            _retry_or_block(execute_state, "T-1", task_state, reason)
+            self.assertEqual(task_state["status"], "pending")
+        _retry_or_block(execute_state, "T-1", task_state, "third problem")
+        self.assertEqual(task_state["status"], "blocked")
+        self.assertTrue(execute_state["issues"][0]["churn"])
+        ctx = {"entry": {"mode": "remediation", "payload": {"operatorReentry": True}}, "attempt": {"id": "attempt-9"}}
+        _handle_operator_reentry(execute_state, ctx)
+        self.assertEqual((task_state["status"], task_state["reasons"], execute_state["issues"]), ("pending", [], []))
+        _retry_or_block(execute_state, "T-1", task_state, "first problem")  # a clean history: new again
+        self.assertEqual(task_state["status"], "pending")
+
+    def test_an_operator_plan_gap_sends_a_blocked_task_to_plan_with_its_reason(self):
+        execute_state, task_state = self._state()
+        execute_state["tasks"] = {"T-1": task_state}
+        for _ in range(2):
+            _retry_or_block(execute_state, "T-1", task_state, "uncommitted: calc/_ext.so")
+        ctx = {"entry": {"mode": "remediation", "payload": {"operatorReentry": True, "operatorPlanGap": True}},
+               "attempt": {"id": "attempt-9"}}
+        _handle_operator_reentry(execute_state, ctx)
+        self.assertEqual(task_state["status"], "planGap")
+        self.assertIn("sent this back to PLAN", execute_state["issues"][0]["text"])
+        self.assertIn("calc/_ext.so", execute_state["issues"][0]["text"])
 
 
 class DagWavesTests(unittest.TestCase):
@@ -535,6 +577,29 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertEqual(_head(worktree), merge)
         self.assertIn(old_head, repo_module.run_git(Path(worktree), "rev-list", "--parents", "-n", "1", merge))
 
+    def test_a_branch_move_merges_the_remote_head_and_leaves_the_base(self):
+        self.test_full_success_lifecycle()
+        old_head = self.store.state["execute"]["repos"]["repo"]["head"]
+        _git(self.repo, "checkout", "-q", "-b", "teammate", old_head)
+        Path(self.repo, "mate.txt").write_text("teammate\n")
+        _git(self.repo, "add", "mate.txt")
+        _git(self.repo, "commit", "-q", "-m", "teammate")
+        remote_head = _head(self.repo)
+        _git(self.repo, "checkout", "-q", "main")
+        self.ctx["entry"] = {"mode": "remediation", "payload": {"rewind": {
+            "from": "deliver", "exit": "base moved", "attemptId": "deliver-1", "baseMoves": {},
+            "branchMoves": {"repo": remote_head}}}}
+        action = step(self.store, self.paths, self.ctx)
+        self.assertIsInstance(action, Product)
+        worktree = Path(self.store.state["execute"]["repos"]["repo"]["worktree"])
+        merge = _head(worktree)
+        self.assertEqual(repo_module.run_git(worktree, "rev-list", "--parents", "-n", "1", merge).split()[1:], [old_head, remote_head])
+        self.assertIn(f"Merge origin/{self.store.state['repos']['repo']['featureBranch']} ({remote_head[:12]})",
+                      repo_module.run_git(worktree, "log", "-1", "--format=%s", merge))
+        self.assertEqual(self.store.state["repos"]["repo"]["baseSha"], self.base_sha)
+        # The teammate's commit is in base..head but no task's; E4 still holds.
+        assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product)
+
     def test_an_unresolvable_base_move_pauses_with_the_merge_aborted(self):
         action, old_head, tip = self._move_base()
         worktree = action.request["cwd"]
@@ -548,6 +613,36 @@ class ExecuteLifecycleTests(unittest.TestCase):
         # fix-and-re-enter retries the merge and the resolver.
         self.assertEqual(step(self.store, self.paths, self.ctx).request["role"], "resolver")
         self.assertEqual(self.store.state["repos"]["repo"]["baseSha"], self.base_sha)
+
+    def test_a_refused_resolver_leaves_its_move_pending_with_the_merge_aborted(self):
+        action, old_head, tip = self._move_base()
+        worktree = action.request["cwd"]
+        on_step_refused(self.store, self.paths, "resolve-1", {"role": "resolver", "cwd": worktree, "reason": "no result"})
+        move = self.store.state["execute"]["baseMoves"]["repo"]
+        self.assertEqual((move["status"], move["conflicts"]), ("pending", ["T-1.txt"]))
+        self.assertNotEqual(repo_module._git(Path(worktree), "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode, 0)
+
+    def test_a_refused_implementer_reforks_its_task(self):
+        action = step(self.store, self.paths, self.ctx)
+        self.assertEqual(action.request["role"], "implementer")
+        task = self.store.state["execute"]["tasks"]["T-1"]
+        old_branch, old_worktree = task["branch"], task["worktree"]
+        on_step_refused(self.store, self.paths, "impl-1", {"role": "implementer", "cwd": old_worktree, "reason": "no result"})
+        self.assertNotEqual(task["branch"], old_branch)
+        self.assertNotEqual(task["worktree"], old_worktree)
+        self.assertEqual(task["status"], "pending")
+        self.assertEqual(step(self.store, self.paths, self.ctx).request["role"], "implementer")
+
+    def test_a_refused_implementer_whose_worktree_was_quarantined_keeps_one_entry(self):
+        action = step(self.store, self.paths, self.ctx)
+        task = self.store.state["execute"]["tasks"]["T-1"]
+        old_worktree = task["worktree"]
+        self.store.state["steps"]["quarantined"].append(
+            {"stepAttemptId": "impl-1", "path": old_worktree, "reason": "refused", "at": "now"})
+        on_step_refused(self.store, self.paths, "impl-1", {"role": "implementer", "cwd": old_worktree, "reason": "no result"})
+        entries = [q for q in self.store.state["steps"]["quarantined"] if Path(q["path"]).resolve() == Path(old_worktree).resolve()]
+        self.assertEqual(len(entries), 1)
+        self.assertNotEqual(task["worktree"], old_worktree)
 
     def test_review_fail_reissues_implement_with_the_finding_in_reason(self):
         action = step(self.store, self.paths, self.ctx)
@@ -569,10 +664,10 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertEqual(action.request["role"], "implementer")
         self.assertIn("missing a null check", action.request["reason"])
 
-    def test_retries_past_the_limit_block_the_task(self):
-        # Each retry costs two step() calls (implement, then review), so the loop
-        # needs headroom for 2 * (retry_limit() + 1) calls, not retry_limit() + 1.
-        for attempt in range(2 * (retry_limit() + 2)):
+    def test_a_repeated_review_reason_blocks_the_task(self):
+        # Each retry costs two step() calls (implement, then review); the second review
+        # reports the same problem, so the task blocks and the issue says it repeated.
+        for attempt in range(8):
             action = step(self.store, self.paths, self.ctx)
             if isinstance(action, Product):
                 break
@@ -593,6 +688,8 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertEqual(action.product["exit"], "blocked")
         self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["status"], "blocked")
         self.assertTrue(action.product["issues"])
+        self.assertTrue(action.product["issues"][0]["repeated"])
+        self.assertEqual(self.store.state["execute"]["tasks"]["T-1"]["retries"], 2)
         assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product, check_boundary=False)
 
     def test_mustflip_on_an_ordinary_task_routes_to_plan_gap(self):
@@ -699,7 +796,7 @@ class ExecuteLifecycleTests(unittest.TestCase):
         # verify.sh is broken once, on the task's own worktree/branch, which every
         # retry below reuses (_ensure_worktree creates it only on the first call).
         broken = False
-        for attempt in range(2 * (retry_limit() + 2)):
+        for attempt in range(8):
             action = step(self.store, self.paths, self.ctx)
             if isinstance(action, Product):
                 break
@@ -810,12 +907,12 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertEqual(task_state["review"], {"sentinel": True})
         self.assertEqual(self.store.state["execute"]["handledRejections"], ["attempt-2"])
 
-    def test_review_reissues_past_the_limit_block_the_task(self):
+    def test_a_repeated_review_reissue_reason_blocks_the_task(self):
         # LF-35: a review that never attests must not be re-issued forever; each
-        # E6 re-issue counts as a retry, and past the limit the task blocks.
+        # E6 re-issue is a retry, and the same reason coming back blocks the task.
         worktree, task_head = self._implement_and_review("T-1", "T-1.txt")
         task_state = self.store.state["execute"]["tasks"]["T-1"]
-        for n in range(retry_limit() + 1):
+        for n in range(4):
             rejection_ctx = self.ctx | {
                 "attempt": {"id": f"attempt-e6-{n}"},
                 "entry": {"mode": "remediation", "payload": {"rejected": {
@@ -832,7 +929,7 @@ class ExecuteLifecycleTests(unittest.TestCase):
         self.assertIsInstance(action, Product)
         self.assertEqual(action.product["exit"], "blocked")
         self.assertEqual(task_state["status"], "blocked")
-        self.assertEqual(task_state["retries"], retry_limit() + 1)
+        self.assertEqual(task_state["retries"], 2)
         self.assertEqual(task_state["commits"], [task_head])
         assert_product_holds(self, self.store, self.paths, self.repo, "execute", action.product, check_boundary=False)
 

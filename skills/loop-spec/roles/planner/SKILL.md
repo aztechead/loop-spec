@@ -100,6 +100,13 @@ never for installing, building, or running the plan's own verify commands.
 - **Ground every external claim.** A task that leans on how a third-party
   dependency behaves needs that behavior checked against its current
   documentation, not recalled; record what you found rather than asserting it.
+- **Read the team's instructions.** Read the repository's `AGENTS.md`, `CLAUDE.md`, and
+  `CONTRIBUTING*` (at the root and in the touched directories) when present, and
+  follow them; they outrank this role's style defaults, except the program's contract.
+- **Check what the change reaches.** When the change alters behavior a doc describes
+  (README, `docs/`, docstrings of public APIs), one task updates that doc. When it
+  changes a public symbol, grep for its callers outside the touched files, list
+  them in the plan, and cover them with a task.
 - **Match the house's own style.** Read a couple of neighboring files in each
   directory a task touches before writing that task's steps, so the task tells the
   implementer to extend the existing pattern rather than invent a new one.

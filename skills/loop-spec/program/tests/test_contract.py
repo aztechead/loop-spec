@@ -1,4 +1,6 @@
 """Unit tests for loop_spec.contract: resolution precedence and the process contract."""
+import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -263,3 +265,52 @@ class AcceptRemotePathsConfigTests(unittest.TestCase):
             config.write_text('{"deliver": {"acceptRemotePaths": "CHANGELOG.md"}}')
             with self.assertRaises(LoopSpecError):
                 load_config(root)
+
+
+class DeliverConfigTests(unittest.TestCase):
+    def test_readiness_prefix_reviewers_and_labels_are_validated(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            (root / ".loop-spec").mkdir()
+            config = root / ".loop-spec" / "config.json"
+            config.write_text('{"deliver": {"readiness": "none", "branchPrefix": "team/", "reviewers": ["a"], "labels": ["b"]}}')
+            self.assertEqual(contract.load_config(root)["deliver"]["branchPrefix"], "team/")
+            for bad in ('{"readiness": "wait"}', '{"branchPrefix": "team"}', '{"branchPrefix": ""}',
+                        '{"reviewers": "a"}', '{"labels": [""]}'):
+                config.write_text('{"deliver": ' + bad + "}")
+                with self.assertRaises(LoopSpecError):
+                    contract.load_config(root)
+
+
+class StartFactsEnvelopeTests(unittest.TestCase):
+    def test_the_context_schema_accepts_issue_and_open_work(self):
+        from loop_spec.schema import load_schema, validate
+        with tempfile.TemporaryDirectory() as t:
+            envelope = _envelope("a-1", t, FeaturePaths(root=Path(t) / "run"))
+            self.assertEqual(validate(envelope, load_schema("context")), [])
+            envelope.update(issue={"number": 1}, openWork={"repo": {"openPrs": [], "takenBranch": False}})
+            self.assertEqual(validate(envelope, load_schema("context")), [])
+
+
+class DeliverBranchConfigTests(unittest.TestCase):
+    def _load(self, deliver):
+        from loop_spec.contract import load_config
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / ".loop-spec").mkdir()
+            (root / ".loop-spec" / "config.json").write_text(json.dumps({"deliver": deliver}))
+            return load_config(root)
+
+    def test_accepts_a_valid_name(self):
+        self.assertEqual(self._load({"branch": "feature/AVP-1234"})["deliver"]["branch"], "feature/AVP-1234")
+
+    def test_unset_is_accepted(self):
+        self.assertNotIn("branch", self._load({"base": "main"})["deliver"])
+
+    def test_refuses_an_invalid_value(self):
+        from loop_spec.errors import LoopSpecError
+        # `git check-ref-format` runs once per run in controller._resolve_repos, not here.
+        for bad in ("-x", "refs/heads/x", "HEAD", "task", "task/x", "", 7, ["a"]):
+            with self.subTest(bad=bad), self.assertRaises(LoopSpecError):
+                self._load({"branch": bad})

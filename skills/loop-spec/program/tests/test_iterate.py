@@ -126,20 +126,31 @@ class IterateTests(unittest.TestCase):
         self.assertEqual(action.product["gaps"], [{"target": "execute", "text": "open finding F-1 (Critical) at a.py:1: x", "findingId": "F-1"}])
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
-    def test_met_with_critical_open_finding_and_no_budget_room_escalates(self):
+    def test_a_critical_finding_already_closed_out_is_forced_again_never_deferred(self):
         self.store.state["ledger"]["findings"] = [_finding("F-1", "Critical", "open")]
-        self.store.state["budget"]["spent"] = self.store.state["budget"]["limit"]
+        self.store.state["closeOuts"] = [{"source": {"findingId": "F-1"}}]
         self.store.save()
         action = self._judge_result("met", [])
-        self.assertEqual(action.product["exit"], "escalated")
+        self.assertEqual(action.product["exit"], "rewind")
         self.assertEqual(action.product["verdict"], "unmet")
+        self.assertEqual(self.store.state["ledger"]["findings"][0]["disposition"], "open")
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
-    def test_met_with_minor_open_finding_converges_and_defers_it(self):
-        # LF-46: nobody used to disposition a non-Critical open finding, so it
-        # forced "unmet" forever. The program now defers a Minor one itself, and F11:
-        # a deferred Minor finding is reported but is not a caveat.
+    def test_met_with_a_minor_open_finding_and_no_earlier_close_out_rewinds_to_an_execute_close_out(self):
         self.store.state["ledger"]["findings"] = [_finding("F-1", "Minor", "open")]
+        action = self._judge_result("met", [])
+        self.assertEqual((action.product["exit"], action.product["verdict"]), ("rewind", "unmet"))
+        self.assertEqual(action.product["gaps"][0]["target"], "execute")
+        self.assertEqual(action.product["gaps"][0]["findingId"], "F-1")
+        self.assertEqual(self.store.state["ledger"]["findings"][0]["disposition"], "open")
+
+    def test_a_minor_finding_already_closed_out_once_converges_and_is_deferred(self):
+        # LF-46: the program defers a non-Critical open finding itself once one
+        # close-out already targeted it, and F11: a deferred Minor finding is reported but is
+        # not a caveat.
+        self.store.state["ledger"]["findings"] = [_finding("F-1", "Minor", "open")]
+        self.store.state["closeOuts"] = [{"source": {"findingId": "F-1"}}]
+        self.store.save()
         action = self._judge_result("met", [])
         self.assertEqual((action.product["exit"], action.product["caveats"]), ("converged", []))
         finding = self.store.state["ledger"]["findings"][0]
@@ -147,7 +158,7 @@ class IterateTests(unittest.TestCase):
         self.assertEqual(finding["reason"], "left open at ITERATE; deferred by policy")
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
-    def test_met_with_important_open_finding_and_budget_room_rewinds_to_an_execute_close_out(self):
+    def test_met_with_an_important_open_finding_and_no_earlier_close_out_rewinds_to_an_execute_close_out(self):
         self.store.state["ledger"]["findings"] = [_finding("F-1", "Important", "open")]
         action = self._judge_result("met", [])
         self.assertEqual(action.product["exit"], "rewind")
@@ -158,9 +169,9 @@ class IterateTests(unittest.TestCase):
         self.assertEqual(self.store.state["ledger"]["findings"][0]["disposition"], "open")
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
-    def test_met_with_important_open_finding_and_no_budget_room_defers_and_converges_with_caveats(self):
+    def test_an_important_finding_already_closed_out_once_is_deferred_and_converges_with_caveats(self):
         self.store.state["ledger"]["findings"] = [_finding("F-1", "Important", "open")]
-        self.store.state["budget"]["spent"] = self.store.state["budget"]["limit"]
+        self.store.state["closeOuts"] = [{"source": {"findingId": "F-1"}}]
         self.store.save()
         action = self._judge_result("met", [])
         self.assertEqual(action.product["exit"], "converged with caveats")
@@ -175,16 +186,17 @@ class IterateTests(unittest.TestCase):
         self.assertEqual(action.product["exit"], "escalated")
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
-    def test_unmet_with_gaps_and_budget_room_rewinds(self):
+    def test_unmet_with_gaps_rewinds(self):
         action = self._judge_result("unmet", [{"target": "plan", "text": "missing a case"}])
         self.assertEqual(action.product["exit"], "rewind")
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
-    def test_unmet_without_budget_room_escalates(self):
-        self.store.state["budget"]["spent"] = self.store.state["budget"]["limit"]
+    def test_unmet_with_gaps_still_rewinds_after_earlier_rewinds(self):
+        self.store.state["budget"]["transitions"] = [
+            {"from": "verify", "exit": "plan gap", "to": "plan", "attemptId": f"a{n}", "reason": "gap", "at": "t"} for n in range(5)]
         self.store.save()
         action = self._judge_result("unmet", [{"target": "plan", "text": "missing a case"}])
-        self.assertEqual(action.product["exit"], "escalated")
+        self.assertEqual(action.product["exit"], "rewind")
         assert_product_holds(self, self.store, self.paths, self.repo, "iterate", action.product)
 
     def test_prior_gaps_accumulate_across_a_rewind_and_a_new_head(self):
@@ -259,7 +271,7 @@ class IterateTests(unittest.TestCase):
         request = step(self.store, self.paths, self.ctx).request
         headings = self._headings(request["prompt"])
         self.assertFalse([h for h in headings if h.startswith("diff")])
-        self.assertTrue({"request", "spec", "verify", "priorGaps", "budget"} <= set(headings))
+        self.assertTrue({"request", "spec", "verify", "priorGaps"} <= set(headings))
 
     def test_legacy_iterate_state_reinitializes_and_emits_module_state_reset(self):
         # A run whose state.iterate predates the per-repo shape (LF-28) has

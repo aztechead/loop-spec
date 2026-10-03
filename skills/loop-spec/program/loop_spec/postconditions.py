@@ -12,7 +12,6 @@ about an adopted PR that the checks and the phases share (`start_sha`,
 `Boundary.weakened_assurance` after a passing check to fold into state and the result.
 """
 import json
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,12 +29,56 @@ from loop_spec.ids import digest
 from loop_spec.jsonio import read_json
 from loop_spec.schema import load_schema, validate
 
-RETRY_LIMIT_DEFAULT = 3
+_VOLATILE = [
+    re.compile(r"\b(?:step|attempt|range|finding|question|run)-[0-9a-f]+(?:-\d+)?\b"),
+    re.compile(r"\b(?=[0-9a-f]*\d)[0-9a-f]{7,}\b"),
+    re.compile(r"\b\d+\b"),
+]
 
 
-def retry_limit() -> int:
-    env = os.environ.get("LOOP_SPEC_STEP_RETRIES")
-    return int(env) if env else RETRY_LIMIT_DEFAULT
+def reason_key(text: str) -> str:
+    """A rejection reason with its volatile parts removed (step and attempt ids, hex
+    runs of 7 or more, bare numbers), lower-cased and whitespace-collapsed, so the same
+    problem reported twice compares equal."""
+    text = str(text).lower()
+    for pattern in _VOLATILE:
+        text = pattern.sub("", text)
+    return " ".join(text.split())
+
+
+def cause_key(phase: str, exit_: str, product: dict) -> str:
+    """What sent the run back, as a comparable string (the progress rule's `cause`)."""
+    verdicts = product.get("verdicts") or []
+    findings = product.get("findings") or []
+    if phase == "iterate":
+        parts = [g.get("findingId") or f"{g.get('target')}:{reason_key(g.get('text', ''))}"
+                 for g in product.get("gaps") or []]
+    elif exit_ == "implementation gap":
+        parts = [f"fail:{v['criterion']}" for v in verdicts if v.get("verdict") == "fail"]
+        parts += [f"critical:{f['id']}" for f in findings if f.get("severity") == "Critical" and f.get("disposition") == "open"]
+    elif exit_ == "evidence incomplete":
+        parts = [f"no-evidence:{v['criterion']}" for v in verdicts if v.get("verdict") != "blocked" and not v.get("evidence")]
+    else:
+        texts = [i.get("text") for i in product.get("issues") or []]
+        texts += [v.get("cause") for v in verdicts] + [f.get("cause") for f in findings]
+        parts = [reason_key(t) for t in texts if t]
+    return "|".join(sorted(set(parts))) or exit_
+
+
+def fingerprint(store, product: dict) -> str:
+    """The state a backward exit leaves: per-repo tree of the verified head plus the
+    requirements and plan revisions. Tree, not commit, so an oscillation that lands back
+    on identical content is the same fingerprint."""
+    executed = (store.state["products"].get("execute") or {}).get("product") or {}
+    trees = {}
+    for name, head in sorted((product.get("heads") or executed.get("heads") or {}).items()):
+        info = (store.state.get("repos") or {}).get(name)
+        try:
+            trees[name] = repo_module.head_sha(Path(info["path"]), f"{head}^{{tree}}") if info else head
+        except LoopSpecError:
+            trees[name] = head
+    revisions = store.state["revisions"]
+    return digest({"trees": trees, "requirements": revisions.get("requirements"), "plan": revisions.get("plan")})
 
 
 def requirements_revision(spec_product: dict) -> str:
@@ -102,7 +145,7 @@ ROUTES: dict[str, dict[str, dict]] = {
     },
     "deliver": {
         "delivered": {"requires": ["D1", "D2", "D3", "D4", "D6", "D7", "D8"], "next": (None, "terminal"), "backward": False},
-        "partially delivered": {"requires": ["D1", "D2", "D4", "D5", "D7", "D8"], "next": (None, "terminal"), "backward": False},
+        "partially delivered": {"requires": ["D1", "D2", "D3", "D4", "D5", "D7", "D8"], "next": (None, "terminal"), "backward": False},
         "delivery blocked": {"requires": ["D4"], "next": ("deliver", "remediation"), "backward": False, "pause": True},
         "base moved": {"requires": ["D4", "D9", "T2"], "next": ("execute", "remediation"), "backward": True},
     },
@@ -177,13 +220,18 @@ def adoptable_task_ids(state: dict, plan_tasks: list[dict]) -> set[str]:
 
 
 def adopted_commits(store, repo_name: str, repo_path: Path) -> set[str]:
-    """The adopted PR's commits (adoption.baseSha..headSha) when this run adopted one
-    in `repo_name`; empty otherwise. E4 and EXECUTE's unmapped-commits pause both
-    treat them as already accounted for (LF-44)."""
+    """Commits on the feature branch no task made: the adopted PR's own
+    (adoption.baseSha..headSha, LF-44) and those a branch move merged in from origin's
+    PR branch (a teammate's push). E4 and EXECUTE's unmapped-commits pause both treat
+    them as already accounted for."""
+    commits: set[str] = set()
     adoption = store.state.get("adoption")
-    if not adoption or adoption.get("repo") != repo_name:
-        return set()
-    return set(repo_module.commits_between(repo_path, adoption["baseSha"], adoption["headSha"]))
+    if adoption and adoption.get("repo") == repo_name:
+        commits.update(repo_module.commits_between(repo_path, adoption["baseSha"], adoption["headSha"]))
+    repo_info = store.state["repos"].get(repo_name) or {}
+    for remote_head in repo_info.get("mergedRemoteHeads") or []:
+        commits.update(repo_module.commits_between(repo_path, repo_info["baseSha"], remote_head))
+    return commits
 
 
 def ran_default(store, phase: str) -> bool:
@@ -264,12 +312,16 @@ def _check_supersedes(store, findings: list[dict], repos: dict[str, Path]) -> st
     # against a different repo's git history is meaningless, so files are tracked
     # per repo, never pooled across the workspace.
     touched_by_repo: dict[str, set[str]] = {}
+    ranges_by_path: dict[tuple[str, str], list[str]] = {}  # (repo, path) -> range ids, for the message
     for reviewed_range in reviewed_ranges:
         repo_path = repos.get(reviewed_range.get("repo"))
         if repo_path is None:
             continue
         out = repo_module.run_git(repo_path, "diff", "--name-only", f"{reviewed_range['from']}..{reviewed_range['to']}")
-        touched_by_repo.setdefault(reviewed_range["repo"], set()).update(line for line in out.splitlines() if line)
+        files = [line for line in out.splitlines() if line]
+        touched_by_repo.setdefault(reviewed_range["repo"], set()).update(files)
+        for path in files:
+            ranges_by_path.setdefault((reviewed_range["repo"], path), []).append(reviewed_range.get("id"))
     known_ids = {f["id"] for f in ledger["findings"]} | {r["id"] for r in reviewed_ranges if "id" in r}
     # ponytail: a finding with no repo tag in a multi-repo product can't be matched
     # to one repo's touched files; a single-repo product needs no tag at all.
@@ -288,7 +340,15 @@ def _check_supersedes(store, findings: list[dict], repos: dict[str, Path]) -> st
             continue
         supersedes = finding.get("supersedes")
         if not supersedes or supersedes.get("id") not in known_ids:
-            return f"finding {finding.get('id')} touches previously reviewed code with no valid supersedes"
+            # Name the fix: the reviewer never sees the program's finding ids, only its own.
+            ranges = [r for r in ranges_by_path.get((repo_name, path), []) if r]
+            earlier = [f["id"] for f in ledger["findings"]
+                       if f.get("repo") in (repo_name, None) and f.get("location", "").split(":", 1)[0] == path]
+            return (f"finding at {finding.get('location')} touches {path}, which an earlier pass reviewed "
+                    f"(ranges {', '.join(ranges) or 'unknown'}); set its supersedes to "
+                    f'{{"kind": "range", "id": "{ranges[-1] if ranges else "<range id>"}"}}'
+                    + (f', or {{"kind": "finding", "id": ...}} naming the earlier finding it repeats ({", ".join(earlier)})'
+                       if earlier else ""))
     return None
 
 
@@ -462,7 +522,9 @@ class Boundary:
                 return f"baseline for repo {repo_name!r}: prepare command does not match the plan's"
             prepare_run = repo_dict.get("prepareRun")
             if prepare_run is not None and prepare_run.get("exitStatus") != 0:
-                return f"baseline for repo {repo_name!r}: prepare command failed"
+                return (f"baseline for repo {repo_name!r}: prepare command failed at base (exit "
+                        f"{prepare_run.get('exitStatus')}): {self.product.get('prepare')}; it runs before any task "
+                        "in a checkout of the base, so it cannot use a file a task adds")
             repo_health = health.get(repo_name, {})
             for entry in repo_dict.get("entries", {}).values():
                 run = entry.get("run")
@@ -838,15 +900,13 @@ class Boundary:
         if not issues:
             return "no issues recorded for the blocked exit"
         has_permission_denied = any(_PERMISSION_DENIED_MARKER in i["text"] for i in issues)
-        # A task that exhausted its own per-step retries is what E10 means by "up to
-        # the per-step retry limit"; counting only the phase's product rejections made
-        # a correctly blocked product re-run three empty attempts first (LF-40).
-        step_retries_exhausted = ran_default(self.store, "execute") and any(
-            i.get("retries", 0) > retry_limit() for i in issues
-        )
-        if (self.store.state["phase"].get("retries", 0) < retry_limit() and not has_permission_denied
-                and not step_retries_exhausted):
-            return f"blocked claimed before the retry limit ({retry_limit()}) or a permission-denied issue"
+        # A task whose rejection reason repeated, or that changed three times without
+        # passing, is what E10 means by "retried until it stopped changing". Only the
+        # default EXECUTE records that, so an external product cannot vouch for itself;
+        # it needs one rejected round and an answered blocked question first.
+        repeated = ran_default(self.store, "execute") and any(i.get("repeated") or i.get("churn") for i in issues)
+        if not (repeated or has_permission_denied or self.store.state["phase"].get("blockedAnswered")):
+            return "blocked claimed before a task repeated a rejection reason, a permission-denied issue, or an answered blocked question"
         return None
 
     def _e11(self) -> str | None:
@@ -1032,13 +1092,19 @@ class Boundary:
                     return f"gap {i} targets EXECUTE with no repo; name one of {', '.join(repos)}"
         return None
 
+    def _repeat(self, exit_: str | None = None) -> str | None:
+        exit_ = exit_ or self.exit
+        return budget_module.repeat_of(self.store, self.phase, exit_, cause_key(self.phase, exit_, self.product),
+                                       fingerprint(self.store, self.product))
+
     def _i3(self) -> str | None:
-        return None if budget_module.has_room(self.store) else "the rewind budget has no room"
+        return None if self._repeat() != "identical" else "the rewind repeats an identical state; no progress"
 
     def _i4(self) -> str | None:
-        rewind_refused = self.product.get("verdict") == "unmet" and not budget_module.has_room(self.store)
+        rewind_refused = (self.product.get("verdict") == "unmet" and bool(self.product.get("gaps"))
+                          and self._repeat("rewind") == "identical")
         unclosable_gap = self.product.get("verdict") == "unmet" and not self.product.get("gaps")
-        return None if (rewind_refused or unclosable_gap) else "escalated claimed with budget remaining and every gap routable"
+        return None if (rewind_refused or unclosable_gap) else "escalated claimed with every gap routable and no repeated state"
 
     def _i5(self) -> str | None:
         verify_entry = self.store.state["products"]["verify"]
@@ -1122,15 +1188,17 @@ class Boundary:
         return None
 
     def _d3(self) -> str | None:
-        if load_config(self.project_root).get("deliver", {}).get("readiness", "none") != "checks":
+        if (load_config(self.project_root).get("deliver") or {}).get("readiness", "checks") != "checks":
             return None
         for entry in self.product["repos"]:
             if entry["state"] != "delivered" or entry.get("pr") is None:
                 continue
             repo_info = self._repo_entries()[entry["repo"]]
-            code, _, err = repo_module.run_gh(Path(repo_info["path"]), "pr", "checks", str(entry["pr"]["number"]))
-            if code != 0:
-                return f"repo {entry['repo']}: required checks are not satisfied: {err.strip()}"
+            # pending, none and error are the row's caveats, not refusals: DELIVER reads CI
+            # once and never waits; a check that fails after that is revise's to handle.
+            state, detail = repo_module.pr_checks(Path(repo_info["path"]), entry["pr"]["number"])
+            if state == "fail":
+                return f"repo {entry['repo']}: required checks are not satisfied: {detail}"
         return None
 
     def _d4(self) -> str | None:
@@ -1222,11 +1290,11 @@ class Boundary:
         # Nothing is published on a base move, so every row is either a moved repo or
         # skipped; a moved row's conflicts are recomputed now against the EXECUTE head.
         heads = self.store.state["products"]["execute"]["product"].get("heads", {})
-        moved = [e for e in self.product["repos"] if e["state"] == "base moved"]
+        moved = [e for e in self.product["repos"] if e["state"] in ("base moved", "branch moved")]
         if not moved:
-            return "base moved names no repo whose base moved"
+            return "base moved names no repo whose base or PR branch moved"
         for entry in self.product["repos"]:
-            if entry["state"] not in ("base moved", "skipped") or entry.get("pr") or entry.get("deliveredSha"):
+            if entry["state"] not in ("base moved", "branch moved", "skipped") or entry.get("pr") or entry.get("deliveredSha"):
                 return f"repo {entry['repo']}: a base-moved product publishes nothing"
         for entry in moved:
             repo_info = self._repo_entries().get(entry["repo"])
@@ -1234,12 +1302,23 @@ class Boundary:
             if repo_info is None or head is None:
                 return f"repo {entry['repo']}: not a repo EXECUTE touched"
             path = Path(repo_info["path"])
+            if entry["state"] == "branch moved":
+                ref = f"refs/remotes/origin/{repo_info['featureBranch']}"
+                proc = repo_module._git(path, "rev-parse", "-q", "--verify", ref)
+                remote = proc.stdout.strip()
+                if proc.returncode != 0 or entry.get("remoteHead") != remote:
+                    return f"repo {entry['repo']}: remoteHead is not origin/{repo_info['featureBranch']}'s head"
+                if repo_module.is_ancestor(path, remote, head):
+                    return f"repo {entry['repo']}: origin/{repo_info['featureBranch']} holds nothing the EXECUTE head lacks"
+                if sorted(repo_module.merge_conflicts(path, head, remote)) != sorted(entry.get("conflicts") or []):
+                    return f"repo {entry['repo']}: the recorded conflicts are not what merging remoteHead into the head leaves"
+                continue
             new_base = entry.get("newBase") or ""
             if not repo_module.is_ancestor(path, repo_info["baseSha"], new_base) or \
                     not repo_module.is_ancestor(path, new_base, f"refs/remotes/origin/{repo_info['defaultBranch']}"):
                 return f"repo {entry['repo']}: newBase is not origin/{repo_info['defaultBranch']} moved forward from the base"
             conflicts = repo_module.merge_conflicts(path, head, new_base)
-            if not conflicts or sorted(conflicts) != sorted(entry.get("conflicts") or []):
+            if sorted(conflicts) != sorted(entry.get("conflicts") or []):
                 return f"repo {entry['repo']}: the recorded conflicts are not what merging newBase into the head leaves"
         return None
 
@@ -1346,12 +1425,10 @@ class Boundary:
                     return f"PR {action['url']} head is {(head or err.strip() or 'unreadable')[:40]}, not the claimed {action['sha'][:12]}"
         return None
 
-    # -- T1: shared budget -----------------------------------------------
+    # -- T1: no repeat of an identical state -------------------------------
 
     def _t1(self) -> str | None:
-        return None if budget_module.has_room(self.store) else "the rewind budget has no room"
+        return None if self._repeat() != "identical" else "no progress: the same exit on an unchanged tree"
 
     def _t2(self) -> str | None:
-        if budget_module.base_move_room(self.store):
-            return None
-        return f"the base moved {budget_module.BASE_MOVE_LIMIT} times; the base-move limit is {budget_module.BASE_MOVE_LIMIT}"
+        return None if budget_module.base_move_room(self.store) else "the base-move count is at its limit and the operator has not continued"

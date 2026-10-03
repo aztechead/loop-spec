@@ -4,7 +4,7 @@ For a developer installing loop-spec in Claude Code, or embedding it in a Python
 app on the Claude Agent SDK. Use this guide to install it, run an entry, and read
 a result.
 
-Current version: 7.8.3
+Current version: 7.9.0
 
 ## Contents
 
@@ -163,7 +163,11 @@ environment variables take precedence over it.
 | `phases.<phase>` (config) | bind a phase to `"external"` instead of its default implementation |
 | `roles.<role>` (config), `LOOP_SPEC_ROLE_<ROLE>` | bind a role to a skill other than the bundled default |
 | `deliver.after` (config) | skills to run on the delivered PR after the result is reported, e.g. `["my-plugin:pr-follow-up"]` |
-| `deliver.readiness` (config) | `"checks"` waits on required PR checks before DELIVER finishes |
+| `deliver.readiness` (config) | `"checks"` (default) reads the PR's CI once after the push, never waiting: pending is a caveat, a failing check drafts the PR and blocks the delivery; `"none"` skips it |
+| `deliver.base` (config) | the integration branch PRs target; default origin's default branch. Runs start from its fetched tip, not the checked-out commit |
+| `deliver.branch` (config) | the feature branch name, for repos with a naming rule (e.g. `feature/AVP-1234`); wins over the prefix and the issue-derived name, still suffixed `-2`, `-3` when taken (contributed by George Muresan, #132) |
+| `deliver.branchPrefix` (config) | prefix for new feature branches, ending in `/`; default `fix/` for debug runs, else `feat/` |
+| `deliver.reviewers`, `deliver.labels` (config) | lists of reviewers and labels set on a new PR (it is always assigned to you); names the repository rejects are dropped with a caveat |
 | `deliver.acceptRemotePaths` (config) | path globs, e.g. `["CHANGELOG.md"]`: accept a bot's commits on the PR branch that touch only these paths and none of the verified change |
 | `LOOP_SPEC_HOME` | state home root; default `~/.loop-spec` |
 | `LOOP_SPEC_PLUGIN_DIRS` | plugin directories, separated by `:`, where `plugin:skill` names resolve first; for a plugin loaded by path, such as the Agent SDK's local plugins (`examples/sdk-plugin --plugin` sets it) |
@@ -171,8 +175,6 @@ environment variables take precedence over it.
 | `LOOP_SPEC_PHASE_MODEL_<PHASE>` | model for every step of that phase (`SPEC`, `PLAN`, `EXECUTE`, ...) whose role has no model of its own set, e.g. `LOOP_SPEC_PHASE_MODEL_PLAN=opus`. For SPEC and PLAN it takes effect under an Agent SDK runner, as above |
 | `roles.<role>.effort` (config), `LOOP_SPEC_EFFORT_<ROLE>` | effort (`low`, `medium`, `high`, `xhigh`, `max`) for every worker that role dispatches, e.g. `LOOP_SPEC_EFFORT_CODE_REVIEWER=low`. By default the router runs at `low`, and every other worker at `medium`; a `null` in config inherits. The worker runs as the plugin's `loop-spec:worker-<effort>` agent. It does not apply to a step the lead runs itself (SPEC, PLAN, debug, revise, direct), which uses the session's `--effort`. A mismatched agent type stops a plan-critic, code-reviewer, iterate-judge or router step; for implementer and verifier it is recorded and the run goes on |
 | `spec.approval` (config), `LOOP_SPEC_SPEC_APPROVAL` | `policy` approves SPEC's requirements without asking, as 6.x's default `auto` style did; the interview and every other question are still asked. Default `ask` |
-| `LOOP_SPEC_REWIND_BUDGET` | how many backward transitions one run may spend; default 2 |
-| `LOOP_SPEC_STEP_RETRIES` | retries before a rejected product asks you to fix and re-enter or stop; default 3 |
 
 ### Use your own skill or plugin in a phase
 

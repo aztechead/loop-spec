@@ -508,24 +508,24 @@ class PostconditionsTests(unittest.TestCase):
     def test_e10(self):
         blocked = copy.deepcopy(self.execute_product)
         blocked["issues"] = [{"task": "T-1", "text": "still failing"}]
-        self.assertIsNotNone(self._boundary("execute", blocked, "blocked")._e10())  # retries below the limit
-        self.store.state["phase"]["retries"] = postconditions.retry_limit()
+        self.assertIsNotNone(self._boundary("execute", blocked, "blocked")._e10())  # nothing repeated yet
+        self.store.state["phase"]["blockedAnswered"] = True  # the operator answered a blocked question
         self.assertIsNone(self._boundary("execute", blocked, "blocked")._e10())
 
-    def test_e10_accepts_a_task_that_exhausted_its_own_retries(self):
-        # LF-40: the task's per-step retries count, not only the phase's rejections.
+    def test_e10_accepts_a_repeated_reason_or_churn_block_only_from_the_default_execute(self):
+        for flag in ("repeated", "churn"):
+            blocked = copy.deepcopy(self.execute_product)
+            blocked["issues"] = [{"task": "T-1", "text": "no commit was made on the task branch", flag: True}]
+            self.store.state["implementations"]["phases"]["execute"] = "default"
+            self.assertIsNone(self._boundary("execute", blocked, "blocked")._e10())
+            # D4: an external EXECUTE cannot vouch for its own repeated-reason flag.
+            self.store.state["implementations"]["phases"]["execute"] = "external"
+            self.assertIsNotNone(self._boundary("execute", blocked, "blocked")._e10())
+
+    def test_e10_accepts_a_permission_denied_issue(self):
         blocked = copy.deepcopy(self.execute_product)
-        blocked["issues"] = [{"task": "T-1", "text": "no commit was made on the task branch",
-                              "retries": postconditions.retry_limit() + 1}]
-        self.store.state["phase"]["retries"] = 0
-        self.store.state["implementations"]["phases"]["execute"] = "default"
+        blocked["issues"] = [{"task": "T-1", "text": "permission-denied: cannot write"}]
         self.assertIsNone(self._boundary("execute", blocked, "blocked")._e10())
-        blocked["issues"][0]["retries"] = 1
-        self.assertIsNotNone(self._boundary("execute", blocked, "blocked")._e10())
-        # D4: an external EXECUTE cannot vouch for its own retry count.
-        blocked["issues"][0]["retries"] = postconditions.retry_limit() + 1
-        self.store.state["implementations"]["phases"]["execute"] = "external"
-        self.assertIsNotNone(self._boundary("execute", blocked, "blocked")._e10())
 
     def test_e11(self):
         self.assertIsNone(self._boundary("execute", self.execute_product, "integrated")._e11())
@@ -670,7 +670,8 @@ class PostconditionsTests(unittest.TestCase):
         self.store.state["ledger"]["reviewedRanges"] = [{"id": "range-1", "repo": "repo", "from": self.base_sha, "to": self.sha_a, "full": False}]
         finding = {"id": "f-1", "location": "a.txt:1", "cause": "c", "severity": "Minor", "disposition": "open", "reason": None, "supersedes": None}
         product = dict(self.verify_product, findings=[finding])
-        self.assertIsNotNone(self._boundary("verify", product, "passed")._v8())
+        # The rejection names the fix the reviewer can apply.
+        self.assertIn('{"kind": "range", "id": "range-1"}', self._boundary("verify", product, "passed")._v8())
         finding["supersedes"] = {"kind": "range", "id": "range-1"}
         self.assertIsNone(self._boundary("verify", product, "passed")._v8())
 
@@ -771,29 +772,39 @@ class PostconditionsTests(unittest.TestCase):
         bad["gaps"] = [{"target": "debug", "text": "nope"}]
         self.assertIsNotNone(self._boundary("iterate", bad, "converged")._i2())
 
+    def _record_rewind(self, product, attempt="a-1"):
+        budget_module.spend(self.store, from_phase="iterate", exit="rewind", to_phase="execute", attempt_id=attempt, reason="rewind",
+                            cause=postconditions.cause_key("iterate", "rewind", product),
+                            fingerprint=postconditions.fingerprint(self.store, product))
+
+    def _rewinding(self):
+        rewind = copy.deepcopy(self.iterate_product)
+        rewind.update(exit="rewind", verdict="unmet", gaps=[{"target": "plan", "text": "missing a case"}])
+        return rewind
+
     def test_i3(self):
-        self.assertIsNone(self._boundary("iterate", self.iterate_product, "converged")._i3())
-        budget_module.spend(self.store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-1", reason="gap")
-        budget_module.spend(self.store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-2", reason="gap")
-        self.assertIsNotNone(self._boundary("iterate", self.iterate_product, "converged")._i3())
+        rewind = self._rewinding()
+        self.assertIsNone(self._boundary("iterate", rewind, "rewind")._i3())
+        self._record_rewind(rewind)
+        self.assertIsNotNone(self._boundary("iterate", rewind, "rewind")._i3())  # identical state
+        self.store.state["revisions"]["plan"] = "sha256:changed"  # something changed: a recurrence, not a repeat
+        self.assertIsNone(self._boundary("iterate", rewind, "rewind")._i3())
 
     def test_i4(self):
         escalated = copy.deepcopy(self.iterate_product)
         escalated["exit"] = "escalated"
         escalated["verdict"] = "unmet"
         # No gap at all (the fixture's own "gaps": []): an unclosable gap, valid
-        # grounds for "escalated" on its own, regardless of budget room.
+        # grounds for "escalated" on its own.
         self.assertIsNone(self._boundary("iterate", escalated, "escalated")._i4())
 
-        # A gap the router could still act on, with room left to rewind into:
-        # neither branch justifies "escalated" yet.
+        # A gap the router could still act on, no earlier rewind: "escalated" is unjustified.
         routable = copy.deepcopy(escalated)
         routable["gaps"] = [{"target": "plan", "text": "missing a case"}]
         self.assertIsNotNone(self._boundary("iterate", routable, "escalated")._i4())
 
-        # Budget exhausted: the refused-rewind branch passes regardless of gaps.
-        budget_module.spend(self.store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-1", reason="gap")
-        budget_module.spend(self.store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-2", reason="gap")
+        # The same rewind already left this exact state: the refused-rewind branch passes.
+        self._record_rewind(self._rewinding())
         self.assertIsNone(self._boundary("iterate", routable, "escalated")._i4())
 
     def test_i5(self):
@@ -840,8 +851,14 @@ class PostconditionsTests(unittest.TestCase):
         config_dir = self.repo_dir / ".loop-spec"
         config_dir.mkdir()
         atomic_write_json(config_dir / "config.json", {"deliver": {"readiness": "checks"}})
-        with patch.object(repo_module, "run_gh", lambda *a: (1, "", "checks pending")):
+        with patch.object(repo_module, "run_gh", lambda *a: (1, "", "build\tfail\t1m")):
             self.assertIsNotNone(self._boundary("deliver", self.deliver_product, "delivered")._d3())
+
+    def test_d3_holds_on_pending_checks_and_runs_on_a_partial_delivery(self):
+        # readiness defaults to "checks"; CI still running is the row's caveat, not a refusal.
+        with patch.object(repo_module, "run_gh", lambda *a: (8, "build\tpending\t0", "")):
+            self.assertIsNone(self._boundary("deliver", self.deliver_product, "delivered")._d3())
+        self.assertIn("D3", postconditions.ROUTES["deliver"]["partially delivered"]["requires"])
 
     def test_d4(self):
         self.assertIsNone(self._boundary("deliver", self.deliver_product, "delivered")._d4())
@@ -922,15 +939,33 @@ class PostconditionsTests(unittest.TestCase):
         self.assertIsNotNone(self._boundary("debug", {"reproduction": {"anything": True}}, "blocked reproduction")._b3())
         self.assertIsNone(self._boundary("debug", {}, "blocked reproduction")._b3())
 
-    # -- T1: shared budget -----------------------------------------------
+    # -- T1: no repeat of an identical state ------------------------------
 
     def test_t1(self):
-        self.assertIsNone(self._boundary("iterate", self.iterate_product, "converged")._t1())
-        budget_module.spend(self.store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-1", reason="gap")
-        budget_module.spend(self.store, from_phase="plan", exit="spec gap", to_phase="spec", attempt_id="a-2", reason="gap")
-        self.assertIsNotNone(self._boundary("iterate", self.iterate_product, "converged")._t1())
+        product = {"verdicts": [{"criterion": "C1", "verdict": "fail", "evidence": None, "cause": "x"}], "findings": []}
+        spend = lambda n: budget_module.spend(  # noqa: E731
+            self.store, from_phase="verify", exit="plan gap", to_phase="plan", attempt_id=f"a-{n}", reason="gap",
+            cause=postconditions.cause_key("verify", "plan gap", product),
+            fingerprint=postconditions.fingerprint(self.store, product))
+        self.assertIsNone(self._boundary("verify", product, "plan gap")._t1())
+        spend(1)
+        self.assertIsNotNone(self._boundary("verify", product, "plan gap")._t1())
+        self.store.state["revisions"]["requirements"] = "sha256:other"
+        self.assertIsNone(self._boundary("verify", product, "plan gap")._t1())
 
-    def test_a_base_move_requires_t2_not_t1_and_t2_refuses_the_fourth(self):
+    def test_cause_key_ignores_volatile_tokens_and_keys_findings_by_id(self):
+        key = postconditions.cause_key
+        a = {"issues": [{"text": "step-1a2b3c4d failed at deadbeef12 line 42"}]}
+        b = {"issues": [{"text": "step-9f8e7d6c failed at cafe0123ab line 7"}]}
+        self.assertEqual(key("execute", "plan gap", a), key("execute", "plan gap", b))
+        self.assertEqual(postconditions.reason_key("Step-AB12CD34  Failed   12 times"), "failed times")
+        gap = {"gaps": [{"target": "execute", "text": "x", "findingId": "F-1"}, {"target": "plan", "text": "A  b 12"}]}
+        self.assertEqual(key("iterate", "rewind", gap), "F-1|plan:a b")
+        impl = {"verdicts": [{"criterion": "C2", "verdict": "fail"}, {"criterion": "C1", "verdict": "fail"}],
+                "findings": [{"id": "F-9", "severity": "Critical", "disposition": "open"}]}
+        self.assertEqual(key("verify", "implementation gap", impl), "critical:F-9|fail:C1|fail:C2")
+
+    def test_a_base_move_requires_t2_not_t1_and_t2_refuses_until_the_operator_continues(self):
         requires = postconditions.ROUTES["deliver"]["base moved"]["requires"]
         self.assertIn("T2", requires)
         self.assertNotIn("T1", requires)
@@ -938,7 +973,9 @@ class PostconditionsTests(unittest.TestCase):
         for n in range(1, budget_module.BASE_MOVE_LIMIT + 1):
             self.assertIsNone(boundary._t2())
             budget_module.spend(self.store, from_phase="deliver", exit="base moved", to_phase="execute", attempt_id=f"d-{n}", reason="moved")
-        self.assertIn("base-move limit", boundary._t2())
+        self.assertIn("base-move count", boundary._t2())
+        self.store.state["budget"]["baseMovesContinuedAt"] = len(self.store.state["budget"]["transitions"])
+        self.assertIsNone(boundary._t2())
 
     # --- LF-55: close-outs --------------------------------------------------
 

@@ -61,6 +61,21 @@ def role_meta(name: str) -> dict[str, str]:
     return meta
 
 
+def _check_feature_branch(path: Path, branch) -> None:
+    # The checks that need no git; controller._resolve_repos runs `git check-ref-format`
+    # once per run, since this runs on every load_config call.
+    repair = 'set deliver.branch to a branch name such as "feature/AVP-1234", or remove it'
+    if not (isinstance(branch, str) and branch):
+        raise LoopSpecError(f"{path}: deliver.branch is {branch!r}; it is a non-empty branch name", repair=repair)
+    if branch.startswith(("-", "refs/")) or branch == "HEAD":
+        raise LoopSpecError(f"{path}: deliver.branch is {branch!r}; it cannot start with '-' or 'refs/', or be HEAD",
+                            repair=repair)
+    # EXECUTE's task branches are task/<slug>/<id>; git cannot hold them beside a `task` branch.
+    if branch == "task" or branch.startswith("task/"):
+        raise LoopSpecError(f"{path}: deliver.branch is {branch!r}; task/ holds the run's task branches",
+                            repair=repair)
+
+
 def load_config(project_root: Path) -> dict:
     path = Path(project_root) / ".loop-spec" / "config.json"
     if not path.is_file():
@@ -75,10 +90,27 @@ def load_config(project_root: Path) -> dict:
     if accept is not None and not (isinstance(accept, list) and all(isinstance(g, str) and g for g in accept)):
         raise LoopSpecError(f"{path}: deliver.acceptRemotePaths is {accept!r}; it is a list of path globs",
                             repair='set it to a list such as ["CHANGELOG.md"], or remove it')
+    branch = (config.get("deliver") or {}).get("branch")
+    if branch is not None:
+        _check_feature_branch(path, branch)
     after = (config.get("deliver") or {}).get("after")
     if after is not None and not (isinstance(after, list) and all(isinstance(s, str) and s for s in after)):
         raise LoopSpecError(f"{path}: deliver.after is {after!r}; it is a list of skill names",
                             repair='set it to a list such as ["my-plugin:pr-follow-up"], or remove it')
+    deliver = config.get("deliver") or {}
+    readiness = deliver.get("readiness")
+    if readiness is not None and readiness not in ("none", "checks"):
+        raise LoopSpecError(f"{path}: deliver.readiness is {readiness!r}; it is \"none\" or \"checks\"",
+                            repair='set deliver.readiness to "none" or "checks", or remove it')
+    prefix = deliver.get("branchPrefix")
+    if prefix is not None and not (isinstance(prefix, str) and prefix.endswith("/") and prefix != "/"):
+        raise LoopSpecError(f"{path}: deliver.branchPrefix is {prefix!r}; it is a non-empty string ending in \"/\"",
+                            repair='set it to a prefix such as "feature/", or remove it')
+    for key in ("reviewers", "labels"):
+        names = deliver.get(key)
+        if names is not None and not (isinstance(names, list) and all(isinstance(n, str) and n for n in names)):
+            raise LoopSpecError(f"{path}: deliver.{key} is {names!r}; it is a list of strings",
+                                repair=f"set deliver.{key} to a list of names, or remove it")
     approval = (config.get("spec") or {}).get("approval")
     if approval is not None and approval not in SPEC_APPROVALS:
         raise LoopSpecError(f"{path}: spec.approval is {approval!r}; it is \"ask\" or \"policy\"",

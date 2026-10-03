@@ -119,8 +119,19 @@
               "delivered",
               "failed",
               "skipped",
-              "base moved"
+              "base moved",
+              "branch moved"
             ]
+          },
+          "checks": {
+            "description": "7.9.0: one read of the PR's CI after the push (deliver.readiness \"checks\"); never waited on.",
+            "type": "object",
+            "required": ["state", "detail"],
+            "additionalProperties": false,
+            "properties": {
+              "state": {"type": "string", "enum": ["pass", "pending", "fail", "none", "error"]},
+              "detail": {"type": "string"}
+            }
           },
           "acceptedRemote": {
             "description": "7.1.0: commits after the verified SHA on the remote branch, accepted under deliver.acceptRemotePaths; deliveredSha stays the verified SHA.",
@@ -173,8 +184,12 @@
             "description": "On a `base moved` row: the PR base's tip that conflicts with the verified head.",
             "type": "string"
           },
+          "remoteHead": {
+            "description": "On a `branch moved` row: origin's feature branch tip, which holds commits the verified head lacks.",
+            "type": "string"
+          },
           "conflicts": {
-            "description": "On a `base moved` row: the paths a merge of newBase into the verified head leaves conflicted.",
+            "description": "On a `base moved` or `branch moved` row: the paths a merge of newBase (or remoteHead) into the verified head leaves conflicted.",
             "type": "array",
             "items": {
               "type": "string"

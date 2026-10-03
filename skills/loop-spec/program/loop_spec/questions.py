@@ -20,6 +20,17 @@ BLOCKED_OPTIONS = [
     {"value": "fix-and-re-enter", "label": "Fix and re-enter"},
 ]
 
+# A recurred-problem question's answers (the progress rule): `continue` routes the run
+# back again, `stop` ends it. `stop` is first and the default, as for a blocked question.
+# EXECUTE's blocked exit adds a third answer: a block no retry can clear (the plan's
+# verify cannot pass, a build output the plan never ignored) goes back to PLAN.
+EXECUTE_BLOCKED_OPTIONS = [*BLOCKED_OPTIONS, {"value": "plan gap", "label": "Plan gap (re-plan)"}]
+
+RECURRED_OPTIONS = [
+    {"value": "stop", "label": "Stop"},
+    {"value": "continue", "label": "Continue"},
+]
+
 
 def ask(store, paths, *, phase: str, attempt_id: str, text: str, kind: str,
         options: list[dict], default_value: str | None, payload: dict | None, save: bool = True,
@@ -63,6 +74,9 @@ def ask(store, paths, *, phase: str, attempt_id: str, text: str, kind: str,
 def answer(store, paths, *, question_id: str, value: str, scope: str = "question", by: str = "human",
            save: bool = True) -> dict:
     if question_id in store.state["questions"]["retired"]:
+        recorded = store.state["questions"]["answered"].get(question_id)
+        if recorded is not None and recorded["value"] == value:
+            return recorded  # a replayed answer (a lead retrying after the run moved on) is a no-op
         raise LoopSpecError(
             f"question {question_id} is retired",
             repair="answer the open question, see `loop-spec status`",

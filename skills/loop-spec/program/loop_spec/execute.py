@@ -19,7 +19,6 @@ from loop_spec import baseline as baseline_module
 from loop_spec import probes as probes_module
 from loop_spec import repo as repo_module
 from loop_spec import steps as steps_module
-from loop_spec.budget import has_room
 from loop_spec.contract import validate_request
 from loop_spec.errors import LoopSpecError
 from loop_spec.events import emit
@@ -28,7 +27,7 @@ from loop_spec.jsonio import read_json
 from loop_spec.paths import ensure_results_dir
 from loop_spec.questions import BLOCKED_OPTIONS
 from loop_spec.postconditions import (PLAN_IDENTITY_FIELDS as _PLAN_IDENTITY_FIELDS, adoptable_task_ids, adopted_commits,
-                                      close_out_view, close_outs, retry_limit)
+                                      close_out_view, close_outs, reason_key)
 from loop_spec.roles import compose_prompt, load_role, step_request
 from loop_spec.steps import IssueStep, IssueSteps, Pause, Product, Wait
 
@@ -125,14 +124,51 @@ def _refresh_stale_close_outs(store, paths, execute_state: dict) -> bool:
 
 
 def _retry_or_block(execute_state: dict, task_id: str, task_state: dict, reason_text: str, *, retry_status: str = "pending") -> None:
+    """Retry while each rejection says something new. A reason whose key was already seen
+    for this task blocks it (re-running cannot change that); so does the third distinct
+    reason since the operator last answered (the task keeps changing without passing).
+    Either way EXECUTE exits `blocked` and the operator is asked, never silently stopped."""
     task_state["retries"] += 1
-    if task_state["retries"] > retry_limit():
+    key = reason_key(reason_text)
+    seen = task_state.setdefault("reasons", [])
+    repeated = key in seen
+    churn = not repeated and len(set(seen)) + 1 >= 3
+    seen.append(key)
+    if repeated or churn:
         task_state["status"] = "blocked"
         task_state["reason"] = None
-        execute_state["issues"].append({"task": task_id, "retries": task_state["retries"], "text": reason_text})
+        text = (f"the same rejection came back after a retry: {reason_text}" if repeated else
+                f"changed three times without passing; the reasons were: {'; '.join(dict.fromkeys(seen))}")
+        execute_state["issues"].append({"task": task_id, "retries": task_state["retries"], "text": text,
+                                        "repeated" if repeated else "churn": True})
     else:
         task_state["status"] = retry_status
         task_state["reason"] = reason_text
+
+
+def _handle_operator_reentry(execute_state: dict, ctx) -> None:
+    """The operator answered a block this module raised for a repeated or churning task:
+    `fix-and-re-enter` reopens it with a clean reason history, `plan gap` marks it PLAN's
+    to fix (the exit goes back to PLAN). Once per attempt."""
+    entry = ctx["entry"]
+    if entry.get("mode") != "remediation" or not (entry.get("payload") or {}).get("operatorReentry"):
+        return
+    handled = execute_state.setdefault("handledReentries", [])
+    if ctx["attempt"]["id"] in handled:
+        return
+    handled.append(ctx["attempt"]["id"])
+    plan_gap = bool(entry["payload"].get("operatorPlanGap"))
+    for issue in [i for i in execute_state["issues"] if i.get("repeated") or i.get("churn")]:
+        task_state = execute_state["tasks"][issue["task"]]
+        if plan_gap:
+            # The operator judged no retry can clear it: the task is PLAN's to fix, and the
+            # issue stays on the product so the planner reads why.
+            task_state.update(status="planGap", reason=None)
+            issue["text"] = f"the operator sent this back to PLAN: {issue['text']}"
+            continue
+        execute_state["issues"].remove(issue)
+        execute_state.setdefault("issueHistory", []).append(issue)
+        task_state.update(status="pending", reason=issue["text"], reasons=[])
 
 
 def repo_checks(store, repo_name: str) -> list[str]:
@@ -189,7 +225,7 @@ def _route_verify_comparison(execute_state: dict, task_id: str, task_state: dict
                               label: str = "verify") -> None:
     """`baseline-error` and a `mustFlip-failed` baseline that never failed are PLAN's
     own mistake (see `_MUST_FLIP_BASELINE_DETAIL` above): route straight to plan gap,
-    spending none of the task's retry budget on an outcome no retry can change. Every
+    spending no retry on an outcome no retry can change. Every
     other failing verdict (`regression`, `featureAdded-failed`, a `mustFlip-failed`
     whose reproduction still fails at the candidate) is still the implementer's to fix
     and keeps the retry-then-block path."""
@@ -417,7 +453,6 @@ def _implement_request(store, paths, ctx, plan_task: dict, task_state: dict, tas
         "task": plan_task,
         "criteria": [c for c in spec["criteria"] if c["id"] in plan_task["criteria"]],
         "probes": ctx.get("probes", {}),
-        "minimalDiff": not has_room(store),
         "checks": repo_checks(store, task_state["repo"]),
     }
     if task_state.get("closeOut"):
@@ -471,6 +506,9 @@ def _review_request(store, paths, ctx, plan_task: dict, task_state: dict) -> dic
         "probes": task_state["probes"],
         "ledger": store.state.get("ledger", {}),
     }
+    spec = (store.state["products"].get("spec") or {}).get("product")
+    if spec:
+        inputs["spec"] = spec  # what the operator approved: a change it requires is not a finding
     if task_state.get("closeOut"):
         # E6 finds this exact input in the attested prompt: the review is for this obligation.
         inputs["closeOut"] = close_out_view(close_outs(store)[plan_task["id"]])
@@ -703,7 +741,7 @@ def _handle_rejection(store, paths, ctx, execute_state: dict) -> Pause | None:
             for task_id in _rejection_task_ids(failure["message"], execute_state):
                 task_state = execute_state["tasks"][task_id]
                 task_state["review"] = None
-                # A re-issued review counts against the same retry limit as a
+                # A re-issued review is retried like a
                 # re-implementation; without it a host that never attests a
                 # review re-issued it forever (LF-35).
                 _retry_or_block(execute_state, task_id, task_state, failure["message"], retry_status="probing")
@@ -725,6 +763,8 @@ def _retire_worktree(store, paths, repo_path: Path, worktree, *, last_step: str 
     actually removed."""
     if worktree is None or not Path(worktree).exists():
         return False
+    if any(Path(q["path"]).resolve() == Path(worktree).resolve() for q in store.state["steps"]["quarantined"]):
+        return False  # steps.retire already quarantined it; a second entry would outlive confirm_terminated
     try:
         dirty = not repo_module.is_clean(worktree)
     except LoopSpecError:
@@ -1162,7 +1202,12 @@ def _finish_base_move(store, paths, ctx, name: str, move: dict, new_head: str) -
     # base, so VERIFY and ITERATE judge newBase..head: the change as it will merge.
     store.state["execute"]["repos"][name]["head"] = new_head
     move["status"] = "done"
-    store.move_base(name, move["onto"])
+    if move.get("kind") == "branch":
+        # A teammate's commits on the PR branch leave the run's base where it was; E4
+        # counts them as no task's (postconditions.adopted_commits).
+        store.record_merged_remote_head(name, move["onto"])
+    else:
+        store.move_base(name, move["onto"])
     emit(paths, "base_merged", {"summary": f"merged {move['onto'][:12]} into {name}'s feature branch at {new_head[:12]}",
                                 "repo": name, "onto": move["onto"], "head": new_head},
          phase="execute", attempt_id=ctx["attempt"]["id"])
@@ -1180,7 +1225,8 @@ def _resolver_request(store, paths, ctx, name: str, move: dict) -> dict:
     inputs = {
         "goal": store.state["products"]["spec"]["product"]["goal"],
         "merge": {"branch": repo_info["featureBranch"], "head": repo_state["head"], "runBase": repo_info["baseSha"],
-                  "onto": move["onto"], "baseBranch": repo_info["defaultBranch"]},
+                  "onto": move["onto"], "kind": move.get("kind", "base"),
+                  "baseBranch": f"origin/{repo_info['featureBranch']}" if move.get("kind") == "branch" else repo_info["defaultBranch"]},
         "conflicts": move["conflicts"],
     }
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=worktree, phase="execute")
@@ -1199,6 +1245,8 @@ def _handle_base_moves(store, paths, ctx, execute_state: dict):
     if rewind.get("from") == "deliver" and rewind.get("exit") == "base moved" and rewind["attemptId"] not in handled:
         handled.append(rewind["attemptId"])
         execute_state["baseMoves"] = {name: {"onto": sha, "status": "pending"} for name, sha in rewind["baseMoves"].items()}
+        execute_state["baseMoves"].update({name: {"onto": sha, "status": "pending", "kind": "branch"}
+                                           for name, sha in (rewind.get("branchMoves") or {}).items()})
         store.save()
     for name, move in (execute_state.get("baseMoves") or {}).items():
         if move["status"] == "done":
@@ -1219,7 +1267,8 @@ def _handle_base_moves(store, paths, ctx, execute_state: dict):
             return Pause(_pause_request(ctx, name, head, current or "missing"))
         if repo_module._git(worktree, "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode != 0:
             merge = repo_module._git(worktree, "merge", "--no-ff", "--no-edit", "-m",
-                                     f"Merge {repo_info['defaultBranch']} ({move['onto'][:12]}) into {repo_info['featureBranch']}",
+                                     f"Merge {'origin/' + repo_info['featureBranch'] if move.get('kind') == 'branch' else repo_info['defaultBranch']} "
+                                     f"({move['onto'][:12]}) into {repo_info['featureBranch']}",
                                      move["onto"])
             if merge.returncode == 0:
                 _finish_base_move(store, paths, ctx, name, move, repo_module.branch_sha(worktree, repo_info["featureBranch"]))
@@ -1261,7 +1310,8 @@ def _on_resolver_submit(store, paths, step_record: dict, result: dict) -> None:
     if repo_module._git(worktree, "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0:
         repo_module._git(worktree, "merge", "--abort")
     move.update(status="blocked", reason=(
-        f"{branch} cannot take {store.state['repos'][name]['defaultBranch']} at {move['onto'][:12]}: {why}. "
+        f"{branch} cannot take {'origin/' + branch if move.get('kind') == 'branch' else store.state['repos'][name]['defaultBranch']} "
+        f"at {move['onto'][:12]}: {why}. "
         f"Conflicted: {', '.join(move['conflicts'])}. Merge {move['onto'][:12]} into {branch} yourself in {worktree} "
         f"(or reset it to {head[:12]} to retry the resolver), then fix-and-re-enter, or stop"))
 
@@ -1286,6 +1336,7 @@ def step(store, paths, ctx):
     rejection_pause = _handle_rejection(store, paths, ctx, execute_state)
     if rejection_pause is not None:
         return rejection_pause
+    _handle_operator_reentry(execute_state, ctx)
 
     _handle_rewind(store, paths, ctx, execute_state)
     if _schedule_close_outs(store, execute_state):
@@ -1398,8 +1449,11 @@ def _on_implement_submit(store, paths, task_id: str, task_state: dict, step_reco
                              + "; taking the commit path"},
                  phase="execute", attempt_id=step_record.get("attempt"))
 
-    if not repo_module.is_clean(worktree):
-        _retry_or_block(execute_state, task_id, task_state, "the worktree has uncommitted changes after the implement step")
+    repo_module.restore_tracked_caches(worktree)
+    dirty = repo_module.uncommitted(worktree)
+    if dirty:
+        _retry_or_block(execute_state, task_id, task_state,
+                        f"the worktree has uncommitted changes after the implement step: {', '.join(dirty[:10])}")
         return
 
     feature_head = execute_state["repos"][task_state["repo"]]["head"]
@@ -1437,6 +1491,11 @@ def _restore_after_checks(paths, worktree: Path, task_id: str, attempt_id) -> No
     repo_module.run_git(worktree, "clean", "-fdq")
     emit(paths, "repo_checks_dirtied_worktree", {"task": task_id, "summary": f"{task_id}'s repo checks wrote files; restored"},
          phase="execute", attempt_id=attempt_id)
+
+
+def _task_title(store, task_id: str) -> str:
+    # A close-out task is not in the plan's task list; its id stands in for a title.
+    return (_plan_tasks(store).get(task_id) or {}).get("title") or task_id
 
 
 def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record: dict, result: dict) -> None:
@@ -1513,7 +1572,7 @@ def _on_review_submit(store, paths, task_id: str, task_state: dict, step_record:
         # reviewed commits.
         try:
             repo_module.run_git(feature_worktree, "merge", "--no-ff", "--no-edit",
-                                 "-m", f"loop-spec: integrate {task_id}", task_head)
+                                 "-m", f"Merge {_task_title(store, task_id)} ({task_id})", task_head)
         except LoopSpecError:
             repo_module.run_git(feature_worktree, "merge", "--abort")
             # The task's own commits conflict with a sibling's on the new head:
@@ -1597,6 +1656,33 @@ def _moved_after_refusal(task_state: dict) -> bool:
     return candidate is not None and repo_module.branch_sha(Path(task_state["worktree"]), task_state["branch"]) != candidate
 
 
+def _reset_refused_implementer(store, paths, execute_state: dict, refused: dict) -> None:
+    """The implementer returned without a result: refork its task so fix-and-re-enter
+    issues a new implement step in a fresh worktree. The operator question already
+    gates the retry, so _retry_or_block is not called."""
+    found = next(((tid, t) for tid, t in execute_state.get("tasks", {}).items()
+                  if t.get("worktree") and Path(t["worktree"]).resolve() == Path(refused["cwd"]).resolve()), None)
+    if found is None:
+        return
+    task_id, task_state = found
+    _refork(store, paths, task_id, task_state, _task_spec(store, task_id),
+            execute_state["repos"][task_state["repo"]]["head"], refused["reason"])
+
+
+def _reset_refused_resolver(execute_state: dict, refused: dict) -> None:
+    """The resolver returned without a result: leave the base move pending (not blocked;
+    the refusal's own question already asks the operator) so re-entry re-merges and
+    issues a fresh resolver. A merge left in progress is aborted."""
+    found = next((m for n, m in (execute_state.get("baseMoves") or {}).items()
+                  if Path(execute_state["repos"][n]["worktree"]).resolve() == Path(refused["cwd"]).resolve()), None)
+    if found is None:
+        return
+    worktree = Path(refused["cwd"])
+    if worktree.exists() and repo_module._git(worktree, "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0:
+        repo_module._git(worktree, "merge", "--abort")
+    found["status"] = "pending"
+
+
 def on_step_refused(store, paths, step_id: str, refused: dict) -> None:
     """LF-60: a task review refused for want of evidence. The task keeps no reference
     to the dead step: it returns to review (one retry spent, as E6's rejection does)
@@ -1604,6 +1690,12 @@ def on_step_refused(store, paths, step_id: str, refused: dict) -> None:
     worktree is never reused while its worker's termination is unknown. Mutates
     state only; the controller saves it with the ownerReset flag."""
     execute_state = store.state.get("execute") or {}
+    if refused["role"] == "implementer":
+        _reset_refused_implementer(store, paths, execute_state, refused)
+        return
+    if refused["role"] == "resolver":
+        _reset_refused_resolver(execute_state, refused)
+        return
     if refused["role"] != "code-reviewer":
         return
     tasks = execute_state.get("tasks", {})

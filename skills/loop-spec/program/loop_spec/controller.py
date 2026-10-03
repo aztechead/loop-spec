@@ -2,11 +2,12 @@
 
 Use `run_entry` once per CLI invocation of a controller entry (cycle, micro, or a
 single-phase resume) and `continue_run` after `submit`/`answer` record a step or
-question result. This module is the ONLY place that transitions a phase, spends the
-T1 rewind budget, writes the SPEC approval record, or writes a terminal result;
+question result. This module is the ONLY place that transitions a phase, records the
+backward-transition ledger, writes the SPEC approval record, or writes a terminal result;
 `postconditions.py` only answers whether a claimed exit's requirements hold.
 """
 import json
+import tempfile
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import Literal
 from loop_spec import baseline as baseline_module
 from loop_spec import budget as budget_module
 from loop_spec import contract
+from loop_spec import log
 from loop_spec import ledger as ledger_module
 from loop_spec import postconditions
 from loop_spec import probes as probes_module
@@ -142,13 +144,14 @@ def _run_request_entry(entry: str, *, project_root: Path, request_text: str | No
         if entry == "auto":
             # The router decides which PR, if any, the work continues on; nothing is
             # adopted before it has chosen (the hand-off adopts through _adopt).
-            _resolve_repos(store, project_root, slug, None, home)
+            _resolve_repos(store, project_root, slug, None, home, cycle_type)
             repos = [(name, Path(info["path"])) for name, info in store.state["repos"].items()]
             store.state["routeFacts"] = {"prRefs": probes_module.pr_refs(repos, request_text)}
         elif entry == "direct":
-            _resolve_repos(store, project_root, slug, None, home)
+            _resolve_repos(store, project_root, slug, None, home, cycle_type)
         else:
-            _resolve_repos(store, project_root, slug, repo_module.find_pr_reference(request_text), home)
+            _resolve_repos(store, project_root, slug, repo_module.find_pr_reference(request_text), home, cycle_type)
+        _record_start_facts(store, request_text)
         _resolve_implementations(store, project_root)
         if answer_policy == "default":
             store.state["questions"]["policy"] = "default"
@@ -305,6 +308,7 @@ def _run_revise_entry(*, project_root: Path, pr: str | None, slug: str | None, h
     store.state["adoption"] = {**adoption_record,
                                "prior": _find_delivering_run_products(home, rid, adoption.url, project_root)}
     store.state["phase"]["current"] = "revise"
+    _record_start_facts(store, request_text, intake=False)
     _resolve_implementations(store, project_root)
     if answer_policy == "default":
         store.state["questions"]["policy"] = "default"
@@ -358,7 +362,7 @@ def _clear_stale_last_result(paths: FeaturePaths, slug: str) -> None:
             paths.last_result_json.unlink()
 
 
-def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, home: Path) -> None:
+def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, home: Path, cycle_type: str) -> None:
     """Every repo gets a fresh feature branch at its head, except the one that adopts
     `pr_ref` (a PR the request names), which continues that PR's branch (`_adopt`)."""
     workspace = repo_module.detect_workspace(project_root)
@@ -367,6 +371,8 @@ def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, hom
 
     repos: dict = {}
     adoption = None
+    deliver_config = contract.load_config(project_root).get("deliver") or {}
+    configured_branch = deliver_config.get("branch")
     for entry in workspace.repos:
         if pr_ref is not None and adoption is None:
             candidate = repo_module.adopt_pr(entry.path, pr_ref)
@@ -374,16 +380,93 @@ def _resolve_repos(store: StateStore, project_root: Path, slug: str, pr_ref, hom
                 repos[entry.name], adoption = _adopt(entry.name, entry.path, candidate, home)
                 continue
         base_sha = repo_module.head_sha(entry.path)
+        default_branch = deliver_config.get("base") or repo_module.default_branch(entry.path)
+        if configured_branch is not None and not repo_module.is_branch_name(entry.path, configured_branch):
+            raise LoopSpecError(
+                f"deliver.branch is {configured_branch!r}; git check-ref-format --branch refuses it",
+                repair='set deliver.branch to a branch name such as "feature/AVP-1234", or remove it')
+        if configured_branch == default_branch:
+            raise LoopSpecError(
+                f"deliver.branch is {configured_branch!r}, the branch the PR targets in {entry.path}",
+                repair="set deliver.branch to a name other than the base branch, or remove it")
+        prefix = deliver_config.get("branchPrefix") or ("fix/" if cycle_type == "debug" else "feat/")
+        try:
+            # The run starts from origin's integration branch, not from whatever is checked out.
+            tip = repo_module.fetch_base(entry.path, default_branch)
+        except LoopSpecError:
+            tip = None  # no origin, offline, hostless fixture: keep the checkout's HEAD
+        if tip is not None:
+            if tip != base_sha and not repo_module.is_ancestor(entry.path, base_sha, tip):
+                log.stderr.info(f"{entry.name}: local HEAD {base_sha[:12]} is not on origin/{default_branch} "
+                                f"({tip[:12]}); the run starts from origin")
+            base_sha = tip
         repos[entry.name] = {
-            "path": str(entry.path), "baseSha": base_sha, "featureBranch": repo_module.free_branch(entry.path, f"feat/{slug}"),
-            "defaultBranch": (contract.load_config(project_root).get("deliver") or {}).get("base")
-                             or repo_module.default_branch(entry.path),
+            "path": str(entry.path), "baseSha": base_sha, "featureBranch": repo_module.free_branch(entry.path, configured_branch or f"{prefix}{slug}"),
+            "defaultBranch": default_branch,
             "lastKnownHead": base_sha,
         }
     store.state["repos"] = repos
     store.state.pop("adoption", None)
     if adoption is not None:
         store.state["adoption"] = adoption
+
+
+def _record_start_facts(store: StateStore, request_text: str, *, intake: bool = True) -> None:
+    """What a teammate would look at before starting: who is running this, which issue the
+    request names, and what is already open. Every call needs a hosted origin, so a
+    local-path origin (every fixture) makes no gh call; each failure leaves its fact absent."""
+    hosted = {name: Path(info["path"]) for name, info in store.state["repos"].items()
+              if repo_module._configured_remote_host(Path(info["path"]), "origin") is not None}
+    if not hosted:
+        return
+    code, out, _ = repo_module.run_gh(next(iter(hosted.values())), "api", "user", "--jq", ".login")
+    if code == 0 and out.strip():
+        store.state["operator"] = {"login": out.strip()}
+    adoption = store.state.get("adoption")
+    if adoption and adoption["repo"] in hosted:
+        # An adopted PR keeps the issue it already closes: a revise re-render of the body
+        # dropped `Closes #n` when only the request text was searched (live run, 7.9.0).
+        code, out, _ = repo_module.run_gh(hosted[adoption["repo"]], "pr", "view", str(adoption["number"]),
+                                          "--json", "closingIssuesReferences")
+        try:
+            linked = (json.loads(out).get("closingIssuesReferences") or []) if code == 0 else []
+        except ValueError:
+            linked = []
+        if linked:
+            store.state["issue"] = {"repo": adoption["repo"], "number": linked[0]["number"],
+                                    "title": linked[0].get("title"), "url": linked[0].get("url"), "body": ""}
+    if not intake:
+        return
+    exclude = {r["number"] for r in (store.state.get("routeFacts") or {}).get("prRefs", [])}
+    if adoption:
+        exclude.add(adoption["number"])
+    for name, path in hosted.items():
+        if store.state.get("issue"):
+            break
+        issue = repo_module.find_issue(path, request_text, exclude)
+        if issue is not None:
+            store.state["issue"] = {"repo": name, "number": issue["number"], "title": issue.get("title"),
+                                    "url": issue.get("url"), "body": (issue.get("body") or "")[:4000]}
+            break
+    slug = store.state["run"]["slug"]
+    adopted = (store.state.get("adoption") or {}).get("repo")
+    # A configured deliver.branch is the host's naming rule; an issue never renames it (#132).
+    configured = (contract.load_config(store.paths.project_root).get("deliver") or {}).get("branch")
+    # The name each repo asked for, so `takenBranch` is true only when free_branch suffixed it.
+    wanted = {name: (configured or slug).rsplit("/", 1)[-1] for name in hosted}
+    issue = store.state.get("issue") or {}
+    if issue.get("repo") in hosted and issue["repo"] != adopted and issue.get("number") and not configured:
+        # A branch a teammate would name: `<prefix>7-add-a-lerp-helper`. EXECUTE creates the
+        # feature branch and worktree later, so nothing on disk exists to move yet.
+        info = store.state["repos"][issue["repo"]]
+        prefix = info["featureBranch"].rpartition("/")[0]
+        prefix = prefix + "/" if prefix else ""
+        wanted[issue["repo"]] = f"{issue['number']}-{slug_from_request(issue.get('title') or '')}"
+        info["featureBranch"] = repo_module.free_branch(hosted[issue["repo"]], f"{prefix}{wanted[issue['repo']]}")
+    store.state["openWork"] = {
+        name: {"openPrs": repo_module.open_prs(path),
+               "takenBranch": name != adopted and store.state["repos"][name]["featureBranch"].rsplit("/", 1)[-1] != wanted[name]}
+        for name, path in hosted.items()}
 
 
 def _adopt(repo_name: str, repo_path: Path, candidate, home: Path) -> tuple[dict, dict]:
@@ -401,6 +484,7 @@ def _adopt(repo_name: str, repo_path: Path, candidate, home: Path) -> tuple[dict
         "repo": repo_name, "number": candidate.number, "url": candidate.url, "headRef": candidate.branch,
         "baseBranch": candidate.base_branch, "baseSha": base_sha, "headSha": candidate.head_sha,
         "reason": candidate.reason, "title": candidate.title,
+        "author": getattr(candidate, "author", None),
     }
     return repo_entry, adoption
 
@@ -485,10 +569,36 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
                     cause = json.loads(asked.read_text())["text"] if asked.is_file() else None
                     _finish_run(
                         store, paths, "escalated",
-                        reason=f"{refused}{store.state['phase']['current']} paused" + (f": {cause}" if cause else "") + f"; operator chose {answered['value']!r}",
+                        # A refusal's question text is the refusal itself; say it once.
+                        reason=f"{refused}{store.state['phase']['current']} paused"
+                               + (f": {cause}" if cause and not refused else "") + f"; operator chose {answered['value']!r}",
                     )
                     continue
-                store.save()  # fix-and-re-enter / spec gap: phase.entry is already "remediation"
+                # fix-and-re-enter / spec gap: phase.entry is already "remediation". EXECUTE
+                # reopens a task it blocked for a repeated or churning reason (execute.py).
+                payload = dict(store.state["phase"].get("entryPayload") or {})
+                if store.state["phase"]["current"] == "execute":
+                    payload["operatorReentry"] = True
+                    if answered["value"] == "plan gap":
+                        payload["operatorPlanGap"] = True  # the blocked tasks go back to PLAN
+                    store.state["phase"]["entryPayload"] = payload
+                store.state["phase"]["blockedAnswered"] = True
+                store.save()
+                continue
+
+        recurred = store.state["phase"].get("recurred")
+        if recurred is not None:
+            answered = store.state["questions"]["answered"].get(recurred["questionId"])
+            if answered is not None:
+                store.state["phase"]["recurred"] = None
+                if answered["value"] == "stop":
+                    _finish_run(store, paths, "escalated", reason=f"{recurred['reason']} operator chose 'stop'")
+                    continue
+                if recurred["baseMove"]:
+                    # T2 counts only base moves after this index (budget.base_moves).
+                    store.state["budget"]["baseMovesContinuedAt"] = len(store.state["budget"]["transitions"])
+                _finalize(store, paths, project_root, recurred["phase"], recurred["attemptId"], recurred["product"],
+                          recurred["exit"], proceed=True)
                 continue
 
         spec_question_id = store.state["phase"].get("specQuestionId")
@@ -515,6 +625,15 @@ def continue_run(store: StateStore, paths: FeaturePaths, *, project_root: Path) 
                 attempt_id = store.state["phase"]["attemptId"]
                 if answered["value"] == "spec gap":
                     _finalize(store, paths, project_root, "plan", attempt_id, dict(product, exit="spec gap"), "spec gap")
+                elif answered["value"] == "replan":
+                    # The operator grants the planner one more corrected pass, as after the
+                    # first critic pass; a Critical that survives it asks again.
+                    store.state["phase"]["entry"] = "remediation"
+                    store.state["phase"]["entryPayload"] = {"criticFindings": [
+                        f for f in store.state["critic"]["findings"]
+                        if f.get("severity") == "Critical" and f.get("disposition") == "open"]}
+                    store.state["phase"]["attemptId"] = None
+                    store.save()
                 else:
                     # Any other non-empty answer is the operator's reason for rejecting
                     # the still-open Critical finding(s); P7 accepts "rejected" with a
@@ -627,7 +746,10 @@ def build_envelope(store: StateStore, paths: FeaturePaths, phase: str, attempt_i
         # reads it without threading a separate "is this micro" field through state;
         # no phase's own remediation/rejection payload is dropped to make room for it.
         entry_payload = {**(entry_payload or {}), "preset": "micro"}
+    # Start-time facts, present only when the run collected them (issue, open work).
+    start_facts = {key: state[key] for key in ("issue", "openWork") if state.get(key)}
     return {
+        **start_facts,
         "run": {"id": state["run"]["id"]},
         "attempt": {"id": attempt_id},
         "inputs": {"digest": digest(inputs_source)},
@@ -689,7 +811,7 @@ def _drive_phase(store: StateStore, paths: FeaturePaths, project_root: Path) -> 
         store.save()
         marker_phase_start(paths, phase, attempt_id)
         emit(paths, "phase_start", {"summary": f"{phase} attempt {attempt_id}"}, phase=phase, attempt_id=attempt_id)
-        if phase in ("plan", "debug", "revise"):
+        if phase in ("spec", "plan", "debug", "revise"):
             _ensure_code_checkouts(store, paths)
         envelope = build_envelope(store, paths, phase, attempt_id, project_root)
         contract.write_context(paths, attempt_id, envelope)
@@ -925,6 +1047,7 @@ def _accept_revise_product(store: StateStore, paths: FeaturePaths, project_root:
     # debug's compacted product below.
     inputs_digest = digest(product)
     spec_half, plan_half = contract.default_adapter("revise").compact(product)
+    store.state["reviewReplies"] = contract.default_adapter("revise").replies(store, product)
     spec_product = {**spec_half, "exit": "approved", "inputsDigest": inputs_digest, "boundTo": {"requirements": None, "plan": None}}
     plan_product = {**plan_half, "exit": "ready", "inputsDigest": inputs_digest}
     _begin_compaction(store, paths, project_root, spec_product, plan_product)
@@ -971,7 +1094,7 @@ def _hand_off(store: StateStore, paths: FeaturePaths, project_root: Path, produc
         return
     cycle_type, first_phase = ENTRIES[entry].cycle_type, ENTRIES[entry].first_phase
     if entry != "direct":
-        _resolve_repos(store, project_root, store.state["run"]["slug"], url, paths.root.parent.parent)
+        _resolve_repos(store, project_root, store.state["run"]["slug"], url, paths.root.parent.parent, cycle_type)
     store.state["run"]["cycleType"] = cycle_type
     _enter_phase(store, first_phase)
     store.save()
@@ -1122,6 +1245,8 @@ def _issue_critic_step(store: StateStore, paths: FeaturePaths, project_root: Pat
     spec_product = store.state["products"]["spec"]["product"]
     inputs = {"specCriteria": spec_product["criteria"], "planTasks": plan_product["tasks"], "baseline": facts,
               "repos": repo_map(store.state["repos"])}
+    if store.state.get("criticRejections"):
+        inputs["operatorRejected"] = store.state["criticRejections"]
     inputs_digest = digest({"plan": plan_product, "spec": spec_product, "baseline": facts})
 
     role = load_role("plan-critic", project_root)
@@ -1227,8 +1352,9 @@ def _handle_plan_baseline_and_critic(store: StateStore, paths: FeaturePaths, pro
             text=(f"PLAN critic still finds Critical issues after {passes} passes: "
                   f"{', '.join(f['id'] for f in open_critical)}. "
                   + (f"Recommended: {recommended}. " if recommended else "")
-                  + "Answer with your reason to reject and close, or 'spec gap' to send this back to SPEC."),
-            kind="text", options=[{"value": "spec gap", "label": "Spec gap"}],
+                  + "Answer with your reason to reject and close, 'replan' to have the planner fix them, "
+                    "or 'spec gap' to send this back to SPEC."),
+            kind="text", options=[{"value": "replan", "label": "Re-plan"}, {"value": "spec gap", "label": "Spec gap"}],
             default_value=recommended, payload={"findings": open_critical}, save=False,
         )
         # LF-62: the judgment, the question, its policy answer (if any) and this link
@@ -1254,6 +1380,10 @@ def _close_critic_rejections(store: StateStore, reason: str) -> None:
         if finding.get("severity") == "Critical" and finding.get("disposition") == "open":
             finding["disposition"] = "rejected"
             finding["reason"] = reason
+            # Kept past this plan revision: a later critic pass reads it, so a re-plan
+            # never asks the operator the same thing again.
+            store.state.setdefault("criticRejections", []).append(
+                {k: finding.get(k) for k in ("id", "location", "cause", "reason")})
 
 
 def _migrate_legacy_baseline(store: StateStore, paths: FeaturePaths) -> None:
@@ -1472,19 +1602,52 @@ def _record_deliver_credentials(store: StateStore, attempt_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase: str, attempt_id: str, product: dict, exit_: str) -> None:
+def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase: str, attempt_id: str, product: dict,
+              exit_: str, proceed: bool = False) -> None:
+    """`proceed` is the operator's `continue` to a recurred-problem question: the repeat
+    check for this transition is already answered."""
     route = postconditions.ROUTES[phase][exit_]
-    if "T1" in route["requires"] and not budget_module.has_room(store):
-        # T1 exhaustion is not an ordinary rejected postcondition: the controller
-        # refuses the backward exit and escalates directly, without entering any
-        # phase or looping the product back into remediation (phase-interface-7.0.md
-        # "Backward-transition budget"). ITERATE's own refused rewind is the one
-        # named exception (its "rewind" exit gates on I3/I4 instead of T1).
-        _finish_run(store, paths, "escalated", reason=f"the rewind budget has no room for {phase} {exit_}")
-        return
-    if "T2" in route["requires"] and not budget_module.base_move_room(store):
-        _finish_run(store, paths, "escalated", reason=f"the base moved {budget_module.BASE_MOVE_LIMIT} times; "
-                    "resolve with the base owner, then start a revise run")
+    # The progress rule (phase-interface-7.0.md "Backward-transition progress rule"),
+    # decided before the boundary check so the boundary never refuses what is decided here.
+    # Tier 1: an earlier transition left this exact state; re-running cannot differ, the only
+    # case the program ends a run on its own. Tier 2: the cause came back after a change; ask.
+    is_rewind = "T1" in route["requires"] or (phase == "iterate" and exit_ == "rewind")
+    recurred_text, recurred_payload = None, None
+    if is_rewind and not proceed:
+        cause = postconditions.cause_key(phase, exit_, product)
+        repeat = budget_module.repeat_of(store, phase, exit_, cause, postconditions.fingerprint(store, product))
+        # The key compares; the operator reads the cause as the phase wrote it.
+        readable = _pause_cause(phase, product, exit_)
+        shown = cause if readable == exit_ else readable
+        if repeat == "identical" and phase == "iterate":
+            # ITERATE's own `escalated` exit already routes to a partial DELIVER when
+            # configured (below); a refused rewind takes that same path, so the config
+            # option stays reachable for a no-progress loop. I4 holds for it.
+            exit_, product = "escalated", dict(product, exit="escalated")
+            route = postconditions.ROUTES[phase][exit_]
+        elif repeat == "identical":
+            _finish_run(store, paths, "escalated", reason=(
+                f"no progress: {phase.upper()} exited {exit_} on {shown} again and nothing changed since "
+                f"the last time (same tree and revisions)"))
+            return
+        elif repeat == "recurred":
+            recurred_text = f"{phase.upper()} exited {exit_} on {shown} again after a change; continue (route it back again) or stop?"
+            recurred_payload = {"recurred": {"phase": phase, "exit": exit_, "cause": cause}}
+    if recurred_text is None and "T2" in route["requires"] and not budget_module.base_move_room(store) and not proceed:
+        repos = ", ".join(r["repo"] for r in product.get("repos") or [] if r.get("state") in ("base moved", "branch moved")) or "a repo"
+        recurred_text = (f"{repos}'s base or PR branch moved {budget_module.base_moves(store)} times during this run; "
+                         "merge it in again (continue) or stop?")
+        recurred_payload = {"recurred": {"phase": phase, "exit": exit_, "repo": repos}}
+    if recurred_text is not None:
+        # Unlike a blocked pause this keeps the attempt: `continue` re-enters this very
+        # function with the stored product, `stop` finishes the run with this text.
+        record = questions.ask(
+            store, paths, phase=phase, attempt_id=attempt_id, text=recurred_text, kind="recurred",
+            options=questions.RECURRED_OPTIONS, default_value="stop", payload=recurred_payload, save=False)
+        store.state["phase"]["recurred"] = {"questionId": record["questionId"], "phase": phase, "exit": exit_,
+                                            "attemptId": attempt_id, "product": product, "reason": recurred_text,
+                                            "baseMove": "T2" in route["requires"]}
+        store.save()
         return
 
     if phase == "verify":
@@ -1521,6 +1684,7 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
             "remediationTasks": list(product.get("remediationTasks") or []),
             "verdicts": [v for v in (product.get("verdicts") or []) if v.get("verdict") == "fail"],
             "baseMoves": {r["repo"]: r["newBase"] for r in (product.get("repos") or []) if r.get("state") == "base moved"},
+            "branchMoves": {r["repo"]: r["remoteHead"] for r in (product.get("repos") or []) if r.get("state") == "branch moved"},
         }}
     else:
         store.state["phase"]["entryPayload"] = None
@@ -1547,11 +1711,9 @@ def _finalize(store: StateStore, paths: FeaturePaths, project_root: Path, phase:
         return
 
     if route["backward"]:
-        try:
-            budget_module.spend(store, from_phase=phase, exit=exit_, to_phase=next_phase, attempt_id=attempt_id, reason=exit_)
-        except budget_module.BudgetExhausted as exc:
-            _finish_run(store, paths, "escalated", reason=str(exc))
-            return
+        budget_module.spend(store, from_phase=phase, exit=exit_, to_phase=next_phase, attempt_id=attempt_id, reason=exit_,
+                            cause=postconditions.cause_key(phase, exit_, product),
+                            fingerprint=postconditions.fingerprint(store, product))
         # LF-55: registered after the spend and before the one save below, so the
         # accepted product, spend, close-outs and route reach disk together. A replay
         # of this attempt stops at _accept_product's already-recorded check, before
@@ -1667,6 +1829,8 @@ def _record_accepted_product(store: StateStore, phase: str, attempt_id: str, pro
                     "requirementsRevision": store.state["revisions"]["requirements"], "attemptId": attempt_id,
                 }
     store.state["phase"]["retries"] = 0
+    store.state["phase"]["rejectionKeys"] = []
+    store.state["phase"].pop("blockedAnswered", None)
     if boundary.unreviewed:
         store.state["unreviewed"] = boundary.unreviewed
     if boundary.weakened_assurance:
@@ -1681,10 +1845,16 @@ def _reject_product(store: StateStore, paths: FeaturePaths, phase: str, attempt_
     store.state["phase"]["entry"] = "remediation"
     store.state["phase"]["entryPayload"] = {"rejected": {"exit": exit_, "failures": [{"id": f.id, "message": f.message} for f in failures]}}
     store.state["phase"]["attemptId"] = None
-    if store.state["phase"]["retries"] > postconditions.retry_limit():
+    # The same set of failed checks as an earlier rejection in this phase: re-entering
+    # cannot change it, so ask. Keyed on ids only (messages embed shas and paths).
+    key = "|".join(sorted({f.id for f in failures}))
+    seen = store.state["phase"].setdefault("rejectionKeys", [])
+    repeated = key in seen
+    seen.append(key)
+    if repeated:
         record = questions.ask(
             store, paths, phase=phase, attempt_id=attempt_id,
-            text=f"{phase.upper()} product rejected {store.state['phase']['retries']} times: {'; '.join(f.message for f in failures)}",
+            text=f"{phase.upper()} product rejected again for {key} ({store.state['phase']['retries']} rejections): {'; '.join(f.message for f in failures)}",
             kind="blocked", options=questions.BLOCKED_OPTIONS,
             default_value="stop", payload={"phase": phase},
         )
@@ -1717,7 +1887,8 @@ def _ask_pause_question(store: StateStore, paths: FeaturePaths, phase: str, exit
     record = questions.ask(
         store, paths, phase=phase, attempt_id=attempt_id,
         text=f"{phase.upper()} exited {exit_}: {cause}",
-        kind="blocked", options=questions.BLOCKED_OPTIONS,
+        kind="blocked",
+        options=questions.EXECUTE_BLOCKED_OPTIONS if (phase, exit_) == ("execute", "blocked") else questions.BLOCKED_OPTIONS,
         default_value="stop", payload={"phase": phase, "exit": exit_},
     )
     store.state["phase"]["blockedQuestionId"] = record["questionId"]
@@ -1777,16 +1948,46 @@ def _finish_run(store: StateStore, paths: FeaturePaths, classification: str, *, 
                 store.state.setdefault("cleanupBacklog", []).extend(repo_skipped)
         if removed:
             emit(paths, "worktrees_removed", {"removed": removed}, phase=store.state["phase"]["current"])
+    if classification == "escalated":
+        warning = _comment_stop_on_pr(store, classification, reason)
+        if warning is not None:
+            warnings = [*(warnings or []), warning]
     return result_module.write(store, paths, classification, reason=reason, summary=summary,
                                 partially_delivered=partially_delivered, work_delivered=work_delivered,
                                 warnings=warnings, announce=announce)
+
+
+def _comment_stop_on_pr(store: StateStore, classification: str, reason: str | None) -> str | None:
+    """Say why a stopped run stopped, on the PR a reviewer is looking at: the adopted PR, else
+    the first PR DELIVER recorded. A failure to post is a warning, never an error; a repo
+    without a hosted origin (a local fixture) makes no gh call."""
+    repo_name, number = None, None
+    adoption = store.state.get("adoption")
+    if adoption:
+        repo_name, number = adoption["repo"], adoption["number"]
+    else:
+        deliver = (store.state["products"].get("deliver") or {}).get("product") or {}
+        for entry in deliver.get("repos", []):
+            if entry.get("pr"):
+                repo_name, number = entry["repo"], entry["pr"]["number"]
+                break
+    info = store.state.get("repos", {}).get(repo_name or "")
+    if info is None or repo_module._configured_remote_host(Path(info["path"]), "origin") is None:
+        return None
+    body = (f"<!-- loop-spec:status -->\nloop-spec stopped this run: **{classification}**.\n\n"
+            f"{(reason or 'no reason was recorded')[:3000]}\n")
+    body_path = Path(tempfile.mkstemp(prefix="loop-spec-status-", suffix=".md")[1])
+    body_path.write_text(body)
+    code, _, err = repo_module.run_gh(Path(info["path"]), "pr", "comment", str(number), "--body-file", str(body_path))
+    body_path.unlink(missing_ok=True)
+    return None if code == 0 else f"could not comment on PR #{number}: {err.strip() or code}"
 
 
 def _iterate_escalation_reason(store: StateStore) -> str:
     gaps = store.state["products"]["iterate"]["product"].get("gaps") or []
     if not gaps:
         return "ITERATE judged the requirements unmet with no gap to close"
-    return ("ITERATE judged the requirements unmet and the rewind budget has no room; open gaps: "
+    return ("ITERATE judged the requirements unmet and the rewind repeats an earlier one on an unchanged tree; open gaps: "
             + "; ".join(g["text"][:300] for g in gaps))
 
 

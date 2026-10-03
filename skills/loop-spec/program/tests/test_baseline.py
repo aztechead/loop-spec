@@ -15,6 +15,7 @@ from loop_spec.baseline import (
     compare_to_baseline,
     describe_failure,
     detect_runner,
+    parse_unittest,
     evidence_matches,
     fingerprints,
     normalize_output,
@@ -97,6 +98,29 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse_cargo_test(text), ["module::tests::add", "module::tests::mul"])
 
 
+class UnittestParserTests(unittest.TestCase):
+    def test_fail_and_error_identities(self):
+        text = (
+            "FAIL: test_a (pkg.mod.Case.test_a)\n"
+            "ERROR: test_b (pkg.mod.Case)\n"
+            "Ran 2 tests in 0.1s\n"
+        )
+        self.assertEqual(parse_unittest(text), ["pkg.mod.Case.test_a", "pkg.mod.Case.test_b"])
+
+    def test_ran_line_counts_tests(self):
+        self.assertEqual(_count_tests_ran("..\nRan 2 tests in 0.001s\n\nOK\n", "unittest"), 2)
+
+    def test_passing_base_run_is_not_zero_tests(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "test_ok.py").write_text(
+                "import unittest\nclass T(unittest.TestCase):\n"
+                "    def test_a(self): pass\n    def test_b(self): pass\n"
+            )
+            run = _run("python3 -m unittest test_ok", tmp)
+            self.assertEqual(run.runner, "unittest")
+            self.assertEqual(run.tests_ran, 2)
+
+
 class DetectRunnerTests(unittest.TestCase):
     def test_matches(self):
         self.assertEqual(detect_runner("pytest -k foo"), "pytest")
@@ -108,6 +132,10 @@ class DetectRunnerTests(unittest.TestCase):
 
     def test_no_match(self):
         self.assertIsNone(detect_runner("make check"))
+
+    def test_unittest_runner(self):
+        self.assertEqual(detect_runner("python3 -m unittest discover -s tests -t ."), "unittest")
+        self.assertEqual(detect_runner("uv run python -m unittest tests.test_x"), "unittest")
 
 
 class NormalizeTests(unittest.TestCase):
@@ -230,13 +258,15 @@ class ShellSyntaxTests(unittest.TestCase):
         "echo ok # note && false", "pytest\nfalse", "pytest \\\nfalse", "echo #x",
         "pytest tests/*.py", "ls ?", "pytest t[1]", "cat ~/x", "PYTHONPATH=. pytest",
         'bad "quote', "", "   ", '"" pytest',
+        # a shell drops these backslashes and shlex keeps them (a live V4 mismatch)
+        'echo "\\$HOME"', 'sh -c "python3 -V | awk \'{print \\$2}\'"', 'echo "\\`x\\`"',
     ]
     ACCEPTED = [
         "pytest -q tests/test_clamp.py", 'pytest -k ""', 'pytest -k "a or b"', "rg 'a$' file.txt",
         "python -c 'print(\"$HOME\")'", "echo \\&", "echo '&&'", 'echo "a|b"', "echo 'a`b`'",
         "echo a$", "echo a#b", "pytest 'tests/x.py::t[1]'", "rg '*.py'", "pytest tests/x.py::t\\[1\\]",
         "python3 -m unittest discover -s tests -p test_reverse.py", "echo 'a b' c", "env X=1 pytest", "pytest a=b",
-        '.venv/bin/python -m pytest -q "tests/test x.py"', 'echo "\\$HOME"',
+        '.venv/bin/python -m pytest -q "tests/test x.py"'
     ]
 
     def test_rejects_shell_syntax(self):
@@ -480,6 +510,17 @@ class CaptureBaselineTests(unittest.TestCase):
 
             checkout_dest = Path(checkouts_dir) / f"baseline-{sha[:12]}"
             self.assertFalse(checkout_dest.exists())
+
+    def test_a_failed_prepare_is_recorded_for_the_plan_boundary_and_runs_nothing_after_it(self):
+        with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as checkouts_dir:
+            _init_repo(repo_dir)
+            sha = subprocess.run(
+                ["git", "-C", repo_dir, "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+            ).stdout.strip()
+            baseline = capture_baseline(Path(repo_dir), sha, [("true", "T-1", None)],
+                                        "python3 build_added_by_a_task.py", Path(checkouts_dir), "myrepo")
+            self.assertNotEqual(baseline.prepare_run.exit_status, 0)
+            self.assertEqual(baseline.entries, {})
 
     def test_a_feature_added_path_that_exists_at_base_is_recorded_not_raised(self):
         with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as checkouts_dir:

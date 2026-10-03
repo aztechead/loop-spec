@@ -181,19 +181,21 @@ A `role` step whose `role` is `plan-critic`, `code-reviewer`, or `iterate-judge`
 unattested submission for one of these leaves the step open, bumps its
 `attestationAttempts`, emits `step_redispatch`, and `submit` returns a `redispatch`
 name (`<stepId>-<n+1>`) for a fresh worker dispatched with that exact name as its
-`description`, no `name`, and the same prompt, up to `retry_limit()` (`LOOP_SPEC_STEP_RETRIES`, default 3)
-attempts. Past the bound, or at once when no host can attest (no
+`description`, no `name`, and the same prompt, until a failure reason repeats one this step
+already had (volatile ids and numbers ignored). On a repeat, or at once when no host can attest (no
 `CLAUDE_CODE_SESSION_ID`) or an SDK receipt names another digest, the submission is
 accepted only when config opts the role in (`evidence.review.accept` for
 `code-reviewer`, `evidence.judgment.accept` for `plan-critic` and `iterate-judge`);
 an `attestationWaivers` entry then records it, surfaced in the result's
-`weakenedAssurance`. Otherwise it is refused (LF-60): `submit` accepts nothing (no
-`submissions` entry, no `steps/<id>/result.json`; the bytes stay at
+`weakenedAssurance`. Otherwise it is refused (LF-60), as is a role step whose worker
+wrote no result at all (a denied tool call or dispatch): `submit` accepts nothing (no
+`submissions` entry, no `steps/<id>/result.json`; any bytes stay at
 `steps/<id>/refused-result.json` as a diagnostic), retires the step (a worktree or
 checkout it ran in is quarantined), and records `steps.refused[<id>]` in the same
 state write. The controller then drops the owning phase's reference to the step
 (PLAN's critic step, the adopted-range review, an EXECUTE task review, a VERIFY
-repo review, the ITERATE judge) and asks one blocked question per refused step,
+repo review, the ITERATE judge; an EXECUTE implementer's task is reforked and a
+resolver's merge retried) and asks one blocked question per refused step,
 `fix-and-re-enter` or `stop`, with no default: `--answer-policy default` stops
 there. `fix-and-re-enter` issues a fresh step (a re-issued review reads a fresh
 checkout of the same candidate; a task whose branch moved meanwhile is blocked);
@@ -205,7 +207,7 @@ role is opted in; a reviewed range with no accepted step is re-reviewed in full.
 
 A question is `schemas/question.json`: `questionId`, `attempt`, `phase`, `text`,
 `options[]` (`{value, label}`), `defaultValue`, `kind` (`approval`, `choice`,
-`text`, or `blocked`), `payload`, `askedAt`. Only one question may be open per run.
+`text`, `blocked`, or `recurred`), `payload`, `askedAt`. Only one question may be open per run.
 Answer with `loop-spec answer --question <id> --answer <value> --slug <slug>
 [--scope question|run]` (`schemas/answer.json`: `questionId`, `value`, `scope`,
 `answeredAt`, `by`: `human` or `policy`). `--scope run` also sets the run's answer
@@ -312,8 +314,12 @@ optional:
 | `roles.<role>` | binds that role to a skill other than the bundled default (`roles.load_role`); a plain string is the binding, or an object `{"binding": ..., "model": ..., "effort": ..., "with": [...]}` also names a model and an effort (`low`, `medium`, `high`, `xhigh`, `max`; `contract.load_config` refuses another) for that role's dispatches (`roles.dispatch_settings`), reachable without also rebinding the skill; an explicit `null` model or effort inherits the dispatcher's own instead of the role's default |
 | (default) | with neither env nor config set, the role's own `SKILL.md` frontmatter applies (`contract.role_meta`): `router` `opus`/`low`; `plan-critic`, `code-reviewer`, `iterate-judge` `opus`/`medium`; `implementer`, `verifier`, `resolver` `sonnet`/`medium`. Lead roles (`spec-writer`, `planner`, `debugger`, `reviser`, `direct`) name none and run at the lead session's model and effort |
 | `spec.approval` | `"ask"` (default) opens SPEC's requirements approval for a person; `"policy"` answers it with its default, `approve`, as soon as it opens, recorded `by: "policy"` (S2), and leaves every other question to be asked. 6.x's default `auto` style skipped the same gate. Any other value is a config error |
-| `deliver.base` | overrides the branch DELIVER's PR targets, instead of the repo's detected default branch; the checkout must be at that branch (the run's base is the checkout's HEAD) |
-| `deliver.readiness` | `"checks"` makes D3 run `gh pr checks` once and fail the delivery when it exits non-zero (nothing waits for checks to finish); default `"none"` skips it |
+| `deliver.base` | overrides the branch DELIVER's PR targets, instead of the repo's detected default branch. The run's base is origin's tip of that branch when it can be fetched, else the checkout's HEAD |
+| `deliver.branch` | names the feature branch each repo's run works on and DELIVER pushes, instead of `<prefix><slug>`, for a host whose repos enforce a branch-naming rule (`feature/AVP-1234`). Every repo of a workspace starts from this name. A name this clone or `origin` already has, or holds a branch under (`name/x`), gets `-2`, `-3`... as the default name does, so a repeated request never pushes over an earlier run's PR; each repo picks its own suffix, so a workspace's repos can end on different names. A run that adopts a PR keeps the PR's own branch. A non-empty string that is not `HEAD`, `task` or prefixed `-`, `refs/` or `task/` is required (a config error otherwise); the run stops before creating a branch when `git check-ref-format --branch` refuses the name, when it equals the branch the PR targets, or when a parent path of it is a branch here or on `origin` (`feature` for `feature/AVP-1234`), since git cannot hold both. It wins over `deliver.branchPrefix` and over the issue-derived name. Absent: `<prefix><slug>`, or `<prefix><n>-<issue title>` when the request names an issue |
+| `deliver.readiness` | `"checks"` (the default) reads the PR's CI once after the push and never waits: a pending run is a caveat on the PR's row, a failing check is a caveat and converts the PR to a draft (`gh pr ready --undo`) and D3 refuses it, no CI or an unreadable result is a caveat. A check that fails after the run ends is addressed with `revise`. `"none"` skips the read. Any other value is a config error |
+| `deliver.branchPrefix` | the prefix of the run's feature branch (`<prefix><slug>`); default `fix/` for a `debug` run and `feat/` for every other. A non-empty string ending in `/`, else a config error |
+| `deliver.reviewers` | a list of GitHub logins requested as reviewers when DELIVER opens the PR (`gh pr create --reviewer`); the PR is also assigned to the person running (`--assignee @me`). If gh refuses a name, the PR is opened without the assignee, reviewers, and labels and the row says so. Anything but a list of strings is a config error |
+| `deliver.labels` | a list of labels applied when DELIVER opens the PR (`gh pr create --label`); same retry and validation as `deliver.reviewers` |
 | `deliver.acceptRemotePaths` | a list of path globs (repo-relative, every repo of a workspace); commits someone else put on the PR branch after the verified SHA, such as a changelog bot's, are accepted when every path they touch in any commit matches and none is changed by the verified change. DELIVER then skips the push, keeps `deliveredSha` as the verified SHA, and records the commits as `acceptedRemote` (D1/D2). Absent or `[]`: any such commit blocks delivery. Anything but a list of strings is a config error |
 | `deliver.after` | a list of skill names (`plugin:skill` or a plain name the Skill tool resolves), captured in `implementations.after` when the run starts; a result with status `completed` and at least one PR lists them under `after` (an escalated or failed run never does, since a blocked or partial delivery keeps a PR row whose head may not be the verified commit), and the lead invokes each on those PRs once it has reported the result (runner.md `result`). They run after the run is final, outside its postconditions; `contract.load_config` refuses anything but a list of non-empty strings |
 | `deliver.escalatedPartialDraft` | `true` routes an escalated ITERATE forward into DELIVER for a draft PR instead of terminating |
@@ -332,9 +338,7 @@ Environment variables, precedence over config where both apply:
 | `LOOP_SPEC_MODEL_<ROLE>` | sets the model on that role's step request (`roles.resolve_model`, read by every role dispatch: execute.py, controller.py's critic and adopted review, verify.py, iterate.py, debug.py, revise.py, defaults.py); `<ROLE>` has hyphens replaced with underscores (`SPEC_WRITER`). Overrides `roles.<role>.model` when both are set |
 | `LOOP_SPEC_PHASE_MODEL_<PHASE>` | sets the model on every step request of that phase (`<PHASE>` uppercased: `SPEC`, `PLAN`, `EXECUTE`, ...) for a role with neither `LOOP_SPEC_MODEL_<ROLE>` nor `roles.<role>.model` set (an explicit `null` there counts as set and inherits); the role's own default applies when it is unset. A lead step's model is applied only by a host that can switch the lead's model, such as `examples/sdk-plugin` (`ClaudeSDKClient.set_model`) or `examples/supervisor` (a fresh session per lead step) |
 | `LOOP_SPEC_EFFORT_<ROLE>` | sets the effort on that role's step request (`roles.resolve_effort`, same readers and `<ROLE>` spelling as `LOOP_SPEC_MODEL_<ROLE>`); overrides `roles.<role>.effort`. A role step with an effort is dispatched as `loop-spec:worker-<effort>` (the plugin's `agents/`), since the Agent tool takes no per-call effort, and attests only when its transcript's `.meta.json` names that agent type. A lead step runs in the lead's own session at the session's `--effort`; the SDK runner passes the effort to `ClaudeAgentOptions.effort` |
-| `LOOP_SPEC_STEP_RETRIES` | per-phase retry limit before a rejected product asks a `fix-and-re-enter`/`stop` question; default 3 |
 | `LOOP_SPEC_SPEC_APPROVAL` | `ask` or `policy`; overrides `spec.approval` (`contract.spec_approval`) |
-| `LOOP_SPEC_REWIND_BUDGET` | the shared T1 budget's limit; default 2, never resets within a run |
 | `LOOP_SPEC_EXECUTE_WIDTH` | EXECUTE's max tasks per wave; default 3 |
 | `LOOP_SPEC_CONSOLE_EVENTS` | `0` silences the `[PHASE] summary` progress lines |
 | `LOOP_SPEC_CONSOLE_STREAM` | `stdout` or `stderr`, overriding the Cloud Run auto-detect |

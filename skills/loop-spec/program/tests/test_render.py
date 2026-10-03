@@ -4,7 +4,8 @@ import unittest
 from pathlib import Path
 
 from loop_spec.paths import FeaturePaths
-from loop_spec.render import plan_md, pr_body, spec_md, verification_md
+from loop_spec.render import (BODY_BEGIN, BODY_END, fill_template, merge_body, plan_md, pr_body, pr_sections, pr_template,
+                              sections_in, spec_md, verification_md)
 from loop_spec.state import StateStore
 
 
@@ -66,6 +67,54 @@ class RenderTests(unittest.TestCase):
         self.assertIn("Generated with loop-spec", text)
         self.assertIn("### Outstanding\nnone", text)
 
+    def test_pr_body_is_marked_and_carries_why_criteria_text_issue_owner_and_siblings(self):
+        self.store.state["issue"] = {"repo": "repo", "number": 12}
+        self.store.state["operator"] = {"login": "ada"}
+        text = pr_body(self.store, "repo", [("web", "https://x/pull/9")])
+        self.assertTrue(text.startswith(BODY_BEGIN) and text.rstrip().endswith(BODY_END))
+        for needle in ("### Why", "use the existing renderer", "| the widget renders |", "Closes #12",
+                       "for @ada", "- web: https://x/pull/9"):
+            self.assertIn(needle, text)
+        self.assertNotIn("Rewinds used", text)
+        other = pr_body(self.store, "elsewhere")
+        self.assertNotIn("Closes #", other)
+
+    def test_merge_body_keeps_human_text_in_each_of_the_three_shapes(self):
+        new = pr_body(self.store)
+        marked = "intro\n\n" + pr_body(self.store).replace("add a widget", "old") + "\nfooter\n"
+        merged = merge_body(marked, new)
+        self.assertTrue(merged.startswith("intro\n\n" + BODY_BEGIN))
+        self.assertTrue(merged.endswith(BODY_END + "\n\nfooter\n"))
+        self.assertNotIn("## old", merged)
+        legacy = "intro\n\n## old goal\n\n### Acceptance\n\nGenerated with loop-spec 7.8.3\n\nmy note\n"
+        merged = merge_body(legacy, new)
+        self.assertTrue(merged.startswith("intro\n\n" + BODY_BEGIN))
+        self.assertTrue(merged.endswith(BODY_END + "\n\nmy note\n"))
+        self.assertNotIn("old goal", merged)
+        plain = merge_body("Fixes the thing.\n", new)
+        self.assertTrue(plain.startswith("Fixes the thing.\n\n" + BODY_BEGIN))
+
+    def test_pr_template_is_read_at_the_given_commit(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as t:
+            repo = Path(t)
+            git = lambda *a: subprocess.run(["git", "-C", t, *a], check=True, capture_output=True, text=True)
+            git("init", "-q", "-b", "main")
+            git("config", "user.name", "T")
+            git("config", "user.email", "t@example.com")
+            (repo / "README").write_text("r\n")
+            git("add", ".")
+            git("commit", "-q", "-m", "first")
+            first = git("rev-parse", "HEAD").stdout.strip()
+            (repo / ".github").mkdir()
+            (repo / ".github" / "pull_request_template.md").write_text("## Checklist\n")
+            git("add", ".")
+            git("commit", "-q", "-m", "x")
+            sha = git("rev-parse", "HEAD").stdout.strip()
+            (repo / ".github" / "pull_request_template.md").write_text("changed in the working tree\n")
+            self.assertEqual(pr_template(repo, sha), "## Checklist\n")
+            self.assertIsNone(pr_template(repo, first))
+
     def test_pr_body_lists_open_findings_and_gaps_as_outstanding(self):
         self.store.state["ledger"]["findings"] = [
             {"id": "F-1", "location": "a.py:1", "cause": "x", "severity": "Minor",
@@ -96,3 +145,71 @@ class CriticSectionTests(unittest.TestCase):
             self.assertNotIn("F-2", body)
             store.state["critic"]["planRevision"] = "sha256:older"
             self.assertNotIn("### Plan critic", pr_body(store))
+
+
+class ReviewerBodyTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.store = _store(Path(self._tmp.name))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_the_table_has_no_command_column_and_how_to_test_lists_each_command_once(self):
+        verdicts = self.store.state["products"]["verify"]["product"]["verdicts"]
+        verdicts.append(dict(verdicts[0], criterion="AC-2"))
+        self.store.state["products"]["spec"]["product"]["criteria"].append({"id": "AC-2", "text": "two"})
+        body = pr_body(self.store)
+        self.assertIn("| Criterion | Text | Verdict |", body)
+        self.assertNotIn("| Command |", body)
+        self.assertEqual(body.count("sh verify.sh"), 1)
+        self.assertIn("### How to test\n\n```sh\nsh verify.sh\n```\n\nVerified at abc123", body)
+
+    def test_a_long_critic_cause_is_truncated(self):
+        self.store.state["revisions"]["plan"] = "sha256:plan"
+        self.store.state["critic"] = {"planRevision": "sha256:plan", "findings": [
+            {"id": "F-1", "location": "T-1", "cause": "c" * 500, "severity": "Critical",
+             "disposition": "rejected", "reason": "r" * 500}]}
+        body = pr_body(self.store)
+        self.assertNotIn("c" * 301, body)
+        self.assertNotIn("r" * 301, body)
+        self.assertIn("c" * 290 + "...", body)
+
+    def test_the_owner_line_names_the_pr_number_when_known(self):
+        self.store.state["operator"] = {"login": "ada"}
+        self.assertIn("`/loop-spec:revise 7`", pr_body(self.store, number=7))
+        self.assertIn("`/loop-spec:revise` with this PR's number", pr_body(self.store))
+
+    def test_a_template_fills_placeholder_sections_and_leaves_checklists(self):
+        template = ("## Summary\n\n<!-- what changed -->\n\n## How to test\n\n<!-- steps -->\n\n"
+                    "## Checklist\n\n- [ ] docs updated\n")
+        filled = fill_template(template, self.store)
+        self.assertIn("## Summary\n\n<!-- loop-spec:summary -->\nadd a widget\n\n- use the existing renderer", filled)
+        self.assertIn("```sh\nsh verify.sh\n```", filled)
+        self.assertIn("## Checklist\n\n- [ ] docs updated\n", filled)
+        self.assertNotIn("what changed", filled)
+        kept = fill_template("## Summary\n\nmy own text\n", self.store)
+        self.assertEqual(kept, "## Summary\n\nmy own text\n")
+
+    def test_sections_a_template_carries_are_written_once_and_refreshed_in_place(self):
+        filled = fill_template("## Summary\n\n<!-- x -->\n\n## Testing\n\n<!-- y -->\n\n- [x] ticked by me\n", self.store)
+        omit = sections_in(filled)
+        self.assertEqual(omit, frozenset({"summary"}))  # Testing had a checklist, so it stays the author's
+        body = pr_body(self.store, omit=omit)
+        self.assertNotIn("### Why", body)
+        self.assertIn("### How to test", body)
+        existing = body + "\n" + filled
+        self.store.state["products"]["spec"]["product"]["goal"] = "add a better widget"
+        merged = merge_body(existing, pr_body(self.store, omit=omit), pr_sections(self.store))
+        self.assertEqual(merged.count("add a better widget"), 2)  # the block's heading and the Summary section
+        self.assertNotIn("\nadd a widget\n", merged)
+        self.assertIn("- [x] ticked by me", merged)
+
+
+class PortableCommandTests(unittest.TestCase):
+    def test_a_machine_local_interpreter_shows_its_name_and_a_repo_venv_keeps_its_path(self):
+        import shutil
+        from loop_spec.render import _portable
+        local = shutil.which("python3")
+        self.assertEqual(_portable(f"{local} -m unittest", [Path("/nonexistent")]), "python3 -m unittest")
+        self.assertEqual(_portable("/repo/.venv/bin/python -m x", [Path("/repo")]), "/repo/.venv/bin/python -m x")

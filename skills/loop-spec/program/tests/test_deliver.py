@@ -63,6 +63,8 @@ def _lagging_gh(heads):
             reads.append(head)
             return 0, json.dumps({"number": 42, "url": "https://x/pull/42", "headRefName": "feature",
                                   "headRefOid": head, "baseRefName": "main"}), ""
+        if args[:2] == ("pr", "checks"):
+            return 1, "", "no checks reported"
         raise AssertionError(f"unexpected gh call: {args}")
     return fake_run_gh
 
@@ -115,7 +117,7 @@ class DeliverTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def _run_gh_reconcile(self, existing=None):
+    def _run_gh_reconcile(self, existing=None, checks=(1, "", "no checks reported on the 'feature' branch")):
         existing_json = json.dumps(existing or [])
 
         def fake_run_gh(repo, *args):
@@ -125,6 +127,10 @@ class DeliverTests(unittest.TestCase):
                 return 0, "https://x/pull/42\n", ""
             if args[:2] == ("pr", "view"):
                 return 0, PR_VIEW_JSON, ""
+            if args[:2] == ("pr", "checks"):
+                return checks
+            if args[:2] == ("pr", "ready"):
+                return 0, "", ""
             raise AssertionError(f"unexpected gh call: {args}")
         return patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh)
 
@@ -185,6 +191,8 @@ class DeliverTests(unittest.TestCase):
                 return 0, PR_VIEW_JSON, ""
             if args[:2] == ("pr", "edit"):
                 return edit_result
+            if args[:2] == ("pr", "checks"):
+                return 1, "", "no checks reported"
             raise AssertionError(f"unexpected gh call: {args}")
 
         edit_result = (0, "", "")
@@ -201,6 +209,53 @@ class DeliverTests(unittest.TestCase):
         row = action.product["repos"][0]
         self.assertEqual((row["state"], row["pr"]["number"]), ("delivered", 42))
         self.assertIn("PR body was not updated", row["caveats"][0])
+
+    def test_review_replies_post_inline_summary_and_rerequest_humans(self):
+        self.store.state["adoption"] = {"repo": "repo", "number": 42, "url": "https://x/pull/42", "headRef": "feature",
+                                         "baseBranch": "main", "baseSha": self.base_sha, "headSha": self.head_sha,
+                                         "author": "pat"}
+        self.store.state["operator"] = {"login": "sam"}
+        self.store.state["reviewReplies"] = [
+            {"gap": "G-1", "disposition": "addressed", "note": "fixed", "kind": "inline", "commentId": 11,
+             "url": "https://x/c/11", "author": "alice"},
+            {"gap": "G-2", "disposition": "acknowledged", "note": "thanks", "kind": "inline", "commentId": 12,
+             "url": "https://x/c/12", "author": "bob"},
+            {"gap": "G-3", "disposition": "declined", "note": "out of scope", "kind": "comment",
+             "url": "https://x/c/13", "author": "dependabot[bot]"},
+            {"gap": "G-4", "disposition": "addressed", "note": "ci fixed", "kind": "check", "url": None, "author": "ci"}]
+        self.store.save()
+        calls = []
+
+        def fake_run_gh(repo, *args):
+            calls.append(args)
+            if args[:2] == ("pr", "list"):
+                return 0, "[]", ""
+            if args[:2] == ("pr", "create"):
+                return 0, "https://x/pull/42\n", ""
+            if args[:2] == ("pr", "view"):
+                return 0, PR_VIEW_JSON, ""
+            if args[:2] == ("pr", "checks"):
+                return 1, "", "no checks reported"
+            if args[:2] in (("api", "repos/{owner}/{repo}/pulls/42/comments/11/replies"), ("pr", "comment")):
+                return 0, "", ""
+            if args[:2] == ("pr", "edit") and "--add-reviewer" in args:
+                return 0, "", ""
+            if args[:2] == ("pr", "edit"):
+                return 0, "", ""
+            raise AssertionError(f"unexpected gh call: {args}")
+
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh), \
+                patch("loop_spec.deliver.repo_module._configured_remote_host", return_value="github.com"):
+            action = deliver.run(self.store, self.paths, self.ctx)
+
+        self.assertEqual(action.product["repos"][0]["state"], "delivered")
+        inline = [c for c in calls if c[:1] == ("api",)]
+        self.assertEqual(len(inline), 1)  # G-2 acknowledged: no inline reply
+        self.assertIn("comments/11/replies", inline[0][1])
+        self.assertEqual(sum(c[:2] == ("pr", "comment") for c in calls), 1)
+        reviewers = [c for c in calls if "--add-reviewer" in c]
+        self.assertEqual(reviewers[0][-1], "alice")  # not the bot, not the check, not the operator
+        self.assertEqual(self.store.state["deliver"]["replied"], ["G-1", "G-2", "G-3", "G-4"])
 
     def test_a_non_draft_delivery_marks_an_existing_draft_pr_ready(self):
         def deliver_with(exit_, ready_result=(0, "", "")):
@@ -219,6 +274,8 @@ class DeliverTests(unittest.TestCase):
                     return 0, "", ""
                 if args[:2] == ("pr", "ready"):
                     return ready_result
+                if args[:2] == ("pr", "checks"):
+                    return 1, "", "no checks reported"
                 raise AssertionError(f"unexpected gh call: {args}")
 
             with patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh):
@@ -249,21 +306,37 @@ class DeliverTests(unittest.TestCase):
         self.assertIn("gh credential check failed: gh auth status", entry["caveats"][0])
         self.assertIn("run: gh auth login", entry["caveats"][0])
 
-    def test_a_real_push_rejection_blocks_delivery_without_forcing(self):
-        # A second clone pushes a divergent commit to origin/feature first, so our
-        # repo's own push is a genuine non-fast-forward rejection, not a mock.
+    def test_a_teammate_commit_on_the_pr_branch_exits_base_moved_and_pushes_nothing(self):
+        # A second clone pushes a divergent commit to origin/feature after VERIFY (a
+        # teammate's push during a revise): EXECUTE merges it in, nothing is published.
+        from loop_spec import postconditions
         other = self.tmp / "other"
         _git(self.tmp, "clone", "-q", str(self.remote), str(other))
         _git(other, "checkout", "-q", "-b", "feature")
         _commit(other, "c.py", "someone else's change")
         _git(other, "push", "-q", "origin", "feature")
+        remote_head = _head(other)
 
         with self._run_gh_reconcile():
             action = deliver.run(self.store, self.paths, self.ctx)
 
-        self.assertEqual(action.product["exit"], "delivery blocked")
-        self.assertEqual(action.product["repos"][0]["state"], "failed")
-        self.assertIn("push rejected", action.product["repos"][0]["caveats"][0])
+        row = action.product["repos"][0]
+        self.assertEqual((action.product["exit"], row["state"]), ("base moved", "branch moved"))
+        self.assertEqual((row["remoteHead"], row["conflicts"]), (remote_head, []))
+        self.assertEqual(validate(action.product, load_schema("deliver")), [])
+        self.assertEqual(_head(self.remote, "feature"), remote_head)  # nothing pushed
+        boundary = postconditions.Boundary(self.store, self.paths, phase="deliver", product=action.product,
+                                           exit="base moved", project_root=self.repo)
+        self.assertIsNone(boundary._d9())
+        row["remoteHead"] = self.head_sha
+        self.assertIn("remoteHead", boundary._d9())
+
+    def test_an_older_pr_head_the_verified_head_descends_from_still_pushes(self):
+        _git(self.repo, "push", "-q", "origin", f"{self.base_sha}:refs/heads/feature")
+        with self._run_gh_reconcile():
+            action = deliver.run(self.store, self.paths, self.ctx)
+        self.assertEqual((action.product["exit"], action.product["repos"][0]["state"]), ("delivered", "delivered"))
+        self.assertEqual(_head(self.remote, "feature"), self.head_sha)
 
     def _merge_upstream(self, filename):
         # Another agent's PR lands on main after this run forked.
@@ -306,12 +379,81 @@ class DeliverTests(unittest.TestCase):
         self.assertEqual((action.product["exit"], row["state"]), ("delivery blocked", "failed"))
         self.assertIn("no longer contains this run's base", row["caveats"][0])
 
-    def test_a_moved_base_that_merges_cleanly_still_delivers(self):
+    def test_ci_is_read_once_pending_is_a_caveat_and_failure_drafts_the_pr(self):
+        for checks, state in (((8, "build\tpending", ""), "pending"), ((1, "build\tfail", ""), "fail")):
+            calls = []
+            fake = self._run_gh_reconcile(checks=checks)
+            with fake as run_gh:
+                action = deliver.run(self.store, self.paths, self.ctx)
+                calls = [c.args for c in run_gh.call_args_list]
+            row = action.product["repos"][0]
+            self.assertEqual(row["checks"]["state"], state)
+            self.assertEqual(validate(action.product, load_schema("deliver")), [])
+            self.assertEqual(sum(1 for c in calls if c[1:3] == ("pr", "checks")), 1)
+            self.assertEqual(any(c[1:4] == ("pr", "ready", "42") and "--undo" in c for c in calls), state == "fail")
+            self.assertTrue(row["caveats"])
+            _git(self.remote, "update-ref", "-d", "refs/heads/feature")  # the next pass pushes afresh
+
+    def test_ci_read_waits_for_checks_to_register_when_workflows_exist(self):
+        reads = iter([("none", "no checks reported"), ("pending", "build")])
+        with self._run_gh_reconcile(), \
+             patch("loop_spec.deliver._has_workflows", return_value=True), \
+             patch("loop_spec.deliver.repo_module.pr_checks", side_effect=lambda *a: next(reads)), \
+             patch("loop_spec.deliver.time.sleep") as sleep:
+            action = deliver.run(self.store, self.paths, self.ctx)
+        self.assertEqual(action.product["repos"][0]["checks"]["state"], "pending")
+        self.assertEqual([c.args for c in sleep.call_args_list], [(3,)])
+
+    def _gh_calls_for_adopted(self, title):
+        spec = self.store.state["products"]["spec"]["product"]
+        self.store.state["adoption"] = {"repo": "repo", "number": 42, "url": "https://x/pull/42", "headRef": "feature",
+                                         "baseBranch": "main", "baseSha": self.base_sha, "headSha": self.head_sha,
+                                         "title": title,
+                                         "prior": {"slug": "old", "spec": {"goal": "old goal"}, "plan": {}, "commentsCutoff": None}}
+        spec["title"] = "feat: new title"
+        self.store.save()
+        calls = []
+
+        def fake_run_gh(repo, *args):
+            calls.append(args)
+            if args[:2] == ("pr", "list"):
+                return 0, json.dumps([{"number": 42, "url": "https://x/pull/42",
+                                        "headRefOid": self.head_sha, "baseRefName": "main"}]), ""
+            if args[:2] == ("pr", "view"):
+                return 0, PR_VIEW_JSON, ""
+            if args[:2] == ("pr", "checks"):
+                return 1, "", "no checks reported"
+            return 0, "", ""
+        with patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh):
+            deliver.run(self.store, self.paths, self.ctx)
+        return [c for c in calls if c[:2] == ("pr", "edit") and "--title" in c]
+
+    def test_an_adopted_pr_is_retitled_while_it_is_still_the_generated_title(self):
+        self.assertEqual(self._gh_calls_for_adopted("old goal"),
+                         [("pr", "edit", "42", "--title", "feat: new title")])
+
+    def test_an_adopted_pr_title_a_person_changed_is_left_alone(self):
+        self.assertEqual(self._gh_calls_for_adopted("Fix the thing"), [])
+
+    def test_the_spec_title_names_a_new_pr(self):
+        self.store.state["products"]["spec"]["product"]["title"] = "feat: add lerp helper"
+        self.store.save()
+        with self._run_gh_reconcile() as run_gh:
+            deliver.run(self.store, self.paths, self.ctx)
+        create = next(c.args for c in run_gh.call_args_list if c.args[1:3] == ("pr", "create"))
+        self.assertEqual(create[create.index("--title") + 1], "feat: add lerp helper")
+
+    def test_a_clean_base_move_exits_base_moved_with_no_conflicts(self):
         self._merge_upstream("c.py")
         with self._run_gh_reconcile():
             action = deliver.run(self.store, self.paths, self.ctx)
-        self.assertEqual(action.product["exit"], "delivered")
-        self.assertEqual(_head(self.remote, "feature"), self.head_sha)
+        row = action.product["repos"][0]
+        self.assertEqual((action.product["exit"], row["state"], row["conflicts"]), ("base moved", "base moved", []))
+        self.assertIsNone(repo_module.branch_sha(self.remote, "feature"))  # nothing pushed
+        from loop_spec import postconditions
+        boundary = postconditions.Boundary(self.store, self.paths, phase="deliver", product=action.product,
+                                           exit="base moved", project_root=self.repo)
+        self.assertIsNone(boundary._d9())  # D9 holds on an empty conflicts list
 
     def test_a_locally_moved_feature_branch_is_not_pushed_and_the_row_is_failed(self):
         # R8: a commit landed on the feature branch after VERIFY's accepted head
@@ -355,12 +497,88 @@ class DeliverTests(unittest.TestCase):
                 return 0, "https://x/pull/42\n", ""
             if args[:2] == ("pr", "view"):
                 return 0, PR_VIEW_JSON, ""
+            if args[:2] == ("pr", "checks"):
+                return 1, "", "no checks reported"
             raise AssertionError(f"unexpected gh call: {args}")
 
         with patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh):
             deliver.run(self.store, self.paths, self.ctx)
 
         self.assertIn("--draft", create_args)
+
+    def _recording_gh(self, existing=None, body="", create=(0, "https://x/pull/42\n", ""), ready=(0, "", "")):
+        """A fake run_gh that records every call and the body file each create/edit sent."""
+        calls, bodies = [], []
+
+        def fake_run_gh(repo, *args):
+            calls.append(args)
+            if args[:2] in (("pr", "create"), ("pr", "edit")):
+                bodies.append(Path(args[args.index("--body-file") + 1]).read_text())
+            if args[:2] == ("pr", "list"):
+                return 0, json.dumps(existing or []), ""
+            if args[:2] == ("pr", "create"):
+                return create if "--reviewer" in args or "--label" in args or create[0] == 0 else (0, "", "")
+            if args[:2] == ("pr", "view"):
+                return 0, json.dumps({**json.loads(PR_VIEW_JSON), "body": body}), ""
+            if args[:2] == ("pr", "checks"):
+                return 1, "", "no checks reported"
+            if args[:2] in (("pr", "edit"), ("pr", "ready")):
+                return ready if args[:2] == ("pr", "ready") else (0, "", "")
+            raise AssertionError(f"unexpected gh call: {args}")
+        return calls, bodies, patch("loop_spec.deliver.repo_module.run_gh", side_effect=fake_run_gh)
+
+    def test_create_carries_assignee_reviewers_labels_and_the_repos_template(self):
+        (self.repo / ".loop-spec").mkdir()
+        (self.repo / ".loop-spec" / "config.json").write_text(json.dumps({"deliver": {"reviewers": ["ada"], "labels": ["bot"]}}))
+        calls, bodies, fake = self._recording_gh()
+        with fake, patch("loop_spec.deliver.render.pr_template", return_value="## Checklist\n"):
+            deliver.run(self.store, self.paths, self.ctx)
+        create = next(c for c in calls if c[:2] == ("pr", "create"))
+        for flag, value in (("--assignee", "@me"), ("--reviewer", "ada"), ("--label", "bot")):
+            self.assertEqual(create[create.index(flag) + 1], value)
+        self.assertTrue(bodies[0].startswith("<!-- loop-spec:begin -->"))
+        self.assertTrue(bodies[0].rstrip().endswith("## Checklist"))
+
+    def test_a_create_refused_over_a_reviewer_is_retried_without_the_metadata(self):
+        (self.repo / ".loop-spec").mkdir()
+        (self.repo / ".loop-spec" / "config.json").write_text(json.dumps({"deliver": {"reviewers": ["nobody"]}}))
+        calls, _, fake = self._recording_gh(create=(1, "", "could not resolve reviewer nobody"))
+        with fake:
+            row = deliver.run(self.store, self.paths, self.ctx).product["repos"][0]
+        creates = [c for c in calls if c[:2] == ("pr", "create")]
+        self.assertEqual((len(creates), "--reviewer" in creates[1], row["state"]), (2, False, "delivered"))
+        self.assertIn("opened without its assignee", row["caveats"][0])
+
+    def test_an_edit_keeps_the_text_a_person_wrote_around_the_markers(self):
+        existing = [{"number": 42, "url": "https://x/pull/42", "headRefOid": self.head_sha, "baseRefName": "main", "isDraft": False}]
+        human = "Please look at the retry logic first.\n\n<!-- loop-spec:begin -->\nOLD\n<!-- loop-spec:end -->\n\nTODO: docs\n"
+        _, bodies, fake = self._recording_gh(existing=existing, body=human)
+        with fake:
+            deliver.run(self.store, self.paths, self.ctx)
+        self.assertTrue(bodies[0].startswith("Please look at the retry logic first."))
+        self.assertTrue(bodies[0].endswith("TODO: docs\n"))
+        self.assertNotIn("OLD", bodies[0])
+        self.assertIn("add a widget", bodies[0])
+
+    def test_a_draft_delivery_converts_a_ready_pr_back_to_a_draft(self):
+        self.store.state["products"]["iterate"]["exit"] = "converged with caveats"
+        self.store.save()
+        existing = [{"number": 42, "url": "https://x/pull/42", "headRefOid": self.head_sha, "baseRefName": "main", "isDraft": False}]
+        calls, _, fake = self._recording_gh(existing=existing, ready=(1, "", "HTTP 403"))
+        with fake:
+            row = deliver.run(self.store, self.paths, self.ctx).product["repos"][0]
+        self.assertIn(("pr", "ready", "42", "--undo"), calls)
+        self.assertTrue(any("gh pr ready --undo failed" in c for c in row["caveats"]))
+
+    def test_a_two_repo_delivery_links_each_pr_to_the_other(self):
+        self._add_second_repo()
+        _, bodies, fake = self._recording_gh()
+        with fake:
+            deliver.run(self.store, self.paths, self.ctx)
+        # two creates, then one refreshed body per delivered repo carrying "Related PRs"
+        self.assertEqual(len(bodies), 4)
+        self.assertTrue(all("### Related PRs" in b for b in bodies[2:]))
+        self.assertTrue(all("### Related PRs" not in b for b in bodies[:2]))
 
     # --- LF-58: one repo's failure never stops the others --------------------
 
@@ -565,6 +783,8 @@ class AcceptedRemoteTests(DeliverTests.__bases__[0]):
                 return create
             if args[:2] == ("pr", "view"):
                 return 0, view, ""
+            if args[:2] == ("pr", "checks"):
+                return 1, "", "no checks reported"
             raise AssertionError(f"unexpected gh call: {args}")
         return fake_run_gh
 
@@ -623,13 +843,12 @@ class AcceptedRemoteTests(DeliverTests.__bases__[0]):
         self.assertEqual((row["state"], row["pr"]["headSha"]), ("delivered", self.head_sha))
         self.assertEqual(sleep.call_count, 1)
 
-    def test_a_bot_commit_on_a_verified_path_is_refused(self):
-        self._bot_commit("b.py")
+    def test_a_bot_commit_on_a_verified_path_is_merged_in_not_pushed_over(self):
+        bot_head = self._bot_commit("b.py")
         with patch("loop_spec.deliver.repo_module.run_gh", side_effect=self._gh("x")):
             action = deliver.run(self.store, self.paths, self.ctx)
         row = action.product["repos"][0]
-        self.assertEqual((action.product["exit"], row["state"]), ("delivery blocked", "failed"))
-        self.assertIn("touch b.py", row["caveats"][0])
+        self.assertEqual((action.product["exit"], row["state"], row["remoteHead"]), ("base moved", "branch moved", bot_head))
 
     def test_accepted_extension_is_kept_when_the_pr_step_then_fails(self):
         self._bot_commit("CHANGELOG.md")
@@ -641,12 +860,12 @@ class AcceptedRemoteTests(DeliverTests.__bases__[0]):
         published = self.store.state["deliver"]["published"]["repo"]
         self.assertEqual((published["observed"], published["acceptedRemote"]["paths"]), (True, ["CHANGELOG.md"]))
 
-    def test_without_the_config_key_a_bot_commit_still_blocks(self):
+    def test_without_the_config_key_a_bot_commit_is_merged_in_not_accepted(self):
         (self.repo / ".loop-spec" / "config.json").write_text("{}")
         self._bot_commit("CHANGELOG.md")
         with patch("loop_spec.deliver.repo_module.run_gh", side_effect=self._gh("x")):
             action = deliver.run(self.store, self.paths, self.ctx)
-        self.assertIn("push rejected", action.product["repos"][0]["caveats"][0])
+        self.assertEqual((action.product["exit"], action.product["repos"][0]["state"]), ("base moved", "branch moved"))
 
 
 class RemoteExtensionTests(unittest.TestCase):

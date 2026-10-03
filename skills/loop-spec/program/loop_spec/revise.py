@@ -11,6 +11,7 @@ from `store.state["adoption"]`, which the core's revise entry populates.
 import json
 from pathlib import Path
 
+from loop_spec import log
 from loop_spec import repo as repo_module
 from loop_spec.errors import LoopSpecError
 from loop_spec.steps import IssueStep, Product
@@ -19,34 +20,74 @@ from loop_spec.roles import compose_prompt, load_role, repo_map, step_request
 
 
 
+_THREADS_QUERY = ("query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name)"
+                  "{pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved isOutdated "
+                  "comments(first:100){nodes{databaseId}}}}}}}")
+
+
+def _is_bot(login: str, flag: bool) -> bool:
+    return bool(flag) or login.endswith("[bot]")
+
+
+def _skip(body: str) -> bool:
+    return not body or "<!-- loop-spec:" in body
+
+
+def _closed_inline_ids(repo_path: Path, number: int) -> set:
+    """REST ids of inline comments in resolved or outdated threads; empty on any failure."""
+    code, out, err = repo_module.run_gh(repo_path, "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
+                                        "-F", f"number={number}", "-f", f"query={_THREADS_QUERY}")
+    try:
+        if code != 0:
+            raise ValueError(err.strip())
+        nodes = json.loads(out)["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
+    except (ValueError, KeyError, TypeError) as exc:
+        log.stderr.info(f"review threads for PR #{number} unreadable, keeping every inline comment: {exc}")
+        return set()
+    return {c["databaseId"] for t in nodes if t.get("isResolved") or t.get("isOutdated")
+            for c in t["comments"]["nodes"]}
+
+
+def _failing_checks(repo_path: Path, number: int) -> list[dict]:
+    code, out, _ = repo_module.run_gh(repo_path, "pr", "checks", str(number), "--json", "name,state,link,bucket")
+    try:
+        return [c for c in json.loads(out) if c.get("bucket") == "fail"] if code == 0 else []
+    except (ValueError, TypeError, AttributeError):
+        return []
+
+
+def _rest_pages(repo_path: Path, number: int, endpoint: str) -> list[dict]:
+    # The REST default page is 30; --slurp wraps every page's array in one array. REST, not
+    # `gh pr view`: its `user.type` names a bot whose GraphQL login has no `[bot]` suffix.
+    code, out, err = repo_module.run_gh(repo_path, "api", "--paginate", "--slurp", f"repos/{{owner}}/{{repo}}/{endpoint}")
+    if code != 0:
+        raise LoopSpecError(f"gh api {endpoint} failed for PR #{number}: {err.strip()}",
+                            repair="check gh auth and that the PR number exists")
+    return [item for page in json.loads(out) for item in page]
+
+
 def gaps_from_pr(repo_path: Path, number: int) -> list[dict]:
-    code, out, err = repo_module.run_gh(repo_path, "pr", "view", str(number), "--json", "comments,reviews")
-    if code != 0:
-        raise LoopSpecError(f"gh pr view failed for PR #{number}: {err.strip()}",
-                             repair="check gh auth and that the PR number exists")
-    data = json.loads(out)
-
     gaps = []
-    for comment in data.get("comments", []) + data.get("reviews", []):
-        body = (comment.get("body") or "").strip()
-        if not body:
-            continue
-        gaps.append({"id": f"G-{len(gaps) + 1}", "author": (comment.get("author") or {}).get("login", "unknown"),
-                     "body": body, "path": None, "line": None, "url": comment.get("url"),
-                     "createdAt": comment.get("createdAt") or comment.get("submittedAt")})
-
-    # The REST default page is 30 comments; --slurp wraps every page's array in one array.
-    code, out, err = repo_module.run_gh(repo_path, "api", "--paginate", "--slurp",
-                                        f"repos/{{owner}}/{{repo}}/pulls/{number}/comments")
-    if code != 0:
-        raise LoopSpecError(f"gh api pull comments failed for PR #{number}: {err.strip()}", repair="check gh auth")
-    for inline in (comment for page in json.loads(out) for comment in page):
-        body = (inline.get("body") or "").strip()
-        if not body:
-            continue
-        gaps.append({"id": f"G-{len(gaps) + 1}", "author": (inline.get("user") or {}).get("login", "unknown"),
-                     "body": body, "path": inline.get("path"), "line": inline.get("line"), "url": inline.get("html_url"),
-                     "createdAt": inline.get("created_at")})
+    closed = _closed_inline_ids(repo_path, number)
+    for kind, endpoint in (("comment", f"issues/{number}/comments"), ("review", f"pulls/{number}/reviews"),
+                           ("inline", f"pulls/{number}/comments")):
+        for item in _rest_pages(repo_path, number, endpoint):
+            body = (item.get("body") or "").strip()
+            user = item.get("user") or {}
+            login = user.get("login", "unknown")
+            if _skip(body) or _is_bot(login, user.get("type") == "Bot") or (kind == "inline" and item.get("id") in closed):
+                continue
+            gap = {"id": f"G-{len(gaps) + 1}", "author": login, "kind": kind, "body": body,
+                   "path": item.get("path") if kind == "inline" else None,
+                   "line": item.get("line") if kind == "inline" else None, "url": item.get("html_url"),
+                   "createdAt": item.get("created_at") or item.get("submitted_at")}
+            if kind == "inline":
+                gap["commentId"] = item.get("id")
+            gaps.append(gap)
+    for check in _failing_checks(repo_path, number):
+        gaps.append({"id": f"G-{len(gaps) + 1}", "author": "ci", "kind": "check",
+                     "body": f"CI check {check.get('name')} failed: {check.get('link')}", "path": None, "line": None,
+                     "url": check.get("link"), "createdAt": None})
     return gaps
 
 
@@ -88,6 +129,8 @@ def _reviser_request(store, paths, ctx) -> dict:
         "repos": repo_map(store.state["repos"]),
         "probes": ctx.get("probes", {}),
     }
+    if store.state.get("issue"):
+        inputs["issue"] = store.state["issue"]  # the issue the PR closes: a comment may contradict it
     # 7.4.2: the reviser reads and runs in the code checkout at the PR head.
     code_path = Path((store.state["repos"][adoption["repo"]].get("codeCheckout") or {}).get("path") or repo_path)
     prompt = compose_prompt(role, inputs=inputs, result_path=result_path, cwd=code_path, phase="revise")
@@ -115,6 +158,15 @@ def compact(product: dict) -> tuple[dict, dict]:
     """The registry hook the core calls after accepting a revise product: its SPEC and
     PLAN halves, re-entering through SPEC's approval flow as debug's do."""
     return product["spec"], product["plan"]
+
+
+def replies(store, product: dict) -> list[dict]:
+    """Each response joined with the gap it answers, for DELIVER to post (core record
+    `reviewReplies`); a response naming no known gap is dropped."""
+    gaps = {gap["id"]: gap for gap in store.state["revise"]["gaps"]}
+    return [{"gap": r["gap"], "disposition": r["disposition"], "note": r["note"],
+             **{k: gaps[r["gap"]].get(k) for k in ("kind", "url", "commentId", "author")}}
+            for r in product.get("responses", []) if r["gap"] in gaps]
 
 
 def on_submit(store, paths, step, result: dict) -> None:

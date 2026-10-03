@@ -16,16 +16,21 @@ from loop_spec.repo import (
     clean_checkout,
     commits_between,
     create_feature_branch,
+    default_branch,
     detect_workspace,
     exclude_path,
     fetch_pr_head,
     files_added_by,
+    find_issue,
     find_pr_reference,
     free_branch,
     head_sha,
     init_in_place,
     is_ancestor,
     is_clean,
+    restore_tracked_caches,
+    uncommitted,
+    pr_checks,
     remote_host,
     remove_worktree,
     remove_worktrees,
@@ -137,6 +142,30 @@ class InitInPlaceTests(unittest.TestCase):
 
 
 class WorktreeTests(unittest.TestCase):
+    def test_a_test_runs_cache_is_clean_but_an_uncommitted_file_is_not(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _init_repo(tmp)
+            _commit(tmp, "a.py", "x = 1\n")
+            Path(tmp, "__pycache__").mkdir()
+            Path(tmp, "__pycache__", "a.cpython-313.pyc").write_bytes(b"\0")
+            Path(tmp, ".pytest_cache").mkdir()
+            Path(tmp, ".pytest_cache", "README.md").write_text("cache\n")
+            self.assertTrue(is_clean(Path(tmp)))
+            Path(tmp, "b.py").write_text("y = 2\n")
+            self.assertFalse(is_clean(Path(tmp)))
+
+    def test_a_rewritten_tracked_cache_is_restored_and_other_changes_are_named(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _init_repo(tmp)
+            Path(tmp, "__pycache__").mkdir()
+            _commit(tmp, "__pycache__/a.cpython-313.pyc", "tracked bytecode")
+            _commit(tmp, "a.py", "add a")
+            Path(tmp, "__pycache__", "a.cpython-313.pyc").write_text("new")
+            Path(tmp, "a.py").write_text("x = 2\n")
+            self.assertEqual(uncommitted(Path(tmp)), ["a.py"])
+            restore_tracked_caches(Path(tmp))
+            self.assertEqual(Path(tmp, "__pycache__", "a.cpython-313.pyc").read_text(), "__pycache__/a.cpython-313.pyc\n")
+
     def test_add_clean_checkout_and_remove(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as workdir:
             _init_repo(tmp)
@@ -148,6 +177,8 @@ class WorktreeTests(unittest.TestCase):
             add_worktree(Path(tmp), wt_dest, branch="feat/x")
             self.assertTrue(wt_dest.is_dir())
             self.assertTrue(is_clean(wt_dest))
+            Path(wt_dest, "__pycache__").mkdir()
+            Path(wt_dest, "__pycache__", "a.cpython-313.pyc").write_bytes(b"\0")  # a test run's leftovers
             remove_worktree(Path(tmp), wt_dest)
             self.assertFalse(wt_dest.exists())
 
@@ -332,6 +363,16 @@ class FetchPrHeadTests(unittest.TestCase):
                 fetch_pr_head(clone, "feat/pr", "main", pr_head, managed_root=tmp / "home")
             self.assertIn("checkout --detach", caught.exception.repair)
 
+    def test_a_local_pr_branch_behind_the_pr_head_is_moved_up(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            origin, pr_head = self._origin_with_pr(tmp)
+            clone = tmp / "clone"
+            _git(tmp, "clone", "-q", origin.as_uri(), str(clone))
+            _git(clone, "branch", "feat/pr", f"{pr_head}~1")
+            fetch_pr_head(clone, "feat/pr", "main", pr_head, managed_root=tmp / "home")
+            self.assertEqual(head_sha(clone, "refs/heads/feat/pr"), pr_head)
+
 
 class FindPrReferenceTests(unittest.TestCase):
     def test_hash_number(self):
@@ -432,6 +473,98 @@ class FreeBranchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(free_branch(self._clone_with_origin(tmp, ["feat/xy"]), "feat/x"), "feat/x")
 
+    def test_a_branch_nested_under_the_name_takes_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(free_branch(self._clone_with_origin(tmp, ["feat/x/y"]), "feat/x"), "feat/x-2")
+            repo = Path(tmp) / "repo"
+            _git(repo, "branch", "feat/x-2/y")
+            self.assertEqual(free_branch(repo, "feat/x"), "feat/x-3")
+
+    def test_a_parent_path_branch_is_refused_here_or_on_origin(self):
+        # No suffix frees feature/AVP-1234 while a `feature` branch exists.
+        for local in (True, False):
+            with self.subTest(local=local), tempfile.TemporaryDirectory() as tmp:
+                repo = self._clone_with_origin(tmp, [] if local else ["feature"])
+                if local:
+                    _git(repo, "branch", "feature")
+                with self.assertRaisesRegex(LoopSpecError, "'feature' exists"):
+                    free_branch(repo, "feature/AVP-1234")
+
+
+class FindIssueTests(unittest.TestCase):
+    def _find(self, text, exclude=(), view=None, calls=None):
+        view = view or (0, json.dumps({"number": 12, "title": "t", "url": "https://github.com/o/r/issues/12",
+                                        "state": "OPEN", "body": "b"}), "")
+
+        def gh(repo, *args):
+            if calls is not None:
+                calls.append(args)
+            return view
+        with patch("loop_spec.repo.run_gh", side_effect=gh):
+            return find_issue(Path("."), text, set(exclude))
+
+    def test_the_first_reference_outside_the_excluded_pr_numbers_is_read(self):
+        calls = []
+        issue = self._find("fix #7 as in #12", exclude={7}, calls=calls)
+        self.assertEqual(issue["number"], 12)
+        self.assertEqual(calls[0][:3], ("issue", "view", "12"))
+        self.assertEqual(self._find("see github.com/o/r/issues/12")["number"], 12)
+
+    def test_closed_pr_and_unreadable_issues_are_none(self):
+        closed = (0, json.dumps({"number": 12, "url": "u", "state": "CLOSED"}), "")
+        a_pr = (0, json.dumps({"number": 12, "url": "https://github.com/o/r/pull/12", "state": "OPEN"}), "")
+        self.assertIsNone(self._find("#12", view=closed))
+        self.assertIsNone(self._find("#12", view=a_pr))
+        self.assertIsNone(self._find("#12", view=(1, "", "not found")))
+        self.assertIsNone(self._find("no reference here"))
+
+
+class PrChecksTests(unittest.TestCase):
+    def _classify(self, code, out="", err=""):
+        with patch("loop_spec.repo.run_gh", return_value=(code, out, err)):
+            return pr_checks(Path("."), 7)[0]
+
+    def test_the_exit_code_then_the_text_decide_the_state(self):
+        self.assertEqual(self._classify(0, "build\tpass"), "pass")
+        self.assertEqual(self._classify(8, "build\tpending"), "pending")
+        self.assertEqual(self._classify(1, "", "no checks reported on the 'x' branch"), "none")
+        self.assertEqual(self._classify(1, "build\tfail"), "fail")
+        self.assertEqual(self._classify(127, "", "gh: not found"), "error")
+
+    def test_a_timeout_is_an_error_not_a_hang(self):
+        with patch("loop_spec.repo.subprocess.run", side_effect=subprocess.TimeoutExpired("gh", 60)):
+            self.assertEqual(pr_checks(Path("."), 7)[0], "error")
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DefaultBranchTests(unittest.TestCase):
+    def _repo_with_origin(self, tmp):
+        repo = Path(tmp) / "repo"
+        origin = Path(tmp) / "origin.git"
+        repo.mkdir()
+        _init_repo(repo)
+        _commit(repo, "README", "init")
+        _git(tmp, "init", "-q", "--bare", "-b", "main", str(origin))
+        _git(repo, "remote", "add", "origin", str(origin))
+        _git(repo, "push", "-q", "origin", "main")
+        return repo
+
+    def test_ls_remote_names_main_while_a_feature_branch_is_checked_out(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self._repo_with_origin(tmp)
+            _git(repo, "checkout", "-q", "-b", "wip")
+            _git(repo, "remote", "set-head", "origin", "--delete")
+            self.assertEqual(default_branch(repo), "main")
+
+    def test_a_detached_head_with_no_origin_answer_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _init_repo(repo)
+            _commit(repo, "README", "init")
+            _git(repo, "checkout", "-q", "--detach")
+            with self.assertRaises(LoopSpecError):
+                default_branch(repo)

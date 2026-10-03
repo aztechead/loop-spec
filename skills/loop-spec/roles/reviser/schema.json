@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "required": ["spec", "plan"],
+  "required": ["spec", "plan", "responses"],
   "additionalProperties": false,
   "$defs": {
     "spec": {
@@ -11,6 +11,11 @@
         "goal": {
           "type": "string",
           "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 72
         },
         "boundaries": {
           "type": "array",
@@ -241,6 +246,20 @@
     }
   },
   "properties": {
+    "responses": {
+      "description": "One entry per input gap: how the revision answers it.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["gap", "disposition", "note"],
+        "additionalProperties": false,
+        "properties": {
+          "gap": {"type": "string", "pattern": "^G-[0-9]+$"},
+          "disposition": {"type": "string", "enum": ["addressed", "declined", "question", "acknowledged"]},
+          "note": {"type": "string", "description": "Addressed to the reviewer in plain words: what changed and where (file or behavior), or why not. Never cite internal ids (AC-n, D-n, T-n, G-n)."}
+        }
+      }
+    },
     "spec": {
       "$ref": "#/$defs/spec"
     },
