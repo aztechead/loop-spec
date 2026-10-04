@@ -113,7 +113,8 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
                             f"if origin/{branch} moved, merge it in {work}, verify again, then deliver; never force-push")
 
     body_path = run.dir / "pr-body.md"
-    body_path.write_text(body(run, verified))
+    if not adopted:  # an adopted PR keeps its own description, and has no pr.md
+        body_path.write_text(body(run, verified))
     pr = state.get("pr")
     if pr is None:
         existing = git.gh_json(work, "pr", "list", "--head", branch, "--state", "open", "--json", "number,url")

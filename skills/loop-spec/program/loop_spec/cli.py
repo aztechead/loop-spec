@@ -77,6 +77,8 @@ def cmd_start(args, project: Path, cwd: Path) -> int:
         "rootChanges": git.dirty(project),
         "tasks": {},
     }
+    if pr:  # the review so far is the spec's input; feedback reports only what comes after it
+        run.state["feedback"] = {"seen": [i["id"] for i in review.read(run.work, pr["number"])[0]]}
     run.save()
     out(f"loop-spec: started {run.slug} ({kind}, {run.mode})")
     return show_status(run)
@@ -156,7 +158,7 @@ def show_status(run: Run) -> int:
     if verify:
         stale = "" if verify["sha"] == head else f" (the branch has moved to {head[:12] if head else '?'} since)"
         out(f"  verify   {'passed' if verify['passed'] else 'FAILED'} at {verify['sha'][:12]}{stale}")
-    if s.get("feedback"):
+    if (s.get("feedback") or {}).get("sha"):
         f = s["feedback"]
         verdicts = ", ".join(f"{who} {state.lower()}" for who, state in f.get("verdicts", {}).items()) or "no reviews"
         out(f"  feedback CI {f['ci']} at {f['sha'][:12]}; {verdicts}; {len(f['seen'])} review item(s) seen")

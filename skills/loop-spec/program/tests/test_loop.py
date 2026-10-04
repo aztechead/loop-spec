@@ -158,6 +158,30 @@ class LoopTests(unittest.TestCase):
         self.assertIn("rules    CLAUDE.md", out)
         self.assertIn("plan.json has no `checks`", out)
 
+    # --- a revise run ----------------------------------------------------------------
+
+    def test_a_revise_run_delivers_without_pr_md_and_does_not_report_the_review_it_started_from(self):
+        sh(self.repo.path, "git", "push", "-q", "origin", "main:feat/mul")
+        (self.gh_dir / "view.json").write_text(json.dumps({
+            "number": 7, "url": "https://github.com/acme/kv/pull/7", "headRefName": "feat/mul", "baseRefName": "main",
+            "state": "OPEN", "isCrossRepository": False, "reviews": [],
+            "comments": [{"id": "C1", "author": {"login": "ana"}, "body": "Please add mul."}]}))
+        code, out, err = self.repo.ls("start", "--pr", "7")
+        self.assertEqual(code, 0, err)
+        run = marker(out, "LOOP_SPEC_RUN")
+        Path(run["runDir"], "spec.json").write_text(json.dumps(
+            {"title": "t", "goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "true"}]}))
+        Path(run["runDir"], "plan.json").write_text(json.dumps({"tasks": [{"id": "T-1", "title": "a"}]}))
+        self.repo.ls("task", "start", "T-1")
+        commit(Path(run["runDir"], "tasks", "T-1"), "mul.py", "def mul(a, b):\n    return a * b\n")
+        self.assertEqual(self.repo.ls("task", "done", "T-1")[0], 0)
+        self.checks("pass")
+        self.deliver(run)  # no pr.md: the PR keeps its description
+        self.assertNotIn("--body-file", (self.gh_dir / "calls").read_text())
+        code, out, _ = self.repo.ls("feedback")
+        self.assertNotIn("Please add mul.", out)
+        self.assertEqual(marker(out, "LOOP_SPEC_RESULT")["status"], "completed")
+
     # --- CI and review feedback ------------------------------------------------------
 
     def deliver(self, run: dict) -> None:

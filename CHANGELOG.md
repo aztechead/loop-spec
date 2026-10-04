@@ -15,6 +15,10 @@ All notable changes documented here. Format follows Keep a Changelog.
   `feedback.reviewWaitMinutes` (default 30) in all. Before, a run ended as soon as CI
   passed, before any requested reviewer could answer. A later `deliver` asks everyone
   who left feedback to review again, so the run waits for them to see the fix.
+- A revise run delivers without `pr.md`, as `references/revise.md` says: `deliver` used
+  to push the branch and then fail reading the missing file. `start --pr` records the
+  review the PR already has, so `feedback` reports only what comes after it, not the
+  comments the run was started to address.
 - A lead writes no code before the plan is accepted (Sonnet 5.5 led a live run that
   implemented during Spec, skipped the interactive approval, and backfilled
   `spec.json` and `plan.json`). In an interactive run the `next` line at Spec names the
