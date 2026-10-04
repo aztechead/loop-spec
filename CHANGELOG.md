@@ -22,8 +22,7 @@ All notable changes documented here. Format follows Keep a Changelog.
   start` refuse an unusable spec. A task naming a criterion the spec lacks makes the
   plan unusable, and plan errors list the ids that do exist. `status` warns when two
   tasks that can run at once list the same file.
-- At DELIVER, the `next` line names the PR template to follow, and `show-me.md` beside
-  visual-pr's. `deliver` checks `gh` before pushing, and refuses a `pr.md` that still
+- At DELIVER, the `next` line names the PR template to follow. `deliver` checks `gh` before pushing, and refuses a `pr.md` that still
   has the template's `{...}` placeholder lines.
 - The skill defines the four kinds of check, shows a multi-task plan with parallel
   tasks, and lists the task brief's fields; the format test checks that each skill's

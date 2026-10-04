@@ -67,7 +67,7 @@ class SkillFormatTests(unittest.TestCase):
 
 HUB = PLUGIN / "skills" / "loop-spec" / "SKILL.md"
 REFERENCES = HUB.parent / "references"
-VENDORED = REFERENCES / "visual-pr"  # copied unchanged from HumanLayer; SKILL.md summarizes its views
+VENDORED = REFERENCES / "visual-pr"  # copied unchanged from HumanLayer
 
 
 def local_links(path: Path) -> set[Path]:

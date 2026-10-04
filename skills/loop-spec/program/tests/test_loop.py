@@ -244,15 +244,14 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("references/visual-pr/pr_description_template.md", err)
 
-    def test_at_deliver_the_next_step_names_the_template_and_its_views(self):
+    def test_at_deliver_the_next_step_names_the_template_until_pr_md_is_written(self):
         run = self.ready_run()
         Path(run["runDir"], "pr.md").unlink()
         self.repo.ls("verify")
         out = self.repo.ls("iterate")[1]
-        self.assertRegex(out, r"next: loop-spec deliver \(read \S+/deliver\.md, \S+/pr_description_template\.md and "
-                              r"\S+/visual-pr/show-me\.md\)")
+        self.assertRegex(out, r"next: loop-spec deliver \(read \S+/deliver\.md and \S+/visual-pr/pr_description_template\.md\)")
         Path(run["runDir"], "pr.md").write_text("## Why the change\n\nmul.\n")
-        self.assertNotIn("show-me.md", self.repo.ls("status")[1])
+        self.assertNotRegex(self.repo.ls("status")[1], r"next .*pr_description_template")
 
     def test_deliver_refuses_template_placeholders_left_in_pr_md(self):
         run = self.ready_run()

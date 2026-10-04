@@ -14,7 +14,6 @@ def title(run: Run) -> str:
 
 
 VISUAL_PR = Path(__file__).resolve().parents[2] / "references" / "visual-pr" / "pr_description_template.md"
-SHOW_ME = VISUAL_PR.parent / "show-me.md"  # the views visual-pr's change outline is drawn with
 REPO_TEMPLATES = (".github/pull_request_template.md", ".github/PULL_REQUEST_TEMPLATE.md", "PULL_REQUEST_TEMPLATE.md",
                   "pull_request_template.md", "docs/pull_request_template.md", "docs/PULL_REQUEST_TEMPLATE.md")
 
@@ -31,12 +30,11 @@ def pr_template(worktree: Path) -> Path:
 
 
 def pr_guides(run: Run) -> list[Path]:
-    """What to read to write `pr.md`, while it is still to be written: its template, and for
-    visual-pr the views its outline uses. Nothing for an adopted PR, whose description stays."""
+    """What to read to write `pr.md`, while it is still to be written: its template. Nothing
+    for an adopted PR, whose description stays."""
     if (run.state.get("pr") or {}).get("adopted") or (run.dir / "pr.md").is_file() or not run.work.exists():
         return []
-    template = pr_template(run.work)
-    return [template, SHOW_ME] if template == VISUAL_PR else [template]
+    return [pr_template(run.work)]
 
 
 def template_leftovers(text: str, template: Path) -> list[str]:

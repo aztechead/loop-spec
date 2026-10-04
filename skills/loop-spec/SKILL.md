@@ -83,12 +83,10 @@ spec: [micro](references/micro.md), [debug](references/debug.md), or
 [revise](references/revise.md).
 
 The PR description (`pr.md`) follows the repository's own PR template when it has one.
-Without one, follow [pr_description_template.md](references/visual-pr/pr_description_template.md)
-(one sentence on why, one to three reviewer notes, a change outline) and draw the
-outline with [show-me.md](references/visual-pr/show-me.md). Read show-me.md whole; its
-views are pseudocode, call trees, component trees, file trees, Mermaid diagrams,
-`diff` blocks, and whole blocks. Keep to these text views; it also describes an HTML
-artifact, which a PR body cannot hold.
+Without one, follow the visual-pr template,
+[pr_description_template.md](references/visual-pr/pr_description_template.md): one
+sentence on why, one to three reviewer notes, and a change outline in the views it
+lists.
 
 ## How to work
 
