@@ -42,7 +42,7 @@ the project's checks take longer.
 | `LS sync` | merge whatever moved on origin (the base branch, or the feature branch itself) into `work` |
 | `LS iterate [--caveats "..."]` | record that the verified head's whole-change review is done and addressed |
 | `LS set --branch NAME --title "..."` | rename the feature branch (until it is pushed) or set the PR title |
-| `LS deliver [--draft] [--unverified] [--comment-file F] [--no-feedback]` | push the verified head and open or update its PR (posting `F` as a comment) |
+| `LS deliver [--draft] [--unverified] [--comment-file F]` | push the verified head and open or update its PR (posting `F` as a comment) |
 | `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review; ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
 | `LS finish --status completed\|no-change\|escalated\|failed --summary "..."` | end the run: `completed` after feedback skills find nothing, otherwise a run that delivers nothing |
 
@@ -339,7 +339,8 @@ opened before. It refuses, and says why, when:
 
 Use `--unverified`, which opens a draft that says so, only with the user's say-so, or,
 in an autonomous run, when a check cannot run here for a reason outside the change. If
-there is nothing to deliver, `LS finish --status no-change --summary "..."`.
+there is nothing to deliver, `LS finish --status no-change --summary "..."`. Only when
+the user asked not to wait for CI, add `--no-feedback`, which ends the run at the PR.
 
 ### The feedback loop
 

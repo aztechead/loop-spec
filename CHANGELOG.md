@@ -33,6 +33,9 @@ All notable changes documented here. Format follows Keep a Changelog.
 - The SDK example no longer crashes when the lead pipes a command through `cut` and the
   `LOOP_SPEC_NEXT` line arrives cut short: it skips the line and reads the result from
   the run's directory.
+- `deliver --no-feedback` is named only beside its condition, the user asking not to
+  wait for CI: a Sonnet lead in an autonomous run picked it from the command table and
+  ended the run at the PR with every check pending.
 - A lead writes no code before the plan is accepted (Sonnet 5.5 led a live run that
   implemented during Spec, skipped the interactive approval, and backfilled
   `spec.json` and `plan.json`). In an interactive run the `next` line at Spec names the
