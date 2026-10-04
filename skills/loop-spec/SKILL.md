@@ -11,9 +11,9 @@ commit it delivers, whose CI passes, and whose reviewers' requests are answered.
 do the judgment. The program keeps the run's state and task graph on disk, manages git
 worktrees, runs checks, opens the PR, and reads its CI and review.
 
-This file is the overview: the program, the workflow, and how to work. Each phase's
-details are in its own reference, read when the run reaches that phase. This is
-guidance, not a script: where the code in front of you calls for something different,
+This file covers every run: the program, how to work, and each phase. A run of another
+kind than `cycle` changes a few phases, as its own reference says, and a repository
+without a PR template uses the bundled one. This is guidance, not a script: where the code in front of you calls for something different,
 do what the code needs and say why in your report.
 
 ## The program
@@ -22,7 +22,7 @@ do what the code needs and say why in your report.
 `LOOP_SPEC_RUN {...}` line, along with the run's `slug`, `kind`, `phase`, `mode`, `base`
 (the commit the change sits on), `runDir`, `work` (the feature branch's worktree), and
 `references` (the absolute path of the `references/` directory this file links to;
-read references through it, since your shell is not in this file's directory).
+read a reference through it, since your shell is not in this file's directory).
 Run it; there is no need to read it. Commands find the run from the current directory
 or as the only open run; otherwise add `--slug <slug>` after the command.
 
@@ -33,7 +33,7 @@ the project's checks take longer.
 
 | Command | Does |
 |---|---|
-| `LS status` | where the run is, every task's state, the repository's rules files, and the `next` step with the reference for it |
+| `LS status` | where the run is, every task's state, the repository's rules files, and the `next` step |
 | `LS task start T-1 T-2 ...` | one worktree per task from the feature head, with `prepare` already run in it; prints one `LOOP_SPEC_TASK {...}` brief per task |
 | `LS task done T-1` | merge the task's commits into the feature branch; prints the `next` step |
 | `LS task set T-1 --status todo\|blocked --note "..."` | change a task's status by hand |
@@ -53,42 +53,6 @@ The program derives the phase from the run's files and announces each change wit
 `LOOP_SPEC_PHASE_START`/`_END` lines, which monitoring tools read. Run `LS status`
 after writing `spec.json` and after writing `plan.json`, so each phase is announced
 when it ends.
-
-## The workflow
-
-Copy this checklist into your progress updates and check items off as each phase ends:
-
-```
-Run progress:
-- [ ] 1. Spec: spec.json written (approved, if interactive); branch and title set
-- [ ] 2. Plan: plan.json written; LS status accepts the graph
-- [ ] 3. Execute: every task done and merged
-- [ ] 4. Verify: LS verify passed at the current head
-- [ ] 5. Iterate: review findings addressed and verified; LS iterate
-- [ ] 6. Deliver: pr.md written; LS deliver; LS feedback until the run ends
-```
-
-Every phase ends on a check, and you loop on it until it passes. When you reach a phase,
-read its reference in full; the `next` line names it too.
-
-| Phase | The work | The check, and the loop | Read |
-|---|---|---|---|
-| 1. Spec | `spec.json`: a goal, and criteria a command can show; the repository's rules for branch, title, and PR | `LS status` checks `spec.json`; interactive, the user approves the criteria; revise until both pass | [references/spec.md](references/spec.md) |
-| 2. Plan | `plan.json`: the task graph, `prepare`, and the repository's required `checks` | `LS status` validates the graph; fix it until it accepts | [references/plan.md](references/plan.md) |
-| 3. Execute | start ready tasks, dispatch implementers in parallel, merge each sound one | you read each report and diff; send it back or fix it until it is sound | [references/execute.md](references/execute.md) |
-| 4. Verify | `LS verify` in a clean checkout | a failure: find the cause, fix it, verify again | [references/review.md](references/review.md) |
-| 5. Iterate | a reviewer and a simplifier on the whole change | fix blocking findings; any new commit goes back to verify; then `LS iterate` | [references/review.md](references/review.md) |
-| 6. Deliver | `pr.md`, `LS deliver`, `LS feedback` | a failed check or a review item: fix, verify, deliver, feedback again, with no round limit | [references/deliver.md](references/deliver.md) |
-
-A `cycle` run follows this as written. Other kinds change it; read yours before the
-spec: [micro](references/micro.md), [debug](references/debug.md), or
-[revise](references/revise.md).
-
-The PR description (`pr.md`) follows the repository's own PR template when it has one.
-Without one, follow the visual-pr template,
-[pr_description_template.md](references/visual-pr/pr_description_template.md): one
-sentence on why, one to three reviewer notes, and a change outline in the views it
-lists.
 
 ## How to work
 
@@ -132,6 +96,267 @@ The run's `mode` is in `LOOP_SPEC_RUN`.
   `finish`: when the request is impossible, contradicts the code in a way no default
   resolves, or something you cannot fix blocks the run, end with `finish --status
   escalated --summary "..."` naming the blocker and the verified head, if any.
+
+## The workflow
+
+Copy this checklist into your progress updates and check items off as each phase ends:
+
+```
+Run progress:
+- [ ] 1. Spec: spec.json written (approved, if interactive); branch and title set
+- [ ] 2. Plan: plan.json written; LS status accepts the graph
+- [ ] 3. Execute: every task done and merged
+- [ ] 4. Verify: LS verify passed at the current head
+- [ ] 5. Iterate: review findings addressed and verified; LS iterate
+- [ ] 6. Deliver: pr.md written; LS deliver; LS feedback until the run ends
+```
+
+Every phase ends on a check, and you loop on it until it passes:
+
+| Phase | The work | The check, and the loop |
+|---|---|---|
+| 1. Spec | `spec.json`: a goal, and criteria a command can show; the repository's rules for branch, title, and PR | `LS status` checks `spec.json`; interactive, the user approves the criteria; revise until both pass |
+| 2. Plan | `plan.json`: the task graph, `prepare`, and the repository's required `checks` | `LS status` validates the graph; fix it until it accepts |
+| 3. Execute | start ready tasks, dispatch implementers in parallel, merge each sound one | you read each report and diff; send it back or fix it until it is sound |
+| 4. Verify | `LS verify` in a clean checkout | a failure: find the cause, fix it, verify again |
+| 5. Iterate | a reviewer and a simplifier on the whole change | fix blocking findings; any new commit goes back to verify; then `LS iterate` |
+| 6. Deliver | `pr.md`, `LS deliver`, `LS feedback` | a failed check or a review item: fix, verify, deliver, feedback again, with no round limit |
+
+A `cycle` run follows this as written. Other kinds change it; read yours before the
+spec: [micro](references/micro.md), [debug](references/debug.md), or
+[revise](references/revise.md).
+
+## 1. Spec
+
+Write `spec.json` in `runDir`, a statement of done that a command can check, and settle
+how this repository takes a change.
+
+### spec.json
+
+Use this shape; the program reads these fields:
+
+```json
+{"title": "feat: add lerp helper",
+ "goal": "calc exposes lerp(a, b, t) returning a + (b - a) * t.",
+ "criteria": [{"id": "AC-1", "text": "lerp(0, 10, 0.5) returns 5.0",
+               "check": ".venv/bin/python -m pytest -q tests/test_lerp.py"}],
+ "decisions": ["Clamp nothing: t outside [0, 1] extrapolates, matching numpy."],
+ "assumptions": [], "outOfScope": ["No vector support."]}
+```
+
+The goal is one sentence. Each criterion is a property of the code at the delivered
+commit that one command can show (a test, a script, a grep), never something about the
+PR, CI, or branches. Keep each check exactly as strict as its criterion, so it cannot
+fail on a comment or a wording. Give a criterion no `check` only when no command can
+show it; the reviewer then judges it. Record each real choice in `decisions`, and, in
+an autonomous run, each default you chose in `assumptions`. At least one criterion
+runs the real thing (the command, the endpoint, the script) the way a user would.
+
+Illustrative criteria, for a request to add a `--ttl` option to a CLI:
+
+| Criterion | Check | Why |
+|---|---|---|
+| A key set with `--ttl 1` is gone after it expires | `python -m pytest -q tests/test_ttl.py` (the test injects a clock) | good: the behavior, shown by a test that cannot flake |
+| `kv set a 1 --ttl 5 && kv get a` prints `1` | `bash -c 'kv set a 1 --ttl 5 && kv get a \| grep -qx 1'` | good: the real command, as a user runs it |
+| No file contains the word `sleep` | `! grep -r sleep .` | bad: it fails on a comment that says "instead of sleeping"; check the tests' clock instead |
+| The PR passes CI | none | bad: about the PR, not the code; `feedback` reads CI |
+
+### How this repository takes a change
+
+`LS status` lists the rules files (`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING*`). Read them
+for branch naming, PR title and commit message format, a PR template, a changelog
+entry, and sign-off, and follow them for the rest of the run.
+
+The branch and the PR title come from, in order: the user (the entry passed them as
+`start --branch` and `--title`), then the repository's rules, then the defaults
+(`feat/<slug>`, and the spec's `title`). For the rules, run `LS set --branch NAME
+--title "..."` now, before anything is pushed. With no rule, `title` follows the commit
+convention in `git log --oneline -15`.
+
+### The check
+
+In an interactive run, show the user the goal and criteria and ask once for approval,
+revising until they approve. Then run `LS status`. It checks `spec.json` and names each
+problem: a missing goal, no criteria, a criterion without an `id` or `text`, a `check`
+that is not a command string, or a duplicate id. Fix the file and run it again until it
+reports the criteria; that run announces the end of SPEC.
+
+## 2. Plan
+
+Write `plan.json` in `runDir`, the task graph the program runs, and have `LS status`
+accept it before any task starts.
+
+### plan.json
+
+Use this shape; the program reads these fields. This plan, for a spec with criteria
+AC-1 to AC-3, runs T-1 and T-2 in parallel, then T-3 once both are merged:
+
+```json
+{"prepare": "uv sync",
+ "checks": [{"command": "uv run ruff check", "source": "CLAUDE.md"},
+            {"command": "uv run mypy calc", "source": "AGENTS.md"}],
+ "tasks": [{"id": "T-1", "title": "Add lerp with its tests", "dependsOn": [],
+            "files": ["calc/lerp.py", "tests/test_lerp.py"], "criteria": ["AC-1"],
+            "verify": ".venv/bin/python -m pytest -q tests/test_lerp.py"},
+           {"id": "T-2", "title": "Add clamp with its tests", "dependsOn": [],
+            "files": ["calc/clamp.py", "tests/test_clamp.py"], "criteria": ["AC-2"],
+            "verify": ".venv/bin/python -m pytest -q tests/test_clamp.py"},
+           {"id": "T-3", "title": "Export both and document them", "dependsOn": ["T-1", "T-2"],
+            "files": ["calc/__init__.py", "README.md"], "criteria": ["AC-3"],
+            "verify": ".venv/bin/python -c 'from calc import lerp, clamp'"}]}
+```
+
+- `prepare` installs what the checks need into a fresh checkout (`.venv/bin/python`
+  exists only after it). The program runs it in each task's worktree and before every
+  verify. Leave it out when nothing needs installing.
+- `checks` are the repository's own required checks. Read each rules file `LS status`
+  lists and put every command they say a change must pass (lint, format, typecheck,
+  tests, build) here, with the file it came from; write `[]` when they require none.
+  When one fails at verify, the program runs it at the base too: output that is the
+  same there is pre-existing and does not fail the run; new output does.
+- Every `check`, `verify`, and `checks` command is a bash command run from the
+  repository root.
+
+### Tasks
+
+A task is a unit one implementer can build and test on its own.
+
+- Keep code and its tests in the same task. Give each file one owning task.
+- `dependsOn` only what a task needs merged first; independent tasks run in parallel. A
+  small change is one task; split work only where the parts are independent.
+- Each task's `verify` runs the tests that exercise it, and every criterion is named in
+  some task's `criteria`.
+- When the change alters behavior a doc describes, or a public symbol other code calls,
+  include that update in a task: migrate the callers, then remove what they no longer
+  use.
+
+### The check
+
+Run `LS status`. It validates the graph and names each problem with what would fix it:
+a missing or duplicate id, an unknown dependency, a cycle, or a task naming a criterion
+the spec does not have. Fix `plan.json` and run it again until it accepts the plan. It
+also names any criterion no task covers (add it to a task's `criteria`), and any two
+tasks that can run at once but list the same file, which would conflict when merged
+(give the file one owner, or make one task depend on the other). Its `next` line then
+names the first tasks to start.
+
+## 3. Execute the task graph
+
+Get every task in `plan.json` built, checked, and merged into the feature branch,
+running independent tasks in parallel.
+
+Until every task is done:
+
+1. Run `LS task start` with the tasks the `next` line names. Each gets a worktree with
+   `prepare` already run, and a `LOOP_SPEC_TASK {...}` brief: `id`, `worktree`,
+   `branch`, `from` (the commit it starts at), `task` (its entry in `plan.json`), the
+   spec's `goal`, the `criteria` it covers, the repository's `checks`, and `prepared`
+   (false when `prepare` failed there).
+2. Dispatch one `loop-spec:implementer` agent per started task, all in one message so
+   they run in parallel. Its prompt is the task's brief, plus the conventions you found
+   (commit style, house rules) and anything else it needs from you. Do a task yourself
+   only when it is a few lines or needs context only you have: work in its worktree,
+   commit, and `LS task done` it.
+3. While implementers run, end your turn with a line saying `LOOP_SPEC_WAITING`; their
+   reports resume you.
+4. When an implementer reports, read its report and its commits (`git -C <worktree>
+   log -p <from>..`, with `from` from the brief). If the work is sound, `LS task done
+   T-n`, which merges it and names the next step. If not, send it back with what is
+   wrong, or fix it yourself in the worktree, and read it again.
+5. If a task turns out wrong or missing, edit `plan.json` (finished tasks stay
+   finished) and run `LS status` to validate it again. A task that cannot proceed gets
+   `LS task set T-n --status blocked --note "..."`.
+
+`LS task done` refuses uncommitted work and a merge that conflicts; it says which, and
+how to fix it. When every task is done, its `next` line says to verify.
+
+## 4 and 5. Verify, then review the whole change
+
+Show every criterion and required check passing in a clean checkout of the feature
+head, then have the whole change reviewed and simplified, and verified again after any
+fix.
+
+### Verify
+
+Run `LS verify`. It runs every criterion's check, every task's `verify`, and every
+repository check in a clean checkout of the feature head, and records a pass for that
+head only.
+
+When a check fails, find the cause (the code, the check, or the environment), fix it in
+`work`, commit, and verify again. Repeat until it passes. Never weaken or delete a test
+to make a check pass.
+
+### Iterate
+
+Once verify passes:
+
+1. Dispatch, in one message, a `loop-spec:reviewer` (correctness, adversarially) and a
+   `loop-spec:simplifier` (reuse, simplification, efficiency, altitude). Give both
+   `work` and the range `<base>..HEAD`; give the reviewer the path of `spec.json` too.
+2. Fix every blocking finding. Apply each simplifier cleanup that keeps the behavior the
+   spec asks for and makes the change smaller or plainer; skip the rest. Commit small
+   fixes in `work`, or add a task for a larger one, and list what you skipped in your
+   report.
+3. Any new commit sends the run back to verify: run `LS verify` again, and repeat until
+   the verified head has nothing left to fix.
+4. Run `LS iterate`, with `--caveats "..."` for anything you knowingly leave open,
+   which the result carries.
+
+## 6. Deliver, then see CI and review through
+
+Open the PR for the verified, reviewed head, then answer its CI and its reviewers until
+CI passes and nobody has asked for anything new.
+
+### The description
+
+Write the PR description to `pr.md` in `runDir`, following the template `LS status`
+names on its `pr.md` line (`prTemplate` in `LOOP_SPEC_RUN`): the repository's own PR
+template when it has one, else the visual-pr template,
+[pr_description_template.md](references/visual-pr/pr_description_template.md): one
+sentence on why, one to three reviewer notes, and a change outline in the views it
+lists. Describe the change as it stands at the head you deliver, and update `pr.md`
+when a later fix changes it. Deliver appends the criteria, and how verify showed each,
+folded below your text. A revise run leaves the PR's description alone and needs no `pr.md`.
+
+### Deliver
+
+Run `LS deliver`. It pushes the feature branch and opens the PR, or updates the one it
+opened before. It refuses, and says why, when:
+
+- there is no `pr.md`, or it still has lines of the template's `{...}` placeholders;
+- `gh` is missing or not signed in (checked before anything is pushed);
+- verify did not pass at this head: verify again;
+- origin moved: run `LS sync`, resolve any conflict in `work` keeping both sides' intent
+  (`git commit --no-edit`), verify, and deliver again.
+
+Use `--unverified`, which opens a draft that says so, only with the user's say-so, or,
+in an autonomous run, when a check cannot run here for a reason outside the change. If
+there is nothing to deliver, `LS finish --status no-change --summary "..."`.
+
+### The feedback loop
+
+Run `LS feedback`. It waits for the PR's checks, then shows each failed check's log and
+each new review item (reviews, inline comments, conversation comments) once. Then:
+
+- **Checks still running:** run it again.
+- **CI passed and nothing new:** the run ends.
+- **A failed check or a review item this change should address:** fix it in `work`,
+  verify, deliver, and run `feedback` again.
+- **A question, or a request you decline with a reason:** answer it in a comment, with
+  `deliver --comment-file F` alongside your next fix, or `gh pr comment` when there is
+  none.
+- **A check that also fails on the base branch:** not this change's to fix; say so in a
+  comment.
+- **Feedback that cannot be satisfied** (it contradicts the spec, or needs a decision
+  only the user can make): `LS finish --status escalated --summary "..."` naming what
+  is needed.
+
+There is no limit on rounds.
+
+When the project's config names feedback skills (`feedback.skills` in
+`.loop-spec/config.json`), `feedback` lists them once CI and review are clear. Invoke
+each with the `Skill` tool and the PR URL, treat what it reports like review comments,
+and when nothing is left, `LS finish --status completed --summary "..."`.
 
 ## Keep going until the run ends
 

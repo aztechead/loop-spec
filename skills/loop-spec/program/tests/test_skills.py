@@ -97,11 +97,11 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             with self.subTest(path=path.relative_to(PLUGIN)):
                 self.assertIn("## Contents", path.read_text()[:600])
 
-    def test_the_program_names_a_reference_that_exists_for_every_phase(self):
+    def test_the_program_names_a_reference_that_exists_for_every_run_kind(self):
         from loop_spec import cli
-        for guide in set(cli.PHASE_GUIDES.values()) | {"micro.md", "debug.md", "revise.md"}:
-            with self.subTest(guide=guide):
-                self.assertTrue((cli.REFERENCES / guide).is_file())
+        for kind in cli.KIND_GUIDES:
+            with self.subTest(kind=kind):
+                self.assertTrue((cli.REFERENCES / f"{kind}.md").is_file())
 
 
 if __name__ == "__main__":

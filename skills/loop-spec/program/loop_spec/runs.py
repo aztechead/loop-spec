@@ -158,7 +158,7 @@ class Run:
     def checked_spec(self) -> dict:
         """spec.json, or a refusal naming what is missing or wrong in it."""
         if self.spec is None:
-            raise LoopSpecError(f"there is no spec at {self.spec_path}", "write it; see references/spec.md")
+            raise LoopSpecError(f"there is no spec at {self.spec_path}", "write it; see the Spec section of the loop-spec skill")
         found = spec_problems(self.spec)
         if found:
             raise LoopSpecError(f"{self.spec_path.name} is not usable: " + "; ".join(found), f"fix {self.spec_path}")

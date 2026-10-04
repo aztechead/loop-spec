@@ -23,22 +23,22 @@ recognize while working and what to do; a rule with no trigger does not fire.
   [docs/live-runs.md](docs/live-runs.md), never simulated.
 - **When you change a program command, its output, or the shape of `spec.json` or
   `plan.json`**, update [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md) or the
-  reference that covers it (`references/spec.md`, `plan.md`, ...) in the same diff: they
-  are the lead's only description of them.
+  reference that covers it in the same diff: they are the lead's only description of
+  them.
 - **When you would add a gate** (the program refusing something), check that it
   guards a fact the program records, not the quality of the model's judgment.
   Judgment belongs in the skill as guidance; see
   [docs/architecture.md](docs/architecture.md).
 - **When you write or edit an entry skill** (`skills/<entry>/SKILL.md`), keep it a
   thin shell: it runs `loop-spec start` and points at the hub skill. The method lives
-  in `skills/loop-spec/SKILL.md` and its `references/`, never in a stub.
-- **When you add guidance for one phase or one run kind**, put it in that phase's or
-  kind's file under `skills/loop-spec/references/`, keep `SKILL.md` the overview that
-  links each reference directly, and never link one reference from another: the lead
-  may read a second-hand link only partly. The program's `next` line names the
-  reference for the phase (`PHASE_GUIDES` in `cli.py`); `tests/test_skills.py` checks
-  the links. Reach bundled files with
+  in `skills/loop-spec/SKILL.md`, never in a stub. Reach bundled files with
   `${CLAUDE_SKILL_DIR}`, never another placeholder.
+- **When you add guidance to the hub skill**, put what every run reads in `SKILL.md`,
+  and only what some runs need (one run kind's changes, the PR template) in a file
+  under `skills/loop-spec/references/`. Link each reference from `SKILL.md`, never from
+  another reference: the lead may read a second-hand link only partly. Live runs showed
+  the lead reads every phase's guidance in every run, so phases stay in `SKILL.md`.
+  `tests/test_skills.py` checks the links.
 - **When you write or edit guidance for the model** (a skill or an agent), state the
   goal and the reason rather than a procedure for its own sake, and keep it short.
   Check a model-behavior claim against [docs/models/](docs/models/README.md).

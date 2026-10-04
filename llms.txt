@@ -7,8 +7,8 @@
 
 ## The method
 
-- [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md): the method's overview (the workflow, its checks, how to work, when to ask) and every program command.
-- [skills/loop-spec/references/](skills/loop-spec/references/): one file per phase (spec, plan, execute, review, deliver) and per run kind (micro, debug, revise).
+- [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md): the whole method (spec, task-graph plan, parallel execution, verify and review, deliver), each phase's check, how to work, when to ask, and every program command.
+- [skills/loop-spec/references/](skills/loop-spec/references/): what only some runs need: each run kind's changes (micro, debug, revise) and the PR template.
 - [skills/loop-spec/references/visual-pr/](skills/loop-spec/references/visual-pr/README.md): the PR description format used when a repository has no PR template.
 - [agents/implementer.md](agents/implementer.md): the Sonnet agent that implements one task in its own worktree.
 - [agents/reviewer.md](agents/reviewer.md): the Opus agent that reviews the whole change against the spec, adversarially.

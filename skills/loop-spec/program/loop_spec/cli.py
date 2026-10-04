@@ -175,22 +175,20 @@ def _rel(run: Run, path: Path) -> Path:
     return path.relative_to(run.project) if path.is_relative_to(run.project) else path
 
 
-# Each phase's guidance in the hub skill's references, named on the `next` line so the
-# lead reads it when the run reaches that phase.
+# The hub skill's references, which only some runs need: a run kind's changes to the
+# workflow, named on the `next` line at the spec, and the PR template, named at deliver.
 REFERENCES = Path(__file__).resolve().parents[2] / "references"
-PHASE_GUIDES = {"spec": "spec.md", "plan": "plan.md", "execute": "execute.md", "verify": "review.md",
-                "iterate": "review.md", "deliver": "deliver.md"}
+KIND_GUIDES = ("micro", "debug", "revise")
 
 
 def _next_step(run: Run, phase: str, problem: str | None = None) -> str:
     step = _step(run, phase, problem)
-    guides = [PHASE_GUIDES.get("plan" if problem else phase)]
-    if phase == "spec" and run.state.get("kind") in ("micro", "debug", "revise"):
-        guides.insert(0, f"{run.state['kind']}.md")
-    named = [str(REFERENCES / g) for g in guides if g]
+    named = []
+    if phase == "spec" and run.state.get("kind") in KIND_GUIDES:
+        named.append(str(REFERENCES / f"{run.state['kind']}.md"))
     if phase == "deliver":
         named += [str(p) for p in deliver.pr_guides(run)]
-    return step + (f" (read {', '.join(named[:-1]) + ' and ' if len(named) > 1 else ''}{named[-1]})" if named else "")
+    return step + (f" (read {' and '.join(named)})" if named else "")
 
 
 def _step(run: Run, phase: str, problem: str | None) -> str:

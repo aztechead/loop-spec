@@ -10,7 +10,7 @@ the line between them sits where it does. The method itself is in
 | Part | Owns | Lives in |
 |---|---|---|
 | The lead (the user's session, or an SDK agent) | every judgment: the spec, the plan, dispatching tasks, reading reports, fixing findings | runs the hub skill |
-| The hub skill | the method, as guidance the lead follows: an overview, and one reference per phase and per run kind, each linked from the overview and named on the program's `next` line when the run reaches it | `skills/loop-spec/SKILL.md`, `skills/loop-spec/references/` |
+| The hub skill | the method, as guidance the lead follows: every phase in `SKILL.md`, and what only some runs need (a run kind's changes, the PR template) as references it links, which the program's `next` line names when the run needs them | `skills/loop-spec/SKILL.md`, `skills/loop-spec/references/` |
 | Entry skills | starting a run of one kind, then pointing at the hub | `skills/{cycle,micro,debug,revise,status}/SKILL.md` |
 | Agents | one task's implementation (`implementer`, Sonnet), the whole change's adversarial review (`reviewer`, Opus), and its cleanup review (`simplifier`, Sonnet) | `agents/*.md` |
 | The Stop hook | keeping an autonomous run going until it has a result | `hooks/hooks.json`, `loop_spec/hook.py` |

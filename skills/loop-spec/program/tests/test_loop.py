@@ -249,7 +249,7 @@ class LoopTests(unittest.TestCase):
         Path(run["runDir"], "pr.md").unlink()
         self.repo.ls("verify")
         out = self.repo.ls("iterate")[1]
-        self.assertRegex(out, r"next: loop-spec deliver \(read \S+/deliver\.md and \S+/visual-pr/pr_description_template\.md\)")
+        self.assertRegex(out, r"next: loop-spec deliver \(read \S+/visual-pr/pr_description_template\.md\)")
         Path(run["runDir"], "pr.md").write_text("## Why the change\n\nmul.\n")
         self.assertNotRegex(self.repo.ls("status")[1], r"next .*pr_description_template")
 

@@ -33,9 +33,8 @@ These are 7.x's phases, and a run announces them exactly as 7.x did: a
 the run's directory and where 7.x wrote it, so tools that monitor 7.x runs keep working.
 
 The model does the judgment. The method is written as guidance in one skill,
-[skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md), not as gates: an overview the
-lead reads at the start, and one reference per phase and per run kind, read when the
-run reaches it. A small
+[skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md), not as gates, with a short
+reference for each run kind other than `cycle`. A small
 standard-library helper keeps the run's state and task graph on disk, manages the
 worktrees, runs the checks, opens the PR, and reads its CI. It enforces one rule: only
 a commit that passed verify, and contains everything on origin, is delivered, unless
@@ -150,7 +149,7 @@ not a supported surface.
 
 | Doc | What it covers |
 |---|---|
-| [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md) | the method's overview, every program command, and links to each phase's reference |
+| [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md) | the method: every phase, every program command, how to work, and when to ask |
 | [docs/architecture.md](docs/architecture.md) | how the skills, agents, and program fit together, for a contributor |
 | [docs/models/README.md](docs/models/README.md) | what Claude Opus 5.5 and Sonnet 5.5 do differently, and what that means for loop-spec; the source Anthropic docs are copied beside it |
 | [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md) | moving from 7.x |

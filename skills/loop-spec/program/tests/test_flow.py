@@ -219,11 +219,11 @@ class FlowTests(unittest.TestCase):
                               {"id": "T-2", "title": "b", "files": ["calc.py"]}]})
         self.assertIn("warning  T-1 and T-2 can run at once but both list calc.py", self.repo.ls("status")[1])
 
-    def test_the_next_step_names_the_phase_reference_and_the_kind_reference(self):
+    def test_the_next_step_names_the_kind_reference_at_the_spec(self):
         _, out, _ = self.repo.ls("start", "--request", "Add mul")
-        self.assertRegex(out, r"next .*\(read \S+/references/spec\.md\)")
+        self.assertNotIn("(read ", out)
         _, out, _ = self.repo.ls("start", "--kind", "micro", "--request", "Rename mul")
-        self.assertRegex(out, r"next .*\(read \S+/references/micro\.md and \S+/references/spec\.md\)")
+        self.assertRegex(out, r"next .*spec\.json \(read \S+/references/micro\.md\)")
         references = Path(marker(out, "LOOP_SPEC_RUN")["references"])
         self.assertTrue(references.is_absolute() and (references / "micro.md").is_file())
 

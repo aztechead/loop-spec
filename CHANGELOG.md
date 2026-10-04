@@ -11,12 +11,12 @@ All notable changes documented here. Format follows Keep a Changelog.
   requirements and long-running commands stated, direct links to the PR format
   references, and one name for the implementer agent. `tests/test_skills.py` checks
   the format limits.
-- Progressive disclosure: `SKILL.md` is the overview (the program, the workflow and
-  each phase's check, how to work), and each phase and run kind has its own reference
-  (`references/spec.md`, `plan.md`, `execute.md`, `review.md`, `deliver.md`,
-  `micro.md`, `debug.md`, `revise.md`), linked from the overview and never from each
-  other. The `next` line names the reference for the phase the run is in. `spec.md`
-  carries illustrative good and bad criteria.
+- `SKILL.md` holds every phase, each ending on the check that closes it, after a
+  progress checklist. What only some runs need lives in references it links, never
+  linked from one another: each run kind's changes (`references/micro.md`, `debug.md`,
+  `revise.md`) and the PR template. The `next` line names the kind's reference at the
+  spec and the template at deliver. The spec section carries illustrative good and bad
+  criteria.
 - `status` checks `spec.json` (a goal, criteria with unique ids and text, `check` as a
   command string) and keeps the run in SPEC until it is usable; `verify` and `task
   start` refuse an unusable spec. A task naming a criterion the spec lacks makes the
