@@ -13,8 +13,9 @@ worktrees, runs checks, opens the PR, and reads its CI and review.
 
 This file covers every run: the program, how to work, and each phase. A run of another
 kind than `cycle` changes a few phases, as its own reference says, and a repository
-without a PR template uses the bundled one. This is guidance, not a script: where the code in front of you calls for something different,
-do what the code needs and say why in your report.
+without a PR template uses the bundled one. This is guidance, not a script: where the
+code in front of you calls for something different, do what the code needs and say why
+in your report.
 
 ## The program
 
@@ -70,10 +71,9 @@ when it ends.
 - **Subtract before you add.** Reuse what the code, the standard library, or an existing
   dependency provides. Prefer reshaping or deleting code to adding a layer; no
   abstraction with one caller, no option nothing uses.
-- **Prove it works.** Tests passing is necessary, not sufficient: at least one
-  criterion runs the real thing (the command, the endpoint, the script) the way a user
-  would. A change you make yourself is done only when a real check that exercises it
-  has passed; a syntax-only check, or a command that failed to start, does not count.
+- **Prove it works.** Tests passing is necessary, not sufficient. A change you make
+  yourself is done only when a real check that exercises it has passed; a syntax-only
+  check, or a command that failed to start, does not count.
 - **Keep decisions moving.** A reversible decision you can make from the code is yours
   to make: make it, record it, and keep going. Ask only about what is costly to undo.
 - **Guard your context.** Hand implementation and broad reading to agents; keep your own
@@ -133,7 +133,8 @@ how this repository takes a change.
 
 ### spec.json
 
-Use this shape; the program reads these fields:
+Use this shape. The program reads `title`, `goal`, and `criteria`; `decisions`,
+`assumptions`, and `outOfScope` are for you, the reviewer, and the user:
 
 ```json
 {"title": "feat: add lerp helper",
@@ -169,9 +170,10 @@ entry, and sign-off, and follow them for the rest of the run.
 
 The branch and the PR title come from, in order: the user (the entry passed them as
 `start --branch` and `--title`), then the repository's rules, then the defaults
-(`feat/<slug>`, and the spec's `title`). For the rules, run `LS set --branch NAME
---title "..."` now, before anything is pushed. With no rule, `title` follows the commit
-convention in `git log --oneline -15`.
+(`branch` or `branchPrefix` in `.loop-spec/config.json`, else `feat/<slug>`, or
+`fix/<slug>` for a debug run; and the spec's `title`). For the rules, run `LS set
+--branch NAME --title "..."` now, before anything is pushed. With no rule, `title`
+follows the commit convention in `git log --oneline -15`.
 
 ### The check
 
@@ -316,7 +318,8 @@ template when it has one, else the visual-pr template,
 sentence on why, one to three reviewer notes, and a change outline in the views it
 lists. Describe the change as it stands at the head you deliver, and update `pr.md`
 when a later fix changes it. Deliver appends the criteria, and how verify showed each,
-folded below your text. A revise run leaves the PR's description alone and needs no `pr.md`.
+folded below your text. A revise run leaves the PR's description alone and needs no
+`pr.md`.
 
 ### Deliver
 
@@ -326,6 +329,7 @@ opened before. It refuses, and says why, when:
 - there is no `pr.md`, or it still has lines of the template's `{...}` placeholders;
 - `gh` is missing or not signed in (checked before anything is pushed);
 - verify did not pass at this head: verify again;
+- the head has no recorded review: review it and run `LS iterate`;
 - origin moved: run `LS sync`, resolve any conflict in `work` keeping both sides' intent
   (`git commit --no-edit`), verify, and deliver again.
 
