@@ -256,9 +256,11 @@ Until every task is done:
    (false when `prepare` failed there).
 2. Dispatch one `loop-spec:implementer` agent per started task, all in one message so
    they run in parallel. Its prompt is the task's brief, plus the conventions you found
-   (commit style, house rules) and anything else it needs from you. Do a task yourself
-   only when it is a few lines or needs context only you have: work in its worktree,
-   commit, and `LS task done` it.
+   (commit style, house rules) and anything else it needs from you, including any design
+   you already worked out: put it in the brief rather than building it yourself, so the
+   implementer's model does the building and your context stays free for judging. Do a
+   task yourself only when it is a few lines: work in its worktree, commit, and `LS task
+   done` it.
 3. While implementers run, end your turn with a line saying `LOOP_SPEC_WAITING`; their
    reports resume you.
 4. When an implementer reports, read its report and its commits (`git -C <worktree>
@@ -342,13 +344,14 @@ there is nothing to deliver, `LS finish --status no-change --summary "..."`.
 Run `LS feedback`. It waits for the PR's checks, then shows each failed check's log and
 each new review item (reviews, inline comments, conversation comments) once. Then:
 
-- **Checks still running:** run it again.
+- **Checks still running, or a requested review not in yet:** run it again.
 - **CI passed and nothing new:** the run ends.
 - **A failed check or a review item this change should address:** fix it in `work`,
   verify, deliver, and run `feedback` again.
-- **A question, or a request you decline with a reason:** answer it in a comment, with
-  `deliver --comment-file F` alongside your next fix, or `gh pr comment` when there is
-  none.
+- **A question, or a request you decline with a reason:** answer it in a comment with
+  `deliver --comment-file F`, alongside your next fix or on its own. Post replies only
+  this way: the program marks its comments so `feedback` does not read them back as
+  review, and a comment you post with `gh` comes back as a new item.
 - **A check that also fails on the base branch:** not this change's to fix; say so in a
   comment.
 - **Feedback that cannot be satisfied** (it contradicts the spec, or needs a decision

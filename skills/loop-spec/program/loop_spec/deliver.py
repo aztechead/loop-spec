@@ -1,7 +1,7 @@
 """Push the feature branch and open or update its pull request with a body built from the run."""
 from pathlib import Path
 
-from loop_spec import git, remote
+from loop_spec import git, remote, review
 from loop_spec.errors import LoopSpecError
 from loop_spec.runs import Run, first_line, read_json
 
@@ -126,10 +126,11 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
     state["delivered"] = {"sha": head, "verified": verified}
     run.save()
     if comment_file:
-        code, _, err = git.gh(work, "pr", "comment", str(pr["number"]), "--body-file", str(comment_file))
+        reply = f"{comment_file.read_text().rstrip()}\n\n{review.MARK}\n"
+        code, _, err = git.gh(work, "pr", "comment", str(pr["number"]), "--body", reply)
         if code != 0:
             raise LoopSpecError(f"the PR was delivered, but gh pr comment failed: {err.strip()}",
-                                f"post it by hand: gh pr comment {pr['number']} --body-file {comment_file}")
+                                f"run loop-spec deliver --comment-file {comment_file} again")
     return head
 
 

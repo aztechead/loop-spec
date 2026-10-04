@@ -174,7 +174,7 @@ class LoopTests(unittest.TestCase):
         self.deliver(run)
         self.checks("pass", "skipping")
         self.review(reviews=[{"id": "R1", "author": {"login": "ana"}, "state": "APPROVED", "body": ""}],
-                    comments=[{"id": "C0", "author": {"login": "loop-bot"}, "body": "our own note"}])
+                    comments=[{"id": "C0", "author": {"login": "loop-bot"}, "body": "our own note\n\n<!-- loop-spec -->"}])
         code, out, _ = self.repo.ls("feedback")
         result = marker(out, "LOOP_SPEC_RESULT")
         target = result["delivery"]["targets"][0]
@@ -201,18 +201,35 @@ class LoopTests(unittest.TestCase):
         self.checks("pass")
         self.review(reviews=[{"id": "R1", "author": {"login": "ana"}, "state": "CHANGES_REQUESTED",
                               "body": "Please rename mul to multiply."}],
+                    comments=[{"id": "C1", "author": {"login": "loop-bot"}, "body": "Why int, not float?"}],
                     inline=[{"id": 11, "author": "coderabbit[bot]", "body": "Missing test for 0.",
                              "path": "mul.py", "line": 2, "url": "https://github.com/acme/kv/pull/7#r11"}])
         code, out, _ = self.repo.ls("feedback")
         self.assertEqual(code, 1)
+        self.assertIn("comment by loop-bot", out)  # the run's own gh account, not its own reply
         self.assertIn("review (changes_requested) by ana", out)
         self.assertIn("Please rename mul to multiply.", out)
         self.assertIn("inline comment by coderabbit[bot] on mul.py:2", out)
-        self.assertIn("2 new review item(s)", out)
+        self.assertIn("3 new review item(s)", out)
         commit(Path(run["work"]), "mul.py", "def multiply(a, b):\n    return a * b\n")
         self.deliver(run)
         code, out, _ = self.repo.ls("feedback")
         self.assertEqual(marker(out, "LOOP_SPEC_RESULT")["delivery"]["targets"][0]["reviews"], {"ana": "CHANGES_REQUESTED"})
+
+    def test_a_requested_review_keeps_the_run_open_until_it_is_in_or_the_wait_runs_out(self):
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pass")
+        (self.gh_dir / "view.json").write_text(json.dumps({"reviews": [], "comments": [],
+                                                           "reviewRequests": [{"login": "ana"}]}))
+        code, out, _ = self.repo.ls("feedback", "--timeout", "0")
+        self.assertEqual(code, 0)
+        self.assertIn("review requested from ana is not in yet", out)
+        self.assertNotIn("LOOP_SPEC_RESULT", out)
+        (self.repo.path / ".loop-spec" / "config.json").write_text(json.dumps({"feedback": {"reviewWaitMinutes": 0}}))
+        code, out, _ = self.repo.ls("feedback", "--timeout", "0")
+        self.assertIn("still not in after 0 min", out)
+        self.assertEqual(marker(out, "LOOP_SPEC_RESULT")["status"], "completed")
 
     def test_feedback_skills_keep_the_run_open_for_the_lead(self):
         (self.repo.path / ".loop-spec").mkdir(exist_ok=True)

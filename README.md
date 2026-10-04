@@ -133,6 +133,7 @@ Optional, in `<repo>/.loop-spec/config.json` (commit it if your team wants it sh
 | `reviewers`, `labels` | set on a new PR (it is always assigned to you) |
 | `feedback.skills` | skills (`plugin:skill`) the lead runs on the delivered PR, e.g. your own review triage; what they report is handled like review comments |
 | `feedback.wait` | `false` to end runs at delivery without waiting for CI or review |
+| `feedback.reviewWaitMinutes` | how long `feedback` waits, once CI is settled, for reviewers asked on the PR to answer (default 30; `0` does not wait) |
 
 Models: the implementer and simplifier agents run on Sonnet and the reviewer on Opus,
 all at medium effort, from their frontmatter in [agents/](agents/). The lead is your session, so run

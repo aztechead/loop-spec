@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 import sys
+import time
 
 from loop_spec import VERSION, checks, ci, dag, deliver, git, hook, legacy, log, phases, remote, review
 from loop_spec.errors import LoopSpecError
@@ -437,6 +438,7 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
     head = git.head(run.work)
     if not delivered or not pr or delivered["sha"] != head:
         raise LoopSpecError("the current head has not been delivered", "verify, then `loop-spec deliver`")
+    call_end = time.monotonic() + args.timeout
     outcome, found = ci.wait(run.work, pr["number"], args.timeout)
     for c in found:
         out(f"  {c.get('bucket', '?'):8} {c.get('name', '')}" + (f"  {c['link']}" if c.get("link") else ""))
@@ -444,8 +446,15 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
         out(f"checks are still running after {args.timeout}s: run loop-spec feedback again")
         return 0
     record = run.state.setdefault("feedback", {"seen": []})
-    items, verdicts = review.read(run.work, pr["number"])
-    new = [i for i in items if i["id"] not in record["seen"]]
+    review_wait = 60 * (_config(project).get("feedback") or {}).get("reviewWaitMinutes", 30)
+    while True:  # with CI settled and nothing new, wait for reviewers who were asked and have not answered
+        items, verdicts = review.read(run.work, pr["number"])
+        new = [i for i in items if i["id"] not in record["seen"]]
+        waiting = [] if new or outcome == "failed" else review.pending(run.work, pr["number"])
+        waited_out = bool(waiting) and time.time() >= record.setdefault("reviewWaitSince", time.time()) + review_wait
+        if not waiting or waited_out or time.monotonic() >= call_end:
+            break
+        time.sleep(ci.POLL_SECONDS)
     record.update(sha=head, ci=outcome, verdicts=verdicts, seen=record["seen"] + [i["id"] for i in new])
     run.save()
     for c in found:
@@ -456,6 +465,11 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
         out(f"--- {i['kind']} by {i['author']}{where}" + (f"  {i['url']}" if i.get("url") else ""))
         if i.get("body", "").strip():
             out(_indent(i["body"].strip()))
+    if waiting and not waited_out:
+        out(f"CI {outcome}, and review requested from {', '.join(waiting)} is not in yet: run loop-spec feedback again")
+        return 0
+    if waiting:
+        out(f"review requested from {', '.join(waiting)} is still not in after {review_wait // 60} min; not waiting longer")
     skills = (_config(project).get("feedback") or {}).get("skills", [])
     if outcome == "failed" or new:
         out(("CI FAILED. " if outcome == "failed" else "") + (f"{len(new)} new review item(s). " if new else "") +

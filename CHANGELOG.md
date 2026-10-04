@@ -4,6 +4,17 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+### Fixed
+
+- `feedback` reads review comments from the account the run delivers with. It used to
+  skip everything that gh user wrote, so a developer reviewing the PR their own run
+  opened was ignored. Comments the program posts (`deliver --comment-file`) now carry
+  a hidden marker, and only those are skipped.
+- With CI settled and nothing new, `feedback` keeps the run open while a review
+  requested on the PR has not come in, polling within the call and for up to
+  `feedback.reviewWaitMinutes` (default 30) in all. Before, a run ended as soon as CI
+  passed, before any requested reviewer could answer.
+
 ### Changed
 
 - The skills follow the Agent Skills authoring guidance: third-person descriptions that
