@@ -53,3 +53,14 @@ reported $6.13 against 8.0's $0.41. Its spec included a criterion that no file
 contain the word `sleep`; a test comment ("instead of sleeping") kept failing it, VERIFY
 routed the run back twice, and the recurrence guard ended it `escalated` with no
 verified head. Its code also passed the hidden acceptance check, 11/11.
+
+## Trigger checks
+
+Whether a plain request, with no slash command, picks the right entry skill from its
+description alone: `claude -p "<request>"` in a clone of the scenario repository,
+stopped after two turns, recording the `Skill` call.
+
+| Date | Commit | Requests | Sonnet 5.5 | Opus 5.5 |
+|---|---|---|---|---|
+| 2026-10-04 | `1f68429` | a feature with tests and a PR (cycle); a one-line message change (micro); a traceback (debug); "address the review comments on PR #7" (revise); explain a function, change nothing (none) | 4/5: the message change ran without `micro` | 5/5 |
+| 2026-10-04 | `3805ec4` | the message change (micro) and the explain request (none), three tries each, after `micro`'s description named small changes and "even if they never mention loop-spec or a PR" | 6/6 | 6/6 |
