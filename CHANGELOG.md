@@ -22,6 +22,11 @@ All notable changes documented here. Format follows Keep a Changelog.
 - `start --pr` lists the PR's review so far, so a revise run works from one list and
   answers every item: a live Sonnet-led revise fixed the change request but left a
   question unanswered.
+- `feedback` reports a failed check as soon as it fails, with its job's log, instead of
+  waiting for every other check to finish: on a repository with an 11-minute
+  integration job, a policy failure known in seconds was reported 11 minutes later, on
+  each fix round. The log comes from the job, since GitHub serves `--log-failed` only
+  once the whole run is over.
 - A lead writes no code before the plan is accepted (Sonnet 5.5 led a live run that
   implemented during Spec, skipped the interactive approval, and backfilled
   `spec.json` and `plan.json`). In an interactive run the `next` line at Spec names the

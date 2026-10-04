@@ -21,7 +21,7 @@ case "$1 $2" in
   "pr list") echo "[]" ;;
   "pr create") echo "https://github.com/acme/kv/pull/7" ;;
   "pr checks") cat "$FAKE_GH_DIR/checks.json"; exit "$(cat "$FAKE_GH_DIR/checks.exit" 2>/dev/null || echo 0)" ;;
-  "run view") printf 'step 1 ok\\nAssertionError: boom\\n' ;;
+  "api repos/{owner}/{repo}/actions/jobs/"*) printf '2026-10-04T16:19:37.1Z step 1 ok\\n2026-10-04T16:19:37.2Z AssertionError: boom\\n2026-10-04T16:19:37.3Z ##[error]Process completed with exit code 1.\\n2026-10-04T16:19:38Z Cleaning up orphan processes\\n' ;;
   "api user") echo "loop-bot" ;;
   "pr view") cat "$FAKE_GH_DIR/view.json" 2>/dev/null || echo '{"reviews": [], "comments": []}' ;;
   "api repos/{owner}/{repo}/pulls/7/comments") cat "$FAKE_GH_DIR/inline.jsonl" 2>/dev/null ;;
@@ -220,6 +220,17 @@ class LoopTests(unittest.TestCase):
             self.assertIn("CI FAILED", out)
             self.assertNotIn("LOOP_SPEC_RESULT", out)
         self.assertNotIn("pr ready", (self.gh_dir / "calls").read_text())
+
+    def test_a_failed_check_is_reported_without_waiting_for_slower_ones(self):
+        run = self.ready_run()
+        (Path(run["work"]) / ".github" / "workflows").mkdir(parents=True)
+        self.deliver(run)
+        self.checks("fail", "pending", exit_code=1)
+        code, out, _ = self.repo.ls("feedback", "--timeout", "600")
+        self.assertEqual(code, 1)
+        self.assertIn("CI FAILED", out)
+        self.assertRegex(out, r"\n +AssertionError: boom\n +##\[error\]Process completed")  # cut at the error, stamps gone
+        self.assertNotIn("orphan", out)
 
     def test_review_comments_are_reported_once_then_the_run_can_end(self):
         run = self.ready_run()
