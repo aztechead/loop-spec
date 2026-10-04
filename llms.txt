@@ -30,4 +30,4 @@
 - [docs/models/README.md](docs/models/README.md): Claude Opus 5.5 and Sonnet 5.5 behavior and what it means here; the source Anthropic docs are in docs/models/anthropic/.
 - [skills/loop-spec/program/loop_spec/](skills/loop-spec/program/loop_spec/): the helper, stdlib-only Python >= 3.11.
 - [examples/sdk-plugin/](examples/sdk-plugin/README.md): running loop-spec in a Claude Agent SDK session.
-- [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md): what changed from 7.x.
+- [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md): step-by-step move from 7.x (plugin, config keys, entries, SDK hosts), or how to stay on 7.x.
