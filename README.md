@@ -29,8 +29,8 @@ loop-spec takes a coding request to a verified pull request:
 
 These are 7.x's phases, and a run announces them exactly as 7.x did: a
 `LOOP_SPEC_PHASE_START`/`LOOP_SPEC_PHASE_END` line on stdout per phase change, a
-`[PHASE] ...` progress line on stderr, and a record in the run's `events.jsonl`, so
-tools that monitor 7.x runs keep working.
+`[PHASE] ...` progress line on stderr, and a record in `events.jsonl`, written both to
+the run's directory and where 7.x wrote it, so tools that monitor 7.x runs keep working.
 
 The model does the judgment. The method is written as guidance in one skill,
 [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md), not as gates. A small
@@ -108,11 +108,17 @@ out of `git status` through the repository's own exclude file:
 | `work/` | the feature branch's worktree, where finished tasks are merged |
 | `tasks/<id>/` | one worktree per task in progress |
 | `verify/` | the clean checkout verify runs in |
+| `events.jsonl` | every phase record, in 7.x's format |
 | `result.json` | the final result; once it exists, the run is over |
 
-Your own checkout is never touched. The result is one JSON object: `status`
-(`completed`, `no-change`, `escalated`, `failed`), `summary`, `branch`, `prUrl`, and
-`verifiedSha`. The program also prints it as a `LOOP_SPEC_RESULT {...}` line.
+Your own checkout is never touched. The result is 7.x's schema-1 record, field for
+field: `status` (`completed`, `escalated`, `failed`), `outcome` (`delivered`,
+`delivered-draft`, `no-change-needed`, ...), `summary`, `branch`, `prUrl`,
+`verifiedSha`, `phaseReached`, and the rest. The program prints it as a
+`LOOP_SPEC_RESULT {...}` line, then `LOOP_SPEC_NEXT {"kind":"result","path":...}`. As in
+7.x, `events.jsonl` and `result.json` are also written to
+`<state home>/<repo id>/<slug>/`, and the result to `<state home>/<repo id>/last-result.json`,
+where the state home is `$LOOP_SPEC_HOME` or `~/.loop-spec`.
 
 ## Configuration
 

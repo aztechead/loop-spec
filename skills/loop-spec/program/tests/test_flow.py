@@ -12,6 +12,9 @@ from unittest import mock
 
 from loop_spec import cli
 
+# The state home 7.x hosts read (legacy.py) goes to a scratch directory, never ~/.loop-spec.
+os.environ["LOOP_SPEC_HOME"] = tempfile.mkdtemp(prefix="loop-spec-home-")
+
 
 def sh(cwd, *args):
     return subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
@@ -197,8 +200,9 @@ class FlowTests(unittest.TestCase):
         code, out, _ = self.repo.ls("finish", "--status", "no-change", "--summary", "already done")
         self.assertEqual(code, 0)
         result = marker(out, "LOOP_SPEC_RESULT")
-        self.assertEqual((result["status"], result["summary"]), ("no-change", "already done"))
-        self.assertEqual(json.loads(Path(result["path"]).read_text())["status"], "no-change")
+        self.assertEqual((result["status"], result["outcome"], result["result"], result["summary"]),
+                         ("completed", "no-change-needed", "no-change", "already done"))
+        self.assertEqual(json.loads(Path(marker(out, "LOOP_SPEC_NEXT")["path"]).read_text()), result)
         self.assertFalse(Path(run["work"]).exists())
 
 

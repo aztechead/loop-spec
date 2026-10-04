@@ -151,3 +151,26 @@ def head(worktree: Path, ref: str = "HEAD") -> str:
 def commits(repo: Path, rev_range: str) -> list[str]:
     out = run_git(repo, "rev-list", "--reverse", rev_range)
     return out.split() if out else []
+
+
+def root_commits(repo: Path) -> list[str]:
+    return git(repo, "rev-list", "--max-parents=0", "HEAD").stdout.split()
+
+
+def is_shallow(repo: Path) -> bool:
+    return git(repo, "rev-parse", "--is-shallow-repository").stdout.strip() == "true"
+
+
+def config_get(repo: Path, key: str) -> str | None:
+    return git(repo, "config", "--local", "--get", key).stdout.strip() or None
+
+
+def config_set(repo: Path, key: str, value: str) -> None:
+    git(repo, "config", "--local", key, value)
+
+
+def version() -> str | None:
+    try:
+        return subprocess.run(["git", "--version"], capture_output=True, text=True, check=False).stdout.strip() or None
+    except OSError:
+        return None

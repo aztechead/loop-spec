@@ -11,7 +11,8 @@ change the way 7.x did:
 
 Markers go to stdout; the `[PHASE]` lines to stderr, or stdout under Cloud Run or
 LOOP_SPEC_CONSOLE_STREAM=stdout, and not at all under LOOP_SPEC_CONSOLE_EVENTS=0. Every
-record is also appended to the run's `events.jsonl`. Moving forward past several phases
+record is also appended to `events.jsonl`, in the run's directory and in 7.x's state home
+(see legacy.py). Moving forward past several phases
 at once announces each one in order, so every run shows SPEC, PLAN, EXECUTE, VERIFY,
 ITERATE, and DELIVER.
 """
@@ -19,15 +20,17 @@ import json
 import os
 import secrets
 from datetime import datetime, timezone
+from pathlib import Path
 
-from loop_spec import log
+from loop_spec import legacy, log
 
 ORDER = ("spec", "plan", "execute", "verify", "iterate", "deliver")
 FORWARD = {"spec": "approved", "plan": "ready", "execute": "integrated", "verify": "passed",
            "iterate": "converged", "deliver": "delivered"}
 BACKWARD = {"plan": "spec gap", "execute": "plan gap", "verify": "implementation gap", "iterate": "rewind",
             "deliver": "base moved"}
-TERMINAL = {"completed": "delivered", "no-change": "no change", "escalated": "escalated", "failed": "failed"}
+TERMINAL = {"converged": "delivered", "converged-with-caveats": "delivered", "no-change": "no change",
+            "escalated": "escalated", "failed": "failed"}
 
 
 def _now() -> str:
@@ -38,10 +41,23 @@ def _compact(payload: dict) -> str:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
-def _record(run, event: str, phase: str, attempt: str, data: dict) -> None:
-    with open(run.dir / "events.jsonl", "a") as f:
-        f.write(_compact({"event": event, "timestamp": _now(), "phase": phase, "attemptId": attempt,
-                          "source": "program", "data": data}) + "\n")
+def _record(run, event: str, phase: str | None, attempt: str | None, data: dict) -> None:
+    line = json.dumps({"event": event, "timestamp": _now(), "phase": phase, "attemptId": attempt,
+                       "source": "program", "data": data}, sort_keys=True, ensure_ascii=False) + "\n"
+    for directory in (run.dir, legacy.run_dir(run)):
+        directory.mkdir(parents=True, exist_ok=True)
+        with open(directory / "events.jsonl", "a") as f:
+            f.write(line)
+
+
+def result(run, record: dict, path) -> None:
+    """Announce the run's result as 7.x did: the record, then where it is written."""
+    log.stdout.info(f"LOOP_SPEC_RESULT {_compact(record)}")
+    _record(run, "result", record.get("phaseReached"), None, record)
+    program = Path(__file__).resolve().parents[1] / "loop-spec"
+    log.stdout.info("LOOP_SPEC_NEXT " + _compact({
+        "kind": "result", "path": str(path), "slug": run.slug, "program": str(program),
+        "stateHome": str(legacy.state_home()), "projectRoot": str(run.project)}))
 
 
 def _console(phase: str, summary: str) -> None:
@@ -86,8 +102,8 @@ def sync(run, head: str | None) -> None:
     current = run.state["phaseStream"].get("phase")
     if target == "done":
         if current is not None:
-            status = (run.result or {}).get("status", "completed")
-            _end(run, TERMINAL.get(status, status), "completed", None, head)
+            result = (run.result or {}).get("result", "converged")
+            _end(run, TERMINAL.get(result, result), "completed", None, head)
             run.state["phaseStream"]["ended"] = True
     elif current != target:
         if ORDER.index(target) > ORDER.index(current):
@@ -98,5 +114,6 @@ def sync(run, head: str | None) -> None:
                 current = following
         else:
             _end(run, BACKWARD[current], "rewind", target, head)
+            run.state["rewinds"] = run.state.get("rewinds", 0) + 1
             _start(run, target)
     run.save()

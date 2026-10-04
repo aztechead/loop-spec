@@ -176,8 +176,9 @@ class LoopTests(unittest.TestCase):
                     comments=[{"id": "C0", "author": {"login": "loop-bot"}, "body": "our own note"}])
         code, out, _ = self.repo.ls("feedback")
         result = marker(out, "LOOP_SPEC_RESULT")
-        self.assertEqual((code, result["status"], result["ci"], result["reviews"]),
-                         (0, "completed", "passed", {"ana": "APPROVED"}))
+        target = result["delivery"]["targets"][0]
+        self.assertEqual((code, result["status"], result["outcome"], target["ci"], target["reviews"]),
+                         (0, "completed", "delivered", "passed", {"ana": "APPROVED"}))
 
     def test_failing_ci_has_no_round_limit(self):
         run = self.ready_run()
@@ -210,7 +211,7 @@ class LoopTests(unittest.TestCase):
         commit(Path(run["work"]), "mul.py", "def multiply(a, b):\n    return a * b\n")
         self.deliver(run)
         code, out, _ = self.repo.ls("feedback")
-        self.assertEqual(marker(out, "LOOP_SPEC_RESULT")["reviews"], {"ana": "CHANGES_REQUESTED"})
+        self.assertEqual(marker(out, "LOOP_SPEC_RESULT")["delivery"]["targets"][0]["reviews"], {"ana": "CHANGES_REQUESTED"})
 
     def test_feedback_skills_keep_the_run_open_for_the_lead(self):
         (self.repo.path / ".loop-spec").mkdir(exist_ok=True)

@@ -68,7 +68,7 @@ class PhaseStreamTests(unittest.TestCase):
         self.assertIn("[DELIVER] deliver delivered -> terminal", err)
         self.assertRegex(err, r"\[EXECUTE\] execute attempt attempt-[0-9a-f]{12}")
         events = [json.loads(line) for line in Path(run["runDir"], "events.jsonl").read_text().splitlines()]
-        self.assertEqual({e["event"] for e in events}, {"phase_start", "phase_end", "transition"})
+        self.assertEqual({e["event"] for e in events}, {"phase_start", "phase_end", "transition", "result"})
         self.assertEqual(json.loads(Path(run["runDir"], "result.json").read_text())["phaseReached"], "deliver")
 
     def test_moving_back_announces_a_rewind_and_the_phase_again(self):
@@ -78,6 +78,16 @@ class PhaseStreamTests(unittest.TestCase):
         out = self.repo.ls("status")[1]
         stream = [(m["phase"], m.get("verdict"), m.get("next")) for _, m in markers(out)]
         self.assertEqual(stream, [("iterate", "rewind", "verify"), ("verify", None, None)])
+
+    def test_a_fix_verified_at_once_still_enters_verify(self):
+        run = self.ready_run()
+        self.repo.ls("verify")
+        self.repo.ls("iterate")
+        commit(Path(run["work"]), "fix.py", "x = 2\n")  # a review fix, verified with no status in between
+        out = self.repo.ls("verify")[1]
+        stream = [(m["phase"], m.get("verdict"), m.get("next")) for _, m in markers(out)]
+        self.assertEqual(stream, [("deliver", "rewind", "verify"), ("verify", None, None),
+                                  ("verify", "advanced", "iterate"), ("iterate", None, None)])
 
     def test_console_lines_follow_the_7x_stream_settings(self):
         with mock.patch.dict(os.environ, {"LOOP_SPEC_CONSOLE_STREAM": "stdout"}):

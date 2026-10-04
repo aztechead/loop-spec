@@ -2,8 +2,8 @@
 
 Output goes to `log.stdout` as plain lines a model or a person reads. Three lines are
 machine-readable JSON: `LOOP_SPEC_RUN` after `start` and `status` (the run and its
-paths), `LOOP_SPEC_TASK` per task from `task start` (a worker's brief), and
-`LOOP_SPEC_RESULT` when a run ends.
+paths), `LOOP_SPEC_TASK` per task from `task start` (a worker's brief), and, when a run
+ends, `LOOP_SPEC_RESULT` (7.x's schema-1 record) then `LOOP_SPEC_NEXT` (where it is written).
 """
 import argparse
 import json
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import sys
 
-from loop_spec import VERSION, checks, ci, dag, deliver, git, hook, log, phases, remote, review
+from loop_spec import VERSION, checks, ci, dag, deliver, git, hook, legacy, log, phases, remote, review
 from loop_spec.errors import LoopSpecError
 from loop_spec.runs import KINDS, RESULT_STATUSES, Run, all_runs, find, first_free, first_line, read_json, slugify
 
@@ -64,6 +64,7 @@ def cmd_start(args, project: Path, cwd: Path) -> int:
 
     run.state = {
         "kind": kind,
+        "createdAt": legacy.now_iso(),
         "mode": "autonomous" if args.autonomous else "interactive",
         "request": request,
         "base": {"branch": base_branch, "sha": base_sha},
@@ -88,7 +89,7 @@ def cmd_status(args, project: Path, cwd: Path) -> int:
         runs = all_runs(project)
         for r in runs:
             result = r.result
-            where = f"done: {result['status']}" if result else r.state.get("kind", "")
+            where = f"done: {result.get('outcome', result.get('status'))}" if result else r.state.get("kind", "")
             out(f"{r.slug:42} {where:22} updated {r.state.get('updatedAt', '?')}")
         if not runs:
             out("loop-spec: no runs in this repository")
@@ -150,7 +151,7 @@ def show_status(run: Run) -> int:
         out(f"  feedback CI {f['ci']} at {f['sha'][:12]}; {verdicts}; {len(f['seen'])} review item(s) seen")
     result = run.result
     if result:
-        out(f"  result   {result['status']}: {result['summary']}")
+        out(f"  result   {result.get('outcome', result.get('status'))}: {result['summary']}")
     _warn_root_changes(run)
     out(f"  next     {_next_step(run, phase, problem)}")
     marker("LOOP_SPEC_RUN", {"slug": run.slug, "kind": s["kind"], "mode": run.mode, "phase": phase,
@@ -307,6 +308,7 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
                             f"write {run.spec_path.name} with criteria that name a check")
     base_sha = run.state["base"]["sha"]
     sha = base_sha if args.base else git.head(run.work)
+    _sync(run)  # a head changed since the last verify enters VERIFY now, so the stream shows it
     if not args.base and (dirty := git.dirty(run.work)):
         out(f"note: uncommitted changes in {run.work} are not part of this verify: {', '.join(dirty[:5])}")
     out(f"verifying {sha[:12]} in a clean checkout ({'the base' if args.base else 'the feature head'})")
@@ -505,14 +507,20 @@ def cmd_finish(args, project: Path, cwd: Path) -> int:
 
 
 def _finish(run: Run, status: str, summary: str, head: str | None) -> int:
-    result = run.finish(status, summary, head)
+    _sync(run)
+    phase = (run.state.get("phaseStream") or {}).get("phase") or "spec"
     for scratch in (run.verify_dir, run.dir / "base"):
         git.remove_worktree(run.project, scratch, force=True)
+    kept = []
     for dest in [*sorted((run.dir / "tasks").glob("*")), run.work]:
         if dest.is_dir() and not git.remove_worktree(run.project, dest):
             out(f"kept {dest}: it has uncommitted changes")
+            kept.append(str(dest))
+    result = legacy.record(run, status, summary, head, phase, kept)
+    run.finish(result)
+    path = legacy.publish(run, result)
     _sync(run)
-    marker("LOOP_SPEC_RESULT", {**result, "path": str(run.result_path)})
+    phases.result(run, result, path)
     out(f"the run's worktrees are removed; cd {run.project} before any further command")
     return 0
 

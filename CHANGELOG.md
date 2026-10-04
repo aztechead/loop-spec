@@ -34,8 +34,10 @@ Moving from 7.x: [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md).
   `--answer-policy default` and `spec.approval`: an unattended run never asks and
   records its defaults as assumptions.
 - Run state moves from `~/.loop-spec/` to `<repo>/.loop-spec/runs/<slug>/`, kept out of
-  `git status`. The result is `result.json` in the run's directory, also printed as
-  `LOOP_SPEC_RESULT`.
+  `git status`. The result stays 7.x's schema-1 record, printed as `LOOP_SPEC_RESULT`
+  and then `LOOP_SPEC_NEXT` kind `result`, and written where 7.x wrote it
+  (`<state home>/<repo id>/<slug>/result.json` and `last-result.json`) and to the run's
+  directory.
 - Checks run with `bash -c` from the repository root instead of a shell-free argv
   with a syntax check.
 - `deliver.base`, `branch`, `branchPrefix`, `reviewers`, and `labels` move to the top
@@ -50,7 +52,8 @@ Moving from 7.x: [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md).
   and DELIVER, and each change prints `LOOP_SPEC_PHASE_START` and `LOOP_SPEC_PHASE_END`
   lines with 7.x's fields and verdicts (`advanced`, `rewind`, `completed`), `[PHASE]`
   progress lines (honoring `LOOP_SPEC_CONSOLE_STREAM` and `LOOP_SPEC_CONSOLE_EVENTS`),
-  and records in the run's `events.jsonl`. The result carries `phaseReached`.
+  and records in `events.jsonl`, both in the state home where 7.x kept it and in the
+  run's directory. The result carries `phaseReached`.
 - `sync` merges what moved on origin (the base branch, or the feature branch itself)
   into the feature worktree, merging rather than rebasing; `deliver` refuses a head
   that lacks commits origin has.
@@ -82,11 +85,10 @@ Moving from 7.x: [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md).
 ### Removed
 
 - The phase controller, postconditions, transcript attestation, evidence levels,
-  digests, probes, baseline capture, questions protocol, and the ITERATE phase (its
-  whole-change judgment is the reviewer pass).
+  digests, probes, baseline capture, and questions protocol.
 - Role skills and role binding (`roles.*`), external phases (`phases.*`),
   `deliver.after`, `deliver.readiness`, `deliver.acceptRemotePaths`, the
-  `LOOP_SPEC_MODEL_*`/`EFFORT_*`/`PHASE_MODEL_*` variables, and `LOOP_SPEC_HOME`.
+  and `LOOP_SPEC_MODEL_*`/`EFFORT_*`/`PHASE_MODEL_*` variables.
 - The `auto`, `spec`, `plan`, `execute`, `verify`, `iterate`, and `deliver` entries,
   the output style, `examples/supervisor/`, `loop_spec.sdk_runner`, `evals/`, and the
   7.x planning and audit documents (in git history).

@@ -8,7 +8,8 @@ A run lives in `<project>/.loop-spec/runs/<slug>/`:
     work/         worktree on the feature branch, where finished tasks are merged
     tasks/<id>/   one worktree per started task
     verify/       the detached checkout verify runs in
-    result.json   the run's final result; its presence means the run is over
+    result.json   the run's final result, 7.x's schema-1 record; its presence means the run is over
+    events.jsonl  the phase stream's records (phases.py)
 
 A `Run` lives for one command, and no command writes spec.json or plan.json, so they
 are read once.
@@ -52,7 +53,7 @@ def first_line(text: str, width: int) -> str:
 def write_json(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
     os.replace(tmp, path)
 
 
@@ -154,23 +155,9 @@ class Run:
             return "verify"
         return "deliver" if (self.state.get("iterate") or {}).get("sha") == head else "iterate"
 
-    def finish(self, status: str, summary: str, head: str | None) -> dict:
-        result = {
-            "slug": self.slug,
-            "kind": self.state.get("kind"),
-            "status": status,
-            "summary": summary,
-            "branch": self.state.get("branch"),
-            "prUrl": (self.state.get("pr") or {}).get("url"),
-            "verifiedSha": head if self.verified_at(head) else None,
-            "ci": (self.state.get("feedback") or {}).get("ci"),
-            "reviews": (self.state.get("feedback") or {}).get("verdicts", {}),
-            "caveats": (self.state.get("iterate") or {}).get("caveats"),
-            "phaseReached": (self.state.get("phaseStream") or {}).get("phase"),
-        }
+    def finish(self, result: dict) -> None:
+        """Record the run's result (legacy.record builds it); its presence ends the run."""
         write_json(self.result_path, result)
-        return result
-
 
 def all_runs(project: Path) -> list[Run]:
     root = project / RUNS_DIR

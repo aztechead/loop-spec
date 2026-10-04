@@ -52,8 +52,9 @@ def tool_output(text):
     return UserMessage(content=[ToolResultBlock(tool_use_id="t", content=text)])
 
 
-def result_line(path="/repo/.loop-spec/runs/x/result.json"):
-    return tool_output("delivered feat/x\nLOOP_SPEC_RESULT " + json.dumps({"status": "completed", "path": path}))
+def result_line(path="/home/u/.loop-spec/0123456789abcdef/x/result.json"):
+    return tool_output("delivered feat/x\nLOOP_SPEC_RESULT " + json.dumps({"schema": 1, "status": "completed"}) +
+                       "\nLOOP_SPEC_NEXT " + json.dumps({"kind": "result", "path": path, "slug": "x"}))
 
 
 def feed(watch, messages):
@@ -64,7 +65,7 @@ class RunWatchTests(unittest.TestCase):
     def test_done_when_a_turn_ends_after_the_result_printed(self):
         watch = RunWatch()
         self.assertEqual(feed(watch, [init(), result_line(), turn_end()]), [False, False, True])
-        self.assertEqual(watch.result_path, "/repo/.loop-spec/runs/x/result.json")
+        self.assertEqual(watch.result_path, "/home/u/.loop-spec/0123456789abcdef/x/result.json")
 
     def test_a_turn_ending_while_workers_run_is_not_done(self):
         watch = RunWatch()

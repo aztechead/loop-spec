@@ -29,8 +29,9 @@ program, and dispatches the `loop-spec:implementer` and `loop-spec:reviewer` age
 | `resume=<session id>` | continues a session that stopped |
 | `max_budget_usd` | optional spend ceiling |
 
-The run is over when the program prints `LOOP_SPEC_RESULT {...}`; the script reads the
-result file it names.
+The run is over when the program prints `LOOP_SPEC_RESULT {...}` and then
+`LOOP_SPEC_NEXT {"kind":"result","path":...}`, as 7.x did; the script reads the result
+file that line names.
 
 ## Run it
 

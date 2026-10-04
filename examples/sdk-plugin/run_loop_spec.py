@@ -56,7 +56,7 @@ from claude_agent_sdk import (
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]  # the loop-spec repository root
 PLUGIN_NAME = "loop-spec"
-RESULT_PREFIX = "LOOP_SPEC_RESULT "
+NEXT_PREFIX = "LOOP_SPEC_NEXT "  # kind "result" names the result file, as in 7.x
 IDLE_SECONDS = 60  # how long a finished turn waits for a background task's follow-up turn
 NO_ONE_TO_ASK = ("This is an autonomous run and no one will answer. Choose the reasonable default, "
                  "record it in the spec's assumptions, and continue.")
@@ -95,7 +95,7 @@ class RunWatch:
 
     The lead runs workers as background tasks, so a turn can end while they still run,
     and a new turn starts when one finishes. Feed every message to `observe`; it returns
-    True once a turn has ended with no task active and `LOOP_SPEC_RESULT` already seen,
+    True once a turn has ended with no task active and the result's `LOOP_SPEC_NEXT` already seen,
     or at once on an SDK error (`error` keeps the reason). `idle` is True while a turn
     has ended with no task active and no result: the caller waits IDLE_SECONDS for a
     follow-up turn and stops if none comes. A resumed session replays its stopped tasks
@@ -123,8 +123,8 @@ class RunWatch:
             self.turn_ended = False
         elif isinstance(message, UserMessage):
             for line in marker_lines(message):
-                if line.startswith(RESULT_PREFIX):
-                    self.result_path = json.loads(line[len(RESULT_PREFIX):])["path"]
+                if line.startswith(NEXT_PREFIX) and (nxt := json.loads(line[len(NEXT_PREFIX):]))["kind"] == "result":
+                    self.result_path = nxt["path"]
         elif isinstance(message, ResultMessage):
             self.session_id = message.session_id
             if message.is_error:
@@ -251,7 +251,7 @@ async def run(args: argparse.Namespace) -> int:
         err(f"no loop-spec result in this session; resume it with --resume {watch.session_id or '<session id>'}")
         return 2
     result = json.loads(Path(watch.result_path).read_text())
-    err(json.dumps({k: result.get(k) for k in ("status", "summary", "prUrl", "verifiedSha")}, indent=2))
+    err(json.dumps({k: result.get(k) for k in ("status", "outcome", "summary", "prUrl", "verifiedSha")}, indent=2))
     return 0 if result.get("status") == "completed" else 1
 
 
