@@ -32,8 +32,8 @@ For someone who runs loop-spec 7.x in Claude Code or on the Agent SDK and is mov
 
 ## Staying on 7.x
 
-7.9.0 is the last 7.x release, at commit `85b42ee`. Pin the marketplace to a ref that
-holds it (a `7.x` branch, once the maintainer creates one there, the way `6.x` was):
+7.9.0 is the last 7.x release. The `7.x` branch holds it and takes hotfixes, the way
+`6.x` does for 6.x. Pin the marketplace to it:
 
 ```
 /plugin marketplace remove loop-spec-marketplace
