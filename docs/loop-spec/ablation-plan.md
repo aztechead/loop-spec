@@ -132,8 +132,8 @@ should attest like any other step, and nothing in the arm needs
 `evidence.judgment.accept: "unattested"`. Do not set it: it would add a
 `weakenedAssurance` entry the other arms lack. If a stub step fails attestation in the
 pilot, record that and fix the stub text; fall back to the opt-in only as a deliberate,
-recorded departure for that arm. I have not run a stubbed step, so this is from
-reading `steps.py`, not from observation.
+recorded departure for that arm. The pilot confirmed it: both stubbed steps were
+accepted `host-attested`, with `weakenedAssurance` empty.
 
 ### Isolation and pinning
 
@@ -149,11 +149,13 @@ reading `steps.py`, not from observation.
   launcher is called relative to the stub's own directory
   (`${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec`), so a run reads the program
   from the worktree it was loaded from.
-- **No other loop-spec.** The session must not also load an installed loop-spec. Run
-  with a Claude Code config directory that has no plugins installed, and check the
-  stream-json `init` message's plugin list (the `h776-c` row read it to confirm which
-  plugins loaded). I did not verify how a `--plugin-dir` copy and an installed copy of
-  the same name resolve against each other.
+- **No other loop-spec.** The session must not also load an installed loop-spec. Do
+  not isolate it with a separate `CLAUDE_CONFIG_DIR`: host attestation reads
+  transcripts from `~/.claude/projects` whatever that variable says
+  (`attest.ClaudeCodeAttestor`), so a moved config directory breaks attestation.
+  Instead, check the stream-json `init` message's plugin list on every run: it must
+  name `loop-spec` exactly once for a loop-spec arm and not at all for A0. Any other
+  plugins the host installs are the same in every arm; record them.
 - **Config and stubs live in the fixture clone, untracked and excluded.** Write
   `.loop-spec/config.json` and `.claude/skills/ablate-*/SKILL.md` into the clone's
   working tree, and add `.claude/` to the clone's `.git/info/exclude` (the program
@@ -183,7 +185,7 @@ Consequences to keep in view:
   default is Opus for those roles, which may catch more. A positive result for a
   component on Sonnet does not prove it on Opus, and a null result does not either.
 - `sonnet` is an alias. Live-runs records that the alias served `claude-sonnet-5` on
-  Claude Code 2.1.284, and that `claude-sonnet-5-5` answers under its full ID but the
+  Claude Code 2.1.284 (it served `claude-sonnet-5-5` on 2.1.289 in the pilot), and that `claude-sonnet-5-5` answers under its full ID but the
   Agent tool's `model` field does not accept it. So the lead and the workers may not be
   the same model snapshot. Record the model id from each transcript (the
   `v76-auto` row did) and stop the study if it changes midway.
@@ -205,10 +207,11 @@ fixture for `fp-trap`) and on the `FIXTURE` dict in
 module kept outside the fixture and never shown to the agent; the harness runs it
 after the arm finishes. Oracles import only the package and the standard library.
 
-A run's graded tree is: for the loop-spec arms, the head of the feature branch DELIVER
-pushed to the local bare `origin` (a fresh clone of it); for A0, the fixture's working
-tree after the process exits, uncommitted edits included. When a loop-spec run pushed
-nothing, the graded tree is the base commit.
+A run's graded tree is: for the loop-spec arms, `result.json`'s `verifiedSha`, checked
+out from a clone of the fixture repository (with no GitHub host DELIVER stops before
+it pushes, so the commit is only there); for A0, the fixture's working tree after the
+process exits, uncommitted edits included. When a loop-spec run has no `verifiedSha`,
+the harness grades a branch pushed to `origin` if there is one, else the base commit.
 
 | Id | Kind | Fixture (base files) | Request (verbatim) | Hidden oracle | Passes when |
 |---|---|---|---|---|---|
@@ -255,13 +258,14 @@ Per run, recorded by the harness:
 | Served model | the transcript's model id per step |
 
 Every loop-spec run uses `--answer-policy default` and a local bare `origin`, as the
-`td-*`, `c772-*` and `e774-*` runs did. With no GitHub host, DELIVER pushes and then
-stops, and the run ends `escalated` at DELIVER with verification passed; that is what
-a good run looks like in those rows. **DELIVER is not scored**, and `escalated at
-DELIVER` is not a failure for scoring. A run that stops on a question the policy
-cannot answer, or ends with no `result.json`, scores by the oracle on whatever was
-pushed, which is nothing, and the harness records `no-result` and the question text so
-the cause can be read. Such a run counts as a failure; when interpreting, separate
+`td-*`, `c772-*` and `e774-*` runs did. With no GitHub host, DELIVER's `gh auth
+status` check fails before anything is pushed, the default policy answers `stop`, and
+the run ends `escalated` at DELIVER with verification passed; that is what a good run
+looks like (the pilot below shows it on every loop-spec run). **DELIVER is not
+scored**, and `escalated at DELIVER` is not a failure for scoring. A run that stops on
+a question the policy cannot answer, or ends with no `result.json`, has no
+`verifiedSha`, so it is graded on the base commit; the harness records the question
+text so the cause can be read. Such a run counts as a failure; when interpreting, separate
 program defects from model behavior by reading the cause.
 
 Run order is shuffled across arms and tasks with a recorded seed, so a model or
@@ -381,8 +385,15 @@ second stage can be stopped early.
 
 ## Harness
 
-Add `evals/ablation_eval.py`, in the style of [route_eval.py](../../evals/route_eval.py).
-It is not written yet; this is its interface.
+[`evals/ablation_eval.py`](../../evals/ablation_eval.py), in the style of
+[route_eval.py](../../evals/route_eval.py), with its task, arm, oracle and overlay files
+under [`evals/ablation/`](../../evals/ablation/). The pilot's version differs from the
+interface below in three places: arms and tasks are chosen by `--plan` (a JSON list of
+`[arm, task]` pairs) rather than `--only-arm`/`--only-task`; a plugin worktree is named
+on the command line with `--plugin <name>=<path>`; and it writes `runs.jsonl` and the
+per-run files but no summary yet. `--check-oracles` runs no model: it checks that each
+oracle fails at base, fails on the task's known-wrong solution, and passes on its
+reference solution. The interface the full study needs:
 
 - **Language and style.** Python 3 standard library only, `logging` and never `print`
   (`tests/test_log.py` fails on any `print` call in shipped code and `examples/`; the
@@ -407,10 +418,9 @@ It is not written yet; this is its interface.
   headless example does; A0 gets the bare request) and `--model`, `--plugin-dir` (not
   for A0), `--permission-mode`, `--output-format stream-json --verbose`; read the
   stream to the end. The permission mode is the README's headless example,
-  `bypassPermissions`, inside throwaway directories. Recent live-runs rows used
-  `auto`, which has a host classifier that denied edits in the `t790-6` row. I did not
-  verify that host attestation works under `bypassPermissions` on the pinned Claude
-  Code; the pilot decides, and the mode must be the same in every arm.
+  `bypassPermissions`, inside throwaway directories, the same in every arm; the pilot
+  showed host attestation works under it. The child's environment drops
+  `CLAUDECODE` and the parent's `CLAUDE_CODE_SESSION_ID`.
 - **After exit.** Parse the stream for the `init` message (version, plugins, model),
   the final `result` event, and the last assistant text. For a loop-spec arm read the
   run's `result.json` and `events.jsonl` under `LOOP_SPEC_HOME`. Build the graded tree
@@ -460,17 +470,63 @@ VERIFY; that `micro` runs all six phases; that the planner section and its bulle
 are as quoted; that only `roles/principles.md` differs in behavior between `319dd4f`
 and `9a5128f`; and the cost figures recomputed from the live-runs page.
 
-Not verified, and to be settled in the pilot:
+Settled by the pilot (below): a stubbed critic and judge attest and pass their schemas;
+an untracked, excluded `.claude/` and `.loop-spec/config.json` trip no check; host
+attestation works under `bypassPermissions` on Claude Code 2.1.289; the stream-json
+`result` event carries `total_cost_usd`, `duration_ms` and `num_turns`; plain Claude
+Code's cost on the two pilot tasks.
 
-- that a stubbed critic, judge, or reviewer attests and passes its schema and the
-  program's review checks (read from `steps.py`, never run);
-- that an untracked, excluded `.claude/` and `.loop-spec/config.json` in the project
-  root trip no check;
-- that host attestation works under the permission mode chosen, on the pinned Claude
-  Code version;
-- how a `--plugin-dir` copy and an installed copy of the same plugin name resolve;
-- the stream-json field names for cost, turns and duration (inferred from the SDK's
-  `ResultMessage` in `sdk_runner.py`);
-- plain Claude Code's cost on these tasks (no recorded figure);
-- VERIFY's reviewer input keys, needed for the optional code-review stub;
-- how to pin Claude Code's version and disable its auto-update.
+Still not verified:
+
+- VERIFY's reviewer input keys, needed for the optional code-review stub (A2-norev was
+  not built for the pilot);
+- how to pin Claude Code's version and disable its auto-update;
+- how a `--plugin-dir` copy and an installed copy of loop-spec resolve against each
+  other (the pilot host had no installed loop-spec, so the question did not arise).
+
+## Pilot, 2026-10-04
+
+Ten runs, one per arm on `feat-one` plus A0 and A2 on `wrong-premise`
+([tasks-pilot.json](../../evals/ablation/tasks-pilot.json),
+[pilot-pairs.json](../../evals/ablation/pilot-pairs.json)), plugin commit `85b42ee`
+(7.9.0), Claude Code 2.1.289, every lead and worker on `sonnet` (served as
+`claude-sonnet-5-5`), `bypassPermissions`, two runs in parallel. A pilot is not a
+measured run; one run per cell cannot rank anything.
+
+| Arm | Task | Oracle | Premise flagged | Cost | Wall | Turns | Role steps |
+|---|---|---|---|---|---|---|---|
+| A0 | feat-one | pass | n/a | $0.07 | 11 s | 7 | n/a |
+| A0 | wrong-premise | pass | yes, used -273.15 C | $0.06 | 11 s | 3 | n/a |
+| A1 | feat-one | pass | n/a | $1.07 | 126 s | 28 | 10 |
+| A2 | feat-one | pass | n/a | $1.13 | 138 s | 27 | 10 |
+| A2 | wrong-premise | pass | yes, used -273.15 C | $1.14 | 148 s | 27 | 10 |
+| A2-nop | feat-one | pass | n/a | $1.03 | 126 s | 26 | 10 |
+| A2-nocrit | feat-one | pass | n/a | $1.33 | 160 s | 35 | 13 |
+| A2-noiter | feat-one | pass | n/a | $1.17 | 150 s | 28 | 10 |
+| A2-noplan | feat-one | pass | n/a | $1.10 | 137 s | 27 | 10 |
+| A2-p772 | feat-one | pass | n/a | $1.10 | 137 s | 28 | 10 |
+
+Every loop-spec run ended `escalated` at DELIVER (the `gh auth status` check, as
+expected) with verification passed and no rewinds. Every worker step was
+`host-attested`, the stubbed critic and judge included, and each stub wrote exactly its
+fixed result. A2-nocrit's extra steps are not the stub's doing: the program refused the
+first plan (`existingCode` cited `tests/test_calc.py:1-16`, past the file's end) and the
+planner wrote a second one.
+
+What the pilot changed:
+
+- **Grading.** The first pass graded every loop-spec run on the base commit, because the
+  plan assumed DELIVER pushes before it stops; it does not. The harness now grades
+  `verifiedSha` (see [Task set](#task-set)), and the eight loop-spec runs were rerun.
+  The table above is the rerun. The first pass cost $9.24 and the rerun $9.07, $18.31
+  in all.
+- **Isolation.** A separate `CLAUDE_CONFIG_DIR` would break attestation; see
+  [Isolation and pinning](#isolation-and-pinning).
+- **Task difficulty.** Plain Claude Code passed both pilot tasks, including the
+  wrong-premise trap that `td-772` failed on 7.7.2 (on Claude Code 2.1.284, when the
+  `sonnet` alias served `claude-sonnet-5`), with A2 costing 15 to 18 times as much and
+  taking 13 to 14 times as long. If that holds on the other seven tasks, the
+  rule under [Task set](#task-set) applies: the set is too easy to show an oracle
+  effect, and a harder set must be written and frozen before the removal arms are worth
+  their cost. Stage 2 of the [cheaper first pass](#cheaper-first-pass) answers this
+  before anything else is spent.
