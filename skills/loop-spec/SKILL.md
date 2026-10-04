@@ -43,6 +43,10 @@ the project's checks take longer.
 | `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review; ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
 | `LS finish --status completed\|no-change\|escalated\|failed --summary "..."` | end the run: `completed` after feedback skills find nothing, otherwise a run that delivers nothing |
 
+Four kinds of check apply to a run. A criterion's `check` (in `spec.json`), a task's
+`verify`, and the repository's `checks` (both in `plan.json`) all run in `LS verify`. CI
+checks are the PR's, and `LS feedback` reads them.
+
 The program derives the phase from the run's files and announces each change with
 `LOOP_SPEC_PHASE_START`/`_END` lines, which monitoring tools read. Run `LS status`
 after writing `spec.json` and after writing `plan.json`, so each phase is announced
@@ -67,7 +71,7 @@ read its reference in full; the `next` line names it too.
 
 | Phase | The work | The check, and the loop | Read |
 |---|---|---|---|
-| 1. Spec | `spec.json`: a goal, and criteria a command can show; the repository's rules for branch, title, and PR | interactive: the user approves the criteria; revise until they do | [references/spec.md](references/spec.md) |
+| 1. Spec | `spec.json`: a goal, and criteria a command can show; the repository's rules for branch, title, and PR | `LS status` checks `spec.json`; interactive, the user approves the criteria; revise until both pass | [references/spec.md](references/spec.md) |
 | 2. Plan | `plan.json`: the task graph, `prepare`, and the repository's required `checks` | `LS status` validates the graph; fix it until it accepts | [references/plan.md](references/plan.md) |
 | 3. Execute | start ready tasks, dispatch implementers in parallel, merge each sound one | you read each report and diff; send it back or fix it until it is sound | [references/execute.md](references/execute.md) |
 | 4. Verify | `LS verify` in a clean checkout | a failure: find the cause, fix it, verify again | [references/review.md](references/review.md) |

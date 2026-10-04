@@ -22,11 +22,15 @@ ready, where a task's worktree is, whether a verify ran on this head). Anything 
 needs judgment (is this criterion good, is this finding blocking, should the plan
 change) stays in the skill as guidance.
 
-The program refuses only what would make the record false: a plan that is not a DAG,
-a merge that conflicts, finishing a task with uncommitted work, delivering a head that
-verify did not pass (overridable with `--unverified`, which marks the PR draft and
-says so), and delivering a head that lacks commits origin has. It never judges the
-model's work. No loop has a cap: whether a loop should stop is a judgment, and the
+The program refuses only what would make the record false: a spec without a goal or
+usable criteria, a plan that is not a DAG or names a criterion the spec lacks, a merge
+that conflicts, finishing a task with uncommitted work, delivering a head that verify
+did not pass (overridable with `--unverified`, which marks the PR draft and says so),
+a `pr.md` that still holds the template's placeholder lines, and delivering a head
+that lacks commits origin has. It also checks `gh` before pushing, so a delivery that
+cannot open its PR changes nothing. Each refusal names what to fix. Where a fact only
+predicts trouble (two parallel tasks listing the same file), it warns instead. It
+never judges the model's work. No loop has a cap: whether a loop should stop is a judgment, and the
 lead records it with `finish`.
 
 ## Program modules

@@ -131,7 +131,7 @@ class FlowTests(unittest.TestCase):
 
     def test_a_conflicting_task_is_refused_and_left_for_the_lead(self):
         run = self.start()
-        self.write(run, {"goal": "g", "criteria": []}, {"tasks": [{"id": "T-1", "title": "a"}, {"id": "T-2", "title": "b"}]})
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t"}]}, {"tasks": [{"id": "T-1", "title": "a"}, {"id": "T-2", "title": "b"}]})
         paths = {tid: b["worktree"] for tid, b in self.task_start("T-1", "T-2").items()}
         commit(Path(paths["T-1"]), "calc.py", "one\n")
         commit(Path(paths["T-2"]), "calc.py", "two\n")
@@ -149,7 +149,7 @@ class FlowTests(unittest.TestCase):
 
     def test_a_task_the_lead_did_in_work_is_marked_done_without_a_worktree(self):
         run = self.start()
-        self.write(run, {"goal": "g", "criteria": []}, {"tasks": [{"id": "T-1", "title": "a"}]})
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t"}]}, {"tasks": [{"id": "T-1", "title": "a"}]})
         commit(Path(run["work"]), "mul.py", "x = 1\n")
         code, out, _ = self.repo.ls("task", "done", "T-1")
         self.assertEqual(code, 0)
@@ -158,7 +158,7 @@ class FlowTests(unittest.TestCase):
 
     def test_a_cyclic_plan_is_reported_with_its_cycle(self):
         run = self.start()
-        self.write(run, {"goal": "g", "criteria": []},
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t"}]},
                    {"tasks": [{"id": "T-1", "title": "a", "dependsOn": ["T-2"]}, {"id": "T-2", "title": "b", "dependsOn": ["T-1"]}]})
         _, out, _ = self.repo.ls("status")
         self.assertIn("dependency cycle: T-1 -> T-2 -> T-1", out)
@@ -194,6 +194,30 @@ class FlowTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"LOOP_SPEC_MODE": "autonomous"}):
             self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["mode"], "autonomous")
         self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["mode"], "interactive")
+
+    def test_an_unusable_spec_is_named_and_verify_refuses_it(self):
+        run = self.start()
+        self.write(run, {"goal": "", "criteria": [{"id": "AC-1"}, {"id": "AC-1", "text": "t", "check": 3}]},
+                   {"tasks": [{"id": "T-1", "title": "a"}]})
+        out = self.repo.ls("status")[1]
+        self.assertIn("is not usable: `goal` must be a one-sentence string; AC-1 has no `text`; AC-1: `check` must be "
+                      "a command string, or left out when no command can show it; criterion id AC-1 is used more than once", out)
+        self.assertRegex(out, r"next +fix \S+spec\.json: `goal`")
+        self.assertEqual(marker(out, "LOOP_SPEC_RUN")["phase"], "spec")
+        code, _, err = self.repo.ls("verify")
+        self.assertEqual(code, 1)
+        self.assertIn("spec.json is not usable", err)
+
+    def test_a_plan_naming_an_unknown_criterion_is_refused_and_shared_files_are_warned(self):
+        run = self.start()
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t"}]},
+                   {"tasks": [{"id": "T-1", "title": "a", "criteria": ["AC-2"]}]})
+        out = self.repo.ls("status")[1]
+        self.assertIn("T-1 covers AC-2, which is not in spec.json (criteria: AC-1)", out)
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t"}]},
+                   {"tasks": [{"id": "T-1", "title": "a", "files": ["calc.py"], "criteria": ["AC-1"]},
+                              {"id": "T-2", "title": "b", "files": ["calc.py"]}]})
+        self.assertIn("warning  T-1 and T-2 can run at once but both list calc.py", self.repo.ls("status")[1])
 
     def test_the_next_step_names_the_phase_reference_and_the_kind_reference(self):
         _, out, _ = self.repo.ls("start", "--request", "Add mul")

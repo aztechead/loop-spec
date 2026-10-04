@@ -17,6 +17,7 @@ FAKE_GH = """#!/usr/bin/env bash
 # A stand-in for gh: answers the few calls loop-spec makes from files in $FAKE_GH_DIR.
 echo "$*" >> "$FAKE_GH_DIR/calls"
 case "$1 $2" in
+  "auth status") [ -z "$FAKE_GH_NO_AUTH" ] || { echo "You are not logged into any GitHub hosts." >&2; exit 1; } ;;
   "pr list") echo "[]" ;;
   "pr create") echo "https://github.com/acme/kv/pull/7" ;;
   "pr checks") cat "$FAKE_GH_DIR/checks.json"; exit "$(cat "$FAKE_GH_DIR/checks.exit" 2>/dev/null || echo 0)" ;;
@@ -242,6 +243,37 @@ class LoopTests(unittest.TestCase):
         code, _, err = self.repo.ls("deliver")
         self.assertEqual(code, 1)
         self.assertIn("references/visual-pr/pr_description_template.md", err)
+
+    def test_at_deliver_the_next_step_names_the_template_and_its_views(self):
+        run = self.ready_run()
+        Path(run["runDir"], "pr.md").unlink()
+        self.repo.ls("verify")
+        out = self.repo.ls("iterate")[1]
+        self.assertRegex(out, r"next: loop-spec deliver \(read \S+/deliver\.md, \S+/pr_description_template\.md and "
+                              r"\S+/visual-pr/show-me\.md\)")
+        Path(run["runDir"], "pr.md").write_text("## Why the change\n\nmul.\n")
+        self.assertNotIn("show-me.md", self.repo.ls("status")[1])
+
+    def test_deliver_refuses_template_placeholders_left_in_pr_md(self):
+        run = self.ready_run()
+        Path(run["runDir"], "pr.md").write_text(
+            "## Why the change\n\nmul.\n\n## Special things to note\n\n- {List 1-3 reviewer-relevant warnings, migrations, "
+            "constraints, deliberate omissions, or surprising decisions. Use \"None.\" when there are no special considerations.}\n")
+        self.repo.ls("verify")
+        self.repo.ls("iterate")
+        code, _, err = self.repo.ls("deliver")
+        self.assertEqual(code, 1)
+        self.assertIn("pr.md still has 1 line(s) of the template's placeholders, such as: - {List 1-3", err)
+
+    def test_deliver_checks_gh_before_it_pushes(self):
+        run = self.ready_run()
+        self.repo.ls("verify")
+        self.repo.ls("iterate")
+        with mock.patch.dict(os.environ, {"FAKE_GH_NO_AUTH": "1"}):
+            code, _, err = self.repo.ls("deliver")
+        self.assertEqual(code, 1)
+        self.assertIn("gh cannot open the PR: You are not logged into any GitHub hosts.", err)
+        self.assertEqual(sh(self.repo.path, "git", "ls-remote", "--heads", "origin", "feat/add-mul"), "")
 
     def test_the_repositorys_own_pr_template_wins(self):
         run = self.ready_run()

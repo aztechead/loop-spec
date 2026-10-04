@@ -11,11 +11,15 @@ AGENTS = sorted(PLUGIN.glob("agents/*.md"))
 
 
 def parse(path: Path) -> tuple[dict, str]:
+    """Frontmatter as one `key: value` line per field. The program has no YAML parser, so a
+    folded or multi-line value is a failure here rather than a field read wrong."""
     _, front, body = path.read_text().split("---", 2)
     fields = {}
     for line in front.strip().splitlines():
-        key, _, value = line.partition(":")
-        fields[key.strip()] = value.strip().strip('"')
+        match = re.fullmatch(r"([a-z][a-z-]*): (\S.*)", line)
+        if not match:
+            raise AssertionError(f"{path}: frontmatter line is not `key: value` on one line: {line!r}")
+        fields[match[1]] = match[2].strip('"')
     return fields, body
 
 
@@ -41,6 +45,12 @@ class SkillFormatTests(unittest.TestCase):
                 fields, body = parse(path)
                 self.assertRegex(fields["description"], r"\bUse (when|whenever|to)\b")
                 self.assertLess(body.count("\n"), 500)
+
+    def test_a_name_matches_its_directory_or_file(self):
+        for path in SKILLS:
+            self.assertEqual(parse(path)[0]["name"], path.parent.name)
+        for path in AGENTS:
+            self.assertEqual(parse(path)[0]["name"], path.stem)
 
     def test_agents_carry_model_effort_and_tools(self):
         for path in AGENTS:

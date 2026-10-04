@@ -7,7 +7,10 @@ parallel.
 Until every task is done:
 
 1. Run `LS task start` with the tasks the `next` line names. Each gets a worktree with
-   `prepare` already run, and a `LOOP_SPEC_TASK {...}` brief.
+   `prepare` already run, and a `LOOP_SPEC_TASK {...}` brief: `id`, `worktree`,
+   `branch`, `from` (the commit it starts at), `task` (its entry in `plan.json`), the
+   spec's `goal`, the `criteria` it covers, the repository's `checks`, and `prepared`
+   (false when `prepare` failed there).
 2. Dispatch one `loop-spec:implementer` agent per started task, all in one message so
    they run in parallel. Its prompt is the task's brief, plus the conventions you found
    (commit style, house rules) and anything else it needs from you. Do a task yourself

@@ -5,15 +5,22 @@ task graph the program runs, and have `LS status` accept it before any task star
 
 ## plan.json
 
-Use this shape; the program reads these fields:
+Use this shape; the program reads these fields. This plan, for a spec with criteria
+AC-1 to AC-3, runs T-1 and T-2 in parallel, then T-3 once both are merged:
 
 ```json
 {"prepare": "uv sync",
  "checks": [{"command": "uv run ruff check", "source": "CLAUDE.md"},
             {"command": "uv run mypy calc", "source": "AGENTS.md"}],
  "tasks": [{"id": "T-1", "title": "Add lerp with its tests", "dependsOn": [],
-            "files": ["calc/__init__.py", "tests/test_lerp.py"], "criteria": ["AC-1"],
-            "verify": ".venv/bin/python -m pytest -q tests/test_lerp.py"}]}
+            "files": ["calc/lerp.py", "tests/test_lerp.py"], "criteria": ["AC-1"],
+            "verify": ".venv/bin/python -m pytest -q tests/test_lerp.py"},
+           {"id": "T-2", "title": "Add clamp with its tests", "dependsOn": [],
+            "files": ["calc/clamp.py", "tests/test_clamp.py"], "criteria": ["AC-2"],
+            "verify": ".venv/bin/python -m pytest -q tests/test_clamp.py"},
+           {"id": "T-3", "title": "Export both and document them", "dependsOn": ["T-1", "T-2"],
+            "files": ["calc/__init__.py", "README.md"], "criteria": ["AC-3"],
+            "verify": ".venv/bin/python -c 'from calc import lerp, clamp'"}]}
 ```
 
 - `prepare` installs what the checks need into a fresh checkout (`.venv/bin/python`
@@ -42,7 +49,10 @@ A task is a unit one implementer can build and test on its own.
 
 ## The check
 
-Run `LS status`. It validates the graph and names each problem: a missing or duplicate
-id, an unknown dependency, or a cycle. Fix `plan.json` and run it again until it
-accepts the plan. It also names any criterion no task covers; add it to a task's
-`criteria`. Its `next` line then names the first tasks to start.
+Run `LS status`. It validates the graph and names each problem with what would fix it:
+a missing or duplicate id, an unknown dependency, a cycle, or a task naming a criterion
+the spec does not have. Fix `plan.json` and run it again until it accepts the plan. It
+also names any criterion no task covers (add it to a task's `criteria`), and any two
+tasks that can run at once but list the same file, which would conflict when merged
+(give the file one owner, or make one task depend on the other). Its `next` line then
+names the first tasks to start.

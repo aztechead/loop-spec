@@ -18,6 +18,7 @@ import json
 import os
 import re
 import textwrap
+from collections import Counter
 from datetime import datetime, timezone
 from functools import cached_property
 from pathlib import Path
@@ -64,6 +65,34 @@ def read_json(path: Path, what: str):
         return None
     except json.JSONDecodeError as exc:
         raise LoopSpecError(f"{what} at {path} is not valid JSON: {exc}", f"fix {path.name} and run the command again")
+
+
+def spec_problems(spec) -> list[str]:
+    """What makes spec.json unusable, in terms the lead can fix. Empty when it is sound."""
+    if not isinstance(spec, dict):
+        return ["spec.json must be a JSON object with `goal` and `criteria`"]
+    found = []
+    if not isinstance(spec.get("goal"), str) or not spec["goal"].strip():
+        found.append("`goal` must be a one-sentence string")
+    criteria = spec.get("criteria")
+    if not isinstance(criteria, list) or not criteria:
+        return found + ["`criteria` must be a list with at least one criterion"]
+    ids = Counter()
+    for n, c in enumerate(criteria, 1):
+        if not isinstance(c, dict):
+            found.append(f"criterion #{n} must be an object with `id`, `text`, and an optional `check`")
+            continue
+        name = c.get("id") or f"criterion #{n}"
+        if not isinstance(c.get("id"), str) or not c["id"]:
+            found.append(f"{name} has no `id`")
+        else:
+            ids[c["id"]] += 1
+        if not isinstance(c.get("text"), str) or not c["text"].strip():
+            found.append(f"{name} has no `text`")
+        if c.get("check") is not None and not (isinstance(c["check"], str) and c["check"].strip()):
+            found.append(f"{name}: `check` must be a command string, or left out when no command can show it")
+    found += [f"criterion id {cid} is used more than once" for cid, n in ids.items() if n > 1]
+    return found
 
 
 class Run:
@@ -120,9 +149,20 @@ class Run:
         if not isinstance(tasks, list) or not all(isinstance(t, dict) for t in tasks):
             raise LoopSpecError(f"{self.plan_path} needs a `tasks` list of objects", "see the plan.json shape in the loop-spec skill")
         found = dag.problems(tasks)
+        if not found and isinstance(self.spec, dict) and not spec_problems(self.spec):
+            found = dag.unknown_criteria(tasks, [c["id"] for c in self.spec["criteria"]])
         if found:
             raise LoopSpecError("plan.json is not a usable task graph: " + "; ".join(found), f"fix {self.plan_path}")
         return tasks
+
+    def checked_spec(self) -> dict:
+        """spec.json, or a refusal naming what is missing or wrong in it."""
+        if self.spec is None:
+            raise LoopSpecError(f"there is no spec at {self.spec_path}", "write it; see references/spec.md")
+        found = spec_problems(self.spec)
+        if found:
+            raise LoopSpecError(f"{self.spec_path.name} is not usable: " + "; ".join(found), f"fix {self.spec_path}")
+        return self.spec
 
     def task(self, task_id: str) -> dict:
         for t in self.tasks:
@@ -145,7 +185,7 @@ class Run:
         done, 7.x's phase names. Delivering covers the PR's CI and review feedback too."""
         if self.result_path.is_file():
             return "done"
-        if self.spec is None:
+        if self.spec is None or spec_problems(self.spec):
             return "spec"
         if not self.tasks:
             return "plan"

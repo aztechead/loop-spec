@@ -14,6 +14,7 @@ def title(run: Run) -> str:
 
 
 VISUAL_PR = Path(__file__).resolve().parents[2] / "references" / "visual-pr" / "pr_description_template.md"
+SHOW_ME = VISUAL_PR.parent / "show-me.md"  # the views visual-pr's change outline is drawn with
 REPO_TEMPLATES = (".github/pull_request_template.md", ".github/PULL_REQUEST_TEMPLATE.md", "PULL_REQUEST_TEMPLATE.md",
                   "pull_request_template.md", "docs/pull_request_template.md", "docs/PULL_REQUEST_TEMPLATE.md")
 
@@ -27,6 +28,21 @@ def pr_template(worktree: Path) -> Path:
     folder = worktree / ".github" / "PULL_REQUEST_TEMPLATE"
     found = sorted(folder.glob("*.md")) if folder.is_dir() else []
     return found[0] if found else VISUAL_PR
+
+
+def pr_guides(run: Run) -> list[Path]:
+    """What to read to write `pr.md`, while it is still to be written: its template, and for
+    visual-pr the views its outline uses. Nothing for an adopted PR, whose description stays."""
+    if (run.state.get("pr") or {}).get("adopted") or (run.dir / "pr.md").is_file() or not run.work.exists():
+        return []
+    template = pr_template(run.work)
+    return [template, SHOW_ME] if template == VISUAL_PR else [template]
+
+
+def template_leftovers(text: str, template: Path) -> list[str]:
+    """Lines of `pr.md` that are still the template's own `{...}` placeholder lines."""
+    placeholders = {line.strip() for line in template.read_text().splitlines() if "{" in line and "}" in line}
+    return [line.strip() for line in text.splitlines() if line.strip() in placeholders]
 
 
 def body(run: Run, verified: bool) -> str:
@@ -78,8 +94,15 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
     if not adopted and not (run.dir / "pr.md").is_file():
         raise LoopSpecError(f"there is no PR description at {run.dir / 'pr.md'}",
                             f"write it following {pr_template(work)}, then deliver again")
+    if not adopted and (left := template_leftovers((run.dir / "pr.md").read_text(), pr_template(work))):
+        raise LoopSpecError(f"pr.md still has {len(left)} line(s) of the template's placeholders, such as: {left[0][:100]}",
+                            "replace each with what this change does, or delete it, then deliver again")
     if not git.has_origin(work):
         raise LoopSpecError("the repository has no origin remote", "add one with `git remote add origin <url>`")
+    code, _, err = git.gh(work, "auth", "status")
+    if code != 0:  # checked before the push, so a missing gh changes nothing on origin
+        raise LoopSpecError(f"gh cannot open the PR: {err.strip().splitlines()[0] if err.strip() else 'gh auth status failed'}",
+                            "install gh and run `gh auth login`, then deliver again")
     moved = remote.moves(run)
     if moved:
         raise LoopSpecError("origin moved since this head was verified: " + "; ".join(remote.describe(m) for m in moved),

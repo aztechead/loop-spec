@@ -17,7 +17,7 @@ def problems(tasks: list[dict]) -> list[str]:
     found = [f"task #{i + 1} has no id" for i, t in enumerate(tasks) if not t.get("id")]
     counts = Counter(t.get("id") for t in tasks if t.get("id"))
     found += [f"task id {tid} is used more than once" for tid, n in counts.items() if n > 1]
-    found += [f"{t.get('id')} depends on {dep}, which is not in the plan"
+    found += [f"{t.get('id')} depends on {dep}, which is not in the plan (tasks: {', '.join(counts)})"
               for t in tasks for dep in t.get("dependsOn", []) if dep not in counts]
     if not found:  # graphlib would add an unknown dependency as a new node, so check those first
         try:
@@ -44,6 +44,41 @@ def all_done(tasks: list[dict], statuses: dict[str, str]) -> bool:
 
 def waiting_on(task: dict, statuses: dict[str, str]) -> list[str]:
     return [d for d in task.get("dependsOn", []) if status_of(d, statuses) != "done"]
+
+
+def unknown_criteria(tasks: list[dict], ids: list[str]) -> list[str]:
+    """Problems: a task naming a criterion id the spec does not have."""
+    return [f"{t['id']} covers {c}, which is not in spec.json (criteria: {', '.join(ids) or 'none'})"
+            for t in tasks for c in t.get("criteria", []) if c not in ids]
+
+
+def ancestors(tasks: list[dict]) -> dict[str, set[str]]:
+    """Every task each task depends on, directly or through others. The graph must be sound."""
+    deps = {t["id"]: set(t.get("dependsOn", [])) for t in tasks}
+    found: dict[str, set[str]] = {}
+    for tid in TopologicalSorter(deps).static_order():
+        found[tid] = set().union(*(found[d] | {d} for d in deps[tid]))
+    return found
+
+
+def shared_files(tasks: list[dict]) -> list[tuple[str, str, list[str]]]:
+    """Pairs of tasks that can run at once yet list the same file: a merge conflict waiting
+    to happen. Each pair once, in plan order, with the files they share."""
+    before = ancestors(tasks)
+    pairs = []
+    for i, a in enumerate(tasks):
+        for b in tasks[i + 1:]:
+            if a["id"] in before[b["id"]] or b["id"] in before[a["id"]]:
+                continue
+            common = sorted(_files(a) & _files(b))
+            if common:
+                pairs.append((a["id"], b["id"], common))
+    return pairs
+
+
+def _files(task: dict) -> set[str]:
+    files = task.get("files")
+    return set(files) if isinstance(files, list) else set()
 
 
 def uncovered(criteria: list[dict], tasks: list[dict]) -> list[str]:

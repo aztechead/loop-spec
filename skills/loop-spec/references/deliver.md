@@ -8,9 +8,9 @@ asked for anything new.
 
 Write the PR description to `pr.md` in `runDir`, following the template `LS status`
 names on its `pr.md` line (`prTemplate` in `LOOP_SPEC_RUN`): the repository's own PR
-template when it has one, else the bundled visual-pr format that SKILL.md links. Describe
-the change as it stands at the head you deliver, and update `pr.md` when a later fix
-changes it. Deliver appends the criteria, and how verify showed each, folded below your
+template when it has one, else the bundled visual-pr format; the `next` line names the
+files to read for it. Describe the change as it stands at the head you deliver, and
+update `pr.md` when a later fix changes it. Deliver appends the criteria, and how verify showed each, folded below your
 text. A revise run leaves the PR's description alone and needs no `pr.md`.
 
 ## Deliver
@@ -18,7 +18,8 @@ text. A revise run leaves the PR's description alone and needs no `pr.md`.
 Run `LS deliver`. It pushes the feature branch and opens the PR, or updates the one it
 opened before. It refuses, and says why, when:
 
-- there is no `pr.md`;
+- there is no `pr.md`, or it still has lines of the template's `{...}` placeholders;
+- `gh` is missing or not signed in (checked before anything is pushed);
 - verify did not pass at this head: verify again;
 - origin moved: run `LS sync`, resolve any conflict in `work` keeping both sides' intent
   (`git commit --no-edit`), verify, and deliver again.

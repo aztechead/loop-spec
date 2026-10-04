@@ -4,8 +4,8 @@ import unittest
 from loop_spec import dag
 
 
-def task(tid, *deps, criteria=()):
-    return {"id": tid, "title": tid, "dependsOn": list(deps), "criteria": list(criteria)}
+def task(tid, *deps, criteria=(), files=()):
+    return {"id": tid, "title": tid, "dependsOn": list(deps), "criteria": list(criteria), "files": list(files)}
 
 
 class ProblemsTests(unittest.TestCase):
@@ -14,7 +14,7 @@ class ProblemsTests(unittest.TestCase):
 
     def test_names_unknown_dependencies_duplicates_and_missing_ids(self):
         found = dag.problems([task("T-1", "T-9"), task("T-1"), {"title": "no id"}])
-        self.assertIn("T-1 depends on T-9, which is not in the plan", found)
+        self.assertIn("T-1 depends on T-9, which is not in the plan (tasks: T-1)", found)
         self.assertIn("task id T-1 is used more than once", found)
         self.assertIn("task #3 has no id", found)
 
@@ -27,6 +27,20 @@ class ProblemsTests(unittest.TestCase):
 
     def test_an_empty_plan_is_a_problem(self):
         self.assertEqual(dag.problems([]), ["the plan has no tasks"])
+
+
+class CrossCheckTests(unittest.TestCase):
+    def test_a_task_naming_an_unknown_criterion_lists_the_real_ones(self):
+        found = dag.unknown_criteria([task("T-1", criteria=["AC-1", "AC-7"])], ["AC-1", "AC-2"])
+        self.assertEqual(found, ["T-1 covers AC-7, which is not in spec.json (criteria: AC-1, AC-2)"])
+
+    def test_tasks_that_can_run_at_once_and_share_a_file_are_named(self):
+        tasks = [task("T-1", files=["a.py", "b.py"]), task("T-2", files=["b.py"]), task("T-3", "T-1", files=["a.py"])]
+        self.assertEqual(dag.shared_files(tasks), [("T-1", "T-2", ["b.py"])])
+
+    def test_a_dependency_through_another_task_orders_them(self):
+        tasks = [task("T-1", files=["a.py"]), task("T-2", "T-1"), task("T-3", "T-2", files=["a.py"])]
+        self.assertEqual(dag.shared_files(tasks), [])
 
 
 class ReadyTests(unittest.TestCase):

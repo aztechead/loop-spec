@@ -48,6 +48,8 @@ convention in `git log --oneline -15`.
 
 ## The check
 
-In an interactive run, show the user the goal and criteria and ask once for approval;
-revise until they approve. Then run `LS status`: it announces the end of SPEC and names
-the next step.
+In an interactive run, show the user the goal and criteria and ask once for approval,
+revising until they approve. Then run `LS status`. It checks `spec.json` and names each
+problem: a missing goal, no criteria, a criterion without an `id` or `text`, a `check`
+that is not a command string, or a duplicate id. Fix the file and run it again until it
+reports the criteria; that run announces the end of SPEC.

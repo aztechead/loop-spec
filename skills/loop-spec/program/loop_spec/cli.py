@@ -14,7 +14,8 @@ import sys
 
 from loop_spec import VERSION, checks, ci, dag, deliver, git, hook, legacy, log, phases, remote, review
 from loop_spec.errors import LoopSpecError
-from loop_spec.runs import KINDS, RESULT_STATUSES, Run, all_runs, find, first_free, first_line, read_json, slugify
+from loop_spec.runs import (KINDS, RESULT_STATUSES, Run, all_runs, find, first_free, first_line, read_json, slugify,
+                            spec_problems)
 
 PROGRAM = Path(__file__).resolve().parents[1] / "loop-spec"
 
@@ -110,9 +111,11 @@ def show_status(run: Run) -> int:
     s = run.state
     head = git.head(run.work) if run.work.exists() else None
     try:
-        phase, problem = run.phase(head), None
+        run.tasks
+        problem = None
     except LoopSpecError as exc:
-        phase, problem = "plan", exc.message
+        problem = exc.message
+    phase = "spec" if run.spec is None or spec_problems(run.spec) else ("plan" if problem else run.phase(head))
     out(f"{run.slug}: {s['kind']}, {run.mode}, phase {phase}")
     out(f"  request  {first_line(s.get('request', ''), 100)}")
     out(f"  branch   {s['branch']} from {s['base']['branch']} @ {s['base']['sha'][:12]}" + (f", head {head[:12]}" if head else ""))
@@ -128,17 +131,24 @@ def show_status(run: Run) -> int:
         written = "written" if (run.dir / "pr.md").is_file() else "not written yet"
         out(f"  pr.md    {written}; follows {_rel(run, template)}")
     spec = run.spec
-    out(f"  spec     {len(spec.get('criteria', []))} criteria in {_rel(run, run.spec_path)}" if spec
-        else f"  spec     not written yet ({_rel(run, run.spec_path)})")
+    if spec is None:
+        out(f"  spec     not written yet ({_rel(run, run.spec_path)})")
+    elif found := spec_problems(spec):
+        out(f"  spec     {_rel(run, run.spec_path)} is not usable: " + "; ".join(found))
+    else:
+        out(f"  spec     {len(spec['criteria'])} criteria in {_rel(run, run.spec_path)}")
     if problem:
         out(f"  plan     {problem}")
     elif run.plan is None:
         out(f"  plan     not written yet ({_rel(run, run.plan_path)})")
     else:
         _print_tasks(run)
-        missing = dag.uncovered((spec or {}).get("criteria", []), run.tasks)
+        missing = dag.uncovered(spec["criteria"], run.tasks) if spec and not spec_problems(spec) else []
         if missing:
             out(f"  note     no task names criteria {', '.join(missing)}")
+        for a, b, files in dag.shared_files(run.tasks):
+            out(f"  warning  {a} and {b} can run at once but both list {', '.join(files)}: expect a merge conflict; "
+                "give each file one owning task, or make one depend on the other")
         if s.get("instructions") and "checks" not in run.plan:
             out("  note     plan.json has no `checks`: list the checks the rules files above require (or [] if none)")
     verify = s.get("verify")
@@ -178,14 +188,17 @@ def _next_step(run: Run, phase: str, problem: str | None = None) -> str:
     if phase == "spec" and run.state.get("kind") in ("micro", "debug", "revise"):
         guides.insert(0, f"{run.state['kind']}.md")
     named = [str(REFERENCES / g) for g in guides if g]
-    return step + (f" (read {' and '.join(named)})" if named else "")
+    if phase == "deliver":
+        named += [str(p) for p in deliver.pr_guides(run)]
+    return step + (f" (read {', '.join(named[:-1]) + ' and ' if len(named) > 1 else ''}{named[-1]})" if named else "")
 
 
 def _step(run: Run, phase: str, problem: str | None) -> str:
     if problem:
         return f"fix {run.plan_path.name}"
     if phase == "spec":
-        return f"write {run.spec_path}"
+        found = spec_problems(run.spec) if run.spec is not None else []
+        return f"fix {run.spec_path}: {'; '.join(found)}" if found else f"write {run.spec_path}"
     if phase == "plan":
         return f"write {run.plan_path}"
     if phase == "execute":
@@ -233,7 +246,7 @@ def cmd_task_start(args, project: Path, cwd: Path) -> int:
     run = find(project, args.slug, cwd)
     statuses = run.statuses()
     feature_head = git.head(run.work)
-    criteria = {c.get("id"): c for c in (run.spec or {}).get("criteria", [])}
+    criteria = {c["id"]: c for c in run.checked_spec()["criteria"]}
     prepare = (run.plan or {}).get("prepare")
     for task_id in args.ids:
         task = run.task(task_id)
@@ -317,8 +330,8 @@ def cmd_task_set(args, project: Path, cwd: Path) -> int:
 
 def cmd_verify(args, project: Path, cwd: Path) -> int:
     run = find(project, args.slug, cwd)
-    run.tasks  # refuse a broken plan before running anything
-    items = checks.planned(run.spec, run.plan)
+    run.tasks  # refuse a broken plan or spec before running anything
+    items = checks.planned(run.checked_spec(), run.plan)
     if not items:
         raise LoopSpecError("there is nothing to verify: no spec criteria and no task verify commands",
                             f"write {run.spec_path.name} with criteria that name a check")
