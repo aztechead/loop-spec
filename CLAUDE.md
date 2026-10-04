@@ -19,8 +19,8 @@ recognize while working and what to do; a rule with no trigger does not fire.
   (`skills/loop-spec/program/tests/`, `python3 -m unittest discover -s tests`) cover
   the program's deterministic Python only: the task graph, run state, and git flows
   against throwaway repositories. There is no fake model and no offline cycle suite.
-  Model-driven behavior is shown by a live run, recorded in
-  [docs/live-runs.md](docs/live-runs.md), never simulated.
+  Model-driven behavior is shown by a live run, recorded locally outside the
+  repository, never simulated.
 - **When you change a program command, its output, or the shape of `spec.json` or
   `plan.json`**, update [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md) or the
   reference that covers it in the same diff: they are the lead's only description of

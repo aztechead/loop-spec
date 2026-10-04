@@ -58,12 +58,9 @@ python3 examples/sdk-plugin/run_loop_spec.py --project-root ~/src/my-app --resum
 
 `--model opus --phase-model execute=sonnet` is the recommended setup: Opus writes the spec
 and plan, where a wrong call costs the most, then Sonnet leads execution, verification,
-the CI and review rounds, and later revisions. In twelve live runs across three scenarios, all four setups tried
-(Sonnet throughout, Opus throughout, this one, and Opus again for delivery) delivered
-every change correctly with CI green. This one cost 18% less than Opus throughout, and
-needed fewer CI rounds than Sonnet throughout. Switching back to Opus for delivery cost
-the most of all four, because the prompt cache is per model and each switch starts the
-new model's context cold. [docs/live-runs.md](../../docs/live-runs.md) has the numbers.
+the CI and review rounds, and later revisions. Switch once: the prompt cache is per
+model, so each switch starts the new model's context cold, and switching back to Opus
+for delivery costs more than running Opus throughout.
 
 stdout carries the lead's text; stderr carries thinking, tool calls, worker output,
 `LOOP_SPEC_*` lines, and per-turn cost, then the result's `status`, `summary`, `prUrl`,

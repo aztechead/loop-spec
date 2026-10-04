@@ -8,7 +8,7 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 - The SDK example's `--phase-model PHASE=MODEL` switches the lead's model with
   `set_model()` when the run enters PHASE; `--model opus --phase-model execute=sonnet` is
-  its recommended setup, chosen from twelve live runs.
+  its recommended setup.
 
 ### Fixed
 
@@ -26,25 +26,19 @@ All notable changes documented here. Format follows Keep a Changelog.
   review the PR already has, so `feedback` reports only what comes after it, not the
   comments the run was started to address.
 - `start --pr` lists the PR's review so far, so a revise run works from one list and
-  answers every item: a live Sonnet-led revise fixed the change request but left a
-  question unanswered.
+  answers every item, the questions as well as the change requests.
 - `feedback` reports a failed check as soon as it fails, with its job's log, instead of
-  waiting for every other check to finish: on a repository with an 11-minute
-  integration job, a policy failure known in seconds was reported 11 minutes later, on
-  each fix round. The log comes from the job, since GitHub serves `--log-failed` only
+  waiting for every other check to finish. The log comes from the job, since GitHub serves `--log-failed` only
   once the whole run is over.
 - `feedback` no longer waits on a check GitHub leaves in progress after its job has
   finished: a check pending over a minute is read from its Actions job, and a job with a
-  conclusion counts as settled (seen live: the run failed, its check stayed pending).
+  conclusion counts as settled.
 - The SDK example no longer crashes when the lead pipes a command through `cut` and the
   `LOOP_SPEC_NEXT` line arrives cut short: it skips the line and reads the result from
   the run's directory.
 - `deliver --no-feedback` is named only beside its condition, the user asking not to
-  wait for CI: a Sonnet lead in an autonomous run picked it from the command table and
-  ended the run at the PR with every check pending.
-- A lead writes no code before the plan is accepted (Sonnet 5.5 led a live run that
-  implemented during Spec, skipped the interactive approval, and backfilled
-  `spec.json` and `plan.json`). In an interactive run the `next` line at Spec names the
+  wait for CI, so an autonomous run no longer ends at the PR with its checks pending.
+- A lead writes no code before the plan is accepted. In an interactive run the `next` line at Spec names the
   approval step. A design the lead already worked out goes into the implementer's brief.
 
 ### Changed
@@ -565,7 +559,7 @@ Per-phase models, for adopting loop-spec through the Claude Agent SDK.
   not. SPEC and PLAN run in the lead, so `--model sonnet` with
   `LOOP_SPEC_PHASE_MODEL_SPEC=opus LOOP_SPEC_PHASE_MODEL_PLAN=opus` now runs them on Opus
   and the rest of the lead on Sonnet. Shown live in `p775-phase-models`
-  ([live runs](docs/loop-spec/live-runs-7.0.md)). A lead step's effort is not applied:
+  (live runs). A lead step's effort is not applied:
   the SDK has no mid-session effort change. In Claude Code the lead still runs every
   lead step at the session's own model.
 - `spec.approval: "policy"` in config, or `LOOP_SPEC_SPEC_APPROVAL=policy`, approves
@@ -1149,7 +1143,7 @@ instead of the 6.x bash/jq implementation.
 - [`skills/loop-spec/references/contract.md`](skills/loop-spec/references/contract.md):
   the process contract — files, fields, exit codes, config, environment — for an
   implementer or a harness author.
-- [`docs/loop-spec/live-runs-7.0.md`](docs/loop-spec/live-runs-7.0.md): which
+- `docs/loop-spec/live-runs-7.0.md`: which
   checklist case was shown by which recorded live run.
 - EXECUTE issues every task of a wave at once (`LOOP_SPEC_NEXT` per step,
   `LOOP_SPEC_WAIT` while siblings are open); a task is reviewed against the head it
@@ -1204,7 +1198,7 @@ Claude Code and the Claude Agent SDK only.
 
 ### Shown live
 
-Recorded in [docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md),
+Recorded in docs/loop-spec/live-runs-7.0.md,
 against Claude Code 2.1.278 on `sonnet`: the all-external traversal, a full
 native cycle to a delivered pull request, attestation in both directions, the
 blocked exit answered `stop`, a two-repo workspace, the debug and revise entries,

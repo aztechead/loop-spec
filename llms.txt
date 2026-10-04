@@ -13,6 +13,7 @@
 - [agents/implementer.md](agents/implementer.md): the Sonnet agent that implements one task in its own worktree.
 - [agents/reviewer.md](agents/reviewer.md): the Opus agent that reviews the whole change against the spec, adversarially.
 - [agents/simplifier.md](agents/simplifier.md): the Sonnet agent that looks for reuse, simplification, efficiency, and altitude cleanups.
+- Models: run the lead on Opus 5.5 for spec and plan and on Sonnet 5.5 from execute on; the agents' models come from their frontmatter. Through the Agent SDK that is [examples/sdk-plugin](examples/sdk-plugin/README.md)'s `--model opus --phase-model execute=sonnet`; switch once, since the prompt cache is per model.
 - [hooks/hooks.json](hooks/hooks.json): the Stop hook that keeps an autonomous run going until it has a result, like `/goal`.
 
 ## Entries
