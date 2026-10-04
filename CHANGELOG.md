@@ -11,6 +11,12 @@ All notable changes documented here. Format follows Keep a Changelog.
   requirements and long-running commands stated, direct links to the PR format
   references, and one name for the implementer agent. `tests/test_skills.py` checks
   the format limits.
+- Progressive disclosure: `SKILL.md` is the overview (the program, the workflow and
+  each phase's check, how to work), and each phase and run kind has its own reference
+  (`references/spec.md`, `plan.md`, `execute.md`, `review.md`, `deliver.md`,
+  `micro.md`, `debug.md`, `revise.md`), linked from the overview and never from each
+  other. The `next` line names the reference for the phase the run is in. `spec.md`
+  carries illustrative good and bad criteria.
 - The `finish` row in the hub's command table lists `completed`, and the simplifier
   reports its most valuable findings without a fixed count.
 

@@ -1,9 +1,8 @@
 # visual-pr: the PR description format
 
-For the loop-spec lead writing a pull request description (`pr.md`) for a repository
-that has no PR template of its own. Follow
-[pr_description_template.md](pr_description_template.md) for the description, and
-draw its change outline with the views in [show-me.md](show-me.md).
+For a contributor: where the PR description format comes from. The lead reaches
+[pr_description_template.md](pr_description_template.md) and [show-me.md](show-me.md)
+directly from the hub skill, for a repository with no PR template of its own.
 
 Both files are copied unchanged from HumanLayer's
 [visual-pr plugin](https://github.com/humanlayer/skills/tree/main/plugins/visual-pr)

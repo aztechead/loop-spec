@@ -55,5 +55,44 @@ class SkillFormatTests(unittest.TestCase):
                     self.assertTrue((path.parent / target).is_file())
 
 
+HUB = PLUGIN / "skills" / "loop-spec" / "SKILL.md"
+REFERENCES = HUB.parent / "references"
+VENDORED = REFERENCES / "visual-pr"  # copied unchanged from HumanLayer; SKILL.md summarizes its views
+
+
+def local_links(path: Path) -> set[Path]:
+    return {(path.parent / t).resolve() for t in re.findall(r"\]\(([^)#:]+\.md)\)", path.read_text())}
+
+
+class ProgressiveDisclosureTests(unittest.TestCase):
+    """SKILL.md is the overview; every reference is one link away from it, never two."""
+
+    def test_every_reference_is_linked_from_the_hub(self):
+        linked = local_links(HUB)
+        for path in REFERENCES.rglob("*.md"):
+            if path.name == "README.md":
+                continue  # provenance for contributors, not guidance for the lead
+            with self.subTest(path=path.relative_to(PLUGIN)):
+                self.assertIn(path.resolve(), linked)
+
+    def test_no_reference_sends_the_reader_to_another_reference(self):
+        for path in local_links(HUB):
+            with self.subTest(path=path.relative_to(PLUGIN)):
+                self.assertEqual(local_links(path), set())
+
+    def test_long_references_open_with_their_contents(self):
+        for path in REFERENCES.rglob("*.md"):
+            if VENDORED in path.parents or path.read_text().count("\n") <= 100:
+                continue
+            with self.subTest(path=path.relative_to(PLUGIN)):
+                self.assertIn("## Contents", path.read_text()[:600])
+
+    def test_the_program_names_a_reference_that_exists_for_every_phase(self):
+        from loop_spec import cli
+        for guide in set(cli.PHASE_GUIDES.values()) | {"micro.md", "debug.md", "revise.md"}:
+            with self.subTest(guide=guide):
+                self.assertTrue((cli.REFERENCES / guide).is_file())
+
+
 if __name__ == "__main__":
     unittest.main()

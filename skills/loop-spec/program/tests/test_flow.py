@@ -195,6 +195,12 @@ class FlowTests(unittest.TestCase):
             self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["mode"], "autonomous")
         self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["mode"], "interactive")
 
+    def test_the_next_step_names_the_phase_reference_and_the_kind_reference(self):
+        _, out, _ = self.repo.ls("start", "--request", "Add mul")
+        self.assertRegex(out, r"next .*\(read \S+/references/spec\.md\)")
+        _, out, _ = self.repo.ls("start", "--kind", "micro", "--request", "Rename mul")
+        self.assertRegex(out, r"next .*\(read \S+/references/micro\.md and \S+/references/spec\.md\)")
+
     def test_finish_writes_the_result_and_removes_clean_worktrees(self):
         run = self.start()
         code, out, _ = self.repo.ls("finish", "--status", "no-change", "--summary", "already done")

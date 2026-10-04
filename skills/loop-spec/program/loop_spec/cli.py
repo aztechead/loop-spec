@@ -165,7 +165,23 @@ def _rel(run: Run, path: Path) -> Path:
     return path.relative_to(run.project) if path.is_relative_to(run.project) else path
 
 
+# Each phase's guidance in the hub skill's references, named on the `next` line so the
+# lead reads it when the run reaches that phase.
+REFERENCES = Path(__file__).resolve().parents[2] / "references"
+PHASE_GUIDES = {"spec": "spec.md", "plan": "plan.md", "execute": "execute.md", "verify": "review.md",
+                "iterate": "review.md", "deliver": "deliver.md"}
+
+
 def _next_step(run: Run, phase: str, problem: str | None = None) -> str:
+    step = _step(run, phase, problem)
+    guides = [PHASE_GUIDES.get("plan" if problem else phase)]
+    if phase == "spec" and run.state.get("kind") in ("micro", "debug", "revise"):
+        guides.insert(0, f"{run.state['kind']}.md")
+    named = [str(REFERENCES / g) for g in guides if g]
+    return step + (f" (read {' and '.join(named)})" if named else "")
+
+
+def _step(run: Run, phase: str, problem: str | None) -> str:
     if problem:
         return f"fix {run.plan_path.name}"
     if phase == "spec":
