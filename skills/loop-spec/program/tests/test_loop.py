@@ -213,6 +213,9 @@ class LoopTests(unittest.TestCase):
         self.assertIn("3 new review item(s)", out)
         commit(Path(run["work"]), "mul.py", "def multiply(a, b):\n    return a * b\n")
         self.deliver(run)
+        calls = (self.gh_dir / "calls").read_text()
+        self.assertIn("--add-reviewer ana", calls)  # asked to look again
+        self.assertIn("--add-reviewer coderabbit[bot]", calls)
         code, out, _ = self.repo.ls("feedback")
         self.assertEqual(marker(out, "LOOP_SPEC_RESULT")["delivery"]["targets"][0]["reviews"], {"ana": "CHANGES_REQUESTED"})
 

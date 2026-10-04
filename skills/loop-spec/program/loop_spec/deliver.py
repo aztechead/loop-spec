@@ -122,6 +122,11 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
         pr = _create(run, branch, body_path, draft=draft or not verified)
     elif not pr.get("adopted"):
         git.gh(work, "pr", "edit", str(pr["number"]), "--title", title(run), "--body-file", str(body_path))
+    if state.get("pr"):  # a later delivery of a PR this run opened
+        # Ask everyone who left feedback to look again; feedback then waits for them. GitHub refuses
+        # the PR's author and most bots, which is fine: there is no one to wait for.
+        for login in (state.get("feedback") or {}).get("authors", []):
+            git.gh(work, "pr", "edit", str(pr["number"]), "--add-reviewer", login)
     state["pr"] = pr
     state["delivered"] = {"sha": head, "verified": verified}
     run.save()

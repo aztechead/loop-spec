@@ -197,7 +197,10 @@ def _step(run: Run, phase: str, problem: str | None) -> str:
         return f"fix {run.plan_path.name}"
     if phase == "spec":
         found = spec_problems(run.spec) if run.spec is not None else []
-        return f"fix {run.spec_path}: {'; '.join(found)}" if found else f"write {run.spec_path}"
+        if found:
+            return f"fix {run.spec_path}: {'; '.join(found)}"
+        approve = ", ask the user to approve its criteria (AskUserQuestion)" if run.mode == "interactive" else ""
+        return f"write {run.spec_path}{approve}, then loop-spec status; no code before the plan is accepted"
     if phase == "plan":
         return f"write {run.plan_path}"
     if phase == "execute":
@@ -455,7 +458,8 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
         if not waiting or waited_out or time.monotonic() >= call_end:
             break
         time.sleep(ci.POLL_SECONDS)
-    record.update(sha=head, ci=outcome, verdicts=verdicts, seen=record["seen"] + [i["id"] for i in new])
+    record.update(sha=head, ci=outcome, verdicts=verdicts, seen=record["seen"] + [i["id"] for i in new],
+                  authors=sorted({*record.get("authors", []), *(i["author"] for i in new if i.get("author"))}))
     run.save()
     for c in found:
         if c.get("bucket") in ("fail", "cancel") and (log_tail := ci.failure_log(run.work, c)):

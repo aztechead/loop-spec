@@ -223,7 +223,7 @@ class FlowTests(unittest.TestCase):
         _, out, _ = self.repo.ls("start", "--request", "Add mul")
         self.assertNotIn("(read ", out)
         _, out, _ = self.repo.ls("start", "--kind", "micro", "--request", "Rename mul")
-        self.assertRegex(out, r"next .*spec\.json \(read \S+/references/micro\.md\)")
+        self.assertRegex(out, r"next .*spec\.json.* \(read \S+/references/micro\.md\)")
         references = Path(marker(out, "LOOP_SPEC_RUN")["references"])
         self.assertTrue(references.is_absolute() and (references / "micro.md").is_file())
 

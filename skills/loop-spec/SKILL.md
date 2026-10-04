@@ -59,7 +59,11 @@ when it ends.
 
 - **Work in `work`.** Your shell starts in the user's own checkout, and a relative path
   written from there changes their files. Right after `start`, `cd` into `work` (the
-  same code, on the feature branch) and read and write the code there.
+  same code, on the feature branch) and read the code there.
+- **No code before the plan.** Spec and Plan only read and write `spec.json` and
+  `plan.json`, however clear the code already is in your head. Code is written in task
+  worktrees once `LS status` accepts the plan, and in `work` only for fixes from Verify
+  on. A design you worked out goes into the spec's `decisions` and the tasks' briefs.
 - **Read before you decide.** Read the code the request touches, its tests, and the
   rules files; they outrank this file on conventions. Never describe code you have not
   opened.
@@ -358,7 +362,9 @@ each new review item (reviews, inline comments, conversation comments) once. The
   only the user can make): `LS finish --status escalated --summary "..."` naming what
   is needed.
 
-There is no limit on rounds.
+Each later `deliver` asks everyone who left feedback to review again, and `feedback`
+waits for requested reviewers, up to `feedback.reviewWaitMinutes` (default 30). There is
+no limit on rounds.
 
 When the project's config names feedback skills (`feedback.skills` in
 `.loop-spec/config.json`), `feedback` lists them once CI and review are clear. Invoke
