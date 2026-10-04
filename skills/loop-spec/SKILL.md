@@ -75,6 +75,9 @@ the same way there is pre-existing and does not fail the run; new output does.
 
 ## How to work
 
+- **Work in `work`.** Your shell starts in the user's own checkout, and a relative path
+  written from there changes their files. Right after `start`, `cd` into `work` (the
+  same code, on the feature branch) and read and write the code there.
 - **Read before you decide.** Read the code the request touches, its tests, and the
   rules files; they outrank this file on conventions. Never describe code you have not
   opened.
@@ -149,7 +152,8 @@ Until every task is done:
    they run in parallel. Its prompt is the task's `LOOP_SPEC_TASK` brief, plus the
    conventions you found (commit style, house rules) and anything else it needs from
    you. Dispatch every task except a few-line change or one that needs context only you
-   have; that one you do yourself in its worktree, and commit there.
+   have; that one you do yourself, in `work` or in its worktree, commit, and `LS task
+   done` it.
 3. While agents run, end your turn with a line saying `LOOP_SPEC_WAITING`; their
    reports resume you.
 4. When a worker reports, read its report and its commits (`git -C <worktree> log -p

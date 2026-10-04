@@ -237,8 +237,12 @@ def cmd_task_done(args, project: Path, cwd: Path) -> int:
     run = find(project, args.slug, cwd)
     task = run.task(args.id)
     dest, branch = run.task_dir(args.id), run.task_branch(args.id)
-    if not git.branch_exists(project, branch):
-        raise LoopSpecError(f"{args.id} has no task branch", f"start it with `loop-spec task start {args.id}`")
+    if not git.branch_exists(project, branch):  # done by the lead directly in work
+        run.set_task(args.id, "done", args.note or "done in work")
+        run.save()
+        out(f"{args.id} done in work")
+        out("next: " + _next_step(run, run.phase(git.head(run.work))))
+        return 0
     if dest.exists():
         git.require_clean(dest, f"{args.id}'s worktree", f"commit them in {dest} (or discard them), then run task done again")
     new = git.commits(run.work, f"HEAD..{branch}")

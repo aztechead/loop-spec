@@ -142,6 +142,15 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(self.repo.ls("task", "done", "T-2")[0], 0)
         self.assertEqual(Path(run["work"], "calc.py").read_text(), "one and two\n")
 
+    def test_a_task_the_lead_did_in_work_is_marked_done_without_a_worktree(self):
+        run = self.start()
+        self.write(run, {"goal": "g", "criteria": []}, {"tasks": [{"id": "T-1", "title": "a"}]})
+        commit(Path(run["work"]), "mul.py", "x = 1\n")
+        code, out, _ = self.repo.ls("task", "done", "T-1")
+        self.assertEqual(code, 0)
+        self.assertIn("T-1 done in work", out)
+        self.assertIn("next: review the whole change", out)
+
     def test_a_cyclic_plan_is_reported_with_its_cycle(self):
         run = self.start()
         self.write(run, {"goal": "g", "criteria": []},
