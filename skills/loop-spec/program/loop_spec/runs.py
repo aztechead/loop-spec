@@ -140,7 +140,8 @@ class Run:
         return bool(verify.get("passed")) and head is not None and verify.get("sha") == head
 
     def phase(self, head: str | None) -> str:
-        """Where the run is, derived from its files: spec, plan, execute, verify, deliver, feedback, or done."""
+        """Where the run is, derived from its files: spec, plan, execute, verify, iterate, deliver, or
+        done, 7.x's phase names. Delivering covers the PR's CI and review feedback too."""
         if self.result_path.is_file():
             return "done"
         if self.spec is None:
@@ -149,9 +150,9 @@ class Run:
             return "plan"
         if not dag.all_done(self.tasks, self.statuses()):
             return "execute"
-        if (self.state.get("delivered") or {}).get("sha") == head:
-            return "feedback"
-        return "deliver" if self.verified_at(head) else "verify"
+        if not self.verified_at(head):
+            return "verify"
+        return "deliver" if (self.state.get("iterate") or {}).get("sha") == head else "iterate"
 
     def finish(self, status: str, summary: str, head: str | None) -> dict:
         result = {
@@ -164,6 +165,8 @@ class Run:
             "verifiedSha": head if self.verified_at(head) else None,
             "ci": (self.state.get("feedback") or {}).get("ci"),
             "reviews": (self.state.get("feedback") or {}).get("verdicts", {}),
+            "caveats": (self.state.get("iterate") or {}).get("caveats"),
+            "phaseReached": (self.state.get("phaseStream") or {}).get("phase"),
         }
         write_json(self.result_path, result)
         return result

@@ -15,16 +15,22 @@ loop-spec takes a coding request to a verified pull request:
    tests that check each one.
 3. **Execute**: ready tasks run in parallel, each in its own git worktree, and are
    merged into the feature branch as they finish.
-4. **Verify**: a correctness review and a simplification review of the whole change,
-   then every check (the spec's, and the ones the repository's `CLAUDE.md` and
+4. **Verify**: every check (the spec's, and the ones the repository's `CLAUDE.md` and
    `AGENTS.md` require) run in a clean checkout of the exact commit to be delivered.
-5. **Deliver**: one PR, with anything that moved on origin merged in first. Its
+5. **Iterate**: a correctness review and a simplification review of the whole verified
+   change; a fix sends the run back to verify.
+6. **Deliver**: one PR, with anything that moved on origin merged in first. Its
    description follows the repository's PR template, or, when there is none,
    HumanLayer's visual-pr format (a one-sentence why, what a reviewer should know, and a
-   visual change outline), with the checked criteria folded below.
-6. **Feedback**: the run waits for the PR's checks and reads its review comments, and
-   fixes what the change should, or answers, until CI passes and reviewers have asked
-   for nothing new. A project can add its own review skill to this step.
+   visual change outline), with the checked criteria folded below. The run then waits
+   for the PR's checks, reads its review comments, and fixes what the change should,
+   or answers, until CI passes and reviewers have asked for nothing new. A project can
+   add its own review skill to this step.
+
+These are 7.x's phases, and a run announces them exactly as 7.x did: a
+`LOOP_SPEC_PHASE_START`/`LOOP_SPEC_PHASE_END` line on stdout per phase change, a
+`[PHASE] ...` progress line on stderr, and a record in the run's `events.jsonl`, so
+tools that monitor 7.x runs keep working.
 
 The model does the judgment. The method is written as guidance in one skill,
 [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md), not as gates. A small

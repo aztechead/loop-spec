@@ -31,7 +31,8 @@ WAITING = "LOOP_SPEC_WAITING"
 
 def fingerprint(run, head: str | None, phase: str) -> str:
     s = run.state
-    return json.dumps([phase, head, run.statuses(), s.get("verify"), s.get("delivered"), s.get("feedback")],
+    return json.dumps([phase, head, run.statuses(), s.get("verify"), s.get("iterate"), s.get("delivered"),
+                       s.get("feedback")],
                       sort_keys=True)
 
 

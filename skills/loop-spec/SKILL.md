@@ -30,6 +30,7 @@ add `--slug <slug>` after the command.
 | `LS task set T-1 --status todo\|blocked --note "..."` | change a task's status by hand |
 | `LS verify [--base]` | run every criterion check, task verify command, and repository check in a clean checkout of the feature head (or, with `--base`, of the base) |
 | `LS sync` | merge whatever moved on origin (the base branch, or the feature branch itself) into `work` |
+| `LS iterate [--caveats "..."]` | record that the verified head's whole-change review is done and addressed |
 | `LS set --branch NAME --title "..."` | rename the feature branch (until it is pushed) or set the PR title |
 | `LS deliver [--draft] [--comment-file F] [--no-feedback]` | push the verified head and open or update its PR (posting `F` as a comment) |
 | `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review; ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
@@ -38,6 +39,12 @@ add `--slug <slug>` after the command.
 The branch and the PR title come from, in order: the user (the entry passes them as
 `start --branch` and `--title`), then the repository's rules (set with `LS set` in the
 spec step), then the defaults (`feat/<slug>`, and the spec's `title`).
+
+The run moves through 7.x's phases, SPEC, PLAN, EXECUTE, VERIFY, ITERATE, and DELIVER,
+derived from its files, and the program announces each change the way 7.x did
+(`LOOP_SPEC_PHASE_START`/`_END` lines, which monitoring tools read). Run `LS status`
+after writing `spec.json` (once it is settled, and approved in an interactive run) and
+after writing `plan.json`, so each phase is announced when it ends.
 
 You write two files in `runDir`; the program reads them and never edits them.
 `spec.json`:
@@ -169,9 +176,15 @@ Until every task is done:
 5. If a task turns out wrong or missing, edit `plan.json` (finished tasks stay
    finished) and carry on. A blocked task gets `LS task set T-n --status blocked`.
 
-### 4. Review, simplify, and verify
+### 4. Verify
 
-When every task is merged:
+When every task is merged, `LS verify`. If a check fails, find the cause (the code, the
+check, or the environment), fix it, and verify again. Verify records a pass only for
+the current head, so verify again after any new commit.
+
+### 5. Iterate: review and simplify the whole change
+
+Once verify passes:
 
 1. Dispatch, in one message, a `loop-spec:reviewer` (correctness, adversarially) and a
    `loop-spec:simplifier` (reuse, simplification, efficiency, altitude). Give both
@@ -179,12 +192,11 @@ When every task is merged:
 2. Fix every blocking finding. Apply each simplifier cleanup that keeps the behavior the
    spec asks for and makes the change smaller or plainer; skip the rest. Commit small
    fixes directly in `work`, or add a task for a larger one, and list what you skipped
-   in your report.
-3. `LS verify`. If a check fails, find the cause (the code, the check, or the
-   environment), fix it, and verify again. Verify records a pass only for the current
-   head, so verify again after any new commit.
+   in your report. A new commit sends the run back to verify.
+3. When the verified head has nothing left to fix, `LS iterate` (with `--caveats "..."`
+   for anything you knowingly leave open, which the result carries).
 
-### 5. Deliver, then CI and review
+### 6. Deliver, then CI and review
 
 Before delivering, write the PR description to `pr.md` in `runDir`, following the
 template `status` names on its `pr.md` line (`prTemplate` in `LOOP_SPEC_RUN`): the
@@ -229,8 +241,9 @@ should know about.
 ## Variations
 
 - **micro**: a small, well-defined change. Skip the interview, write one or two
-  criteria and a one-task plan, and do the task yourself. Review only if the change
-  touches behavior other code relies on; skip the simplifier.
+  criteria and a one-task plan, and do the task yourself. Dispatch the reviewer only
+  if the change touches behavior other code relies on, and skip the simplifier; still
+  run `LS iterate` once you have looked over the verified diff yourself.
 - **debug**: reproduce first. Put the failing command in the spec as a criterion's
   `check`; `LS verify --base` should show it failing on the base. Find the root cause
   before changing anything, fix it there, and keep a regression test that fails

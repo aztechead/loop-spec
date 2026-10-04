@@ -83,6 +83,7 @@ class LoopTests(unittest.TestCase):
     def test_deliver_refuses_a_moved_base_until_it_is_synced_and_verified(self):
         run = self.ready_run()
         self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate")[0], 0)
         self.push_to_origin_main("teammate.py", "x = 1\n")
         code, _, err = self.repo.ls("deliver")
         self.assertEqual(code, 1)
@@ -93,6 +94,7 @@ class LoopTests(unittest.TestCase):
         self.assertTrue(Path(run["work"], "teammate.py").exists())
         self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["phase"], "verify")
         self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate")[0], 0)
         self.checks("pass")
         code, out, err = self.repo.ls("deliver")
         self.assertEqual(code, 0, err)
@@ -116,6 +118,7 @@ class LoopTests(unittest.TestCase):
     def test_the_runs_title_and_branch_win_over_the_spec(self):
         run = self.ready_run("--title", "feat(kv): add mul", "--branch", "feature/KV-12")
         self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate")[0], 0)
         self.checks("pass")
         self.assertEqual(self.repo.ls("deliver")[0], 0)
         calls = (self.gh_dir / "calls").read_text()
@@ -158,6 +161,7 @@ class LoopTests(unittest.TestCase):
 
     def deliver(self, run: dict) -> None:
         self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate")[0], 0)
         self.assertEqual(self.repo.ls("deliver")[0], 0)
 
     def review(self, reviews=(), comments=(), inline=()) -> None:
@@ -233,6 +237,7 @@ class LoopTests(unittest.TestCase):
         Path(run["runDir"], "pr.md").unlink()
         self.assertIn("pr.md    not written yet; follows ", self.repo.ls("status")[1])
         self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate")[0], 0)
         code, _, err = self.repo.ls("deliver")
         self.assertEqual(code, 1)
         self.assertIn("references/visual-pr/pr_description_template.md", err)

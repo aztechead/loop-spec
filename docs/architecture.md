@@ -44,12 +44,13 @@ Each module has one reason to change:
 | `remote.py` | what moved on origin, and merging it into the feature branch |
 | `ci.py` | reading a PR's checks and a failed job's log |
 | `review.py` | reading a PR's reviews and comments |
+| `phases.py` | the phase stream monitors read: 7.x's `LOOP_SPEC_PHASE_*` markers, `[PHASE]` lines, and `events.jsonl` records |
 | `hook.py` | the Stop hook's decision: continue the run with its next step, or let the stop through |
 | `log.py` | the two output channels (`log.stdout`, `log.stderr`); nothing calls `print` |
 
 `state.json` is written only by `runs.Run.save`, and `result.json` only by `runs.Run.finish`. `spec.json` and
 `plan.json` are the lead's files; the program reads them and never writes them. The
-phase is derived from the files each time, never stored.
+phase is derived from the files each time; the only phase stored is the one the stream last announced, so it can announce each change once.
 
 ## Why worktrees inside the repository
 

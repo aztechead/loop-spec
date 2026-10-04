@@ -25,7 +25,7 @@ Moving from 7.x: [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md).
   (Sonnet), `loop-spec:reviewer` (Opus, an adversarial correctness review), and
   `loop-spec:simplifier` (Sonnet, a review for reuse, simplification, efficiency, and
   altitude), all at medium effort. The reviewer and simplifier run side by side over
-  the whole change before verify.
+  the verified change, as the ITERATE phase; `iterate` records it.
 - The skill and agents state the engineering stance as goals: settle data shapes before
   code, fix causes rather than symptoms, prefer reuse and deletion to new layers, prove
   a change by running it the way a user would, and make reversible decisions without
@@ -46,6 +46,11 @@ Moving from 7.x: [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md).
 
 ### Added
 
+- The phase stream is 7.x's: a run moves through SPEC, PLAN, EXECUTE, VERIFY, ITERATE,
+  and DELIVER, and each change prints `LOOP_SPEC_PHASE_START` and `LOOP_SPEC_PHASE_END`
+  lines with 7.x's fields and verdicts (`advanced`, `rewind`, `completed`), `[PHASE]`
+  progress lines (honoring `LOOP_SPEC_CONSOLE_STREAM` and `LOOP_SPEC_CONSOLE_EVENTS`),
+  and records in the run's `events.jsonl`. The result carries `phaseReached`.
 - `sync` merges what moved on origin (the base branch, or the feature branch itself)
   into the feature worktree, merging rather than rebasing; `deliver` refuses a head
   that lacks commits origin has.

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import sys
 
-from loop_spec import VERSION, checks, ci, dag, deliver, git, hook, log, remote, review
+from loop_spec import VERSION, checks, ci, dag, deliver, git, hook, log, phases, remote, review
 from loop_spec.errors import LoopSpecError
 from loop_spec.runs import KINDS, RESULT_STATUSES, Run, all_runs, find, first_free, first_line, read_json, slugify
 
@@ -96,7 +96,16 @@ def cmd_status(args, project: Path, cwd: Path) -> int:
     return show_status(run)
 
 
+def _sync(run: Run) -> None:
+    """Announce any phase change since the stream last spoke (see phases.py)."""
+    try:
+        phases.sync(run, git.head(run.work) if run.work.exists() else None)
+    except LoopSpecError:
+        pass  # a plan that is not a DAG yet: the phase stays where it was
+
+
 def show_status(run: Run) -> int:
+    _sync(run)
     s = run.state
     head = git.head(run.work) if run.work.exists() else None
     try:
@@ -168,11 +177,12 @@ def _next_step(run: Run, phase: str, problem: str | None = None) -> str:
             return "loop-spec task start " + " ".join(t["id"] for t in ready)
         return "finish the tasks in progress (loop-spec task done <id>), or unblock a blocked one"
     if phase == "verify":
-        return "review the whole change (base..HEAD in work), then loop-spec verify"
+        return "loop-spec verify"
+    if phase == "iterate":
+        return "review the whole change (base..HEAD in work), address what it finds, then loop-spec iterate"
     if phase == "deliver":
-        return "loop-spec deliver"
-    if phase == "feedback":
-        return "loop-spec feedback"
+        delivered = (run.state.get("delivered") or {}).get("sha") == git.head(run.work)
+        return "loop-spec feedback" if delivered else "loop-spec deliver"
     return "nothing; the run is over"
 
 
@@ -237,6 +247,7 @@ def cmd_task_start(args, project: Path, cwd: Path) -> int:
             "prepared": prepare is not None and note is None,
         })
     run.save()
+    _sync(run)
     return 0
 
 
@@ -248,6 +259,7 @@ def cmd_task_done(args, project: Path, cwd: Path) -> int:
         run.set_task(args.id, "done", args.note or "done in work")
         run.save()
         out(f"{args.id} done in work")
+        _sync(run)
         out("next: " + _next_step(run, run.phase(git.head(run.work))))
         return 0
     if dest.exists():
@@ -268,6 +280,7 @@ def cmd_task_done(args, project: Path, cwd: Path) -> int:
     run.save()
     out(f"{args.id} merged ({len(new)} commit{'s' if len(new) != 1 else ''})" if new else f"{args.id} done with no changes")
     _warn_root_changes(run)
+    _sync(run)
     out("next: " + _next_step(run, run.phase(git.head(run.work))))
     return 0
 
@@ -278,6 +291,7 @@ def cmd_task_set(args, project: Path, cwd: Path) -> int:
     run.set_task(args.id, args.status, args.note)
     run.save()
     out(f"{args.id} is {args.status}" + (f": {args.note}" if args.note else ""))
+    _sync(run)
     return 0
 
 
@@ -315,6 +329,9 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
         run.save()
         out(("PASSED" if passed else "FAILED") + f": verify of {sha[:12]} recorded")
     _warn_root_changes(run)
+    _sync(run)
+    if passed and not args.base:
+        out("next: " + _next_step(run, run.phase(sha)))
     return 0 if passed else 1
 
 
@@ -374,6 +391,7 @@ def cmd_deliver(args, project: Path, cwd: Path) -> int:
     head = deliver.publish(run, draft=args.draft, unverified=args.unverified,
                            comment_file=Path(args.comment_file).resolve() if args.comment_file else None)
     out(f"delivered {run.state['branch']} at {head[:12]}: {run.state['pr']['url']}")
+    _sync(run)
     if args.no_feedback or (_config(project).get("feedback") or {}).get("wait") is False:
         return _finish(run, "completed", _summary(run), head)
     out("next: loop-spec feedback (waits for the PR's checks, then reads its review)")
@@ -428,6 +446,19 @@ def _config(project: Path) -> dict:
     return read_json(project / ".loop-spec" / "config.json", "config") or {}
 
 
+def cmd_iterate(args, project: Path, cwd: Path) -> int:
+    run = find(project, args.slug, cwd)
+    head = git.head(run.work)
+    if not run.verified_at(head):
+        raise LoopSpecError("ITERATE reviews a verified head, and this one is not", "loop-spec verify first")
+    run.state["iterate"] = {"sha": head, "caveats": args.caveats}
+    run.save()
+    out(f"review of {head[:12]} recorded" + (f", with caveats: {args.caveats}" if args.caveats else ""))
+    _sync(run)
+    out("next: " + _next_step(run, run.phase(head)))
+    return 0
+
+
 def cmd_set(args, project: Path, cwd: Path) -> int:
     run = find(project, args.slug, cwd)
     state = run.state
@@ -443,6 +474,7 @@ def cmd_set(args, project: Path, cwd: Path) -> int:
         state["title"] = args.title
         out(f"PR title is now: {args.title}")
     run.save()
+    _sync(run)
     return 0
 
 
@@ -452,6 +484,7 @@ def cmd_sync(args, project: Path, cwd: Path) -> int:
     for move in merged:
         out(f"merged {move['ref']} ({move['commits']} commit{'s' if move['commits'] != 1 else ''})")
     out("next: verify again, since the head moved" if merged else "nothing moved on origin")
+    _sync(run)
     return 0
 
 
@@ -478,6 +511,7 @@ def _finish(run: Run, status: str, summary: str, head: str | None) -> int:
     for dest in [*sorted((run.dir / "tasks").glob("*")), run.work]:
         if dest.is_dir() and not git.remove_worktree(run.project, dest):
             out(f"kept {dest}: it has uncommitted changes")
+    _sync(run)
     marker("LOOP_SPEC_RESULT", {**result, "path": str(run.result_path)})
     out(f"the run's worktrees are removed; cd {run.project} before any further command")
     return 0
@@ -539,6 +573,11 @@ def build_parser() -> argparse.ArgumentParser:
                        help="wait for the delivered PR's checks, then read its review; end the run when both are clear")
     p.add_argument("--timeout", type=int, default=540, help="seconds to wait for checks before returning (default 540)")
     p.set_defaults(func=cmd_feedback)
+
+    p = sub.add_parser("iterate", parents=[common],
+                       help="record that the verified head's whole-change review is done and addressed (ITERATE)")
+    p.add_argument("--caveats", help="what the review left open, carried to the result")
+    p.set_defaults(func=cmd_iterate)
 
     p = sub.add_parser("set", parents=[common], help="rename the feature branch (before it is pushed) or set the PR title")
     p.add_argument("--branch")

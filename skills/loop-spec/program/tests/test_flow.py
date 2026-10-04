@@ -106,13 +106,15 @@ class FlowTests(unittest.TestCase):
         with (t3 / "calc.py").open("a") as f:
             f.write("from mul import mul\nfrom sub import sub\n")
         sh(t3, "git", "commit", "-qam", "export")
-        self.assertIn("next: review the whole change", self.repo.ls("task", "done", "T-3")[1])
+        self.assertIn("next: loop-spec verify", self.repo.ls("task", "done", "T-3")[1])
 
         code, out, _ = self.repo.ls("verify")
         self.assertEqual(code, 0, out)
         state = json.loads(Path(run["runDir"], "state.json").read_text())
         self.assertEqual(state["verify"]["sha"], sh(run["work"], "git", "rev-parse", "HEAD"))
         self.assertTrue(state["verify"]["passed"])
+        self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["phase"], "iterate")
+        self.assertIn("review of", self.repo.ls("iterate")[1])
         self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["phase"], "deliver")
 
     def test_verify_at_base_shows_a_failure_without_recording_it(self):
@@ -149,7 +151,7 @@ class FlowTests(unittest.TestCase):
         code, out, _ = self.repo.ls("task", "done", "T-1")
         self.assertEqual(code, 0)
         self.assertIn("T-1 done in work", out)
-        self.assertIn("next: review the whole change", out)
+        self.assertIn("next: loop-spec verify", out)
 
     def test_a_cyclic_plan_is_reported_with_its_cycle(self):
         run = self.start()

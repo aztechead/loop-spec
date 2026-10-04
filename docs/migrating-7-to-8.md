@@ -7,7 +7,7 @@ For someone who runs loop-spec 7.x in Claude Code or on the Agent SDK and is mov
 
 | 7.x | 8.0 |
 |---|---|
-| Six program-checked phases (SPEC, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER), each with postconditions | Five steps written as guidance in one skill; ITERATE's whole-change judgment is the reviewer pass before verify |
+| Six program-checked phases (SPEC, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER), each with postconditions | The same six phases, written as guidance and derived from the run's files, with no postconditions. ITERATE is the reviewer and simplifier pass over the verified change. The phase stream keeps 7.x's format: `LOOP_SPEC_PHASE_START`/`_END` (same fields and verdicts), `[PHASE]` lines, and `events.jsonl`, now in the run's directory instead of the state home |
 | The program issued every step (`LOOP_SPEC_NEXT`), and the lead submitted each one | The lead drives the run; `status`, `task start`, and `task done` name the next step |
 | Role skills (`roles/<name>/`) with schemas and attested dispatch | Two plugin agents: `loop-spec:implementer` (Sonnet) and `loop-spec:reviewer` (Opus) |
 | Entries `auto`, `spec`, `plan`, `execute`, `verify`, `iterate`, `deliver` | Removed. Use `cycle`, `micro`, `debug`, `revise`, `status`; any run resumes from `status` |
