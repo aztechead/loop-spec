@@ -42,8 +42,9 @@ class ReadyTests(unittest.TestCase):
     def test_waiting_on_names_the_unfinished_dependencies(self):
         self.assertEqual(dag.waiting_on(self.TASKS[2], {"T-1": "done"}), ["T-2"])
 
-    def test_waves_group_tasks_by_depth(self):
-        self.assertEqual(dag.waves(self.TASKS + [task("T-4", "T-3")]), [["T-1", "T-2"], ["T-3"], ["T-4"]])
+    def test_all_done_only_when_every_task_is(self):
+        self.assertFalse(dag.all_done(self.TASKS, {"T-1": "done", "T-2": "done"}))
+        self.assertTrue(dag.all_done(self.TASKS, {"T-1": "done", "T-2": "done", "T-3": "done"}))
 
     def test_uncovered_lists_criteria_no_task_names(self):
         criteria = [{"id": "AC-1"}, {"id": "AC-2"}]

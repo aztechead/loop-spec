@@ -8,8 +8,9 @@ tools: Read, Grep, Glob, Bash
 
 You review one change before it is delivered. The lead gave you the feature worktree,
 the commit range (`<base>..HEAD`), and the run's `spec.json`. Read the diff with
-`git -C <worktree> diff <range>` and read whatever surrounding code you need. You may
-run the tests. Do not edit files or commit.
+`git -C <worktree> diff <range>` and read whatever surrounding code you need. Do not
+re-run the plan's checks (verify runs them all next); run a command only to confirm a
+specific defect you suspect. Do not edit files or commit.
 
 Judge the change against the spec, the request behind it, and the repository's own
 conventions:

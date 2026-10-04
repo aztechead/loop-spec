@@ -8,12 +8,12 @@ For someone who runs loop-spec 7.x in Claude Code or on the Agent SDK and is mov
 | 7.x | 8.0 |
 |---|---|
 | Six program-checked phases (SPEC, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER), each with postconditions | Five steps written as guidance in one skill; ITERATE's whole-change judgment is the reviewer pass before verify |
-| The program issued every step (`LOOP_SPEC_NEXT`), and the lead submitted each one | The lead drives the run; the program answers `status`, `next`, and `task start`/`done` |
+| The program issued every step (`LOOP_SPEC_NEXT`), and the lead submitted each one | The lead drives the run; `status`, `task start`, and `task done` name the next step |
 | Role skills (`roles/<name>/`) with schemas and attested dispatch | Two plugin agents: `loop-spec:implementer` (Sonnet) and `loop-spec:reviewer` (Opus) |
 | Entries `auto`, `spec`, `plan`, `execute`, `verify`, `iterate`, `deliver` | Removed. Use `cycle`, `micro`, `debug`, `revise`, `status`; any run resumes from `status` |
-| `--answer-policy default`, `spec.approval: policy` | `--autonomous`: the run never asks, and records the defaults it chose as assumptions |
+| `--answer-policy default`, `spec.approval: policy` | `--autonomous`, or `LOOP_SPEC_MODE=autonomous` in the environment: the run never asks, and records the defaults it chose as assumptions |
 | State under `~/.loop-spec/` (`LOOP_SPEC_HOME`) | State under `<repo>/.loop-spec/runs/<slug>/` |
-| Result: `<state home>/<repo id>/<slug>/result.json`, schema 1 | Result: `<repo>/.loop-spec/runs/<slug>/result.json`, schema 8, and a `LOOP_SPEC_RESULT {...}` line |
+| Result: `<state home>/<repo id>/<slug>/result.json`, schema 1, and `last-result.json` | Result: `<repo>/.loop-spec/runs/<slug>/result.json` and a `LOOP_SPEC_RESULT {...}` line; no `last-result.json` |
 | `roles.*`, `phases.*`, `evidence.*`, `deliver.after`, `deliver.readiness`, `deliver.acceptRemotePaths`, `LOOP_SPEC_MODEL_*`, `LOOP_SPEC_EFFORT_*` | Removed. Customize with your repository's `CLAUDE.md` and skills; models are in the agents' frontmatter |
 | `deliver.base`, `deliver.branch`, `deliver.branchPrefix`, `deliver.reviewers`, `deliver.labels` | The same keys at the top level of `.loop-spec/config.json`: `base`, `branch`, `branchPrefix`, `reviewers`, `labels` |
 | Commands ran without a shell, with a syntax check | Checks run with `bash -c` from the repository root |
@@ -26,8 +26,7 @@ For someone who runs loop-spec 7.x in Claude Code or on the Agent SDK and is mov
 3. Move `deliver.*` keys in `.loop-spec/config.json` to the top level as above, and
    drop the rest.
 4. An Agent SDK host: replace `--answer-policy default` (or the example's `--auto`)
-   with `--autonomous` at the start of the entry's argument
-   (`/loop-spec:cycle --autonomous <request>`), and read the result from the
+   with `LOOP_SPEC_MODE=autonomous` in `ClaudeAgentOptions(env=...)`, and read the result from the
    `LOOP_SPEC_RESULT` line or `result.json`'s `status`, `summary`, `prUrl`, and
    `verifiedSha`.
 

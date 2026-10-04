@@ -34,13 +34,13 @@ Each module has one reason to change:
 |---|---|
 | `cli.py` | the command line: one function per subcommand, and what each prints |
 | `runs.py` | a run's directory and files: `state.json` reads and writes, spec and plan reading, the derived phase, the result |
-| `dag.py` | the task graph: its problems, ready tasks, waves |
+| `dag.py` | the task graph: its problems, and which tasks are ready or waiting |
 | `git.py` | every `git` and `gh` subprocess call |
 | `checks.py` | running a check command and keeping its output tail; which commands verify runs |
 | `deliver.py` | the push, the PR, and its body |
 | `log.py` | the two output channels (`log.stdout`, `log.stderr`); nothing calls `print` |
 
-State is written only by `runs.Run.save` and `runs.Run.finish`. `spec.json` and
+`state.json` is written only by `runs.Run.save`, and `result.json` only by `runs.Run.finish`. `spec.json` and
 `plan.json` are the lead's files; the program reads them and never writes them. The
 phase is derived from the files each time, never stored.
 
@@ -52,6 +52,9 @@ directory, Claude Code's default permissions let the lead and the agents write t
 without a prompt, and nothing touches the user's own checkout. Each task gets its own
 worktree branched from the feature head when it starts, so parallel tasks cannot step
 on each other, and `task done` merges it (`--no-ff`) into the feature worktree.
+`verify` runs in one more worktree, `verify/`, reset to exactly the head's tracked
+files before each run (`checkout --force` and `clean -ffd`). Ignored files such as
+installed dependencies survive between verifies, so `prepare` is incremental.
 
 ## What 8.x deliberately leaves out
 

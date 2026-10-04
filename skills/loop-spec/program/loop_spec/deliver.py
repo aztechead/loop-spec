@@ -3,36 +3,30 @@ from pathlib import Path
 
 from loop_spec import git
 from loop_spec.errors import LoopSpecError
-from loop_spec.runs import Run
+from loop_spec.runs import Run, first_line, read_json
 
 MARK = {True: "pass", False: "fail", None: "not checked"}
 
 
 def title(run: Run) -> str:
-    request = run.state.get("request", "").strip().splitlines()
-    text = (run.spec() or {}).get("title") or (request[0] if request else run.slug)
-    return text if len(text) <= 70 else text[:67].rstrip() + "..."
+    return first_line((run.spec or {}).get("title") or run.state.get("request") or run.slug, 70)
 
 
 def body(run: Run, verified: bool) -> str:
-    spec, plan = run.spec() or {}, run.plan() or {}
+    spec, plan = run.spec or {}, run.plan or {}
     verify = run.state.get("verify") or {}
     by_name = {r["name"]: r for r in verify.get("results", [])}
     lines = ["## Summary", "", spec.get("goal") or run.state.get("request", ""), ""]
-    criteria = spec.get("criteria", [])
-    if criteria:
+    if spec.get("criteria"):
         lines += ["## Acceptance criteria", "", "| | Criterion | Check |", "|---|---|---|"]
-        for c in criteria:
+        for c in spec["criteria"]:
             r = by_name.get(c.get("id"))
             ok = None if r is None or r.get("command") is None else r.get("exit") == 0
-            check = f"`{c['check']}`" if c.get("check") else "reviewed, no command"
+            check = f"`{c['check']}`" if c.get("check") else "no command; judged in review"
             lines.append(f"| {MARK[ok]} | **{c.get('id', '')}** {_cell(c.get('text', ''))} | {_cell(check)} |")
         lines.append("")
-    tasks = plan.get("tasks", [])
-    if tasks:
-        lines += ["## Tasks", ""]
-        lines += [f"- **{t['id']}** {t.get('title', '')}" for t in tasks]
-        lines.append("")
+    if plan.get("tasks"):
+        lines += ["## Tasks", "", *[f"- **{t['id']}** {t.get('title', '')}" for t in plan["tasks"]], ""]
     for key, heading in (("decisions", "Decisions"), ("assumptions", "Assumptions")):
         if spec.get(key):
             lines += [f"## {heading}", "", *[f"- {item}" for item in spec[key]], ""]
@@ -49,23 +43,22 @@ def _cell(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
-def publish(run: Run, *, draft: bool, unverified: bool) -> dict:
-    """Push the feature branch and open or update its PR. Returns {"number", "url"}."""
+def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | None) -> str:
+    """Push the feature branch, open or update its PR, and optionally comment on it.
+    Returns the delivered head SHA; the PR is recorded in run.state["pr"]."""
     state, work = run.state, run.work
     head = git.head(work)
-    verify = state.get("verify") or {}
-    verified = bool(verify.get("passed")) and verify.get("sha") == head
+    verified = run.verified_at(head)
     if not verified and not unverified:
+        verify = state.get("verify")
         why = "no verify has run" if not verify else (
-            "the last verify failed" if not verify.get("passed") else f"verify ran on {verify['sha'][:12]}, but the branch is now at {head[:12]}")
+            "the last verify failed" if not verify["passed"] else f"verify ran on {verify['sha'][:12]}, but the branch is now at {head[:12]}")
         raise LoopSpecError(f"refusing to deliver an unverified head: {why}",
                             "run `loop-spec verify`, or pass --unverified to open a draft PR that says it is unverified")
     if not git.commits(work, f"{state['base']['sha']}..{head}"):
         raise LoopSpecError("the feature branch has no commits beyond its base; there is nothing to deliver",
-                            "finish the run with `loop-spec finish --status no-change --summary ...`")
-    if dirty := git.dirty(work):
-        raise LoopSpecError(f"the integration worktree has uncommitted changes: {', '.join(dirty[:5])}",
-                            f"commit or discard them in {work}, then verify again")
+                            "end the run with `loop-spec finish --status no-change --summary ...`")
+    git.require_clean(work, "the feature worktree", f"commit or discard them in {work}, then verify again")
     if not git.has_origin(work):
         raise LoopSpecError("the repository has no origin remote", "add one with `git remote add origin <url>`")
 
@@ -73,34 +66,41 @@ def publish(run: Run, *, draft: bool, unverified: bool) -> dict:
     push = git.git(work, "push", "--quiet", "-u", "origin", f"HEAD:refs/heads/{branch}")
     if push.returncode != 0:
         raise LoopSpecError(f"git push was rejected: {push.stderr.strip()}",
-                            f"if origin/{branch} moved, merge it in {work}, run verify again, then deliver; never force-push")
+                            f"if origin/{branch} moved, merge it in {work}, verify again, then deliver; never force-push")
 
-    text_path = run.dir / "pr-body.md"
-    text_path.write_text(body(run, verified))
+    body_path = run.dir / "pr-body.md"
+    body_path.write_text(body(run, verified))
     pr = state.get("pr")
     if pr is None:
         existing = git.gh_json(work, "pr", "list", "--head", branch, "--state", "open", "--json", "number,url")
         pr = existing[0] if existing else None
     if pr is None:
-        config = state.get("config", {})
-        args = ["pr", "create", "--base", state["base"]["branch"], "--head", branch, "--title", title(run),
-                "--body-file", str(text_path), "--assignee", "@me"]
-        if draft or not verified:
-            args.append("--draft")
-        for reviewer in config.get("reviewers", []):
-            args += ["--reviewer", reviewer]
-        for label in config.get("labels", []):
-            args += ["--label", label]
-        code, _, err = git.gh(work, *args)
-        if code != 0:
-            raise LoopSpecError(f"gh pr create failed: {err.strip()}", "check `gh auth status`; the branch is pushed, so deliver again once fixed")
-        pr = git.gh_json(work, "pr", "view", branch, "--json", "number,url")
-    elif state.get("kind") != "revise":
-        git.gh(work, "pr", "edit", str(pr["number"]), "--title", title(run), "--body-file", str(text_path))
-    state["pr"] = {"number": pr["number"], "url": pr["url"]}
-    state["delivered"] = {"sha": head, "verified": verified}
+        pr = _create(run, branch, body_path, draft=draft or not verified)
+    elif not pr.get("adopted"):
+        git.gh(work, "pr", "edit", str(pr["number"]), "--title", title(run), "--body-file", str(body_path))
+    state["pr"] = pr
     run.save()
-    return state["pr"]
+    if comment_file:
+        code, _, err = git.gh(work, "pr", "comment", str(pr["number"]), "--body-file", str(comment_file))
+        if code != 0:
+            raise LoopSpecError(f"the PR was delivered, but gh pr comment failed: {err.strip()}",
+                                f"post it by hand: gh pr comment {pr['number']} --body-file {comment_file}")
+    return head
+
+
+def _create(run: Run, branch: str, body_path: Path, *, draft: bool) -> dict:
+    config = read_json(run.project / ".loop-spec" / "config.json", "config") or {}
+    args = ["pr", "create", "--base", run.state["base"]["branch"], "--head", branch, "--title", title(run),
+            "--body-file", str(body_path), "--assignee", "@me", *(["--draft"] if draft else [])]
+    for reviewer in config.get("reviewers", []):
+        args += ["--reviewer", reviewer]
+    for label in config.get("labels", []):
+        args += ["--label", label]
+    code, out, err = git.gh(run.work, *args)
+    if code != 0:
+        raise LoopSpecError(f"gh pr create failed: {err.strip()}", "check `gh auth status`; the branch is pushed, so deliver again once fixed")
+    url = out.strip().splitlines()[-1]
+    return {"number": int(url.rstrip("/").rsplit("/", 1)[1]), "url": url}
 
 
 def adopt_pr(project: Path, ref: str) -> dict:

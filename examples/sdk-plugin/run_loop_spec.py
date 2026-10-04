@@ -9,7 +9,8 @@ Nothing from loop-spec is imported here. Every SDK call follows the Agent SDK do
 
 - RunWatch decides when the session is finished and where loop-spec's result is.
   It is the only stateful logic here, and test_run_loop_spec.py tests it.
-- Questions: with --autonomous the run is told no one will answer, and any
+- Questions: with --autonomous the session's environment carries
+  LOOP_SPEC_MODE=autonomous, so loop-spec runs without asking, and any
   AskUserQuestion is declined with the instruction to choose a default; without it,
   each question is answered from stdin.
 - `render` prints the lead's text to stdout, and thinking, tool calls, workers'
@@ -77,12 +78,16 @@ def err(line: str) -> None:
     ERR.info(line)
 
 
-def tool_result_lines(block: ToolResultBlock) -> list[str]:
-    content = block.content
-    text = content if isinstance(content, str) else "\n".join(
-        part.get("text", "") for part in (content or []) if isinstance(part, dict)
-    )
-    return text.splitlines()
+def marker_lines(message: Message):
+    """The `LOOP_SPEC_*` lines in a message's tool results: the loop-spec program's output."""
+    if not (isinstance(message, UserMessage) and isinstance(message.content, list)):
+        return
+    for block in message.content:
+        if isinstance(block, ToolResultBlock):
+            content = block.content
+            text = content if isinstance(content, str) else "\n".join(
+                part.get("text", "") for part in (content or []) if isinstance(part, dict))
+            yield from (line for line in text.splitlines() if line.startswith("LOOP_SPEC_"))
 
 
 class RunWatch:
@@ -101,7 +106,7 @@ class RunWatch:
         self.active_tasks: set[str] = set()
         self.turn_ended = False
         self.result_path: str | None = None
-        self.last_result: ResultMessage | None = None
+        self.session_id: str | None = None
         self.error: str | None = None
 
     @property
@@ -116,14 +121,12 @@ class RunWatch:
                 self.active_tasks.discard(message.task_id)
         elif isinstance(message, SystemMessage) and message.subtype == "init":
             self.turn_ended = False
-        elif isinstance(message, UserMessage) and isinstance(message.content, list):
-            for block in message.content:
-                if isinstance(block, ToolResultBlock):
-                    for line in tool_result_lines(block):
-                        if line.startswith(RESULT_PREFIX):
-                            self.result_path = json.loads(line[len(RESULT_PREFIX):])["path"]
+        elif isinstance(message, UserMessage):
+            for line in marker_lines(message):
+                if line.startswith(RESULT_PREFIX):
+                    self.result_path = json.loads(line[len(RESULT_PREFIX):])["path"]
         elif isinstance(message, ResultMessage):
-            self.last_result = message
+            self.session_id = message.session_id
             if message.is_error:
                 self.error = "; ".join([message.subtype, *(message.errors or [])])
                 return True
@@ -194,12 +197,9 @@ def render(message: Message) -> None:
             elif isinstance(block, ToolUseBlock):
                 summary = block.input.get("command") or block.input.get("description") or ""
                 err(f"  [{who}tool {message.model}] {block.name} {str(summary)[:200]}")
-    elif isinstance(message, UserMessage) and isinstance(message.content, list):
-        for block in message.content:
-            if isinstance(block, ToolResultBlock):
-                for line in tool_result_lines(block):
-                    if line.startswith("LOOP_SPEC_"):
-                        err(f"  {line}")
+    elif isinstance(message, UserMessage):
+        for line in marker_lines(message):
+            err(f"  {line}")
     elif isinstance(message, ResultMessage):
         err(f"[turn] {message.subtype} turns={message.num_turns} cost=${message.total_cost_usd}")
 
@@ -208,7 +208,7 @@ def prompt_for(args: argparse.Namespace) -> str:
     if not args.request:
         return ("Continue the loop-spec run from where it stopped: run the loop-spec status command, "
                 "then follow the loop-spec skill from its next step until the run ends.")
-    return f"/{PLUGIN_NAME}:{args.entry} {'--autonomous ' if args.autonomous else ''}{args.request}"
+    return f"/{PLUGIN_NAME}:{args.entry} {args.request}"
 
 
 async def run(args: argparse.Namespace) -> int:
@@ -220,6 +220,7 @@ async def run(args: argparse.Namespace) -> int:
         permission_mode="acceptEdits",
         can_use_tool=make_can_use_tool(args.autonomous),
         model=args.model,
+        env={"LOOP_SPEC_MODE": "autonomous"} if args.autonomous else {},
         thinking={"type": "adaptive", "display": "summarized"},
         forward_subagent_text=True,
         resume=args.resume,
@@ -245,10 +246,9 @@ async def run(args: argparse.Namespace) -> int:
                 break
 
     if watch.result_path is None:
-        session_id = watch.last_result.session_id if watch.last_result else "<session id>"
         if watch.error:
             err(f"the SDK session failed: {watch.error}")
-        err(f"no loop-spec result in this session; resume it with --resume {session_id}")
+        err(f"no loop-spec result in this session; resume it with --resume {watch.session_id or '<session id>'}")
         return 2
     result = json.loads(Path(watch.result_path).read_text())
     err(json.dumps({k: result.get(k) for k in ("status", "summary", "prUrl", "verifiedSha")}, indent=2))

@@ -12,8 +12,10 @@ imports nothing from loop-spec.
 ## How it works
 
 The script opens a `ClaudeSDKClient` session with this repository loaded as a local
-plugin and sends `/loop-spec:<entry> [--autonomous] <request>`. From there the plugin
-runs exactly as in Claude Code: the lead follows the loop-spec skill, calls the
+plugin and sends `/loop-spec:<entry> <request>`. With `--autonomous` it also sets
+`LOOP_SPEC_MODE=autonomous` in the session's environment, which the loop-spec program
+reads on every call, so the run never stops to ask. From there the plugin runs exactly
+as in Claude Code: the lead follows the loop-spec skill, calls the
 program, and dispatches the `loop-spec:implementer` and `loop-spec:reviewer` agents.
 
 | Agent SDK feature | What the script does with it |

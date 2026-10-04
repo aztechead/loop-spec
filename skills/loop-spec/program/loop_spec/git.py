@@ -11,11 +11,11 @@ def git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=False)
 
 
-def run_git(repo: Path, *args: str) -> str:
+def run_git(repo: Path, *args: str, repair: str = "") -> str:
     """Run git in `repo` and return stdout, or raise with git's own message."""
     proc = git(repo, *args)
     if proc.returncode != 0:
-        raise LoopSpecError(f"git {' '.join(args)} failed: {proc.stderr.strip()}", f"run it by hand in {repo} to see why")
+        raise LoopSpecError(f"git {' '.join(args)} failed: {proc.stderr.strip()}", repair or f"run it by hand in {repo} to see why")
     return proc.stdout.strip()
 
 
@@ -35,10 +35,10 @@ def gh_json(repo: Path, *args: str):
 
 
 def project_root(start: Path) -> Path:
-    """The main worktree of the repository holding `start`, even from a linked worktree."""
+    """The main worktree of the repository holding `start`, even from a subdirectory or linked worktree."""
     proc = git(start, "rev-parse", "--path-format=absolute", "--git-common-dir")
     if proc.returncode != 0:
-        raise LoopSpecError(f"{start} is not inside a git repository", "run `git init` and commit once, or pass --project-root")
+        raise LoopSpecError(f"{start} is not inside a git repository", "run `git init` and commit once")
     return Path(proc.stdout.strip()).parent
 
 
@@ -48,38 +48,45 @@ def has_origin(repo: Path) -> bool:
 
 def default_branch(repo: Path) -> str:
     proc = git(repo, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+    if proc.returncode != 0 and has_origin(repo) and git(repo, "remote", "set-head", "origin", "--auto").returncode == 0:
+        proc = git(repo, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
     if proc.returncode == 0:
         return proc.stdout.strip().removeprefix("origin/")
-    proc = git(repo, "ls-remote", "--symref", "origin", "HEAD")
-    for line in proc.stdout.splitlines() if proc.returncode == 0 else []:
-        if line.startswith("ref:"):
-            return line.split("\t", 1)[0].removeprefix("ref:").strip().removeprefix("refs/heads/")
     current = run_git(repo, "rev-parse", "--abbrev-ref", "HEAD")
     if current == "HEAD":
         raise LoopSpecError("cannot tell the base branch: HEAD is detached and origin names none", "pass --base <branch>")
     return current
 
 
+def fetch(repo: Path, *refspecs: str) -> subprocess.CompletedProcess:
+    return git(repo, "fetch", "--no-tags", "origin", *refspecs)
+
+
+def tracking(branch: str) -> str:
+    return f"+refs/heads/{branch}:refs/remotes/origin/{branch}"
+
+
 def resolve_base(repo: Path, branch: str) -> str:
     """The SHA a run starts from: origin's tip of `branch` when there is an origin, else the local branch."""
-    if has_origin(repo):
-        proc = git(repo, "fetch", "--no-tags", "origin", f"+refs/heads/{branch}:refs/remotes/origin/{branch}")
-        if proc.returncode == 0:
-            return run_git(repo, "rev-parse", f"refs/remotes/origin/{branch}")
-    return run_git(repo, "rev-parse", f"refs/heads/{branch}")
+    if has_origin(repo) and fetch(repo, tracking(branch)).returncode == 0:
+        return head(repo, f"refs/remotes/origin/{branch}")
+    return head(repo, f"refs/heads/{branch}")
+
+
+def checkout_pr_branch(repo: Path, dest: Path, branch: str, base: str) -> str:
+    """Fetch an open PR's branch and its base in one call, fast-forward the local PR
+    branch (git refuses if it has its own commits or is checked out elsewhere), and
+    check it out at `dest`. Returns the base's SHA."""
+    proc = fetch(repo, tracking(base), tracking(branch), f"refs/heads/{branch}:refs/heads/{branch}")
+    if proc.returncode != 0:
+        raise LoopSpecError(f"could not fetch the PR branch {branch}: {proc.stderr.strip()}",
+                            f"if local {branch} has commits the PR lacks, push or drop them; if it is checked out, switch that checkout away")
+    add_worktree(repo, dest, branch)
+    return head(repo, f"refs/remotes/origin/{base}")
 
 
 def branch_exists(repo: Path, name: str) -> bool:
     return git(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{name}").returncode == 0
-
-
-def free_branch(repo: Path, name: str) -> str:
-    """`name`, or `name-2`, `name-3`, ... when a local branch already has it."""
-    candidate, n = name, 1
-    while branch_exists(repo, candidate):
-        n += 1
-        candidate = f"{name}-{n}"
-    return candidate
 
 
 def exclude(repo: Path, pattern: str) -> None:
@@ -103,20 +110,20 @@ def add_worktree(repo: Path, dest: Path, ref: str, *, new_branch: str | None = N
     run_git(repo, *args, str(dest), ref)
 
 
-def remove_worktree(repo: Path, dest: Path) -> bool:
-    """Remove a clean worktree; a dirty one is kept and False is returned."""
-    if not dest.exists():
-        git(repo, "worktree", "prune")
-        return True
-    if dirty(dest):
-        return False
-    run_git(repo, "worktree", "remove", "--force", str(dest))
-    return True
+def remove_worktree(repo: Path, dest: Path, *, force: bool = False) -> bool:
+    """Remove a worktree. Without `force`, git keeps one with changes and this returns False."""
+    return git(repo, "worktree", "remove", *(["--force"] if force else []), str(dest)).returncode == 0
 
 
 def dirty(worktree: Path) -> list[str]:
-    out = run_git(worktree, "status", "--porcelain", "--untracked-files=normal")
+    out = run_git(worktree, "status", "--porcelain")
     return [line[3:] for line in out.splitlines() if line]
+
+
+def require_clean(worktree: Path, what: str, repair: str) -> None:
+    changed = dirty(worktree)
+    if changed:
+        raise LoopSpecError(f"{what} has uncommitted changes: {', '.join(changed[:5])}", repair)
 
 
 def head(worktree: Path, ref: str = "HEAD") -> str:

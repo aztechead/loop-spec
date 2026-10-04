@@ -59,9 +59,10 @@ Coming from 7.x, or staying on it: [docs/migrating-7-to-8.md](docs/migrating-7-t
 ```
 
 Interactive runs ask the questions that change what gets built, and ask once for
-approval of the spec. Add `--autonomous` to the argument for a run no one attends: it
-never stops to ask, records the defaults it chose as assumptions in the spec, and
-ends with a result either way.
+approval of the spec. For a run no one attends, add `--autonomous` to the argument or
+set `LOOP_SPEC_MODE=autonomous` in the environment: the run never stops to ask,
+records the defaults it chose as assumptions in the spec, and ends with a result
+either way.
 
 ```bash
 claude -p "/loop-spec:cycle --autonomous Add a --json flag to the export command" \
@@ -82,7 +83,8 @@ out of `git status` through the repository's own exclude file:
 | `state.json` | what the program recorded: base, branch, task status, verify, PR |
 | `work/` | the feature branch's worktree, where finished tasks are merged |
 | `tasks/<id>/` | one worktree per task in progress |
-| `result.json` | the final result (also at `runs/last-result.json`) |
+| `verify/` | the clean checkout verify runs in |
+| `result.json` | the final result; once it exists, the run is over |
 
 Your own checkout is never touched. The result is one JSON object: `status`
 (`completed`, `no-change`, `escalated`, `failed`), `summary`, `branch`, `prUrl`, and

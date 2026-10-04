@@ -3,10 +3,12 @@ and the deliver refusals. Each test builds a repository with a bare `origin` in 
 import contextlib
 import io
 import json
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from loop_spec import cli
 
@@ -59,6 +61,12 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         return marker(out, "LOOP_SPEC_RUN")
 
+    def task_start(self, *ids: str) -> dict:
+        code, out, err = self.repo.ls("task", "start", *ids)
+        self.assertEqual(code, 0, err)
+        briefs = [json.loads(line.split(" ", 1)[1]) for line in out.splitlines() if line.startswith("LOOP_SPEC_TASK ")]
+        return {b["id"]: b for b in briefs}
+
     def write(self, run: dict, spec: dict, plan: dict) -> None:
         Path(run["runDir"], "spec.json").write_text(json.dumps(spec))
         Path(run["runDir"], "plan.json").write_text(json.dumps(plan))
@@ -81,24 +89,24 @@ class FlowTests(unittest.TestCase):
         self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "both work", "check": check}]},
                    {"tasks": [{"id": "T-1", "title": "mul"}, {"id": "T-2", "title": "sub"},
                               {"id": "T-3", "title": "export", "dependsOn": ["T-1", "T-2"], "criteria": ["AC-1"]}]})
-        code, out, _ = self.repo.ls("next")
-        self.assertEqual([line.split()[0] for line in out.splitlines()[:2]], ["T-1", "T-2"])
+        self.assertIn("next     loop-spec task start T-1 T-2", self.repo.ls("status")[1])
 
-        code, out, err = self.repo.ls("task", "start", "T-1", "T-2")
-        self.assertEqual(code, 0, err)
-        paths = dict(line.split("  ", 1) for line in out.splitlines())
-        commit(Path(paths["T-1"]), "mul.py", "def mul(a, b):\n    return a * b\n")
-        commit(Path(paths["T-2"]), "sub.py", "def sub(a, b):\n    return a - b\n")
+        briefs = self.task_start("T-1", "T-2")
+        self.assertEqual(briefs["T-1"]["criteria"], [])
+        commit(Path(briefs["T-1"]["worktree"]), "mul.py", "def mul(a, b):\n    return a * b\n")
+        commit(Path(briefs["T-2"]["worktree"]), "sub.py", "def sub(a, b):\n    return a - b\n")
         self.assertIn("T-1 merged (1 commit)", self.repo.ls("task", "done", "T-1")[1])
-        self.assertIn("now ready: T-3", self.repo.ls("task", "done", "T-2")[1])
+        self.assertIn("next: loop-spec task start T-3", self.repo.ls("task", "done", "T-2")[1])
 
-        _, out, _ = self.repo.ls("task", "start", "T-3")
-        t3 = Path(out.split("  ", 1)[1].strip())
+        brief = self.task_start("T-3")["T-3"]
+        self.assertEqual(brief["criteria"][0]["check"], check)
+        self.assertEqual(brief["goal"], "g")
+        t3 = Path(brief["worktree"])
         self.assertTrue((t3 / "mul.py").exists() and (t3 / "sub.py").exists())
         with (t3 / "calc.py").open("a") as f:
             f.write("from mul import mul\nfrom sub import sub\n")
         sh(t3, "git", "commit", "-qam", "export")
-        self.assertIn("every task is done", self.repo.ls("task", "done", "T-3")[1])
+        self.assertIn("next: review the whole change", self.repo.ls("task", "done", "T-3")[1])
 
         code, out, _ = self.repo.ls("verify")
         self.assertEqual(code, 0, out)
@@ -111,7 +119,7 @@ class FlowTests(unittest.TestCase):
         run = self.start("--kind", "debug")
         self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "mul", "check": "python3 -c 'import calc; calc.mul'"}]},
                    {"tasks": [{"id": "T-1", "title": "fix"}]})
-        code, out, _ = self.repo.ls("verify", "--at", "base")
+        code, out, _ = self.repo.ls("verify", "--base")
         self.assertEqual(code, 1)
         self.assertIn("not recorded", out)
         self.assertNotIn("verify", json.loads(Path(run["runDir"], "state.json").read_text()))
@@ -119,8 +127,7 @@ class FlowTests(unittest.TestCase):
     def test_a_conflicting_task_is_refused_and_left_for_the_lead(self):
         run = self.start()
         self.write(run, {"goal": "g", "criteria": []}, {"tasks": [{"id": "T-1", "title": "a"}, {"id": "T-2", "title": "b"}]})
-        _, out, _ = self.repo.ls("task", "start", "T-1", "T-2")
-        paths = dict(line.split("  ", 1) for line in out.splitlines())
+        paths = {tid: b["worktree"] for tid, b in self.task_start("T-1", "T-2").items()}
         commit(Path(paths["T-1"]), "calc.py", "one\n")
         commit(Path(paths["T-2"]), "calc.py", "two\n")
         self.assertEqual(self.repo.ls("task", "done", "T-1")[0], 0)
@@ -141,7 +148,7 @@ class FlowTests(unittest.TestCase):
                    {"tasks": [{"id": "T-1", "title": "a", "dependsOn": ["T-2"]}, {"id": "T-2", "title": "b", "dependsOn": ["T-1"]}]})
         _, out, _ = self.repo.ls("status")
         self.assertIn("dependency cycle: T-1 -> T-2 -> T-1", out)
-        code, _, err = self.repo.ls("next")
+        code, _, err = self.repo.ls("task", "start", "T-1")
         self.assertEqual(code, 1)
         self.assertIn("not a usable task graph", err)
 
@@ -156,6 +163,23 @@ class FlowTests(unittest.TestCase):
         commit(Path(run["work"]), "b.txt", "b\n")
         code, _, err = self.repo.ls("deliver")
         self.assertIn("but the branch is now at", err)
+        self.assertEqual(self.repo.ls("verify")[0], 0)  # the verify checkout is reused at the new head
+        self.assertTrue(Path(run["runDir"], "verify", "b.txt").is_file())
+
+    def test_task_start_prepares_each_new_worktree_and_briefs_it(self):
+        run = self.start()
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "true"}]},
+                   {"prepare": "echo ready > prepared.txt", "tasks": [{"id": "T-1", "title": "a", "criteria": ["AC-1"]}]})
+        brief = self.task_start("T-1")["T-1"]
+        self.assertTrue(brief["prepared"])
+        self.assertEqual(Path(brief["worktree"], "prepared.txt").read_text(), "ready\n")
+        self.assertEqual(brief["criteria"], [{"id": "AC-1", "text": "t", "check": "true"}])
+
+    def test_the_host_environment_can_make_a_run_autonomous(self):
+        self.start()
+        with mock.patch.dict(os.environ, {"LOOP_SPEC_MODE": "autonomous"}):
+            self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["mode"], "autonomous")
+        self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["mode"], "interactive")
 
     def test_finish_writes_the_result_and_removes_clean_worktrees(self):
         run = self.start()
@@ -164,7 +188,6 @@ class FlowTests(unittest.TestCase):
         result = marker(out, "LOOP_SPEC_RESULT")
         self.assertEqual((result["status"], result["summary"]), ("no-change", "already done"))
         self.assertEqual(json.loads(Path(result["path"]).read_text())["status"], "no-change")
-        self.assertTrue(Path(run["runDir"]).parent.joinpath("last-result.json").is_file())
         self.assertFalse(Path(run["work"]).exists())
 
 

@@ -126,7 +126,7 @@ class QuestionTests(unittest.TestCase):
 class PromptTests(unittest.TestCase):
     def test_the_entry_is_sent_as_a_slash_command(self):
         args = argparse.Namespace(entry="debug", autonomous=True, request="test_x fails")
-        self.assertEqual(prompt_for(args), "/loop-spec:debug --autonomous test_x fails")
+        self.assertEqual(prompt_for(args), "/loop-spec:debug test_x fails")
 
 
 if __name__ == "__main__":

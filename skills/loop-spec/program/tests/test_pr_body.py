@@ -25,6 +25,8 @@ class BodyTests(unittest.TestCase):
         self.run.spec_path.write_text(json.dumps({"goal": "calc has lerp", "criteria": [
             {"id": "AC-1", "text": "lerp(0, 10, 0.5) | 5.0", "check": "pytest -q"},
             {"id": "AC-2", "text": "documented"}], **fields}))
+        state, self.run = self.run.state, Run(self.run.project, "lerp")  # a Run reads spec.json once
+        self.run.state = state
 
     def test_title_prefers_the_spec_then_the_request_first_line(self):
         self.assertEqual(deliver.title(self.run), "Add lerp")
@@ -35,7 +37,7 @@ class BodyTests(unittest.TestCase):
         self.spec(decisions=["no clamping"])
         text = deliver.body(self.run, verified=True)
         self.assertIn("| pass | **AC-1** lerp(0, 10, 0.5) \\| 5.0 | `pytest -q` |", text)
-        self.assertIn("| not checked | **AC-2** documented | reviewed, no command |", text)
+        self.assertIn("| not checked | **AC-2** documented | no command; judged in review |", text)
         self.assertIn("## Decisions\n\n- no clamping", text)
         self.assertIn("clean checkout of `aaaaaaaaaaaa`", text)
 
