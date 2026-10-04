@@ -1,5 +1,6 @@
 """The delivery loop against real git repositories and a fake `gh`: a moved origin, the
-run's own title, repository checks compared at the base, CI rounds, and the Stop hook."""
+run's own branch and title, repository checks compared at the base, CI and review
+feedback rounds, and the Stop hook."""
 import json
 import os
 import subprocess
@@ -20,6 +21,9 @@ case "$1 $2" in
   "pr create") echo "https://github.com/acme/kv/pull/7" ;;
   "pr checks") cat "$FAKE_GH_DIR/checks.json"; exit "$(cat "$FAKE_GH_DIR/checks.exit" 2>/dev/null || echo 0)" ;;
   "run view") printf 'step 1 ok\\nAssertionError: boom\\n' ;;
+  "api user") echo "loop-bot" ;;
+  "pr view") cat "$FAKE_GH_DIR/view.json" 2>/dev/null || echo '{"reviews": [], "comments": []}' ;;
+  "api repos/{owner}/{repo}/pulls/7/comments") cat "$FAKE_GH_DIR/inline.jsonl" 2>/dev/null ;;
   *) ;;
 esac
 """
@@ -91,7 +95,7 @@ class LoopTests(unittest.TestCase):
         self.checks("pass")
         code, out, err = self.repo.ls("deliver")
         self.assertEqual(code, 0, err)
-        self.assertIn("next: loop-spec ci", out)
+        self.assertIn("next: loop-spec feedback", out)
 
     def test_a_conflicting_base_is_left_for_the_lead_and_synced_after(self):
         run = self.ready_run()
@@ -149,36 +153,70 @@ class LoopTests(unittest.TestCase):
         self.assertIn("rules    CLAUDE.md", out)
         self.assertIn("plan.json has no `checks`", out)
 
-    # --- CI ---------------------------------------------------------------------------
+    # --- CI and review feedback ------------------------------------------------------
 
     def deliver(self, run: dict) -> None:
         self.assertEqual(self.repo.ls("verify")[0], 0)
         self.assertEqual(self.repo.ls("deliver")[0], 0)
 
-    def test_passing_ci_ends_the_run_completed(self):
+    def review(self, reviews=(), comments=(), inline=()) -> None:
+        (self.gh_dir / "view.json").write_text(json.dumps({"reviews": list(reviews), "comments": list(comments)}))
+        (self.gh_dir / "inline.jsonl").write_text("".join(json.dumps(c) + "\n" for c in inline))
+
+    def test_passing_ci_and_a_quiet_review_end_the_run_completed(self):
         run = self.ready_run()
         self.deliver(run)
         self.checks("pass", "skipping")
-        code, out, _ = self.repo.ls("ci")
+        self.review(reviews=[{"id": "R1", "author": {"login": "ana"}, "state": "APPROVED", "body": ""}],
+                    comments=[{"id": "C0", "author": {"login": "loop-bot"}, "body": "our own note"}])
+        code, out, _ = self.repo.ls("feedback")
         result = marker(out, "LOOP_SPEC_RESULT")
-        self.assertEqual((code, result["status"], result["ci"], result["prUrl"]),
-                         (0, "completed", "passed", "https://github.com/acme/kv/pull/7"))
+        self.assertEqual((code, result["status"], result["ci"], result["reviews"]),
+                         (0, "completed", "passed", {"ana": "APPROVED"}))
 
-    def test_failing_ci_shows_the_log_then_drafts_the_pr_after_the_last_round(self):
+    def test_failing_ci_has_no_round_limit(self):
         run = self.ready_run()
         (Path(run["work"]) / ".github" / "workflows").mkdir(parents=True)
-        for round_ in range(1, 4):
+        for round_ in range(1, 6):
             commit(Path(run["work"]), f"fix{round_}.txt", "x\n")
             self.deliver(run)
             self.checks("pass", "fail", exit_code=1)
-            code, out, _ = self.repo.ls("ci")
+            code, out, _ = self.repo.ls("feedback")
+            self.assertEqual(code, 1)
             self.assertIn("AssertionError: boom", out)
-            if round_ < 3:
-                self.assertEqual(code, 1)
-                self.assertIn(f"CI FAILED (round {round_} of 3)", out)
-        result = marker(out, "LOOP_SPEC_RESULT")
-        self.assertEqual(result["status"], "escalated")
-        self.assertIn("pr ready 7 --undo", (self.gh_dir / "calls").read_text())
+            self.assertIn("CI FAILED", out)
+            self.assertNotIn("LOOP_SPEC_RESULT", out)
+        self.assertNotIn("pr ready", (self.gh_dir / "calls").read_text())
+
+    def test_review_comments_are_reported_once_then_the_run_can_end(self):
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pass")
+        self.review(reviews=[{"id": "R1", "author": {"login": "ana"}, "state": "CHANGES_REQUESTED",
+                              "body": "Please rename mul to multiply."}],
+                    inline=[{"id": 11, "author": "coderabbit[bot]", "body": "Missing test for 0.",
+                             "path": "mul.py", "line": 2, "url": "https://github.com/acme/kv/pull/7#r11"}])
+        code, out, _ = self.repo.ls("feedback")
+        self.assertEqual(code, 1)
+        self.assertIn("review (changes_requested) by ana", out)
+        self.assertIn("Please rename mul to multiply.", out)
+        self.assertIn("inline comment by coderabbit[bot] on mul.py:2", out)
+        self.assertIn("2 new review item(s)", out)
+        commit(Path(run["work"]), "mul.py", "def multiply(a, b):\n    return a * b\n")
+        self.deliver(run)
+        code, out, _ = self.repo.ls("feedback")
+        self.assertEqual(marker(out, "LOOP_SPEC_RESULT")["reviews"], {"ana": "CHANGES_REQUESTED"})
+
+    def test_feedback_skills_keep_the_run_open_for_the_lead(self):
+        (self.repo.path / ".loop-spec").mkdir(exist_ok=True)
+        (self.repo.path / ".loop-spec" / "config.json").write_text(json.dumps({"feedback": {"skills": ["acme:pr-review"]}}))
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pass")
+        code, out, _ = self.repo.ls("feedback")
+        self.assertEqual(code, 0)
+        self.assertIn("acme:pr-review", out)
+        self.assertNotIn("LOOP_SPEC_RESULT", out)
 
     def test_ci_waits_for_pending_checks_and_returns_at_its_timeout(self):
         sleeps = []
@@ -186,6 +224,18 @@ class LoopTests(unittest.TestCase):
         self.checks("pending")
         outcome, _ = ci.wait(self.repo.path, 7, timeout=30, sleep=sleeps.append, clock=clock)
         self.assertEqual((outcome, len(sleeps)), ("pending", 2))
+
+    # --- branch and title from the repository's rules -------------------------------------
+
+    def test_set_renames_the_branch_until_it_is_pushed(self):
+        run = self.ready_run()
+        self.assertIn("branch is now feature/KV-9", self.repo.ls("set", "--branch", "feature/KV-9", "--title", "feat(kv): mul")[1])
+        self.assertEqual(sh(run["work"], "git", "branch", "--show-current"), "feature/KV-9")
+        self.deliver(run)
+        self.assertIn("--head feature/KV-9 --title feat(kv): mul", (self.gh_dir / "calls").read_text())
+        code, _, err = self.repo.ls("set", "--branch", "feature/other")
+        self.assertEqual(code, 1)
+        self.assertIn("already pushed", err)
 
     # --- the Stop hook ----------------------------------------------------------------
 
@@ -207,12 +257,13 @@ class LoopTests(unittest.TestCase):
             self.repo.ls("finish", "--status", "no-change", "--summary", "s")
             self.assertIsNone(self.hook())
 
-    def test_no_progress_asks_once_to_escalate_then_lets_go(self):
+    def test_a_stalled_run_keeps_going_with_no_cap_and_names_the_stall(self):
         self.ready_run("--autonomous")
-        answers = [self.hook() for _ in range(5)]
-        self.assertTrue(all(a and a["decision"] == "block" for a in answers[:4]))
-        self.assertIn("has not moved in 3 continuations", answers[3]["reason"])
-        self.assertIsNone(answers[4])
+        answers = [self.hook() for _ in range(60)]
+        self.assertTrue(all(a and a["decision"] == "block" for a in answers))
+        self.assertNotIn("has not changed", answers[2]["reason"])
+        self.assertIn("has not changed in 3 turns", answers[3]["reason"])
+        self.assertIn("has not changed in 59 turns", answers[59]["reason"])
 
     def test_the_hook_command_is_silent_outside_a_repository(self):
         proc = subprocess.run([str(Path(cli.__file__).parents[1] / "loop-spec"), "hook-stop"], input='{"cwd": "/"}',

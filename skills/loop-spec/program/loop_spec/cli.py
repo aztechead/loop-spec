@@ -12,7 +12,7 @@ from pathlib import Path
 
 import sys
 
-from loop_spec import VERSION, checks, ci, dag, deliver, git, hook, log, remote
+from loop_spec import VERSION, checks, ci, dag, deliver, git, hook, log, remote, review
 from loop_spec.errors import LoopSpecError
 from loop_spec.runs import KINDS, RESULT_STATUSES, Run, all_runs, find, first_free, first_line, read_json, slugify
 
@@ -131,8 +131,10 @@ def show_status(run: Run) -> int:
     if verify:
         stale = "" if verify["sha"] == head else f" (the branch has moved to {head[:12] if head else '?'} since)"
         out(f"  verify   {'passed' if verify['passed'] else 'FAILED'} at {verify['sha'][:12]}{stale}")
-    if s.get("ci"):
-        out(f"  ci       {s['ci']['outcome']} at {s['ci']['sha'][:12]}, {len(s['ci'].get('failedShas', []))} failed round(s)")
+    if s.get("feedback"):
+        f = s["feedback"]
+        verdicts = ", ".join(f"{who} {state.lower()}" for who, state in f.get("verdicts", {}).items()) or "no reviews"
+        out(f"  feedback CI {f['ci']} at {f['sha'][:12]}; {verdicts}; {len(f['seen'])} review item(s) seen")
     result = run.result
     if result:
         out(f"  result   {result['status']}: {result['summary']}")
@@ -164,8 +166,8 @@ def _next_step(run: Run, phase: str, problem: str | None = None) -> str:
         return "review the whole change (base..HEAD in work), then loop-spec verify"
     if phase == "deliver":
         return "loop-spec deliver"
-    if phase == "ci":
-        return "loop-spec ci"
+    if phase == "feedback":
+        return "loop-spec feedback"
     return "nothing; the run is over"
 
 
@@ -367,10 +369,9 @@ def cmd_deliver(args, project: Path, cwd: Path) -> int:
     head = deliver.publish(run, draft=args.draft, unverified=args.unverified,
                            comment_file=Path(args.comment_file).resolve() if args.comment_file else None)
     out(f"delivered {run.state['branch']} at {head[:12]}: {run.state['pr']['url']}")
-    config = read_json(project / ".loop-spec" / "config.json", "config") or {}
-    if args.no_ci or config.get("ci") is False:
+    if args.no_feedback or (_config(project).get("feedback") or {}).get("wait") is False:
         return _finish(run, "completed", _summary(run), head)
-    out("next: loop-spec ci (waits for the PR's checks)")
+    out("next: loop-spec feedback (waits for the PR's checks, then reads its review)")
     return 0
 
 
@@ -378,39 +379,66 @@ def _summary(run: Run) -> str:
     return (run.spec or {}).get("goal") or first_line(run.state.get("request", ""), 100)
 
 
-def cmd_ci(args, project: Path, cwd: Path) -> int:
+def cmd_feedback(args, project: Path, cwd: Path) -> int:
     run = find(project, args.slug, cwd)
     delivered, pr = run.state.get("delivered"), run.state.get("pr")
     head = git.head(run.work)
     if not delivered or not pr or delivered["sha"] != head:
         raise LoopSpecError("the current head has not been delivered", "verify, then `loop-spec deliver`")
     outcome, found = ci.wait(run.work, pr["number"], args.timeout)
-    record = run.state.setdefault("ci", {"failedShas": []})
-    record.update(outcome=outcome, sha=head)
     for c in found:
         out(f"  {c.get('bucket', '?'):8} {c.get('name', '')}" + (f"  {c['link']}" if c.get("link") else ""))
     if outcome == "pending":
-        run.save()
-        out(f"checks are still running after {args.timeout}s: run loop-spec ci again")
+        out(f"checks are still running after {args.timeout}s: run loop-spec feedback again")
         return 0
-    if outcome in ("passed", "none"):
-        out("CI passed" if outcome == "passed" else "this repository reports no CI checks")
-        return _finish(run, "completed", _summary(run), head)
-    if head not in record["failedShas"]:
-        record["failedShas"].append(head)
+    record = run.state.setdefault("feedback", {"seen": []})
+    items, verdicts = review.read(run.work, pr["number"])
+    new = [i for i in items if i["id"] not in record["seen"]]
+    record.update(sha=head, ci=outcome, verdicts=verdicts, seen=record["seen"] + [i["id"] for i in new])
     run.save()
     for c in found:
         if c.get("bucket") in ("fail", "cancel") and (log_tail := ci.failure_log(run.work, c)):
             out(f"--- {c.get('name')} (failed log, last lines)\n{_indent(log_tail)}")
-    rounds = len(record["failedShas"])
-    limit = (read_json(project / ".loop-spec" / "config.json", "config") or {}).get("ciFixAttempts", 3)
-    if rounds >= limit:
-        git.gh(run.work, "pr", "ready", str(pr["number"]), "--undo")
-        return _finish(run, "escalated", f"CI still fails after {rounds} fix round(s); the PR is back in draft", head)
-    out(f"CI FAILED (round {rounds} of {limit}): find the cause; if the change caused it, fix it in work, "
-        "then verify, deliver, and ci again. If it also fails on the base branch, it is not this change's: "
-        "say so and end with finish.")
-    return 1
+    for i in new:
+        where = f" on {i['path']}:{i.get('line') or '?'}" if i.get("path") else ""
+        out(f"--- {i['kind']} by {i['author']}{where}" + (f"  {i['url']}" if i.get("url") else ""))
+        if i.get("body", "").strip():
+            out(_indent(i["body"].strip()))
+    skills = (_config(project).get("feedback") or {}).get("skills", [])
+    if outcome == "failed" or new:
+        out(("CI FAILED. " if outcome == "failed" else "") + (f"{len(new)} new review item(s). " if new else "") +
+            "Fix what this change should fix (then verify, deliver, and feedback again), and answer the rest in a "
+            "PR comment. A check that also fails on the base branch is not this change's.")
+        return 1
+    if skills:
+        out(f"CI {outcome}, and nothing new from reviewers. Run the project's feedback skills on {pr['url']}: "
+            f"{', '.join(skills)}. Treat what they report like review comments; if it is nothing, end the run "
+            "with loop-spec finish --status completed.")
+        return 0
+    out("CI passed, and nothing new from reviewers" if outcome == "passed" else "no CI checks, and nothing new from reviewers")
+    return _finish(run, "completed", _summary(run), head)
+
+
+def _config(project: Path) -> dict:
+    return read_json(project / ".loop-spec" / "config.json", "config") or {}
+
+
+def cmd_set(args, project: Path, cwd: Path) -> int:
+    run = find(project, args.slug, cwd)
+    state = run.state
+    if args.branch and args.branch != state["branch"]:
+        if state.get("pr") or state.get("delivered"):
+            raise LoopSpecError(f"{state['branch']} is already pushed", "a pushed branch keeps its name")
+        if git.branch_exists(project, args.branch):
+            raise LoopSpecError(f"a branch named {args.branch} already exists", "pick another name")
+        git.run_git(run.work, "branch", "-m", state["branch"], args.branch)
+        state["branch"] = args.branch
+        out(f"branch is now {args.branch}")
+    if args.title:
+        state["title"] = args.title
+        out(f"PR title is now: {args.title}")
+    run.save()
+    return 0
 
 
 def cmd_sync(args, project: Path, cwd: Path) -> int:
@@ -499,12 +527,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--draft", action="store_true")
     p.add_argument("--unverified", action="store_true", help="deliver without a passing verify, as a draft that says so")
     p.add_argument("--comment-file", help="also post this file as a comment on the PR (e.g. replies to review comments)")
-    p.add_argument("--no-ci", action="store_true", help="end the run now instead of waiting for CI")
+    p.add_argument("--no-feedback", action="store_true", help="end the run now instead of waiting for CI and review")
     p.set_defaults(func=cmd_deliver)
 
-    p = sub.add_parser("ci", parents=[common], help="wait for the delivered PR's checks; end the run when they pass")
-    p.add_argument("--timeout", type=int, default=540, help="seconds to wait before returning (default 540)")
-    p.set_defaults(func=cmd_ci)
+    p = sub.add_parser("feedback", parents=[common],
+                       help="wait for the delivered PR's checks, then read its review; end the run when both are clear")
+    p.add_argument("--timeout", type=int, default=540, help="seconds to wait for checks before returning (default 540)")
+    p.set_defaults(func=cmd_feedback)
+
+    p = sub.add_parser("set", parents=[common], help="rename the feature branch (before it is pushed) or set the PR title")
+    p.add_argument("--branch")
+    p.add_argument("--title")
+    p.set_defaults(func=cmd_set)
 
     p = sub.add_parser("sync", parents=[common], help="merge what moved on origin (base or feature branch) into work")
     p.set_defaults(func=cmd_sync)

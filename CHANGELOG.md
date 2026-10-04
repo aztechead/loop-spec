@@ -49,19 +49,24 @@ Moving from 7.x: [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md).
 - `sync` merges what moved on origin (the base branch, or the feature branch itself)
   into the feature worktree, merging rather than rebasing; `deliver` refuses a head
   that lacks commits origin has.
-- `ci` waits for the delivered PR's checks and shows each failed job's log. The lead
-  fixes what the change broke and delivers again; after `ciFixAttempts` failed rounds
-  (default 3) the PR goes back to draft and the run ends escalated. `deliver --no-ci`
-  or `"ci": false` ends a run at delivery.
-- `start --branch` and `--title` set the feature branch and PR title for one run; the
-  run's title wins over the spec's.
+- `feedback` waits for the delivered PR's checks, then reads its review (reviews,
+  inline comments, conversation comments; the run's own are skipped), showing each
+  item once and each failed job's log. The lead fixes what the change should and
+  answers the rest; the run ends when CI passes and nothing new has come in. There is
+  no limit on rounds. `feedback.skills` in the config names the project's own skills
+  the lead runs on the PR at that point; `deliver --no-feedback` or
+  `"feedback": {"wait": false}` ends a run at delivery.
+- The branch name and PR title follow the repository's rules files; `start --branch`
+  and `--title` set them for one run, `set` changes them until the branch is pushed,
+  and a `pr.md` the lead writes to a repository's PR template becomes the PR
+  description.
 - `plan.json` `checks`: the repository's own required checks from its `CLAUDE.md`,
   `AGENTS.md`, and `CONTRIBUTING*`, which `status` lists. Verify runs them, and reruns a
   failing one at the base: one that fails the same way there is pre-existing; new
   output fails the run. Task briefs carry them to the implementers.
-- A Stop hook keeps an autonomous run going until it has a result, re-feeding the
-  run's next step when the lead would end a turn early, with a no-progress guard and a
-  cap on continuations.
+- A Stop hook keeps an autonomous run going until it has a result, the way `/goal`
+  holds a condition: while the run is open it hands the lead the next step, with no
+  turn limit, and says so when the run's record stops changing.
 - `docs/models/`: what Claude Opus 5.5 and Sonnet 5.5 do differently and what it
   means for loop-spec, with Anthropic's model, prompting, and effort pages copied
   beside it.

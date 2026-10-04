@@ -19,7 +19,7 @@ For someone who runs loop-spec 7.x in Claude Code or on the Agent SDK and is mov
 | Commands ran without a shell, with a syntax check | Checks run with `bash -c` from the repository root |
 | `examples/supervisor/` and `loop_spec.sdk_runner` | Removed. `examples/sdk-plugin/` remains |
 | DELIVER merged a moved base itself and re-verified | `deliver` refuses; `sync` merges what moved and the lead verifies again |
-| `deliver.readiness` read CI once | `ci` waits for the checks and the lead fixes what the change broke, up to `ciFixAttempts` rounds |
+| `deliver.readiness` read CI once; `deliver.after` ran follow-up skills on the PR | `feedback` waits for the checks and reads the review; the lead fixes or answers each round; `feedback.skills` names the project's own skills for this step |
 | Repo checks probed from manifests and compared at base | `plan.json` `checks`, from the repository's `CLAUDE.md`/`AGENTS.md`, compared at base when they fail |
 
 ## Moving

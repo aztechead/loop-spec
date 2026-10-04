@@ -14,30 +14,40 @@ def title(run: Run) -> str:
 
 
 def body(run: Run, verified: bool) -> str:
+    """The PR description: the lead's `pr.md` when it wrote one (to follow the repository's
+    PR template), else a summary, tasks, decisions, and assumptions; then the criteria
+    and how verify showed them."""
     spec, plan = run.spec or {}, run.plan or {}
-    verify = run.state.get("verify") or {}
+    lead_text = run.dir / "pr.md"
+    if lead_text.is_file():
+        lines = [lead_text.read_text().rstrip(), ""]
+    else:
+        lines = ["## Summary", "", spec.get("goal") or run.state.get("request", ""), ""]
+        if plan.get("tasks"):
+            lines += ["## Tasks", "", *[f"- **{t['id']}** {t.get('title', '')}" for t in plan["tasks"]], ""]
+        for key, heading in (("decisions", "Decisions"), ("assumptions", "Assumptions")):
+            if spec.get(key):
+                lines += [f"## {heading}", "", *[f"- {item}" for item in spec[key]], ""]
+    return "\n".join(lines + _verification(run, verified)) + "\n"
+
+
+def _verification(run: Run, verified: bool) -> list[str]:
+    spec, verify = run.spec or {}, run.state.get("verify") or {}
     by_name = {r["name"]: r for r in verify.get("results", [])}
-    lines = ["## Summary", "", spec.get("goal") or run.state.get("request", ""), ""]
+    lines = ["## Acceptance criteria", ""]
     if spec.get("criteria"):
-        lines += ["## Acceptance criteria", "", "| | Criterion | Check |", "|---|---|---|"]
+        lines += ["| | Criterion | Check |", "|---|---|---|"]
         for c in spec["criteria"]:
             r = by_name.get(c.get("id"))
             ok = None if r is None or r.get("command") is None else r.get("exit") == 0
             check = f"`{c['check']}`" if c.get("check") else "no command; judged in review"
             lines.append(f"| {MARK[ok]} | **{c.get('id', '')}** {_cell(c.get('text', ''))} | {_cell(check)} |")
         lines.append("")
-    if plan.get("tasks"):
-        lines += ["## Tasks", "", *[f"- **{t['id']}** {t.get('title', '')}" for t in plan["tasks"]], ""]
-    for key, heading in (("decisions", "Decisions"), ("assumptions", "Assumptions")):
-        if spec.get(key):
-            lines += [f"## {heading}", "", *[f"- {item}" for item in spec[key]], ""]
-    lines += ["## Verification", ""]
     if verified:
         lines.append(f"Every check above was run by loop-spec in a clean checkout of `{verify['sha'][:12]}`, the commit this PR delivers.")
     else:
         lines.append("**Not verified.** This head was delivered without a passing loop-spec verify; treat it as a draft.")
-    lines += ["", "_Delivered by loop-spec._"]
-    return "\n".join(lines) + "\n"
+    return lines + ["", "_Delivered by loop-spec._"]
 
 
 def _cell(text: str) -> str:

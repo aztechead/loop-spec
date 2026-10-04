@@ -1,19 +1,23 @@
-"""The Stop hook that keeps an autonomous run going until it has a result.
+"""The Stop hook that keeps an autonomous run going until it ends, the way `/goal` does.
 
-Claude Code runs it whenever the lead ends a turn. When an autonomous run in this
-repository is still open, it blocks the stop and hands the lead the run's next step,
-the same prompt each time, the way a Ralph loop re-feeds its task. It lets the stop
-through when:
+`/goal` is a Stop hook with a condition: after every turn an evaluator says whether the
+condition is met, and if not, the session takes another turn with the evaluator's reason
+as its guidance. Here the condition is fixed, "the loop-spec run has a result", and the
+evaluator is the run's own record rather than a model reading the transcript:
 
-- no autonomous run is open here, or the run has ended;
-- the lead's last message says `LOOP_SPEC_WAITING` (workers are running in the
-  background, and their completion will resume the session);
-- the run has made no progress (phase, head, task states, verify, CI) over
-  IDLE_LIMIT continuations: the first time, it asks the lead to end the run as
-  escalated; after that it lets the stop through;
-- MAX_CONTINUATIONS is reached.
+- **met**: the run has a result (`deliver`, `feedback`, or `finish` wrote it). The stop
+  goes through.
+- **not yet met**: the run is open. The stop is blocked, and the reason names the run's
+  next step. When the run's record (phase, head, tasks, verify, feedback) has not changed
+  for a few turns, the reason says so, so the lead can judge whether the run is blocked.
+- **impossible**: the lead decides that, as `/goal`'s evaluator would, and records it by
+  ending the run with `finish --status escalated`, which makes the condition met.
 
-It never fails a session: any error lets the stop through silently.
+There is no cap on turns, as with `/goal`; Claude Code's own block cap stops a lead that
+keeps answering without using a tool. As `/goal` skips evaluation while background work
+runs, the hook lets the stop through when the lead says `LOOP_SPEC_WAITING`: the
+workers' results resume the session. It never fails a session: any error lets the stop
+through silently.
 """
 import json
 from pathlib import Path
@@ -21,15 +25,14 @@ from pathlib import Path
 from loop_spec import git
 from loop_spec.runs import all_runs
 
-IDLE_LIMIT = 3
-MAX_CONTINUATIONS = 40
+STALL_TURNS = 3
 WAITING = "LOOP_SPEC_WAITING"
 
 
 def fingerprint(run, head: str | None, phase: str) -> str:
     s = run.state
-    return json.dumps([phase, head, run.statuses(), (s.get("verify") or {}).get("sha"),
-                       (s.get("verify") or {}).get("passed"), s.get("delivered"), s.get("ci")], sort_keys=True)
+    return json.dumps([phase, head, run.statuses(), s.get("verify"), s.get("delivered"), s.get("feedback")],
+                      sort_keys=True)
 
 
 def decide(hook_input: dict, next_step) -> dict | None:
@@ -43,22 +46,18 @@ def decide(hook_input: dict, next_step) -> dict | None:
     run = runs[0]
     head = git.head(run.work) if run.work.exists() else None
     phase = run.phase(head)
-    loop = run.state.setdefault("loop", {"fingerprint": None, "idle": 0, "count": 0})
+    loop = run.state.setdefault("loop", {"fingerprint": None, "unchanged": 0})
     current = fingerprint(run, head, phase)
-    loop["idle"] = loop["idle"] + 1 if current == loop["fingerprint"] else 0
-    loop["fingerprint"], loop["count"] = current, loop["count"] + 1
+    loop["unchanged"] = loop["unchanged"] + 1 if current == loop["fingerprint"] else 0
+    loop["fingerprint"] = current
     run.save()
-    if loop["count"] > MAX_CONTINUATIONS or loop["idle"] > IDLE_LIMIT:
-        return None
     program = Path(__file__).resolve().parents[1] / "loop-spec"
-    if loop["idle"] == IDLE_LIMIT:
-        reason = (f"The loop-spec run {run.slug} has not moved in {IDLE_LIMIT} continuations (phase {phase}). "
-                  f"End it now: `\"{program}\" finish --slug {run.slug} --status escalated --summary \"...\"`, "
-                  "naming what blocks it and the verified head, if any.")
+    reason = (f"The autonomous loop-spec run {run.slug} is not finished (phase {phase}; next: "
+              f"{next_step(run, phase)}; program: \"{program}\"). Continue it. It ends when `deliver`, "
+              "`feedback`, or `finish` records a result.")
+    if loop["unchanged"] >= STALL_TURNS:
+        reason += (f" Its record has not changed in {loop['unchanged']} turns: if something you cannot fix blocks "
+                   "it, end it with `finish --status escalated` naming the blocker; otherwise take the next step.")
     else:
-        reason = (f"The autonomous loop-spec run {run.slug} is not finished (phase {phase}; next: "
-                  f"{next_step(run, phase)}; program: \"{program}\"). Continue it now. The run ends only when "
-                  "`deliver` or `ci` reports a result, or with `finish`. If workers you dispatched are still running, say "
-                  f"{WAITING} and end the turn; if something you cannot fix blocks the run, end it with "
-                  "`finish --status escalated`.")
+        reason += f" If workers you dispatched are still running, say {WAITING} and end the turn."
     return {"decision": "block", "reason": reason}

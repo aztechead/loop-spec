@@ -7,9 +7,9 @@ description: "The loop-spec method for taking a coding request to a verified pul
 
 You are the lead of a loop-spec run. Your job is to turn a request into a pull
 request whose every acceptance criterion was checked in a clean checkout of the
-commit it delivers, and whose CI passes. You do the judgment. The program keeps the
-run's state and task graph on disk, manages git worktrees, runs checks, opens the PR,
-and reads its CI.
+commit it delivers, whose CI passes, and whose reviewers' requests are answered. You
+do the judgment. The program keeps the run's state and task graph on disk, manages git
+worktrees, runs checks, opens the PR, and reads its CI and review.
 
 This file is guidance, not a script. Follow its intent; where the code in front of
 you calls for something different, do what the code needs and say why in your report.
@@ -30,13 +30,14 @@ add `--slug <slug>` after the command.
 | `LS task set T-1 --status todo\|blocked --note "..."` | change a task's status by hand |
 | `LS verify [--base]` | run every criterion check, task verify command, and repository check in a clean checkout of the feature head (or, with `--base`, of the base) |
 | `LS sync` | merge whatever moved on origin (the base branch, or the feature branch itself) into `work` |
-| `LS deliver [--draft] [--comment-file F] [--no-ci]` | push the verified head and open or update its PR (posting `F` as a comment) |
-| `LS ci` | wait for the PR's checks (up to 9 minutes per call); ends the run when they pass, or reports what failed |
+| `LS set --branch NAME --title "..."` | rename the feature branch (until it is pushed) or set the PR title |
+| `LS deliver [--draft] [--comment-file F] [--no-feedback]` | push the verified head and open or update its PR (posting `F` as a comment) |
+| `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review; ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
 | `LS finish --status no-change\|escalated\|failed --summary "..."` | end a run that delivers nothing |
 
-`start` takes `--branch NAME` and `--title "..."` when the user names the feature
-branch or the PR title for this run; they win over the defaults and over the spec's
-`title`.
+The branch and the PR title come from, in order: the user (the entry passes them as
+`start --branch` and `--title`), then the repository's rules (set with `LS set` in the
+spec step), then the defaults (`feat/<slug>`, and the spec's `title`).
 
 You write two files in `runDir`; the program reads them and never edits them.
 `spec.json`:
@@ -111,7 +112,7 @@ The run's `mode` is in `LOOP_SPEC_RUN`.
   when you are truly blocked or before something risky the user did not ask for.
 - **autonomous**: no one will answer. Never stop to ask. Choose the reasonable
   default, write it in `assumptions`, and keep going. A host is waiting for the run's
-  result, so an autonomous run always ends with a result from `deliver`, `ci`, or
+  result, so an autonomous run always ends with a result from `deliver`, `feedback`, or
   `finish`: when the request is impossible, contradicts the code in a way no default
   resolves, or something you cannot fix blocks the run, end with `finish --status
   escalated --summary "..."` naming the blocker and the verified head, if any.
@@ -125,8 +126,16 @@ at the delivered commit that one command can show (a test, a script, a grep), ne
 something about the PR, CI, or branches; keep each check exactly as strict as the
 criterion, so it cannot fail on a comment or a wording. Give a criterion no `check`
 only when no command can show it; the reviewer then judges it. Record each real choice
-in `decisions`. `title` is the PR title in the repository's commit convention (`git log
---oneline -15`), unless the run already has one.
+in `decisions`.
+
+Read the rules files for how this repository takes a change: branch naming, PR title
+and commit message format, a PR template (`.github/pull_request_template.md` and its
+variants), a changelog entry, sign-off. Follow them throughout. Unless the user named
+them, set the branch and title they call for with `LS set` now, before anything is
+pushed; with no rule, `title` in `spec.json` follows the commit convention (`git log
+--oneline -15`). When the repository has a PR template, write the description it asks
+for to `pr.md` in `runDir`; deliver uses it and appends the criteria and how verify
+showed them.
 
 ### 2. Plan
 
@@ -177,7 +186,7 @@ When every task is merged:
    environment), fix it, and verify again. Verify records a pass only for the current
    head, so verify again after any new commit.
 
-### 5. Deliver, then CI
+### 5. Deliver, then CI and review
 
 1. `LS deliver` pushes the feature branch and opens a PR (or updates the one it opened
    before), with the spec, tasks, and verify results in the description. It refuses a
@@ -186,12 +195,24 @@ When every task is merged:
    and deliver again. Use `--unverified`, which opens a draft that says so, only with
    the user's say-so, or, autonomous, when a check cannot run here for a reason outside
    the change. If there is nothing to deliver, `LS finish --status no-change`.
-2. `LS ci` waits for the PR's checks. Passing (or no CI) ends the run. Still running:
-   run it again. Failing: it shows each failed job's log. Find the cause. If the change
-   caused it, fix it in `work`, then verify, deliver, and `ci` again; after three failed
-   rounds it drafts the PR and ends the run as escalated. If the same check fails on
-   the base branch too, it is not this change's to fix: say so and `finish --status
-   completed` with that in the summary.
+2. `LS feedback` waits for the PR's checks, then reads its review: reviews, inline
+   comments, and conversation comments from people and review bots, each shown once.
+   Still running: run it again. When CI passes and reviewers have asked for nothing new,
+   the run ends. Otherwise, for each failed check (its log is shown) and each review
+   item, decide what it needs:
+   - Something this change should do: fix it in `work`, verify, deliver, and run
+     `feedback` again.
+   - A question, or a request you decline with a reason: answer it in a comment, by
+     `deliver --comment-file` with your next fix, or `gh pr comment` when there is none.
+   - A check that also fails on the base branch is not this change's to fix: say so in
+     a comment.
+   There is no limit on rounds. If the feedback cannot be satisfied (it contradicts the
+   spec, or needs a decision only the user can make), end the run with `finish --status
+   escalated` naming what is needed.
+3. When the project's config names feedback skills (`.loop-spec/config.json`,
+   `feedback.skills`), `feedback` lists them once CI and review are clear: invoke each
+   with the `Skill` tool and the PR URL, treat what it reports like review comments, and
+   when nothing is left, `finish --status completed`.
 
 The run's end removes its worktrees, `work` included; `cd` back to the project root
 before any further command. Finish with a short report: what changed, the PR link, how
@@ -221,10 +242,12 @@ continue, a list of decisions none of which blocks you, or a report because a ph
 finished. The only stops are: the run ended, you are waiting on agents you dispatched
 (say `LOOP_SPEC_WAITING`), or, interactive, you need an answer only the user can give.
 
-In an autonomous run, loop-spec's Stop hook enforces this: when you end a turn while
-the run is open, it hands you the run's next step and you continue. If the run stops
-moving, it asks you once to end it as escalated. A run also survives a restart: `LS
-status` shows its `next` step.
+In an autonomous run, loop-spec's Stop hook holds this the way `/goal` holds a
+condition: after each turn it checks the run's record, and while the run is open it
+hands you the next step and you continue. There is no turn limit. When the record has
+not changed for a few turns it says so; judge whether the run is blocked, and if it is,
+end it with `finish --status escalated`. A run also survives a restart: `LS status`
+shows its `next` step.
 
 ## Never
 

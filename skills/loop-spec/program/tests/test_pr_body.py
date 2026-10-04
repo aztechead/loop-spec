@@ -41,6 +41,14 @@ class BodyTests(unittest.TestCase):
         self.assertIn("## Decisions\n\n- no clamping", text)
         self.assertIn("clean checkout of `aaaaaaaaaaaa`", text)
 
+    def test_the_leads_pr_md_leads_the_body_and_the_criteria_follow(self):
+        self.spec()
+        (self.run.dir / "pr.md").write_text("## What\n\nAdds lerp.\n\n## Checklist\n\n- [x] tests\n")
+        text = deliver.body(self.run, verified=True)
+        self.assertTrue(text.startswith("## What\n\nAdds lerp."))
+        self.assertIn("| pass | **AC-1**", text)
+        self.assertNotIn("## Summary", text)
+
     def test_an_unverified_body_says_so(self):
         self.spec()
         self.assertIn("**Not verified.**", deliver.body(self.run, verified=False))

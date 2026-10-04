@@ -26,8 +26,8 @@ The program refuses only what would make the record false: a plan that is not a 
 a merge that conflicts, finishing a task with uncommitted work, delivering a head that
 verify did not pass (overridable with `--unverified`, which marks the PR draft and
 says so), and delivering a head that lacks commits origin has. It never judges the
-model's work. Two counts are facts it keeps for the loops: CI rounds that failed
-(`ciFixAttempts`), and Stop-hook continuations that changed nothing.
+model's work. No loop has a cap: whether a loop should stop is a judgment, and the
+lead records it with `finish`.
 
 ## Program modules
 
@@ -43,7 +43,8 @@ Each module has one reason to change:
 | `deliver.py` | the push, the PR, and its body |
 | `remote.py` | what moved on origin, and merging it into the feature branch |
 | `ci.py` | reading a PR's checks and a failed job's log |
-| `hook.py` | the Stop hook's decision: continue the run, ask to escalate, or let the stop through |
+| `review.py` | reading a PR's reviews and comments |
+| `hook.py` | the Stop hook's decision: continue the run with its next step, or let the stop through |
 | `log.py` | the two output channels (`log.stdout`, `log.stderr`); nothing calls `print` |
 
 `state.json` is written only by `runs.Run.save`, and `result.json` only by `runs.Run.finish`. `spec.json` and
@@ -64,16 +65,20 @@ installed dependencies survive between verifies, so `prepare` is incremental.
 
 ## The loops
 
-Three loops run inside a run, each with an objective exit and a cap:
+Three loops run inside a run. Each has an objective exit and none has a cap; the lead
+ends one it judges cannot finish with `finish --status escalated`:
 
 - **Verify:** fix and verify again until every check passes at the current head.
-- **CI:** after delivery, `ci` waits for the PR's checks; a failure the change caused is
-  fixed, verified, and delivered again, up to `ciFixAttempts` rounds.
-- **The run itself (autonomous only):** the Stop hook re-feeds the run's next step each
-  time the lead would end a turn with the run open, the way a Ralph loop re-feeds its
-  prompt. It lets the turn end when the lead says it is waiting on agents
-  (`LOOP_SPEC_WAITING`), asks once for an escalated finish after three continuations
-  with no change to the phase, head, tasks, verify, or CI, and stops after 40.
+- **Feedback:** after delivery, `feedback` waits for the PR's checks and reads its review;
+  what the change should fix is fixed, verified, and delivered again, and the rest is
+  answered, until CI passes and nothing new has come in.
+- **The run itself (autonomous only):** the Stop hook works like `/goal`. After each
+  turn it checks the run's record: a result means the condition is met and the turn
+  ends; an open run gets its next step as the reason for another turn. It lets a turn
+  end when the lead says it is waiting on agents (`LOOP_SPEC_WAITING`), the way `/goal`
+  skips evaluation while background work runs, and notes when the record has not
+  changed for a few turns. Claude Code's own block cap stops a lead that keeps
+  answering without using a tool.
 
 ## What 8.x deliberately leaves out
 

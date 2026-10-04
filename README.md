@@ -20,8 +20,9 @@ loop-spec takes a coding request to a verified pull request:
    `AGENTS.md` require) run in a clean checkout of the exact commit to be delivered.
 5. **Deliver**: one PR, whose description carries the spec, tasks, and check results,
    with anything that moved on origin merged in first.
-6. **CI**: the run waits for the PR's checks and fixes what its change broke, up to
-   three rounds, before it ends.
+6. **Feedback**: the run waits for the PR's checks and reads its review comments, and
+   fixes what the change should, or answers, until CI passes and reviewers have asked
+   for nothing new. A project can add its own review skill to this step.
 
 The model does the judgment. The method is written as guidance in one skill,
 [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md), not as gates. A small
@@ -69,13 +70,15 @@ set `LOOP_SPEC_MODE=autonomous` in the environment: the run never stops to ask,
 records the defaults it chose as assumptions in the spec, and ends with a result
 either way.
 
-An autonomous run keeps itself going: loop-spec's Stop hook hands the lead the run's
-next step whenever it would end a turn with the run still open, and asks it to end the
-run as escalated if it stops making progress.
+An autonomous run keeps itself going the way `/goal` does: after each turn loop-spec's
+Stop hook checks the run's record, and while the run is open it hands the lead the next
+step. There is no turn limit; the run ends when it delivers, or when the lead judges it
+blocked and ends it as escalated.
 
-To name the feature branch or the PR title for one run, say so in the request
-("on branch feature/KV-12, titled ..."); the entry passes them as `--branch` and
-`--title`.
+The branch name and PR title follow the repository's own rules in `CLAUDE.md`,
+`AGENTS.md`, or `CONTRIBUTING*` (as do commit messages, a PR template, and a changelog
+entry). To set them for one run, say so in the request ("on branch feature/KV-12,
+titled ..."); that wins over the rules.
 
 ```bash
 claude -p "/loop-spec:cycle --autonomous Add a --json flag to the export command" \
@@ -113,8 +116,8 @@ Optional, in `<repo>/.loop-spec/config.json` (commit it if your team wants it sh
 | `branch` | the feature branch name, for repositories with a naming rule; `-2`, `-3` is added when taken |
 | `branchPrefix` | prefix for the default branch name; default `feat/`, `fix/` for debug |
 | `reviewers`, `labels` | set on a new PR (it is always assigned to you) |
-| `ciFixAttempts` | CI rounds a run may fix before it drafts the PR and escalates; default 3 |
-| `ci` | `false` to end runs at delivery without waiting for CI |
+| `feedback.skills` | skills (`plugin:skill`) the lead runs on the delivered PR, e.g. your own review triage; what they report is handled like review comments |
+| `feedback.wait` | `false` to end runs at delivery without waiting for CI or review |
 
 Models: the implementer and simplifier agents run on Sonnet and the reviewer on Opus,
 all at medium effort, from their frontmatter in [agents/](agents/). The lead is your session, so run
