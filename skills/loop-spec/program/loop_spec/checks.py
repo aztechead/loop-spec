@@ -4,7 +4,7 @@ import subprocess
 import time
 from pathlib import Path
 
-TAIL_LINES = 40
+TAIL_LINES = 40  # a failure's last lines name it; more would crowd the lead's context
 
 
 def run(command: str, cwd: Path, timeout: int) -> dict:

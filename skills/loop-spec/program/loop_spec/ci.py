@@ -11,8 +11,8 @@ from pathlib import Path
 
 from loop_spec import git
 
-POLL_SECONDS = 15
-LOG_LINES = 40
+POLL_SECONDS = 15  # GitHub updates check status every few seconds; 15 s keeps gh calls well under its rate limit
+LOG_LINES = 40  # enough for a stack trace or a failed assertion, small enough to keep the lead's context
 _JOB = re.compile(r"/actions/runs/(\d+)/job/(\d+)")
 
 

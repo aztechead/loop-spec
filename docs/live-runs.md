@@ -6,6 +6,23 @@ in a run is shown here by a recorded live run, never simulated.
 
 Record one run per row as it happens.
 
+## Scenarios
+
+Each run uses one of these against a small Python repository (`kvstore`, a JSON-file
+key-value store with a CLI). A scenario names what the run must show; a hidden
+acceptance script, never shown to the lead, checks the pushed branch.
+
+| Id | Request | The run must show |
+|---|---|---|
+| A | Add per-key TTLs (`--ttl`), an LRU cap (`--max-keys`), and persisted hit/miss/eviction/expiration stats; tests must not sleep | a spec whose criteria each name a check; verify passing in a clean checkout; 11/11 hidden acceptance |
+| B | Add CSV import and export, key validation, and a history command | a task graph with independent tasks dispatched to implementers in parallel; 7/7 hidden acceptance |
+| C | A, with a branch and PR title named, CI that runs the repository's workflow, and a commit landing on origin's main mid-run | `checks` taken from the repository's rules files; `deliver` refusing the moved origin, then `sync`, verify, deliver; CI passing |
+| D | A, with no branch or title named; CONTRIBUTING.md sets branch and title rules, a PR template, and a changelog entry; a reviewer requests a change after delivery | `set` before delivering; `pr.md` following the template; the review item shown once, fixed or answered, and the run ending on the next `feedback` |
+| E | D without a PR template | `pr.md` in the bundled visual-pr format |
+
+The method is written for both Claude Opus 5.5 and Claude Sonnet 5.5 as the lead;
+record which one led each run.
+
 ## How to record a run
 
 1. Run an entry against a throwaway repository with an `origin` you can push to, in

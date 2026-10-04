@@ -553,6 +553,7 @@ def build_parser() -> argparse.ArgumentParser:
     task = sub.add_parser("task", help="start, finish, or mark tasks").add_subparsers(dest="action", required=True)
     p = task.add_parser("start", parents=[common], help="a worktree per task from the feature head, prepared; prints each brief")
     p.add_argument("ids", nargs="+")
+    # 1200 s: a ceiling for a hung install, well above a cold dependency install.
     p.add_argument("--timeout", type=int, default=1200, help="seconds for the prepare command (default 1200)")
     p.set_defaults(func=cmd_task_start)
     p = task.add_parser("done", parents=[common], help="merge a task's commits into the feature branch")
@@ -567,6 +568,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("verify", parents=[common], help="run every check in a clean checkout of the feature head")
     p.add_argument("--base", action="store_true", help="check the run's start commit instead, to see a bug reproduce; not recorded")
+    # 1200 s per command: a ceiling for a hung check, well above a full test suite or build.
     p.add_argument("--timeout", type=int, default=1200, help="seconds per command (default 1200)")
     p.set_defaults(func=cmd_verify)
 
@@ -579,6 +581,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("feedback", parents=[common],
                        help="wait for the delivered PR's checks, then read its review; end the run when both are clear")
+    # 540 s returns before Claude Code's 10-minute Bash limit, so the lead sees "run again" instead of a kill.
     p.add_argument("--timeout", type=int, default=540, help="seconds to wait for checks before returning (default 540)")
     p.set_defaults(func=cmd_feedback)
 

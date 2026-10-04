@@ -35,6 +35,10 @@ recognize while working and what to do; a rule with no trigger does not fire.
 - **When you write or edit guidance for the model** (a skill or an agent), state the
   goal and the reason rather than a procedure for its own sake, and keep it short.
   Check a model-behavior claim against [docs/models/](docs/models/README.md).
+- **When you write a skill's or agent's `description`**, say what it does and when to
+  use it, in the third person: it is injected into the system prompt and decides when
+  the skill loads. `tests/test_skills.py` checks the Agent Skills format limits
+  ([best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)).
 - **When you add or change an agent** (`agents/<name>.md`), its `model`, `effort`, and
   `tools` go in its frontmatter; the lead dispatches it as `loop-spec:<name>`.
 - **When you would run a live cycle against this checkout**, don't edit

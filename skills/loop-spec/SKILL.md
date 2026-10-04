@@ -1,6 +1,6 @@
 ---
 name: loop-spec
-description: "The loop-spec method for taking a coding request to a verified pull request: write a short spec with checkable criteria, plan the work as a task graph, implement tasks in parallel worktrees, review, verify in a clean checkout, deliver one PR, and see its CI through. Read it when an entry skill (cycle, micro, debug, revise) starts a run, when resuming a run, or when you are an autonomous coding agent told to follow loop-spec."
+description: "The loop-spec method for taking a coding request to a verified pull request: write a short spec with checkable criteria, plan the work as a task graph, implement tasks in parallel worktrees, review, verify in a clean checkout, deliver one PR, and see its CI through. Use when an entry skill (cycle, micro, debug, revise) starts or resumes a run, or when an autonomous coding agent is told to follow loop-spec."
 ---
 
 # loop-spec
@@ -20,7 +20,10 @@ you calls for something different, do what the code needs and say why in your re
 `LOOP_SPEC_RUN {...}` line, along with the run's `slug`, `phase`, `mode`, `base` (the
 commit the change sits on), `runDir`, and `work` (the feature branch's worktree).
 Commands find the run from the current directory or as the only open run; otherwise
-add `--slug <slug>` after the command.
+add `--slug <slug>` after the command. The program needs `git` and `python3` 3.11 or
+later; delivering needs `gh`, signed in, and an `origin` remote. `task start`, `verify`,
+and `feedback` can run for minutes: give their Bash calls a timeout to match (up to 10
+minutes), or run them in the background when the project's checks take longer.
 
 | Command | Does |
 |---|---|
@@ -34,15 +37,15 @@ add `--slug <slug>` after the command.
 | `LS set --branch NAME --title "..."` | rename the feature branch (until it is pushed) or set the PR title |
 | `LS deliver [--draft] [--comment-file F] [--no-feedback]` | push the verified head and open or update its PR (posting `F` as a comment) |
 | `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review; ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
-| `LS finish --status no-change\|escalated\|failed --summary "..."` | end a run that delivers nothing |
+| `LS finish --status completed\|no-change\|escalated\|failed --summary "..."` | end the run: `completed` after feedback skills find nothing, otherwise a run that delivers nothing |
 
 The branch and the PR title come from, in order: the user (the entry passes them as
 `start --branch` and `--title`), then the repository's rules (set with `LS set` in the
 spec step), then the defaults (`feat/<slug>`, and the spec's `title`).
 
-The run moves through 7.x's phases, SPEC, PLAN, EXECUTE, VERIFY, ITERATE, and DELIVER,
-derived from its files, and the program announces each change the way 7.x did
-(`LOOP_SPEC_PHASE_START`/`_END` lines, which monitoring tools read). Run `LS status`
+The run moves through six phases, SPEC, PLAN, EXECUTE, VERIFY, ITERATE, and DELIVER,
+derived from its files, and the program announces each change with
+`LOOP_SPEC_PHASE_START`/`_END` lines, which monitoring tools read. Run `LS status`
 after writing `spec.json` (once it is settled, and approved in an interactive run) and
 after writing `plan.json`, so each phase is announced when it ends.
 
@@ -126,6 +129,18 @@ The run's `mode` is in `LOOP_SPEC_RUN`.
 
 ## The run
 
+Track progress with this checklist, checking items off in your updates as each phase
+ends; on a resumed run, `LS status` says which phase you are in.
+
+```
+- [ ] 1. Spec: spec.json written (approved, if interactive); branch and title set
+- [ ] 2. Plan: plan.json written; LS status accepts the graph
+- [ ] 3. Execute: every task done and merged
+- [ ] 4. Verify: LS verify passed at the current head
+- [ ] 5. Iterate: reviewer and simplifier findings addressed; LS iterate
+- [ ] 6. Deliver: pr.md written; LS deliver; LS feedback until the run ends
+```
+
 ### 1. Spec
 
 Write `spec.json`. The goal is one sentence. Each criterion is a property of the code
@@ -144,7 +159,7 @@ pushed; with no rule, `title` in `spec.json` follows the commit convention (`git
 
 ### 2. Plan
 
-Write `plan.json`. A task is a unit one worker can implement and test on its own.
+Write `plan.json`. A task is a unit one implementer can build and test on its own.
 
 - Keep code and its tests in the same task. Give each file one owning task.
 - `dependsOn` only what a task truly needs merged first; independent tasks run in
@@ -170,7 +185,7 @@ Until every task is done:
    done` it.
 3. While agents run, end your turn with a line saying `LOOP_SPEC_WAITING`; their
    reports resume you.
-4. When a worker reports, read its report and its commits (`git -C <worktree> log -p
+4. When an implementer reports, read its report and its commits (`git -C <worktree> log -p
    <from>..`, with `from` from the brief). If the work is sound, `LS task done T-n`. If
    not, send it back with what is wrong, or fix it yourself in the worktree.
 5. If a task turns out wrong or missing, edit `plan.json` (finished tasks stay
@@ -200,9 +215,11 @@ Once verify passes:
 
 Before delivering, write the PR description to `pr.md` in `runDir`, following the
 template `status` names on its `pr.md` line (`prTemplate` in `LOOP_SPEC_RUN`): the
-repository's own PR template when it has one, else the bundled visual-pr format, a
+repository's own PR template when it has one, else the bundled visual-pr format
+([pr_description_template.md](references/visual-pr/pr_description_template.md)): a
 one-sentence why, one to three things a reviewer should know, and a change outline
-drawn with the views in `show-me.md` beside it. Describe the change as it stands at the
+drawn with the views in [show-me.md](references/visual-pr/show-me.md) (read it whole;
+keep to its text views, not its HTML artifact). Describe the change as it stands at the
 head you deliver, and update `pr.md` when a later fix changes it. Deliver appends the
 criteria and how verify showed them, folded, below your text. A revise run leaves the
 PR's description alone and needs no `pr.md`.

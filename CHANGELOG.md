@@ -4,6 +4,16 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+### Changed
+
+- The skills follow the Agent Skills authoring guidance: third-person descriptions that
+  say when to use each skill, a progress checklist for the run, the program's
+  requirements and long-running commands stated, direct links to the PR format
+  references, and one name for the implementer agent. `tests/test_skills.py` checks
+  the format limits.
+- The `finish` row in the hub's command table lists `completed`, and the simplifier
+  reports its most valuable findings without a fixed count.
+
 ## [8.0.0] - 2026-10-04
 
 A rewrite for Claude Opus 5.5 and Claude Sonnet 5.5: guidance over gates, and a task

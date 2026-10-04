@@ -25,7 +25,7 @@ from pathlib import Path
 from loop_spec import git
 from loop_spec.runs import all_runs
 
-STALL_TURNS = 3
+STALL_TURNS = 3  # one turn can be a dispatch and a wait; three with no change suggests the run is stuck
 WAITING = "LOOP_SPEC_WAITING"
 
 

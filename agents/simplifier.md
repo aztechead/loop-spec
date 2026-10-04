@@ -24,7 +24,7 @@ Read the change from four angles:
 - **Altitude:** a special case or patch on top of a mechanism where changing the
   mechanism itself would be simpler and fix the root cause. Name that change.
 
-Prefer deletion to addition. Report only findings you can point to, at most eight, most
-valuable first. For each give the file and line, what to change, and what it saves
+Prefer deletion to addition. Report only findings you can point to, most valuable first,
+and leave out any not worth a reviewer's time. For each give the file and line, what to change, and what it saves
 (lines, calls, a concept the reader no longer needs). Leave out anything that would
 change behavior the spec asks for. If the change is already clean, say so.
