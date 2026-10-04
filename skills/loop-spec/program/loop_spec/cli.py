@@ -152,9 +152,9 @@ def _next_step(run: Run, phase: str, problem: str | None = None) -> str:
     if problem:
         return f"fix {run.plan_path.name}"
     if phase == "spec":
-        return f"write {_rel(run, run.spec_path)}"
+        return f"write {run.spec_path}"
     if phase == "plan":
-        return f"write {_rel(run, run.plan_path)}"
+        return f"write {run.plan_path}"
     if phase == "execute":
         ready = dag.ready(run.tasks, run.statuses())
         if ready:
@@ -446,6 +446,7 @@ def _finish(run: Run, status: str, summary: str, head: str | None) -> int:
         if dest.is_dir() and not git.remove_worktree(run.project, dest):
             out(f"kept {dest}: it has uncommitted changes")
     marker("LOOP_SPEC_RESULT", {**result, "path": str(run.result_path)})
+    out(f"the run's worktrees are removed; cd {run.project} before any further command")
     return 0
 
 

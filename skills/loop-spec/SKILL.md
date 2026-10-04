@@ -193,8 +193,10 @@ When every task is merged:
    the base branch too, it is not this change's to fix: say so and `finish --status
    completed` with that in the summary.
 
-Finish with a short report: what changed, the PR link, how each criterion was shown,
-CI's result, and any assumption or skipped finding the user should know about.
+The run's end removes its worktrees, `work` included; `cd` back to the project root
+before any further command. Finish with a short report: what changed, the PR link, how
+each criterion was shown, CI's result, and any assumption or skipped finding the user
+should know about.
 
 ## Variations
 
