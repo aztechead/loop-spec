@@ -303,6 +303,7 @@ published, when it ran. Full field list:
 | [docs/loop-spec/phase-interface-7.0.md](docs/loop-spec/phase-interface-7.0.md) | the full route matrix and every postcondition's prose |
 | [docs/loop-spec/migrating-6-to-7.md](docs/loop-spec/migrating-6-to-7.md) | how-to for a 6.x consumer moving to 7.x |
 | [docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md) | which checklist case was shown by which recorded live run |
+| [docs/models/README.md](docs/models/README.md) | what Claude Opus 5.5 and Sonnet 5.5 do differently, and what that means for loop-spec; the source Anthropic docs are copied beside it |
 | [skills/loop-spec/references/contract.md](skills/loop-spec/references/contract.md) | the process contract: files, fields, exit codes, config, environment |
 | [examples/supervisor/README.md](examples/supervisor/README.md) | the reference Agent SDK supervisor |
 | [llms.txt](llms.txt) | entry map for a model reading this repository |
