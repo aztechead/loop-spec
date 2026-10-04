@@ -77,10 +77,15 @@ def cmd_start(args, project: Path, cwd: Path) -> int:
         "rootChanges": git.dirty(project),
         "tasks": {},
     }
+    so_far = review.read(run.work, pr["number"])[0] if pr else []
     if pr:  # the review so far is the spec's input; feedback reports only what comes after it
-        run.state["feedback"] = {"seen": [i["id"] for i in review.read(run.work, pr["number"])[0]]}
+        run.state["feedback"] = {"seen": [i["id"] for i in so_far]}
     run.save()
     out(f"loop-spec: started {run.slug} ({kind}, {run.mode})")
+    if so_far:
+        out(f"the PR's review so far, {len(so_far)} item(s); change the code for each one this run should "
+            "address, and answer every other one in the reply comment:")
+        _show_items(so_far)
     return show_status(run)
 
 
@@ -466,11 +471,7 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
     for c in found:
         if c.get("bucket") in ("fail", "cancel") and (log_tail := ci.failure_log(run.work, c)):
             out(f"--- {c.get('name')} (failed log, last lines)\n{_indent(log_tail)}")
-    for i in new:
-        where = f" on {i['path']}:{i.get('line') or '?'}" if i.get("path") else ""
-        out(f"--- {i['kind']} by {i['author']}{where}" + (f"  {i['url']}" if i.get("url") else ""))
-        if i.get("body", "").strip():
-            out(_indent(i["body"].strip()))
+    _show_items(new)
     if waiting and not waited_out:
         out(f"CI {outcome}, and review requested from {', '.join(waiting)} is not in yet: run loop-spec feedback again")
         return 0
@@ -489,6 +490,14 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
         return 0
     out("CI passed, and nothing new from reviewers" if outcome == "passed" else "no CI checks, and nothing new from reviewers")
     return _finish(run, "completed", _summary(run), head)
+
+
+def _show_items(items: list[dict]) -> None:
+    for i in items:
+        where = f" on {i['path']}:{i.get('line') or '?'}" if i.get("path") else ""
+        out(f"--- {i['kind']} by {i['author']}{where}" + (f"  {i['url']}" if i.get("url") else ""))
+        if i.get("body", "").strip():
+            out(_indent(i["body"].strip()))
 
 
 def _config(project: Path) -> dict:

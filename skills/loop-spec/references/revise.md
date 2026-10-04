@@ -5,8 +5,9 @@ open pull request. Read it before the spec; it changes the workflow in SKILL.md 
 follows, and everything else stands.
 
 - **The branch:** the run works on the PR's own branch, and deliver pushes to it.
-- **Spec:** read the review with `gh pr view N --comments` and `gh api
-  repos/{owner}/{repo}/pulls/N/comments`, and make one criterion per comment you act on.
+- **Spec:** `start` lists the PR's review so far, each item once; `feedback` later shows
+  only what comes after it. Make one criterion per item you change code for; every other
+  item, a question included, gets an answer in the reply.
 - **Deliver:** no `pr.md`; deliver leaves the PR's description alone. Write a reply
   covering each comment (what changed, or why not) to a file in `runDir` and pass it as
   `LS deliver --comment-file F`.

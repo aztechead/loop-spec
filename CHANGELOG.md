@@ -19,6 +19,9 @@ All notable changes documented here. Format follows Keep a Changelog.
   to push the branch and then fail reading the missing file. `start --pr` records the
   review the PR already has, so `feedback` reports only what comes after it, not the
   comments the run was started to address.
+- `start --pr` lists the PR's review so far, so a revise run works from one list and
+  answers every item: a live Sonnet-led revise fixed the change request but left a
+  question unanswered.
 - A lead writes no code before the plan is accepted (Sonnet 5.5 led a live run that
   implemented during Spec, skipped the interactive approval, and backfilled
   `spec.json` and `plan.json`). In an interactive run the `next` line at Spec names the

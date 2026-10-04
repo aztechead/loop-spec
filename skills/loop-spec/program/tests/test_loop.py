@@ -169,6 +169,8 @@ class LoopTests(unittest.TestCase):
         code, out, err = self.repo.ls("start", "--pr", "7")
         self.assertEqual(code, 0, err)
         run = marker(out, "LOOP_SPEC_RUN")
+        self.assertIn("review so far, 1 item(s)", out)
+        self.assertIn("Please add mul.", out)  # listed once, at the start
         Path(run["runDir"], "spec.json").write_text(json.dumps(
             {"title": "t", "goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "true"}]}))
         Path(run["runDir"], "plan.json").write_text(json.dumps({"tasks": [{"id": "T-1", "title": "a"}]}))
