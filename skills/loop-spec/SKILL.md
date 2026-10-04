@@ -54,7 +54,8 @@ You write two files in `runDir`; the program reads them and never edits them.
 
 A `check` or `verify` is a bash command run from the repository root. `prepare`
 installs what the checks need into a fresh checkout (`.venv/bin/python` only exists
-after it); the program runs it in each task's worktree and before every verify.
+after it); the program runs it in each task's worktree and before every verify. Leave
+it out when the checks need nothing installed.
 
 ## How to work
 
@@ -79,9 +80,11 @@ The run's `mode` is in `LOOP_SPEC_RUN`.
   goal and criteria and ask once for approval before planning. After that, ask only
   when you are truly blocked or before something risky the user did not ask for.
 - **autonomous**: no one will answer. Never stop to ask. Choose the reasonable
-  default, write it in `assumptions`, and keep going. If the request is impossible or
-  contradicts the code in a way no default resolves, end with `finish --status
-  escalated` and say exactly what decision is needed.
+  default, write it in `assumptions`, and keep going. A host is waiting for the run's
+  result, so an autonomous run always ends with `deliver` or `finish`: when the request
+  is impossible, contradicts the code in a way no default resolves, or something you
+  cannot fix blocks the run (delivery included), end with `finish --status escalated
+  --summary "..."` naming the blocker and the verified head, if any.
 
 ## The run
 
@@ -116,8 +119,9 @@ Until every task is done:
 2. Dispatch one `loop-spec:implementer` agent per started task, all in one message so
    they run in parallel. Its prompt is the task's `LOOP_SPEC_TASK` brief, plus the
    repository conventions you found (commit style, house rules) and anything else it
-   needs from you. Do a task yourself instead when it is trivial or needs context only
-   you have: work in its worktree and commit there.
+   needs from you. Workers keep your context free for judging their results, so
+   dispatch every task except a few-line change or one that needs context only you
+   have; that one you do yourself in its worktree, and commit there.
 3. When a worker reports, read its report and its commits (`git -C <worktree> log -p
    <from>..`, with `from` from the brief). If the work is sound, `LS task done T-n`. If
    not, send it back with what is wrong, or fix it yourself in the worktree.
@@ -169,8 +173,8 @@ A message with no tool call ends your turn, and in an autonomous run nothing res
 it. While the run has a next step, do not end a turn with a summary that announces the
 next step instead of taking it, an offer to continue, a list of decisions none of which
 blocks you, or a report because a phase finished. The only stops are: the run ended
-(`deliver` or `finish`), you need an answer only the user can give, or something blocks
-you that you cannot fix (say what). A run survives a restart: `LS status` shows its
+(`deliver` or `finish`), or, interactive, you need an answer only the user can give or
+something blocks you that you cannot fix (say what). A run survives a restart: `LS status` shows its
 `next` step.
 
 ## Never
