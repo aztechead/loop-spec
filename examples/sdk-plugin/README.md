@@ -28,6 +28,7 @@ program, and dispatches the `loop-spec:implementer` and `loop-spec:reviewer` age
 | `receive_messages()` and task messages | workers run as background tasks, so a turn can end while they work; the script keeps reading until a turn ends with no task running and the result seen, or 60 quiet seconds pass |
 | `resume=<session id>` | continues a session that stopped |
 | `max_budget_usd` | optional spend ceiling |
+| `set_model()` | with `--phase-model PHASE=MODEL`, switches the lead's model when the run's `state.json` enters PHASE |
 
 The run is over when the program prints `LOOP_SPEC_RESULT {...}` and then
 `LOOP_SPEC_NEXT {"kind":"result","path":...}`, as 7.x did; the script reads the result
@@ -43,7 +44,8 @@ Claude subscription login).
 
 ```bash
 # unattended: never stops to ask; records its defaults as assumptions
-python3 examples/sdk-plugin/run_loop_spec.py --project-root ~/src/my-app --autonomous --model opus \
+python3 examples/sdk-plugin/run_loop_spec.py --project-root ~/src/my-app --autonomous \
+  --model opus --phase-model execute=sonnet \
   "Add a --json flag to the export command, verified by .venv/bin/python -m pytest -q tests/test_export.py"
 
 # attended: questions are asked on stdin (a number picks an option; text is a free answer)
@@ -53,6 +55,15 @@ python3 examples/sdk-plugin/run_loop_spec.py --project-root ~/src/my-app --entry
 python3 examples/sdk-plugin/run_loop_spec.py --project-root ~/src/my-app --entry revise --autonomous 42
 python3 examples/sdk-plugin/run_loop_spec.py --project-root ~/src/my-app --resume <session id>
 ```
+
+`--model opus --phase-model execute=sonnet` is the recommended setup: Opus writes the spec
+and plan, where a wrong call costs the most, then Sonnet leads execution, verification,
+the CI and review rounds, and later revisions. In twelve live runs across three scenarios, all four setups tried
+(Sonnet throughout, Opus throughout, this one, and Opus again for delivery) delivered
+every change correctly with CI green. This one cost 18% less than Opus throughout, and
+needed fewer CI rounds than Sonnet throughout. Switching back to Opus for delivery cost
+the most of all four, because the prompt cache is per model and each switch starts the
+new model's context cold. [docs/live-runs.md](../../docs/live-runs.md) has the numbers.
 
 stdout carries the lead's text; stderr carries thinking, tool calls, worker output,
 `LOOP_SPEC_*` lines, and per-turn cost, then the result's `status`, `summary`, `prUrl`,

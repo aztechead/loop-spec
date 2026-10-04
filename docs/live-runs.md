@@ -61,6 +61,10 @@ reported $6.13 against 8.0's $0.41. Its spec included a criterion that no file
 contain the word `sleep`; a test comment ("instead of sleeping") kept failing it, VERIFY
 routed the run back twice, and the recurrence guard ended it `escalated` with no
 verified head. Its code also passed the hidden acceptance check, 11/11.
+| 2026-10-04 | `d280479` | Lead-model setups through `examples/sdk-plugin` in Docker, autonomous, on four private repositories with real Actions CI (11 min less 10: a 1-minute integration job) and the organization docstring policy. S1: the three-part CSV, validation, and history request, with a change request, a round-trip finding, and a question posted when the PR opened. S2: `kv rename` and `kv count`. S3: revise on S2's PR, a change request (rename to itself is a no-op) and a question | A: Sonnet 5.5 throughout | S1 395 s, $0.85; S2 251 s, $0.57 (rerun: the first run ended at the PR with `--no-feedback`, fixed in `ca6561d`); S3 141 s, $0.35. Total 787 s, $1.77; four CI rounds on S1 | completed, CI passed, hidden acceptance 12/12, S3 behavior correct |
+| 2026-10-04 | `d280479` | same | B: Opus 5.5 throughout | S1 458 s, $1.87; S2 274 s, $1.11; S3 210 s, $0.62. Total 942 s, $3.60; two CI rounds on S1 | completed, CI passed, 12/12, correct |
+| 2026-10-04 | `d280479` | same | C: Opus 5.5 for spec and plan, then `--phase-model execute=sonnet` | S1 1,479 s, of which about 18 min was a check GitHub left in progress after its job had failed (fixed in `a3f46cb`), $1.42; S2 352 s, $0.94; S3 158 s, $0.58. Total $2.94; three CI rounds on S1. One model switch per run | completed, CI passed, 12/12, correct |
+| 2026-10-04 | `d280479` | same | D: as C, plus `verify`, `iterate` Sonnet and `deliver` back to Opus | S1 614 s, $2.30; S2 275 s, $1.28; S3 184 s, $0.87. Total 1,073 s, $4.46, the most of the four: each switch starts the new model's prompt cache cold | completed, CI passed, 12/12, correct |
 
 ## Trigger checks
 

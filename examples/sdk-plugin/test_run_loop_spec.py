@@ -25,7 +25,7 @@ from claude_agent_sdk import (
 )
 
 sys.path.insert(0, str(Path(__file__).parent))
-from run_loop_spec import RunWatch, answer_from_stdin, make_can_use_tool, prompt_for, result_file  # noqa: E402
+from run_loop_spec import RunWatch, answer_from_stdin, current_phase, make_can_use_tool, prompt_for, result_file  # noqa: E402
 
 QUESTION = {"question": "Approve?", "options": [{"label": "Approve"}, {"label": "Reject"}]}
 
@@ -68,6 +68,17 @@ class RunWatchTests(unittest.TestCase):
         watch = RunWatch()
         self.assertEqual(feed(watch, [init(), result_line(), turn_end()]), [False, False, True])
         self.assertEqual(watch.result_path, "/home/u/.loop-spec/0123456789abcdef/x/result.json")
+
+    def test_the_phase_comes_from_the_newest_run_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertIsNone(current_phase(root))
+            for slug, phase in (("old", "spec"), ("new", "execute")):
+                state = root / ".loop-spec" / "runs" / slug / "state.json"
+                state.parent.mkdir(parents=True)
+                state.write_text(json.dumps({"phaseStream": {"phase": phase}}))
+                time.sleep(0.01)
+            self.assertEqual(current_phase(root), "execute")
 
     def test_a_next_line_the_lead_cut_short_is_skipped_and_the_run_directory_has_the_result(self):
         watch = RunWatch()

@@ -137,7 +137,9 @@ Optional, in `<repo>/.loop-spec/config.json` (commit it if your team wants it sh
 
 Models: the implementer and simplifier agents run on Sonnet and the reviewer on Opus,
 all at medium effort, from their frontmatter in [agents/](agents/). The lead is your session, so run
-it on Opus 5.5 for the best plans and reviews.
+it on Opus 5.5 for the best plans and reviews. Through the Agent SDK, the
+[example runner](examples/sdk-plugin/README.md)'s `--model opus --phase-model execute=sonnet`
+keeps Opus for the spec and plan and hands the rest to Sonnet.
 
 ## On the Agent SDK
 

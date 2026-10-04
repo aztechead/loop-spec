@@ -218,6 +218,16 @@ def prompt_for(args: argparse.Namespace) -> str:
     return f"/{PLUGIN_NAME}:{args.entry} {args.request}"
 
 
+def current_phase(project_root: Path) -> str | None:
+    """The phase the newest run in the project is in, from its state file: the lead may cut
+    the LOOP_SPEC_PHASE_START lines out of its own command output, but not out of the file."""
+    states = sorted(project_root.glob(".loop-spec/runs/*/state.json"), key=lambda p: p.stat().st_mtime)
+    try:
+        return json.loads(states[-1].read_text())["phaseStream"]["phase"] if states else None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def result_file(project_root: Path, since: float) -> str | None:
     """The newest result a run in the project wrote since `since`: the program keeps a copy in
     the run's directory, for when the lead's own command hid its LOOP_SPEC_NEXT line."""
@@ -242,6 +252,7 @@ async def run(args: argparse.Namespace) -> int:
     )
     watch = RunWatch()
     started = time.time()
+    model = args.model
     async with ClaudeSDKClient(options=options) as client:
         await client.query(prompt_for(args))
         # receive_messages, not receive_response: a turn can end while workers still run.
@@ -257,6 +268,12 @@ async def run(args: argparse.Namespace) -> int:
                     err(f"{PLUGIN_NAME}:{args.entry} is not loaded; check --entry and the plugin path")
                     return 1
             render(message)
+            if args.phase_model and isinstance(message, UserMessage):
+                want = args.phase_model.get(current_phase(args.project_root) or "")
+                if want and want != model:
+                    await client.set_model(want)
+                    err(f"[model] {model or 'default'} -> {want}")
+                    model = want
             if watch.observe(message):
                 break
 
@@ -279,6 +296,9 @@ def main() -> int:
     ap.add_argument("--entry", default="cycle", choices=["cycle", "micro", "debug", "revise"])
     ap.add_argument("--autonomous", action="store_true", help="no one answers questions; the run picks defaults")
     ap.add_argument("--model", help="the lead's model, e.g. opus; workers use the plugin agents' own models")
+    ap.add_argument("--phase-model", action="append", default=[], metavar="PHASE=MODEL",
+                    help="switch the lead to MODEL when the run enters PHASE (spec, plan, execute, verify, "
+                         "iterate, deliver); repeatable")
     ap.add_argument("--plugin", action="append", type=Path, default=[], metavar="DIR",
                     help="another plugin to load in the session; repeatable")
     ap.add_argument("--resume", help="continue an earlier session by its id")
@@ -288,6 +308,7 @@ def main() -> int:
         ap.error("pass a request, or --resume SESSION_ID")
     args.project_root = args.project_root.resolve()
     args.plugin = [p.resolve() for p in args.plugin]
+    args.phase_model = dict(pair.split("=", 1) for pair in args.phase_model)
     configure_logging()
     return asyncio.run(run(args))
 

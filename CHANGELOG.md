@@ -4,6 +4,12 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+### Added
+
+- The SDK example's `--phase-model PHASE=MODEL` switches the lead's model with
+  `set_model()` when the run enters PHASE; `--model opus --phase-model execute=sonnet` is
+  its recommended setup, chosen from twelve live runs.
+
 ### Fixed
 
 - `feedback` reads review comments from the account the run delivers with. It used to
