@@ -113,6 +113,10 @@ def show_status(run: Run) -> int:
         out(f"  pr       {s['pr']['url']}")
     if s.get("instructions"):
         out(f"  rules    {', '.join(s['instructions'])}")
+    template = deliver.pr_template(run.work) if run.work.exists() else None
+    if template and not (s.get("pr") or {}).get("adopted"):
+        written = "written" if (run.dir / "pr.md").is_file() else "not written yet"
+        out(f"  pr.md    {written}; follows {_rel(run, template)}")
     spec = run.spec
     out(f"  spec     {len(spec.get('criteria', []))} criteria in {_rel(run, run.spec_path)}" if spec
         else f"  spec     not written yet ({_rel(run, run.spec_path)})")
@@ -142,6 +146,7 @@ def show_status(run: Run) -> int:
     out(f"  next     {_next_step(run, phase, problem)}")
     marker("LOOP_SPEC_RUN", {"slug": run.slug, "kind": s["kind"], "mode": run.mode, "phase": phase,
                              "base": s["base"]["sha"], "runDir": str(run.dir), "work": str(run.work),
+                             "prTemplate": str(template) if template else None,
                              "program": str(PROGRAM)})
     return 0
 

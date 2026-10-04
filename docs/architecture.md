@@ -40,7 +40,7 @@ Each module has one reason to change:
 | `dag.py` | the task graph: its problems, and which tasks are ready or waiting |
 | `git.py` | every `git` and `gh` subprocess call |
 | `checks.py` | running a check command and keeping its output tail; which commands verify runs |
-| `deliver.py` | the push, the PR, and its body |
+| `deliver.py` | the push, the PR, which template its description follows, and the folded verification below it |
 | `remote.py` | what moved on origin, and merging it into the feature branch |
 | `ci.py` | reading a PR's checks and a failed job's log |
 | `review.py` | reading a PR's reviews and comments |

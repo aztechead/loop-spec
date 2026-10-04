@@ -18,8 +18,10 @@ loop-spec takes a coding request to a verified pull request:
 4. **Verify**: a correctness review and a simplification review of the whole change,
    then every check (the spec's, and the ones the repository's `CLAUDE.md` and
    `AGENTS.md` require) run in a clean checkout of the exact commit to be delivered.
-5. **Deliver**: one PR, whose description carries the spec, tasks, and check results,
-   with anything that moved on origin merged in first.
+5. **Deliver**: one PR, with anything that moved on origin merged in first. Its
+   description follows the repository's PR template, or, when there is none,
+   HumanLayer's visual-pr format (a one-sentence why, what a reviewer should know, and a
+   visual change outline), with the checked criteria folded below.
 6. **Feedback**: the run waits for the PR's checks and reads its review comments, and
    fixes what the change should, or answers, until CI passes and reviewers have asked
    for nothing new. A project can add its own review skill to this step.
@@ -152,4 +154,6 @@ throwaway repositories. Model behavior is shown by live runs, not simulated.
 
 ## License
 
-MIT.
+MIT. The visual-pr description format in
+[skills/loop-spec/references/visual-pr/](skills/loop-spec/references/visual-pr/README.md)
+is HumanLayer's, also MIT; its license is kept beside it.

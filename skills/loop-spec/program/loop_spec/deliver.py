@@ -13,28 +13,34 @@ def title(run: Run) -> str:
     return first_line(run.state.get("title") or (run.spec or {}).get("title") or run.state.get("request") or run.slug, 70)
 
 
+VISUAL_PR = Path(__file__).resolve().parents[2] / "references" / "visual-pr" / "pr_description_template.md"
+REPO_TEMPLATES = (".github/pull_request_template.md", ".github/PULL_REQUEST_TEMPLATE.md", "PULL_REQUEST_TEMPLATE.md",
+                  "pull_request_template.md", "docs/pull_request_template.md", "docs/PULL_REQUEST_TEMPLATE.md")
+
+
+def pr_template(worktree: Path) -> Path:
+    """The template `pr.md` follows: the repository's own PR template when it has one,
+    else the bundled visual-pr format."""
+    for name in REPO_TEMPLATES:
+        if (worktree / name).is_file():
+            return worktree / name
+    folder = worktree / ".github" / "PULL_REQUEST_TEMPLATE"
+    found = sorted(folder.glob("*.md")) if folder.is_dir() else []
+    return found[0] if found else VISUAL_PR
+
+
 def body(run: Run, verified: bool) -> str:
-    """The PR description: the lead's `pr.md` when it wrote one (to follow the repository's
-    PR template), else a summary, tasks, decisions, and assumptions; then the criteria
-    and how verify showed them."""
-    spec, plan = run.spec or {}, run.plan or {}
-    lead_text = run.dir / "pr.md"
-    if lead_text.is_file():
-        lines = [lead_text.read_text().rstrip(), ""]
-    else:
-        lines = ["## Summary", "", spec.get("goal") or run.state.get("request", ""), ""]
-        if plan.get("tasks"):
-            lines += ["## Tasks", "", *[f"- **{t['id']}** {t.get('title', '')}" for t in plan["tasks"]], ""]
-        for key, heading in (("decisions", "Decisions"), ("assumptions", "Assumptions")):
-            if spec.get(key):
-                lines += [f"## {heading}", "", *[f"- {item}" for item in spec[key]], ""]
-    return "\n".join(lines + _verification(run, verified)) + "\n"
+    """The PR description: the lead's `pr.md`, then the criteria and how verify showed them,
+    folded so the description stays the shape its template gives it."""
+    return run.dir.joinpath("pr.md").read_text().rstrip() + "\n\n" + "\n".join(_verification(run, verified)) + "\n"
 
 
 def _verification(run: Run, verified: bool) -> list[str]:
     spec, verify = run.spec or {}, run.state.get("verify") or {}
     by_name = {r["name"]: r for r in verify.get("results", [])}
-    lines = ["## Acceptance criteria", ""]
+    head = (f"checked in a clean checkout of `{verify['sha'][:12]}`, the commit this PR delivers" if verified
+            else "NOT verified: delivered without a passing verify")
+    lines = ["<details>", f"<summary>Acceptance criteria: {head}</summary>", ""]
     if spec.get("criteria"):
         lines += ["| | Criterion | Check |", "|---|---|---|"]
         for c in spec["criteria"]:
@@ -42,12 +48,7 @@ def _verification(run: Run, verified: bool) -> list[str]:
             ok = None if r is None or r.get("command") is None else r.get("exit") == 0
             check = f"`{c['check']}`" if c.get("check") else "no command; judged in review"
             lines.append(f"| {MARK[ok]} | **{c.get('id', '')}** {_cell(c.get('text', ''))} | {_cell(check)} |")
-        lines.append("")
-    if verified:
-        lines.append(f"Every check above was run by loop-spec in a clean checkout of `{verify['sha'][:12]}`, the commit this PR delivers.")
-    else:
-        lines.append("**Not verified.** This head was delivered without a passing loop-spec verify; treat it as a draft.")
-    return lines + ["", "_Delivered by loop-spec._"]
+    return lines + ["", "_Delivered by loop-spec._", "</details>"]
 
 
 def _cell(text: str) -> str:
@@ -70,6 +71,10 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
         raise LoopSpecError("the feature branch has no commits beyond its base; there is nothing to deliver",
                             "end the run with `loop-spec finish --status no-change --summary ...`")
     git.require_clean(work, "the feature worktree", f"commit or discard them in {work}, then verify again")
+    adopted = (state.get("pr") or {}).get("adopted")
+    if not adopted and not (run.dir / "pr.md").is_file():
+        raise LoopSpecError(f"there is no PR description at {run.dir / 'pr.md'}",
+                            f"write it following {pr_template(work)}, then deliver again")
     if not git.has_origin(work):
         raise LoopSpecError("the repository has no origin remote", "add one with `git remote add origin <url>`")
     moved = remote.moves(run)

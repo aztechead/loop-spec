@@ -62,6 +62,7 @@ class LoopTests(unittest.TestCase):
         if checks is not None:
             plan["checks"] = checks
         Path(run["runDir"], "plan.json").write_text(json.dumps(plan))
+        Path(run["runDir"], "pr.md").write_text("## Why the change\n\nCallers need mul.\n")
         self.repo.ls("task", "start", "T-1")
         commit(Path(run["runDir"], "tasks", "T-1"), "mul.py", "def mul(a, b):\n    return a * b\n")
         self.assertEqual(self.repo.ls("task", "done", "T-1")[0], 0)
@@ -224,6 +225,24 @@ class LoopTests(unittest.TestCase):
         self.checks("pending")
         outcome, _ = ci.wait(self.repo.path, 7, timeout=30, sleep=sleeps.append, clock=clock)
         self.assertEqual((outcome, len(sleeps)), ("pending", 2))
+
+    # --- the PR description ---------------------------------------------------------------
+
+    def test_deliver_needs_pr_md_and_names_the_template_to_follow(self):
+        run = self.ready_run()
+        Path(run["runDir"], "pr.md").unlink()
+        self.assertIn("pr.md    not written yet; follows ", self.repo.ls("status")[1])
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        code, _, err = self.repo.ls("deliver")
+        self.assertEqual(code, 1)
+        self.assertIn("references/visual-pr/pr_description_template.md", err)
+
+    def test_the_repositorys_own_pr_template_wins(self):
+        run = self.ready_run()
+        template = Path(run["work"], ".github", "pull_request_template.md")
+        template.parent.mkdir(parents=True)
+        template.write_text("## Ticket\n")
+        self.assertIn("follows .loop-spec/runs/add-mul/work/.github/pull_request_template.md", self.repo.ls("status")[1])
 
     # --- branch and title from the repository's rules -------------------------------------
 

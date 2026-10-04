@@ -33,25 +33,25 @@ class BodyTests(unittest.TestCase):
         self.spec(title="feat: add lerp")
         self.assertEqual(deliver.title(self.run), "feat: add lerp")
 
-    def test_body_marks_each_criterion_by_its_verify_result(self):
-        self.spec(decisions=["no clamping"])
+    def test_the_body_is_pr_md_with_the_criteria_folded_below(self):
+        self.spec()
+        (self.run.dir / "pr.md").write_text("## Why the change\n\nCallers need lerp.\n")
         text = deliver.body(self.run, verified=True)
+        self.assertTrue(text.startswith("## Why the change\n\nCallers need lerp.\n\n<details>"))
+        self.assertIn("<summary>Acceptance criteria: checked in a clean checkout of `aaaaaaaaaaaa`", text)
         self.assertIn("| pass | **AC-1** lerp(0, 10, 0.5) \\| 5.0 | `pytest -q` |", text)
         self.assertIn("| not checked | **AC-2** documented | no command; judged in review |", text)
-        self.assertIn("## Decisions\n\n- no clamping", text)
-        self.assertIn("clean checkout of `aaaaaaaaaaaa`", text)
-
-    def test_the_leads_pr_md_leads_the_body_and_the_criteria_follow(self):
-        self.spec()
-        (self.run.dir / "pr.md").write_text("## What\n\nAdds lerp.\n\n## Checklist\n\n- [x] tests\n")
-        text = deliver.body(self.run, verified=True)
-        self.assertTrue(text.startswith("## What\n\nAdds lerp."))
-        self.assertIn("| pass | **AC-1**", text)
-        self.assertNotIn("## Summary", text)
+        self.assertTrue(text.rstrip().endswith("</details>"))
 
     def test_an_unverified_body_says_so(self):
         self.spec()
-        self.assertIn("**Not verified.**", deliver.body(self.run, verified=False))
+        (self.run.dir / "pr.md").write_text("x\n")
+        self.assertIn("NOT verified", deliver.body(self.run, verified=False))
+
+    def test_the_bundled_visual_pr_template_ships_with_its_license(self):
+        self.assertTrue(deliver.VISUAL_PR.is_file())
+        self.assertIn("## Why the change", deliver.VISUAL_PR.read_text())
+        self.assertIn("MIT License", (deliver.VISUAL_PR.parent / "LICENSE").read_text())
 
 
 if __name__ == "__main__":

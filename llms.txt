@@ -8,6 +8,7 @@
 ## The method
 
 - [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md): the whole method (spec, task-graph plan, parallel execution, review and verify, deliver), when to ask, and every program command.
+- [skills/loop-spec/references/visual-pr/](skills/loop-spec/references/visual-pr/README.md): the PR description format used when a repository has no PR template.
 - [agents/implementer.md](agents/implementer.md): the Sonnet agent that implements one task in its own worktree.
 - [agents/reviewer.md](agents/reviewer.md): the Opus agent that reviews the whole change against the spec, adversarially.
 - [agents/simplifier.md](agents/simplifier.md): the Sonnet agent that looks for reuse, simplification, efficiency, and altitude cleanups.

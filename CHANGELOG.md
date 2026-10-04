@@ -57,9 +57,12 @@ Moving from 7.x: [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md).
   the lead runs on the PR at that point; `deliver --no-feedback` or
   `"feedback": {"wait": false}` ends a run at delivery.
 - The branch name and PR title follow the repository's rules files; `start --branch`
-  and `--title` set them for one run, `set` changes them until the branch is pushed,
-  and a `pr.md` the lead writes to a repository's PR template becomes the PR
-  description.
+  and `--title` set them for one run, and `set` changes them until the branch is
+  pushed.
+- The PR description is a `pr.md` the lead writes, which `deliver` requires: following
+  the repository's PR template when it has one, else HumanLayer's visual-pr format
+  (bundled under `skills/loop-spec/references/visual-pr/` with its MIT license). The
+  checked criteria are appended in a folded section.
 - `plan.json` `checks`: the repository's own required checks from its `CLAUDE.md`,
   `AGENTS.md`, and `CONTRIBUTING*`, which `status` lists. Verify runs them, and reruns a
   failing one at the base: one that fails the same way there is pre-existing; new

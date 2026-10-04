@@ -133,9 +133,7 @@ and commit message format, a PR template (`.github/pull_request_template.md` and
 variants), a changelog entry, sign-off. Follow them throughout. Unless the user named
 them, set the branch and title they call for with `LS set` now, before anything is
 pushed; with no rule, `title` in `spec.json` follows the commit convention (`git log
---oneline -15`). When the repository has a PR template, write the description it asks
-for to `pr.md` in `runDir`; deliver uses it and appends the criteria and how verify
-showed them.
+--oneline -15`).
 
 ### 2. Plan
 
@@ -188,8 +186,17 @@ When every task is merged:
 
 ### 5. Deliver, then CI and review
 
+Before delivering, write the PR description to `pr.md` in `runDir`, following the
+template `status` names on its `pr.md` line (`prTemplate` in `LOOP_SPEC_RUN`): the
+repository's own PR template when it has one, else the bundled visual-pr format, a
+one-sentence why, one to three things a reviewer should know, and a change outline
+drawn with the views in `show-me.md` beside it. Describe the change as it stands at the
+head you deliver, and update `pr.md` when a later fix changes it. Deliver appends the
+criteria and how verify showed them, folded, below your text. A revise run leaves the
+PR's description alone and needs no `pr.md`.
+
 1. `LS deliver` pushes the feature branch and opens a PR (or updates the one it opened
-   before), with the spec, tasks, and verify results in the description. It refuses a
+   before) with that description. It refuses without `pr.md`, refuses a
    head verify did not pass, and it refuses when origin moved: then `LS sync`, resolve
    any conflict in `work` keeping both sides' intent (`git commit --no-edit`), verify,
    and deliver again. Use `--unverified`, which opens a draft that says so, only with
