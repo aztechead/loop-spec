@@ -7,6 +7,8 @@ import asyncio
 import io
 import json
 import sys
+import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -23,7 +25,7 @@ from claude_agent_sdk import (
 )
 
 sys.path.insert(0, str(Path(__file__).parent))
-from run_loop_spec import RunWatch, answer_from_stdin, make_can_use_tool, prompt_for  # noqa: E402
+from run_loop_spec import RunWatch, answer_from_stdin, make_can_use_tool, prompt_for, result_file  # noqa: E402
 
 QUESTION = {"question": "Approve?", "options": [{"label": "Approve"}, {"label": "Reject"}]}
 
@@ -66,6 +68,17 @@ class RunWatchTests(unittest.TestCase):
         watch = RunWatch()
         self.assertEqual(feed(watch, [init(), result_line(), turn_end()]), [False, False, True])
         self.assertEqual(watch.result_path, "/home/u/.loop-spec/0123456789abcdef/x/result.json")
+
+    def test_a_next_line_the_lead_cut_short_is_skipped_and_the_run_directory_has_the_result(self):
+        watch = RunWatch()
+        cut = tool_output('LOOP_SPEC_NEXT {"kind": "result", "path": "/home/u/.loop-spec/01')
+        self.assertEqual(feed(watch, [init(), cut, turn_end()]), [False, False, False])
+        with tempfile.TemporaryDirectory() as d:
+            run = Path(d, ".loop-spec", "runs", "x")
+            run.mkdir(parents=True)
+            (run / "result.json").write_text("{}")
+            self.assertEqual(result_file(Path(d), 0), str(run / "result.json"))
+            self.assertIsNone(result_file(Path(d), time.time() + 60))
 
     def test_a_turn_ending_while_workers_run_is_not_done(self):
         watch = RunWatch()

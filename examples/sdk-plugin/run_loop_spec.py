@@ -31,6 +31,7 @@ import asyncio
 import json
 import logging
 import sys
+import time
 from pathlib import Path
 
 from claude_agent_sdk import (
@@ -123,7 +124,13 @@ class RunWatch:
             self.turn_ended = False
         elif isinstance(message, UserMessage):
             for line in marker_lines(message):
-                if line.startswith(NEXT_PREFIX) and (nxt := json.loads(line[len(NEXT_PREFIX):]))["kind"] == "result":
+                if not line.startswith(NEXT_PREFIX):
+                    continue
+                try:
+                    nxt = json.loads(line[len(NEXT_PREFIX):])
+                except json.JSONDecodeError:
+                    continue  # the lead cut the line in its own command; result_file() finds the result
+                if nxt.get("kind") == "result":
                     self.result_path = nxt["path"]
         elif isinstance(message, ResultMessage):
             self.session_id = message.session_id
@@ -211,6 +218,13 @@ def prompt_for(args: argparse.Namespace) -> str:
     return f"/{PLUGIN_NAME}:{args.entry} {args.request}"
 
 
+def result_file(project_root: Path, since: float) -> str | None:
+    """The newest result a run in the project wrote since `since`: the program keeps a copy in
+    the run's directory, for when the lead's own command hid its LOOP_SPEC_NEXT line."""
+    found = [p for p in project_root.glob(".loop-spec/runs/*/result.json") if p.stat().st_mtime >= since]
+    return str(max(found, key=lambda p: p.stat().st_mtime)) if found else None
+
+
 async def run(args: argparse.Namespace) -> int:
     options = ClaudeAgentOptions(
         cwd=str(args.project_root),
@@ -227,6 +241,7 @@ async def run(args: argparse.Namespace) -> int:
         max_budget_usd=args.max_budget_usd,
     )
     watch = RunWatch()
+    started = time.time()
     async with ClaudeSDKClient(options=options) as client:
         await client.query(prompt_for(args))
         # receive_messages, not receive_response: a turn can end while workers still run.
@@ -245,6 +260,8 @@ async def run(args: argparse.Namespace) -> int:
             if watch.observe(message):
                 break
 
+    if watch.result_path is None:
+        watch.result_path = result_file(args.project_root, started)
     if watch.result_path is None:
         if watch.error:
             err(f"the SDK session failed: {watch.error}")

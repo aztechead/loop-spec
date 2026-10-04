@@ -31,7 +31,8 @@ program, and dispatches the `loop-spec:implementer` and `loop-spec:reviewer` age
 
 The run is over when the program prints `LOOP_SPEC_RESULT {...}` and then
 `LOOP_SPEC_NEXT {"kind":"result","path":...}`, as 7.x did; the script reads the result
-file that line names.
+file that line names, or, when the lead's own command cut that line, the copy in the run's
+directory.
 
 ## Run it
 

@@ -27,6 +27,9 @@ All notable changes documented here. Format follows Keep a Changelog.
   integration job, a policy failure known in seconds was reported 11 minutes later, on
   each fix round. The log comes from the job, since GitHub serves `--log-failed` only
   once the whole run is over.
+- The SDK example no longer crashes when the lead pipes a command through `cut` and the
+  `LOOP_SPEC_NEXT` line arrives cut short: it skips the line and reads the result from
+  the run's directory.
 - A lead writes no code before the plan is accepted (Sonnet 5.5 led a live run that
   implemented during Spec, skipped the interactive approval, and backfilled
   `spec.json` and `plan.json`). In an interactive run the `next` line at Spec names the
