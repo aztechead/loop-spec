@@ -34,5 +34,8 @@ def _logger(stream_name: str) -> logging.Logger:
     return logger
 
 
+# A reader that stops early (`| head`) is not an error worth a traceback.
+logging.raiseExceptions = False
+
 stdout = _logger("stdout")
 stderr = _logger("stderr")

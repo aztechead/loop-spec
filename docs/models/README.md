@@ -20,7 +20,7 @@ plugin. The source pages are copied verbatim from Anthropic's docs into
 The API migration guides are not copied: their breaking changes (disabled thinking,
 forced `tool_choice`, preserved thinking, the computer-use toolset) concern code that
 calls the Messages API directly, which loop-spec does not. Read them online from the
-links in each "what's new" page if `sdk_runner.py` or an example ever needs them.
+links in each "what's new" page if an example ever calls the API directly.
 
 ## At a glance
 
@@ -55,7 +55,7 @@ From [opus-5-5-prompting.md](anthropic/opus-5-5-prompting.md) and
   instead of a tool call. The fix the docs give: keep the task's parts in a
   checklist the model updates, treat a text-only turn as a report rather than proof
   of completion, and name the kinds of early stop to avoid (the docs' standing
-  instruction is the model for `runner.md`'s "Ending a turn").
+  instruction is the model for the loop-spec skill's "Keep going until the run ends").
 - **Multiagent pacing.** It pays close attention to elapsed time; a time budget or
   "time matters" line makes a lead agent parallelize subagents more.
 - **Prompt injection.** It resists instructions arriving through tool results better
@@ -105,7 +105,7 @@ Each point below is a design consequence, with the doc behavior it rests on.
    implementers on Sonnet 5.5 at `medium`, `high` for hard tasks. Avoid `low` for
    implementers unless the verification paragraph is in the prompt, and avoid
    `xhigh`/`max` for Sonnet workers unless a self-started review round is wanted.
-5. **Keep "Ending a turn" and the done-means-checked rule.** These two paragraphs are
+5. **Keep "Keep going until the run ends" and "Done means checked".** These two paragraphs are
    the docs' own recommended text for both models' known failure modes.
 6. **Little text after tool results.** A program line in a Bash result should be data
    (what is ready, what failed), not per-step instructions to the model.

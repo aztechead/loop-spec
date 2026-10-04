@@ -1,131 +1,28 @@
 # loop-spec
 
-> A Claude Code plugin (7.x) that turns a request into a verified pull request. A
-> model does the judgment; a stdlib Python program checks each phase's claimed exit
-> against that phase's postconditions before it advances.
+> A Claude Code plugin (8.x) that takes a coding request to a verified pull request.
+> The model does the judgment, following one skill written as guidance; a small
+> stdlib Python helper keeps the run's state and task graph, manages git worktrees,
+> runs checks in a clean checkout, and opens the PR.
 
-A full cycle runs six phases: SPEC, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. `debug`,
-`revise`, `route` and `direct` are phases of their own for the entries that use them.
-The program is a microkernel: a small core, plug-ins that register through a contract,
-and registries the core reads.
+## The method
 
-## Entry stubs
+- [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md): the whole method (spec, task-graph plan, parallel execution, review and verify, deliver), when to ask, and every program command.
+- [agents/implementer.md](agents/implementer.md): the Sonnet agent that implements one task in its own worktree.
+- [agents/reviewer.md](agents/reviewer.md): the Opus agent that reviews the whole change against the spec.
 
-Each is a thin `SKILL.md` that runs the program, then follows the runner protocol for
-every line the program prints.
+## Entries
 
-- [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md): the hub, with the entry list, where state lives, and how to check a run.
-- [skills/auto/SKILL.md](skills/auto/SKILL.md): route a request to the right entry, or do a mechanical git or PR operation directly with no cycle.
-- [skills/cycle/SKILL.md](skills/cycle/SKILL.md): run SPEC through DELIVER on a feature request or spec file.
-- [skills/micro/SKILL.md](skills/micro/SKILL.md): a small, well-defined change in one autonomous pass.
-- [skills/debug/SKILL.md](skills/debug/SKILL.md): reproduce a failure, find the cause, land a fix with a regression test.
-- [skills/revise/SKILL.md](skills/revise/SKILL.md): address reviewer feedback on an open pull request.
-- [skills/status/SKILL.md](skills/status/SKILL.md): show a run's phase, open question or step, and result.
-- [skills/spec/SKILL.md](skills/spec/SKILL.md), [plan](skills/plan/SKILL.md), [execute](skills/execute/SKILL.md), [verify](skills/verify/SKILL.md), [iterate](skills/iterate/SKILL.md), [deliver](skills/deliver/SKILL.md): resume one phase of an existing run by slug.
+- [skills/cycle/SKILL.md](skills/cycle/SKILL.md): a feature request or spec file, end to end.
+- [skills/micro/SKILL.md](skills/micro/SKILL.md): a small, well-defined change.
+- [skills/debug/SKILL.md](skills/debug/SKILL.md): reproduce a failure, fix the cause, keep a regression test.
+- [skills/revise/SKILL.md](skills/revise/SKILL.md): address review comments on an open PR.
+- [skills/status/SKILL.md](skills/status/SKILL.md): where runs stand.
 
-## The program
+## For contributors
 
-- [docs/loop-spec/architecture.md](docs/loop-spec/architecture.md): the core, the plug-in kinds (phase implementation, role, runner, entry), their registries, and who owns each part of `state.json`.
-- [skills/loop-spec/program/loop_spec/](skills/loop-spec/program/loop_spec/): the implementation, stdlib-only Python >= 3.11. `controller.py` is the only place a phase transitions; `contract.py` holds the registries and invokes one implementation; `postconditions.py` checks a claimed exit; `steps.py` and `questions.py` are the worker and human handoffs; `schemas/` holds every product, envelope, and step shape.
-- [docs/loop-spec/teammate-alignment-audit.md](docs/loop-spec/teammate-alignment-audit.md): how a run behaves on a shared repository: the issue it links (`Closes #n`), open work it checks, the marked PR body that keeps human edits, a filled PR template, threaded review replies and review re-requests, and its CI read.
-- [skills/loop-spec/references/runner.md](skills/loop-spec/references/runner.md): the runner protocol a lead follows for each `LOOP_SPEC_NEXT` line, including how to dispatch a role step and when a turn may end.
-- [skills/loop-spec/references/contract.md](skills/loop-spec/references/contract.md): the process contract (files, fields, exit codes, config, environment) for an implementer or a harness author.
-- [agents/](agents/): the `loop-spec:worker-<effort>` agents a role step with an effort is dispatched as.
-
-## Roles
-
-Each role is a directory under [skills/loop-spec/roles/](skills/loop-spec/roles/):
-`SKILL.md` (the prompt body), `schema.json` (the result shape), and an optional
-`contract.md` the program always appends. The SKILL.md frontmatter names the role's
-default `model` and `effort` and, for a judgment role, the `evidence` family that needs
-host attestation. The twelve roles are `router`, `spec-writer`, `planner`,
-`plan-critic`, `implementer`, `code-reviewer`, `verifier`, `iterate-judge`, `debugger`,
-`reviser`, `direct`, and `resolver`. By default the judgment workers run on Opus and the
-implementer, verifier, and resolver on Sonnet; lead roles run at the session's own model.
-
-## Use your own skill or plugin in a phase
-
-A phase's method is its role, so binding the role changes the method. The phase's
-product, schema and postconditions do not change. Full how-to:
-[README.md](README.md#use-your-own-skill-or-plugin-in-a-phase).
-
-| Phase | Role (lead or worker) |
-|---|---|
-| SPEC | `spec-writer` (lead) |
-| PLAN | `planner` (lead), `plan-critic` (worker) |
-| EXECUTE | `implementer`, `code-reviewer`, `resolver` (workers) |
-| VERIFY | `verifier`, `code-reviewer` (workers) |
-| ITERATE | `iterate-judge` (worker) |
-| debug / revise | `debugger` / `reviser` (lead) |
-| route | `router` (worker) |
-| DELIVER | no role; the program performs it. Only `phases.deliver: "external"` replaces it |
-
-- Add to the bundled method: `{"roles": {"reviser": {"with": ["my-plugin:pr-reviews"]}}}`. The role follows its bundled method, then each listed skill, in order. Use this for a plugin that helps a phase but is not itself that role's whole method.
-- Replace the method: `{"roles": {"reviser": "my-plugin:revise-method"}}`, or `LOOP_SPEC_ROLE_<ROLE>` (hyphens kept: `LOOP_SPEC_ROLE_CODE-REVIEWER`). The skill must do the role's whole job. `{"binding": ..., "with": [...]}` does both. `with` can only be set in config.
-- A plain name is looked up in `.claude/skills/<name>/`, then `~/.claude/skills/<name>/`, then `~/.agents/skills/<name>/`. `plugin:skill` is looked up in those same three folders under its full name, then in `LOOP_SPEC_PLUGIN_DIRS` (plugins a session loads by path, such as the Agent SDK's local plugins), then in the plugin's installed version (`~/.claude/plugins/installed_plugins.json`), then in its cache.
-- Worked example: [examples/sdk-plugin/pr-helper/](examples/sdk-plugin/README.md#use-your-own-plugin-in-a-run) has one skill for `with` and one for `deliver.after`; `run_loop_spec.py --plugin <dir>` loads it.
-- Only each skill's body is used. The program resolves `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` in it, still prepends `roles/principles.md`, appends the bundled role's `contract.md`, and validates the result against the bundled `schema.json`.
-- A role's configuration applies in every phase where the role runs. Only `code-reviewer` runs in two phases, EXECUTE and VERIFY.
-- `phases.<phase>: "external"` hands the whole phase to a person or tool, which submits the product.
-- A skill in a role stays inside the run: it reads the role's inputs and writes the role's result. A skill that pushes, comments on the PR, resolves threads, or loops on its own breaks DELIVER's first postcondition (the PR head must be the verified commit), so it belongs in `deliver.after`.
-- `{"deliver": {"after": ["my-plugin:pr-follow-up"]}}`: when a run completes (`status: completed`) with a PR, `result.json` lists these under `after`, and the lead invokes each with the `Skill` tool after reporting, passing the `prs[].url` values. The run is already final, so these skills are outside its postconditions.
-
-## Controls
-
-Every control is listed in [contract.md](skills/loop-spec/references/contract.md#configuration-and-environment).
-Environment variables override `.loop-spec/config.json`. Any other name is not a control.
-
-Config keys (`.loop-spec/config.json`):
-
-- `phases.<phase>`: `"default"` or `"external"`.
-- `roles.<role>`: the skill bound in the role's place, as a string, or `{"binding", "model", "effort", "with"}`. `with` is a list of skills that follow the method. `effort` is one of `low`, `medium`, `high`, `xhigh`, `max`. An explicit `null` inherits the dispatcher's own model or effort.
-- `spec.approval`: `"ask"` (the default) or `"policy"` (approve the requirements without asking).
-- `deliver.base`: the PR's target branch (default: origin's default branch); a run starts from its fetched tip, not the checked-out commit. `deliver.readiness`: `"checks"` (the default) reads each PR's CI once after the push, waiting up to 26 s for checks to register; pending is a caveat, a failing check drafts the PR; `"none"` skips it. `deliver.branch`: the whole feature branch name for repos with a naming rule (wins over the prefix and the issue name). `deliver.branchPrefix`: prefix for new branches (default `fix/` for debug, else `feat/`; a branch for an issue is named `<prefix><n>-<issue title>`). `deliver.reviewers`, `deliver.labels`: set on a new PR, which is always assigned to the operator. `deliver.acceptRemotePaths`: path globs where a bot's commits are accepted. `deliver.escalatedPartialDraft`: `true` makes an escalated ITERATE open a draft PR. `deliver.after`: skills the lead invokes on the delivered PRs after the result.
-- `evidence.review.accept`, `evidence.judgment.accept`: `"unattested"` accepts an unattested review, or plan-critic and iterate-judge result, and records it in `weakenedAssurance`.
-
-Environment:
-
-- `LOOP_SPEC_HOME` (state root, default `~/.loop-spec`) and `LOOP_SPEC_PYTHON` (the launcher's interpreter, >= 3.11).
-- `LOOP_SPEC_PLUGIN_DIRS`: plugin directories (separated by `:`) that `plugin:skill` names resolve in first, for plugins loaded by path.
-- `LOOP_SPEC_PHASE_<PHASE>` and `LOOP_SPEC_ROLE_<ROLE>` override the phase and role bindings.
-- `LOOP_SPEC_MODEL_<ROLE>`, `LOOP_SPEC_EFFORT_<ROLE>` (hyphens become underscores: `CODE_REVIEWER`) and `LOOP_SPEC_PHASE_MODEL_<PHASE>` set a model or effort. The order is role env, then config `roles.<role>`, then phase model, then the role's frontmatter default.
-- `LOOP_SPEC_SPEC_APPROVAL`: `ask` or `policy`.
-- `LOOP_SPEC_EXECUTE_WIDTH` (tasks per wave, default 3). No count bounds retries or rewinds: a run stops by itself only when a pass would re-run an identical state, and asks (`continue`/`stop`) when a problem recurs.
-- `LOOP_SPEC_CONSOLE_EVENTS=0` silences progress lines. `LOOP_SPEC_CONSOLE_STREAM`: `stdout` or `stderr`.
-- `LOOP_SPEC_DUP_MIN_LINES` and `LOOP_SPEC_INDIRECTION_MAX_BODY` are thresholds for the bundled probes.
-- `CLAUDE_CODE_SESSION_ID` is set by Claude Code, not by you. When present, a dispatched step must be attested from the host's transcript.
-
-## Dispatching a role step
-
-Follow [runner.md](skills/loop-spec/references/runner.md#role):
-
-- Call `Agent` with `description` set to `stepAttemptId`, `subagent_type` set to the marker's `subagentType`, and the exact dispatch text as the prompt. Then submit with `--dispatch <stepAttemptId>`.
-- Pass no `name`. In a session with agent teams, a named `Agent` becomes an in-process teammate. Its `.meta.json` records the name as the agent type, so the step can never attest.
-
-## Design docs
-
-- [docs/loop-spec/ROADMAP-7.0.md](docs/loop-spec/ROADMAP-7.0.md): why 7.x is shaped this way, milestone by milestone.
-- [docs/loop-spec/phase-interface-7.0.md](docs/loop-spec/phase-interface-7.0.md): the full route matrix and every postcondition's prose.
-- [docs/loop-spec/reliability.md](docs/loop-spec/reliability.md): what the program proves about a result, and what stays judgment.
-- [docs/loop-spec/migrating-6-to-7.md](docs/loop-spec/migrating-6-to-7.md): how-to for a 6.x consumer moving to 7.x.
-- [docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md): which checklist case was shown by which recorded live run.
-
-## Examples
-
-Reference consumers of the Claude Agent SDK. Neither is a supported surface; both were
-run live (see the live-runs record).
-
-- [examples/sdk-plugin/](examples/sdk-plugin/README.md): run any loop-spec entry from Python with loop-spec loaded as a plugin, answering questions from the terminal or by policy. `--plugin DIR` loads another plugin for `roles.<role>.with` and `deliver.after`; `pr-helper/` is the example.
-- [examples/supervisor/](examples/supervisor/README.md): a supervisor process that drives one cycle's every step and question itself, with no person in the loop.
-
-## Rules an agent must not break here
-
-- [CLAUDE.md](CLAUDE.md): the rules a change to this repository must obey.
-- Do not add a dependency to the shipped program; it is stdlib-only Python plus one bash launcher.
-- Do not write an offline test for a whole cycle; model-driven behavior is shown by a live run, recorded in [docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md).
-- A plug-in never imports another plug-in, and the core never imports a plug-in or reads its state bucket; `tests/test_architecture.py` enforces both.
-- A name not in [skills/loop-spec/references/contract.md](skills/loop-spec/references/contract.md#configuration-and-environment) or read directly by `os.environ.get` in the program's own source is not a control.
-
-## Optional
-
-- [CHANGELOG.md](CHANGELOG.md): what changed per version and why.
+- [docs/architecture.md](docs/architecture.md): which part owns what, and the program's modules.
+- [docs/models/README.md](docs/models/README.md): Claude Opus 5.5 and Sonnet 5.5 behavior and what it means here; the source Anthropic docs are in docs/models/anthropic/.
+- [skills/loop-spec/program/loop_spec/](skills/loop-spec/program/loop_spec/): the helper, stdlib-only Python >= 3.11.
+- [examples/sdk-plugin/](examples/sdk-plugin/README.md): running loop-spec in a Claude Agent SDK session.
+- [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md): what changed from 7.x.

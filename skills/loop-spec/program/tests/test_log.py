@@ -13,9 +13,9 @@ REPO = Path(__file__).resolve().parents[4]
 class LogTests(unittest.TestCase):
     def test_each_logger_writes_the_bare_message_to_the_current_stream(self):
         with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
-            log.stdout.info('LOOP_SPEC_NEXT {"kind":"step"} 100%')
+            log.stdout.info('LOOP_SPEC_RESULT {"status":"completed"} 100%')
             log.stderr.error("loop-spec: failed")
-        self.assertEqual(out.getvalue(), 'LOOP_SPEC_NEXT {"kind":"step"} 100%\n')
+        self.assertEqual(out.getvalue(), 'LOOP_SPEC_RESULT {"status":"completed"} 100%\n')
         self.assertEqual(err.getvalue(), "loop-spec: failed\n")
 
     def test_no_shipped_or_example_module_calls_print(self):

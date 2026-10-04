@@ -4,6 +4,55 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [8.0.0] - 2026-10-04
+
+A rewrite for Claude Opus 5.5 and Claude Sonnet 5.5: guidance over gates, and a task
+graph the lead drives. The program shrinks from about 14,100 lines to about 1,050.
+Moving from 7.x: [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md).
+
+### Changed
+
+- The method is one skill written as guidance, `skills/loop-spec/SKILL.md`: spec, plan
+  as a task DAG, parallel execution in worktrees, one review and a clean-checkout
+  verify, deliver. The lead drives it; the program no longer issues steps.
+- The program keeps state and the task graph and does the mechanical work: `start`,
+  `status`, `next`, `task start|done|set`, `verify [--at base]`, `deliver`, `finish`.
+  `task done` merges a task's worktree into the feature branch and names what became
+  ready. The only refusals left guard what the program records: a plan that is not a
+  DAG, a conflicting merge, uncommitted task work, and delivering a head that verify
+  did not pass (`--unverified` opens a draft that says so).
+- Workers are two plugin agents with their models in frontmatter:
+  `loop-spec:implementer` (Sonnet, medium effort) and `loop-spec:reviewer` (Opus,
+  medium effort).
+- `--autonomous` replaces `--answer-policy default` and `spec.approval`: an unattended
+  run never asks and records its defaults as assumptions.
+- Run state moves from `~/.loop-spec/` to `<repo>/.loop-spec/runs/<slug>/`, kept out of
+  `git status`. The result is schema 8 and is also printed as `LOOP_SPEC_RESULT`.
+- Checks run with `bash -c` from the repository root instead of a shell-free argv
+  with a syntax check.
+- `deliver.base`, `branch`, `branchPrefix`, `reviewers`, and `labels` move to the top
+  level of `.loop-spec/config.json`.
+- `examples/sdk-plugin/` takes `--autonomous`, and declines questions in that mode
+  with an instruction to choose a default instead of picking the first option.
+
+### Added
+
+- `docs/models/`: what Claude Opus 5.5 and Sonnet 5.5 do differently and what it
+  means for loop-spec, with Anthropic's model, prompting, and effort pages copied
+  beside it.
+
+### Removed
+
+- The phase controller, postconditions, transcript attestation, evidence levels,
+  digests, probes, baseline capture, questions protocol, and the ITERATE phase (its
+  whole-change judgment is the reviewer pass).
+- Role skills and role binding (`roles.*`), external phases (`phases.*`),
+  `deliver.after`, `deliver.readiness`, `deliver.acceptRemotePaths`, the
+  `LOOP_SPEC_MODEL_*`/`EFFORT_*`/`PHASE_MODEL_*` variables, and `LOOP_SPEC_HOME`.
+- The `auto`, `spec`, `plan`, `execute`, `verify`, `iterate`, and `deliver` entries,
+  the output style, `examples/supervisor/`, `loop_spec.sdk_runner`, `evals/`, and the
+  7.x planning and audit documents (in git history).
+
 ## [7.9.0] - 2026-10-02
 
 ### Added
