@@ -131,14 +131,21 @@ def loop_spec_records(home: Path) -> dict:
         except ValueError:
             continue
         roles[role] = roles.get(role, 0) + 1
-    keep = ("result", "status", "phaseReached", "rewinds", "weakenedAssurance", "noChangeReason", "slug")
+    keep = ("result", "status", "phaseReached", "rewinds", "weakenedAssurance", "noChangeReason", "slug",
+            "verifiedSha", "branch")
     return {"result": {k: result.get(k) for k in keep}, "eventCounts": kinds, "stepsByRole": roles}
 
 
-def graded_tree(tmp: Path, repo: Path, arm: dict) -> tuple[Path, str]:
+def graded_tree(tmp: Path, repo: Path, arm: dict, verified_sha: str | None) -> tuple[Path, str]:
     if arm["entry"] is None:
         return repo, "working tree"
     clone = tmp / "graded"
+    # With no GitHub host, DELIVER stops at its `gh auth status` check before it
+    # pushes, so the verified commit exists only in the fixture repo. Grade it there.
+    if verified_sha:
+        subprocess.run(["git", "clone", "-q", str(repo), str(clone)], check=True)
+        git(clone, "checkout", "-q", verified_sha)
+        return clone, f"verifiedSha {verified_sha[:12]}"
     subprocess.run(["git", "clone", "-q", str(tmp / "origin.git"), str(clone)], check=True)
     branches = [b.strip() for b in git(clone, "branch", "-r", "--sort=-committerdate", "--format=%(refname:short)").splitlines()
                 if b.strip() and b.strip() not in ("origin/main", "origin/HEAD", "origin")]
@@ -181,10 +188,13 @@ def one_run(task: dict, arm: dict, idx: int, args, plugins: dict, note: str) -> 
     record.update(parse_stream(stream))
     if arm["entry"] is not None:
         record.update(loop_spec_records(tmp / "home"))
-        events = sorted((tmp / "home").glob("*/*/events.jsonl"))
-        if events:
-            shutil.copy(events[-1], run_out / "events.jsonl")
-    tree, graded = graded_tree(tmp, repo, arm)
+        for name in ("events.jsonl", "result.json"):
+            found = sorted((tmp / "home").glob(f"*/*/{name}"))
+            if found:
+                shutil.copy(found[-1], run_out / name)
+        if (repo / ".loop-spec" / "results").is_dir():
+            shutil.copytree(repo / ".loop-spec" / "results", run_out / "role-results", dirs_exist_ok=True)
+    tree, graded = graded_tree(tmp, repo, arm, (record.get("result") or {}).get("verifiedSha"))
     passed, oracle_out = run_oracle(tree, HERE / task["oracle"])
     unchanged = all((tree / p).read_text() == task["fixture"][p] for p in task.get("unchanged", []))
     flagged = bool(task.get("flag")) and bool(re.search(task["flag"], record["lastText"] or "", re.I))
