@@ -1,0 +1,117 @@
+{
+ "operatorNote": "[Operator: this is a headless run; pass --answer-policy default on the loop-spec {entry} command.]",
+ "arms": [
+  {
+   "id": "A0",
+   "entry": null,
+   "plugin": null,
+   "overlay": null,
+   "env": {}
+  },
+  {
+   "id": "A1",
+   "entry": "micro",
+   "plugin": "pristine",
+   "overlay": null,
+   "env": {
+    "LOOP_SPEC_MODEL_ROUTER": "sonnet",
+    "LOOP_SPEC_MODEL_PLAN_CRITIC": "sonnet",
+    "LOOP_SPEC_MODEL_CODE_REVIEWER": "sonnet",
+    "LOOP_SPEC_MODEL_ITERATE_JUDGE": "sonnet",
+    "LOOP_SPEC_MODEL_IMPLEMENTER": "sonnet",
+    "LOOP_SPEC_MODEL_VERIFIER": "sonnet",
+    "LOOP_SPEC_MODEL_RESOLVER": "sonnet"
+   }
+  },
+  {
+   "id": "A2",
+   "entry": "cycle",
+   "plugin": "pristine",
+   "overlay": null,
+   "env": {
+    "LOOP_SPEC_MODEL_ROUTER": "sonnet",
+    "LOOP_SPEC_MODEL_PLAN_CRITIC": "sonnet",
+    "LOOP_SPEC_MODEL_CODE_REVIEWER": "sonnet",
+    "LOOP_SPEC_MODEL_ITERATE_JUDGE": "sonnet",
+    "LOOP_SPEC_MODEL_IMPLEMENTER": "sonnet",
+    "LOOP_SPEC_MODEL_VERIFIER": "sonnet",
+    "LOOP_SPEC_MODEL_RESOLVER": "sonnet"
+   }
+  },
+  {
+   "id": "A2-nop",
+   "entry": "cycle",
+   "plugin": "nop",
+   "overlay": null,
+   "env": {
+    "LOOP_SPEC_MODEL_ROUTER": "sonnet",
+    "LOOP_SPEC_MODEL_PLAN_CRITIC": "sonnet",
+    "LOOP_SPEC_MODEL_CODE_REVIEWER": "sonnet",
+    "LOOP_SPEC_MODEL_ITERATE_JUDGE": "sonnet",
+    "LOOP_SPEC_MODEL_IMPLEMENTER": "sonnet",
+    "LOOP_SPEC_MODEL_VERIFIER": "sonnet",
+    "LOOP_SPEC_MODEL_RESOLVER": "sonnet"
+   }
+  },
+  {
+   "id": "A2-nocrit",
+   "entry": "cycle",
+   "plugin": "pristine",
+   "overlay": "overlays/nocrit",
+   "env": {
+    "LOOP_SPEC_MODEL_ROUTER": "sonnet",
+    "LOOP_SPEC_MODEL_PLAN_CRITIC": "sonnet",
+    "LOOP_SPEC_MODEL_CODE_REVIEWER": "sonnet",
+    "LOOP_SPEC_MODEL_ITERATE_JUDGE": "sonnet",
+    "LOOP_SPEC_MODEL_IMPLEMENTER": "sonnet",
+    "LOOP_SPEC_MODEL_VERIFIER": "sonnet",
+    "LOOP_SPEC_MODEL_RESOLVER": "sonnet"
+   }
+  },
+  {
+   "id": "A2-noiter",
+   "entry": "cycle",
+   "plugin": "pristine",
+   "overlay": "overlays/noiter",
+   "env": {
+    "LOOP_SPEC_MODEL_ROUTER": "sonnet",
+    "LOOP_SPEC_MODEL_PLAN_CRITIC": "sonnet",
+    "LOOP_SPEC_MODEL_CODE_REVIEWER": "sonnet",
+    "LOOP_SPEC_MODEL_ITERATE_JUDGE": "sonnet",
+    "LOOP_SPEC_MODEL_IMPLEMENTER": "sonnet",
+    "LOOP_SPEC_MODEL_VERIFIER": "sonnet",
+    "LOOP_SPEC_MODEL_RESOLVER": "sonnet"
+   }
+  },
+  {
+   "id": "A2-noplan",
+   "entry": "cycle",
+   "plugin": "noplan",
+   "overlay": null,
+   "env": {
+    "LOOP_SPEC_MODEL_ROUTER": "sonnet",
+    "LOOP_SPEC_MODEL_PLAN_CRITIC": "sonnet",
+    "LOOP_SPEC_MODEL_CODE_REVIEWER": "sonnet",
+    "LOOP_SPEC_MODEL_ITERATE_JUDGE": "sonnet",
+    "LOOP_SPEC_MODEL_IMPLEMENTER": "sonnet",
+    "LOOP_SPEC_MODEL_VERIFIER": "sonnet",
+    "LOOP_SPEC_MODEL_RESOLVER": "sonnet"
+   }
+  },
+  {
+   "id": "A2-p772",
+   "entry": "cycle",
+   "plugin": "p772",
+   "overlay": null,
+   "env": {
+    "LOOP_SPEC_MODEL_ROUTER": "sonnet",
+    "LOOP_SPEC_MODEL_PLAN_CRITIC": "sonnet",
+    "LOOP_SPEC_MODEL_CODE_REVIEWER": "sonnet",
+    "LOOP_SPEC_MODEL_ITERATE_JUDGE": "sonnet",
+    "LOOP_SPEC_MODEL_IMPLEMENTER": "sonnet",
+    "LOOP_SPEC_MODEL_VERIFIER": "sonnet",
+    "LOOP_SPEC_MODEL_RESOLVER": "sonnet"
+   }
+  }
+ ]
+}

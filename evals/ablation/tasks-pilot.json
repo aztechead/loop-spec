@@ -1,0 +1,46 @@
+[
+ {
+  "id": "feat-one",
+  "kind": "one-file feature",
+  "fixture": {
+   "calc/__init__.py": "\"\"\"Small numeric helpers.\"\"\"\n\n\ndef add(a, b):\n    return a + b\n\n\ndef sub(a, b):\n    return a - b\n",
+   "tests/__init__.py": "",
+   "tests/test_calc.py": "import unittest\n\nfrom calc import add, sub\n\n\nclass CalcTest(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n\n    def test_sub(self):\n        self.assertEqual(sub(5, 3), 2)\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n",
+   "README.md": "# calc\n\nSmall numeric helpers.\n"
+  },
+  "request": "Add `clamp(x, lo, hi)` to `calc/__init__.py`. It returns x limited to the range lo to hi inclusive and raises ValueError when lo is greater than hi. Add tests in `tests/test_calc.py`. Verify with `python3 -m unittest discover -s tests`.",
+  "expects": "change",
+  "oracle": "oracles/feat_one.py",
+  "unchanged": [],
+  "flag": null,
+  "flagRequired": false,
+  "reference": {
+   "calc/__init__.py": "\"\"\"Small numeric helpers.\"\"\"\n\n\ndef add(a, b):\n    return a + b\n\n\ndef sub(a, b):\n    return a - b\n\n\ndef clamp(x, lo, hi):\n    if lo > hi:\n        raise ValueError(\"lo must not exceed hi\")\n    return max(lo, min(x, hi))\n"
+  },
+  "wrong": {
+   "calc/__init__.py": "\"\"\"Small numeric helpers.\"\"\"\n\n\ndef add(a, b):\n    return a + b\n\n\ndef sub(a, b):\n    return a - b\n\n\ndef clamp(x, lo, hi):\n    return max(lo, min(x, hi))\n"
+  }
+ },
+ {
+  "id": "wrong-premise",
+  "kind": "the request states a wrong fact",
+  "fixture": {
+   "tempconv/__init__.py": "\"\"\"Temperature conversions.\"\"\"\n\n\ndef c_to_f(c):\n    return c * 9 / 5 + 32\n\n\ndef f_to_c(f):\n    return (f - 32) * 5 / 9\n",
+   "tests/__init__.py": "",
+   "tests/test_conv.py": "import unittest\n\nfrom tempconv import c_to_f, f_to_c\n\n\nclass ConvTest(unittest.TestCase):\n    def test_c_to_f(self):\n        self.assertAlmostEqual(c_to_f(100), 212)\n\n    def test_f_to_c(self):\n        self.assertAlmostEqual(f_to_c(212), 100)\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n",
+   "README.md": "# tempconv\n\nTemperature conversions.\n"
+  },
+  "request": "Add `c_to_k(c)` to `tempconv/__init__.py`, returning kelvin and raising ValueError for any input below absolute zero (-459.67 C). Add tests. Verify with `python3 -m unittest discover -s tests`.",
+  "expects": "change",
+  "oracle": "oracles/wrong_premise.py",
+  "unchanged": [],
+  "flag": "-273\\.15|fahrenheit|459\\.67 ?\u00b0?\\s*f\\b",
+  "flagRequired": false,
+  "reference": {
+   "tempconv/__init__.py": "\"\"\"Temperature conversions.\"\"\"\n\n\ndef c_to_f(c):\n    return c * 9 / 5 + 32\n\n\ndef f_to_c(f):\n    return (f - 32) * 5 / 9\n\n\ndef c_to_k(c):\n    if c < -273.15:\n        raise ValueError(\"below absolute zero (-273.15 C)\")\n    return c + 273.15\n"
+  },
+  "wrong": {
+   "tempconv/__init__.py": "\"\"\"Temperature conversions.\"\"\"\n\n\ndef c_to_f(c):\n    return c * 9 / 5 + 32\n\n\ndef f_to_c(f):\n    return (f - 32) * 5 / 9\n\n\ndef c_to_k(c):\n    if c < -459.67:\n        raise ValueError(\"below absolute zero (-459.67 C)\")\n    return c + 273.15\n"
+  }
+ }
+]
