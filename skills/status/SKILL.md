@@ -1,6 +1,6 @@
 ---
 name: status
-description: "Show where loop-spec runs stand in this repository: each run's phase, task graph, verify result, and PR. Use to check progress or find what a run is waiting on. It changes nothing."
+description: "Shows where loop-spec runs stand in this repository: each run's phase, task graph, verify result, and PR. Use to check progress or find what a run is waiting on. It changes nothing."
 argument-hint: "[slug]"
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: cycle
-description: "Take a feature request or spec file to a verified pull request with loop-spec: spec, task graph, parallel implementation, clean-checkout verify, one PR. Use whenever the user asks to add, build, or change behavior in their code beyond a one-line tweak, especially when they want it tested or landed as a PR, even if they never mention loop-spec. Not for a one-line fix (micro), a failing test or bug report (debug), or PR review comments (revise)."
+description: "Takes a feature request or spec file to a verified pull request with loop-spec: spec, task graph, parallel implementation, clean-checkout verify, one PR. Use whenever the user asks to add, build, or change behavior in their code beyond a one-line tweak, especially when they want it tested or landed as a PR, even if they never mention loop-spec. Not for a one-line fix (micro), a failing test or bug report (debug), or PR review comments (revise)."
 argument-hint: "[--autonomous] <request or spec file>"
 ---
 

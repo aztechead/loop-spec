@@ -1,6 +1,6 @@
 ---
 name: debug
-description: "Reproduce and fix a specific failure with loop-spec: confirm the bug at the start commit, find the root cause, fix it with a regression test, and deliver a verified PR. Use whenever the user pastes a stack trace, names a failing test, or reports something broke or regressed. Not for new features (cycle) or problems with the machine or tools outside the repository."
+description: "Reproduces and fixes a specific failure with loop-spec: confirms the bug at the start commit, finds the root cause, fixes it with a regression test, and delivers a verified PR. Use whenever the user pastes a stack trace, names a failing test, or reports something broke or regressed. Not for new features (cycle) or problems with the machine or tools outside the repository."
 argument-hint: "[--autonomous] <error, stack trace, or failing test>"
 ---
 

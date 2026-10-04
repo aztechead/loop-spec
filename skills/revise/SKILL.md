@@ -1,6 +1,6 @@
 ---
 name: revise
-description: "Address review feedback on an open pull request with loop-spec: turn each review comment into a checked criterion, fix them on the PR's own branch, verify, and push. Use when a person or bot left review comments on a PR to resolve. Not for new work (cycle) or a bug found outside review (debug)."
+description: "Addresses review feedback on an open pull request with loop-spec: turns each review comment into a checked criterion, fixes them on the PR's own branch, verifies, and pushes. Use when a person or bot left review comments on a PR to resolve. Not for new work (cycle) or a bug found outside review (debug)."
 argument-hint: "[--autonomous] <PR number or URL> [instruction]"
 ---
 

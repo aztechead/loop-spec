@@ -1,6 +1,6 @@
 ---
 name: micro
-description: "Make a small, well-defined code change (a one-file fix, a rename, a tiny tweak) and land it as a verified PR in one short loop-spec pass. Use when the user asks for a change that needs no design or planning. Not for a feature that needs planning (cycle) or a bug that needs investigation (debug)."
+description: "Makes a small, well-defined code change (a one-file fix, a rename, a tiny tweak) and lands it as a verified PR in one short loop-spec pass. Use when the user asks for a change that needs no design or planning. Not for a feature that needs planning (cycle) or a bug that needs investigation (debug)."
 argument-hint: "[--autonomous] <request>"
 ---
 
