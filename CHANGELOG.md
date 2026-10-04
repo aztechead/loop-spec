@@ -28,6 +28,10 @@ All notable changes documented here. Format follows Keep a Changelog.
   tasks, and lists the task brief's fields; the format test checks that each skill's
   and agent's name matches its directory or file, and that frontmatter is one line per
   field.
+- `LOOP_SPEC_RUN` carries `references`, the absolute path of the hub's references, so
+  the lead never builds one from its working directory. `micro`'s description names
+  the small changes it covers and says it applies without a mention of loop-spec or a
+  PR, as `cycle`'s does.
 - The `finish` row in the hub's command table lists `completed`, and the simplifier
   reports its most valuable findings without a fixed count.
 

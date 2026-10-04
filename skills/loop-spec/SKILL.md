@@ -20,7 +20,9 @@ do what the code needs and say why in your report.
 
 `LS` below is the `program` path that `start` and `status` print in their
 `LOOP_SPEC_RUN {...}` line, along with the run's `slug`, `kind`, `phase`, `mode`, `base`
-(the commit the change sits on), `runDir`, and `work` (the feature branch's worktree).
+(the commit the change sits on), `runDir`, `work` (the feature branch's worktree), and
+`references` (the absolute path of the `references/` directory this file links to;
+read references through it, since your shell is not in this file's directory).
 Run it; there is no need to read it. Commands find the run from the current directory
 or as the only open run; otherwise add `--slug <slug>` after the command.
 

@@ -167,7 +167,7 @@ def show_status(run: Run) -> int:
     marker("LOOP_SPEC_RUN", {"slug": run.slug, "kind": s["kind"], "mode": run.mode, "phase": phase,
                              "base": s["base"]["sha"], "runDir": str(run.dir), "work": str(run.work),
                              "prTemplate": str(template) if template else None,
-                             "program": str(PROGRAM)})
+                             "program": str(PROGRAM), "references": str(REFERENCES)})
     return 0
 
 

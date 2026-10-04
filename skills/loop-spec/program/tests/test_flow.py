@@ -224,6 +224,8 @@ class FlowTests(unittest.TestCase):
         self.assertRegex(out, r"next .*\(read \S+/references/spec\.md\)")
         _, out, _ = self.repo.ls("start", "--kind", "micro", "--request", "Rename mul")
         self.assertRegex(out, r"next .*\(read \S+/references/micro\.md and \S+/references/spec\.md\)")
+        references = Path(marker(out, "LOOP_SPEC_RUN")["references"])
+        self.assertTrue(references.is_absolute() and (references / "micro.md").is_file())
 
     def test_finish_writes_the_result_and_removes_clean_worktrees(self):
         run = self.start()
