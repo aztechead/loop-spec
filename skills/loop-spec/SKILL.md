@@ -60,10 +60,10 @@ when it ends.
 - **Work in `work`.** Your shell starts in the user's own checkout, and a relative path
   written from there changes their files. Right after `start`, `cd` into `work` (the
   same code, on the feature branch) and read the code there.
-- **No code before the plan.** Spec and Plan only read and write `spec.json` and
-  `plan.json`, however clear the code already is in your head. Code is written in task
-  worktrees once `LS status` accepts the plan, and in `work` only for fixes from Verify
-  on. A design you worked out goes into the spec's `decisions` and the tasks' briefs.
+- **No code before the plan.** Spec and Plan write only `spec.json` and `plan.json`.
+  Code is written in task worktrees once `LS status` accepts the plan, and in `work` only
+  for fixes from Verify on. A design you worked out goes into the spec's `decisions` and
+  the tasks' briefs.
 - **Read before you decide.** Read the code the request touches, its tests, and the
   rules files; they outrank this file on conventions. Never describe code you have not
   opened.
@@ -261,10 +261,8 @@ Until every task is done:
 2. Dispatch one `loop-spec:implementer` agent per started task, all in one message so
    they run in parallel. Its prompt is the task's brief, plus the conventions you found
    (commit style, house rules) and anything else it needs from you, including any design
-   you already worked out: put it in the brief rather than building it yourself, so the
-   implementer's model does the building and your context stays free for judging. Do a
-   task yourself only when it is a few lines: work in its worktree, commit, and `LS task
-   done` it.
+   you already worked out. Do a task yourself only when it is a few lines: work in its
+   worktree, commit, and `LS task done` it.
 3. While implementers run, end your turn with a line saying `LOOP_SPEC_WAITING`; their
    reports resume you.
 4. When an implementer reports, read its report and its commits (`git -C <worktree>
@@ -353,18 +351,15 @@ each new review item (reviews, inline comments, conversation comments) once. The
 - **A failed check or a review item this change should address:** fix it in `work`,
   verify, deliver, and run `feedback` again.
 - **A question, or a request you decline with a reason:** answer it in a comment with
-  `deliver --comment-file F`, alongside your next fix or on its own. Post replies only
-  this way: the program marks its comments so `feedback` does not read them back as
-  review, and a comment you post with `gh` comes back as a new item.
+  `deliver --comment-file F`, alongside your next fix or on its own; a comment posted
+  with `gh` instead comes back from `feedback` as a new item.
 - **A check that also fails on the base branch:** not this change's to fix; say so in a
   comment.
 - **Feedback that cannot be satisfied** (it contradicts the spec, or needs a decision
   only the user can make): `LS finish --status escalated --summary "..."` naming what
   is needed.
 
-Each later `deliver` asks everyone who left feedback to review again, and `feedback`
-waits for requested reviewers, up to `feedback.reviewWaitMinutes` (default 30). There is
-no limit on rounds.
+There is no limit on rounds.
 
 When the project's config names feedback skills (`feedback.skills` in
 `.loop-spec/config.json`), `feedback` lists them once CI and review are clear. Invoke
