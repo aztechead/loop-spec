@@ -7,10 +7,12 @@ is treated as having no CI once the PR exists.
 import json
 import re
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from loop_spec import git
 
+STUCK_SECONDS = 60  # a check pending this long is cross-checked against its job: GitHub can leave a finished job's check in progress
 POLL_SECONDS = 15  # GitHub updates check status every few seconds; 15 s keeps gh calls well under its rate limit
 LOG_LINES = 40  # enough for a stack trace or a failed assertion, small enough to keep the lead's context
 _JOB = re.compile(r"/actions/runs/(\d+)/job/(\d+)")
@@ -24,12 +26,36 @@ def expected(worktree: Path) -> bool:
 
 def read(worktree: Path, pr: int) -> list[dict] | None:
     """The PR's checks, or None when gh could not report them (an error, or none registered yet)."""
-    code, out, _ = git.gh(worktree, "pr", "checks", str(pr), "--json", "name,bucket,link,workflow")
+    code, out, _ = git.gh(worktree, "pr", "checks", str(pr), "--json", "name,bucket,link,workflow,startedAt")
     try:
         found = json.loads(out) if out.strip() else []
     except json.JSONDecodeError:
         return None
+    for check in found:
+        if check.get("bucket") == "pending" and _pending_for(check) > STUCK_SECONDS:
+            check["bucket"] = _job_bucket(worktree, check) or "pending"
     return found or None  # gh exits non-zero for failing or pending checks; the JSON is what counts
+
+
+def _pending_for(check: dict) -> float:
+    try:
+        started = datetime.fromisoformat((check.get("startedAt") or "").replace("Z", "+00:00"))
+    except ValueError:
+        return 0
+    return (datetime.now(timezone.utc) - started).total_seconds() if started.year > 2000 else 0
+
+
+def _job_bucket(worktree: Path, check: dict) -> str | None:
+    """The bucket of an Actions job that has finished although GitHub still lists its check as
+    in progress (seen live: the run completed with a failure, the check stayed pending)."""
+    match = _JOB.search(check.get("link") or "")
+    if not match:
+        return None
+    code, out, _ = git.gh(worktree, "api", f"repos/{{owner}}/{{repo}}/actions/jobs/{match.group(2)}", "--jq", ".conclusion")
+    conclusion = out.strip() if code == 0 else ""
+    if not conclusion or conclusion == "null":
+        return None
+    return {"success": "pass", "skipped": "skipping", "neutral": "skipping", "cancelled": "cancel"}.get(conclusion, "fail")
 
 
 def wait(worktree: Path, pr: int, timeout: int, sleep=time.sleep, clock=time.monotonic) -> tuple[str, list[dict]]:

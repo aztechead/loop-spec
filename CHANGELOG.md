@@ -27,6 +27,9 @@ All notable changes documented here. Format follows Keep a Changelog.
   integration job, a policy failure known in seconds was reported 11 minutes later, on
   each fix round. The log comes from the job, since GitHub serves `--log-failed` only
   once the whole run is over.
+- `feedback` no longer waits on a check GitHub leaves in progress after its job has
+  finished: a check pending over a minute is read from its Actions job, and a job with a
+  conclusion counts as settled (seen live: the run failed, its check stayed pending).
 - The SDK example no longer crashes when the lead pipes a command through `cut` and the
   `LOOP_SPEC_NEXT` line arrives cut short: it skips the line and reads the result from
   the run's directory.

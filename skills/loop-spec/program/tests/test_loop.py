@@ -21,6 +21,7 @@ case "$1 $2" in
   "pr list") echo "[]" ;;
   "pr create") echo "https://github.com/acme/kv/pull/7" ;;
   "pr checks") cat "$FAKE_GH_DIR/checks.json"; exit "$(cat "$FAKE_GH_DIR/checks.exit" 2>/dev/null || echo 0)" ;;
+  "api repos/{owner}/{repo}/actions/jobs/7") echo "failure" ;;
   "api repos/{owner}/{repo}/actions/jobs/"*) printf '2026-10-04T16:19:37.1Z step 1 ok\\n2026-10-04T16:19:37.2Z AssertionError: boom\\n2026-10-04T16:19:37.3Z ##[error]Process completed with exit code 1.\\n2026-10-04T16:19:38Z Cleaning up orphan processes\\n' ;;
   "api user") echo "loop-bot" ;;
   "pr view") cat "$FAKE_GH_DIR/view.json" 2>/dev/null || echo '{"reviews": [], "comments": []}' ;;
@@ -231,6 +232,17 @@ class LoopTests(unittest.TestCase):
         self.assertIn("CI FAILED", out)
         self.assertRegex(out, r"\n +AssertionError: boom\n +##\[error\]Process completed")  # cut at the error, stamps gone
         self.assertNotIn("orphan", out)
+
+    def test_a_check_github_leaves_pending_after_its_job_failed_counts_as_failed(self):
+        run = self.ready_run()
+        self.deliver(run)
+        rows = [{"name": "lint", "bucket": "pass", "link": "https://github.com/acme/kv/actions/runs/9/job/1"},
+                {"name": "policy", "bucket": "pending", "startedAt": "2026-01-01T00:00:00Z",
+                 "link": "https://github.com/acme/kv/actions/runs/9/job/7"}]
+        (self.gh_dir / "checks.json").write_text(json.dumps(rows))
+        code, out, _ = self.repo.ls("feedback", "--timeout", "0")
+        self.assertEqual(code, 1)
+        self.assertIn("CI FAILED", out)
 
     def test_review_comments_are_reported_once_then_the_run_can_end(self):
         run = self.ready_run()
