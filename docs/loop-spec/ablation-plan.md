@@ -160,8 +160,8 @@ accepted `host-attested`, with `weakenedAssurance` empty.
   `.loop-spec/config.json` and `.claude/skills/ablate-*/SKILL.md` into the clone's
   working tree, and add `.claude/` to the clone's `.git/info/exclude` (the program
   excludes `.loop-spec/` itself). `roles.load_role` reads them from the project root,
-  not from a worktree. Not verified live: that no start-up check minds an untracked,
-  excluded `.claude/`. The pilot confirms it.
+  not from a worktree. The pilot showed no check minds the untracked, excluded
+  `.claude/`.
 - **State.** Every run sets its own `LOOP_SPEC_HOME`, in the run's temp directory, so
   no run sees another's state. Every run gets a fresh fixture and a fresh bare
   `origin`.
