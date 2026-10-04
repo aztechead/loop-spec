@@ -22,7 +22,7 @@ Record one run per row as it happens.
 | 2026-10-04 | `82ae482` | cycle, autonomous; kvstore CSV io + key validation + history (B) | Sonnet 5.5, medium; all agents Sonnet | 147 s. A real DAG: T-1, T-2, T-3 independent, T-4 depends on all three; three implementers dispatched in one message, each reviewed by the lead before `task done`; reviewer found a CSV traceback, fixed with a test; verify passed | escalated (no GitHub origin), `verifiedSha` set; hidden acceptance 7/7 |
 
 For comparison, 7.9.0 on request A with the same model settings (`--answer-policy default`,
-every role on Sonnet) took 1108 s, 237 lead tool calls, and 26 worker dispatches, and
+every role on Sonnet) took 1108 s, 237 tool calls, and 26 worker dispatches, and
 reported $6.13 against 8.0's $0.41. Its spec included a criterion that no file
 contain the word `sleep`; a test comment ("instead of sleeping") kept failing it, VERIFY
 routed the run back twice, and the recurrence guard ended it `escalated` with no
