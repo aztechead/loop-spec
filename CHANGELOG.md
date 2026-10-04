@@ -21,9 +21,15 @@ Moving from 7.x: [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md).
   it into the feature branch and names the next step. The only refusals left guard what the program records: a plan that is not a
   DAG, a conflicting merge, uncommitted task work, and delivering a head that verify
   did not pass (`--unverified` opens a draft that says so).
-- Workers are two plugin agents with their models in frontmatter:
-  `loop-spec:implementer` (Sonnet, medium effort) and `loop-spec:reviewer` (Opus,
-  medium effort).
+- Workers are plugin agents with their models in frontmatter: `loop-spec:implementer`
+  (Sonnet), `loop-spec:reviewer` (Opus, an adversarial correctness review), and
+  `loop-spec:simplifier` (Sonnet, a review for reuse, simplification, efficiency, and
+  altitude), all at medium effort. The reviewer and simplifier run side by side over
+  the whole change before verify.
+- The skill and agents state the engineering stance as goals: settle data shapes before
+  code, fix causes rather than symptoms, prefer reuse and deletion to new layers, prove
+  a change by running it the way a user would, and make reversible decisions without
+  waiting.
 - `--autonomous` (or `LOOP_SPEC_MODE=autonomous` from the host) replaces
   `--answer-policy default` and `spec.approval`: an unattended run never asks and
   records its defaults as assumptions.
@@ -40,6 +46,22 @@ Moving from 7.x: [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md).
 
 ### Added
 
+- `sync` merges what moved on origin (the base branch, or the feature branch itself)
+  into the feature worktree, merging rather than rebasing; `deliver` refuses a head
+  that lacks commits origin has.
+- `ci` waits for the delivered PR's checks and shows each failed job's log. The lead
+  fixes what the change broke and delivers again; after `ciFixAttempts` failed rounds
+  (default 3) the PR goes back to draft and the run ends escalated. `deliver --no-ci`
+  or `"ci": false` ends a run at delivery.
+- `start --branch` and `--title` set the feature branch and PR title for one run; the
+  run's title wins over the spec's.
+- `plan.json` `checks`: the repository's own required checks from its `CLAUDE.md`,
+  `AGENTS.md`, and `CONTRIBUTING*`, which `status` lists. Verify runs them, and reruns a
+  failing one at the base: one that fails the same way there is pre-existing; new
+  output fails the run. Task briefs carry them to the implementers.
+- A Stop hook keeps an autonomous run going until it has a result, re-feeding the
+  run's next step when the lead would end a turn early, with a no-progress guard and a
+  cap on continuations.
 - `docs/models/`: what Claude Opus 5.5 and Sonnet 5.5 do differently and what it
   means for loop-spec, with Anthropic's model, prompting, and effort pages copied
   beside it.

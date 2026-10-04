@@ -1,7 +1,7 @@
 """Push the feature branch and open or update its pull request with a body built from the run."""
 from pathlib import Path
 
-from loop_spec import git
+from loop_spec import git, remote
 from loop_spec.errors import LoopSpecError
 from loop_spec.runs import Run, first_line, read_json
 
@@ -9,7 +9,8 @@ MARK = {True: "pass", False: "fail", None: "not checked"}
 
 
 def title(run: Run) -> str:
-    return first_line((run.spec or {}).get("title") or run.state.get("request") or run.slug, 70)
+    """The run's own title (start --title), else the spec's, else the request's first line."""
+    return first_line(run.state.get("title") or (run.spec or {}).get("title") or run.state.get("request") or run.slug, 70)
 
 
 def body(run: Run, verified: bool) -> str:
@@ -61,6 +62,10 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
     git.require_clean(work, "the feature worktree", f"commit or discard them in {work}, then verify again")
     if not git.has_origin(work):
         raise LoopSpecError("the repository has no origin remote", "add one with `git remote add origin <url>`")
+    moved = remote.moves(run)
+    if moved:
+        raise LoopSpecError("origin moved since this head was verified: " + "; ".join(remote.describe(m) for m in moved),
+                            "run `loop-spec sync` to merge it in, then verify and deliver again")
 
     branch = state["branch"]
     push = git.git(work, "push", "--quiet", "-u", "origin", f"HEAD:refs/heads/{branch}")
@@ -79,6 +84,7 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
     elif not pr.get("adopted"):
         git.gh(work, "pr", "edit", str(pr["number"]), "--title", title(run), "--body-file", str(body_path))
     state["pr"] = pr
+    state["delivered"] = {"sha": head, "verified": verified}
     run.save()
     if comment_file:
         code, _, err = git.gh(work, "pr", "comment", str(pr["number"]), "--body-file", str(comment_file))

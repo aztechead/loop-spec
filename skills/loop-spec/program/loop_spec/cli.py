@@ -10,7 +10,9 @@ import json
 import os
 from pathlib import Path
 
-from loop_spec import VERSION, checks, dag, deliver, git, log
+import sys
+
+from loop_spec import VERSION, checks, ci, dag, deliver, git, hook, log, remote
 from loop_spec.errors import LoopSpecError
 from loop_spec.runs import KINDS, RESULT_STATUSES, Run, all_runs, find, first_free, first_line, read_json, slugify
 
@@ -66,7 +68,9 @@ def cmd_start(args, project: Path, cwd: Path) -> int:
         "request": request,
         "base": {"branch": base_branch, "sha": base_sha},
         "branch": branch,
+        "title": args.title,
         "pr": pr,
+        "instructions": git.instruction_files(project, base_sha),
         "rootChanges": git.dirty(project),
         "tasks": {},
     }
@@ -103,8 +107,12 @@ def show_status(run: Run) -> int:
     out(f"  request  {first_line(s.get('request', ''), 100)}")
     out(f"  branch   {s['branch']} from {s['base']['branch']} @ {s['base']['sha'][:12]}" + (f", head {head[:12]}" if head else ""))
     out(f"  work     {_rel(run, run.work)}")
+    if s.get("title"):
+        out(f"  title    {s['title']}")
     if s.get("pr"):
         out(f"  pr       {s['pr']['url']}")
+    if s.get("instructions"):
+        out(f"  rules    {', '.join(s['instructions'])}")
     spec = run.spec
     out(f"  spec     {len(spec.get('criteria', []))} criteria in {_rel(run, run.spec_path)}" if spec
         else f"  spec     not written yet ({_rel(run, run.spec_path)})")
@@ -117,10 +125,14 @@ def show_status(run: Run) -> int:
         missing = dag.uncovered((spec or {}).get("criteria", []), run.tasks)
         if missing:
             out(f"  note     no task names criteria {', '.join(missing)}")
+        if s.get("instructions") and "checks" not in run.plan:
+            out("  note     plan.json has no `checks`: list the checks the rules files above require (or [] if none)")
     verify = s.get("verify")
     if verify:
         stale = "" if verify["sha"] == head else f" (the branch has moved to {head[:12] if head else '?'} since)"
         out(f"  verify   {'passed' if verify['passed'] else 'FAILED'} at {verify['sha'][:12]}{stale}")
+    if s.get("ci"):
+        out(f"  ci       {s['ci']['outcome']} at {s['ci']['sha'][:12]}, {len(s['ci'].get('failedShas', []))} failed round(s)")
     result = run.result
     if result:
         out(f"  result   {result['status']}: {result['summary']}")
@@ -152,6 +164,8 @@ def _next_step(run: Run, phase: str, problem: str | None = None) -> str:
         return "review the whole change (base..HEAD in work), then loop-spec verify"
     if phase == "deliver":
         return "loop-spec deliver"
+    if phase == "ci":
+        return "loop-spec ci"
     return "nothing; the run is over"
 
 
@@ -212,6 +226,7 @@ def cmd_task_start(args, project: Path, cwd: Path) -> int:
             "id": task_id, "worktree": str(dest), "branch": branch, "from": git.head(dest),
             "task": task, "goal": (run.spec or {}).get("goal"),
             "criteria": [criteria[c] for c in task.get("criteria", []) if c in criteria],
+            "checks": [c["command"] for c in checks.repo_checks(run.plan)],
             "prepared": prepare is not None and note is None,
         })
     run.save()
@@ -265,28 +280,23 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
     if not items:
         raise LoopSpecError("there is nothing to verify: no spec criteria and no task verify commands",
                             f"write {run.spec_path.name} with criteria that name a check")
-    sha = run.state["base"]["sha"] if args.base else git.head(run.work)
+    base_sha = run.state["base"]["sha"]
+    sha = base_sha if args.base else git.head(run.work)
     if not args.base and (dirty := git.dirty(run.work)):
         out(f"note: uncommitted changes in {run.work} are not part of this verify: {', '.join(dirty[:5])}")
-    _checkout(project, run.verify_dir, sha)
     out(f"verifying {sha[:12]} in a clean checkout ({'the base' if args.base else 'the feature head'})")
-    results, passed = [], True
-    prepare = (run.plan or {}).get("prepare")
-    if prepare:
-        r = checks.run(prepare, run.verify_dir, args.timeout)
-        _report("prepare", r)
-        if r["exit"] != 0:
-            passed, items = False, []
-            results.append({"name": "prepare", **r})
-    for item in items:
+    results, passed = [], _prepare(run, run.verify_dir, sha, args.timeout)
+    for item in items if passed else []:
         if item["command"] is None:
             out(f"  -     {item['name']:8} no check; judge it in review: {item['text']}")
             results.append({"name": item["name"], "command": None})
             continue
         r = checks.run(item["command"], run.verify_dir, args.timeout)
         _report(item["name"], r)
-        passed = passed and r["exit"] == 0
-        results.append({"name": item["name"], **r})
+        if r["exit"] != 0 and item.get("repoCheck") and not args.base:
+            r.update(_compare_at_base(run, item, r, base_sha, args.timeout))
+        passed = passed and (r["exit"] == 0 or r.get("preexisting", False))
+        results.append({"name": item["name"], **{k: v for k, v in r.items() if k != "output"}})
     if args.base:
         out(("passed" if passed else "failed") + " at the base; not recorded, since only the feature head is delivered")
     else:
@@ -295,6 +305,36 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
         out(("PASSED" if passed else "FAILED") + f": verify of {sha[:12]} recorded")
     _warn_root_changes(run)
     return 0 if passed else 1
+
+
+def _prepare(run: Run, dest: Path, sha: str, timeout: int) -> bool:
+    """Check `sha` out at `dest` and run the plan's `prepare` there; False when prepare fails."""
+    _checkout(run.project, dest, sha)
+    prepare = (run.plan or {}).get("prepare")
+    if not prepare:
+        return True
+    r = checks.run(prepare, dest, timeout)
+    if r["exit"] != 0:
+        _report("prepare", r)
+    return r["exit"] == 0
+
+
+def _compare_at_base(run: Run, item: dict, head: dict, base_sha: str, timeout: int) -> dict:
+    """Run a failing repository check at the base too. It is pre-existing, and does not fail
+    the verify, when it fails there as well and the head adds no output line the base lacks."""
+    base_dir = run.dir / "base"
+    if not _prepare(run, base_dir, base_sha, timeout):
+        return {}
+    base = checks.run(item["command"], base_dir, timeout)
+    if base["exit"] == 0:
+        out("        passes at the base: this change made it fail")
+        return {"preexisting": False}
+    added = checks.new_lines(head["output"], base["output"])
+    if not added:
+        out("        fails at the base too, with no new output: pre-existing, not counted")
+        return {"preexisting": True}
+    out("        fails at the base too, but these lines are new:\n" + _indent("\n".join(added[:20])))
+    return {"preexisting": False, "newLines": added[:50]}
 
 
 def _checkout(project: Path, dest: Path, sha: str) -> None:
@@ -323,8 +363,70 @@ def cmd_deliver(args, project: Path, cwd: Path) -> int:
     head = deliver.publish(run, draft=args.draft, unverified=args.unverified,
                            comment_file=Path(args.comment_file).resolve() if args.comment_file else None)
     out(f"delivered {run.state['branch']} at {head[:12]}: {run.state['pr']['url']}")
-    summary = (run.spec or {}).get("goal") or first_line(run.state.get("request", ""), 100)
-    return _finish(run, "completed", summary, head)
+    config = read_json(project / ".loop-spec" / "config.json", "config") or {}
+    if args.no_ci or config.get("ci") is False:
+        return _finish(run, "completed", _summary(run), head)
+    out("next: loop-spec ci (waits for the PR's checks)")
+    return 0
+
+
+def _summary(run: Run) -> str:
+    return (run.spec or {}).get("goal") or first_line(run.state.get("request", ""), 100)
+
+
+def cmd_ci(args, project: Path, cwd: Path) -> int:
+    run = find(project, args.slug, cwd)
+    delivered, pr = run.state.get("delivered"), run.state.get("pr")
+    head = git.head(run.work)
+    if not delivered or not pr or delivered["sha"] != head:
+        raise LoopSpecError("the current head has not been delivered", "verify, then `loop-spec deliver`")
+    outcome, found = ci.wait(run.work, pr["number"], args.timeout)
+    record = run.state.setdefault("ci", {"failedShas": []})
+    record.update(outcome=outcome, sha=head)
+    for c in found:
+        out(f"  {c.get('bucket', '?'):8} {c.get('name', '')}" + (f"  {c['link']}" if c.get("link") else ""))
+    if outcome == "pending":
+        run.save()
+        out(f"checks are still running after {args.timeout}s: run loop-spec ci again")
+        return 0
+    if outcome in ("passed", "none"):
+        out("CI passed" if outcome == "passed" else "this repository reports no CI checks")
+        return _finish(run, "completed", _summary(run), head)
+    if head not in record["failedShas"]:
+        record["failedShas"].append(head)
+    run.save()
+    for c in found:
+        if c.get("bucket") in ("fail", "cancel") and (log_tail := ci.failure_log(run.work, c)):
+            out(f"--- {c.get('name')} (failed log, last lines)\n{_indent(log_tail)}")
+    rounds = len(record["failedShas"])
+    limit = (read_json(project / ".loop-spec" / "config.json", "config") or {}).get("ciFixAttempts", 3)
+    if rounds >= limit:
+        git.gh(run.work, "pr", "ready", str(pr["number"]), "--undo")
+        return _finish(run, "escalated", f"CI still fails after {rounds} fix round(s); the PR is back in draft", head)
+    out(f"CI FAILED (round {rounds} of {limit}): find the cause; if the change caused it, fix it in work, "
+        "then verify, deliver, and ci again. If it also fails on the base branch, it is not this change's: "
+        "say so and end with finish.")
+    return 1
+
+
+def cmd_sync(args, project: Path, cwd: Path) -> int:
+    run = find(project, args.slug, cwd)
+    merged = remote.sync(run)
+    for move in merged:
+        out(f"merged {move['ref']} ({move['commits']} commit{'s' if move['commits'] != 1 else ''})")
+    out("next: verify again, since the head moved" if merged else "nothing moved on origin")
+    return 0
+
+
+def cmd_hook_stop(args, project: Path, cwd: Path) -> int:
+    """The plugin's Stop hook. Never fails the session: any error lets the stop through."""
+    try:
+        answer = hook.decide(json.loads(sys.stdin.read() or "{}"), _next_step)
+    except Exception:  # noqa: BLE001 - a broken hook must never stop someone's session
+        return 0
+    if answer:
+        out(json.dumps(answer))
+    return 0
 
 
 def cmd_finish(args, project: Path, cwd: Path) -> int:
@@ -334,7 +436,8 @@ def cmd_finish(args, project: Path, cwd: Path) -> int:
 
 def _finish(run: Run, status: str, summary: str, head: str | None) -> int:
     result = run.finish(status, summary, head)
-    git.remove_worktree(run.project, run.verify_dir, force=True)
+    for scratch in (run.verify_dir, run.dir / "base"):
+        git.remove_worktree(run.project, scratch, force=True)
     for dest in [*sorted((run.dir / "tasks").glob("*")), run.work]:
         if dest.is_dir() and not git.remove_worktree(run.project, dest):
             out(f"kept {dest}: it has uncommitted changes")
@@ -362,6 +465,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="no one will answer questions (LOOP_SPEC_MODE=autonomous in the environment does the same)")
     p.add_argument("--base", help="branch to start from and target; default: origin's default branch")
     p.add_argument("--branch", help="feature branch name; default: feat/<slug> (fix/<slug> for debug)")
+    p.add_argument("--title", help="the PR title; default: the spec's title")
     p.set_defaults(func=cmd_start)
 
     sub.add_parser("status", parents=[common], help="show a run, or list runs").set_defaults(func=cmd_status)
@@ -390,7 +494,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--draft", action="store_true")
     p.add_argument("--unverified", action="store_true", help="deliver without a passing verify, as a draft that says so")
     p.add_argument("--comment-file", help="also post this file as a comment on the PR (e.g. replies to review comments)")
+    p.add_argument("--no-ci", action="store_true", help="end the run now instead of waiting for CI")
     p.set_defaults(func=cmd_deliver)
+
+    p = sub.add_parser("ci", parents=[common], help="wait for the delivered PR's checks; end the run when they pass")
+    p.add_argument("--timeout", type=int, default=540, help="seconds to wait before returning (default 540)")
+    p.set_defaults(func=cmd_ci)
+
+    p = sub.add_parser("sync", parents=[common], help="merge what moved on origin (base or feature branch) into work")
+    p.set_defaults(func=cmd_sync)
+
+    sub.add_parser("hook-stop", parents=[common], help=argparse.SUPPRESS).set_defaults(func=cmd_hook_stop)
 
     p = sub.add_parser("finish", parents=[common], help="end a run without delivering")
     p.add_argument("--status", required=True, choices=RESULT_STATUSES)
@@ -402,6 +516,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     cwd = Path(os.getcwd())
+    if args.command == "hook-stop":
+        return cmd_hook_stop(args, cwd, cwd)  # runs outside any repository too, and never fails
     try:
         project = git.project_root(Path(args.project_root).resolve() if args.project_root else cwd)
         return args.func(args, project, cwd)

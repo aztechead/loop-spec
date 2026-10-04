@@ -12,7 +12,8 @@ the line between them sits where it does. The method itself is in
 | The lead (the user's session, or an SDK agent) | every judgment: the spec, the plan, dispatching tasks, reading reports, fixing findings | runs the hub skill |
 | The hub skill | the method, as guidance the lead follows | `skills/loop-spec/SKILL.md` |
 | Entry skills | starting a run of one kind, then pointing at the hub | `skills/{cycle,micro,debug,revise,status}/SKILL.md` |
-| Agents | one task's implementation (`implementer`, Sonnet) and the whole change's review (`reviewer`, Opus) | `agents/*.md` |
+| Agents | one task's implementation (`implementer`, Sonnet), the whole change's adversarial review (`reviewer`, Opus), and its cleanup review (`simplifier`, Sonnet) | `agents/*.md` |
+| The Stop hook | keeping an autonomous run going until it has a result | `hooks/hooks.json`, `loop_spec/hook.py` |
 | The program | facts the lead should not re-derive: run state, the task graph, worktrees, merges, running checks, the PR | `skills/loop-spec/program/` |
 
 The rule for moving something into the program: it must be deterministic and
@@ -22,9 +23,11 @@ needs judgment (is this criterion good, is this finding blocking, should the pla
 change) stays in the skill as guidance.
 
 The program refuses only what would make the record false: a plan that is not a DAG,
-a merge that conflicts, finishing a task with uncommitted work, and delivering a head
-that verify did not pass (overridable with `--unverified`, which marks the PR draft and
-says so). It never judges the model's work.
+a merge that conflicts, finishing a task with uncommitted work, delivering a head that
+verify did not pass (overridable with `--unverified`, which marks the PR draft and
+says so), and delivering a head that lacks commits origin has. It never judges the
+model's work. Two counts are facts it keeps for the loops: CI rounds that failed
+(`ciFixAttempts`), and Stop-hook continuations that changed nothing.
 
 ## Program modules
 
@@ -38,6 +41,9 @@ Each module has one reason to change:
 | `git.py` | every `git` and `gh` subprocess call |
 | `checks.py` | running a check command and keeping its output tail; which commands verify runs |
 | `deliver.py` | the push, the PR, and its body |
+| `remote.py` | what moved on origin, and merging it into the feature branch |
+| `ci.py` | reading a PR's checks and a failed job's log |
+| `hook.py` | the Stop hook's decision: continue the run, ask to escalate, or let the stop through |
 | `log.py` | the two output channels (`log.stdout`, `log.stderr`); nothing calls `print` |
 
 `state.json` is written only by `runs.Run.save`, and `result.json` only by `runs.Run.finish`. `spec.json` and
@@ -55,6 +61,19 @@ on each other, and `task done` merges it (`--no-ff`) into the feature worktree.
 `verify` runs in one more worktree, `verify/`, reset to exactly the head's tracked
 files before each run (`checkout --force` and `clean -ffd`). Ignored files such as
 installed dependencies survive between verifies, so `prepare` is incremental.
+
+## The loops
+
+Three loops run inside a run, each with an objective exit and a cap:
+
+- **Verify:** fix and verify again until every check passes at the current head.
+- **CI:** after delivery, `ci` waits for the PR's checks; a failure the change caused is
+  fixed, verified, and delivered again, up to `ciFixAttempts` rounds.
+- **The run itself (autonomous only):** the Stop hook re-feeds the run's next step each
+  time the lead would end a turn with the run open, the way a Ralph loop re-feeds its
+  prompt. It lets the turn end when the lead says it is waiting on agents
+  (`LOOP_SPEC_WAITING`), asks once for an escalated finish after three continuations
+  with no change to the phase, head, tasks, verify, or CI, and stops after 40.
 
 ## What 8.x deliberately leaves out
 

@@ -9,6 +9,8 @@ Start (or resume) a loop-spec run, from the repository:
     "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" start --kind debug --request "{request}"
 
 - `{request}`: the error report, stack trace, or failing test, in the user's words.
+- Add `--branch NAME` and `--title "..."` when the user names the branch or the PR
+  title for this change.
 - Add `--autonomous` if no one can answer questions during this run (a headless or
   unattended run, or arguments that start with `--autonomous`).
 

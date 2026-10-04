@@ -9,7 +9,9 @@
 
 - [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md): the whole method (spec, task-graph plan, parallel execution, review and verify, deliver), when to ask, and every program command.
 - [agents/implementer.md](agents/implementer.md): the Sonnet agent that implements one task in its own worktree.
-- [agents/reviewer.md](agents/reviewer.md): the Opus agent that reviews the whole change against the spec.
+- [agents/reviewer.md](agents/reviewer.md): the Opus agent that reviews the whole change against the spec, adversarially.
+- [agents/simplifier.md](agents/simplifier.md): the Sonnet agent that looks for reuse, simplification, efficiency, and altitude cleanups.
+- [hooks/hooks.json](hooks/hooks.json): the Stop hook that keeps an autonomous run going until it has a result.
 
 ## Entries
 

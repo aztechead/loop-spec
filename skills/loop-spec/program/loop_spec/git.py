@@ -85,6 +85,24 @@ def checkout_pr_branch(repo: Path, dest: Path, branch: str, base: str) -> str:
     return head(repo, f"refs/remotes/origin/{base}")
 
 
+def is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
+    return git(repo, "merge-base", "--is-ancestor", ancestor, descendant).returncode == 0
+
+
+def remote_tip(repo: Path, branch: str) -> str | None:
+    """origin's `branch` as last fetched, or None when origin has no such branch."""
+    proc = git(repo, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{branch}")
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def instruction_files(repo: Path, ref: str) -> list[str]:
+    """The repository's instructions for agents and contributors at `ref`: every
+    CLAUDE.md and AGENTS.md, and CONTRIBUTING* at the root."""
+    paths = run_git(repo, "ls-tree", "-r", "--name-only", ref).splitlines()
+    return [p for p in paths
+            if Path(p).name in ("CLAUDE.md", "AGENTS.md") or ("/" not in p and p.startswith("CONTRIBUTING"))]
+
+
 def branch_exists(repo: Path, name: str) -> bool:
     return git(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{name}").returncode == 0
 

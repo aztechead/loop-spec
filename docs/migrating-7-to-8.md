@@ -15,9 +15,12 @@ For someone who runs loop-spec 7.x in Claude Code or on the Agent SDK and is mov
 | State under `~/.loop-spec/` (`LOOP_SPEC_HOME`) | State under `<repo>/.loop-spec/runs/<slug>/` |
 | Result: `<state home>/<repo id>/<slug>/result.json`, schema 1, and `last-result.json` | Result: `<repo>/.loop-spec/runs/<slug>/result.json` and a `LOOP_SPEC_RESULT {...}` line; no `last-result.json` |
 | `roles.*`, `phases.*`, `evidence.*`, `deliver.after`, `deliver.readiness`, `deliver.acceptRemotePaths`, `LOOP_SPEC_MODEL_*`, `LOOP_SPEC_EFFORT_*` | Removed. Customize with your repository's `CLAUDE.md` and skills; models are in the agents' frontmatter |
-| `deliver.base`, `deliver.branch`, `deliver.branchPrefix`, `deliver.reviewers`, `deliver.labels` | The same keys at the top level of `.loop-spec/config.json`: `base`, `branch`, `branchPrefix`, `reviewers`, `labels` |
+| `deliver.base`, `deliver.branch`, `deliver.branchPrefix`, `deliver.reviewers`, `deliver.labels` | The same keys at the top level of `.loop-spec/config.json`: `base`, `branch`, `branchPrefix`, `reviewers`, `labels`; per run, `start --branch` and `--title` |
 | Commands ran without a shell, with a syntax check | Checks run with `bash -c` from the repository root |
 | `examples/supervisor/` and `loop_spec.sdk_runner` | Removed. `examples/sdk-plugin/` remains |
+| DELIVER merged a moved base itself and re-verified | `deliver` refuses; `sync` merges what moved and the lead verifies again |
+| `deliver.readiness` read CI once | `ci` waits for the checks and the lead fixes what the change broke, up to `ciFixAttempts` rounds |
+| Repo checks probed from manifests and compared at base | `plan.json` `checks`, from the repository's `CLAUDE.md`/`AGENTS.md`, compared at base when they fail |
 
 ## Moving
 

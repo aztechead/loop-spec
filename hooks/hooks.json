@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/skills/loop-spec/program/loop-spec\" hook-stop",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

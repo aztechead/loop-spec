@@ -15,15 +15,20 @@ loop-spec takes a coding request to a verified pull request:
    tests that check each one.
 3. **Execute**: ready tasks run in parallel, each in its own git worktree, and are
    merged into the feature branch as they finish.
-4. **Verify**: one review of the whole change, then every check run in a clean
-   checkout of the exact commit to be delivered.
-5. **Deliver**: one PR, whose description carries the spec, tasks, and check results.
+4. **Verify**: a correctness review and a simplification review of the whole change,
+   then every check (the spec's, and the ones the repository's `CLAUDE.md` and
+   `AGENTS.md` require) run in a clean checkout of the exact commit to be delivered.
+5. **Deliver**: one PR, whose description carries the spec, tasks, and check results,
+   with anything that moved on origin merged in first.
+6. **CI**: the run waits for the PR's checks and fixes what its change broke, up to
+   three rounds, before it ends.
 
 The model does the judgment. The method is written as guidance in one skill,
 [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md), not as gates. A small
 standard-library helper keeps the run's state and task graph on disk, manages the
-worktrees, runs the checks, and opens the PR. It enforces one rule: only a commit that
-passed verify is delivered, unless you say otherwise.
+worktrees, runs the checks, opens the PR, and reads its CI. It enforces one rule: only
+a commit that passed verify, and contains everything on origin, is delivered, unless
+you say otherwise.
 
 It is tuned for Claude Opus 5.5 as the lead and reviewer and Claude Sonnet 5.5 as the
 implementer; see [docs/models/README.md](docs/models/README.md).
@@ -64,6 +69,14 @@ set `LOOP_SPEC_MODE=autonomous` in the environment: the run never stops to ask,
 records the defaults it chose as assumptions in the spec, and ends with a result
 either way.
 
+An autonomous run keeps itself going: loop-spec's Stop hook hands the lead the run's
+next step whenever it would end a turn with the run still open, and asks it to end the
+run as escalated if it stops making progress.
+
+To name the feature branch or the PR title for one run, say so in the request
+("on branch feature/KV-12, titled ..."); the entry passes them as `--branch` and
+`--title`.
+
 ```bash
 claude -p "/loop-spec:cycle --autonomous Add a --json flag to the export command" \
   --permission-mode acceptEdits --output-format stream-json --verbose > run.jsonl
@@ -100,9 +113,11 @@ Optional, in `<repo>/.loop-spec/config.json` (commit it if your team wants it sh
 | `branch` | the feature branch name, for repositories with a naming rule; `-2`, `-3` is added when taken |
 | `branchPrefix` | prefix for the default branch name; default `feat/`, `fix/` for debug |
 | `reviewers`, `labels` | set on a new PR (it is always assigned to you) |
+| `ciFixAttempts` | CI rounds a run may fix before it drafts the PR and escalates; default 3 |
+| `ci` | `false` to end runs at delivery without waiting for CI |
 
-Models: the implementer agent runs on Sonnet and the reviewer on Opus, both at medium
-effort, from their frontmatter in [agents/](agents/). The lead is your session, so run
+Models: the implementer and simplifier agents run on Sonnet and the reviewer on Opus,
+all at medium effort, from their frontmatter in [agents/](agents/). The lead is your session, so run
 it on Opus 5.5 for the best plans and reviews.
 
 ## On the Agent SDK
