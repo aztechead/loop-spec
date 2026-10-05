@@ -40,7 +40,7 @@ Each module has one reason to change:
 | Module | Owns |
 |---|---|
 | `cli.py` | the command line: one function per subcommand, and what each prints |
-| `runs.py` | a run's directory and files: `state.json` reads and writes, spec and plan reading, the derived phase, the result |
+| `runs.py` | the run root (a repository, or a workspace root holding `.loop-spec/workspace.json`), the `Repo` view each per-repository caller goes through, and a run's directory and files: `state.json` reads and writes, spec and plan reading, the derived phase, the result |
 | `dag.py` | the task graph: its problems, and which tasks are ready or waiting |
 | `git.py` | every `git` and `gh` subprocess call |
 | `checks.py` | running a check command and keeping its output tail; which commands verify runs |
@@ -75,6 +75,12 @@ on each other, and `task done` merges it (`--no-ff`) into the feature worktree.
 `verify` runs in one more worktree, `verify/`, reset to exactly the head's tracked
 files before each run (`checkout --force` and `clean -ffd`). Ignored files such as
 installed dependencies survive between verifies, so `prepare` is incremental.
+
+A run across repositories keeps the same directories in the workspace root's
+`.loop-spec/runs/<slug>/`, with one worktree per repository inside each: `work/<name>/`,
+`verify/<name>/`, `base/<name>/`. A task's worktree comes from its own repository. The
+runs directory sits outside every repository, so there is nothing to exclude. A single
+repository's run is the same code with one `Repo` whose state is the run's own.
 
 ## The loops
 

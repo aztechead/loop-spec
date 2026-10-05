@@ -21,7 +21,8 @@ in your report.
 
 `LS` below is the `program` path that `start` and `status` print in their
 `LOOP_SPEC_RUN {...}` line, along with the run's `slug`, `kind`, `phase`, `mode`, `base`
-(the commit the change sits on), `runDir`, `work` (the feature branch's worktree), and
+(the commit the change sits on), `runDir`, `work` (the feature branch's worktree; with a `repos` object, see
+[A run across repositories](#a-run-across-repositories)), and
 `references` (the absolute path of the `references/` directory this file links to;
 read a reference through it, since your shell is not in this file's directory).
 Run it; there is no need to read it. Commands find the run from the current directory
@@ -133,6 +134,27 @@ Every phase ends on a check, and you loop on it until it passes:
 A `cycle` run follows this as written. Other kinds change it; read yours before the
 spec: [micro](references/micro.md), [debug](references/debug.md), or
 [revise](references/revise.md).
+
+## A run across repositories
+
+When `LOOP_SPEC_RUN` has a `repos` object, the run changes several repositories that sit
+side by side in a workspace (the directory holding `.loop-spec/workspace.json`). The
+phases are the same; these points change:
+
+- `work` holds one worktree per repository, at `work/<name>/`. Each `repos` entry gives
+  that repository's `work`, `base`, `branch`, `prTemplate`, and `prMd`.
+- Give every task a `"repo": "<name>"`. A task changes one repository; split a change
+  that spans two into tasks, with `dependsOn` where one needs the other.
+- Give every `checks` entry a `"repo"`. `prepare` is one command run in every repository,
+  or an object with one command per repository name.
+- A criterion's `check` runs from the directory holding all repositories, so write
+  `cd api && ...`. A task's `verify` and a `checks` command run from their repository's
+  root.
+- Review each repository's change from its own `base`, with the `work` and `base` of its
+  `repos` entry: `git -C <work> diff <base>..HEAD`.
+- Write one PR description per repository that has commits, at its `prMd` path, following
+  its `prTemplate`. Deliver opens one PR per changed repository and links each to the
+  others; `feedback` reads all of them.
 
 ## 1. Spec
 
@@ -396,7 +418,8 @@ commit what is finished, run `LS checkpoint --push`, and end with `LS finish --s
 escalated --summary "..."` saying what is done and what is not.
 
 The run's end removes its worktrees, `work` included, so run the command that ends it
-from the project root: `cd <project> && LS deliver --slug <slug>` (or `feedback`,
+from the project root (the workspace root in a run across repositories):
+`cd <project> && LS deliver --slug <slug>` (or `feedback`,
 `finish`). Finish with a short report: what changed, the PR link, how
 each criterion was shown, CI's result, and any assumption or skipped finding the user
 should know about.

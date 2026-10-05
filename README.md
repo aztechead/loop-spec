@@ -102,7 +102,8 @@ continue from its `next` line.
 ## Where a run lives
 
 Everything for a run is in `<repo>/.loop-spec/runs/<slug>/`, which loop-spec keeps
-out of `git status` through the repository's own exclude file:
+out of `git status` through the repository's own exclude file (for a run across
+repositories, in the workspace root's `.loop-spec/runs/<slug>/`; see below):
 
 | Path | What |
 |---|---|
@@ -123,6 +124,29 @@ the review's `caveats`. The program prints it as a
 7.x, `events.jsonl` and `result.json` are also written to
 `<state home>/<repo id>/<slug>/`, and the result to `<state home>/<repo id>/last-result.json`,
 where the state home is `$LOOP_SPEC_HOME` or `~/.loop-spec`.
+
+## Runs across repositories
+
+One run can change several repositories: one spec, one task graph, one verify across
+all of them, and one PR per repository that changed, each linking the others. Clone the
+repositories side by side in one directory and list them in that directory's
+`.loop-spec/workspace.json` (7.x's format):
+
+```json
+{"repos": [{"name": "api", "path": "api"}, {"name": "web", "path": "web"}]}
+```
+
+`path` names the repository's root, relative to that directory or absolute; `name` is
+how the plan and the run's directories refer to it. Start the run from that directory.
+Inside it every run is a workspace run, including one started from a listed clone.
+
+- The run keeps one worktree per repository: `work/<name>/` and `verify/<name>/`.
+- `--base`, `--branch`, and the workspace's own `.loop-spec/config.json` apply to every
+  repository; without a base, each repository uses its default branch.
+- A revise run (`--pr`) works on one repository's PR. Pass the PR's URL when its number
+  could belong to more than one repository.
+- The result has one `delivery.targets` row and one `prs` row per PR, each with its
+  repository's name and SHA. `verifiedSha` and `criteriaSha` are null, as in 7.x.
 
 ## Configuration
 
@@ -159,8 +183,8 @@ not a supported surface. What a host can rely on:
 - **Wrap up on request.** Create `.loop-spec/runs/<slug>/stop-requested`. The Stop hook
   and `status` then tell the lead to commit, checkpoint, and end the run as escalated.
   The host deletes the file before it resumes that run.
-- **One repository per run.** For a change across repositories, start one run in each
-  clone, from its own root, and link the PRs to each other.
+- **Runs across repositories.** Give the example runner the workspace root as
+  `--project-root`; see [Runs across repositories](#runs-across-repositories).
 - **A PR you edit after delivery** keeps your title and text: a later delivery updates
   only loop-spec's folded verification section, and the title only if the run changed
   it.

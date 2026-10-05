@@ -6,6 +6,11 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ### Added
 
+- Runs across repositories: a directory holding `.loop-spec/workspace.json` (7.x's
+  format) is a workspace root. One run there has one spec and task graph across its
+  repositories, verifies them together, and delivers one PR per changed repository, each
+  linking the others. Single-repository runs are unchanged.
+
 - The SDK example's `--phase-model PHASE=MODEL` switches the lead's model with
   `set_model()` when the run enters PHASE; `--model opus --phase-model execute=sonnet` is
   its recommended setup.

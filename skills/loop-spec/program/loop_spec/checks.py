@@ -39,21 +39,23 @@ def new_lines(head_output: str, base_output: str) -> list[str]:
 
 def planned(spec: dict | None, plan: dict | None) -> list[dict]:
     """What verify runs: each spec criterion's check, each task's verify command, then each
-    repository check from plan.json, skipping a command already listed. A criterion with
-    no check is listed with command None."""
+    repository check from plan.json, skipping a command already listed (for the same repository).
+    A criterion with no check is listed with command None. Criteria run from the verify root,
+    task and repository items from their repository's checkout (`repo`, set in a workspace)."""
     items, seen = [], set()
     for c in (spec or {}).get("criteria", []):
         items.append({"name": c.get("id", "?"), "text": c.get("text", ""), "command": c.get("check") or None})
-        seen.add(c.get("check"))
+        seen.add((None, c.get("check")))
     for t in (plan or {}).get("tasks", []):
         cmd = t.get("verify")
-        if cmd and cmd not in seen:
-            items.append({"name": t["id"], "text": t.get("title", ""), "command": cmd})
-            seen.add(cmd)
+        if cmd and (t.get("repo"), cmd) not in seen:
+            items.append({"name": t["id"], "text": t.get("title", ""), "command": cmd, "repo": t.get("repo")})
+            seen.add((t.get("repo"), cmd))
     for i, check in enumerate(repo_checks(plan), 1):
-        if check["command"] not in seen:
-            items.append({"name": f"check-{i}", "text": check.get("source", ""), "command": check["command"], "repoCheck": True})
-            seen.add(check["command"])
+        if (check.get("repo"), check["command"]) not in seen:
+            items.append({"name": f"check-{i}", "text": check.get("source", ""), "command": check["command"],
+                          "repoCheck": True, "repo": check.get("repo")})
+            seen.add((check.get("repo"), check["command"]))
     return items
 
 

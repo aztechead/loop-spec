@@ -8,7 +8,8 @@ Start (or resume) a loop-spec run on the pull request:
 
     "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" start --pr "{pr}" --request "{instruction}"
 
-- `{pr}`: the PR number or URL.
+- `{pr}`: the PR number or URL. From a workspace root, use the URL when the number
+  could belong to more than one of its repositories.
 - `{instruction}`: anything the user said beyond the PR reference; leave `--request`
   out when there is nothing.
 - Add `--autonomous` if no one can answer questions during this run (a headless or

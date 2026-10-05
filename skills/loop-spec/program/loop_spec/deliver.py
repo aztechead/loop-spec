@@ -1,10 +1,11 @@
 """Push the feature branch and open or update its pull request with a body built from the run."""
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 from loop_spec import git, remote, review
 from loop_spec.errors import LoopSpecError
-from loop_spec.runs import Run, first_line, read_json
+from loop_spec.runs import Repo, Run, first_line, read_json, sha_for, short
 
 VERIFY_OPEN, VERIFY_CLOSE = "<!-- loop-spec:verification -->", "<!-- /loop-spec:verification -->"
 MARK = {True: "pass", False: "fail", None: "not checked"}
@@ -31,12 +32,24 @@ def pr_template(worktree: Path) -> Path:
     return found[0] if found else VISUAL_PR
 
 
-def pr_guides(run: Run) -> list[Path]:
-    """What to read to write `pr.md`, while it is still to be written: its template. Nothing
-    for an adopted PR, whose description stays."""
-    if (run.state.get("pr") or {}).get("adopted") or (run.dir / "pr.md").is_file() or not run.work.exists():
+def changed(run: Run, head) -> list[Repo]:
+    """The repositories with commits beyond their base at `head`."""
+    if head is None:
         return []
-    return [pr_template(run.work)]
+    return [r for r in run.repos if git.commits(r.work, f"{r.state['base']['sha']}..{sha_for(head, r)}")]
+
+
+def undelivered(run: Run, head) -> list[Repo]:
+    """The changed repositories whose head at `head` is not what was delivered."""
+    return [r for r in changed(run, head) if (r.state.get("delivered") or {}).get("sha") != sha_for(head, r)]
+
+
+def pr_guides(run: Run) -> list[Path]:
+    """What to read to write each `pr.md`, while it is still to be written: its template. Nothing
+    for an adopted PR, whose description stays."""
+    candidates = changed(run, run.head()) if run.workspace else run.repos
+    return [pr_template(r.work) for r in candidates
+            if not (r.state.get("pr") or {}).get("adopted") and not r.pr_md.is_file() and r.work.exists()]
 
 
 def template_leftovers(text: str, template: Path) -> list[str]:
@@ -45,16 +58,18 @@ def template_leftovers(text: str, template: Path) -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip() in placeholders]
 
 
-def body(run: Run, verified: bool) -> str:
+def body(run: Run, verified: bool, repo: Repo | None = None) -> str:
     """The PR description: the lead's `pr.md`, then the criteria and how verify showed them,
     folded so the description stays the shape its template gives it."""
-    return run.dir.joinpath("pr.md").read_text().rstrip() + "\n\n" + "\n".join(_verification(run, verified)) + "\n"
+    repo = repo or run.repos[0]
+    return repo.pr_md.read_text().rstrip() + "\n\n" + "\n".join(_verification(run, verified, repo)) + "\n"
 
 
-def _verification(run: Run, verified: bool) -> list[str]:
+def _verification(run: Run, verified: bool, repo: Repo | None = None, siblings=()) -> list[str]:
+    repo = repo or run.repos[0]
     spec, verify = run.spec or {}, run.state.get("verify") or {}
     by_name = {r["name"]: r for r in verify.get("results", [])}
-    head = (f"checked in a clean checkout of `{verify['sha'][:12]}`, the commit this PR delivers" if verified
+    head = (f"checked in a clean checkout of `{sha_for(verify['sha'], repo)[:12]}`, the commit this PR delivers" if verified
             else "NOT verified: delivered without a passing verify")
     lines = ["<details>", f"<summary>Acceptance criteria: {head}</summary>", ""]
     if spec.get("criteria"):
@@ -65,7 +80,9 @@ def _verification(run: Run, verified: bool) -> list[str]:
             check = ("<br>".join(f"`{line}`" for line in c["check"].splitlines())
                      if c.get("check") else "no command; judged in review")
             lines.append(f"| {MARK[ok]} | **{c.get('id', '')}** {_cell(c.get('text', ''))} | {_cell(check)} |")
-    return [VERIFY_OPEN, *lines, "", "_Delivered by loop-spec._", "</details>", VERIFY_CLOSE]
+    links = ", ".join(f"[{n}#{num}]({url})" for n, num, url in siblings)
+    side = [f"**Part of one change across repositories:** {links}", ""] if links else []
+    return [VERIFY_OPEN, *side, *lines, "", "_Delivered by loop-spec._", "</details>", VERIFY_CLOSE]
 
 
 def _cell(text: str) -> str:
@@ -88,93 +105,117 @@ def fold(body_text: str, section: str) -> str:
 
 
 def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | None) -> str:
-    """Push the feature branch, open or update its PR, and optionally comment on it.
-    Returns the delivered head SHA; the PR is recorded in run.state["pr"]."""
-    state, work = run.state, run.work
-    head = git.head(work)
+    """Push each changed repository's feature branch, open or update its PR, and optionally comment
+    on each. Returns the delivered head; each PR is recorded in its repository's state["pr"]."""
+    head = run.head()
+    if head is None:
+        raise LoopSpecError("work is missing", "run loop-spec status to restore it")
     verified = run.verified_at(head)
     if not verified and not unverified:
-        verify = state.get("verify")
+        verify = run.state.get("verify")
         why = "no verify has run" if not verify else (
-            "the last verify failed" if not verify["passed"] else f"verify ran on {verify['sha'][:12]}, but the branch is now at {head[:12]}")
+            "the last verify failed" if not verify["passed"] else f"verify ran on {short(verify['sha'])}, but the branch is now at {short(head)}")
         raise LoopSpecError(f"refusing to deliver an unverified head: {why}",
                             "run `loop-spec verify`, or pass --unverified to open a draft PR that says it is unverified")
-    if not unverified and (state.get("iterate") or {}).get("sha") != head:
+    if not unverified and (run.state.get("iterate") or {}).get("sha") != head:
         raise LoopSpecError("this head has no recorded review (ITERATE)",
                             "review the whole change, address what it finds, then `loop-spec iterate` and deliver")
-    if not git.commits(work, f"{state['base']['sha']}..{head}"):
+    todo = changed(run, head)
+    if not todo:
         raise LoopSpecError("the feature branch has no commits beyond its base; there is nothing to deliver",
                             "end the run with `loop-spec finish --status no-change --summary ...`")
-    git.require_clean(work, "the feature worktree", f"commit or discard them in {work}, then verify again")
-    adopted = (state.get("pr") or {}).get("adopted")
-    if not adopted and not (run.dir / "pr.md").is_file():
-        raise LoopSpecError(f"there is no PR description at {run.dir / 'pr.md'}",
-                            f"write it following {pr_template(work)}, then deliver again")
-    if not adopted and (left := template_leftovers((run.dir / "pr.md").read_text(), pr_template(work))):
-        raise LoopSpecError(f"pr.md still has {len(left)} line(s) of the template's placeholders, such as: {left[0][:100]}",
-                            "replace each with what this change does, or delete it, then deliver again")
-    if not git.has_origin(work):
-        raise LoopSpecError("the repository has no origin remote", "add one with `git remote add origin <url>`")
-    code, _, err = git.gh(work, "auth", "status")
+    for r in todo:  # every refusal comes before the first push, so a refusal changes nothing on origin
+        tag = f"[{r.name}] " if run.workspace else ""
+        git.require_clean(r.work, f"{tag}the feature worktree", f"commit or discard them in {r.work}, then verify again")
+        adopted = (r.state.get("pr") or {}).get("adopted")
+        if not adopted and not r.pr_md.is_file():
+            raise LoopSpecError(f"{tag}there is no PR description at {r.pr_md}",
+                                f"write it following {pr_template(r.work)}, then deliver again")
+        if not adopted and (left := template_leftovers(r.pr_md.read_text(), pr_template(r.work))):
+            raise LoopSpecError(f"{tag}pr.md still has {len(left)} line(s) of the template's placeholders, such as: {left[0][:100]}",
+                                "replace each with what this change does, or delete it, then deliver again")
+        if not git.has_origin(r.work):
+            raise LoopSpecError(f"{tag}the repository has no origin remote", "add one with `git remote add origin <url>`")
+        moved = remote.moves(run, r)
+        if moved:
+            raise LoopSpecError(f"{tag}origin moved since this head was verified: " + "; ".join(remote.describe(m) for m in moved),
+                                "run `loop-spec sync` to merge it in, then verify and deliver again")
+    code, _, err = git.gh(todo[0].work, "auth", "status")
     if code != 0:  # checked before the push, so a missing gh changes nothing on origin
         raise LoopSpecError(f"gh cannot open the PR: {err.strip().splitlines()[0] if err.strip() else 'gh auth status failed'}",
                             "install gh and run `gh auth login`, then deliver again")
-    moved = remote.moves(run)
-    if moved:
-        raise LoopSpecError("origin moved since this head was verified: " + "; ".join(remote.describe(m) for m in moved),
-                            "run `loop-spec sync` to merge it in, then verify and deliver again")
 
-    branch = state["branch"]
-    push = git.git(work, "push", "--quiet", "-u", "origin", f"HEAD:refs/heads/{branch}")
-    if push.returncode != 0:
-        raise LoopSpecError(f"git push was rejected: {push.stderr.strip()}",
-                            f"if origin/{branch} moved, merge it in {work}, verify again, then deliver; never force-push")
-
-    body_path = run.dir / "pr-body.md"
-    section = "\n".join(_verification(run, verified))
-    pr = state.get("pr")
-    if pr is None:
-        existing = git.gh_json(work, "pr", "list", "--head", branch, "--state", "open", "--json", "number,url")
-        pr = existing[0] if existing else None
-    if pr is None:
-        body_path.write_text(body(run, verified))
-        pr = _create(run, branch, body_path, draft=draft or not verified)
-    else:  # only the verification section is the program's: the PR's own text and title stay
-        code, current, error = git.gh(work, "pr", "view", str(pr["number"]), "--json", "body", "-q", ".body")
-        if code != 0:  # without the current body, an edit would replace the PR's whole description
-            raise LoopSpecError(f"could not read PR #{pr['number']}'s description: {error.strip()}",
-                                f"the branch is pushed; run loop-spec deliver again")
-        body_path.write_text(fold(current, section))
+    before, created, written = {r.name: r.state.get("pr") for r in todo}, {}, {}
+    for r in todo:
+        branch = r.state["branch"]
+        push = git.git(r.work, "push", "--quiet", "-u", "origin", f"HEAD:refs/heads/{branch}")
+        if push.returncode != 0:
+            raise LoopSpecError(f"git push was rejected: {push.stderr.strip()}",
+                                f"if origin/{branch} moved, merge it in {r.work}, verify again, then deliver; never force-push")
+        pr = r.state.get("pr")
+        if pr is None:
+            existing = git.gh_json(r.work, "pr", "list", "--head", branch, "--state", "open", "--json", "number,url")
+            pr = existing[0] if existing else None
+        if pr is None:
+            body_path = _body_path(run, r)
+            written[r.name] = body(run, verified, r)
+            body_path.write_text(written[r.name])
+            pr = _create(run, r, branch, body_path, draft=draft or not verified)
+            created[r.name] = pr
+        r.state["pr"] = pr  # recorded now so the refold below sees every PR; `before` kept the old value
+    prs = [(r.name, r.state["pr"]["number"], r.state["pr"]["url"]) for r in run.repos if r.state.get("pr")]
+    refold = [r for r in todo if r.name not in created or (run.workspace and len(prs) > 1)]
+    for r in refold:  # only the verification section is the program's: the PR's own text and title stay
+        pr = r.state["pr"]
+        if r.name in created:
+            current = written[r.name]
+        else:
+            code, current, error = git.gh(r.work, "pr", "view", str(pr["number"]), "--json", "body", "-q", ".body")
+            if code != 0:  # without the current body, an edit would replace the PR's whole description
+                raise LoopSpecError(f"could not read PR #{pr['number']}'s description: {error.strip()}",
+                                    "the branch is pushed; run loop-spec deliver again")
+        siblings = [p for p in prs if p[0] != r.name] if run.workspace else []
+        body_path = _body_path(run, r)
+        body_path.write_text(fold(current, "\n".join(_verification(run, verified, r, siblings))))
         edit = ["pr", "edit", str(pr["number"]), "--body-file", str(body_path)]
-        if (state.get("delivered") or {}).get("title", title(run)) != title(run):  # the run changed its own title
+        if (r.state.get("delivered") or {}).get("title", title(run)) != title(run):  # the run changed its own title
             edit += ["--title", title(run)]
-        git.gh(work, *edit)
-    if state.get("pr"):  # a later delivery of a PR this run opened
-        # Ask everyone who left feedback to look again; feedback then waits for them. GitHub refuses
-        # the PR's author and most bots, which is fine: there is no one to wait for.
-        for login in (state.get("feedback") or {}).get("authors", []):
-            git.gh(work, "pr", "edit", str(pr["number"]), "--add-reviewer", login)
-    state["pr"] = pr
-    state["delivered"] = {"sha": head, "verified": verified, "title": title(run), "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        git.gh(r.work, *edit)
+    for r in todo:
+        if before[r.name]:  # a later delivery of a PR this run opened
+            # Ask everyone who left feedback to look again; feedback then waits for them. GitHub refuses
+            # the PR's author and most bots, which is fine: there is no one to wait for.
+            for login in (r.state.get("feedback") or {}).get("authors", []):
+                git.gh(r.work, "pr", "edit", str(r.state["pr"]["number"]), "--add-reviewer", login)
+        r.state["delivered"] = {"sha": sha_for(head, r), "verified": verified, "title": title(run),
+                                "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     run.save()
     if comment_file:
         reply = f"{comment_file.read_text().rstrip()}\n\n{review.MARK}\n"
-        code, _, err = git.gh(work, "pr", "comment", str(pr["number"]), "--body", reply)
-        if code != 0:
-            raise LoopSpecError(f"the PR was delivered, but gh pr comment failed: {err.strip()}",
-                                f"run loop-spec deliver --comment-file {comment_file} again")
+        for r in todo:
+            code, _, err = git.gh(r.work, "pr", "comment", str(r.state["pr"]["number"]), "--body", reply)
+            if code != 0:
+                raise LoopSpecError(f"the PR was delivered, but gh pr comment failed: {err.strip()}",
+                                    f"run loop-spec deliver --comment-file {comment_file} again")
     return head
 
 
-def _create(run: Run, branch: str, body_path: Path, *, draft: bool) -> dict:
+def _body_path(run: Run, repo: Repo) -> Path:
+    """Where the PR body is staged for gh: `pr-body.md`, or one file per repository in a workspace."""
+    path = run.dir / "pr-body" / f"{repo.name}.md" if run.workspace else run.dir / "pr-body.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _create(run: Run, repo: Repo, branch: str, body_path: Path, *, draft: bool) -> dict:
     config = read_json(run.project / ".loop-spec" / "config.json", "config") or {}
-    args = ["pr", "create", "--base", run.state["base"]["branch"], "--head", branch, "--title", title(run),
+    args = ["pr", "create", "--base", repo.state["base"]["branch"], "--head", branch, "--title", title(run),
             "--body-file", str(body_path), *(["--draft"] if draft else [])]
     for reviewer in config.get("reviewers", []):
         args += ["--reviewer", reviewer]
     for label in config.get("labels", []):
         args += ["--label", label]
-    code, out, err = git.gh(run.work, *args)
+    code, out, err = git.gh(repo.work, *args)
     if code != 0:
         raise LoopSpecError(f"gh pr create failed: {err.strip()}", "check `gh auth status`; the branch is pushed, so deliver again once fixed")
     url = out.strip().splitlines()[-1]
@@ -189,3 +230,24 @@ def adopt_pr(project: Path, ref: str) -> dict:
     if pr.get("isCrossRepository"):
         raise LoopSpecError(f"PR {ref} comes from a fork", "check the fork out yourself; loop-spec revises same-repository PRs")
     return pr
+
+
+def adopt_workspace_pr(root: Path, entries: list[dict], ref: str) -> tuple[dict, dict]:
+    """The one workspace repository that has open PR `ref`, and the PR, for a revise run. A repository
+    matches when the PR's url starts with the repository's url + `/pull/`; a failing gh is no match."""
+    matches = []
+    for e in entries:
+        code, out, _ = git.gh(e["path"], "pr", "view", ref, "--json", "number,url,headRefName,baseRefName,state,isCrossRepository")
+        code2, repo_url, _ = git.gh(e["path"], "repo", "view", "--json", "url", "-q", ".url")
+        if code == 0 and code2 == 0 and (pr := json.loads(out))["url"].startswith(repo_url.strip() + "/pull/"):
+            matches.append((e, pr))
+    if not matches:
+        raise LoopSpecError(f"no repository in this workspace has PR {ref}", "pass the PR's URL")
+    if len(matches) > 1:
+        raise LoopSpecError(f"PR {ref} matches {', '.join(e['name'] for e, _ in matches)}", "pass its URL")
+    (entry, pr), = matches
+    if pr.get("state") != "OPEN":
+        raise LoopSpecError(f"PR {ref} is {pr.get('state', 'not open')}", "revise works on an open PR")
+    if pr.get("isCrossRepository"):
+        raise LoopSpecError(f"PR {ref} comes from a fork", "check the fork out yourself; loop-spec revises same-repository PRs")
+    return entry, pr

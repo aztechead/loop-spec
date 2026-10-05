@@ -74,6 +74,10 @@ Use this table for each key:
 8.0 adds one key with no 7.x equivalent: `feedback.reviewWaitMinutes`. It sets how
 long a run waits for requested reviewers after CI passes. The default is 30.
 
+Keep a workspace's `.loop-spec/workspace.json` as it is; 8.0 reads the same
+`{"repos": [{"name", "path"}]}`. 8.0 does not find a workspace without that file: add it
+if 7.x found your clones on its own.
+
 ## 4. Move customizations
 
 7.x let you swap the role skills and set per-role models. 8.0 has no roles. A lead

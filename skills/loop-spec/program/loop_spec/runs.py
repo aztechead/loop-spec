@@ -8,8 +8,14 @@ A run lives in `<project>/.loop-spec/runs/<slug>/`:
     work/         worktree on the feature branch, where finished tasks are merged
     tasks/<id>/   one worktree per started task
     verify/       the detached checkout verify runs in
+    pr.md         the PR description the lead writes
     result.json   the run's final result, 7.x's schema-1 record; its presence means the run is over
     events.jsonl  the phase stream's records (phases.py)
+
+A workspace run, in a directory holding `.loop-spec/workspace.json`, is the same under that
+directory (the run root): `work/<name>/`, `verify/<name>/`, `base/<name>/` and `pr/<name>.md` per
+repository, one `Repo` view each (`Run.repos`). Its `state.json` keeps each repository's base,
+branch, PR, and delivery under `repos`.
 
 A `Run` lives for one command, and no command writes spec.json or plan.json, so they
 are read once.
@@ -19,17 +25,20 @@ import os
 import re
 import textwrap
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import cached_property
 from pathlib import Path
 from typing import Callable
 
-from loop_spec import dag
+from loop_spec import dag, git
 from loop_spec.errors import LoopSpecError
 
 RUNS_DIR = Path(".loop-spec") / "runs"
 KINDS = ("cycle", "micro", "debug", "revise")
 RESULT_STATUSES = ("completed", "no-change", "escalated", "failed")
+WORKSPACE = Path(".loop-spec") / "workspace.json"
+NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def slugify(text: str) -> str:
@@ -95,6 +104,86 @@ def spec_problems(spec) -> list[str]:
     return found
 
 
+def run_root(start: Path) -> Path:
+    """The nearest of `start` and its parents holding workspace.json, else the repository's root."""
+    start = start.resolve()
+    for d in (start, *start.parents):
+        if (d / WORKSPACE).is_file():
+            return d
+    return git.project_root(start)
+
+
+def workspace_repos(root: Path) -> list[dict] | None:
+    """The repositories workspace.json declares, validated, as [{name, path}] sorted by name;
+    None when `root` is not a workspace root."""
+    file = root / WORKSPACE
+    if not file.is_file():
+        return None
+    fix = f"fix {file}: {{\"repos\": [{{\"name\": \"api\", \"path\": \"api\"}}]}}"
+    data = read_json(file, "workspace.json")
+    repos = data.get("repos") if isinstance(data, dict) else None
+    if not isinstance(repos, list) or not repos:
+        raise LoopSpecError(f"{file} needs a non-empty `repos` list", fix)
+    found, seen = [], set()
+    for n, e in enumerate(repos, 1):
+        if not isinstance(e, dict) or not isinstance(e.get("name"), str) or not isinstance(e.get("path"), str):
+            raise LoopSpecError(f"workspace repo #{n} needs a string `name` and `path`", fix)
+        name = e["name"]
+        if not NAME.match(name):
+            raise LoopSpecError(f"workspace repo {name!r}: the name must match {NAME.pattern}", fix)
+        if name in seen:
+            raise LoopSpecError(f"workspace repo {name} is listed twice", fix)
+        seen.add(name)
+        path = (root / e["path"]).resolve()
+        if path == root.resolve():
+            raise LoopSpecError(f"workspace repo {name}: path is the workspace root itself", fix)
+        proc = git.git(path, "rev-parse", "--show-toplevel") if path.is_dir() else None
+        if proc is None or proc.returncode != 0 or Path(proc.stdout.strip()).resolve() != path:
+            raise LoopSpecError(f"workspace repo {name}: {e['path']} is not a git repository's top level", fix)
+        found.append({"name": name, "path": path})
+    return sorted(found, key=lambda e: e["name"])
+
+
+@dataclass
+class Repo:
+    """One repository of a run. A single-repo run has one, named "", whose `state` is the run's own."""
+    name: str
+    path: Path        # the user's clone
+    work: Path        # the feature worktree
+    verify_dir: Path  # the clean checkout verify uses
+    base_dir: Path    # the base checkout a failing repository check is compared in
+    pr_md: Path       # the PR description the lead writes
+    state: dict       # this repository's slice of state.json
+
+
+def sha_for(head, repo: Repo):
+    return head[repo.name] if isinstance(head, dict) else head
+
+
+def short(head) -> str:
+    if head is None:
+        return "?"
+    if isinstance(head, dict):
+        return ", ".join(f"{n} {s[:12]}" for n, s in sorted(head.items()))
+    return head[:12]
+
+
+def prepare_for(plan: dict | None, name: str) -> str | None:
+    p = (plan or {}).get("prepare")
+    return p.get(name) if isinstance(p, dict) else p
+
+
+def workspace_problems(plan, names: list[str]) -> list[str]:
+    """What a workspace plan lacks: every task and `checks` entry names one of the repositories."""
+    plan, listed = plan or {}, ", ".join(names)
+    found = [f"{t['id']} has no known `repo` (one of: {listed})" for t in plan.get("tasks", []) if t.get("repo") not in names]
+    found += [f"`checks` entry #{n} must be an object with a `repo` (one of: {listed})"
+              for n, c in enumerate(plan.get("checks") or [], 1) if not isinstance(c, dict) or c.get("repo") not in names]
+    if isinstance(plan.get("prepare"), dict):
+        found += [f"`prepare` names {k}, which is no repository (one of: {listed})" for k in plan["prepare"] if k not in names]
+    return found
+
+
 class Run:
     def __init__(self, project: Path, slug: str) -> None:
         self.project = project
@@ -107,6 +196,34 @@ class Run:
         self.work = self.dir / "work"
         self.verify_dir = self.dir / "verify"
         self.state: dict = read_json(self.state_path, "state") or {}
+
+    @property
+    def workspace(self) -> bool:
+        return "repos" in self.state
+
+    @property
+    def repos(self) -> list[Repo]:
+        if not self.workspace:
+            return [Repo("", self.project, self.work, self.verify_dir, self.dir / "base", self.dir / "pr.md", self.state)]
+        return [Repo(n, self.project / e["path"], self.work / n, self.verify_dir / n, self.dir / "base" / n,
+                     self.dir / "pr" / f"{n}.md", e) for n, e in sorted(self.state["repos"].items())]
+
+    def repo(self, name: str | None) -> Repo:
+        repos = self.repos
+        if not self.workspace:
+            return repos[0]
+        for r in repos:
+            if r.name == name:
+                return r
+        raise LoopSpecError(f"{name or 'no repo'} is not a repository of this run (one of: {', '.join(r.name for r in repos)})",
+                            "name one in the task's `repo`")
+
+    def head(self):
+        """The feature head: a SHA, or {repo: SHA} in a workspace; None when a worktree is missing."""
+        if not all(r.work.exists() for r in self.repos):
+            return None
+        heads = {r.name: git.head(r.work) for r in self.repos}
+        return heads if self.workspace else heads[""]
 
     def exists(self) -> bool:
         return self.state_path.is_file()
@@ -149,6 +266,8 @@ class Run:
         if not isinstance(tasks, list) or not all(isinstance(t, dict) for t in tasks):
             raise LoopSpecError(f"{self.plan_path} needs a `tasks` list of objects", "see the plan.json shape in the loop-spec skill")
         found = dag.problems(tasks)
+        if not found and self.workspace:
+            found = workspace_problems(self.plan, [r.name for r in self.repos])
         if not found and isinstance(self.spec, dict) and not spec_problems(self.spec):
             found = dag.unknown_criteria(tasks, [c["id"] for c in self.spec["criteria"]])
         if found:
@@ -176,11 +295,11 @@ class Run:
     def set_task(self, task_id: str, status: str, note: str | None = None) -> None:
         self.state.setdefault("tasks", {})[task_id] = {"status": status, "note": note}
 
-    def verified_at(self, head: str | None) -> bool:
+    def verified_at(self, head) -> bool:
         verify = self.state.get("verify") or {}
         return bool(verify.get("passed")) and head is not None and verify.get("sha") == head
 
-    def phase(self, head: str | None) -> str:
+    def phase(self, head) -> str:
         """Where the run is, derived from its files: spec, plan, execute, verify, iterate, deliver, or
         done, 7.x's phase names. Delivering covers the PR's CI and review feedback too."""
         if self.result_path.is_file():

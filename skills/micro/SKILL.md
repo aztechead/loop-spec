@@ -4,7 +4,8 @@ description: "Makes a small, well-defined code change (a one-file fix, a rename,
 argument-hint: "[--autonomous|--supervised] <request>"
 ---
 
-Start (or resume) a loop-spec run, from the repository:
+Start (or resume) a loop-spec run from the repository, or, for a change across
+repositories, from the workspace root (the directory holding `.loop-spec/workspace.json`):
 
     "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" start --kind micro --request "{request}"
 

@@ -4,7 +4,8 @@ description: "Reproduces and fixes a specific failure with loop-spec: confirms t
 argument-hint: "[--autonomous|--supervised] <error, stack trace, or failing test>"
 ---
 
-Start (or resume) a loop-spec run, from the repository:
+Start (or resume) a loop-spec run from the repository, or, for a change across
+repositories, from the workspace root (the directory holding `.loop-spec/workspace.json`):
 
     "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" start --kind debug --request "{request}"
 

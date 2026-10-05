@@ -27,7 +27,7 @@ from pathlib import Path
 
 from loop_spec import VERSION, git
 from loop_spec.deliver import title
-from loop_spec.runs import write_json
+from loop_spec.runs import sha_for, write_json
 
 CYCLE_TYPES = {"cycle": "full", "micro": "micro", "debug": "debug", "revise": "revise"}
 STATUS = {"converged": "completed", "converged-with-caveats": "completed", "no-change": "completed",
@@ -66,7 +66,8 @@ def run_dir(run) -> Path:
 def classification(run, status: str) -> str:
     """7.x's `result`: a completed run whose PR is a draft converged with caveats."""
     if status == "completed":
-        return "converged" if (run.state.get("delivered") or {}).get("verified", True) else "converged-with-caveats"
+        drafts = [(r.state.get("delivered") or {}).get("verified", True) for r in run.repos]
+        return "converged" if all(drafts) else "converged-with-caveats"
     return status
 
 
@@ -81,7 +82,7 @@ def _host_versions() -> dict:
     return {"claude": claude, "python3": f"Python {platform.python_version()}", "git": git.version()}
 
 
-def record(run, status: str, summary: str, head: str | None, phase: str, kept: list[str]) -> dict:
+def record(run, status: str, summary: str, head, phase: str, kept: list[str]) -> dict:
     """The schema-1 result 7.x wrote, for an 8.x run ending with `status` at `phase`."""
     s = run.state
     result = classification(run, status)
@@ -89,10 +90,21 @@ def record(run, status: str, summary: str, head: str | None, phase: str, kept: l
     caveats = (s.get("iterate") or {}).get("caveats")
     feedback = s.get("feedback") or {}
     verify = s.get("verify")
-    verified_sha = head if run.verified_at(head) else None
+    verified = run.verified_at(head)
+    verified_sha = head if verified and not run.workspace else None
     repo = run.project.name
     delivery = None
-    if delivered:
+    if run.workspace:
+        landed = [r for r in run.repos if r.state.get("delivered")]
+        first = run.repos[0].state
+        delivered = bool(landed) or None
+        delivery = {"targets": [{"repo": r.name, "pr": {"number": r.state["pr"]["number"], "url": r.state["pr"]["url"]},
+                                 "deliveredSha": r.state["delivered"]["sha"], "caveats": [caveats] if caveats else [],
+                                 "state": "delivered", "ci": (r.state.get("feedback") or {}).get("ci"),
+                                 "reviews": (r.state.get("feedback") or {}).get("verdicts", {})}
+                                for r in landed]} if landed else None
+        pr = landed[0].state["pr"] if landed else {}
+    elif delivered:
         delivery = {"targets": [{"repo": repo, "pr": {"number": pr.get("number"), "url": pr.get("url")},
                                  "deliveredSha": delivered["sha"], "caveats": [caveats] if caveats else [],
                                  "state": "delivered", "ci": feedback.get("ci"),
@@ -116,8 +128,8 @@ def record(run, status: str, summary: str, head: str | None, phase: str, kept: l
         "noChangeReason": ("diagnostic-only" if s.get("kind") == "debug" else "already-satisfied")
         if result == "no-change" else None,
         "phaseReached": phase,
-        "branch": s.get("branch"),
-        "baseBranch": (s.get("base") or {}).get("branch"),
+        "branch": first.get("branch") if run.workspace else s.get("branch"),
+        "baseBranch": (first.get("base") or {}).get("branch") if run.workspace else (s.get("base") or {}).get("branch"),
         "prUrl": pr.get("url") if shows_pr else None,
         "checkpointPrUrl": None,
         "delivery": delivery,
@@ -129,22 +141,25 @@ def record(run, status: str, summary: str, head: str | None, phase: str, kept: l
         "assumptions": (run.spec or {}).get("assumptions", []),
         "decisions": (run.spec or {}).get("decisions", []),
         "criteria": criteria,
-        "criteriaSha": (verify or {}).get("sha"),
+        "criteriaSha": None if run.workspace else (verify or {}).get("sha"),
         "autonomous": run.mode in ("autonomous", "supervised"),
         "feature_title": title(run),
         "createdAt": s.get("createdAt"),
         "finishedAt": now_iso(),
-        "verification": {"status": "not-run" if not verify else ("passed" if verified_sha else "failed"),
+        "verification": {"status": "not-run" if not verify else ("passed" if verified else "failed"),
                          "command": None},
         "implementationConverged": result in ("converged", "converged-with-caveats", "no-change") or (
             phase == "deliver" and (s.get("iterate") or {}).get("sha") == head),
-        "eligibleTargets": [{"branch": s.get("branch"), "targetSha": verified_sha}] if verified_sha else [],
+        "eligibleTargets": ([{"repo": r.name, "branch": r.state["branch"], "targetSha": sha_for(head, r)}
+                             for r in run.repos if sha_for(head, r) != r.state["base"]["sha"]] if verified else [])
+        if run.workspace else ([{"branch": s.get("branch"), "targetSha": verified_sha}] if verified_sha else []),
         "retryable": result == "failed",
         "retryPhase": phase if result == "failed" else None,
         "verifiedSha": verified_sha,
         "result": result,
         "rewinds": rewinds,
-        "prs": [{"repo": repo, "number": pr.get("number"), "url": pr.get("url")}] if delivered else [],
+        "prs": ([{"repo": r.name, "number": r.state["pr"]["number"], "url": r.state["pr"]["url"]} for r in landed]
+                if run.workspace else [{"repo": repo, "number": pr.get("number"), "url": pr.get("url")}] if delivered else []),
         "after": [],
         # 8.x reviews the whole change at ITERATE, not each task through an attested step.
         "reviewed": {tid: {"level": "unattested", "stepId": None} for tid in done},
@@ -152,7 +167,8 @@ def record(run, status: str, summary: str, head: str | None, phase: str, kept: l
         "outstanding": [],
         "blocked": [],
         "partiallyDelivered": False,
-        "weakenedAssurance": ["delivered without a passing verify"] if delivered and not delivered.get("verified") else [],
+        "weakenedAssurance": ["delivered without a passing verify"] if delivered and not (
+            all((r.state["delivered"] or {}).get("verified") for r in landed) if run.workspace else delivered.get("verified")) else [],
         "cleanupBacklog": kept,
         "implementations": {},
         "policyAnsweredQuestions": [],

@@ -82,6 +82,8 @@ def _end(run, exit_: str, verdict: str, next_phase: str | None, head: str | None
     current = run.state["phaseStream"]
     phase, attempt = current["phase"], current["attemptId"]
     elapsed = round(datetime.now(timezone.utc).timestamp() - current.get("startedAt", 0), 1)
+    if isinstance(head, dict):  # a workspace's heads, as one string for hosts that read 7.x's headSha
+        head = ",".join(f"{n}@{h}" for n, h in sorted(head.items()))
     payload = {"event": "phase_end", "attemptId": attempt, "phase": phase, "timestamp": _now(), "verdict": verdict,
                "next": next_phase, "elapsedSeconds": elapsed, "headSha": head}
     log.stdout.info(f"LOOP_SPEC_PHASE_END {_compact(payload)}")
