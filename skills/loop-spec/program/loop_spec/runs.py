@@ -117,10 +117,10 @@ class Run:
 
     @property
     def mode(self) -> str:
-        """`autonomous` when the host says so (LOOP_SPEC_MODE) or the run was started so."""
-        if os.environ.get("LOOP_SPEC_MODE") == "autonomous":
-            return "autonomous"
-        return self.state.get("mode", "interactive")
+        """`autonomous` or `supervised` when the host says so (LOOP_SPEC_MODE) or the run was started so,
+        else `interactive`."""
+        env = os.environ.get("LOOP_SPEC_MODE")
+        return env if env in ("autonomous", "supervised") else self.state.get("mode", "interactive")
 
     @property
     def result(self) -> dict | None:

@@ -7,6 +7,6 @@ follows, and everything else stands.
 - **The branch:** the run works on the PR's own branch, and deliver pushes to it.
 - **Spec:** `start` lists the PR's review comments so far, each once; `feedback` later
   shows only what comes after them. Make one criterion per comment you change code for.
-- **Deliver:** no `pr.md`; deliver leaves the PR's description alone. Write a reply
+- **Deliver:** no `pr.md`; deliver updates only the PR's folded verification section. Write a reply
   covering each comment (what changed, or why not) to a file in `runDir` and pass it as
   `LS deliver --comment-file F`.

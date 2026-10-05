@@ -14,6 +14,7 @@ from loop_spec import legacy
 from test_flow import commit, marker, sh
 
 # The top-level fields of 7.x's result record (loop_spec/result.py on the 7.x branch).
+FIELDS_8X = ["assumptions", "decisions", "criteria", "criteriaSha", "caveats"]  # 8.x adds these to 7.x's record
 FIELDS_7X = [
     "schema", "loopSpecVersion", "cycleType", "slug", "status", "outcome", "reason", "summary", "noChangeReason",
     "phaseReached", "branch", "baseBranch", "prUrl", "checkpointPrUrl", "delivery", "converged", "workDelivered",
@@ -50,7 +51,7 @@ class LegacyTests(unittest.TestCase):
         code, out, _ = self.repo.ls("feedback")
         self.assertEqual(code, 0)
         result = marker(out, "LOOP_SPEC_RESULT")
-        self.assertEqual(sorted(result), sorted(FIELDS_7X))
+        self.assertEqual(sorted(set(result) - set(FIELDS_8X)), sorted(FIELDS_7X))
         self.assertEqual((result["schema"], result["cycleType"], result["status"], result["outcome"], result["result"]),
                          (1, "full", "completed", "delivered", "converged"))
         self.assertEqual(result["verification"], {"status": "passed", "command": None})

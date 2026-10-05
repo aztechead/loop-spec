@@ -44,6 +44,7 @@ the project's checks take longer.
 | `LS set --branch NAME --title "..."` | rename the feature branch (until it is pushed) or set the PR title |
 | `LS deliver [--draft] [--unverified] [--comment-file F]` | push the verified head and open or update its PR (posting `F` as a comment) |
 | `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review; ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
+| `LS checkpoint [--push]` | commit work in progress in every worktree and list them; `--push` pushes their branches. For a run the host asked to wrap up |
 | `LS finish --status completed\|no-change\|escalated\|failed --summary "..."` | end the run: `completed` after feedback skills find nothing, otherwise a run that delivers nothing |
 
 Four kinds of check apply to a run. A criterion's `check` (in `spec.json`), a task's
@@ -100,6 +101,9 @@ The run's `mode` is in `LOOP_SPEC_RUN`.
   `finish`: when the request is impossible, contradicts the code in a way no default
   resolves, or something you cannot fix blocks the run, end with `finish --status
   escalated --summary "..."` naming the blocker and the verified head, if any.
+- **supervised**: as autonomous, except ask with `AskUserQuestion` when you cannot go on
+  without an answer or before a step that is hard to undo. If it comes back unanswered,
+  end your turn with a line saying `LOOP_SPEC_ASKING`.
 
 ## The workflow
 
@@ -176,8 +180,10 @@ The branch and the PR title come from, in order: the user (the entry passed them
 `start --branch` and `--title`), then the repository's rules, then the defaults
 (`branch` or `branchPrefix` in `.loop-spec/config.json`, else `feat/<slug>`, or
 `fix/<slug>` for a debug run; and the spec's `title`). For the rules, run `LS set
---branch NAME --title "..."` now, before anything is pushed. With no rule, `title`
-follows the commit convention in `git log --oneline -15`.
+--branch NAME --title "..."` now, before anything is pushed. Do the same when the
+request opens with context rather than the change (a URL, a ticket, a pasted bundle):
+name the branch from the spec's title. With no rule, `title` follows the commit
+convention in `git log --oneline -15`.
 
 ### The check
 
@@ -320,10 +326,10 @@ names on its `pr.md` line (`prTemplate` in `LOOP_SPEC_RUN`): the repository's ow
 template when it has one, else the visual-pr template,
 [pr_description_template.md](references/visual-pr/pr_description_template.md): one
 sentence on why, one to three reviewer notes, and a change outline in the views it
-lists. Describe the change as it stands at the head you deliver, and update `pr.md`
-when a later fix changes it. Deliver appends the criteria, and how verify showed each,
-folded below your text. A revise run leaves the PR's description alone and needs no
-`pr.md`.
+lists. `pr.md` becomes the PR's description when deliver opens the PR. Deliver adds
+the criteria, and how verify showed each, in a folded section below it, and every later
+deliver replaces only that section, so what anyone adds to the PR stays. A revise run
+needs no `pr.md`.
 
 ### Deliver
 
@@ -334,6 +340,8 @@ opened before. It refuses, and says why, when:
 - `gh` is missing or not signed in (checked before anything is pushed);
 - verify did not pass at this head: verify again;
 - the head has no recorded review: review it and run `LS iterate`;
+- origin has the feature branch with commits this run never had: that branch belongs to
+  other work, so `LS set --branch NAME` and deliver again;
 - origin moved: run `LS sync`, resolve any conflict in `work` keeping both sides' intent
   (`git commit --no-edit`), verify, and deliver again.
 
@@ -373,17 +381,23 @@ A message with no tool call ends your turn. While the run has a next step, do no
 turn with a summary that announces the next step instead of taking it, an offer to
 continue, a list of decisions none of which blocks you, or a report because a phase
 finished. The only stops are: the run ended, you are waiting on agents you dispatched
-(say `LOOP_SPEC_WAITING`), or, interactive, you need an answer only the user can give.
+(say `LOOP_SPEC_WAITING`), or you need an answer only the user can give (interactive,
+or supervised saying `LOOP_SPEC_ASKING`).
 
-In an autonomous run, loop-spec's Stop hook holds this the way `/goal` holds a
+In an autonomous or supervised run, loop-spec's Stop hook holds this the way `/goal` holds a
 condition: after each turn it checks the run's record, and while the run is open it
 hands you the next step and you continue. There is no turn limit. When the record has
 not changed for a few turns it says so; judge whether the run is blocked, and if it is,
 end it with `finish --status escalated`. A run also survives a restart: `LS status`
 shows its `next` step.
 
-The run's end removes its worktrees, `work` included; `cd` back to the project root
-before any further command. Finish with a short report: what changed, the PR link, how
+When a `next` line says the host asked the run to wrap up, stop starting new work,
+commit what is finished, run `LS checkpoint --push`, and end with `LS finish --status
+escalated --summary "..."` saying what is done and what is not.
+
+The run's end removes its worktrees, `work` included, so run the command that ends it
+from the project root: `cd <project> && LS deliver --slug <slug>` (or `feedback`,
+`finish`). Finish with a short report: what changed, the PR link, how
 each criterion was shown, CI's result, and any assumption or skipped finding the user
 should know about.
 

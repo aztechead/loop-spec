@@ -25,8 +25,10 @@ from pathlib import Path
 from loop_spec import git
 from loop_spec.runs import all_runs
 
+STOP_REQUESTED = "stop-requested"  # a file the host writes in the run directory; the program never deletes it
 STALL_TURNS = 3  # one turn can be a dispatch and a wait; three with no change suggests the run is stuck
 WAITING = "LOOP_SPEC_WAITING"
+ASKING = "LOOP_SPEC_ASKING"  # a supervised run's lead, ending its turn on a question the host relays
 
 
 def fingerprint(run, head: str | None, phase: str) -> str:
@@ -41,10 +43,12 @@ def decide(hook_input: dict, next_step) -> dict | None:
     if WAITING in (hook_input.get("last_assistant_message") or ""):
         return None
     project = git.project_root(Path(hook_input.get("cwd") or "."))
-    runs = [r for r in all_runs(project) if r.mode == "autonomous" and not r.result_path.is_file()]
+    runs = [r for r in all_runs(project) if r.mode in ("autonomous", "supervised") and not r.result_path.is_file()]
     if not runs:
         return None
     run = runs[0]
+    if run.mode == "supervised" and ASKING in (hook_input.get("last_assistant_message") or ""):
+        return None
     head = git.head(run.work) if run.work.exists() else None
     phase = run.phase(head)
     loop = run.state.setdefault("loop", {"fingerprint": None, "unchanged": 0})
@@ -53,10 +57,12 @@ def decide(hook_input: dict, next_step) -> dict | None:
     loop["fingerprint"] = current
     run.save()
     program = Path(__file__).resolve().parents[1] / "loop-spec"
-    reason = (f"The autonomous loop-spec run {run.slug} is not finished (phase {phase}; next: "
+    reason = (f"The {run.mode} loop-spec run {run.slug} is not finished (phase {phase}; next: "
               f"{next_step(run, phase)}; program: \"{program}\"). Continue it. It ends when `deliver`, "
               "`feedback`, or `finish` records a result.")
-    if loop["unchanged"] >= STALL_TURNS:
+    if (run.dir / STOP_REQUESTED).is_file():  # the host's wrap-up; no stall or WAITING advice alongside it
+        reason = reason.replace(" Continue it.", "")
+    elif loop["unchanged"] >= STALL_TURNS:
         reason += (f" Its record has not changed in {loop['unchanged']} turns: if something you cannot fix blocks "
                    "it, end it with `finish --status escalated` naming the blocker; otherwise take the next step.")
     else:

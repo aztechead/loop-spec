@@ -10,7 +10,8 @@ The repo id is 7.x's: the first 16 hex digits of the SHA-256 of the repository's
 root commit (or of its real path when it has none), pinned in git config for a shallow
 clone. The run's own directory keeps copies of events.jsonl and result.json too.
 
-`record` builds 7.x's schema-1 result from an 8.x run, field for field. Where 8.x has no
+`record` builds 7.x's schema-1 result from an 8.x run: 7.x's fields, plus `assumptions`,
+`decisions`, `criteria`, `criteriaSha`, and `caveats`. Where 8.x has no
 counterpart (attested review steps, a findings ledger, alternate implementations), a
 field holds the value 7.x gave a run without one. The 8.x additions, the PR's CI outcome
 and reviewer verdicts, ride on the delivery target as extra fields.
@@ -97,6 +98,10 @@ def record(run, status: str, summary: str, head: str | None, phase: str, kept: l
                                  "state": "delivered", "ci": feedback.get("ci"),
                                  "reviews": feedback.get("verdicts", {})}]}
     shows_pr = bool(delivered) or (result == "no-change" and pr.get("url"))
+    ids = {c.get("id") for c in (run.spec or {}).get("criteria", [])}
+    criteria = [{"id": r["name"], "passed": r.get("exit") == 0 or r.get("preexisting", False),
+                 "checked": r.get("command") is not None}
+                for r in (verify or {}).get("results", []) if r["name"] in ids]
     rewinds = s.get("rewinds", 0)
     done = [tid for tid, t in s.get("tasks", {}).items() if t.get("status") == "done"]
     return {
@@ -120,7 +125,12 @@ def record(run, status: str, summary: str, head: str | None, phase: str, kept: l
         "workDelivered": bool(delivered),
         "iterations": {"used": rewinds, "max": None},
         "warnings": [caveats] if caveats else [],
-        "autonomous": run.mode == "autonomous",
+        "caveats": [caveats] if caveats else [],
+        "assumptions": (run.spec or {}).get("assumptions", []),
+        "decisions": (run.spec or {}).get("decisions", []),
+        "criteria": criteria,
+        "criteriaSha": (verify or {}).get("sha"),
+        "autonomous": run.mode in ("autonomous", "supervised"),
         "feature_title": title(run),
         "createdAt": s.get("createdAt"),
         "finishedAt": now_iso(),

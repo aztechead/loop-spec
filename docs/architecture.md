@@ -55,7 +55,14 @@ Each module has one reason to change:
 
 `state.json` is written only by `runs.Run.save`, and `result.json` only by `runs.Run.finish` (the run's copy) and `legacy.publish` (the state home's). `spec.json` and
 `plan.json` are the lead's files; the program reads them and never writes them. The
-phase is derived from the files each time; the only phase stored is the one the stream last announced, so it can announce each change once.
+phase is derived from the files each time; the only phase stored is the one the stream last announced, so it can announce each change once. That stored phase is internal: a host reads the phase from the run's `events.jsonl`, whose last `phase_start` record names it, the same record 7.x wrote.
+
+`status` is the one command that repairs: when the run's files exist but its worktrees
+do not (a fresh clone of a paused run), it rebuilds `work` and each task's worktree from
+its branch, locally or on origin, and returns a task whose branch is gone to `todo`.
+`checkpoint` commits work in progress as `wip: loop-spec checkpoint, not verified`;
+the commit moves the head past the last verify, so deliver still refuses it until the
+run verifies again.
 
 ## Why worktrees inside the repository
 
@@ -78,12 +85,14 @@ ends one it judges cannot finish with `finish --status escalated`:
 - **Feedback:** after delivery, `feedback` waits for the PR's checks and reads its review;
   what the change should fix is fixed, verified, and delivered again, and the rest is
   answered, until CI passes and nothing new has come in.
-- **The run itself (autonomous only):** the Stop hook works like `/goal`. After each
+- **The run itself (autonomous and supervised only):** the Stop hook works like `/goal`. After each
   turn it checks the run's record: a result means the condition is met and the turn
   ends; an open run gets its next step as the reason for another turn. It lets a turn
   end when the lead says it is waiting on agents (`LOOP_SPEC_WAITING`), the way `/goal`
-  skips evaluation while background work runs, and notes when the record has not
-  changed for a few turns. Claude Code's own block cap stops a lead that keeps
+  skips evaluation while background work runs, and, in a supervised run, when the lead
+  is waiting on the person's answer (`LOOP_SPEC_ASKING`). It notes when the record has
+  not changed for a few turns. A host ends a run early by creating `stop-requested` in
+  the run's directory: the hook and `status` then name the wrap-up step. Claude Code's own block cap stops a lead that keeps
   answering without using a tool.
 
 ## What 8.x deliberately leaves out

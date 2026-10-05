@@ -9,9 +9,42 @@ All notable changes documented here. Format follows Keep a Changelog.
 - The SDK example's `--phase-model PHASE=MODEL` switches the lead's model with
   `set_model()` when the run enters PHASE; `--model opus --phase-model execute=sonnet` is
   its recommended setup.
+- Supervised mode (`--supervised`, `LOOP_SPEC_MODE=supervised`): no criteria approval and
+  defaults recorded as assumptions, as autonomous, but the lead still asks a question
+  that is costly to get wrong and ends its turn with `LOOP_SPEC_ASKING`, which the Stop
+  hook lets through. It replaces 7.x's `spec.approval: policy`.
+- `loop-spec checkpoint [--push]` commits work in progress in every worktree, lists
+  them, and pushes their branches; `status` rebuilds a paused run's worktrees from those
+  branches in a fresh clone.
+- A host ends a run early by creating `stop-requested` in its run directory; the Stop
+  hook and `status` then name the wrap-up step.
+- `feedback.waitFor`: logins, such as a review bot's, whose comment or review must
+  follow each delivery before the run can end. A comment edited in place comes back as
+  a new item.
+- The result adds the spec's `assumptions` and `decisions`, `criteria` with each one's
+  result and `criteriaSha`, and the review's `caveats`.
+- The `cycle` entry starts a micro or debug run when the request is plainly one.
+- The SDK example's `--supervised` relays `AskUserQuestion` to stdin, and `--phase-model`
+  holds from the named phase on, read from the run's `events.jsonl`, so a resumed session
+  gets the right model.
 
 ### Fixed
 
+- A run no longer takes a branch origin already has: a fresh clone named its branch
+  after an open PR's, then merged that PR's commits in and delivered onto it. Naming
+  checks origin too, and `deliver` and `sync` refuse an origin branch with commits a run
+  that has no PR never had.
+- A later delivery updates only loop-spec's folded verification section of the PR, so a
+  title or text someone added stays, and a revise run's PR names the head it verified.
+  The title changes only when the run changed it.
+- PRs open without `--assignee @me`, which failed under a GitHub App token.
+- A multi-line criterion check keeps its lines in the PR's criteria table.
+- `events.jsonl` holds one `phase_start` record per phase.
+- A request that opens with context, such as a URL or a ticket, no longer names every
+  branch alike: the lead names it from the spec's title, and a `--title` given to
+  `start` names the slug.
+- The lead ends a run from the project root, so the worktree removal does not leave its
+  shell in a deleted directory.
 - `feedback` reads review comments from the account the run delivers with. It used to
   skip everything that gh user wrote, so a developer reviewing the PR their own run
   opened was ignored. Comments the program posts (`deliver --comment-file`) now carry

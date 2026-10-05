@@ -77,9 +77,11 @@ Interactive runs ask the questions that change what gets built, and ask once for
 approval of the spec. For a run no one attends, add `--autonomous` to the argument or
 set `LOOP_SPEC_MODE=autonomous` in the environment: the run never stops to ask,
 records the defaults it chose as assumptions in the spec, and ends with a result
-either way.
+either way. Between the two, `--supervised` (or `LOOP_SPEC_MODE=supervised`) skips the
+approval and records defaults the same way, but still asks a question that is costly to
+get wrong, for a host that can relay it to a person.
 
-An autonomous run keeps itself going the way `/goal` does: after each turn loop-spec's
+An autonomous or supervised run keeps itself going the way `/goal` does: after each turn loop-spec's
 Stop hook checks the run's record, and while the run is open it hands the lead the next
 step. There is no turn limit; the run ends when it delivers, or when the lead judges it
 blocked and ends it as escalated.
@@ -109,13 +111,14 @@ out of `git status` through the repository's own exclude file:
 | `work/` | the feature branch's worktree, where finished tasks are merged |
 | `tasks/<id>/` | one worktree per task in progress |
 | `verify/` | the clean checkout verify runs in |
-| `events.jsonl` | every phase record, in 7.x's format |
+| `events.jsonl` | every phase record, in 7.x's format; a host reads the run's phase from the last `phase_start` |
 | `result.json` | the final result; once it exists, the run is over |
 
-Your own checkout is never touched. The result is 7.x's schema-1 record, field for
-field: `status` (`completed`, `escalated`, `failed`), `outcome` (`delivered`,
+Your own checkout is never touched. The result is 7.x's schema-1 record: `status` (`completed`, `escalated`, `failed`), `outcome` (`delivered`,
 `delivered-draft`, `no-change-needed`, ...), `summary`, `branch`, `prUrl`,
-`verifiedSha`, `phaseReached`, and the rest. The program prints it as a
+`verifiedSha`, `phaseReached`, and the rest, plus the spec's `assumptions` and
+`decisions`, each criterion's result in `criteria` (as verified at `criteriaSha`), and
+the review's `caveats`. The program prints it as a
 `LOOP_SPEC_RESULT {...}` line, then `LOOP_SPEC_NEXT {"kind":"result","path":...}`. As in
 7.x, `events.jsonl` and `result.json` are also written to
 `<state home>/<repo id>/<slug>/`, and the result to `<state home>/<repo id>/last-result.json`,
@@ -130,9 +133,10 @@ Optional, in `<repo>/.loop-spec/config.json` (commit it if your team wants it sh
 | `base` | the branch runs start from and PRs target; default origin's default branch |
 | `branch` | the feature branch name, for repositories with a naming rule; `-2`, `-3` is added when taken |
 | `branchPrefix` | prefix for the default branch name; default `feat/`, `fix/` for debug |
-| `reviewers`, `labels` | set on a new PR (it is always assigned to you) |
+| `reviewers`, `labels` | set on a new PR |
 | `feedback.skills` | skills (`plugin:skill`) the lead runs on the delivered PR, e.g. your own review triage; what they report is handled like review comments |
 | `feedback.wait` | `false` to end runs at delivery without waiting for CI or review |
+| `feedback.waitFor` | logins, such as a review bot's, that must comment or review after each delivery before the run can end; bounded by `reviewWaitMinutes` |
 | `feedback.reviewWaitMinutes` | how long `feedback` waits, once CI is settled, for reviewers asked on the PR to answer (default 30; `0` does not wait) |
 
 Models: the implementer and simplifier agents run on Sonnet and the reviewer on Opus,
@@ -146,7 +150,20 @@ keeps Opus for the spec and plan and hands the rest to Sonnet.
 [examples/sdk-plugin/](examples/sdk-plugin/README.md) loads loop-spec as a local
 plugin in a `ClaudeSDKClient` session and sends `/loop-spec:<entry>`, so an
 autonomous coder follows the same method it would in Claude Code. It is a reference,
-not a supported surface.
+not a supported surface. What a host can rely on:
+
+- **Pause and resume in a fresh clone.** Before the container stops, run
+  `loop-spec checkpoint --push` in the run, and keep `.loop-spec/runs/<slug>/`'s
+  `state.json`, `spec.json`, and `plan.json`. Restore those three files into the new
+  clone and resume the session: `status` rebuilds the worktrees from the pushed branches.
+- **Wrap up on request.** Create `.loop-spec/runs/<slug>/stop-requested`. The Stop hook
+  and `status` then tell the lead to commit, checkpoint, and end the run as escalated.
+  The host deletes the file before it resumes that run.
+- **One repository per run.** For a change across repositories, start one run in each
+  clone, from its own root, and link the PRs to each other.
+- **A PR you edit after delivery** keeps your title and text: a later delivery updates
+  only loop-spec's folded verification section, and the title only if the run changed
+  it.
 
 ## Docs
 

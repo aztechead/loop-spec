@@ -107,6 +107,13 @@ def branch_exists(repo: Path, name: str) -> bool:
     return git(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{name}").returncode == 0
 
 
+def exists_anywhere(repo: Path, name: str) -> bool:
+    """A branch of this name locally or on origin (asked of origin, so a stale fetch cannot hide it)."""
+    if branch_exists(repo, name):
+        return True
+    return has_origin(repo) and bool(git(repo, "ls-remote", "--heads", "origin", name).stdout.strip())
+
+
 def exclude(repo: Path, pattern: str) -> None:
     """Keep `pattern` out of `git status` through the repository's own, never-committed exclude file."""
     raw = run_git(repo, "rev-parse", "--git-path", "info/exclude")

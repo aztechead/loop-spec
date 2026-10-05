@@ -25,7 +25,7 @@ from claude_agent_sdk import (
 )
 
 sys.path.insert(0, str(Path(__file__).parent))
-from run_loop_spec import RunWatch, answer_from_stdin, current_phase, make_can_use_tool, prompt_for, result_file  # noqa: E402
+from run_loop_spec import RunWatch, answer_from_stdin, current_phase, make_can_use_tool, model_for, prompt_for, result_file  # noqa: E402
 
 QUESTION = {"question": "Approve?", "options": [{"label": "Approve"}, {"label": "Reject"}]}
 
@@ -69,16 +69,25 @@ class RunWatchTests(unittest.TestCase):
         self.assertEqual(feed(watch, [init(), result_line(), turn_end()]), [False, False, True])
         self.assertEqual(watch.result_path, "/home/u/.loop-spec/0123456789abcdef/x/result.json")
 
-    def test_the_phase_comes_from_the_newest_run_state(self):
+    def test_a_phase_model_holds_until_a_later_phase_names_another(self):
+        self.assertEqual(model_for("verify", {"execute": "sonnet"}), "sonnet")
+        self.assertIsNone(model_for("plan", {"execute": "sonnet"}))
+        self.assertEqual(model_for("deliver", {"execute": "sonnet", "deliver": "opus"}), "opus")
+        self.assertIsNone(model_for("done", {"execute": "sonnet"}))
+
+    def test_the_phase_comes_from_the_newest_runs_events(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self.assertIsNone(current_phase(root))
-            for slug, phase in (("old", "spec"), ("new", "execute")):
-                state = root / ".loop-spec" / "runs" / slug / "state.json"
-                state.parent.mkdir(parents=True)
-                state.write_text(json.dumps({"phaseStream": {"phase": phase}}))
+            for slug, phases in (("old", ["spec"]), ("new", ["spec", "plan", "execute"])):
+                events = root / ".loop-spec" / "runs" / slug / "events.jsonl"
+                events.parent.mkdir(parents=True)
+                events.write_text("".join(json.dumps({"event": "phase_start", "phase": p}) + "\n" for p in phases))
                 time.sleep(0.01)
             self.assertEqual(current_phase(root), "execute")
+            with events.open("a") as f:
+                f.write(json.dumps({"event": "result", "phase": "deliver"}) + "\n")
+            self.assertEqual(current_phase(root), "done")
 
     def test_a_next_line_the_lead_cut_short_is_skipped_and_the_run_directory_has_the_result(self):
         watch = RunWatch()
@@ -150,7 +159,7 @@ class QuestionTests(unittest.TestCase):
 
 class PromptTests(unittest.TestCase):
     def test_the_entry_is_sent_as_a_slash_command(self):
-        args = argparse.Namespace(entry="debug", autonomous=True, request="test_x fails")
+        args = argparse.Namespace(entry="debug", autonomous=True, supervised=False, request="test_x fails")
         self.assertEqual(prompt_for(args), "/loop-spec:debug test_x fails")
 
 

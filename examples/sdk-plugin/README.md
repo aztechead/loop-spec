@@ -22,13 +22,13 @@ program, and dispatches the `loop-spec:implementer` and `loop-spec:reviewer` age
 |---|---|
 | `plugins=[{"type": "local", "path": ...}]` | loads loop-spec, and each `--plugin DIR` |
 | init `SystemMessage` | checks `slash_commands` lists `loop-spec:<entry>` |
-| `can_use_tool` | allows and logs every tool; with `--autonomous`, declines `AskUserQuestion` with "choose the reasonable default and continue", otherwise answers it from stdin |
+| `can_use_tool` | allows and logs every tool; with `--autonomous`, declines `AskUserQuestion` with "choose the reasonable default and continue", otherwise (attended or `--supervised`) answers it from stdin |
 | `permission_mode="acceptEdits"`, `setting_sources=["project"]` | edits run without prompts; the project's settings and `CLAUDE.md` load, your personal `~/.claude` ones do not |
 | `thinking={"type": "adaptive", "display": "summarized"}`, `forward_subagent_text=True` | the lead's and the agents' reasoning and text arrive on stderr |
 | `receive_messages()` and task messages | workers run as background tasks, so a turn can end while they work; the script keeps reading until a turn ends with no task running and the result seen, or 60 quiet seconds pass |
 | `resume=<session id>` | continues a session that stopped |
 | `max_budget_usd` | optional spend ceiling |
-| `set_model()` | with `--phase-model PHASE=MODEL`, switches the lead's model when the run's `state.json` enters PHASE |
+| `set_model()` | with `--phase-model PHASE=MODEL`, switches the lead's model from PHASE on, read from the run's `events.jsonl`; a resumed session lands on the right model |
 
 The run is over when the program prints `LOOP_SPEC_RESULT {...}` and then
 `LOOP_SPEC_NEXT {"kind":"result","path":...}`, as 7.x did; the script reads the result

@@ -68,7 +68,7 @@ Use this table for each key:
 | `deliver.after` | `feedback.skills`. The lead runs these skills on the delivered PR and handles what they report like review comments |
 | `deliver.readiness` | Delete. Runs now wait for CI and review after delivery. To end at the PR instead, set `"feedback": {"wait": false}` |
 | `deliver.acceptRemotePaths` | Delete. If someone else pushes to the PR branch, the lead merges it into the run and verifies again |
-| `spec.approval` | Delete. For runs that never ask, see [step 5](#5-update-agent-sdk-hosts) |
+| `spec.approval` | Delete. `policy` becomes supervised mode: `--supervised` or `LOOP_SPEC_MODE=supervised` skips the approval and still asks blocking questions ([step 5](#5-update-agent-sdk-hosts)) |
 | `phases.*`, `roles.*`, `evidence.*` | Delete. Move the behavior into your repository's `CLAUDE.md` or a project skill ([step 4](#4-move-customizations)) |
 
 8.0 adds one key with no 7.x equivalent: `feedback.reviewWaitMinutes`. It sets how
@@ -95,8 +95,10 @@ reviewer on Opus.
 
 Skip this step if you only use Claude Code.
 
-- Replace `--answer-policy default`, the example's `--auto`, and
-  `spec.approval: policy` with autonomous mode. Set `LOOP_SPEC_MODE=autonomous` in
+- If your host relays questions to a person, replace `spec.approval: policy` with
+  supervised mode: `LOOP_SPEC_MODE=supervised`, or the example's `--supervised`. The
+  run skips the criteria approval and asks only questions that are costly to get wrong.
+- Replace `--answer-policy default` and the example's `--auto` with autonomous mode. Set `LOOP_SPEC_MODE=autonomous` in
   `ClaudeAgentOptions(env=...)`, or pass `--autonomous` to
   [examples/sdk-plugin](../examples/sdk-plugin/README.md). The run never asks and
   records the defaults it chose as assumptions.
@@ -108,12 +110,19 @@ Skip this step if you only use Claude Code.
   plugins.
 - If you used `examples/supervisor/` or `loop_spec.sdk_runner`, move to
   `examples/sdk-plugin/`. Both were removed.
+- Drop any `--assignee @me` workaround: 8.0 opens PRs without an assignee.
+- Read the phase from the run's `events.jsonl` (the last `phase_start` record), not from
+  `state.json`.
+- For pause and resume, wrap-up, and runs across repositories, see the README's
+  [On the Agent SDK](../README.md#on-the-agent-sdk) section.
 
 Keep your result reader as it is. 8.0 writes the same schema-1 `result.json`,
 `last-result.json`, `LOOP_SPEC_RESULT`, and `LOOP_SPEC_NEXT` lines, in the same
 places. Two differences in content:
 
 - `reviewed` levels are always `unattested`, and `outstanding` is always empty.
+- New top-level fields carry the spec's `assumptions` and `decisions`, each criterion's
+  result (`criteria`, `criteriaSha`), and the review's `caveats`.
 - Each delivery target gains `ci` and `reviews`: the PR's CI outcome and reviewer
   verdicts.
 

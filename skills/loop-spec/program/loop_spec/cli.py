@@ -39,7 +39,7 @@ def cmd_start(args, project: Path, cwd: Path) -> int:
     request = (args.request or (Path(args.request_file).read_text() if args.request_file else "")).strip()
     if not request and not args.pr:
         raise LoopSpecError("nothing to start: pass --request, --request-file, or --pr", "say what the run should do")
-    slug = args.slug or slugify(request or f"pr {args.pr}")
+    slug = args.slug or slugify(args.title or request or f"pr {args.pr}")
     existing = Run(project, slug)
     if existing.exists() and existing.state.get("request") == request:
         out(f"loop-spec: resuming {slug}")
@@ -61,13 +61,13 @@ def cmd_start(args, project: Path, cwd: Path) -> int:
         base_sha = git.resolve_base(project, base_branch)
         prefix = config.get("branchPrefix") or ("fix/" if kind == "debug" else "feat/")
         branch = first_free(args.branch or config.get("branch") or prefix + run.slug,
-                            lambda b: git.branch_exists(project, b))
+                            lambda b: git.exists_anywhere(project, b))
         git.add_worktree(project, run.work, base_sha, new_branch=branch)
 
     run.state = {
         "kind": kind,
         "createdAt": legacy.now_iso(),
-        "mode": "autonomous" if args.autonomous else "interactive",
+        "mode": "supervised" if args.supervised else "autonomous" if args.autonomous else "interactive",
         "request": request,
         "base": {"branch": base_branch, "sha": base_sha},
         "branch": branch,
@@ -103,7 +103,42 @@ def cmd_status(args, project: Path, cwd: Path) -> int:
         if not runs:
             out("loop-spec: no runs in this repository")
         return 0
+    _restore(run)
     return show_status(run)
+
+
+def _rebuild(project: Path, dest: Path, branch: str) -> bool:
+    """Check `branch` out at `dest` again, from the local branch, else origin's; False when neither exists."""
+    if git.branch_exists(project, branch):
+        git.add_worktree(project, dest, branch)
+        return True
+    if git.has_origin(project):
+        git.fetch(project, git.tracking(branch))
+        if git.remote_tip(project, branch):
+            git.add_worktree(project, dest, f"origin/{branch}", new_branch=branch)
+            return True
+    return False
+
+
+def _restore(run: Run) -> None:
+    """After a pause or a restored clone: rebuild the worktrees an open run lost, one line each."""
+    if run.result_path.is_file():
+        return
+    git.git(run.project, "worktree", "prune")  # a worktree deleted by hand is still registered until pruned
+    git.exclude(run.project, "/.loop-spec/runs/")  # a fresh clone has not seen this run's directory
+    if not run.work.exists():
+        out(f"restored work from {run.state['branch']}" if _rebuild(run.project, run.work, run.state["branch"])
+            else f"cannot restore work: {run.state['branch']} is on neither this clone nor origin")
+    for task_id, t in list(run.state.get("tasks", {}).items()):
+        dest, branch = run.task_dir(task_id), run.task_branch(task_id)
+        if t.get("status") != "doing" or dest.exists():
+            continue
+        if _rebuild(run.project, dest, branch):
+            out(f"{task_id}: restored its worktree from {branch}")
+        else:
+            run.set_task(task_id, "todo", "worktree lost; start it again")
+            out(f"{task_id}: worktree lost and its branch is gone; back to todo, start it again")
+    run.save()
 
 
 def _sync(run: Run) -> None:
@@ -199,7 +234,17 @@ def _next_step(run: Run, phase: str, problem: str | None = None) -> str:
     return step + (f" (read {' and '.join(named)})" if named else "")
 
 
+WRAP_UP = ("the host asked this run to wrap up: commit finished work, run loop-spec checkpoint --push, "
+           "then loop-spec finish --status escalated --summary \"...\"")
+
+
+def _wrap_up_asked(run: Run) -> bool:
+    return (run.dir / hook.STOP_REQUESTED).is_file() and not run.result_path.is_file()
+
+
 def _step(run: Run, phase: str, problem: str | None) -> str:
+    if _wrap_up_asked(run):
+        return WRAP_UP
     if problem:
         return f"fix {run.plan_path.name}"
     if phase == "spec":
@@ -315,6 +360,7 @@ def cmd_task_done(args, project: Path, cwd: Path) -> int:
     if dest.exists():
         git.remove_worktree(project, dest, force=True)  # clean, checked above; --force only clears ignored files
     git.git(project, "branch", "-D", branch)
+    _drop_remote_branch(project, branch)
     run.set_task(args.id, "done", args.note or (None if new else "no changes"))
     run.save()
     out(f"{args.id} merged ({len(new)} commit{'s' if len(new) != 1 else ''})" if new else f"{args.id} done with no changes")
@@ -322,6 +368,12 @@ def cmd_task_done(args, project: Path, cwd: Path) -> int:
     _sync(run)
     out("next: " + _next_step(run, run.phase(git.head(run.work))))
     return 0
+
+
+def _drop_remote_branch(project: Path, branch: str) -> None:
+    """Remove a task branch a checkpoint pushed; a failure leaves it there."""
+    if git.remote_tip(project, branch):
+        git.git(project, "push", "--quiet", "origin", "--delete", branch)
 
 
 def cmd_task_set(args, project: Path, cwd: Path) -> int:
@@ -449,20 +501,25 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
     if not delivered or not pr or delivered["sha"] != head:
         raise LoopSpecError("the current head has not been delivered", "verify, then `loop-spec deliver`")
     call_end = time.monotonic() + args.timeout
-    outcome, found = ci.wait(run.work, pr["number"], args.timeout)
+    outcome, found = ci.wait(run.work, pr["number"], args.timeout, stop=lambda: _wrap_up_asked(run))
+    if _wrap_up_asked(run):
+        return 0  # main prints the wrap-up step
     for c in found:
         out(f"  {c.get('bucket', '?'):8} {c.get('name', '')}" + (f"  {c['link']}" if c.get("link") else ""))
     if outcome == "pending":
         out(f"checks are still running after {args.timeout}s: run loop-spec feedback again")
         return 0
     record = run.state.setdefault("feedback", {"seen": []})
-    review_wait = 60 * (_config(project).get("feedback") or {}).get("reviewWaitMinutes", 30)
+    feedback_config = _config(project).get("feedback") or {}
+    review_wait = 60 * feedback_config.get("reviewWaitMinutes", 30)
     while True:  # with CI settled and nothing new, wait for reviewers who were asked and have not answered
         items, verdicts = review.read(run.work, pr["number"])
         new = [i for i in items if i["id"] not in record["seen"]]
-        waiting = [] if new or outcome == "failed" else review.pending(run.work, pr["number"])
+        waiting = [] if new or outcome == "failed" else [
+            *review.pending(run.work, pr["number"]),
+            *review.silent(items, feedback_config.get("waitFor", []), delivered.get("at") or "1970-01-01T00:00:00+00:00")]
         waited_out = bool(waiting) and time.time() >= record.setdefault("reviewWaitSince", time.time()) + review_wait
-        if not waiting or waited_out or time.monotonic() >= call_end:
+        if not waiting or waited_out or time.monotonic() >= call_end or _wrap_up_asked(run):
             break
         time.sleep(ci.POLL_SECONDS)
     record.update(sha=head, ci=outcome, verdicts=verdicts, seen=record["seen"] + [i["id"] for i in new],
@@ -523,7 +580,7 @@ def cmd_set(args, project: Path, cwd: Path) -> int:
     if args.branch and args.branch != state["branch"]:
         if state.get("pr") or state.get("delivered"):
             raise LoopSpecError(f"{state['branch']} is already pushed", "a pushed branch keeps its name")
-        if git.branch_exists(project, args.branch):
+        if git.exists_anywhere(project, args.branch):
             raise LoopSpecError(f"a branch named {args.branch} already exists", "pick another name")
         git.run_git(run.work, "branch", "-m", state["branch"], args.branch)
         state["branch"] = args.branch
@@ -533,6 +590,26 @@ def cmd_set(args, project: Path, cwd: Path) -> int:
         out(f"PR title is now: {args.title}")
     run.save()
     _sync(run)
+    return 0
+
+
+def cmd_checkpoint(args, project: Path, cwd: Path) -> int:
+    """Commit what the feature and doing-task worktrees hold (not verified, not merged), and push on request."""
+    run = find(project, args.slug, cwd)
+    targets = [(run.work, run.state["branch"])] if run.work.exists() else []
+    targets += [(run.task_dir(tid), run.task_branch(tid)) for tid, t in run.state.get("tasks", {}).items()
+                if t.get("status") == "doing" and run.task_dir(tid).exists()]
+    for dest, branch in targets:
+        changed = bool(git.dirty(dest))
+        if changed:
+            git.run_git(dest, "add", "-A")
+            git.run_git(dest, "commit", "--quiet", "-m", "wip: loop-spec checkpoint, not verified")
+        out(f"{_rel(run, dest)} {branch} {git.head(dest)[:12]} {'committed' if changed else 'clean'}")
+        if args.push:
+            pushed = git.git(dest, "push", "--quiet", "origin", f"HEAD:refs/heads/{branch}")
+            if pushed.returncode != 0:
+                raise LoopSpecError(f"git push of {branch} was rejected: {pushed.stderr.strip()}",
+                                    "if origin moved, merge it in that worktree; never force-push")
     return 0
 
 
@@ -568,6 +645,9 @@ def _finish(run: Run, status: str, summary: str, head: str | None) -> int:
     for scratch in (run.verify_dir, run.dir / "base"):
         git.remove_worktree(run.project, scratch, force=True)
     kept = []
+    for task_id, t in run.state.get("tasks", {}).items():
+        if t.get("status") == "done":
+            _drop_remote_branch(run.project, run.task_branch(task_id))
     for dest in [*sorted((run.dir / "tasks").glob("*")), run.work]:
         if dest.is_dir() and not git.remove_worktree(run.project, dest):
             out(f"kept {dest}: it has uncommitted changes")
@@ -599,6 +679,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--pr", help="revise this open pull request (number, URL, or branch)")
     p.add_argument("--autonomous", action="store_true",
                    help="no one will answer questions (LOOP_SPEC_MODE=autonomous in the environment does the same)")
+    p.add_argument("--supervised", action="store_true",
+                   help="a host relays questions: no approval step, and the lead may stop to ask (LOOP_SPEC_MODE=supervised does the same)")
     p.add_argument("--base", help="branch to start from and target; default: origin's default branch")
     p.add_argument("--branch", help="feature branch name; default: feat/<slug> (fix/<slug> for debug)")
     p.add_argument("--title", help="the PR title; default: the spec's title")
@@ -651,6 +733,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--title")
     p.set_defaults(func=cmd_set)
 
+    p = sub.add_parser("checkpoint", parents=[common],
+                       help="commit uncommitted work in the feature and task worktrees (unverified); --push sends their branches to origin")
+    p.add_argument("--push", action="store_true")
+    p.set_defaults(func=cmd_checkpoint)
+
     p = sub.add_parser("sync", parents=[common], help="merge what moved on origin (base or feature branch) into work")
     p.set_defaults(func=cmd_sync)
 
@@ -663,6 +750,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _remind_wrap_up(args, project: Path, cwd: Path) -> None:
+    """A host's wrap-up request reaches the lead on its next command, not only when its turn ends."""
+    try:
+        run = find(project, getattr(args, "slug", None), cwd)
+    except LoopSpecError:
+        return
+    if _wrap_up_asked(run):
+        out(f"next: {WRAP_UP}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     cwd = Path(os.getcwd())
@@ -670,7 +767,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_hook_stop(args, cwd, cwd)  # runs outside any repository too, and never fails
     try:
         project = git.project_root(Path(args.project_root).resolve() if args.project_root else cwd)
-        return args.func(args, project, cwd)
+        code = args.func(args, project, cwd)
+        if args.command not in ("finish", "checkpoint", "status"):
+            _remind_wrap_up(args, project, cwd)
+        return code
     except LoopSpecError as exc:
         log.stderr.error(f"loop-spec: {exc.message}")
         if exc.repair:

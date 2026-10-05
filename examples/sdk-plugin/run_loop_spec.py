@@ -11,14 +11,15 @@ Nothing from loop-spec is imported here. Every SDK call follows the Agent SDK do
   It is the only stateful logic here, and test_run_loop_spec.py tests it.
 - Questions: with --autonomous the session's environment carries
   LOOP_SPEC_MODE=autonomous, so loop-spec runs without asking, and any
-  AskUserQuestion is declined with the instruction to choose a default; without it,
-  each question is answered from stdin.
+  AskUserQuestion is declined with the instruction to choose a default; with
+  --supervised it carries LOOP_SPEC_MODE=supervised (no approval step, the lead may
+  stop to ask) and each question is answered from stdin, as without either flag.
 - `render` prints the lead's text to stdout, and thinking, tool calls, workers'
   output, and loop-spec's markers to stderr.
 
 Usage:
     python3 run_loop_spec.py --project-root DIR "<request>"
-        [--entry cycle|micro|debug|revise] [--autonomous] [--model opus]
+        [--entry cycle|micro|debug|revise] [--autonomous | --supervised] [--model opus]
         [--plugin DIR ...] [--resume SESSION_ID] [--max-budget-usd N]
 
 Exit code: 0 when loop-spec's result has status "completed", 1 for another status,
@@ -218,14 +219,34 @@ def prompt_for(args: argparse.Namespace) -> str:
     return f"/{PLUGIN_NAME}:{args.entry} {args.request}"
 
 
-def current_phase(project_root: Path) -> str | None:
-    """The phase the newest run in the project is in, from its state file: the lead may cut
-    the LOOP_SPEC_PHASE_START lines out of its own command output, but not out of the file."""
-    states = sorted(project_root.glob(".loop-spec/runs/*/state.json"), key=lambda p: p.stat().st_mtime)
-    try:
-        return json.loads(states[-1].read_text())["phaseStream"]["phase"] if states else None
-    except (OSError, ValueError, KeyError, TypeError):
+PHASES = ("spec", "plan", "execute", "verify", "iterate", "deliver")
+
+
+def model_for(phase: str | None, phase_model: dict[str, str]) -> str | None:
+    """The model for `phase`: that of the latest phase at or before it that `--phase-model` names, so
+    `execute=sonnet` holds through deliver, and a resumed session lands on the right model."""
+    if phase not in PHASES:
         return None
+    named = [phase_model[p] for p in PHASES[: PHASES.index(phase) + 1] if p in phase_model]
+    return named[-1] if named else None
+
+
+def current_phase(project_root: Path) -> str | None:
+    """The phase the newest run in the project is in, from its events.jsonl (`phase_start` records,
+    and a `result` record once it is over): the lead may cut the LOOP_SPEC_PHASE_START lines out
+    of its own command output, but not out of the file."""
+    logs = sorted(project_root.glob(".loop-spec/runs/*/events.jsonl"), key=lambda p: p.stat().st_mtime)
+    phase = None
+    try:
+        for line in logs[-1].read_text().splitlines() if logs else []:
+            event = json.loads(line)
+            if event.get("event") == "result":
+                return "done"
+            if event.get("event") == "phase_start":
+                phase = event.get("phase")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return phase
 
 
 def result_file(project_root: Path, since: float) -> str | None:
@@ -244,7 +265,7 @@ async def run(args: argparse.Namespace) -> int:
         permission_mode="acceptEdits",
         can_use_tool=make_can_use_tool(args.autonomous),
         model=args.model,
-        env={"LOOP_SPEC_MODE": "autonomous"} if args.autonomous else {},
+        env={"LOOP_SPEC_MODE": "autonomous" if args.autonomous else "supervised"} if args.autonomous or args.supervised else {},
         thinking={"type": "adaptive", "display": "summarized"},
         forward_subagent_text=True,
         resume=args.resume,
@@ -269,7 +290,7 @@ async def run(args: argparse.Namespace) -> int:
                     return 1
             render(message)
             if args.phase_model and isinstance(message, UserMessage):
-                want = args.phase_model.get(current_phase(args.project_root) or "")
+                want = model_for(current_phase(args.project_root), args.phase_model)
                 if want and want != model:
                     await client.set_model(want)
                     err(f"[model] {model or 'default'} -> {want}")
@@ -294,7 +315,10 @@ def main() -> int:
     ap.add_argument("request", nargs="?", help="the entry's argument: request text, spec path, error report, or PR")
     ap.add_argument("--project-root", required=True, type=Path)
     ap.add_argument("--entry", default="cycle", choices=["cycle", "micro", "debug", "revise"])
-    ap.add_argument("--autonomous", action="store_true", help="no one answers questions; the run picks defaults")
+    modes = ap.add_mutually_exclusive_group()
+    modes.add_argument("--autonomous", action="store_true", help="no one answers questions; the run picks defaults")
+    modes.add_argument("--supervised", action="store_true",
+                       help="questions are answered from stdin; no approval step, and the lead may stop to ask")
     ap.add_argument("--model", help="the lead's model, e.g. opus; workers use the plugin agents' own models")
     ap.add_argument("--phase-model", action="append", default=[], metavar="PHASE=MODEL",
                     help="switch the lead to MODEL when the run enters PHASE (spec, plan, execute, verify, "

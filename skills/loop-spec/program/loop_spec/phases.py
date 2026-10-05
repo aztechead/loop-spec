@@ -75,7 +75,6 @@ def _start(run, phase: str) -> None:
     log.stdout.info(f"LOOP_SPEC_PHASE_START {_compact(payload)}")
     _record(run, "phase_start", phase, attempt, payload)
     _console(phase, f"{phase} attempt {attempt}")
-    _record(run, "phase_start", phase, attempt, {"summary": f"{phase} attempt {attempt}"})
     run.state["phaseStream"] = {"phase": phase, "attemptId": attempt, "startedAt": datetime.now(timezone.utc).timestamp()}
 
 

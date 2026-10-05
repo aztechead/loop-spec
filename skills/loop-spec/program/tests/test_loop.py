@@ -3,6 +3,7 @@ run's own branch and title, repository checks compared at the base, CI and revie
 feedback rounds, and the Stop hook."""
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -16,6 +17,9 @@ from test_flow import Repo, commit, marker, sh
 FAKE_GH = """#!/usr/bin/env bash
 # A stand-in for gh: answers the few calls loop-spec makes from files in $FAKE_GH_DIR.
 echo "$*" >> "$FAKE_GH_DIR/calls"
+prev=""
+for a in "$@"; do [ "$prev" = "--body-file" ] && cp "$a" "$FAKE_GH_DIR/body.txt"; prev="$a"; done  # what create and edit last wrote
+case "$*" in "pr view "*"--json body"*) cat "$FAKE_GH_DIR/body.txt" 2>/dev/null; exit 0 ;; esac
 case "$1 $2" in
   "auth status") [ -z "$FAKE_GH_NO_AUTH" ] || { echo "You are not logged into any GitHub hosts." >&2; exit 1; } ;;
   "pr list") echo "[]" ;;
@@ -26,6 +30,7 @@ case "$1 $2" in
   "api user") echo "loop-bot" ;;
   "pr view") cat "$FAKE_GH_DIR/view.json" 2>/dev/null || echo '{"reviews": [], "comments": []}' ;;
   "api repos/{owner}/{repo}/pulls/7/comments") cat "$FAKE_GH_DIR/inline.jsonl" 2>/dev/null ;;
+  "api repos/{owner}/{repo}/issues/7/comments") cat "$FAKE_GH_DIR/comments.jsonl" 2>/dev/null ;;
   *) ;;
 esac
 """
@@ -123,6 +128,7 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(self.repo.ls("iterate")[0], 0)
         self.checks("pass")
         self.assertEqual(self.repo.ls("deliver")[0], 0)
+        self.assertEqual(run["slug"], "feat-kv-add-mul")  # the slug follows --title when no --slug is given
         calls = (self.gh_dir / "calls").read_text()
         self.assertIn("--title feat(kv): add mul", calls)
         self.assertIn("--head feature/KV-12", calls)
@@ -165,8 +171,8 @@ class LoopTests(unittest.TestCase):
         sh(self.repo.path, "git", "push", "-q", "origin", "main:feat/mul")
         (self.gh_dir / "view.json").write_text(json.dumps({
             "number": 7, "url": "https://github.com/acme/kv/pull/7", "headRefName": "feat/mul", "baseRefName": "main",
-            "state": "OPEN", "isCrossRepository": False, "reviews": [],
-            "comments": [{"id": "C1", "author": {"login": "ana"}, "body": "Please add mul."}]}))
+            "state": "OPEN", "isCrossRepository": False, "reviews": []}))
+        self.comments({"id": "C1", "author": "ana", "body": "Please add mul."})
         code, out, err = self.repo.ls("start", "--pr", "7")
         self.assertEqual(code, 0, err)
         run = marker(out, "LOOP_SPEC_RUN")
@@ -179,8 +185,10 @@ class LoopTests(unittest.TestCase):
         commit(Path(run["runDir"], "tasks", "T-1"), "mul.py", "def mul(a, b):\n    return a * b\n")
         self.assertEqual(self.repo.ls("task", "done", "T-1")[0], 0)
         self.checks("pass")
-        self.deliver(run)  # no pr.md: the PR keeps its description
-        self.assertNotIn("--body-file", (self.gh_dir / "calls").read_text())
+        self.deliver(run)  # no pr.md: the PR keeps its own description, and only the verification section is folded in
+        calls = (self.gh_dir / "calls").read_text()
+        self.assertIn("pr edit 7 --body-file", calls)
+        self.assertNotIn("--title", calls)
         code, out, _ = self.repo.ls("feedback")
         self.assertNotIn("Please add mul.", out)
         self.assertEqual(marker(out, "LOOP_SPEC_RESULT")["status"], "completed")
@@ -192,8 +200,13 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(self.repo.ls("iterate")[0], 0)
         self.assertEqual(self.repo.ls("deliver")[0], 0)
 
+    def comments(self, *items: dict) -> None:
+        """Conversation comments as `gh api issues/7/comments` shows them after the program's jq filter."""
+        (self.gh_dir / "comments.jsonl").write_text("".join(json.dumps({"at": "2026-10-04T10:00:00Z", **c}) + "\n" for c in items))
+
     def review(self, reviews=(), comments=(), inline=()) -> None:
-        (self.gh_dir / "view.json").write_text(json.dumps({"reviews": list(reviews), "comments": list(comments)}))
+        (self.gh_dir / "view.json").write_text(json.dumps({"reviews": list(reviews)}))
+        self.comments(*comments)
         (self.gh_dir / "inline.jsonl").write_text("".join(json.dumps(c) + "\n" for c in inline))
 
     def test_passing_ci_and_a_quiet_review_end_the_run_completed(self):
@@ -201,7 +214,7 @@ class LoopTests(unittest.TestCase):
         self.deliver(run)
         self.checks("pass", "skipping")
         self.review(reviews=[{"id": "R1", "author": {"login": "ana"}, "state": "APPROVED", "body": ""}],
-                    comments=[{"id": "C0", "author": {"login": "loop-bot"}, "body": "our own note\n\n<!-- loop-spec -->"}])
+                    comments=[{"id": "C0", "author": "loop-bot", "body": "our own note\n\n<!-- loop-spec -->"}])
         code, out, _ = self.repo.ls("feedback")
         result = marker(out, "LOOP_SPEC_RESULT")
         target = result["delivery"]["targets"][0]
@@ -250,7 +263,7 @@ class LoopTests(unittest.TestCase):
         self.checks("pass")
         self.review(reviews=[{"id": "R1", "author": {"login": "ana"}, "state": "CHANGES_REQUESTED",
                               "body": "Please rename mul to multiply."}],
-                    comments=[{"id": "C1", "author": {"login": "loop-bot"}, "body": "Why int, not float?"}],
+                    comments=[{"id": "C1", "author": "loop-bot", "body": "Why int, not float?"}],
                     inline=[{"id": 11, "author": "coderabbit[bot]", "body": "Missing test for 0.",
                              "path": "mul.py", "line": 2, "url": "https://github.com/acme/kv/pull/7#r11"}])
         code, out, _ = self.repo.ls("feedback")
@@ -362,6 +375,147 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("already pushed", err)
 
+    # --- a branch someone else already has -------------------------------------------------
+
+    def teammate_pushes_branch(self, branch: str) -> None:
+        other = Path(self._tmp.name) / "other"
+        sh(self._tmp.name, "git", "clone", "-q", str(self.repo.origin), str(other))
+        for key, value in (("user.email", "o@example.com"), ("user.name", "o"), ("commit.gpgsign", "false")):
+            sh(other, "git", "config", key, value)
+        sh(other, "git", "checkout", "-q", "-b", branch)
+        commit(other, "theirs.py", "x = 1\n")
+        sh(other, "git", "push", "-q", "origin", branch)
+
+    def test_a_branch_origin_already_has_is_taken_and_the_run_gets_the_next_name(self):
+        self.teammate_pushes_branch("feat/add-mul")
+        run = marker(self.repo.ls("start", "--request", "Add mul")[1], "LOOP_SPEC_RUN")
+        self.assertEqual(sh(run["work"], "git", "branch", "--show-current"), "feat/add-mul-2")
+
+    def test_deliver_refuses_a_branch_origin_has_other_commits_on_when_the_run_has_no_pr(self):
+        self.ready_run()
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        self.teammate_pushes_branch("feat/add-mul")
+        code, _, err = self.repo.ls("deliver")
+        self.assertEqual(code, 1)
+        self.assertIn("belongs to other work", err)
+
+    # --- redelivery keeps what the PR's people wrote ---------------------------------------
+
+    def test_a_redeliver_replaces_only_the_verification_section_and_never_the_title(self):
+        run = self.ready_run()
+        self.deliver(run)
+        body = self.gh_dir / "body.txt"
+        body.write_text("HOST NOTE\n\n" + body.read_text() + "\nFOOTER\n")  # edited on GitHub
+        commit(Path(run["work"]), "more.py", "x = 1\n")
+        self.deliver(run)
+        text = body.read_text()
+        self.assertIn("HOST NOTE", text)
+        self.assertIn("FOOTER", text)
+        self.assertIn("Callers need mul.", text)
+        self.assertEqual(text.count("<!-- loop-spec:verification -->"), 1)
+        self.assertIn(sh(run["work"], "git", "rev-parse", "HEAD")[:12], text)
+        edits = [c for c in (self.gh_dir / "calls").read_text().splitlines() if c.startswith("pr edit 7 --body-file")]
+        self.assertEqual(len(edits), 1)  # the first deliver created the PR
+        self.assertNotIn("--title", " ".join(edits))
+
+    # --- review items ----------------------------------------------------------------------
+
+    def test_an_edited_conversation_comment_comes_back_as_a_new_item(self):
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pass")
+        self.comments({"id": 5, "author": "coderabbit[bot]", "body": "Summary v1"})
+        self.assertIn("1 new review item(s)", self.repo.ls("feedback")[1])
+        self.comments({"id": 5, "author": "coderabbit[bot]", "body": "Summary v2", "at": "2026-10-04T11:00:00Z"})
+        code, out, _ = self.repo.ls("feedback")
+        self.assertEqual(code, 1)
+        self.assertIn("Summary v2", out)
+
+    def test_a_waited_for_login_keeps_the_run_open_until_it_posts_after_the_delivery(self):
+        (self.repo.path / ".loop-spec").mkdir(exist_ok=True)
+        (self.repo.path / ".loop-spec" / "config.json").write_text(json.dumps({"feedback": {"waitFor": ["coderabbit"]}}))
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pass")
+        code, out, _ = self.repo.ls("feedback", "--timeout", "0")
+        self.assertEqual(code, 0)
+        self.assertIn("review requested from coderabbit is not in yet", out)
+        self.assertNotIn("LOOP_SPEC_RESULT", out)
+        self.comments({"id": 6, "author": "coderabbit[bot]", "body": "Looks fine.", "at": "2999-01-01T00:00:00Z"})
+        out = self.repo.ls("feedback", "--timeout", "0")[1]
+        self.assertIn("Looks fine.", out)
+        self.assertNotIn("is not in yet", out)
+
+    # --- the result ------------------------------------------------------------------------
+
+    def test_the_result_carries_assumptions_decisions_criteria_and_caveats(self):
+        run = self.ready_run()
+        Path(run["runDir"], "spec.json").write_text(json.dumps(
+            {"title": "t", "goal": "g", "assumptions": ["a1"], "decisions": ["d1"],
+             "criteria": [{"id": "AC-1", "text": "t", "check": "true"}]}))
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--caveats", "slow on big inputs")[0], 0)
+        result = marker(self.repo.ls("finish", "--status", "escalated", "--summary", "s")[1], "LOOP_SPEC_RESULT")
+        self.assertEqual((result["assumptions"], result["decisions"], result["caveats"]),
+                         (["a1"], ["d1"], ["slow on big inputs"]))
+        self.assertEqual(result["criteria"], [{"id": "AC-1", "passed": True, "checked": True}])
+        self.assertEqual(result["criteriaSha"], sh(self.repo.path, "git", "rev-parse", "feat/add-mul"))
+
+    # --- pause, resume, checkpoint ---------------------------------------------------------
+
+    def started_task(self) -> dict:
+        run = marker(self.repo.ls("start", "--request", "Add mul")[1], "LOOP_SPEC_RUN")
+        Path(run["runDir"], "spec.json").write_text(json.dumps(
+            {"title": "t", "goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "true"}]}))
+        Path(run["runDir"], "plan.json").write_text(json.dumps({"tasks": [{"id": "T-1", "title": "a"}]}))
+        self.assertEqual(self.repo.ls("task", "start", "T-1")[0], 0)
+        return run
+
+    def test_status_rebuilds_a_lost_work_worktree(self):
+        run = self.started_task()
+        shutil.rmtree(run["work"])
+        out = self.repo.ls("status")[1]
+        self.assertIn("restored work from feat/add-mul", out)
+        self.assertEqual(sh(run["work"], "git", "branch", "--show-current"), "feat/add-mul")
+
+    def test_status_resets_a_doing_task_whose_branch_is_gone(self):
+        run = self.started_task()
+        shutil.rmtree(Path(run["runDir"], "tasks", "T-1"))
+        sh(self.repo.path, "git", "worktree", "prune")
+        sh(self.repo.path, "git", "branch", "-D", "loop-spec-task/add-mul/T-1")
+        out = self.repo.ls("status")[1]
+        self.assertIn("T-1: worktree lost and its branch is gone; back to todo", out)
+        self.assertIn("(worktree lost; start it again)", out)
+
+    def test_checkpoint_commits_a_dirty_task_worktree_and_push_lands_its_branch(self):
+        run = self.started_task()
+        task_dir = Path(run["runDir"], "tasks", "T-1")
+        (task_dir / "half.py").write_text("x = 1\n")
+        code, out, _ = self.repo.ls("checkpoint", "--push")
+        self.assertEqual(code, 0)
+        self.assertRegex(out, r"tasks/T-1 loop-spec-task/add-mul/T-1 [0-9a-f]{12} committed")
+        self.assertIn("feat/add-mul", out)
+        self.assertEqual(sh(task_dir, "git", "log", "-1", "--format=%s"), "wip: loop-spec checkpoint, not verified")
+        self.assertIn("refs/heads/loop-spec-task/add-mul/T-1", sh(self.repo.path, "git", "ls-remote", "--heads", "origin"))
+
+    def test_task_done_removes_the_task_branch_a_checkpoint_pushed(self):
+        run = self.started_task()
+        (Path(run["runDir"], "tasks", "T-1") / "half.py").write_text("x = 1\n")
+        self.repo.ls("checkpoint", "--push")
+        self.assertEqual(self.repo.ls("task", "done", "T-1")[0], 0)
+        self.assertNotIn("loop-spec-task", sh(self.repo.path, "git", "ls-remote", "--heads", "origin"))
+
+    def test_a_host_stop_request_puts_the_wrap_up_in_the_hook_reason_and_the_next_line(self):
+        run = self.ready_run("--autonomous")
+        Path(run["runDir"], "stop-requested").write_text("")
+        reason = self.hook()["reason"]
+        self.assertIn("the host asked this run to wrap up", reason)
+        self.assertIn("loop-spec checkpoint --push", reason)
+        self.assertNotIn(hook.WAITING, reason)
+        self.assertRegex(self.repo.ls("status")[1], r"next +the host asked this run to wrap up")
+        self.assertIn("next: the host asked this run to wrap up", self.repo.ls("verify")[1])  # mid-turn too
+
     # --- the Stop hook ----------------------------------------------------------------
 
     def hook(self, last_message: str = "Done for now.") -> dict | None:
@@ -373,6 +527,11 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(answer["decision"], "block")
         self.assertIn("phase verify", answer["reason"])
         self.assertIsNone(self.hook("Three implementers are running. LOOP_SPEC_WAITING"))
+
+    def test_a_supervised_run_may_stop_to_ask_and_is_blocked_otherwise(self):
+        self.ready_run("--supervised")
+        self.assertEqual(self.hook("Done for now.")["decision"], "block")
+        self.assertIsNone(self.hook("Which one do you want? LOOP_SPEC_ASKING"))
 
     def test_an_interactive_or_finished_run_lets_the_stop_through(self):
         self.ready_run()

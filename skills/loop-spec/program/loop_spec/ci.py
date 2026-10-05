@@ -58,8 +58,9 @@ def _job_bucket(worktree: Path, check: dict) -> str | None:
     return {"success": "pass", "skipped": "skipping", "neutral": "skipping", "cancelled": "cancel"}.get(conclusion, "fail")
 
 
-def wait(worktree: Path, pr: int, timeout: int, sleep=time.sleep, clock=time.monotonic) -> tuple[str, list[dict]]:
-    """Poll until a check fails, every check passes, or `timeout` passes. Returns (outcome, checks),
+def wait(worktree: Path, pr: int, timeout: int, sleep=time.sleep, clock=time.monotonic,
+         stop=lambda: False) -> tuple[str, list[dict]]:
+    """Poll until a check fails, every check passes, `timeout` passes, or `stop()` says to. Returns (outcome, checks),
     where outcome is `passed`, `failed`, `none` (no CI), or `pending` (still running at the timeout)."""
     deadline = clock() + timeout
     while True:
@@ -70,7 +71,7 @@ def wait(worktree: Path, pr: int, timeout: int, sleep=time.sleep, clock=time.mon
             return "failed", checks  # no need to wait for slow checks: the fix's push starts them over
         if checks is not None and all(c.get("bucket") != "pending" for c in checks):
             return "passed", checks
-        if clock() >= deadline:
+        if clock() >= deadline or stop():
             return "pending", checks or []
         sleep(POLL_SECONDS)
 

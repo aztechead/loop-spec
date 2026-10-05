@@ -1,10 +1,12 @@
 """Push the feature branch and open or update its pull request with a body built from the run."""
+from datetime import datetime, timezone
 from pathlib import Path
 
 from loop_spec import git, remote, review
 from loop_spec.errors import LoopSpecError
 from loop_spec.runs import Run, first_line, read_json
 
+VERIFY_OPEN, VERIFY_CLOSE = "<!-- loop-spec:verification -->", "<!-- /loop-spec:verification -->"
 MARK = {True: "pass", False: "fail", None: "not checked"}
 
 
@@ -60,13 +62,29 @@ def _verification(run: Run, verified: bool) -> list[str]:
         for c in spec["criteria"]:
             r = by_name.get(c.get("id"))
             ok = None if r is None or r.get("command") is None else r.get("exit") == 0
-            check = f"`{c['check']}`" if c.get("check") else "no command; judged in review"
+            check = ("<br>".join(f"`{line}`" for line in c["check"].splitlines())
+                     if c.get("check") else "no command; judged in review")
             lines.append(f"| {MARK[ok]} | **{c.get('id', '')}** {_cell(c.get('text', ''))} | {_cell(check)} |")
-    return lines + ["", "_Delivered by loop-spec._", "</details>"]
+    return [VERIFY_OPEN, *lines, "", "_Delivered by loop-spec._", "</details>", VERIFY_CLOSE]
 
 
 def _cell(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
+
+
+def fold(body_text: str, section: str) -> str:
+    """`body_text` with the verification section replaced: the marked region when both markers
+    are there, else one trailing unmarked `Acceptance criteria:` block (an older delivery's),
+    else nothing; then `section` appended. Everything else the PR says is left alone."""
+    section = section.strip()
+    start, end = body_text.find(VERIFY_OPEN), body_text.find(VERIFY_CLOSE)
+    if 0 <= start < end:
+        return body_text[:start] + section + body_text[end + len(VERIFY_CLOSE):].rstrip() + "\n"
+    text = body_text.rstrip()
+    block = text.rfind("<details>")
+    if block >= 0 and text.endswith("</details>") and text[block:].startswith("<details>\n<summary>Acceptance criteria:"):
+        text = text[:block].rstrip()
+    return (text + "\n\n" if text else "") + section + "\n"
 
 
 def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | None) -> str:
@@ -113,23 +131,31 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
                             f"if origin/{branch} moved, merge it in {work}, verify again, then deliver; never force-push")
 
     body_path = run.dir / "pr-body.md"
-    if not adopted:  # an adopted PR keeps its own description, and has no pr.md
-        body_path.write_text(body(run, verified))
+    section = "\n".join(_verification(run, verified))
     pr = state.get("pr")
     if pr is None:
         existing = git.gh_json(work, "pr", "list", "--head", branch, "--state", "open", "--json", "number,url")
         pr = existing[0] if existing else None
     if pr is None:
+        body_path.write_text(body(run, verified))
         pr = _create(run, branch, body_path, draft=draft or not verified)
-    elif not pr.get("adopted"):
-        git.gh(work, "pr", "edit", str(pr["number"]), "--title", title(run), "--body-file", str(body_path))
+    else:  # only the verification section is the program's: the PR's own text and title stay
+        code, current, error = git.gh(work, "pr", "view", str(pr["number"]), "--json", "body", "-q", ".body")
+        if code != 0:  # without the current body, an edit would replace the PR's whole description
+            raise LoopSpecError(f"could not read PR #{pr['number']}'s description: {error.strip()}",
+                                f"the branch is pushed; run loop-spec deliver again")
+        body_path.write_text(fold(current, section))
+        edit = ["pr", "edit", str(pr["number"]), "--body-file", str(body_path)]
+        if (state.get("delivered") or {}).get("title", title(run)) != title(run):  # the run changed its own title
+            edit += ["--title", title(run)]
+        git.gh(work, *edit)
     if state.get("pr"):  # a later delivery of a PR this run opened
         # Ask everyone who left feedback to look again; feedback then waits for them. GitHub refuses
         # the PR's author and most bots, which is fine: there is no one to wait for.
         for login in (state.get("feedback") or {}).get("authors", []):
             git.gh(work, "pr", "edit", str(pr["number"]), "--add-reviewer", login)
     state["pr"] = pr
-    state["delivered"] = {"sha": head, "verified": verified}
+    state["delivered"] = {"sha": head, "verified": verified, "title": title(run), "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     run.save()
     if comment_file:
         reply = f"{comment_file.read_text().rstrip()}\n\n{review.MARK}\n"
@@ -143,7 +169,7 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
 def _create(run: Run, branch: str, body_path: Path, *, draft: bool) -> dict:
     config = read_json(run.project / ".loop-spec" / "config.json", "config") or {}
     args = ["pr", "create", "--base", run.state["base"]["branch"], "--head", branch, "--title", title(run),
-            "--body-file", str(body_path), "--assignee", "@me", *(["--draft"] if draft else [])]
+            "--body-file", str(body_path), *(["--draft"] if draft else [])]
     for reviewer in config.get("reviewers", []):
         args += ["--reviewer", reviewer]
     for label in config.get("labels", []):

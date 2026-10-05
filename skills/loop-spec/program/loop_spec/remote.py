@@ -20,6 +20,9 @@ def moves(run: Run) -> list[dict]:
         git.fetch(work, git.tracking(name))  # a branch origin does not have yet is simply absent
         tip = git.remote_tip(work, name)
         if tip and not git.is_ancestor(work, tip, "HEAD"):
+            if what == "branch" and run.state.get("pr") is None:
+                raise LoopSpecError(f"origin/{name} has commits this run never had: it belongs to other work",
+                                    "give this run its own branch: loop-spec set --branch NAME")
             found.append({"what": what, "ref": f"origin/{name}", "sha": tip,
                           "commits": len(git.commits(work, f"HEAD..{tip}"))})
     return found
