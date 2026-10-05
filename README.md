@@ -138,6 +138,8 @@ repositories side by side in one directory and list them in that directory's
 
 `path` names the repository's root, relative to that directory or absolute; `name` is
 how the plan and the run's directories refer to it. Start the run from that directory.
+When the file is missing, the entry skill has the lead write it for the clones the request
+spans, so a host only has to put the clones there.
 Inside it every run is a workspace run, including one started from a listed clone.
 
 - The run keeps one worktree per repository: `work/<name>/` and `verify/<name>/`.

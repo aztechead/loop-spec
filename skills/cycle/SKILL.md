@@ -4,8 +4,10 @@ description: "Takes a feature request or spec file to a verified pull request wi
 argument-hint: "[--autonomous|--supervised] <request or spec file>"
 ---
 
-Start (or resume) a loop-spec run from the repository, or, for a change across
-repositories, from the workspace root (the directory holding `.loop-spec/workspace.json`):
+Start (or resume) a loop-spec run from the repository. For a change across several
+repositories cloned side by side in a directory that is not itself a repository, start
+from that directory; when it has no `.loop-spec/workspace.json`, first write one listing
+each clone the change spans: `{"repos": [{"name": "api", "path": "api"}, {"name": "web", "path": "web"}]}`.
 
     "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" start --request "{request}"
 

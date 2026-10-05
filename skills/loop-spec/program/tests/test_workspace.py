@@ -140,6 +140,13 @@ class WorkspaceTests(unittest.TestCase):
                 runs.workspace_repos(self.root)
             self.assertIn(named, caught.exception.message)
 
+    def test_1_clones_without_workspace_json_are_named_with_the_file_to_write(self):
+        (self.root / ".loop-spec" / "workspace.json").unlink()
+        with self.assertRaises(LoopSpecError) as caught:
+            runs.run_root(self.root)
+        self.assertIn("api, web", caught.exception.message)
+        self.assertIn('"path": "web"', caught.exception.repair)
+
     def test_2_start_makes_a_worktree_per_repository(self):
         run = self.start()
         self.assertEqual(set(run["repos"]), {"api", "web"})

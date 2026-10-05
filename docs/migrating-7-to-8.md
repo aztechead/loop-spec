@@ -75,8 +75,8 @@ Use this table for each key:
 long a run waits for requested reviewers after CI passes. The default is 30.
 
 Keep a workspace's `.loop-spec/workspace.json` as it is; 8.0 reads the same
-`{"repos": [{"name", "path"}]}`. 8.0 does not find a workspace without that file: add it
-if 7.x found your clones on its own.
+`{"repos": [{"name", "path"}]}`. 8.0 does not scan for clones itself: when the file is
+missing, the lead writes it for the clones the request spans before it starts the run.
 
 ## 4. Move customizations
 

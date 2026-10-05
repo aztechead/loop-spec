@@ -110,7 +110,15 @@ def run_root(start: Path) -> Path:
     for d in (start, *start.parents):
         if (d / WORKSPACE).is_file():
             return d
-    return git.project_root(start)
+    try:
+        return git.project_root(start)
+    except LoopSpecError:
+        clones = sorted(d.name for d in start.iterdir() if (d / ".git").exists()) if start.is_dir() else []
+        if not clones:
+            raise
+        listed = ", ".join(f'{{"name": "{n}", "path": "{n}"}}' for n in clones)
+        raise LoopSpecError(f"{start} is not a repository; it holds the clones {', '.join(clones)}",
+                            f'list the ones this change spans in {start / WORKSPACE}: {{"repos": [{listed}]}}, then start again')
 
 
 def workspace_repos(root: Path) -> list[dict] | None:

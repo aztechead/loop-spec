@@ -4,8 +4,10 @@ description: "Reproduces and fixes a specific failure with loop-spec: confirms t
 argument-hint: "[--autonomous|--supervised] <error, stack trace, or failing test>"
 ---
 
-Start (or resume) a loop-spec run from the repository, or, for a change across
-repositories, from the workspace root (the directory holding `.loop-spec/workspace.json`):
+Start (or resume) a loop-spec run from the repository. For a change across several
+repositories cloned side by side in a directory that is not itself a repository, start
+from that directory; when it has no `.loop-spec/workspace.json`, first write one listing
+each clone the change spans: `{"repos": [{"name": "api", "path": "api"}, {"name": "web", "path": "web"}]}`.
 
     "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" start --kind debug --request "{request}"
 
