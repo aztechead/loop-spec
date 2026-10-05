@@ -40,8 +40,9 @@ All notable changes documented here. Format follows Keep a Changelog.
 - A phase change no longer drops out of the log stream when the lead keeps only the tail
   of a command's output: the `LOOP_SPEC_PHASE_*`, `[PHASE]`, and `LOOP_SPEC_RESULT` lines
   now come last (before `status`'s `LOOP_SPEC_RUN`), and the skill tells the lead not to
-  filter `LS` output. `events.jsonl` stays the record a host can rely on. A PostToolUse hook also reports the
-  markers the lead's pipe still cut, which an SDK host reads with `include_hook_events=True`.
+  filter `LS` output. A PostToolUse hook also reports the markers the lead's pipe still
+  cut, which an SDK host reads with `include_hook_events=True`. `events.jsonl` stays the
+  record a host can rely on.
 - A run no longer takes a branch origin already has: a fresh clone named its branch
   after an open PR's, then merged that PR's commits in and delivered onto it. Naming
   checks origin too, and `deliver` and `sync` refuse an origin branch with commits a run

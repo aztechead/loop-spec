@@ -533,6 +533,11 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(self.hook("Done for now.")["decision"], "block")
         self.assertIsNone(self.hook("Which one do you want? LOOP_SPEC_ASKING"))
 
+    def test_the_spec_step_names_the_interview_unless_no_one_answers(self):
+        for flag, asks in (("--supervised", True), ("--autonomous", False)):
+            out = self.repo.ls("start", "--request", f"Add mul {flag}", flag)[1]
+            self.assertEqual("leaves open in one AskUserQuestion" in out, asks, flag)
+
     def test_an_interactive_or_finished_run_lets_the_stop_through(self):
         self.ready_run()
         self.assertIsNone(self.hook())

@@ -327,7 +327,9 @@ def _step(run: Run, phase: str, problem: str | None) -> str:
         if found:
             return f"fix {run.spec_path}: {'; '.join(found)}"
         approve = ", ask the user to approve its criteria (AskUserQuestion)" if run.mode == "interactive" else ""
-        return f"write {run.spec_path}{approve}, then loop-spec status; no code before the plan is accepted"
+        interview = ("ask the choices the request leaves open in one AskUserQuestion, your choice as the recommended "
+                     "option (none open: no question), then " if run.mode != "autonomous" and run.state.get("kind") != "micro" else "")
+        return f"{interview}write {run.spec_path}{approve}, then loop-spec status; no code before the plan is accepted"
     if phase == "plan":
         return f"write {run.plan_path}"
     if phase == "execute":
