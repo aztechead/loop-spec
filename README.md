@@ -1,311 +1,206 @@
 # loop-spec
 
-For a developer installing loop-spec in Claude Code, or embedding it in a Python
-app on the Claude Agent SDK. Use this guide to install it, run an entry, and read
-a result.
+For a developer installing loop-spec in Claude Code, or running it as the method an
+autonomous coding agent follows on the Claude Agent SDK. Use this guide to install
+it, start a run, and read the result.
 
-Current version: 7.9.0
-
-## Contents
-
-- [What it is](#what-it-is)
-- [Install](#install)
-- [Use it in Claude Code](#use-it-in-claude-code)
-- [How a run proceeds](#how-a-run-proceeds)
-- [Configuration](#configuration)
-- [Embedding on the Agent SDK](#embedding-on-the-agent-sdk)
-- [Reading a result](#reading-a-result)
-- [Docs map](#docs-map)
-- [Tests](#tests)
-- [License](#license)
+Current version: 8.0.0
 
 ## What it is
 
-loop-spec turns a feature request into a verified pull request through six
-program-checked phases: SPEC, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. A model
-does the judgment inside each phase; a small Python program checks the result
-against that phase's postconditions before it advances, and refuses a claimed
-exit the evidence does not support. Claude Code, driven interactively or with
-`claude -p`, is the primary way to run it; the same program also runs unattended
-under the Claude Agent SDK, with no Claude Code session at all.
+loop-spec takes a coding request to a verified pull request:
+
+1. **Spec**: a goal and acceptance criteria, each with a command that checks it.
+2. **Plan**: the work as a task graph (a DAG): tasks, their dependencies, and the
+   tests that check each one.
+3. **Execute**: ready tasks run in parallel, each in its own git worktree, and are
+   merged into the feature branch as they finish.
+4. **Verify**: every check (the spec's, and the ones the repository's `CLAUDE.md` and
+   `AGENTS.md` require) run in a clean checkout of the exact commit to be delivered.
+5. **Iterate**: a correctness review and a simplification review of the whole verified
+   change; a fix sends the run back to verify.
+6. **Deliver**: one PR, with anything that moved on origin merged in first. Its
+   description follows the repository's PR template, or, when there is none,
+   HumanLayer's visual-pr format (a one-sentence why, what a reviewer should know, and a
+   visual change outline), with the checked criteria folded below. The run then waits
+   for the PR's checks, reads its review comments, and fixes what the change should,
+   or answers, until CI passes and reviewers have asked for nothing new. A project can
+   add its own review skill to this step.
+
+These are 7.x's phases, and a run announces them exactly as 7.x did: a
+`LOOP_SPEC_PHASE_START`/`LOOP_SPEC_PHASE_END` line on stdout per phase change, a
+`[PHASE] ...` progress line on stderr, and a record in `events.jsonl`, written both to
+the run's directory and where 7.x wrote it, so tools that monitor 7.x runs keep working.
+
+The model does the judgment. The method is written as guidance in one skill,
+[skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md), not as gates, with a short
+reference for each run kind other than `cycle`. A small
+standard-library helper keeps the run's state and task graph on disk, manages the
+worktrees, runs the checks, opens the PR, and reads its CI. It enforces one rule: only
+a commit that passed verify, and contains everything on origin, is delivered, unless
+you say otherwise.
+
+It is tuned for Claude Opus 5.5 as the lead and reviewer and Claude Sonnet 5.5 as the
+implementer; see [docs/models/README.md](docs/models/README.md).
 
 ## Install
 
-Requirements: `git`, `python3` >= 3.11, and, for DELIVER, an authenticated GitHub
-CLI (`gh auth status`) with an `origin` remote.
+Requirements: `git`, `python3` >= 3.11, and for delivery an authenticated GitHub CLI
+(`gh auth status`) with an `origin` remote.
 
-Claude Code plugin, from inside a session:
+From inside Claude Code:
 
 ```
 /plugin marketplace add aztechead/loop-spec
 /plugin install loop-spec@loop-spec-marketplace
 ```
 
-### Staying on 6.x
+Coming from 7.x, or staying on it: [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md).
 
-`main` is 7.x. A marketplace added without a ref follows `main`, so your next update
-moves you to 7.x. To move, follow [migrating-6-to-7.md](docs/loop-spec/migrating-6-to-7.md).
-To stay on 6.x, which still gets bug fixes on the `6.x` branch, pin the marketplace to
-that branch:
-
-```
-/plugin marketplace remove loop-spec-marketplace
-/plugin marketplace add aztechead/loop-spec#6.x
-/plugin install loop-spec@loop-spec-marketplace
-```
-
-Agent Skills, for any other harness that reads a `skills/` tree:
-
-```bash
-npx skills add aztechead/loop-spec
-```
-
-## Use it in Claude Code
-
-Each entry is a skill, invoked as `/loop-spec:<name> <argument>`:
+## Use it
 
 | Entry | Argument | Does |
 |---|---|---|
-| `/loop-spec:auto` | a request | pick the entry below that fits, or do a mechanical git or PR operation directly with no cycle |
-| `/loop-spec:cycle` | a request or spec file | run SPEC through DELIVER on a new feature |
-| `/loop-spec:micro` | a small, well-defined change | the same six phases, in one autonomous pass |
-| `/loop-spec:debug` | an error report or stack trace | reproduce it, find the cause, land a fix with a regression test |
-| `/loop-spec:revise` | a PR number or URL | address reviewer feedback on an already-open PR |
-| `/loop-spec:status` | nothing, or a slug | show a run's phase, open question or step, budget, and result |
-| `/loop-spec:spec`, `plan`, `execute`, `verify`, `iterate`, `deliver` | a slug | resume just that phase of an existing run |
-
-Every entry ends by reading one file (a step, a question, or the terminal
-result) and reports back or asks you what it says.
-
-### Examples
+| `/loop-spec:cycle` | a request or spec file | the full run, for a feature or change |
+| `/loop-spec:micro` | a small, well-defined change | the same run, short: one task, no interview |
+| `/loop-spec:debug` | an error, stack trace, or failing test | reproduce at the start commit, fix the cause, keep a regression test |
+| `/loop-spec:revise` | a PR number or URL | address its review comments on the PR's own branch |
+| `/loop-spec:status` | nothing, or a run's slug | where runs stand |
 
 ```
 /loop-spec:cycle Add a --json flag to the export command that prints one JSON object per row, with tests
-/loop-spec:cycle docs/specs/rate-limiter.md
-/loop-spec:micro Rename the retry_count config key to max_retries everywhere, keeping the old key as a deprecated alias
-/loop-spec:debug tests/test_parser.py::test_unicode fails with UnicodeDecodeError on main since 3f2a91c
+/loop-spec:debug tests/test_parser.py::test_unicode fails with UnicodeDecodeError since 3f2a91c
 /loop-spec:revise 42
-/loop-spec:auto resolve the merge conflicts on https://github.com/acme/api/pull/42 and push
-/loop-spec:status
-/loop-spec:verify add-a-json-flag-to-the-export-command
 ```
 
-Name the verify command in the request when you know it, as one plain command:
-`.venv/bin/python -m pytest -q tests/test_export.py`, not `cd tests && pytest`.
-The program runs commands with no shell and rejects shell syntax before it runs
-anything.
+Interactive runs ask the questions that change what gets built, and ask once for
+approval of the spec. For a run no one attends, add `--autonomous` to the argument or
+set `LOOP_SPEC_MODE=autonomous` in the environment: the run never stops to ask,
+records the defaults it chose as assumptions in the spec, and ends with a result
+either way. Between the two, `--supervised` (or `LOOP_SPEC_MODE=supervised`) skips the
+approval and records defaults the same way, but still asks a question that is costly to
+get wrong, for a host that can relay it to a person.
 
-### Headless
+An autonomous or supervised run keeps itself going the way `/goal` does: after each turn loop-spec's
+Stop hook checks the run's record, and while the run is open it hands the lead the next
+step. There is no turn limit; the run ends when it delivers, or when the lead judges it
+blocked and ends it as escalated.
 
-The same entries run under `claude -p`. With `--output-format stream-json
---verbose`, the lead's text, thinking, and tool calls arrive on stdout, and the
-program's `[PHASE]` progress lines appear in the Bash results it reads:
+The branch name and PR title follow the repository's own rules in `CLAUDE.md`,
+`AGENTS.md`, or `CONTRIBUTING*` (as do commit messages, a PR template, and a changelog
+entry). To set them for one run, say so in the request ("on branch feature/KV-12,
+titled ..."); that wins over the rules.
 
 ```bash
-claude -p "/loop-spec:cycle <request> [Operator: this is a headless run; pass --answer-policy default on the loop-spec cycle command.]" \
-  --permission-mode bypassPermissions --output-format stream-json --verbose > run.jsonl
+claude -p "/loop-spec:cycle --autonomous Add a --json flag to the export command" \
+  --permission-mode acceptEdits --output-format stream-json --verbose > run.jsonl
 ```
 
-`--answer-policy default` answers every question that has a default, including the
-requirements approval. Each skill adds it to its command when the prompt asks for it,
-and a resume with `--slug` and the flag applies it from then on, including to the
-question the run is already waiting on. Without it, or for a question with no
-default, the run stops and the final message names the question. Answer it with the launcher,
-then resume the session:
+A run is resumable: start the same request again, or run `/loop-spec:status` and
+continue from its `next` line.
 
-```bash
-LS=~/.claude/plugins/cache/loop-spec-marketplace/loop-spec/<version>/skills/loop-spec/program/loop-spec
-"$LS" answer --project-root . \
-  --slug <slug> --question <questionId> --answer approve
-claude -p --resume <session id> "The question was answered; continue the run." \
-  --permission-mode bypassPermissions --output-format stream-json --verbose >> run.jsonl
+## Where a run lives
+
+Everything for a run is in `<repo>/.loop-spec/runs/<slug>/`, which loop-spec keeps
+out of `git status` through the repository's own exclude file (for a run across
+repositories, in the workspace root's `.loop-spec/runs/<slug>/`; see below):
+
+| Path | What |
+|---|---|
+| `spec.json`, `plan.json` | the spec and task graph the lead wrote |
+| `state.json` | what the program recorded: base, branch, task status, verify, PR |
+| `work/` | the feature branch's worktree, where finished tasks are merged |
+| `tasks/<id>/` | one worktree per task in progress |
+| `verify/` | the clean checkout verify runs in |
+| `events.jsonl` | every phase record, in 7.x's format; a host reads the run's phase from the last `phase_start` |
+| `result.json` | the final result; once it exists, the run is over |
+
+Your own checkout is never touched. The result is 7.x's schema-1 record: `status` (`completed`, `escalated`, `failed`), `outcome` (`delivered`,
+`delivered-draft`, `no-change-needed`, ...), `summary`, `branch`, `prUrl`,
+`verifiedSha`, `phaseReached`, and the rest, plus the spec's `assumptions` and
+`decisions`, each criterion's result in `criteria` (as verified at `criteriaSha`), and
+the review's `caveats`. The program prints it as a
+`LOOP_SPEC_RESULT {...}` line, then `LOOP_SPEC_NEXT {"kind":"result","path":...}`. As in
+7.x, `events.jsonl` and `result.json` are also written to
+`<state home>/<repo id>/<slug>/`, and the result to `<state home>/<repo id>/last-result.json`,
+where the state home is `$LOOP_SPEC_HOME` or `~/.loop-spec`.
+
+## Runs across repositories
+
+One run can change several repositories: one spec, one task graph, one verify across
+all of them, and one PR per repository that changed, each linking the others. Clone the
+repositories side by side in one directory and list them in that directory's
+`.loop-spec/workspace.json` (7.x's format):
+
+```json
+{"repos": [{"name": "api", "path": "api"}, {"name": "web", "path": "web"}]}
 ```
 
-Question
-fields and scopes are in
-[references/contract.md](skills/loop-spec/references/contract.md#questions).
+`path` names the repository's root, relative to that directory or absolute; `name` is
+how the plan and the run's directories refer to it. Start the run from that directory.
+When the file is missing, the entry skill has the lead write it for the clones the request
+spans, so a host only has to put the clones there.
+Inside it every run is a workspace run, including one started from a listed clone.
 
-## How a run proceeds
-
-SPEC and PLAN run in your session, asking approval questions as they go — SPEC
-for the requirements revision, PLAN's critic pass for any Critical finding.
-EXECUTE dispatches an implementer and a reviewer per task, each in its own git
-worktree. VERIFY re-runs every criterion's evidence command in a clean checkout
-it creates. ITERATE judges the integrated result against your original request,
-not just the checklist, and can rewind SPEC, PLAN, EXECUTE, or VERIFY if it finds
-a gap. DELIVER pushes the verified SHA and opens or updates one PR.
-
-Run state is durable outside your repository, under `~/.loop-spec/` by default
-(`LOOP_SPEC_HOME` to move it) —
-a killed or restarted session resumes from there instead of starting over. With
-Claude Code's sandbox on, add that directory to `sandbox.filesystem.allowWrite`
-(`"allowWrite": ["~/.loop-spec"]`); the sandbox writes only the project and the temp
-directory by default.
-Nothing is committed to your repository: the SPEC/PLAN/VERIFICATION documents a
-6.x run committed are rendered into the pull request body instead, and the
-delivered head is always the SHA VERIFY passed.
-
-A worker's result file is the one exception: it is written to
-`<project root>/.loop-spec/results/<slug>/`, not the state home, because a
-worker writes it with the Write tool, and Claude Code's default permission mode
-lets that tool write inside the project without a prompt. `loop-spec`
-excludes `.loop-spec/` from `git status` itself, via the repository's own
-`.git/info/exclude`, so this is never committed either; `submit` reads a result
-written somewhere else with `--result-file <path>`.
+- The run keeps one worktree per repository: `work/<name>/` and `verify/<name>/`.
+- `--base`, `--branch`, and the workspace's own `.loop-spec/config.json` apply to every
+  repository; without a base, each repository uses its default branch. `loop-spec set
+  --repo NAME --branch ... --title ...` gives one repository its own branch and PR title.
+- A revise run (`--pr`) works on one repository's PR. Pass the PR's URL when its number
+  could belong to more than one repository.
+- The result has one `delivery.targets` row and one `prs` row per PR, each with its
+  repository's name and SHA. `verifiedSha` and `criteriaSha` are null, as in 7.x.
 
 ## Configuration
 
-Everything below is optional. Project config lives in `.loop-spec/config.json`;
-environment variables take precedence over it.
+Optional, in `<repo>/.loop-spec/config.json` (commit it if your team wants it shared):
 
-| Key or variable | Effect |
+| Key | Effect |
 |---|---|
-| `phases.<phase>` (config) | bind a phase to `"external"` instead of its default implementation |
-| `roles.<role>` (config), `LOOP_SPEC_ROLE_<ROLE>` | bind a role to a skill other than the bundled default |
-| `deliver.after` (config) | skills to run on the delivered PR after the result is reported, e.g. `["my-plugin:pr-follow-up"]` |
-| `deliver.readiness` (config) | `"checks"` (default) reads the PR's CI once after the push, never waiting: pending is a caveat, a failing check drafts the PR and blocks the delivery; `"none"` skips it |
-| `deliver.base` (config) | the integration branch PRs target; default origin's default branch. Runs start from its fetched tip, not the checked-out commit |
-| `deliver.branch` (config) | the feature branch name, for repos with a naming rule (e.g. `feature/AVP-1234`); wins over the prefix and the issue-derived name, still suffixed `-2`, `-3` when taken (contributed by George Muresan, #132) |
-| `deliver.branchPrefix` (config) | prefix for new feature branches, ending in `/`; default `fix/` for debug runs, else `feat/` |
-| `deliver.reviewers`, `deliver.labels` (config) | lists of reviewers and labels set on a new PR (it is always assigned to you); names the repository rejects are dropped with a caveat |
-| `deliver.acceptRemotePaths` (config) | path globs, e.g. `["CHANGELOG.md"]`: accept a bot's commits on the PR branch that touch only these paths and none of the verified change |
-| `LOOP_SPEC_HOME` | state home root; default `~/.loop-spec` |
-| `LOOP_SPEC_PLUGIN_DIRS` | plugin directories, separated by `:`, where `plugin:skill` names resolve first; for a plugin loaded by path, such as the Agent SDK's local plugins (`examples/sdk-plugin --plugin` sets it) |
-| `roles.<role>.model` (config), `LOOP_SPEC_MODEL_<ROLE>` | model for every dispatch of that role, e.g. `LOOP_SPEC_MODEL_CODE_REVIEWER=haiku`. By default the judgment workers (router, plan-critic, code-reviewer, iterate-judge) run on `opus` and the implementation workers (implementer, verifier, resolver) on `sonnet`; a `null` in config inherits your session's model instead. SPEC, PLAN, debug, revise and direct run in the session itself, so in Claude Code run it on the model you want for them; an Agent SDK runner can switch the session to a lead step's model instead (`examples/sdk-plugin`, `examples/supervisor`) |
-| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | model for every step of that phase (`SPEC`, `PLAN`, `EXECUTE`, ...) whose role has no model of its own set, e.g. `LOOP_SPEC_PHASE_MODEL_PLAN=opus`. For SPEC and PLAN it takes effect under an Agent SDK runner, as above |
-| `roles.<role>.effort` (config), `LOOP_SPEC_EFFORT_<ROLE>` | effort (`low`, `medium`, `high`, `xhigh`, `max`) for every worker that role dispatches, e.g. `LOOP_SPEC_EFFORT_CODE_REVIEWER=low`. By default the router runs at `low`, and every other worker at `medium`; a `null` in config inherits. The worker runs as the plugin's `loop-spec:worker-<effort>` agent. It does not apply to a step the lead runs itself (SPEC, PLAN, debug, revise, direct), which uses the session's `--effort`. A mismatched agent type stops a plan-critic, code-reviewer, iterate-judge or router step; for implementer and verifier it is recorded and the run goes on |
-| `spec.approval` (config), `LOOP_SPEC_SPEC_APPROVAL` | `policy` approves SPEC's requirements without asking, as 6.x's default `auto` style did; the interview and every other question are still asked. Default `ask` |
+| `base` | the branch runs start from and PRs target; default origin's default branch |
+| `branch` | the feature branch name, for repositories with a naming rule; `-2`, `-3` is added when taken |
+| `branchPrefix` | prefix for the default branch name; default `feat/`, `fix/` for debug |
+| `reviewers`, `labels` | set on a new PR |
+| `feedback.skills` | skills (`plugin:skill`) the lead runs on the delivered PR, e.g. your own review triage; what they report is handled like review comments |
+| `feedback.wait` | `false` to end runs at delivery without waiting for CI or review |
+| `feedback.waitFor` | logins, such as a review bot's, that must comment or review after each delivery before the run can end; bounded by `reviewWaitMinutes` |
+| `feedback.reviewWaitMinutes` | how long `feedback` waits, once CI is settled, for reviewers asked on the PR to answer (default 30; `0` does not wait) |
 
-### Use your own skill or plugin in a phase
+Models: the implementer and simplifier agents run on Sonnet and the reviewer on Opus,
+all at medium effort, from their frontmatter in [agents/](agents/). The lead is your session, so run
+it on Opus 5.5 for the best plans and reviews. Through the Agent SDK, the
+[example runner](examples/sdk-plugin/README.md)'s `--model opus --phase-model execute=sonnet`
+keeps Opus for the spec and plan and hands the rest to Sonnet.
 
-Use this when a phase should use your skill or plugin, either alongside the bundled
-method or in its place. Each phase's method is a role, so you configure the role:
+## On the Agent SDK
 
-| Phase | Role | Runs as |
-|---|---|---|
-| SPEC | `spec-writer` | lead |
-| PLAN | `planner`, `plan-critic` | lead, worker |
-| EXECUTE | `implementer`, `code-reviewer`, `resolver` | worker |
-| VERIFY | `verifier`, `code-reviewer` | worker |
-| ITERATE | `iterate-judge` | worker |
-| debug | `debugger` | lead |
-| revise | `reviser` | lead |
-| route | `router` | worker |
+[examples/sdk-plugin/](examples/sdk-plugin/README.md) loads loop-spec as a local
+plugin in a `ClaudeSDKClient` session and sends `/loop-spec:<entry>`, so an
+autonomous coder follows the same method it would in Claude Code. It is a reference,
+not a supported surface. What a host can rely on:
 
-DELIVER has no role. The program performs it, so you can only bind it to
-`"external"` under `phases`.
+- **Pause and resume in a fresh clone.** Before the container stops, run
+  `loop-spec checkpoint --push` in the run, and keep `.loop-spec/runs/<slug>/`'s
+  `state.json`, `spec.json`, and `plan.json`. Restore those three files into the new
+  clone and resume the session: `status` rebuilds the worktrees from the pushed branches.
+- **Wrap up on request.** Create `.loop-spec/runs/<slug>/stop-requested`. The Stop hook
+  and `status` then tell the lead to commit, checkpoint, and end the run as escalated.
+  The host deletes the file before it resumes that run.
+- **Runs across repositories.** Give the example runner the workspace root as
+  `--project-root`; see [Runs across repositories](#runs-across-repositories).
+- **A PR you edit after delivery** keeps your title and text: a later delivery updates
+  only loop-spec's folded verification section, and the title only if the run changed
+  it.
 
-A skill in a role runs inside the run. It reads the role's inputs and writes the
-role's result. It must not push, comment on the PR, or loop on its own: DELIVER
-delivers only the commit that VERIFY checked, so a push made during the run stops
-delivery. A skill that acts on the PR belongs in `deliver.after` (below).
-
-To add your skill to the bundled method, list it under `with`. For example, to have
-REVISE use a plugin that helps work through a PR's reviews:
-
-```json
-{"roles": {"reviser": {"with": ["my-plugin:pr-reviews"]}}}
-```
-
-The reviser follows its bundled method, then your skill. Its result still has to
-match the reviser's schema.
-
-To replace the method, bind the role to your skill:
-`{"roles": {"reviser": "my-plugin:revise-method"}}`. Write that skill's body as the
-role's whole method; its result must match the role's `schema.json` under
-`skills/loop-spec/roles/<role>/`. The two combine:
-`{"binding": "<skill>", "with": [...]}`.
-
-A plain name finds `.claude/skills/<name>/`, `~/.claude/skills/<name>/` or
-`~/.agents/skills/<name>/`. `plugin:skill` finds the skill in the installed version of
-that plugin, or, for a plugin a session loads by path, in a directory named in
-`LOOP_SPEC_PLUGIN_DIRS`.
-
-The program inlines each skill's body into the step's prompt. It resolves
-`${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` in that body, so the body can still
-reach its bundled files. It keeps the bundled role's first principles, its
-`contract.md` and its schema, whatever your skill says. A lead step runs in your
-session, so an installed plugin's other tools (MCP servers, agents) are also available
-to it.
-
-A role's configuration applies wherever the role runs. Only `code-reviewer` runs in
-two phases, EXECUTE and VERIFY, so configuring it changes both.
-
-To act on the PR after the run completes (reply to or resolve review threads,
-trigger a review bot, push further rounds), list the skill under `deliver.after`:
-
-```json
-{"deliver": {"after": ["my-plugin:pr-follow-up"]}}
-```
-
-When a run completes with a PR, its result lists these skills under `after`, and the
-session invokes each one with the PR URLs once it has reported the result. The run is
-already final, so what they do is not part of what loop-spec verified.
-
-### Run your own reviewer during VERIFY
-
-Use this when your own review bot should review the change before loop-spec
-delivers it, so its findings are fixed in the same run.
-
-1. Write a project skill, `.claude/skills/<name>/SKILL.md`. Its body is a
-   code-reviewer prompt that writes a result in the shape of
-   [the code-reviewer schema](skills/loop-spec/roles/code-reviewer/schema.json).
-2. In that body, have the reviewer run your bot when `inputs.rangeProbes` is
-   non-empty. Only VERIFY's review fills it. A revised PR's adopted-range review
-   also runs the bound skill, but with an empty `rangeProbes`.
-3. Have the reviewer add each bot finding to `findings`, with its `location`,
-   `severity`, and `cause`.
-4. Bind the role in `.loop-spec/config.json` as `{"roles": {"code-reviewer": "<name>"}}`,
-   or set `LOOP_SPEC_ROLE_CODE_REVIEWER=<name>`.
-
-The bound skill also reviews every EXECUTE task, so keep the bot step conditional.
-The program validates the skill's result against the bundled schema and routes your
-bot's findings the same way as the default reviewer's.
-
-The full contract — every field, exit, and environment variable, grounded in the
-program's own source — is
-[skills/loop-spec/references/contract.md](skills/loop-spec/references/contract.md#configuration-and-environment).
-
-## Embedding on the Agent SDK
-
-Two reference scripts, neither a supported product surface. Both authenticate the
-way the SDK does, including a Claude subscription login.
-
-- [`examples/sdk-plugin/`](examples/sdk-plugin/README.md) loads loop-spec as a
-  local plugin in one `ClaudeSDKClient` session and sends `/loop-spec:<entry>`. The
-  plugin then runs as it does in Claude Code. It answers questions through
-  `can_use_tool` and streams the lead's text to stdout and its thinking, tool calls,
-  and workers' output to stderr. Start here.
-- [`examples/supervisor/`](examples/supervisor/README.md) drives the loop-spec
-  program itself and runs each step as a separate SDK query through
-  `loop_spec.sdk_runner`, for a service that must own every step.
-
-Both are run live on 7.0.2; see
-[live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md).
-
-## Reading a result
-
-A run's terminal result (schema 1, one JSON object) lands at
-`<state home>/<repo id>/<slug>/result.json` and is mirrored to
-`<repo id>/last-result.json`. The fields a 6.x consumer already reads keep their
-names and meaning; `result` is new, with one of `converged`,
-`converged-with-caveats`, `no-change`, `escalated`, `failed`, `paused`. `status`
-is `completed`, `paused`, `escalated`, or `failed`; `converged` and
-`workDelivered` are booleans; `prUrl` and `delivery` describe what DELIVER
-published, when it ran. Full field list:
-[references/contract.md](skills/loop-spec/references/contract.md#result).
-
-## Docs map
+## Docs
 
 | Doc | What it covers |
 |---|---|
-| [docs/loop-spec/ROADMAP-7.0.md](docs/loop-spec/ROADMAP-7.0.md) | why 7.x is shaped this way, milestone by milestone |
-| [docs/loop-spec/phase-interface-7.0.md](docs/loop-spec/phase-interface-7.0.md) | the full route matrix and every postcondition's prose |
-| [docs/loop-spec/migrating-6-to-7.md](docs/loop-spec/migrating-6-to-7.md) | how-to for a 6.x consumer moving to 7.x |
-| [docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md) | which checklist case was shown by which recorded live run |
-| [skills/loop-spec/references/contract.md](skills/loop-spec/references/contract.md) | the process contract: files, fields, exit codes, config, environment |
-| [examples/supervisor/README.md](examples/supervisor/README.md) | the reference Agent SDK supervisor |
-| [llms.txt](llms.txt) | entry map for a model reading this repository |
+| [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md) | the method: every phase, every program command, how to work, and when to ask |
+| [docs/architecture.md](docs/architecture.md) | how the skills, agents, and program fit together, for a contributor |
+| [docs/models/README.md](docs/models/README.md) | what Claude Opus 5.5 and Sonnet 5.5 do differently, and what that means for loop-spec; the source Anthropic docs are copied beside it |
+| [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md) | moving from 7.x |
+| [CHANGELOG.md](CHANGELOG.md) | what changed in each release |
 
 ## Tests
 
@@ -313,11 +208,12 @@ published, when it ran. Full field list:
 cd skills/loop-spec/program && python3 -m unittest discover -s tests
 ```
 
-These cover the program's deterministic Python only: state, contract, routing,
-postconditions, schemas. A cycle's actual model-driven behavior is not unit
-tested; it is shown by recorded live runs
-([docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md)), not simulated.
+They cover the program's deterministic Python: the task graph, run state, and the
+git flows (worktrees, merges, conflicts, verify, the delivery refusals) against
+throwaway repositories. Model behavior is shown by live runs, not simulated.
 
 ## License
 
-MIT.
+MIT. The visual-pr description format in
+[skills/loop-spec/references/visual-pr/](skills/loop-spec/references/visual-pr/README.md)
+is HumanLayer's, also MIT; its license is kept beside it.

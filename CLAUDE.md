@@ -6,42 +6,51 @@ recognize while working and what to do; a rule with no trigger does not fire.
 - **When you would add a dependency to the shipped program**, don't. Runtime is
   `bash` (the one-line launcher only), `git`, and `python3` >= 3.11, stdlib only.
   Shipped code lives under `skills/loop-spec/program/loop_spec/`: one module, one
-  reason to change (`state.py` owns `state.json`, `postconditions.py` only answers
-  whether a claimed exit holds, `controller.py` is the one place that transitions a
-  phase). `examples/` holds a reference consumer that may import the SDK it
-  demonstrates and says in its own README that it is not a supported surface.
+  reason to change (`runs.py` owns a run's files and `state.json`, `dag.py` only
+  answers questions about the task graph, `git.py` makes every git and gh call); the
+  table in [docs/architecture.md](docs/architecture.md) lists them. `examples/` holds
+  a reference consumer that may import the SDK it demonstrates and says in its own
+  README that it is not a supported surface.
 - **When you would write output or a log line** in shipped code or `examples/`, use
   the `logging` module, never `print`: in `loop_spec`, `log.stdout` for what a caller
   reads (status lines, `LOOP_SPEC_*` markers) and `log.stderr` for diagnostics.
   `tests/test_log.py` fails on any `print` call.
 - **When you would write an offline test for a whole cycle**, don't. Unit tests
   (`skills/loop-spec/program/tests/`, `python3 -m unittest discover -s tests`) cover
-  the program's deterministic Python only: state, contract, routing,
-  postconditions, schemas. There is no fake runner and no offline cycle suite.
-  Model-driven behavior is shown by a live run, recorded in
-  [docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md), never
-  simulated.
-- **When you change a route or a postcondition**, edit
-  [docs/loop-spec/phase-interface-7.0.md](docs/loop-spec/phase-interface-7.0.md) in
-  the same diff. `postconditions.ROUTES` and `external.POSTCONDITION_TEXT`
-  transcribe that document; a change to one without the other is a lie one of them
-  now tells.
-- **When you write or edit a skill stub** (`skills/<entry>/SKILL.md`), keep it a
-  thin shell to the program: it locates and runs `loop-spec`, reads
-  `LOOP_SPEC_NEXT`, and acts on the file it names. Phase content lives in the
-  program, never in a stub. Reach bundled files with `${CLAUDE_SKILL_DIR}`, never
-  another placeholder.
-- **When you add or change a role** (`skills/loop-spec/roles/<name>/`), it is a
-  skill: `SKILL.md` (the prompt body), `schema.json` (the result shape
-  `roles.load_role` validates against, regardless of which skill a project binds
-  in its place), and an optional `contract.md` (text the program always appends).
-  Everything the program knows about a role lives in that directory: `model`,
-  `effort`, and `evidence` go in the SKILL.md frontmatter, never in a table in a
-  program module. A role never cites a script; a program module dispatches it.
+  the program's deterministic Python only: the task graph, run state, and git flows
+  against throwaway repositories. There is no fake model and no offline cycle suite.
+  Model-driven behavior is shown by a live run, recorded locally outside the
+  repository, never simulated.
+- **When you change a program command, its output, or the shape of `spec.json` or
+  `plan.json`**, update [skills/loop-spec/SKILL.md](skills/loop-spec/SKILL.md) or the
+  reference that covers it in the same diff: they are the lead's only description of
+  them.
+- **When you would add a gate** (the program refusing something), check that it
+  guards a fact the program records, not the quality of the model's judgment.
+  Judgment belongs in the skill as guidance; see
+  [docs/architecture.md](docs/architecture.md).
+- **When you write or edit an entry skill** (`skills/<entry>/SKILL.md`), keep it a
+  thin shell: it runs `loop-spec start` and points at the hub skill. The method lives
+  in `skills/loop-spec/SKILL.md`, never in a stub. Reach bundled files with
+  `${CLAUDE_SKILL_DIR}`, never another placeholder.
+- **When you add guidance to the hub skill**, put what every run reads in `SKILL.md`,
+  and only what some runs need (one run kind's changes, the PR template) in a file
+  under `skills/loop-spec/references/`. Link each reference from `SKILL.md`, never from
+  another reference: the lead may read a second-hand link only partly. Live runs showed
+  the lead reads every phase's guidance in every run, so phases stay in `SKILL.md`.
+  `tests/test_skills.py` checks the links.
+- **When you write or edit guidance for the model** (a skill or an agent), state the
+  goal and the reason rather than a procedure for its own sake, and keep it short.
+  Check a model-behavior claim against [docs/models/](docs/models/README.md).
+- **When you write a skill's or agent's `description`**, say what it does and when to
+  use it, in the third person: it is injected into the system prompt and decides when
+  the skill loads. `tests/test_skills.py` checks the Agent Skills format limits
+  ([best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)).
+- **When you add or change an agent** (`agents/<name>.md`), its `model`, `effort`, and
+  `tools` go in its frontmatter; the lead dispatches it as `loop-spec:<name>`.
 - **When you would run a live cycle against this checkout**, don't edit
-  `skills/loop-spec/program/` or `skills/*/` while it runs. A live run's supervisor
-  or session reads the plugin tree as it goes; an edit mid-run changes what it
-  reads out from under it.
+  `skills/` or `agents/` while it runs. A live session reads the plugin tree as it
+  goes; an edit mid-run changes what it reads out from under it.
 - **When you write or edit markdown this repository ships**, name the reader in
   the first lines, give the document one job, and cite another file rather than
   copying its content. Fix a doc your change makes false in the same diff.
@@ -50,5 +59,5 @@ recognize while working and what to do; a rule with no trigger does not fire.
   when the commit is AI-assisted.
 - **When you change the version**, update all four in the same commit:
   `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, the README's
-  `Current version:` line, and every `skills/*/manifest.toml`. There is no
-  bump script in 7.x; each file is a plain edit.
+  `Current version:` line, and `VERSION` in
+  `skills/loop-spec/program/loop_spec/__init__.py`. Each is a plain edit.

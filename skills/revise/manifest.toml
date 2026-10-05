@@ -1,3 +1,0 @@
-module = "loop-spec"
-version = "7.9.0"
-knowledge = "../loop-spec/references/"

@@ -1,12 +1,8 @@
-"""loop-spec 7.x program package: the version every module reports comes from here.
+"""loop-spec 8.x: a small helper that keeps a run's state and task graph on disk.
 
-Reads VERSION once from the shipped manifest.toml so the CLI, state files, and tests
-never hardcode a version string that could drift from the packaged one.
+The method lives in the skills; this package only does what a model should not have
+to re-derive each time: where a run's files are, which tasks are ready, git
+worktrees and merges, running checks, and opening the pull request.
 """
-import tomllib
-from pathlib import Path
 
-_MANIFEST = Path(__file__).resolve().parents[2] / "manifest.toml"
-
-with open(_MANIFEST, "rb") as _f:
-    VERSION = tomllib.load(_f)["version"]
+VERSION = "8.0.0"

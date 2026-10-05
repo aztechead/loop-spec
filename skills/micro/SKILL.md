@@ -1,22 +1,23 @@
 ---
 name: micro
-description: "Make a small, well-defined change (a one-file fix, a typo, a tiny tweak) in one autonomous pass. Use for a change too small to need a spec/plan/execute/verify cycle. Not for a feature that needs planning (use cycle) or a bug that needs root-cause investigation (use debug)."
-argument-hint: "<request>"
+description: "Makes a small, well-defined code change (a one-file fix, a rename, a tiny tweak) and lands it as a verified PR in one short loop-spec pass. Use when the user asks for a small change to their code, such as changing a message or a default, renaming something, or fixing a one-file bug, even if they never mention loop-spec or a PR. Not for a feature that needs planning (cycle) or a bug that needs investigation (debug)."
+argument-hint: "[--autonomous|--supervised] <request>"
 ---
 
-Run this once, without changing directory, substituting the two placeholders:
+Start (or resume) a loop-spec run from the repository. For a change across several
+repositories cloned side by side in a directory that is not itself a repository, start
+from that directory; when it has no `.loop-spec/workspace.json`, first write one listing
+each clone the change spans: `{"repos": [{"name": "api", "path": "api"}, {"name": "web", "path": "web"}]}`.
 
-    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" micro --project-root "{project-root}" --request "{request}"
+    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" start --kind micro --request "{request}"
 
-`{project-root}` is the repository (or workspace) root the user is working in.
-`{request}` is the user's request text; pass a file with `--request-file` instead when
-they gave a spec file.
+- `{request}`: the user's request.
+- Add `--branch NAME` and `--title "..."` when the user names the branch or the PR
+  title for this change.
+- Add `--autonomous` if no one can answer questions during this run (a headless or
+  unattended run, or arguments that start with `--autonomous`). Add `--supervised` instead
+  when the arguments start with `--supervised`.
+- When the request is long or holds quotes, backticks, or `$`, write it to a file and
+  pass `--request-file <path>` instead of `--request`.
 
-When the user asks for a headless run or names `--answer-policy default`, add
-`--answer-policy default` to this command.
-
-Then read `${CLAUDE_SKILL_DIR}/../loop-spec/references/runner.md` in full and follow it
-for every line the program prints.
-
-If the launcher is missing, read the sibling hub `${CLAUDE_SKILL_DIR}/../loop-spec/SKILL.md`. On any other
-non-zero exit, report the program's output and stop.
+Then follow `${CLAUDE_SKILL_DIR}/../loop-spec/SKILL.md` until the run ends.

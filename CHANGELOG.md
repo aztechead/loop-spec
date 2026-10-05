@@ -4,6 +4,202 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+### Added
+
+- Runs across repositories: a directory holding `.loop-spec/workspace.json` (7.x's
+  format) is a workspace root. One run there has one spec and task graph across its
+  repositories, verifies them together, and delivers one PR per changed repository, each
+  linking the others. `set --repo NAME` gives one repository its own branch and PR
+  title. Single-repository runs are unchanged.
+
+- The SDK example's `--phase-model PHASE=MODEL` switches the lead's model with
+  `set_model()` when the run enters PHASE; `--model opus --phase-model execute=sonnet` is
+  its recommended setup.
+- Supervised mode (`--supervised`, `LOOP_SPEC_MODE=supervised`): no criteria approval and
+  defaults recorded as assumptions, as autonomous, but the lead still asks a question
+  that is costly to get wrong and ends its turn with `LOOP_SPEC_ASKING`, which the Stop
+  hook lets through. It replaces 7.x's `spec.approval: policy`.
+- `loop-spec checkpoint [--push]` commits work in progress in every worktree, lists
+  them, and pushes their branches; `status` rebuilds a paused run's worktrees from those
+  branches in a fresh clone.
+- A host ends a run early by creating `stop-requested` in its run directory; the Stop
+  hook and `status` then name the wrap-up step.
+- `feedback.waitFor`: logins, such as a review bot's, whose comment or review must
+  follow each delivery before the run can end. A comment edited in place comes back as
+  a new item.
+- The result adds the spec's `assumptions` and `decisions`, `criteria` with each one's
+  result and `criteriaSha`, and the review's `caveats`.
+- The `cycle` entry starts a micro or debug run when the request is plainly one.
+- The SDK example's `--supervised` relays `AskUserQuestion` to stdin, and `--phase-model`
+  holds from the named phase on, read from the run's `events.jsonl`, so a resumed session
+  gets the right model.
+
+### Fixed
+
+- A run no longer takes a branch origin already has: a fresh clone named its branch
+  after an open PR's, then merged that PR's commits in and delivered onto it. Naming
+  checks origin too, and `deliver` and `sync` refuse an origin branch with commits a run
+  that has no PR never had.
+- A later delivery updates only loop-spec's folded verification section of the PR, so a
+  title or text someone added stays, and a revise run's PR names the head it verified.
+  The title changes only when the run changed it.
+- PRs open without `--assignee @me`, which failed under a GitHub App token.
+- A multi-line criterion check keeps its lines in the PR's criteria table.
+- `events.jsonl` holds one `phase_start` record per phase.
+- A request that opens with context, such as a URL or a ticket, no longer names every
+  branch alike: the lead names it from the spec's title, and a `--title` given to
+  `start` names the slug.
+- The lead ends a run from the project root, so the worktree removal does not leave its
+  shell in a deleted directory.
+- `feedback` reads review comments from the account the run delivers with. It used to
+  skip everything that gh user wrote, so a developer reviewing the PR their own run
+  opened was ignored. Comments the program posts (`deliver --comment-file`) now carry
+  a hidden marker, and only those are skipped.
+- With CI settled and nothing new, `feedback` keeps the run open while a review
+  requested on the PR has not come in, polling within the call and for up to
+  `feedback.reviewWaitMinutes` (default 30) in all. Before, a run ended as soon as CI
+  passed, before any requested reviewer could answer. A later `deliver` asks everyone
+  who left feedback to review again, so the run waits for them to see the fix.
+- A revise run delivers without `pr.md`, as `references/revise.md` says: `deliver` used
+  to push the branch and then fail reading the missing file. `start --pr` records the
+  review the PR already has, so `feedback` reports only what comes after it, not the
+  comments the run was started to address.
+- `start --pr` lists the PR's review so far, so a revise run works from one list and
+  answers every item, the questions as well as the change requests.
+- `feedback` reports a failed check as soon as it fails, with its job's log, instead of
+  waiting for every other check to finish. The log comes from the job, since GitHub serves `--log-failed` only
+  once the whole run is over.
+- `feedback` no longer waits on a check GitHub leaves in progress after its job has
+  finished: a check pending over a minute is read from its Actions job, and a job with a
+  conclusion counts as settled.
+- The SDK example no longer crashes when the lead pipes a command through `cut` and the
+  `LOOP_SPEC_NEXT` line arrives cut short: it skips the line and reads the result from
+  the run's directory.
+- `deliver --no-feedback` is named only beside its condition, the user asking not to
+  wait for CI, so an autonomous run no longer ends at the PR with its checks pending.
+- A lead writes no code before the plan is accepted. In an interactive run the `next` line at Spec names the
+  approval step. A design the lead already worked out goes into the implementer's brief.
+
+### Changed
+
+- The skills follow the Agent Skills authoring guidance: third-person descriptions that
+  say when to use each skill, a progress checklist for the run, the program's
+  requirements and long-running commands stated, direct links to the PR format
+  references, and one name for the implementer agent. `tests/test_skills.py` checks
+  the format limits.
+- `SKILL.md` holds every phase, each ending on the check that closes it, after a
+  progress checklist. What only some runs need lives in references it links, never
+  linked from one another: each run kind's changes (`references/micro.md`, `debug.md`,
+  `revise.md`) and the PR template. The `next` line names the kind's reference at the
+  spec and the template at deliver. The spec section carries illustrative good and bad
+  criteria.
+- `status` checks `spec.json` (a goal, criteria with unique ids and text, `check` as a
+  command string) and keeps the run in SPEC until it is usable; `verify` and `task
+  start` refuse an unusable spec. A task naming a criterion the spec lacks makes the
+  plan unusable, and plan errors list the ids that do exist. `status` warns when two
+  tasks that can run at once list the same file.
+- At DELIVER, the `next` line names the PR template to follow. `deliver` checks `gh` before pushing, and refuses a `pr.md` that still
+  has the template's `{...}` placeholder lines.
+- The skill defines the four kinds of check, shows a multi-task plan with parallel
+  tasks, and lists the task brief's fields; the format test checks that each skill's
+  and agent's name matches its directory or file, and that frontmatter is one line per
+  field.
+- `LOOP_SPEC_RUN` carries `references`, the absolute path of the hub's references, so
+  the lead never builds one from its working directory. `micro`'s description names
+  the small changes it covers and says it applies without a mention of loop-spec or a
+  PR, as `cycle`'s does.
+- The `finish` row in the hub's command table lists `completed`, and the simplifier
+  reports its most valuable findings without a fixed count.
+
+## [8.0.0] - 2026-10-04
+
+A rewrite for Claude Opus 5.5 and Claude Sonnet 5.5: guidance over gates, and a task
+graph the lead drives. The program shrinks from about 14,100 lines to about 1,000.
+Moving from 7.x: [docs/migrating-7-to-8.md](docs/migrating-7-to-8.md).
+
+### Changed
+
+- The method is one skill written as guidance, `skills/loop-spec/SKILL.md`: spec, plan
+  as a task DAG, parallel execution in worktrees, one review and a clean-checkout
+  verify, deliver. The lead drives it; the program no longer issues steps.
+- The program keeps state and the task graph and does the mechanical work: `start`,
+  `status`, `task start|done|set`, `verify [--base]`, `deliver`, `finish`. `task start`
+  prepares each task's worktree and prints a brief for its worker; `task done` merges
+  it into the feature branch and names the next step. The only refusals left guard what the program records: a plan that is not a
+  DAG, a conflicting merge, uncommitted task work, and delivering a head that verify
+  did not pass (`--unverified` opens a draft that says so).
+- Workers are plugin agents with their models in frontmatter: `loop-spec:implementer`
+  (Sonnet), `loop-spec:reviewer` (Opus, an adversarial correctness review), and
+  `loop-spec:simplifier` (Sonnet, a review for reuse, simplification, efficiency, and
+  altitude), all at medium effort. The reviewer and simplifier run side by side over
+  the verified change, as the ITERATE phase; `iterate` records it.
+- The skill and agents state the engineering stance as goals: settle data shapes before
+  code, fix causes rather than symptoms, prefer reuse and deletion to new layers, prove
+  a change by running it the way a user would, and make reversible decisions without
+  waiting.
+- `--autonomous` (or `LOOP_SPEC_MODE=autonomous` from the host) replaces
+  `--answer-policy default` and `spec.approval`: an unattended run never asks and
+  records its defaults as assumptions.
+- Run state moves from `~/.loop-spec/` to `<repo>/.loop-spec/runs/<slug>/`, kept out of
+  `git status`. The result stays 7.x's schema-1 record, printed as `LOOP_SPEC_RESULT`
+  and then `LOOP_SPEC_NEXT` kind `result`, and written where 7.x wrote it
+  (`<state home>/<repo id>/<slug>/result.json` and `last-result.json`) and to the run's
+  directory.
+- Checks run with `bash -c` from the repository root instead of a shell-free argv
+  with a syntax check.
+- `deliver.base`, `branch`, `branchPrefix`, `reviewers`, and `labels` move to the top
+  level of `.loop-spec/config.json`.
+- `examples/sdk-plugin/` takes `--autonomous`, which sets `LOOP_SPEC_MODE` for the
+  session and declines questions with an instruction to choose a default instead of
+  picking the first option.
+
+### Added
+
+- The phase stream is 7.x's: a run moves through SPEC, PLAN, EXECUTE, VERIFY, ITERATE,
+  and DELIVER, and each change prints `LOOP_SPEC_PHASE_START` and `LOOP_SPEC_PHASE_END`
+  lines with 7.x's fields and verdicts (`advanced`, `rewind`, `completed`), `[PHASE]`
+  progress lines (honoring `LOOP_SPEC_CONSOLE_STREAM` and `LOOP_SPEC_CONSOLE_EVENTS`),
+  and records in `events.jsonl`, both in the state home where 7.x kept it and in the
+  run's directory. The result carries `phaseReached`.
+- `sync` merges what moved on origin (the base branch, or the feature branch itself)
+  into the feature worktree, merging rather than rebasing; `deliver` refuses a head
+  that lacks commits origin has.
+- `feedback` waits for the delivered PR's checks, then reads its review (reviews,
+  inline comments, conversation comments; the run's own are skipped), showing each
+  item once and each failed job's log. The lead fixes what the change should and
+  answers the rest; the run ends when CI passes and nothing new has come in. There is
+  no limit on rounds. `feedback.skills` in the config names the project's own skills
+  the lead runs on the PR at that point; `deliver --no-feedback` or
+  `"feedback": {"wait": false}` ends a run at delivery.
+- The branch name and PR title follow the repository's rules files; `start --branch`
+  and `--title` set them for one run, and `set` changes them until the branch is
+  pushed.
+- The PR description is a `pr.md` the lead writes, which `deliver` requires: following
+  the repository's PR template when it has one, else HumanLayer's visual-pr format
+  (bundled under `skills/loop-spec/references/visual-pr/` with its MIT license). The
+  checked criteria are appended in a folded section.
+- `plan.json` `checks`: the repository's own required checks from its `CLAUDE.md`,
+  `AGENTS.md`, and `CONTRIBUTING*`, which `status` lists. Verify runs them, and reruns a
+  failing one at the base: one that fails the same way there is pre-existing; new
+  output fails the run. Task briefs carry them to the implementers.
+- A Stop hook keeps an autonomous run going until it has a result, the way `/goal`
+  holds a condition: while the run is open it hands the lead the next step, with no
+  turn limit, and says so when the run's record stops changing.
+- `docs/models/`: what Claude Opus 5.5 and Sonnet 5.5 do differently and what it
+  means for loop-spec, with Anthropic's model, prompting, and effort pages copied
+  beside it.
+
+### Removed
+
+- The phase controller, postconditions, transcript attestation, evidence levels,
+  digests, probes, baseline capture, and questions protocol.
+- Role skills and role binding (`roles.*`), external phases (`phases.*`),
+  `deliver.after`, `deliver.readiness`, `deliver.acceptRemotePaths`, the
+  and `LOOP_SPEC_MODEL_*`/`EFFORT_*`/`PHASE_MODEL_*` variables.
+- The `auto`, `spec`, `plan`, `execute`, `verify`, `iterate`, and `deliver` entries,
+  the output style, `examples/supervisor/`, `loop_spec.sdk_runner`, `evals/`, and the
+  7.x planning and audit documents (in git history).
+
 ## [7.9.0] - 2026-10-02
 
 ### Added
@@ -402,7 +598,7 @@ Per-phase models, for adopting loop-spec through the Claude Agent SDK.
   not. SPEC and PLAN run in the lead, so `--model sonnet` with
   `LOOP_SPEC_PHASE_MODEL_SPEC=opus LOOP_SPEC_PHASE_MODEL_PLAN=opus` now runs them on Opus
   and the rest of the lead on Sonnet. Shown live in `p775-phase-models`
-  ([live runs](docs/loop-spec/live-runs-7.0.md)). A lead step's effort is not applied:
+  (live runs). A lead step's effort is not applied:
   the SDK has no mid-session effort change. In Claude Code the lead still runs every
   lead step at the session's own model.
 - `spec.approval: "policy"` in config, or `LOOP_SPEC_SPEC_APPROVAL=policy`, approves
@@ -986,7 +1182,7 @@ instead of the 6.x bash/jq implementation.
 - [`skills/loop-spec/references/contract.md`](skills/loop-spec/references/contract.md):
   the process contract — files, fields, exit codes, config, environment — for an
   implementer or a harness author.
-- [`docs/loop-spec/live-runs-7.0.md`](docs/loop-spec/live-runs-7.0.md): which
+- `docs/loop-spec/live-runs-7.0.md`: which
   checklist case was shown by which recorded live run.
 - EXECUTE issues every task of a wave at once (`LOOP_SPEC_NEXT` per step,
   `LOOP_SPEC_WAIT` while siblings are open); a task is reviewed against the head it
@@ -1041,7 +1237,7 @@ Claude Code and the Claude Agent SDK only.
 
 ### Shown live
 
-Recorded in [docs/loop-spec/live-runs-7.0.md](docs/loop-spec/live-runs-7.0.md),
+Recorded in docs/loop-spec/live-runs-7.0.md,
 against Claude Code 2.1.278 on `sonnet`: the all-external traversal, a full
 native cycle to a delivered pull request, attestation in both directions, the
 blocked exit answered `stop`, a two-repo workspace, the debug and revise entries,

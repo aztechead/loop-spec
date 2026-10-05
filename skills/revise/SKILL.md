@@ -1,23 +1,21 @@
 ---
 name: revise
-description: "Address reviewer feedback on an already-open pull request. Use when a human or bot left PR review comments to resolve. Not for starting new work (use cycle) or fixing a bug found outside review (use debug)."
-argument-hint: "<pr number or url>"
+description: "Addresses review feedback on an open pull request with loop-spec: turns each review comment into a checked criterion, fixes them on the PR's own branch, verifies, and pushes. Use when a person or bot left review comments on a PR to resolve. Not for new work (cycle) or a bug found outside review (debug)."
+argument-hint: "[--autonomous|--supervised] <PR number or URL> [instruction]"
 ---
 
-Run this once, without changing directory, substituting the two placeholders:
+Start (or resume) a loop-spec run on the pull request:
 
-    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" revise --project-root "{project-root}" --pr "{pr}"
+    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" start --pr "{pr}" --request "{instruction}"
 
-`{project-root}` is the repository (or workspace) root the user is working in.
-`{pr}` is the pull request number or URL whose review feedback to address. When the
-user gave an instruction beyond the PR reference, add `--request "{instruction}"` with
-their words, so every phase reads it, not only this session.
+- `{pr}`: the PR number or URL. From a workspace root, use the URL when the number
+  could belong to more than one of its repositories.
+- `{instruction}`: anything the user said beyond the PR reference; leave `--request`
+  out when there is nothing.
+- Add `--autonomous` if no one can answer questions during this run (a headless or
+  unattended run, or arguments that start with `--autonomous`). Add `--supervised` instead
+  when the arguments start with `--supervised`.
+- When the instruction is long or holds quotes, backticks, or `$`, write it to a file
+  and pass `--request-file <path>` instead of `--request`.
 
-When the user asks for a headless run or names `--answer-policy default`, add
-`--answer-policy default` to this command.
-
-Then read `${CLAUDE_SKILL_DIR}/../loop-spec/references/runner.md` in full and follow it
-for every line the program prints.
-
-If the launcher is missing, read the sibling hub `${CLAUDE_SKILL_DIR}/../loop-spec/SKILL.md`. On any other
-non-zero exit, report the program's output and stop.
+Then follow `${CLAUDE_SKILL_DIR}/../loop-spec/SKILL.md` until the run ends.

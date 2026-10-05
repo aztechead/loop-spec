@@ -1,21 +1,23 @@
 ---
 name: debug
-description: "Diagnose and fix a specific failure: reproduce a bug or error report, find the root cause, and land a fix with a regression test. Use whenever the user pastes a stack trace, names a failing test, or reports that their code broke or regressed, even if they never say debug. Not for a new feature (use cycle), a one-line style/typo fix with no bug (use micro), or a problem with a tool or machine setup outside the repository's code."
-argument-hint: "<error, stack trace, or failing test>"
+description: "Reproduces and fixes a specific failure with loop-spec: confirms the bug at the start commit, finds the root cause, fixes it with a regression test, and delivers a verified PR. Use whenever the user pastes a stack trace, names a failing test, or reports something broke or regressed. Not for new features (cycle) or problems with the machine or tools outside the repository."
+argument-hint: "[--autonomous|--supervised] <error, stack trace, or failing test>"
 ---
 
-Run this once, without changing directory, substituting the two placeholders:
+Start (or resume) a loop-spec run from the repository. For a change across several
+repositories cloned side by side in a directory that is not itself a repository, start
+from that directory; when it has no `.loop-spec/workspace.json`, first write one listing
+each clone the change spans: `{"repos": [{"name": "api", "path": "api"}, {"name": "web", "path": "web"}]}`.
 
-    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" debug --project-root "{project-root}" --request "{request}"
+    "${CLAUDE_SKILL_DIR}/../loop-spec/program/loop-spec" start --kind debug --request "{request}"
 
-`{project-root}` is the repository (or workspace) root the user is working in.
-`{request}` is the error report, stack trace, or bug description to reproduce and fix.
+- `{request}`: the error report, stack trace, or failing test, in the user's words.
+- Add `--branch NAME` and `--title "..."` when the user names the branch or the PR
+  title for this change.
+- Add `--autonomous` if no one can answer questions during this run (a headless or
+  unattended run, or arguments that start with `--autonomous`). Add `--supervised` instead
+  when the arguments start with `--supervised`.
+- When the request is long or holds quotes, backticks, or `$`, write it to a file and
+  pass `--request-file <path>` instead of `--request`.
 
-When the user asks for a headless run or names `--answer-policy default`, add
-`--answer-policy default` to this command.
-
-Then read `${CLAUDE_SKILL_DIR}/../loop-spec/references/runner.md` in full and follow it
-for every line the program prints.
-
-If the launcher is missing, read the sibling hub `${CLAUDE_SKILL_DIR}/../loop-spec/SKILL.md`. On any other
-non-zero exit, report the program's output and stop.
+Then follow `${CLAUDE_SKILL_DIR}/../loop-spec/SKILL.md` until the run ends.
