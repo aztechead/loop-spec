@@ -12,8 +12,9 @@ Nothing from loop-spec is imported here. Every SDK call follows the Agent SDK do
 - Questions: with --autonomous the session's environment carries
   LOOP_SPEC_MODE=autonomous, so loop-spec runs without asking, and any
   AskUserQuestion is declined with the instruction to choose a default; with
-  --supervised it carries LOOP_SPEC_MODE=supervised (no approval step, the lead may
-  stop to ask) and each question is answered from stdin, as without either flag.
+  --supervised it carries LOOP_SPEC_MODE=supervised (the lead asks the spec's
+  questions, skips the approval step, and may stop to ask later) and each question
+  is answered from stdin, as without either flag.
 - `render` prints the lead's text to stdout, and thinking, tool calls, workers'
   output, and loop-spec's markers to stderr.
 
@@ -318,7 +319,7 @@ def main() -> int:
     modes = ap.add_mutually_exclusive_group()
     modes.add_argument("--autonomous", action="store_true", help="no one answers questions; the run picks defaults")
     modes.add_argument("--supervised", action="store_true",
-                       help="questions are answered from stdin; no approval step, and the lead may stop to ask")
+                       help="questions are answered from stdin; the spec's questions, no approval step")
     ap.add_argument("--model", help="the lead's model, e.g. opus; workers use the plugin agents' own models")
     ap.add_argument("--phase-model", action="append", default=[], metavar="PHASE=MODEL",
                     help="switch the lead to MODEL when the run enters PHASE (spec, plan, execute, verify, "
