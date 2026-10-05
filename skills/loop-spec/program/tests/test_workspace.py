@@ -214,6 +214,19 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(state["repos"][name]["pr"]["url"], f"https://github.com/acme/{name}/pull/7")
             self.assertEqual(state["repos"][name]["delivered"]["sha"], state["verify"]["sha"][name])
 
+    def test_6_set_repo_gives_one_repository_its_own_branch_and_title(self):
+        run = self.verified_run()
+        code, out, err = self.ls("set", "--repo", "web", "--branch", "web/count", "--title", "[WEB] Document count")
+        self.assertEqual(code, 0, err)
+        for name in ("api", "web"):
+            self.describe(run, name)
+        self.assertEqual(self.ls("deliver")[0], 0)
+        calls = (self.gh_dir / "calls").read_text().splitlines()
+        create = {name: next(c for c in calls if c.startswith(f"{run['work']}/{name}: pr create")) for name in ("api", "web")}
+        self.assertIn("--head web/count --title [WEB] Document count", create["web"])
+        self.assertIn(f"--head feat/{run['slug']} --title ", create["api"])
+        self.assertNotIn("[WEB]", create["api"])
+
     def test_6_a_repository_without_commits_gets_no_pr(self):
         run = self.start("--autonomous")
         self.plan(run, [{"id": "T-A", "title": "api", "repo": "api"}],

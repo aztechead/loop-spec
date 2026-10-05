@@ -231,7 +231,7 @@ def show_status(run: Run) -> int:
         for r in run.repos:
             rs = r.state
             out(f"    {r.name:8} {rs['branch']} from {rs['base']['branch']} @ {rs['base']['sha'][:12]}"
-                + (f", head {sha_for(head, r)[:12]}" if head else "") + (f", pr {rs['pr']['url']}" if rs.get("pr") else ""))
+                + (f", head {sha_for(head, r)[:12]}" if head else "") + (f", pr {rs['pr']['url']}" if rs.get("pr") else "") + (f", title {rs['title']}" if rs.get("title") else ""))
         if s.get("title"):
             out(f"  title    {s['title']}")
         rules = [f"{r.name}/{f}" for r in run.repos for f in r.state.get("instructions", [])]
@@ -695,19 +695,23 @@ def cmd_iterate(args, project: Path, cwd: Path) -> int:
 
 def cmd_set(args, project: Path, cwd: Path) -> int:
     run = find(project, args.slug, cwd)
-    if args.branch and any(args.branch != r.state["branch"] for r in run.repos):
-        for r in run.repos:
+    if args.repo and not run.workspace:
+        raise LoopSpecError("--repo names one repository of a run across repositories", "leave it out")
+    targets = [run.repo(args.repo)] if args.repo else run.repos
+    where = f" in {args.repo}" if args.repo else ""
+    if args.branch and any(args.branch != r.state["branch"] for r in targets):
+        for r in targets:
             if r.state.get("pr") or r.state.get("delivered"):
                 raise LoopSpecError(f"{r.state['branch']} is already pushed", "a pushed branch keeps its name")
             if git.exists_anywhere(r.path, args.branch):
                 raise LoopSpecError(f"a branch named {args.branch} already exists", "pick another name")
-        for r in run.repos:
+        for r in targets:
             git.run_git(r.work, "branch", "-m", r.state["branch"], args.branch)
             r.state["branch"] = args.branch
-        out(f"branch is now {args.branch}")
+        out(f"branch is now {args.branch}{where}")
     if args.title:
-        run.state["title"] = args.title
-        out(f"PR title is now: {args.title}")
+        (targets[0].state if args.repo else run.state)["title"] = args.title
+        out(f"PR title is now{where}: {args.title}")
     run.save()
     _sync(run)
     return 0
@@ -858,6 +862,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_iterate)
 
     p = sub.add_parser("set", parents=[common], help="rename the feature branch (before it is pushed) or set the PR title")
+    p.add_argument("--repo", help="in a run across repositories, set these for this repository only")
     p.add_argument("--branch")
     p.add_argument("--title")
     p.set_defaults(func=cmd_set)

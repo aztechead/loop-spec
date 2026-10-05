@@ -42,7 +42,7 @@ the project's checks take longer.
 | `LS verify [--base]` | run every criterion check, task verify command, and repository check in a clean checkout of the feature head (or, with `--base`, of the base) |
 | `LS sync` | merge whatever moved on origin (the base branch, or the feature branch itself) into `work` |
 | `LS iterate [--caveats "..."]` | record that the verified head's whole-change review is done and addressed |
-| `LS set --branch NAME --title "..."` | rename the feature branch (until it is pushed) or set the PR title |
+| `LS set [--repo NAME] --branch NAME --title "..."` | rename the feature branch (until it is pushed) or set the PR title; `--repo` sets them for one repository of a run across repositories |
 | `LS deliver [--draft] [--unverified] [--comment-file F]` | push the verified head and open or update its PR (posting `F` as a comment) |
 | `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review; ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
 | `LS checkpoint [--push]` | commit work in progress in every worktree and list them; `--push` pushes their branches. For a run the host asked to wrap up |
@@ -143,6 +143,8 @@ phases are the same; these points change:
 
 - `work` holds one worktree per repository, at `work/<name>/`. Each `repos` entry gives
   that repository's `work`, `base`, `branch`, `prTemplate`, and `prMd`.
+- When a repository's rules name its own branch or PR title format, set them for that
+  repository: `LS set --repo <name> --branch NAME --title "..."`.
 - Give every task a `"repo": "<name>"`. A task changes one repository; split a change
   that spans two into tasks, with `dependsOn` where one needs the other.
 - Give every `checks` entry a `"repo"`. `prepare` is one command run in every repository,

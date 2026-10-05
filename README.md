@@ -142,7 +142,8 @@ Inside it every run is a workspace run, including one started from a listed clon
 
 - The run keeps one worktree per repository: `work/<name>/` and `verify/<name>/`.
 - `--base`, `--branch`, and the workspace's own `.loop-spec/config.json` apply to every
-  repository; without a base, each repository uses its default branch.
+  repository; without a base, each repository uses its default branch. `loop-spec set
+  --repo NAME --branch ... --title ...` gives one repository its own branch and PR title.
 - A revise run (`--pr`) works on one repository's PR. Pass the PR's URL when its number
   could belong to more than one repository.
 - The result has one `delivery.targets` row and one `prs` row per PR, each with its

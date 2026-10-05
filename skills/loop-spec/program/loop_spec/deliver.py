@@ -11,9 +11,11 @@ VERIFY_OPEN, VERIFY_CLOSE = "<!-- loop-spec:verification -->", "<!-- /loop-spec:
 MARK = {True: "pass", False: "fail", None: "not checked"}
 
 
-def title(run: Run) -> str:
-    """The run's own title (start --title), else the spec's, else the request's first line."""
-    return first_line(run.state.get("title") or (run.spec or {}).get("title") or run.state.get("request") or run.slug, 70)
+def title(run: Run, repo: Repo | None = None) -> str:
+    """The repository's own title (set --repo), else the run's (start --title), else the spec's, else the
+    request's first line."""
+    own = repo.state.get("title") if repo is not None else None
+    return first_line(own or run.state.get("title") or (run.spec or {}).get("title") or run.state.get("request") or run.slug, 70)
 
 
 VISUAL_PR = Path(__file__).resolve().parents[2] / "references" / "visual-pr" / "pr_description_template.md"
@@ -178,8 +180,8 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
         body_path = _body_path(run, r)
         body_path.write_text(fold(current, "\n".join(_verification(run, verified, r, siblings))))
         edit = ["pr", "edit", str(pr["number"]), "--body-file", str(body_path)]
-        if (r.state.get("delivered") or {}).get("title", title(run)) != title(run):  # the run changed its own title
-            edit += ["--title", title(run)]
+        if (r.state.get("delivered") or {}).get("title", title(run, r)) != title(run, r):  # the run changed its own title
+            edit += ["--title", title(run, r)]
         git.gh(r.work, *edit)
     for r in todo:
         if before[r.name]:  # a later delivery of a PR this run opened
@@ -187,7 +189,7 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
             # the PR's author and most bots, which is fine: there is no one to wait for.
             for login in (r.state.get("feedback") or {}).get("authors", []):
                 git.gh(r.work, "pr", "edit", str(r.state["pr"]["number"]), "--add-reviewer", login)
-        r.state["delivered"] = {"sha": sha_for(head, r), "verified": verified, "title": title(run),
+        r.state["delivered"] = {"sha": sha_for(head, r), "verified": verified, "title": title(run, r),
                                 "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     run.save()
     if comment_file:
@@ -209,7 +211,7 @@ def _body_path(run: Run, repo: Repo) -> Path:
 
 def _create(run: Run, repo: Repo, branch: str, body_path: Path, *, draft: bool) -> dict:
     config = read_json(run.project / ".loop-spec" / "config.json", "config") or {}
-    args = ["pr", "create", "--base", repo.state["base"]["branch"], "--head", branch, "--title", title(run),
+    args = ["pr", "create", "--base", repo.state["base"]["branch"], "--head", branch, "--title", title(run, repo),
             "--body-file", str(body_path), *(["--draft"] if draft else [])]
     for reviewer in config.get("reviewers", []):
         args += ["--reviewer", reviewer]
