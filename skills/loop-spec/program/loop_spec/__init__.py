@@ -5,4 +5,4 @@ to re-derive each time: where a run's files are, which tasks are ready, git
 worktrees and merges, running checks, and opening the pull request.
 """
 
-VERSION = "8.0.0"
+VERSION = "8.1.0"
