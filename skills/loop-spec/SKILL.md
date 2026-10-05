@@ -94,10 +94,12 @@ is short, and a host reads those lines from it.
 The run's `mode` is in `LOOP_SPEC_RUN`.
 
 - **interactive**: someone is there. Interview while you write the spec: after reading
-  the code, ask in one `AskUserQuestion` every question whose answer changes what gets
-  built and that the code cannot settle, each with a recommended option. Then ask once
-  for approval of the criteria. After that, ask only when you are truly blocked or
-  before something risky the user did not ask for.
+  the code, find each choice the request leaves open that changes what gets built: a
+  format other code reads, stored data, behavior a user sees. Ask them all in one
+  `AskUserQuestion`, your choice as the recommended option, even when your default is
+  good: the person may know what the code does not. A request that settles every such
+  choice needs no interview. Then ask once for approval of the criteria. After that,
+  ask only when you are truly blocked or before something risky the user did not ask for.
 - **autonomous**: no one will answer. Never stop to ask. Choose the reasonable
   default, write it in `assumptions`, and keep going. A host is waiting for the run's
   result, so an autonomous run always ends with a result from `deliver`, `feedback`, or
