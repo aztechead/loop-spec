@@ -71,6 +71,39 @@ class PhaseStreamTests(unittest.TestCase):
         self.assertEqual({e["event"] for e in events}, {"phase_start", "phase_end", "transition", "result"})
         self.assertEqual(json.loads(Path(run["runDir"], "result.json").read_text())["phaseReached"], "deliver")
 
+    def test_markers_the_leads_pipe_cut_are_reported_once_by_the_post_tool_use_hook(self):
+        from loop_spec import hook, runs
+        _, start_out, _ = self.repo.ls("start", "--request", "Add mul")
+        run = runs.all_runs(self.repo.path)[0]
+        hook.stream_gaps({"tool_name": "Bash", "cwd": str(self.repo.path), "tool_response": ""})  # empty what start left
+        Path(run.dir, "spec.json").write_text(json.dumps(
+            {"goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "true"}]}))
+        self.repo.ls("status")  # SPEC -> PLAN
+        pending = run.pending_stream.read_text().splitlines()
+        self.assertEqual([m["phase"] for _, m in markers("\n".join(pending))], ["spec", "plan"])
+        hook_input = {"tool_name": "Bash", "cwd": str(self.repo.path), "tool_response": {"stdout": "ok", "stderr": ""}}
+        self.assertEqual(hook.stream_gaps(hook_input), pending)
+        self.assertFalse(run.pending_stream.exists())
+        run.pending_stream.write_text("\n".join(pending) + "\n")
+        shown = {**hook_input, "tool_response": {"stdout": "\n".join(pending), "stderr": ""}}
+        self.assertEqual(hook.stream_gaps(shown), [])
+
+    def test_the_markers_come_last_so_a_lead_keeping_the_tail_passes_them_on(self):
+        _, start_out, _ = self.repo.ls("start", "--request", "Add mul")
+        run = json.loads(start_out.splitlines()[-1].split(" ", 1)[1])
+        Path(run["runDir"], "spec.json").write_text(json.dumps(
+            {"goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "true"}]}))
+        Path(run["runDir"], "plan.json").write_text(json.dumps({"tasks": [{"id": "T-1", "title": "a"}]}))
+        # the host's run: `status 2>&1 | grep -v "^LOOP_SPEC_RUN" | tail -12`, then `task done T-4 2>&1 | tail -2`
+        lines = self.repo.ls("status")[1].splitlines()
+        self.assertTrue(lines[-1].startswith("LOOP_SPEC_RUN "))
+        self.assertEqual([m["phase"] for _, m in markers("\n".join(lines[-4:-1]))], ["plan", "plan", "execute"])
+        self.repo.ls("task", "start", "T-1")
+        commit(Path(run["runDir"], "tasks", "T-1"), "mul.py", "x = 1\n")
+        tail = self.repo.ls("task", "done", "T-1")[1].splitlines()[-2:]
+        self.assertEqual([(k, m["phase"]) for k, m in markers("\n".join(tail))],
+                         [("LOOP_SPEC_PHASE_END", "execute"), ("LOOP_SPEC_PHASE_START", "verify")])
+
     def test_moving_back_announces_a_rewind_and_the_phase_again(self):
         run = self.ready_run()
         self.assertEqual(self.repo.ls("verify")[0], 0)

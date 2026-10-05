@@ -55,7 +55,8 @@ checks are the PR's, and `LS feedback` reads them.
 The program derives the phase from the run's files and announces each change with
 `LOOP_SPEC_PHASE_START`/`_END` lines, which monitoring tools read. Run `LS status`
 after writing `spec.json` and after writing `plan.json`, so each phase is announced
-when it ends.
+when it ends. Do not pipe `LS` commands through `tail`, `head`, or `grep`: their output
+is short, and a host reads those lines from it.
 
 ## How to work
 
@@ -81,7 +82,7 @@ when it ends.
   yourself is done only when a real check that exercises it has passed; a syntax-only
   check, or a command that failed to start, does not count.
 - **Keep decisions moving.** A reversible decision you can make from the code is yours
-  to make: make it, record it, and keep going. Ask only about what is costly to undo.
+  to make: make it, record it, and keep going. When to ask is below.
 - **Guard your context.** Hand implementation and broad reading to agents; keep your own
   context for judging their results.
 - **Stay in scope, and report plainly.** Build what the spec asks; mention a good idea
@@ -92,19 +93,23 @@ when it ends.
 
 The run's `mode` is in `LOOP_SPEC_RUN`.
 
-- **interactive**: someone is there. Ask, with `AskUserQuestion`, only questions whose
-  answer changes what you build, together, while you write the spec, then ask once for
-  approval of the criteria. After that, ask only when you are truly blocked or before
-  something risky the user did not ask for.
+- **interactive**: someone is there. Interview while you write the spec: after reading
+  the code, find each choice the request leaves open that changes what gets built: a
+  format other code reads, stored data, behavior a user sees. Ask them all in one
+  `AskUserQuestion`, your choice as the recommended option, even when your default is
+  good: the person may know what the code does not. A request that settles every such
+  choice needs no interview. Then ask once for approval of the criteria. After that,
+  ask only when you are truly blocked or before something risky the user did not ask for.
 - **autonomous**: no one will answer. Never stop to ask. Choose the reasonable
   default, write it in `assumptions`, and keep going. A host is waiting for the run's
   result, so an autonomous run always ends with a result from `deliver`, `feedback`, or
   `finish`: when the request is impossible, contradicts the code in a way no default
   resolves, or something you cannot fix blocks the run, end with `finish --status
   escalated --summary "..."` naming the blocker and the verified head, if any.
-- **supervised**: as autonomous, except ask with `AskUserQuestion` when you cannot go on
-  without an answer or before a step that is hard to undo. If it comes back unanswered,
-  end your turn with a line saying `LOOP_SPEC_ASKING`.
+- **supervised**: a host relays your questions to a person. Interview as in interactive,
+  without the approval of the criteria. After the spec, work as autonomous, except ask
+  when you cannot go on without an answer or before a step that is hard to undo. If a
+  question comes back unanswered, end your turn with a line saying `LOOP_SPEC_ASKING`.
 
 ## The workflow
 
@@ -182,8 +187,8 @@ commit that one command can show (a test, a script, a grep), never something abo
 PR, CI, or branches. Keep each check exactly as strict as its criterion, so it cannot
 fail on a comment or a wording. Give a criterion no `check` only when no command can
 show it; the reviewer then judges it. Record each real choice in `decisions`, and, in
-an autonomous run, each default you chose in `assumptions`. At least one criterion
-runs the real thing (the command, the endpoint, the script) the way a user would.
+an autonomous or supervised run, each default you chose in `assumptions`. At least one
+criterion runs the real thing (the command, the endpoint, the script) the way a user would.
 
 Illustrative criteria, for a request to add a `--ttl` option to a CLI:
 

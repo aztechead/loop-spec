@@ -2,7 +2,7 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
-## [Unreleased]
+## [8.1.0] - 2026-10-05
 
 ### Added
 
@@ -15,9 +15,10 @@ All notable changes documented here. Format follows Keep a Changelog.
 - The SDK example's `--phase-model PHASE=MODEL` switches the lead's model with
   `set_model()` when the run enters PHASE; `--model opus --phase-model execute=sonnet` is
   its recommended setup.
-- Supervised mode (`--supervised`, `LOOP_SPEC_MODE=supervised`): no criteria approval and
-  defaults recorded as assumptions, as autonomous, but the lead still asks a question
-  that is costly to get wrong and ends its turn with `LOOP_SPEC_ASKING`, which the Stop
+- Supervised mode (`--supervised`, `LOOP_SPEC_MODE=supervised`): the lead asks the spec's
+  questions in one `AskUserQuestion`, as 7.x's spec writer did, and skips the criteria
+  approval; after the spec it works as autonomous, records defaults as assumptions, asks
+  only a question that is costly to get wrong, and ends its turn with `LOOP_SPEC_ASKING`, which the Stop
   hook lets through. It replaces 7.x's `spec.approval: policy`.
 - `loop-spec checkpoint [--push]` commits work in progress in every worktree, lists
   them, and pushes their branches; `status` rebuilds a paused run's worktrees from those
@@ -36,6 +37,12 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ### Fixed
 
+- A phase change no longer drops out of the log stream when the lead keeps only the tail
+  of a command's output: the `LOOP_SPEC_PHASE_*`, `[PHASE]`, and `LOOP_SPEC_RESULT` lines
+  now come last (before `status`'s `LOOP_SPEC_RUN`), and the skill tells the lead not to
+  filter `LS` output. A PostToolUse hook also reports the markers the lead's pipe still
+  cut, which an SDK host reads with `include_hook_events=True`. `events.jsonl` stays the
+  record a host can rely on.
 - A run no longer takes a branch origin already has: a fresh clone named its branch
   after an open PR's, then merged that PR's commits in and delivered onto it. Naming
   checks origin too, and `deliver` and `sync` refuse an origin branch with commits a run

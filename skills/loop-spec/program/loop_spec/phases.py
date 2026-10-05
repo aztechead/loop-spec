@@ -15,6 +15,12 @@ record is also appended to `events.jsonl`, in the run's directory and in 7.x's s
 (see legacy.py). Moving forward past several phases
 at once announces each one in order, so every run shows SPEC, PLAN, EXECUTE, VERIFY,
 ITERATE, and DELIVER.
+
+The printed lines are held until the command's output is done (`flush`), so they come last
+(before `status`'s LOOP_SPEC_RUN) and survive a lead that keeps only the tail of it. They are
+still best effort, since the lead can filter them out; `events.jsonl` is the record a host
+can rely on. The printed `LOOP_SPEC_` lines are also kept in the run's `stream.pending` until the
+plugin's PostToolUse hook reports the ones the lead's pipe cut.
 """
 import json
 import os
@@ -31,6 +37,23 @@ BACKWARD = {"plan": "spec gap", "execute": "plan gap", "verify": "implementation
             "deliver": "base moved"}
 TERMINAL = {"converged": "delivered", "converged-with-caveats": "delivered", "no-change": "no change",
             "escalated": "escalated", "failed": "failed"}
+
+
+_pending: list = []  # (logger, line, run) held for flush
+
+
+def _emit(logger, line: str, run=None) -> None:
+    _pending.append((logger, line, run))
+
+
+def flush() -> None:
+    """Print the held stream lines, in order."""
+    while _pending:
+        logger, line, run = _pending.pop(0)
+        logger.info(line)
+        if run and line.startswith("LOOP_SPEC_"):
+            with open(run.pending_stream, "a") as f:
+                f.write(line + "\n")
 
 
 def _now() -> str:
@@ -52,12 +75,12 @@ def _record(run, event: str, phase: str | None, attempt: str | None, data: dict)
 
 def result(run, record: dict, path) -> None:
     """Announce the run's result as 7.x did: the record, then where it is written."""
-    log.stdout.info(f"LOOP_SPEC_RESULT {_compact(record)}")
+    _emit(log.stdout, f"LOOP_SPEC_RESULT {_compact(record)}", run)
     _record(run, "result", record.get("phaseReached"), None, record)
     program = Path(__file__).resolve().parents[1] / "loop-spec"
-    log.stdout.info("LOOP_SPEC_NEXT " + _compact({
+    _emit(log.stdout, "LOOP_SPEC_NEXT " + _compact({
         "kind": "result", "path": str(path), "slug": run.slug, "program": str(program),
-        "stateHome": str(legacy.state_home()), "projectRoot": str(run.project)}))
+        "stateHome": str(legacy.state_home()), "projectRoot": str(run.project)}), run)
 
 
 def _console(phase: str, summary: str) -> None:
@@ -66,15 +89,15 @@ def _console(phase: str, summary: str) -> None:
     stream = os.environ.get("LOOP_SPEC_CONSOLE_STREAM", "")
     if stream not in ("stdout", "stderr"):
         stream = "stdout" if (os.environ.get("CLOUD_RUN_JOB") or os.environ.get("K_SERVICE")) else "stderr"
-    (log.stdout if stream == "stdout" else log.stderr).info(f"[{phase.upper()}] {summary}")
+    _emit(log.stdout if stream == "stdout" else log.stderr, f"[{phase.upper()}] {summary}")
 
 
 def _start(run, phase: str) -> None:
     attempt = f"attempt-{secrets.token_hex(6)}"
     payload = {"event": "phase_start", "attemptId": attempt, "phase": phase, "timestamp": _now()}
-    log.stdout.info(f"LOOP_SPEC_PHASE_START {_compact(payload)}")
-    _record(run, "phase_start", phase, attempt, payload)
     _console(phase, f"{phase} attempt {attempt}")
+    _emit(log.stdout, f"LOOP_SPEC_PHASE_START {_compact(payload)}", run)  # last, for a lead keeping the tail
+    _record(run, "phase_start", phase, attempt, payload)
     run.state["phaseStream"] = {"phase": phase, "attemptId": attempt, "startedAt": datetime.now(timezone.utc).timestamp()}
 
 
@@ -86,7 +109,7 @@ def _end(run, exit_: str, verdict: str, next_phase: str | None, head: str | None
         head = ",".join(f"{n}@{h}" for n, h in sorted(head.items()))
     payload = {"event": "phase_end", "attemptId": attempt, "phase": phase, "timestamp": _now(), "verdict": verdict,
                "next": next_phase, "elapsedSeconds": elapsed, "headSha": head}
-    log.stdout.info(f"LOOP_SPEC_PHASE_END {_compact(payload)}")
+    _emit(log.stdout, f"LOOP_SPEC_PHASE_END {_compact(payload)}", run)
     _record(run, "phase_end", phase, attempt, payload)
     summary = f"{phase} {exit_} -> {next_phase or 'terminal'}"
     _console(phase, summary)

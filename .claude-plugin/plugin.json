@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "loop-spec",
   "description": "Takes a coding request to a verified pull request: a spec with checkable criteria, a task graph run in parallel worktrees, a clean-checkout verify, and one PR. For Claude Code and the Claude Agent SDK.",
-  "version": "8.0.0",
+  "version": "8.1.0",
   "author": {
     "name": "aztechead",
     "email": "nctightend@gmail.com"

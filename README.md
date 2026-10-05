@@ -4,7 +4,7 @@ For a developer installing loop-spec in Claude Code, or running it as the method
 autonomous coding agent follows on the Claude Agent SDK. Use this guide to install
 it, start a run, and read the result.
 
-Current version: 8.0.0
+Current version: 8.1.0
 
 ## What it is
 
@@ -77,9 +77,10 @@ Interactive runs ask the questions that change what gets built, and ask once for
 approval of the spec. For a run no one attends, add `--autonomous` to the argument or
 set `LOOP_SPEC_MODE=autonomous` in the environment: the run never stops to ask,
 records the defaults it chose as assumptions in the spec, and ends with a result
-either way. Between the two, `--supervised` (or `LOOP_SPEC_MODE=supervised`) skips the
-approval and records defaults the same way, but still asks a question that is costly to
-get wrong, for a host that can relay it to a person.
+either way. Between the two, `--supervised` (or `LOOP_SPEC_MODE=supervised`), for a host
+that relays questions to a person, asks the spec's questions but skips the approval;
+after the spec it records defaults the same way and asks only a question that is costly
+to get wrong.
 
 An autonomous or supervised run keeps itself going the way `/goal` does: after each turn loop-spec's
 Stop hook checks the run's record, and while the run is open it hands the lead the next
