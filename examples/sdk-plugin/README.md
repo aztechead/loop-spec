@@ -26,6 +26,7 @@ program, and dispatches the `loop-spec:implementer` and `loop-spec:reviewer` age
 | `permission_mode="acceptEdits"`, `setting_sources=["project"]` | edits run without prompts; the project's settings and `CLAUDE.md` load, your personal `~/.claude` ones do not |
 | `thinking={"type": "adaptive", "display": "summarized"}`, `forward_subagent_text=True` | the lead's and the agents' reasoning and text arrive on stderr |
 | `receive_messages()` and task messages | workers run as background tasks, so a turn can end while they work; the script keeps reading until a turn ends with no task running and the result seen, or 60 quiet seconds pass |
+| `include_hook_events=True` | the plugin's PostToolUse hook reports phase markers the lead's pipe cut; they arrive as `HookEventMessage` (`hook_response`) and are read like tool-result markers, a repeated identical line once |
 | `resume=<session id>` | continues a session that stopped |
 | `max_budget_usd` | optional spend ceiling |
 | `set_model()` | with `--phase-model PHASE=MODEL`, switches the lead's model from PHASE on, read from the run's `events.jsonl`; a resumed session lands on the right model |

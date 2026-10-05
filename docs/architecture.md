@@ -13,7 +13,7 @@ the line between them sits where it does. The method itself is in
 | The hub skill | the method, as guidance the lead follows: every phase in `SKILL.md`, and what only some runs need (a run kind's changes, the PR template) as references it links, which the program's `next` line names when the run needs them | `skills/loop-spec/SKILL.md`, `skills/loop-spec/references/` |
 | Entry skills | starting a run of one kind, then pointing at the hub | `skills/{cycle,micro,debug,revise,status}/SKILL.md` |
 | Agents | one task's implementation (`implementer`, Sonnet), the whole change's adversarial review (`reviewer`, Opus), and its cleanup review (`simplifier`, Sonnet) | `agents/*.md` |
-| The Stop hook | keeping an autonomous run going until it has a result | `hooks/hooks.json`, `loop_spec/hook.py` |
+| The hooks | the Stop hook keeps an autonomous run going until it has a result; the PostToolUse hook reports the stream markers the lead's pipe cut | `hooks/hooks.json`, `loop_spec/hook.py` |
 | The program | facts the lead should not re-derive: run state, the task graph, worktrees, merges, running checks, the PR | `skills/loop-spec/program/` |
 
 The rule for moving something into the program: it must be deterministic and
@@ -50,7 +50,7 @@ Each module has one reason to change:
 | `review.py` | reading a PR's reviews and comments |
 | `phases.py` | the phase stream monitors read: 7.x's `LOOP_SPEC_PHASE_*` markers, `[PHASE]` lines, `events.jsonl` records, and the result's `LOOP_SPEC_RESULT`/`LOOP_SPEC_NEXT` lines |
 | `legacy.py` | what 7.x hosts read outside the repository: the state home, 7.x's repo id, the schema-1 result built from a run, and its copies there |
-| `hook.py` | the Stop hook's decision: continue the run with its next step, or let the stop through |
+| `hook.py` | the Stop hook's decision (continue the run with its next step, or let the stop through) and the PostToolUse hook's report of stream markers a Bash call's output lacks |
 | `log.py` | the two output channels (`log.stdout`, `log.stderr`); nothing calls `print` |
 
 `state.json` is written only by `runs.Run.save`, and `result.json` only by `runs.Run.finish` (the run's copy) and `legacy.publish` (the state home's). `spec.json` and

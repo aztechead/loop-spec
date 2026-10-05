@@ -760,6 +760,17 @@ def cmd_hook_stop(args, project: Path, cwd: Path) -> int:
     return 0
 
 
+def cmd_hook_post_bash(args, project: Path, cwd: Path) -> int:
+    """The plugin's PostToolUse hook for Bash. Never fails the session: any error prints nothing."""
+    try:
+        lines = hook.stream_gaps(json.loads(sys.stdin.read() or "{}"))
+    except Exception:  # noqa: BLE001 - a broken hook must never fail someone's tool call
+        return 0
+    for line in lines:
+        out(line)
+    return 0
+
+
 def cmd_finish(args, project: Path, cwd: Path) -> int:
     run = find(project, args.slug, cwd)
     return _finish(run, args.status, args.summary, run.head())
@@ -877,6 +888,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_sync)
 
     sub.add_parser("hook-stop", parents=[common], help=argparse.SUPPRESS).set_defaults(func=cmd_hook_stop)
+    sub.add_parser("hook-post-bash", parents=[common], help=argparse.SUPPRESS).set_defaults(func=cmd_hook_post_bash)
 
     p = sub.add_parser("finish", parents=[common], help="end a run without delivering")
     p.add_argument("--status", required=True, choices=RESULT_STATUSES)
@@ -900,6 +912,8 @@ def main(argv: list[str] | None = None) -> int:
     cwd = Path(os.getcwd())
     if args.command == "hook-stop":
         return cmd_hook_stop(args, cwd, cwd)  # runs outside any repository too, and never fails
+    if args.command == "hook-post-bash":
+        return cmd_hook_post_bash(args, cwd, cwd)  # likewise
     try:
         project = run_root(Path(args.project_root).resolve() if args.project_root else cwd)
         code = args.func(args, project, cwd)

@@ -18,6 +18,11 @@ keeps answering without using a tool. As `/goal` skips evaluation while backgrou
 runs, the hook lets the stop through when the lead says `LOOP_SPEC_WAITING`: the
 workers' results resume the session. It never fails a session: any error lets the stop
 through silently.
+
+The PostToolUse hook (`stream_gaps`) reports the stream markers the lead's own pipe cut: after a
+Bash call it prints the lines in each run's `stream.pending` that the call's output lacks, and
+empties the file. A hook's output does not pass through the lead's pipe, so an SDK host with
+`include_hook_events=True` receives them. It never fails a session either.
 """
 import json
 from pathlib import Path
@@ -67,3 +72,20 @@ def decide(hook_input: dict, next_step) -> dict | None:
     else:
         reason += f" If workers you dispatched are still running, say {WAITING} and end the turn."
     return {"decision": "block", "reason": reason}
+
+
+def stream_gaps(hook_input: dict) -> list[str]:
+    """The pending stream markers a Bash call's output lacks, in order; the pending files are emptied."""
+    if hook_input.get("tool_name") != "Bash":
+        return []
+    response = hook_input.get("tool_response")
+    shown = response if isinstance(response, str) else "\n".join(
+        v for v in (response or {}).values() if isinstance(v, str))
+    gaps = []
+    # ponytail: a background command's lines can be claimed by another Bash call's hook; its own output then repeats them
+    for run in all_runs(run_root(Path(hook_input.get("cwd") or "."))):
+        if run.pending_stream.is_file():
+            lines = run.pending_stream.read_text().splitlines()
+            run.pending_stream.unlink()
+            gaps += [line for line in lines if line and line not in shown]
+    return gaps

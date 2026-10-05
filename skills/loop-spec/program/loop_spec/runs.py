@@ -11,6 +11,7 @@ A run lives in `<project>/.loop-spec/runs/<slug>/`:
     pr.md         the PR description the lead writes
     result.json   the run's final result, 7.x's schema-1 record; its presence means the run is over
     events.jsonl  the phase stream's records (phases.py)
+    stream.pending  stream markers not yet reported by the PostToolUse hook (phases.py, hook.py)
 
 A workspace run, in a directory holding `.loop-spec/workspace.json`, is the same under that
 directory (the run root): `work/<name>/`, `verify/<name>/`, `base/<name>/` and `pr/<name>.md` per
@@ -38,6 +39,7 @@ RUNS_DIR = Path(".loop-spec") / "runs"
 KINDS = ("cycle", "micro", "debug", "revise")
 RESULT_STATUSES = ("completed", "no-change", "escalated", "failed")
 WORKSPACE = Path(".loop-spec") / "workspace.json"
+PENDING_STREAM = "stream.pending"
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
@@ -204,6 +206,10 @@ class Run:
         self.work = self.dir / "work"
         self.verify_dir = self.dir / "verify"
         self.state: dict = read_json(self.state_path, "state") or {}
+
+    @property
+    def pending_stream(self) -> Path:
+        return self.dir / PENDING_STREAM
 
     @property
     def workspace(self) -> bool:

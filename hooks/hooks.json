@@ -10,6 +10,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/skills/loop-spec/program/loop-spec\" hook-post-bash",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

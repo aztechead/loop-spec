@@ -116,6 +116,9 @@ Skip this step if you only use Claude Code.
 - If you used `examples/supervisor/` or `loop_spec.sdk_runner`, move to
   `examples/sdk-plugin/`. Both were removed.
 - Drop any `--assignee @me` workaround: 8.0 opens PRs without an assignee.
+- Set `include_hook_events=True` and read `LOOP_SPEC_*` lines from PostToolUse `hook_response`
+  output too: the plugin's hook reports markers the lead's pipe cut. Drop a repeated identical
+  line; `events.jsonl` stays the complete record.
 - Read the phase from the run's `events.jsonl` (the last `phase_start` record), not from
   `state.json`.
 - For pause and resume, wrap-up, and runs across repositories, see the README's

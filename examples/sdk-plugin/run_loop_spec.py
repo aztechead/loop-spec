@@ -41,6 +41,7 @@ from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    HookEventMessage,
     Message,
     PermissionResultAllow,
     PermissionResultDeny,
@@ -81,16 +82,30 @@ def err(line: str) -> None:
     ERR.info(line)
 
 
+seen: set[str] = set()  # marker lines already shown: a concurrent Bash call's hook can report a line twice
+
+
 def marker_lines(message: Message):
-    """The `LOOP_SPEC_*` lines in a message's tool results: the loop-spec program's output."""
-    if not (isinstance(message, UserMessage) and isinstance(message.content, list)):
-        return
-    for block in message.content:
-        if isinstance(block, ToolResultBlock):
-            content = block.content
-            text = content if isinstance(content, str) else "\n".join(
-                part.get("text", "") for part in (content or []) if isinstance(part, dict))
-            yield from (line for line in text.splitlines() if line.startswith("LOOP_SPEC_"))
+    """The `LOOP_SPEC_*` lines in a message: the loop-spec program's output, from a tool result
+    or from the PostToolUse hook's response."""
+    texts = []
+    if isinstance(message, HookEventMessage):
+        if message.subtype == "hook_response" and message.hook_event_name == "PostToolUse":
+            texts.append(message.data.get("output") or message.data.get("stdout") or "")
+    elif isinstance(message, UserMessage) and isinstance(message.content, list):
+        for block in message.content:
+            if isinstance(block, ToolResultBlock):
+                content = block.content
+                texts.append(content if isinstance(content, str) else "\n".join(
+                    part.get("text", "") for part in (content or []) if isinstance(part, dict)))
+    yield from (line for line in "\n".join(texts).splitlines() if line.startswith("LOOP_SPEC_"))
+
+
+def show_markers(message: Message) -> None:
+    for line in marker_lines(message):
+        if line not in seen:
+            seen.add(line)
+            err(f"  {line}")
 
 
 class RunWatch:
@@ -124,7 +139,7 @@ class RunWatch:
                 self.active_tasks.discard(message.task_id)
         elif isinstance(message, SystemMessage) and message.subtype == "init":
             self.turn_ended = False
-        elif isinstance(message, UserMessage):
+        elif isinstance(message, (UserMessage, HookEventMessage)):
             for line in marker_lines(message):
                 if not line.startswith(NEXT_PREFIX):
                     continue
@@ -190,7 +205,9 @@ def make_can_use_tool(autonomous: bool):
 
 
 def render(message: Message) -> None:
-    if isinstance(message, TaskStartedMessage):
+    if isinstance(message, HookEventMessage):
+        show_markers(message)
+    elif isinstance(message, TaskStartedMessage):
         err(f"  [task started] {message.description}")
     elif isinstance(message, TaskNotificationMessage):
         err(f"  [task {message.status}] {message.summary}")
@@ -207,8 +224,7 @@ def render(message: Message) -> None:
                 summary = block.input.get("command") or block.input.get("description") or ""
                 err(f"  [{who}tool {message.model}] {block.name} {str(summary)[:200]}")
     elif isinstance(message, UserMessage):
-        for line in marker_lines(message):
-            err(f"  {line}")
+        show_markers(message)
     elif isinstance(message, ResultMessage):
         err(f"[turn] {message.subtype} turns={message.num_turns} cost=${message.total_cost_usd}")
 
@@ -270,6 +286,7 @@ async def run(args: argparse.Namespace) -> int:
         thinking={"type": "adaptive", "display": "summarized"},
         forward_subagent_text=True,
         resume=args.resume,
+        include_hook_events=True,  # the PostToolUse hook reports markers the lead's pipe cut
         max_budget_usd=args.max_budget_usd,
     )
     watch = RunWatch()

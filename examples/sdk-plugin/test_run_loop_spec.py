@@ -20,12 +20,13 @@ from claude_agent_sdk import (
     SystemMessage,
     TaskNotificationMessage,
     TaskStartedMessage,
+    HookEventMessage,
     ToolResultBlock,
     UserMessage,
 )
 
 sys.path.insert(0, str(Path(__file__).parent))
-from run_loop_spec import RunWatch, answer_from_stdin, current_phase, make_can_use_tool, model_for, prompt_for, result_file  # noqa: E402
+from run_loop_spec import RunWatch, answer_from_stdin, marker_lines, current_phase, make_can_use_tool, model_for, prompt_for, result_file  # noqa: E402
 
 QUESTION = {"question": "Approve?", "options": [{"label": "Approve"}, {"label": "Reject"}]}
 
@@ -64,6 +65,11 @@ def feed(watch, messages):
 
 
 class RunWatchTests(unittest.TestCase):
+    def test_marker_lines_reads_a_post_tool_use_hook_response(self):
+        hook = HookEventMessage(subtype="hook_response", hook_event_name="PostToolUse",
+                                data={"output": "noise\nLOOP_SPEC_PHASE_START {\"phase\":\"plan\"}\nLOOP_SPEC_PHASE_END {}"})
+        self.assertEqual(list(marker_lines(hook)), ['LOOP_SPEC_PHASE_START {"phase":"plan"}', "LOOP_SPEC_PHASE_END {}"])
+
     def test_done_when_a_turn_ends_after_the_result_printed(self):
         watch = RunWatch()
         self.assertEqual(feed(watch, [init(), result_line(), turn_end()]), [False, False, True])
