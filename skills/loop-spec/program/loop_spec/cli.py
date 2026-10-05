@@ -284,6 +284,7 @@ def show_status(run: Run) -> int:
         info["repos"] = {r.name: {"work": str(r.work), "path": str(r.path), "base": r.state["base"]["sha"],
                                   "branch": r.state["branch"], "prTemplate": str(deliver.pr_template(r.work)),
                                   "prMd": str(r.pr_md)} for r in run.repos}
+    phases.flush()
     marker("LOOP_SPEC_RUN", info)
     return 0
 
@@ -813,7 +814,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--autonomous", action="store_true",
                    help="no one will answer questions (LOOP_SPEC_MODE=autonomous in the environment does the same)")
     p.add_argument("--supervised", action="store_true",
-                   help="a host relays questions: no approval step, and the lead may stop to ask (LOOP_SPEC_MODE=supervised does the same)")
+                   help="a host relays questions: the lead interviews at the spec, skips the approval step, and may stop to ask (LOOP_SPEC_MODE=supervised does the same)")
     p.add_argument("--base", help="branch to start from and target; default: origin's default branch")
     p.add_argument("--branch", help="feature branch name; default: feat/<slug> (fix/<slug> for debug)")
     p.add_argument("--title", help="the PR title; default: the spec's title")
@@ -910,3 +911,5 @@ def main(argv: list[str] | None = None) -> int:
         if exc.repair:
             log.stderr.error(f"  next: {exc.repair}")
         return 1
+    finally:
+        phases.flush()
