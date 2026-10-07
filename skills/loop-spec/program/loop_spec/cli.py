@@ -172,14 +172,22 @@ def _restore(run: Run) -> None:
     """After a pause or a restored clone: rebuild the worktrees an open run lost, one line each."""
     if run.result_path.is_file():
         return
+    finished = any(t.get("status") == "done" for t in run.state.get("tasks", {}).values())
     for r in run.repos:
         tag = f"[{r.name}] " if run.workspace else ""
         git.git(r.path, "worktree", "prune")  # a worktree deleted by hand is still registered until pruned
         if not run.workspace:
             git.exclude(r.path, "/.loop-spec/runs/")  # a fresh clone has not seen this run's directory
         if not r.work.exists():
-            out(f"{tag}restored work from {r.state['branch']}" if _rebuild(r.path, r.work, r.state["branch"])
-                else f"{tag}cannot restore work: {r.state['branch']} is on neither this clone nor origin")
+            base = r.state["base"]["sha"]
+            if _rebuild(r.path, r.work, r.state["branch"]):
+                out(f"{tag}restored work from {r.state['branch']}")
+            elif not finished and git.git(r.path, "cat-file", "-e", f"{base}^{{commit}}").returncode == 0:
+                # checkpoint does not push a branch still at its base; with no task done, the base is all it held
+                git.add_worktree(r.path, r.work, base, new_branch=r.state["branch"])
+                out(f"{tag}restored work at its base {base[:12]} as {r.state['branch']}")
+            else:
+                out(f"{tag}cannot restore work: {r.state['branch']} is on neither this clone nor origin")
     for task_id, t in list(run.state.get("tasks", {}).items()):
         dest, branch = run.task_dir(task_id), run.task_branch(task_id)
         if t.get("status") != "doing" or dest.exists():
@@ -723,16 +731,20 @@ def cmd_set(args, project: Path, cwd: Path) -> int:
 def cmd_checkpoint(args, project: Path, cwd: Path) -> int:
     """Commit what the feature and doing-task worktrees hold (not verified, not merged), and push on request."""
     run = find(project, args.slug, cwd)
-    targets = [(r.work, r.state["branch"]) for r in run.repos if r.work.exists()]
-    targets += [(run.task_dir(tid), run.task_branch(tid)) for tid, t in run.state.get("tasks", {}).items()
+    # each with where it started: a branch holding nothing past that is not pushed, since status rebuilds it
+    targets = [(r.work, r.state["branch"], r.state["base"]["sha"]) for r in run.repos if r.work.exists()]
+    targets += [(run.task_dir(tid), run.task_branch(tid), run.repo(run.task(tid).get("repo")).state["branch"])
+                for tid, t in run.state.get("tasks", {}).items()
                 if t.get("status") == "doing" and run.task_dir(tid).exists()]
-    for dest, branch in targets:
+    for dest, branch, start in targets:
         changed = bool(git.dirty(dest))
         if changed:
             git.run_git(dest, "add", "-A")
             git.run_git(dest, "commit", "--quiet", "-m", "wip: loop-spec checkpoint, not verified")
-        out(f"{_rel(run, dest)} {branch} {git.head(dest)[:12]} {'committed' if changed else 'clean'}")
-        if args.push:
+        empty = git.is_ancestor(dest, "HEAD", start)
+        out(f"{_rel(run, dest)} {branch} {git.head(dest)[:12]} {'committed' if changed else 'clean'}"
+            + (" (not pushed: no commits of its own)" if args.push and empty else ""))
+        if args.push and not empty:
             pushed = git.git(dest, "push", "--quiet", "origin", f"HEAD:refs/heads/{branch}")
             if pushed.returncode != 0:
                 raise LoopSpecError(f"git push of {branch} was rejected: {pushed.stderr.strip()}",

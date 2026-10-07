@@ -4,7 +4,7 @@ For a developer installing loop-spec in Claude Code, or running it as the method
 autonomous coding agent follows on the Claude Agent SDK. Use this guide to install
 it, start a run, and read the result.
 
-Current version: 8.1.0
+Current version: 8.1.1
 
 ## What it is
 

@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from loop_spec import git
+from loop_spec.errors import LoopSpecError
 
 STUCK_SECONDS = 60  # a check pending this long is cross-checked against its job: GitHub can leave a finished job's check in progress
 POLL_SECONDS = 15  # GitHub updates check status every few seconds; 15 s keeps gh calls well under its rate limit
@@ -26,7 +27,10 @@ def expected(worktree: Path) -> bool:
 
 def read(worktree: Path, pr: int) -> list[dict] | None:
     """The PR's checks, or None when gh could not report them (an error, or none registered yet)."""
-    code, out, _ = git.gh(worktree, "pr", "checks", str(pr), "--json", "name,bucket,link,workflow,startedAt")
+    code, out, err = git.gh(worktree, "pr", "checks", str(pr), "--json", "name,bucket,link,workflow,startedAt")
+    if code != 0 and not out.strip() and "no checks reported" not in err:
+        raise LoopSpecError(f"gh pr checks failed: {(err.strip().splitlines() or ['no output'])[0]}",
+                            "`gh pr checks --json` needs a current gh: upgrade it, and check `gh auth status`")
     try:
         found = json.loads(out) if out.strip() else []
     except json.JSONDecodeError:
