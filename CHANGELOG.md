@@ -2,6 +2,20 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [8.1.1] - 2026-10-07
+
+### Fixed
+
+- `checkpoint --push` no longer pushes a branch that holds no commits of its own: the
+  feature branch still at its base, or a task branch with nothing past the feature
+  branch. It used to leave such task branches on origin with nothing to remove them.
+  The listing marks each skipped branch `(not pushed: no commits of its own)`.
+- `status` in a fresh clone rebuilds a feature branch that is on neither the clone nor
+  origin at the run's base commit, when no task is done yet; a checkpoint no longer pushes
+  such a branch, so resuming needs this.
+- `feedback` reports a `gh pr checks` error instead of reading it as checks still
+  running. A `gh` without `pr checks --json` (Debian's 2.46) made it wait out every call.
+
 ## [8.1.0] - 2026-10-05
 
 ### Added

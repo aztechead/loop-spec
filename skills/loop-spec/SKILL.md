@@ -45,7 +45,7 @@ the project's checks take longer.
 | `LS set [--repo NAME] --branch NAME --title "..."` | rename the feature branch (until it is pushed) or set the PR title; `--repo` sets them for one repository of a run across repositories |
 | `LS deliver [--draft] [--unverified] [--comment-file F]` | push the verified head and open or update its PR (posting `F` as a comment) |
 | `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review; ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
-| `LS checkpoint [--push]` | commit work in progress in every worktree and list them; `--push` pushes their branches. For a run the host asked to wrap up |
+| `LS checkpoint [--push]` | commit work in progress in every worktree and list them; `--push` pushes the branches that hold commits of their own. For a run the host asked to wrap up |
 | `LS finish --status completed\|no-change\|escalated\|failed --summary "..."` | end the run: `completed` after feedback skills find nothing, otherwise a run that delivers nothing |
 
 Four kinds of check apply to a run. A criterion's `check` (in `spec.json`), a task's

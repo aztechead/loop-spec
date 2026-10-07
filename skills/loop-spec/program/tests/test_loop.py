@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 from loop_spec import ci, cli, hook
+from loop_spec.errors import LoopSpecError
 from loop_spec.runs import Run
 from test_flow import Repo, commit, marker, sh
 
@@ -314,6 +315,13 @@ class LoopTests(unittest.TestCase):
         outcome, _ = ci.wait(self.repo.path, 7, timeout=30, sleep=sleeps.append, clock=clock)
         self.assertEqual((outcome, len(sleeps)), ("pending", 2))
 
+    def test_ci_read_reports_a_gh_error_and_reads_no_checks_yet_as_none(self):
+        with mock.patch.object(ci.git, "gh", return_value=(1, "", "unknown flag: --json")):
+            with self.assertRaisesRegex(LoopSpecError, "unknown flag: --json"):
+                ci.read(self.repo.path, 7)
+        with mock.patch.object(ci.git, "gh", return_value=(1, "", "no checks reported on the 'feat/x' branch")):
+            self.assertIsNone(ci.read(self.repo.path, 7))
+
     # --- the PR description ---------------------------------------------------------------
 
     def test_deliver_needs_pr_md_and_names_the_template_to_follow(self):
@@ -498,6 +506,26 @@ class LoopTests(unittest.TestCase):
         self.assertIn("feat/add-mul", out)
         self.assertEqual(sh(task_dir, "git", "log", "-1", "--format=%s"), "wip: loop-spec checkpoint, not verified")
         self.assertIn("refs/heads/loop-spec-task/add-mul/T-1", sh(self.repo.path, "git", "ls-remote", "--heads", "origin"))
+
+    def test_checkpoint_push_skips_branches_with_no_commits_of_their_own(self):
+        self.started_task()
+        code, out, _ = self.repo.ls("checkpoint", "--push")
+        self.assertEqual(code, 0)
+        self.assertEqual(out.count("(not pushed: no commits of its own)"), 2)
+        heads = sh(self.repo.path, "git", "ls-remote", "--heads", "origin")
+        self.assertNotIn("loop-spec-task", heads)
+        self.assertNotIn("feat/add-mul", heads)
+
+    def test_status_rebuilds_an_unpushed_work_branch_at_its_base_before_any_task_is_done(self):
+        run = self.started_task()
+        shutil.rmtree(run["work"])
+        shutil.rmtree(Path(run["runDir"], "tasks", "T-1"))
+        sh(self.repo.path, "git", "worktree", "prune")
+        sh(self.repo.path, "git", "branch", "-D", "feat/add-mul", "loop-spec-task/add-mul/T-1")
+        out = self.repo.ls("status")[1]
+        self.assertIn(f"restored work at its base {run['base'][:12]} as feat/add-mul", out)
+        self.assertIn("T-1: worktree lost and its branch is gone; back to todo", out)
+        self.assertEqual(sh(run["work"], "git", "rev-parse", "HEAD"), run["base"])
 
     def test_task_done_removes_the_task_branch_a_checkpoint_pushed(self):
         run = self.started_task()
