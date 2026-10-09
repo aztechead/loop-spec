@@ -149,9 +149,9 @@ class LoopTests(unittest.TestCase):
                                ' echo "$TMPDIR/pytest-of-u/pytest-$RANDOM/test_a0";'
                                ' echo "1 failed in $RANDOM.2s (0:0$((RANDOM % 10)):1$((RANDOM % 10)))";'
                                # the change adds passing tests: counts and progress grow at the head
-                               ' n=1; test -f mul.py && n=3; echo "collected $n items";'
-                               ' echo "tests/test_mul.py F$(printf %${n}s | tr " " .)$(printf %$((9 - n))s)[ $((100 / n))%]";'
-                               ' echo "== 1 failed, $n passed in 0.02s =="; exit 1'])
+                               ' n=1; test -f mul.py && n=12; echo "collected $n items";'
+                               ' echo "tests/test_mul.py F$(printf %${n}s | tr " " .)$(printf %$((14 - n))s)[ $((100 / n))%]";'
+                               ' echo "$(printf %$((12 - ${#n}))s | tr " " =) 1 failed, $n passed in 0.02s =="; exit 1'])
         code, out, _ = self.repo.ls("verify")
         self.assertEqual(code, 0, out)
         self.assertIn("pre-existing, not counted", out)

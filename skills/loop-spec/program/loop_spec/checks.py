@@ -33,6 +33,7 @@ _PYTEST_RUN = re.compile(r"\bpytest-\d+\b")  # pytest numbers its temp directory
 # counts ("collected 6 items", "1 failed, 5 passed", "[ 83%]") change whenever a change adds tests; a
 # number after ":" is a file:line location and is kept, as are numbers inside words (E501, test_a0)
 _COUNT = re.compile(r"(?<![\w:.-])\d+(?![\w.:])")
+_RULE = re.compile(r"([=_-])\1{2,}")  # pytest centers headers in a rule whose length follows the text
 _PROGRESS = re.compile(r"(?:^|(?<=\s))[.sxXFE]+(?=\s+\[|\s*$)")  # pytest's per-test status characters
 
 
@@ -56,7 +57,8 @@ def _masker(root: Path):
     def mask(line: str) -> str:
         line = paths.sub(lambda m: names[m[1]] + ("/*" if names[m[1]] == "<tmp>" and m[2] else m[2] or ""), line.strip())
         line = _DURATION.sub("N", _PYTEST_RUN.sub("pytest-N", line))
-        return " ".join(_COUNT.sub("N", _PROGRESS.sub("P", line)).split())  # pytest pads progress to align
+        line = _RULE.sub(r"\1\1", _COUNT.sub("N", _PROGRESS.sub("P", line)))
+        return " ".join(line.split())  # pytest pads progress to align
     return mask
 
 
