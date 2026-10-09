@@ -9,7 +9,9 @@ All notable changes documented here. Format follows Keep a Changelog.
 - `verify` no longer counts a repository check that fails the same way at the base as
   new because of what differs between any two runs: before comparing the outputs it
   masks each checkout's root, temp paths (pytest's numbered `pytest-of-<user>/pytest-N`
-  among them), and durations written `H:MM:SS` or `M:SS`, such as pytest's `(0:01:15)`.
+  among them), durations written `H:MM:SS` or `M:SS`, such as pytest's `(0:01:15)`, and
+  counts and pytest's progress characters, which change whenever the change adds tests.
+  A number after `:` (a `file:line` location) is kept.
 - `verify` no longer counts a repository check whose command is not found (exit 127) as
   pre-existing: the check never ran, at the head or the base, so it fails verify.
 

@@ -30,11 +30,16 @@ def run(command: str, cwd: Path, timeout: int) -> dict:
 
 _DURATION = re.compile(r"\d+(\.\d+)?\s*(ms|s|sec|seconds)\b|(?<![\w:.])\d+:\d\d(:\d\d)?(\.\d+)?(?![\w:])")
 _PYTEST_RUN = re.compile(r"\bpytest-\d+\b")  # pytest numbers its temp directory anew each session
+# counts ("collected 6 items", "1 failed, 5 passed", "[ 83%]") change whenever a change adds tests; a
+# number after ":" is a file:line location and is kept, as are numbers inside words (E501, test_a0)
+_COUNT = re.compile(r"(?<![\w:.-])\d+(?![\w.:])")
+_PROGRESS = re.compile(r"(?:^|(?<=\s))[.sxXFE]+(?=\s+\[|\s*$)")  # pytest's per-test status characters
 
 
 def new_lines(head_output: str, base_output: str, head_root: Path, base_root: Path) -> list[str]:
     """Lines of a check's output at the head that its output at the base lacks. What differs
-    between any two runs of one check is masked first: the checkout it ran in, temp paths, and durations."""
+    between any two runs of one check is masked first: the checkout it ran in, temp paths, durations,
+    and counts. A new failure still shows, in the lines that name it."""
     head, base = _masker(head_root), _masker(base_root)
     seen = {base(line) for line in base_output.splitlines() if line.strip()}
     return [line for line in head_output.splitlines() if line.strip() and head(line) not in seen]
@@ -50,7 +55,8 @@ def _masker(root: Path):
 
     def mask(line: str) -> str:
         line = paths.sub(lambda m: names[m[1]] + ("/*" if names[m[1]] == "<tmp>" and m[2] else m[2] or ""), line.strip())
-        return _DURATION.sub("N", _PYTEST_RUN.sub("pytest-N", line))
+        line = _DURATION.sub("N", _PYTEST_RUN.sub("pytest-N", line))
+        return " ".join(_COUNT.sub("N", _PROGRESS.sub("P", line)).split())  # pytest pads progress to align
     return mask
 
 

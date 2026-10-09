@@ -147,7 +147,11 @@ class LoopTests(unittest.TestCase):
     def test_paths_and_durations_that_differ_per_run_are_not_new_output(self):
         self.ready_run(checks=['echo "rootdir: $PWD"; echo "E   AssertionError: $(mktemp -u)/out missing";'
                                ' echo "$TMPDIR/pytest-of-u/pytest-$RANDOM/test_a0";'
-                               ' echo "1 failed in $RANDOM.2s (0:0$((RANDOM % 10)):1$((RANDOM % 10)))"; exit 1'])
+                               ' echo "1 failed in $RANDOM.2s (0:0$((RANDOM % 10)):1$((RANDOM % 10)))";'
+                               # the change adds passing tests: counts and progress grow at the head
+                               ' n=1; test -f mul.py && n=3; echo "collected $n items";'
+                               ' echo "tests/test_mul.py F$(printf %${n}s | tr " " .)$(printf %$((9 - n))s)[ $((100 / n))%]";'
+                               ' echo "== 1 failed, $n passed in 0.02s =="; exit 1'])
         code, out, _ = self.repo.ls("verify")
         self.assertEqual(code, 0, out)
         self.assertIn("pre-existing, not counted", out)
