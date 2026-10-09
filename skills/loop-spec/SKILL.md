@@ -254,7 +254,8 @@ AC-1 to AC-3, runs T-1 and T-2 in parallel, then T-3 once both are merged:
   lists and put every command they say a change must pass (lint, format, typecheck,
   tests, build) here, with the file it came from; write `[]` when they require none.
   When one fails at verify, the program runs it at the base too: output that is the
-  same there is pre-existing and does not fail the run; new output does.
+  same there is pre-existing and does not fail the run; new output does. A command that
+  is not found fails the run.
 - Every `check`, `verify`, and `checks` command is a bash command run from the
   repository root.
 
@@ -327,6 +328,11 @@ When a check fails, find the cause (the code, the check, or the environment), fi
 `work`, commit, and verify again. Repeat until it passes. Never weaken or delete a test
 to make a check pass.
 
+Fix a pre-existing failure too, in a commit of its own, though verify does not count it:
+a red build blocks whoever works on the branch next. Leave it only when the fix needs a
+credential, an outside service, or a decision only a person can make, and say so in the
+description.
+
 ### Iterate
 
 Once verify passes:
@@ -391,8 +397,8 @@ each new review item (reviews, inline comments, conversation comments) once. The
 - **A question, or a request you decline with a reason:** answer it in a comment with
   `deliver --comment-file F`, alongside your next fix or on its own; a comment posted
   with `gh` instead comes back from `feedback` as a new item.
-- **A check that also fails on the base branch:** not this change's to fix; say so in a
-  comment.
+- **A check that also fails on the base branch:** fix it in a commit of its own, as in
+  Verify; when only a person can, say so in a comment.
 - **Feedback that cannot be satisfied** (it contradicts the spec, or needs a decision
   only the user can make): `LS finish --status escalated --summary "..."` naming what
   is needed.

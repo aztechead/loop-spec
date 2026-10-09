@@ -2,6 +2,27 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [8.1.2] - 2026-10-09
+
+### Fixed
+
+- `verify` no longer counts a repository check that fails the same way at the base as
+  new because of what differs between any two runs: before comparing the outputs it
+  masks each checkout's root, temp paths (pytest's numbered `pytest-of-<user>/pytest-N`
+  among them), durations written `H:MM:SS` or `M:SS`, such as pytest's `(0:01:15)`, and
+  counts, pytest's progress characters, and the length of the `=` rule around its summary,
+  all of which change whenever the change adds tests.
+  A number after `:` (a `file:line` location) is kept.
+- `verify` no longer counts a repository check whose command is not found (exit 127) as
+  pre-existing: the check never ran, at the head or the base, so it fails verify.
+
+### Changed
+
+- The skill tells the lead to fix a check that already fails on the base branch, in a
+  commit of its own, and to leave it only when the fix needs a credential, an outside
+  service, or a decision only a person can make. It used to say such a failure was not
+  the change's to fix.
+
 ## [8.1.1] - 2026-10-07
 
 ### Fixed

@@ -1,6 +1,8 @@
 """Run shell commands in a checkout and keep what a reader needs from each run."""
+import os
 import re
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -26,15 +28,38 @@ def run(command: str, cwd: Path, timeout: int) -> dict:
     }
 
 
-_DURATION = re.compile(r"\d+(\.\d+)?\s*(ms|s|sec|seconds)\b")
+_DURATION = re.compile(r"\d+(\.\d+)?\s*(ms|s|sec|seconds)\b|(?<![\w:.])\d+:\d\d(:\d\d)?(\.\d+)?(?![\w:])")
+_PYTEST_RUN = re.compile(r"\bpytest-\d+\b")  # pytest numbers its temp directory anew each session
+# counts ("collected 6 items", "1 failed, 5 passed", "[ 83%]") change whenever a change adds tests; a
+# number after ":" is a file:line location and is kept, as are numbers inside words (E501, test_a0)
+_COUNT = re.compile(r"(?<![\w:.-])\d+(?![\w.:])")
+_RULE = re.compile(r"([=_-])\1{2,}")  # pytest centers headers in a rule whose length follows the text
+_PROGRESS = re.compile(r"(?:^|(?<=\s))[.sxXFE]+(?=\s+\[|\s*$)")  # pytest's per-test status characters
 
 
-def new_lines(head_output: str, base_output: str) -> list[str]:
-    """Lines of a check's output at the head that its output at the base lacks, ignoring durations."""
-    def norm(text):
-        return {_DURATION.sub("N", line.strip()) for line in text.splitlines() if line.strip()}
-    base = norm(base_output)
-    return [line for line in head_output.splitlines() if line.strip() and _DURATION.sub("N", line.strip()) not in base]
+def new_lines(head_output: str, base_output: str, head_root: Path, base_root: Path) -> list[str]:
+    """Lines of a check's output at the head that its output at the base lacks. What differs
+    between any two runs of one check is masked first: the checkout it ran in, temp paths, durations,
+    and counts. A new failure still shows, in the lines that name it."""
+    head, base = _masker(head_root), _masker(base_root)
+    seen = {base(line) for line in base_output.splitlines() if line.strip()}
+    return [line for line in head_output.splitlines() if line.strip() and head(line) not in seen]
+
+
+def _masker(root: Path):
+    tmp = tempfile.gettempdir()
+    names = {str(root): "<root>", os.path.realpath(root): "<root>"}
+    for t in (tmp, os.path.realpath(tmp), "/tmp"):
+        names.setdefault(t, "<tmp>")
+    # a temp path's first component is a per-run random name (mkdtemp's, pytest-of-<user>'s)
+    paths = re.compile("(" + "|".join(map(re.escape, sorted(names, key=len, reverse=True))) + r")(?![\w.-])(/[^/\s]+)?")
+
+    def mask(line: str) -> str:
+        line = paths.sub(lambda m: names[m[1]] + ("/*" if names[m[1]] == "<tmp>" and m[2] else m[2] or ""), line.strip())
+        line = _DURATION.sub("N", _PYTEST_RUN.sub("pytest-N", line))
+        line = _RULE.sub(r"\1\1", _COUNT.sub("N", _PROGRESS.sub("P", line)))
+        return " ".join(line.split())  # pytest pads progress to align
+    return mask
 
 
 def planned(spec: dict | None, plan: dict | None) -> list[dict]:

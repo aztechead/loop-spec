@@ -144,6 +144,24 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("pre-existing, not counted", out)
 
+    def test_paths_and_durations_that_differ_per_run_are_not_new_output(self):
+        self.ready_run(checks=['echo "rootdir: $PWD"; echo "E   AssertionError: $(mktemp -u)/out missing";'
+                               ' echo "$TMPDIR/pytest-of-u/pytest-$RANDOM/test_a0";'
+                               ' echo "1 failed in $RANDOM.2s (0:0$((RANDOM % 10)):1$((RANDOM % 10)))";'
+                               # the change adds passing tests: counts and progress grow at the head
+                               ' n=1; test -f mul.py && n=12; echo "collected $n items";'
+                               ' echo "tests/test_mul.py F$(printf %${n}s | tr " " .)$(printf %$((14 - n))s)[ $((100 / n))%]";'
+                               ' echo "$(printf %$((12 - ${#n}))s | tr " " =) 1 failed, $n passed in 0.02s =="; exit 1'])
+        code, out, _ = self.repo.ls("verify")
+        self.assertEqual(code, 0, out)
+        self.assertIn("pre-existing, not counted", out)
+
+    def test_a_check_whose_command_is_missing_fails_verify_without_a_base_comparison(self):
+        self.ready_run(checks=["no-such-tool-xyz test"])
+        code, out, _ = self.repo.ls("verify")
+        self.assertEqual(code, 1)
+        self.assertIn("its command was not found, so it did not run", out)
+
     def test_a_check_the_change_broke_fails_verify(self):
         self.ready_run(checks=["test ! -f mul.py"])
         code, out, _ = self.repo.ls("verify")
