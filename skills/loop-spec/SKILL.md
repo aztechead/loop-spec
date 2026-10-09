@@ -254,7 +254,8 @@ AC-1 to AC-3, runs T-1 and T-2 in parallel, then T-3 once both are merged:
   lists and put every command they say a change must pass (lint, format, typecheck,
   tests, build) here, with the file it came from; write `[]` when they require none.
   When one fails at verify, the program runs it at the base too: output that is the
-  same there is pre-existing and does not fail the run; new output does.
+  same there is pre-existing and does not fail the run; new output does. A command that
+  is not found fails the run.
 - Every `check`, `verify`, and `checks` command is a bash command run from the
   repository root.
 

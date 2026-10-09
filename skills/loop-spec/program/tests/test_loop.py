@@ -152,6 +152,12 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("pre-existing, not counted", out)
 
+    def test_a_check_whose_command_is_missing_fails_verify_without_a_base_comparison(self):
+        self.ready_run(checks=["no-such-tool-xyz test"])
+        code, out, _ = self.repo.ls("verify")
+        self.assertEqual(code, 1)
+        self.assertIn("its command was not found, so it did not run", out)
+
     def test_a_check_the_change_broke_fails_verify(self):
         self.ready_run(checks=["test ! -f mul.py"])
         code, out, _ = self.repo.ls("verify")

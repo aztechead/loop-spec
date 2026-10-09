@@ -543,6 +543,9 @@ def _compare_at_base(run: Run, repo, item: dict, head: dict, head_dir: Path, tim
     """Run a failing repository check at the base too. It is pre-existing, and does not fail
     the verify, when it fails there as well and the head (run in `head_dir`) adds no output
     line the base lacks."""
+    if head["exit"] == 127:  # bash: command not found; the check never ran, wherever it is run
+        out("        its command was not found, so it did not run: not compared at the base")
+        return {"preexisting": False}
     _checkout(repo.path, repo.base_dir, repo.state["base"]["sha"])
     prepare = prepare_for(run.plan, repo.name)
     if prepare and (res := checks.run(prepare, repo.base_dir, timeout))["exit"] != 0:
