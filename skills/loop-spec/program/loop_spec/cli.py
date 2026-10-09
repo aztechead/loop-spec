@@ -504,10 +504,11 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
             results.append({"name": item["name"], "command": None})
             continue
         repo = run.repo(item.get("repo")) if run.workspace and item.get("repo") else None
-        r = checks.run(item["command"], repo.verify_dir if repo else run.verify_dir, args.timeout)
+        where = repo.verify_dir if repo else run.verify_dir
+        r = checks.run(item["command"], where, args.timeout)
         _report(item["name"], r)
         if r["exit"] != 0 and item.get("repoCheck") and not args.base:
-            r.update(_compare_at_base(run, run.repo(item.get("repo")), item, r, args.timeout))
+            r.update(_compare_at_base(run, run.repo(item.get("repo")), item, r, where, args.timeout))
         passed = passed and (r["exit"] == 0 or r.get("preexisting", False))
         results.append({"name": item["name"], **{k: v for k, v in r.items() if k != "output"}})
     if args.base:
@@ -538,9 +539,10 @@ def _prepare(run: Run, sha, timeout: int) -> bool:
     return ok
 
 
-def _compare_at_base(run: Run, repo, item: dict, head: dict, timeout: int) -> dict:
+def _compare_at_base(run: Run, repo, item: dict, head: dict, head_dir: Path, timeout: int) -> dict:
     """Run a failing repository check at the base too. It is pre-existing, and does not fail
-    the verify, when it fails there as well and the head adds no output line the base lacks."""
+    the verify, when it fails there as well and the head (run in `head_dir`) adds no output
+    line the base lacks."""
     _checkout(repo.path, repo.base_dir, repo.state["base"]["sha"])
     prepare = prepare_for(run.plan, repo.name)
     if prepare and (res := checks.run(prepare, repo.base_dir, timeout))["exit"] != 0:
@@ -550,7 +552,7 @@ def _compare_at_base(run: Run, repo, item: dict, head: dict, timeout: int) -> di
     if base["exit"] == 0:
         out("        passes at the base: this change made it fail")
         return {"preexisting": False}
-    added = checks.new_lines(head["output"], base["output"])
+    added = checks.new_lines(head["output"], base["output"], head_dir, repo.base_dir)
     if not added:
         out("        fails at the base too, with no new output: pre-existing, not counted")
         return {"preexisting": True}

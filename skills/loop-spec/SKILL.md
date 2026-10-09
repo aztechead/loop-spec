@@ -327,6 +327,11 @@ When a check fails, find the cause (the code, the check, or the environment), fi
 `work`, commit, and verify again. Repeat until it passes. Never weaken or delete a test
 to make a check pass.
 
+Fix a pre-existing failure too, in a commit of its own, though verify does not count it:
+a red build blocks whoever works on the branch next. Leave it only when the fix needs a
+credential, an outside service, or a decision only a person can make, and say so in the
+description.
+
 ### Iterate
 
 Once verify passes:
@@ -391,8 +396,8 @@ each new review item (reviews, inline comments, conversation comments) once. The
 - **A question, or a request you decline with a reason:** answer it in a comment with
   `deliver --comment-file F`, alongside your next fix or on its own; a comment posted
   with `gh` instead comes back from `feedback` as a new item.
-- **A check that also fails on the base branch:** not this change's to fix; say so in a
-  comment.
+- **A check that also fails on the base branch:** fix it in a commit of its own, as in
+  Verify; when only a person can, say so in a comment.
 - **Feedback that cannot be satisfied** (it contradicts the spec, or needs a decision
   only the user can make): `LS finish --status escalated --summary "..."` naming what
   is needed.

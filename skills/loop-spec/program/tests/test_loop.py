@@ -144,6 +144,14 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("pre-existing, not counted", out)
 
+    def test_paths_and_durations_that_differ_per_run_are_not_new_output(self):
+        self.ready_run(checks=['echo "rootdir: $PWD"; echo "E   AssertionError: $(mktemp -u)/out missing";'
+                               ' echo "$TMPDIR/pytest-of-u/pytest-$RANDOM/test_a0";'
+                               ' echo "1 failed in $RANDOM.2s (0:0$((RANDOM % 10)):1$((RANDOM % 10)))"; exit 1'])
+        code, out, _ = self.repo.ls("verify")
+        self.assertEqual(code, 0, out)
+        self.assertIn("pre-existing, not counted", out)
+
     def test_a_check_the_change_broke_fails_verify(self):
         self.ready_run(checks=["test ! -f mul.py"])
         code, out, _ = self.repo.ls("verify")
