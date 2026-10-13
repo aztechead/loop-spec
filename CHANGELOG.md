@@ -2,6 +2,20 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [8.2.0] - 2026-10-13
+
+### Changed
+
+- Task checkouts are reused across tasks. `task done` leaves a finished task's checkout
+  detached, with its ignored files (installs, builds), and the next `task start` takes
+  it, so `prepare` is incremental. A new checkout is made only when none is free, and
+  `finish` removes them all.
+- `task start` leaves a task ready, with a `<id>: not started` line, when another
+  checkout would not fit on the disk or git fails; a half-made checkout and branch are
+  undone, so the task can be started again.
+- The skill asks for a change several tasks need to shared code as a task the fan-out
+  depends on, and for a `prepare` that updates an install in place.
+
 ## [8.1.2] - 2026-10-09
 
 ### Fixed

@@ -4,7 +4,7 @@ For a developer installing loop-spec in Claude Code, or running it as the method
 autonomous coding agent follows on the Claude Agent SDK. Use this guide to install
 it, start a run, and read the result.
 
-Current version: 8.1.2
+Current version: 8.2.0
 
 ## What it is
 
@@ -111,7 +111,7 @@ repositories, in the workspace root's `.loop-spec/runs/<slug>/`; see below):
 | `spec.json`, `plan.json` | the spec and task graph the lead wrote |
 | `state.json` | what the program recorded: base, branch, task status, verify, PR |
 | `work/` | the feature branch's worktree, where finished tasks are merged |
-| `tasks/<id>/` | one worktree per task in progress |
+| `tasks/slot-<n>/` | task checkouts, each reused by the next task |
 | `verify/` | the clean checkout verify runs in |
 | `events.jsonl` | every phase record, in 7.x's format; a host reads the run's phase from the last `phase_start` |
 | `result.json` | the final result; once it exists, the run is over |

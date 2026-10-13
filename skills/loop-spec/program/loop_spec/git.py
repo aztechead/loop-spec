@@ -140,6 +140,16 @@ def remove_worktree(repo: Path, dest: Path, *, force: bool = False) -> bool:
     return git(repo, "worktree", "remove", *(["--force"] if force else []), str(dest)).returncode == 0
 
 
+def worktrees(repo: Path) -> list[Path]:
+    """Every worktree `repo` has registered, as git prints them (resolved paths)."""
+    out = run_git(repo, "worktree", "list", "--porcelain")
+    return [Path(line[len("worktree "):]) for line in out.splitlines() if line.startswith("worktree ")]
+
+
+def detached(worktree: Path) -> bool:
+    return git(worktree, "symbolic-ref", "-q", "HEAD").returncode != 0
+
+
 def dirty(worktree: Path) -> list[str]:
     out = run_git(worktree, "status", "--porcelain")
     return [line[3:] for line in out.splitlines() if line]

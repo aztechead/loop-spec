@@ -72,7 +72,7 @@ class LoopTests(unittest.TestCase):
         Path(run["runDir"], "plan.json").write_text(json.dumps(plan))
         Path(run["runDir"], "pr.md").write_text("## Why the change\n\nCallers need mul.\n")
         self.repo.ls("task", "start", "T-1")
-        commit(Path(run["runDir"], "tasks", "T-1"), "mul.py", "def mul(a, b):\n    return a * b\n")
+        commit(Path(run["runDir"], "tasks", "slot-1"), "mul.py", "def mul(a, b):\n    return a * b\n")
         self.assertEqual(self.repo.ls("task", "done", "T-1")[0], 0)
         return run
 
@@ -201,7 +201,7 @@ class LoopTests(unittest.TestCase):
             {"title": "t", "goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "true"}]}))
         Path(run["runDir"], "plan.json").write_text(json.dumps({"tasks": [{"id": "T-1", "title": "a"}]}))
         self.repo.ls("task", "start", "T-1")
-        commit(Path(run["runDir"], "tasks", "T-1"), "mul.py", "def mul(a, b):\n    return a * b\n")
+        commit(Path(run["runDir"], "tasks", "slot-1"), "mul.py", "def mul(a, b):\n    return a * b\n")
         self.assertEqual(self.repo.ls("task", "done", "T-1")[0], 0)
         self.checks("pass")
         self.deliver(run)  # no pr.md: the PR keeps its own description, and only the verification section is folded in
@@ -507,7 +507,7 @@ class LoopTests(unittest.TestCase):
 
     def test_status_resets_a_doing_task_whose_branch_is_gone(self):
         run = self.started_task()
-        shutil.rmtree(Path(run["runDir"], "tasks", "T-1"))
+        shutil.rmtree(Path(run["runDir"], "tasks", "slot-1"))
         sh(self.repo.path, "git", "worktree", "prune")
         sh(self.repo.path, "git", "branch", "-D", "loop-spec-task/add-mul/T-1")
         out = self.repo.ls("status")[1]
@@ -516,11 +516,11 @@ class LoopTests(unittest.TestCase):
 
     def test_checkpoint_commits_a_dirty_task_worktree_and_push_lands_its_branch(self):
         run = self.started_task()
-        task_dir = Path(run["runDir"], "tasks", "T-1")
+        task_dir = Path(run["runDir"], "tasks", "slot-1")
         (task_dir / "half.py").write_text("x = 1\n")
         code, out, _ = self.repo.ls("checkpoint", "--push")
         self.assertEqual(code, 0)
-        self.assertRegex(out, r"tasks/T-1 loop-spec-task/add-mul/T-1 [0-9a-f]{12} committed")
+        self.assertRegex(out, r"tasks/slot-1 loop-spec-task/add-mul/T-1 [0-9a-f]{12} committed")
         self.assertIn("feat/add-mul", out)
         self.assertEqual(sh(task_dir, "git", "log", "-1", "--format=%s"), "wip: loop-spec checkpoint, not verified")
         self.assertIn("refs/heads/loop-spec-task/add-mul/T-1", sh(self.repo.path, "git", "ls-remote", "--heads", "origin"))
@@ -537,7 +537,7 @@ class LoopTests(unittest.TestCase):
     def test_status_rebuilds_an_unpushed_work_branch_at_its_base_before_any_task_is_done(self):
         run = self.started_task()
         shutil.rmtree(run["work"])
-        shutil.rmtree(Path(run["runDir"], "tasks", "T-1"))
+        shutil.rmtree(Path(run["runDir"], "tasks", "slot-1"))
         sh(self.repo.path, "git", "worktree", "prune")
         sh(self.repo.path, "git", "branch", "-D", "feat/add-mul", "loop-spec-task/add-mul/T-1")
         out = self.repo.ls("status")[1]
@@ -547,7 +547,7 @@ class LoopTests(unittest.TestCase):
 
     def test_task_done_removes_the_task_branch_a_checkpoint_pushed(self):
         run = self.started_task()
-        (Path(run["runDir"], "tasks", "T-1") / "half.py").write_text("x = 1\n")
+        (Path(run["runDir"], "tasks", "slot-1") / "half.py").write_text("x = 1\n")
         self.repo.ls("checkpoint", "--push")
         self.assertEqual(self.repo.ls("task", "done", "T-1")[0], 0)
         self.assertNotIn("loop-spec-task", sh(self.repo.path, "git", "ls-remote", "--heads", "origin"))

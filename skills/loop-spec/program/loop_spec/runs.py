@@ -258,7 +258,8 @@ class Run:
         return read_json(self.result_path, "result")
 
     def task_dir(self, task_id: str) -> Path:
-        return self.dir / "tasks" / task_id
+        held = self.state.get("tasks", {}).get(task_id, {}).get("worktree")  # a name, so a resumed run in a fresh clone resolves it
+        return self.dir / "tasks" / (held or task_id)  # no key: a pre-8.2.0 task
 
     def task_branch(self, task_id: str) -> str:
         return f"loop-spec-task/{self.slug}/{task_id}"
@@ -306,8 +307,12 @@ class Run:
     def statuses(self) -> dict[str, str]:
         return {tid: t["status"] for tid, t in self.state.get("tasks", {}).items()}
 
-    def set_task(self, task_id: str, status: str, note: str | None = None) -> None:
-        self.state.setdefault("tasks", {})[task_id] = {"status": status, "note": note}
+    def set_task(self, task_id: str, status: str, note: str | None = None, worktree: str | None = None) -> None:
+        tasks = self.state.setdefault("tasks", {})
+        held = worktree or tasks.get(task_id, {}).get("worktree")
+        tasks[task_id] = {"status": status, "note": note}
+        if held and status != "done":  # a task not done keeps its checkout
+            tasks[task_id]["worktree"] = held
 
     def verified_at(self, head) -> bool:
         verify = self.state.get("verify") or {}
