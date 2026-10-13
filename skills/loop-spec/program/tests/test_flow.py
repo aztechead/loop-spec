@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 from loop_spec import cli
+from loop_spec.errors import LoopSpecError
 
 # The state home 7.x hosts read (legacy.py) goes to a scratch directory, never ~/.loop-spec.
 os.environ["LOOP_SPEC_HOME"] = tempfile.mkdtemp(prefix="loop-spec-home-")
@@ -188,6 +189,52 @@ class FlowTests(unittest.TestCase):
         self.assertTrue(brief["prepared"])
         self.assertEqual(Path(brief["worktree"], "prepared.txt").read_text(), "ready\n")
         self.assertEqual(brief["criteria"], [{"id": "AC-1", "text": "t", "check": "true"}])
+
+    def test_a_finished_tasks_checkout_is_reused_with_its_ignored_files(self):
+        with open(self.repo.path / ".git" / "info" / "exclude", "a") as f:
+            f.write("cache/\n")
+        run = self.start()
+        prepare = "mkdir -p cache && { test -f cache/x && echo reused || echo fresh; } > cache/state && touch cache/x"
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t"}]},
+                   {"prepare": prepare, "tasks": [{"id": "T-1", "title": "a"}, {"id": "T-2", "title": "b", "dependsOn": ["T-1"]}]})
+        first = self.task_start("T-1")["T-1"]
+        self.assertEqual(Path(first["worktree"], "cache", "state").read_text(), "fresh\n")
+        commit(Path(first["worktree"]), "a.py", "a = 1\n")
+        self.assertEqual(self.repo.ls("task", "done", "T-1")[0], 0)
+        second = self.task_start("T-2")["T-2"]
+        self.assertEqual(second["worktree"], first["worktree"])
+        self.assertEqual(Path(second["worktree"], "cache", "state").read_text(), "reused\n")
+        self.assertTrue(Path(second["worktree"], "a.py").is_file())
+        self.assertEqual(sh(Path(second["worktree"]), "git", "branch", "--show-current"), second["branch"])
+
+    def test_a_task_with_no_room_for_a_checkout_stays_ready(self):
+        run = self.start()
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t"}]}, {"tasks": [{"id": "T-1", "title": "a"}]})
+        state = Path(run["runDir"], "state.json")
+        data = json.loads(state.read_text())
+        data["checkoutBytes"] = 10**18
+        state.write_text(json.dumps(data))
+        code, out, _ = self.repo.ls("task", "start", "T-1")
+        self.assertEqual(code, 0)
+        self.assertIn("T-1: not started, needs about", out)
+        self.assertEqual(sh(self.repo.path, "git", "branch", "--list", "loop-spec-task/*"), "")
+        self.assertIn("ready", self.repo.ls("status")[1])
+
+    def test_a_failed_checkout_leaves_nothing_behind(self):
+        run = self.start()
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t"}]}, {"tasks": [{"id": "T-1", "title": "a"}]})
+
+        def broken(repo, dest, ref, *, new_branch=None, detach=False):
+            sh(repo, "git", "branch", new_branch)
+            Path(dest).mkdir(parents=True)
+            raise LoopSpecError("unable to write file")
+
+        with mock.patch("loop_spec.git.add_worktree", side_effect=broken):
+            code, out, _ = self.repo.ls("task", "start", "T-1")
+        self.assertEqual(code, 0)
+        self.assertIn("T-1: not started: unable to write file", out)
+        self.assertFalse(Path(run["runDir"], "tasks", "slot-1").exists())
+        self.assertEqual(sh(self.repo.path, "git", "branch", "--list", "loop-spec-task/*"), "")
 
     def test_the_host_environment_can_make_a_run_autonomous(self):
         self.start()

@@ -6,8 +6,10 @@ paths), `LOOP_SPEC_TASK` per task from `task start` (a worker's brief), and, whe
 ends, `LOOP_SPEC_RESULT` (7.x's schema-1 record) then `LOOP_SPEC_NEXT` (where it is written).
 """
 import argparse
+import itertools
 import json
 import os
+import shutil
 from pathlib import Path
 
 import sys
@@ -401,16 +403,26 @@ def cmd_task_start(args, project: Path, cwd: Path) -> int:
         dest, branch = run.task_dir(task_id), run.task_branch(task_id)
         note = None
         if not dest.exists():
-            if git.branch_exists(r.path, branch):
-                git.add_worktree(r.path, dest, branch)
-            else:
-                git.add_worktree(r.path, dest, feature_head, new_branch=branch)
+            free = _free_checkout(run, r)
+            if not free and (why := _no_room(run, r)):
+                out(f"{task_id}: not started, {why}; start it after a running task is done")
+                continue
+            before = shutil.disk_usage(run.dir).free
+            try:
+                dest = _take_checkout(run, r, free, branch, feature_head)
+            except LoopSpecError as e:
+                out(f"{task_id}: not started: {e.message}; it is still ready, start it again")
+                continue
             if prepare:
                 res = checks.run(prepare, dest, args.timeout)
                 if res["exit"] != 0:
                     note = f"prepare failed (exit {res['exit']})"
                     out(f"{task_id}: prepare failed in its worktree:\n" + _indent(res["tail"]))
-        run.set_task(task_id, "doing", note)
+            if not free and note is None:  # a new checkout's size: what the run's disk lost making and preparing it
+                used = before - shutil.disk_usage(run.dir).free
+                if used > r.state.get("checkoutBytes", 0):
+                    r.state["checkoutBytes"] = used  # ponytail: other writers on the disk skew this; max over new checkouts
+        run.set_task(task_id, "doing", note, worktree=dest.name)
         brief = {
             "id": task_id, "worktree": str(dest), "branch": branch, "from": git.head(dest),
             "task": task, "goal": (run.spec or {}).get("goal"),
@@ -450,7 +462,7 @@ def cmd_task_done(args, project: Path, cwd: Path) -> int:
             raise LoopSpecError(f"{args.id} conflicts with the feature branch in: {', '.join(conflicts) or merged.stderr.strip()}",
                                 f"in {dest}: git merge {r.state['branch']}, resolve, commit, then run task done {args.id} again")
     if dest.exists():
-        git.remove_worktree(r.path, dest, force=True)  # clean, checked above; --force only clears ignored files
+        git.run_git(dest, "checkout", "--quiet", "--detach")  # frees the branch; the checkout and its installs wait for the next task
     git.git(r.path, "branch", "-D", branch)
     _drop_remote_branch(r.path, branch)
     run.set_task(args.id, "done", args.note or (None if new else "no changes"))
@@ -571,6 +583,61 @@ def _checkout(project: Path, dest: Path, sha: str) -> None:
         git.run_git(dest, "clean", "-ffdq")
     else:
         git.add_worktree(project, dest, sha, detach=True)
+
+
+def _pool(run, r) -> list[Path]:
+    """`r`'s task checkouts in this run: its worktrees under the run's tasks directory."""
+    root = (run.dir / "tasks").resolve()
+    return [run.dir / "tasks" / p.name for p in git.worktrees(r.path) if p.resolve().parent == root]
+
+
+def _free_checkout(run, r) -> Path | None:
+    """A checkout no task holds: `task done` leaves it detached."""
+    return next((p for p in _pool(run, r) if p.is_dir() and git.detached(p)), None)
+
+
+def _new_checkout_path(run, r) -> Path:
+    prefix = f"{r.name}-" if r.name else ""
+    return next(p for n in itertools.count(1)
+                if not (p := run.dir / "tasks" / f"{prefix}slot-{n}").exists())
+
+
+def _no_room(run, r) -> str | None:
+    """Why another checkout of `r` would not fit on the run's disk; None when it would or its size is unknown."""
+    need = r.state.get("checkoutBytes")
+    free = shutil.disk_usage(run.dir).free
+    if not need or free >= need * 1.2:  # ponytail: flat 20% margin over the first checkout's measured size
+        return None
+    return f"needs about {need / 1e9:.1f} GB and {free / 1e9:.1f} GB is free"
+
+
+def _take_checkout(run, r, free, branch, feature_head) -> Path:
+    """Check `branch` out for a task (made from `feature_head` when it does not exist yet): in `free`,
+    the checkout a finished task left, else in a new one. On a failure, undo what this did and raise,
+    so the task can be started again without cleanup."""
+    new_branch = not git.branch_exists(r.path, branch)
+    if not free:
+        git.git(r.path, "worktree", "prune")  # a checkout deleted by hand keeps its name registered until pruned
+    dest = free or _new_checkout_path(run, r)
+    try:
+        if free:
+            git.run_git(free, "checkout", "--quiet", "--force", *(["-b", branch, feature_head] if new_branch else [branch]))
+            git.run_git(free, "clean", "-ffdq")  # no -x: ignored files (installs, builds) stay for prepare
+        elif new_branch:
+            git.add_worktree(r.path, dest, feature_head, new_branch=branch)
+        else:
+            git.add_worktree(r.path, dest, branch)
+        return dest
+    except LoopSpecError:
+        if free:
+            git.git(free, "checkout", "--quiet", "--detach")
+        else:
+            git.git(r.path, "worktree", "remove", "--force", str(dest))
+            shutil.rmtree(dest, ignore_errors=True)
+            git.git(r.path, "worktree", "prune")
+        if new_branch:
+            git.git(r.path, "branch", "-D", branch)
+        raise
 
 
 def _indent(text: str) -> str:
@@ -805,7 +872,7 @@ def _finish(run: Run, status: str, summary: str, head) -> int:
     for task_id, t in run.state.get("tasks", {}).items():
         if t.get("status") == "done":
             _drop_remote_branch(_task_repo(run, task_id).path, run.task_branch(task_id))
-    for dest, path in [*((d, _task_repo(run, d.name).path) for d in sorted((run.dir / "tasks").glob("*"))),
+    for dest, path in [*((d, r.path) for r in run.repos for d in _pool(run, r)),
                        *((r.work, r.path) for r in run.repos)]:
         if dest.is_dir() and not git.remove_worktree(path, dest):
             out(f"kept {dest}: it has uncommitted changes")

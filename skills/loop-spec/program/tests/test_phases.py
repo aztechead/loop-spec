@@ -43,7 +43,7 @@ class PhaseStreamTests(unittest.TestCase):
         Path(run["runDir"], "plan.json").write_text(json.dumps({"tasks": [{"id": "T-1", "title": "a"}]}))
         Path(run["runDir"], "pr.md").write_text("## Why the change\n\nmul.\n")
         out, start_task_err = self.run_all(("task", "start", "T-1"))
-        commit(Path(run["runDir"], "tasks", "T-1"), "mul.py", "x = 1\n")
+        commit(Path(run["runDir"], "tasks", "slot-1"), "mul.py", "x = 1\n")
         self.checks("pass")
         more_out, err = self.run_all(("task", "done", "T-1"), ("verify",), ("iterate",), ("deliver",), ("feedback",))
         stream = markers(start_out + out + more_out)
@@ -99,7 +99,7 @@ class PhaseStreamTests(unittest.TestCase):
         self.assertTrue(lines[-1].startswith("LOOP_SPEC_RUN "))
         self.assertEqual([m["phase"] for _, m in markers("\n".join(lines[-4:-1]))], ["plan", "plan", "execute"])
         self.repo.ls("task", "start", "T-1")
-        commit(Path(run["runDir"], "tasks", "T-1"), "mul.py", "x = 1\n")
+        commit(Path(run["runDir"], "tasks", "slot-1"), "mul.py", "x = 1\n")
         tail = self.repo.ls("task", "done", "T-1")[1].splitlines()[-2:]
         self.assertEqual([(k, m["phase"]) for k, m in markers("\n".join(tail))],
                          [("LOOP_SPEC_PHASE_END", "execute"), ("LOOP_SPEC_PHASE_START", "verify")])
