@@ -70,8 +70,9 @@ A run's worktrees live under `<repo>/.loop-spec/runs/<slug>/`, kept out of
 `git status` through the repository's own `info/exclude`. Inside the project
 directory, Claude Code's default permissions let the lead and the agents write there
 without a prompt, and nothing touches the user's own checkout. Each task gets its own
-worktree branched from the feature head when it starts, so parallel tasks cannot step
-on each other, and `task done` merges it (`--no-ff`) into the feature worktree.
+checkout on a branch from the feature head when it starts, so parallel tasks cannot step
+on each other; `task done` merges the branch (`--no-ff`) into the feature worktree and
+leaves the checkout, installs and all, for the next task to reuse.
 `verify` runs in one more worktree, `verify/`, reset to exactly the head's tracked
 files before each run (`checkout --force` and `clean -ffd`). Ignored files such as
 installed dependencies survive between verifies, so `prepare` is incremental.

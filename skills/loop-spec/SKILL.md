@@ -36,7 +36,7 @@ the project's checks take longer.
 | Command | Does |
 |---|---|
 | `LS status` | where the run is, every task's state, the repository's rules files, and the `next` step |
-| `LS task start T-1 T-2 ...` | one worktree per task from the feature head, with `prepare` already run in it; prints one `LOOP_SPEC_TASK {...}` brief per task |
+| `LS task start T-1 T-2 ...` | a checkout per task on its own branch from the feature head, with `prepare` run in it; a finished task's checkout is reused, installs and all. Prints one `LOOP_SPEC_TASK {...}` brief per task, or `<id>: not started, ...` when another checkout would not fit on the disk or git failed; that task stays ready |
 | `LS task done T-1` | merge the task's commits into the feature branch; prints the `next` step |
 | `LS task set T-1 --status todo\|blocked --note "..."` | change a task's status by hand |
 | `LS verify [--base]` | run every criterion check, task verify command, and repository check in a clean checkout of the feature head (or, with `--base`, of the base) |
@@ -248,8 +248,10 @@ AC-1 to AC-3, runs T-1 and T-2 in parallel, then T-3 once both are merged:
 ```
 
 - `prepare` installs what the checks need into a fresh checkout (`.venv/bin/python`
-  exists only after it). The program runs it in each task's worktree and before every
-  verify. Leave it out when nothing needs installing.
+  exists only after it). The program runs it in each task's checkout and before every
+  verify. Checkouts are reused, so it runs over the last task's install: use the install
+  command that updates in place (`pnpm install --frozen-lockfile`, not one that deletes
+  and reinstalls). Leave it out when nothing needs installing.
 - `checks` are the repository's own required checks. Read each rules file `LS status`
   lists and put every command they say a change must pass (lint, format, typecheck,
   tests, build) here, with the file it came from; write `[]` when they require none.
@@ -266,6 +268,9 @@ A task is a unit one implementer can build and test on its own.
 - Keep code and its tests in the same task. Give each file one owning task.
 - `dependsOn` only what a task needs merged first; independent tasks run in parallel. A
   small change is one task; split work only where the parts are independent.
+- When several tasks need the same change to shared code, make that change a task they
+  all depend on, so each starts with it. A fix you make in `work` after they start
+  reaches none of them.
 - Each task's `verify` runs the tests that exercise it, and every criterion is named in
   some task's `criteria`.
 - When the change alters behavior a doc describes, or a public symbol other code calls,
@@ -289,11 +294,12 @@ running independent tasks in parallel.
 
 Until every task is done:
 
-1. Run `LS task start` with the tasks the `next` line names. Each gets a worktree with
+1. Run `LS task start` with the tasks the `next` line names. Each gets a checkout with
    `prepare` already run, and a `LOOP_SPEC_TASK {...}` brief: `id`, `worktree`,
    `branch`, `from` (the commit it starts at), `task` (its entry in `plan.json`), the
    spec's `goal`, the `criteria` it covers, the repository's `checks`, and `prepared`
-   (false when `prepare` failed there).
+   (false when `prepare` failed there). A `<id>: not started` line means no brief: start
+   that task when another is done.
 2. Dispatch one `loop-spec:implementer` agent per started task, all in one message so
    they run in parallel. Its prompt is the task's brief, plus the conventions you found
    (commit style, house rules) and anything else it needs from you, including any design
