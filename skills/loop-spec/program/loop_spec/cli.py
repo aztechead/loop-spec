@@ -380,7 +380,8 @@ def _step(run: Run, phase: str, problem: str | None) -> str:
         if open_ and last.get("sha") == run.head():
             return (f"fix the open blocking finding(s) {', '.join(open_)} from the last review in work, verify, "
                     "review again, then loop-spec iterate --verdict-file F")
-        return "review the whole change (base..HEAD in work), address what it finds, then loop-spec iterate --verdict-file F"
+        return ("review the whole change (base..HEAD in work), then record the verdict with loop-spec iterate "
+                "--verdict-file F before fixing anything; it lists what is still open")
     if phase == "deliver":
         delivered = any(r.state.get("delivered") for r in run.repos) and not deliver.undelivered(run, run.head())
         return "loop-spec feedback" if delivered else "loop-spec deliver"

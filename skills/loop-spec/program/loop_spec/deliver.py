@@ -154,7 +154,7 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
                             "run `loop-spec verify`, or pass --unverified to open a draft PR that says it is unverified")
     if not unverified and (run.state.get("iterate") or {}).get("sha") != head:
         raise LoopSpecError("this head has no recorded review (ITERATE)",
-                            "review the whole change, address what it finds, then `loop-spec iterate` and deliver")
+                            "review the whole change, record the verdict with `loop-spec iterate --verdict-file F`, fix what it leaves open, and deliver")
     if not unverified and run.state.get("kind") == "debug" and not _at_base(run, failed=True):
         raise LoopSpecError("a debug run delivers a fix for a failure shown at the base, and no criterion failed there",
                             "put the failing command in a criterion's check, run `loop-spec verify --base`, and see it fail")

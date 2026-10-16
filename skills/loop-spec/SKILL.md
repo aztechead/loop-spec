@@ -360,14 +360,16 @@ Once verify passes:
    In a run across repositories, one review of every repository names each head in
    `head`; separate reviews per repository go in one file each, and `iterate` prefixes
    their finding ids with the repository name (decline `web/F-1`).
-2. Fix every blocking finding. Apply each simplifier cleanup that keeps the behavior the
-   spec asks for and makes the change smaller or plainer; skip the rest. Commit small
-   fixes in `work`, or add a task for a larger one, and list what you skipped in your
-   report.
-3. Any new commit sends the run back to verify: run `LS verify` again, dispatch a fresh
-   reviewer, and run `LS iterate --verdict-file F` each round, until the verified head has
-   nothing left to fix. It refuses while blocking findings are open; decline one only with
-   a reason the PR will show (`--decline F-2="..."`).
+2. Record the verdict as soon as the review returns, before fixing anything:
+   `LS iterate --verdict-file F`. Every round goes in the PR's review record, so the
+   rounds that found something count most. It refuses while a blocking finding is open
+   and lists them; decline one only with a reason the PR will show (`--decline F-2="..."`).
+3. Fix every open blocking finding. Apply each simplifier cleanup that keeps the
+   behavior the spec asks for and makes the change smaller or plainer; skip the rest.
+   Commit small fixes in `work`, or add a task for a larger one, and list what you
+   skipped in your report. Any new commit sends the run back to verify: run `LS verify`,
+   dispatch a fresh reviewer, and record its verdict, until a verified head's review
+   leaves nothing open.
 4. Pass `--caveats "..."` to `LS iterate` for anything you knowingly leave open, which
    the result carries.
 
