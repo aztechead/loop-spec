@@ -81,6 +81,9 @@ def _verification(run: Run, verified: bool, repo: Repo | None = None, siblings=(
             ok = None if r is None or r.get("command") is None else r.get("exit") == 0
             check = ("<br>".join(f"`{line}`" for line in c["check"].splitlines())
                      if c.get("check") else "no command; judged in review")
+            if r and "base" in r:
+                check += (f"<br>base {r['base']} -> head {r['value']} ({r['delta']:+}%, "
+                          f"target {c['better']} by {c['by']})")
             lines.append(f"| {MARK[ok]} | **{c.get('id', '')}** {_cell(c.get('text', ''))} | {_cell(check)} |")
     links = ", ".join(f"[{n}#{num}]({url})" for n, num, url in siblings)
     side = [f"**Part of one change across repositories:** {links}", ""] if links else []

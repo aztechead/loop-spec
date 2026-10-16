@@ -11,7 +11,7 @@ the line between them sits where it does. The method itself is in
 |---|---|---|
 | The lead (the user's session, or an SDK agent) | every judgment: the spec, the plan, dispatching tasks, reading reports, fixing findings | runs the hub skill |
 | The hub skill | the method, as guidance the lead follows: every phase in `SKILL.md`, and what only some runs need (a run kind's changes, the PR template) as references it links, which the program's `next` line names when the run needs them | `skills/loop-spec/SKILL.md`, `skills/loop-spec/references/` |
-| Entry skills | starting a run of one kind, then pointing at the hub | `skills/{cycle,micro,debug,revise,refactor,status}/SKILL.md` |
+| Entry skills | starting a run of one kind, then pointing at the hub | `skills/{cycle,micro,debug,revise,refactor,perf,status}/SKILL.md` |
 | Agents | one task's implementation (`implementer`, Sonnet), the whole change's adversarial review (`reviewer`, Opus), and its cleanup review (`simplifier`, Sonnet) | `agents/*.md` |
 | The hooks | the Stop hook keeps an autonomous run going until it has a result; the PostToolUse hook reports the stream markers the lead's pipe cut | `hooks/hooks.json`, `loop_spec/hook.py` |
 | The program | facts the lead should not re-derive: run state, the task graph, worktrees, merges, running checks, the PR | `skills/loop-spec/program/` |

@@ -310,7 +310,7 @@ def _rel(run: Run, path: Path) -> Path:
 # The hub skill's references, which only some runs need: a run kind's changes to the
 # workflow, named on the `next` line at the spec, and the PR template, named at deliver.
 REFERENCES = Path(__file__).resolve().parents[2] / "references"
-KIND_GUIDES = ("micro", "debug", "revise", "refactor")
+KIND_GUIDES = ("micro", "debug", "revise", "refactor", "perf")
 
 
 def _next_step(run: Run, phase: str, problem: str | None = None) -> str:
@@ -555,7 +555,7 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
             continue
         repo = run.repo(item.get("repo")) if run.workspace and item.get("repo") else None
         where = repo.verify_dir if repo else run.verify_dir
-        key = None if args.base else _cache_key(run, item, sha)
+        key = None if args.base or item.get("better") else _cache_key(run, item, sha)  # a measurement is never reused
         cache = run.state.setdefault("checkCache", {})
         if key in cache:
             out(f"  pass  {item['name']:8} {item['command']}  (cached at {cache[key]})")
@@ -569,6 +569,8 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
             r.update(_compare_at_base(run, run.repo(item.get("repo")), item, r, where, args.timeout))
         if r["exit"] != 0 and not (args.base or item.get("repo") or item.get("repoCheck")):
             _hint_same_failure(run, item, r, prior, sha)
+        if item.get("better") and r["exit"] == 0:
+            _measure(run, item, r, args.base)
         passed = passed and (r["exit"] == 0 or r.get("preexisting", False))
         results.append({"name": item["name"], **{k: v for k, v in r.items() if k != "output"}})
     if args.base:
@@ -606,6 +608,33 @@ def _hint_same_failure(run: Run, item: dict, r: dict, prior: dict, sha) -> None:
                 and mask(old.get("tail", "")) == mask(r["tail"]):
             out(f"        fails with the same output as at {short(prior['sha'])}: if this change should have changed it, the check itself may be wrong")
             return
+
+
+def _measure(run: Run, item: dict, r: dict, at_base: bool) -> None:
+    """A measured criterion: the number its check prints, kept at the base and compared with the base's at the head."""
+    value, tail = checks.number(r["output"]), ""
+    if value is None:
+        tail = "(no number on the last line)"
+    elif at_base:
+        r["value"] = value
+    else:
+        base = next((b.get("value") for b in (run.state.get("baseVerify") or {}).get("results", [])
+                     if b["name"] == item["name"]), None)
+        if base is None:
+            tail = "(no base measurement: run loop-spec verify --base)"
+        elif base <= 0:
+            tail = "(the base measurement is not positive: the check must print a positive number)"
+        else:
+            delta = round((value - base) / base * 100, 1)
+            r.update(value=value, base=base, delta=delta)
+            r["exit"] = 0 if checks.beats(value, base, item["better"], item["by"]) else 1
+            out(f"  {item['name']}: base {base} -> head {value} ({delta:+}%) {'meets' if r['exit'] == 0 else 'MISSES'} the target")
+            if r["exit"]:
+                tail = f"(base {base} -> head {value}, {delta:+}%, target {item['better']} by {item['by']})"
+    if tail:
+        r["exit"] = 1
+        r["tail"] = (r["tail"] + "\n" + tail).strip()
+        out(_indent(tail))
 
 
 def _prepare(run: Run, sha, timeout: int) -> bool:
