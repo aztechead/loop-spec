@@ -363,9 +363,6 @@ Once verify passes:
 4. Pass `--caveats "..."` to `LS iterate` for anything you knowingly leave open, which
    the result carries.
 
-A finding the reviewer has raised before in this repository is a missing check: add the
-command that catches it to plan.json's `checks`.
-
 ## 6. Deliver, then see CI and review through
 
 Open the PR for the verified, reviewed head, then answer its CI and its reviewers until
