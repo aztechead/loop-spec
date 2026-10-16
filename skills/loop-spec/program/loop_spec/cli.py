@@ -903,6 +903,13 @@ def _read_verdicts(run: Run, head, files: list[str]) -> list[dict]:
                 raise LoopSpecError(f"{f}: bad finding {item!r}", "each needs a string id, file, summary and a boolean blocking")
         judged = verdict.get("head")
         prefix = ""
+        if run.workspace and isinstance(judged, dict):  # one review of every repository: {name: sha}
+            if not judged or any(not (isinstance(s, str) and len(s) >= 7 and (head.get(n) or "").startswith(s))
+                                 for n, s in judged.items()):
+                raise LoopSpecError(f"this review judged {judged}, the heads are "
+                                    f"{', '.join(f'{n} {short(s)}' for n, s in head.items())}", "review the current heads")
+            findings += items
+            continue
         if run.workspace:
             names = [n for n, sha in head.items() if isinstance(judged, str) and len(judged) >= 7 and sha.startswith(judged)]
             if len(names) != 1:
