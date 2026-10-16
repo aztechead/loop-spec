@@ -84,7 +84,27 @@ def _verification(run: Run, verified: bool, repo: Repo | None = None, siblings=(
             lines.append(f"| {MARK[ok]} | **{c.get('id', '')}** {_cell(c.get('text', ''))} | {_cell(check)} |")
     links = ", ".join(f"[{n}#{num}]({url})" for n, num, url in siblings)
     side = [f"**Part of one change across repositories:** {links}", ""] if links else []
-    return [VERIFY_OPEN, *side, *lines, "", "_Delivered by loop-spec._", "</details>", VERIFY_CLOSE]
+    return [VERIFY_OPEN, *side, *lines, *_review_lines(run), "", "_Delivered by loop-spec._", "</details>", VERIFY_CLOSE]
+
+
+def _review_lines(run: Run) -> list[str]:
+    """The decision trail: how many review rounds, what they fixed, and what was declined and why."""
+    reviews = run.state.get("reviews") or []
+    if not reviews:
+        return []
+    fixed = declined = 0
+    bullets = []
+    for n, r in enumerate(reviews, 1):
+        why = r.get("declined", {})
+        blocking = [f for f in r.get("findings", []) if f["blocking"]]
+        if r["sha"] != reviews[-1]["sha"]:
+            fixed += sum(f["id"] not in why for f in blocking)
+        for f in r.get("findings", []):
+            if f["id"] in why:
+                declined += 1
+                where = f"{f['file']}:{f['line']}" if f.get("line") else f["file"]
+                bullets.append(f"- round {n} {f['id']} {where}: {f['summary']} (declined: {why[f['id']]})")
+    return ["", f"**Review:** {len(reviews)} round(s); {fixed} blocking finding(s) fixed, {declined} declined", *bullets]
 
 
 def _cell(text: str) -> str:

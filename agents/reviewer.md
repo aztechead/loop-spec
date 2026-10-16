@@ -31,3 +31,8 @@ Report only what you can point to in the code. For each finding give the file an
 what is wrong, why it matters, and the fix you suggest. Mark it **blocking** (the PR
 should not merge with it) or **optional** (a real improvement, safe to skip). If you find
 nothing blocking, say so plainly; do not invent findings to have some.
+
+End your report with one fenced `json` block, the only one in your reply:
+`{"head": "<full sha of HEAD in the worktree>", "findings": [{"id": "F-1", "file": "path", "line": 12,
+"blocking": true, "summary": "one line"}]}`. Number findings F-1, F-2, ... in report order; `findings` is
+`[]` when you found nothing. Get the head with `git -C <worktree> rev-parse HEAD`.
