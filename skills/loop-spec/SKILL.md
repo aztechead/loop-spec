@@ -39,7 +39,7 @@ the project's checks take longer.
 | `LS task start T-1 T-2 ...` | a checkout per task on its own branch from the feature head, with `prepare` run in it; a finished task's checkout is reused, installs and all. Prints one `LOOP_SPEC_TASK {...}` brief per task, or `<id>: not started, ...` when another checkout would not fit on the disk or git failed; that task stays ready |
 | `LS task done T-1` | merge the task's commits into the feature branch; prints the `next` step |
 | `LS task set T-1 --status todo\|blocked --note "..."` | change a task's status by hand |
-| `LS start --after SLUG` | begin a run stacked on the delivered run SLUG (single repository only); not with `--base` or `--pr` |
+| `LS start --after SLUG` | begin a run stacked on the delivered run SLUG (single repository only; once SLUG's PR merged, the run starts on its base); not with `--base` or `--pr` |
 | `LS verify [--base]` | run every criterion check, task verify command, and repository check in a clean checkout of the feature head (or, with `--base`, of the base; records the base result) |
 | `LS sync` | merge whatever moved on origin (the base branch, or the feature branch itself) into `work` |
 | `LS iterate --verdict-file F [--decline ID=REASON ...] [--caveats "..."]` | record the reviewer's verdict for the verified head; refuses while a blocking finding is neither fixed nor declined (micro may omit `--verdict-file` after its own review) |

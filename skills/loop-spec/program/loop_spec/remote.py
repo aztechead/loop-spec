@@ -14,18 +14,25 @@ def retarget(run: Run, repo: Repo) -> None:
     """When the branch this run stacks on merged and left origin, move the run onto that branch's own base.
     The one change on origin a refused deliver may make: the PR's base, which records the same fact."""
     stacked = repo.state.get("stackedOn") or run.state.get("stackedOn")
-    work, base = repo.work, repo.state["base"]["branch"]
-    if not stacked or not git.has_origin(work) or git.remote_has(work, base):
+    if not stacked or not merged_away(repo.work, repo.state["base"]["branch"], stacked["pr"],
+                                      "end the run with loop-spec finish --status escalated and start it again on the right base"):
         return
-    state = git.gh_json(work, "pr", "view", str(stacked["pr"]["number"]), "--json", "state").get("state")
-    if state != "MERGED":
-        raise LoopSpecError(f"origin/{base} is gone and its PR {stacked['pr']['url']} did not merge",
-                            "end the run with loop-spec finish --status escalated and start it again on the right base")
+    work = repo.work
     repo.state["base"]["branch"] = stacked["base"]
     run.state.pop("stackedOn", None)
     if repo.state.get("pr"):
         git.pr_set_base(work, repo.state["pr"]["number"], stacked["base"])
     run.save()
+
+
+def merged_away(work, branch: str, pr: dict, fix: str) -> bool:
+    """Whether `branch` left origin because its PR merged. False while origin has it (or there is no
+    origin); raises when it is gone and its PR did not merge."""
+    if not git.has_origin(work) or git.remote_has(work, branch):
+        return False
+    if git.gh_json(work, "pr", "view", str(pr["number"]), "--json", "state").get("state") != "MERGED":
+        raise LoopSpecError(f"origin/{branch} is gone and its PR {pr['url']} did not merge", fix)
+    return True
 
 
 def moves(run: Run, repo: Repo) -> list[dict]:
