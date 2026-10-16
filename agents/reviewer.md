@@ -27,7 +27,17 @@ Attack the change from separate angles, one at a time:
 - **Root cause:** a fix that hides a symptom (a guard, a retry, a broad except) instead
   of removing its cause.
 
+Before you report, name the one fact the change is safe because of and run a command
+that shows it holds; say what you ran.
+
 Report only what you can point to in the code. For each finding give the file and line,
 what is wrong, why it matters, and the fix you suggest. Mark it **blocking** (the PR
 should not merge with it) or **optional** (a real improvement, safe to skip). If you find
 nothing blocking, say so plainly; do not invent findings to have some.
+
+End your report with one fenced `json` block, the only one in your reply:
+`{"head": "<full sha of HEAD in the worktree>", "findings": [{"id": "F-1", "file": "path", "line": 12,
+"blocking": true, "summary": "one line"}]}`. Number findings F-1, F-2, ... in report order; `findings` is
+`[]` when you found nothing. Get the head with `git -C <worktree> rev-parse HEAD`. When you
+review several repositories' worktrees, `head` is an object naming each one's HEAD:
+`{"api": "<sha>", "web": "<sha>"}`.

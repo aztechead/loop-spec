@@ -27,10 +27,14 @@ usable criteria, a plan that is not a DAG or names a criterion the spec lacks, a
 that conflicts, finishing a task with uncommitted work, delivering a head that verify
 did not pass (overridable with `--unverified`, which marks the PR draft and says so),
 a `pr.md` that still holds the template's placeholder lines, and delivering a head
-that lacks commits origin has. It also checks `gh` before pushing, so a delivery that
+that lacks commits origin has, a debug run with no failure at the base, an `iterate`
+with an open blocking finding, and `finish --status completed` before a clear feedback
+round (`deliver --no-feedback` ends a run completed without one, as before, on the
+user's request). It also checks `gh` before pushing, so a delivery that
 cannot open its PR changes nothing. Each refusal names what to fix. Where a fact only
 predicts trouble (two parallel tasks listing the same file), it warns instead. It
-never judges the model's work. No loop has a cap: whether a loop should stop is a judgment, and the
+never judges the model's work: the verdict log is a decision trail, not a quality
+guarantee, and a reviewer that reports nothing passes. No loop has a cap: whether a loop should stop is a judgment, and the
 lead records it with `finish`.
 
 ## Program modules

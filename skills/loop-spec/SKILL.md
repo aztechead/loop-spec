@@ -39,14 +39,14 @@ the project's checks take longer.
 | `LS task start T-1 T-2 ...` | a checkout per task on its own branch from the feature head, with `prepare` run in it; a finished task's checkout is reused, installs and all. Prints one `LOOP_SPEC_TASK {...}` brief per task, or `<id>: not started, ...` when another checkout would not fit on the disk or git failed; that task stays ready |
 | `LS task done T-1` | merge the task's commits into the feature branch; prints the `next` step |
 | `LS task set T-1 --status todo\|blocked --note "..."` | change a task's status by hand |
-| `LS verify [--base]` | run every criterion check, task verify command, and repository check in a clean checkout of the feature head (or, with `--base`, of the base) |
+| `LS verify [--base]` | run every criterion check, task verify command, and repository check in a clean checkout of the feature head (or, with `--base`, of the base; records the base result) |
 | `LS sync` | merge whatever moved on origin (the base branch, or the feature branch itself) into `work` |
-| `LS iterate [--caveats "..."]` | record that the verified head's whole-change review is done and addressed |
+| `LS iterate --verdict-file F [--decline ID=REASON ...] [--caveats "..."]` | record the reviewer's verdict for the verified head; refuses while a blocking finding is neither fixed nor declined (micro may omit `--verdict-file` after its own review) |
 | `LS set [--repo NAME] --branch NAME --title "..."` | rename the feature branch (until it is pushed) or set the PR title; `--repo` sets them for one repository of a run across repositories |
 | `LS deliver [--draft] [--unverified] [--comment-file F]` | push the verified head and open or update its PR (posting `F` as a comment) |
 | `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review; ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
 | `LS checkpoint [--push]` | commit work in progress in every worktree and list them; `--push` pushes the branches that hold commits of their own. For a run the host asked to wrap up |
-| `LS finish --status completed\|no-change\|escalated\|failed --summary "..."` | end the run: `completed` after feedback skills find nothing, otherwise a run that delivers nothing |
+| `LS finish --status completed\|no-change\|escalated\|failed --summary "..."` | end the run: `completed` only after the delivered head's last `feedback` showed CI passed and nothing new; otherwise for a run that delivers nothing |
 
 Four kinds of check apply to a run. A criterion's `check` (in `spec.json`), a task's
 `verify`, and the repository's `checks` (both in `plan.json`) all run in `LS verify`. CI
@@ -110,6 +110,9 @@ The run's `mode` is in `LOOP_SPEC_RUN`.
   without the approval of the criteria. After the spec, work as autonomous, except ask
   when you cannot go on without an answer or before a step that is hard to undo. If a
   question comes back unanswered, end your turn with a line saying `LOOP_SPEC_ASKING`.
+
+When a choice turns on something you can observe (behavior, output, timing), sketch it
+in a scratch worktree and let the result decide; ask only what no run can settle.
 
 ## The workflow
 
@@ -346,14 +349,24 @@ Once verify passes:
 1. Dispatch, in one message, a `loop-spec:reviewer` (correctness, adversarially) and a
    `loop-spec:simplifier` (reuse, simplification, efficiency, altitude). Give both
    `work` and the range `<base>..HEAD`; give the reviewer the path of `spec.json` too.
-2. Fix every blocking finding. Apply each simplifier cleanup that keeps the behavior the
-   spec asks for and makes the change smaller or plainer; skip the rest. Commit small
-   fixes in `work`, or add a task for a larger one, and list what you skipped in your
-   report.
-3. Any new commit sends the run back to verify: run `LS verify` again, and repeat until
-   the verified head has nothing left to fix.
-4. Run `LS iterate`, with `--caveats "..."` for anything you knowingly leave open,
-   which the result carries.
+   The reviewer ends with a json verdict block; save it to a file in the run directory.
+   In a run across repositories, one review of every repository names each head in
+   `head`; separate reviews per repository go in one file each, and `iterate` prefixes
+   their finding ids with the repository name (decline `web/F-1`).
+2. Record the verdict as soon as the review returns, before fixing anything:
+   `LS iterate --verdict-file F`. Every round goes in the PR's review record, so the
+   rounds that found something count most. It refuses while a blocking finding is open
+   and lists them; decline one only with a reason the PR will show (`--decline F-2="..."`).
+   A verdict for a commit the branch has since moved past is still recorded, as an earlier
+   round.
+3. Fix every open blocking finding. Apply each simplifier cleanup that keeps the
+   behavior the spec asks for and makes the change smaller or plainer; skip the rest.
+   Commit small fixes in `work`, or add a task for a larger one, and list what you
+   skipped in your report. Any new commit sends the run back to verify: run `LS verify`,
+   dispatch a fresh reviewer, and record its verdict, until a verified head's review
+   leaves nothing open.
+4. Pass `--caveats "..."` to `LS iterate` for anything you knowingly leave open, which
+   the result carries.
 
 ## 6. Deliver, then see CI and review through
 
@@ -397,7 +410,8 @@ Run `LS feedback`. It waits for the PR's checks, then shows each failed check's 
 each new review item (reviews, inline comments, conversation comments) once. Then:
 
 - **Checks still running, or a requested review not in yet:** run it again.
-- **CI passed and nothing new:** the run ends.
+- **CI passed and nothing new:** the run ends. `finish --status completed` refuses until
+  the delivered head's last `feedback` showed CI passed and nothing new.
 - **A failed check or a review item this change should address:** fix it in `work`,
   verify, deliver, and run `feedback` again.
 - **A question, or a request you decline with a reason:** answer it in a comment with

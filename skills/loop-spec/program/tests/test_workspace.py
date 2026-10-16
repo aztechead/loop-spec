@@ -13,7 +13,7 @@ from unittest import mock
 
 from loop_spec import cli, hook, runs
 from loop_spec.errors import LoopSpecError
-from test_flow import commit, marker, sh
+from test_flow import commit, marker, sh, verdict
 
 os.environ["LOOP_SPEC_HOME"] = tempfile.mkdtemp(prefix="loop-spec-home-")
 
@@ -113,11 +113,31 @@ class WorkspaceTests(unittest.TestCase):
         self.do_task("T-A", "a.py")
         self.do_task("T-W", "w.py")
 
+    def verdicts(self, run: dict, names=("api", "web")) -> list[str]:
+        """--verdict-file arguments: one clean verdict per repository, each for that repository's head."""
+        return [a for n in names for a in ("--verdict-file", verdict(
+            run["runDir"], sh(Path(run["work"]) / n, "git", "rev-parse", "HEAD"), name=f"verdict-{n}.json"))]
+
+    def test_one_review_of_both_repositories_names_each_head(self):
+        run = self.start("--autonomous")
+        self.both_tasks(run)
+        self.assertEqual(self.ls("verify")[0], 0)
+        heads = {n: sh(Path(run["work"]) / n, "git", "rev-parse", "HEAD") for n in ("api", "web")}
+        stale = Path(run["runDir"], "stale.json")
+        stale.write_text(json.dumps({"head": {"api": heads["api"], "web": "0" * 40}, "findings": []}))
+        code, _, err = self.ls("iterate", "--verdict-file", str(stale))
+        self.assertEqual(code, 1)
+        self.assertIn("review the current heads", err)
+        both = Path(run["runDir"], "both.json")
+        both.write_text(json.dumps({"head": heads, "findings": []}))
+        code, _, err = self.ls("iterate", "--verdict-file", str(both))
+        self.assertEqual(code, 0, err)
+
     def verified_run(self) -> dict:
         run = self.start("--autonomous")
         self.both_tasks(run)
         self.assertEqual(self.ls("verify")[0], 0)
-        self.assertEqual(self.ls("iterate")[0], 0)
+        self.assertEqual(self.ls("iterate", *self.verdicts(run))[0], 0)
         return run
 
     def describe(self, run: dict, name: str) -> None:
@@ -240,7 +260,7 @@ class WorkspaceTests(unittest.TestCase):
                   criteria=[{"id": "AC-1", "text": "t", "check": "test -f api/a.py"}])
         self.do_task("T-A", "a.py")
         self.assertEqual(self.ls("verify")[0], 0)
-        self.assertEqual(self.ls("iterate")[0], 0)
+        self.assertEqual(self.ls("iterate", *self.verdicts(run))[0], 0)
         self.describe(run, "api")
         code, out, err = self.ls("deliver")
         self.assertEqual(code, 0, out + err)

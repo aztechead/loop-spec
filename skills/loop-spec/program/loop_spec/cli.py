@@ -350,11 +350,37 @@ def _step(run: Run, phase: str, problem: str | None) -> str:
     if phase == "verify":
         return "loop-spec verify"
     if phase == "iterate":
-        return "review the whole change (base..HEAD in work), address what it finds, then loop-spec iterate"
+        files = _repeat_blocking_file(run)
+        if files:
+            return (f"the last two reviews found blocking problems in {', '.join(files)} after a fix: write down the "
+                    "premise both fixes assumed, test it with a command, then fix, verify, and review again")
+        last = (run.state.get("reviews") or [{}])[-1]
+        open_ = [f["id"] for f in last.get("findings", [])
+                 if f["blocking"] and f["id"] not in last.get("declined", {})]
+        if open_ and last.get("sha") == run.head():
+            return (f"fix the open blocking finding(s) {', '.join(open_)} from the last review in work, verify, "
+                    "review again, then loop-spec iterate --verdict-file F")
+        return ("review the whole change (base..HEAD in work), then record the verdict with loop-spec iterate "
+                "--verdict-file F before fixing anything; it lists what is still open")
     if phase == "deliver":
         delivered = any(r.state.get("delivered") for r in run.repos) and not deliver.undelivered(run, run.head())
         return "loop-spec feedback" if delivered else "loop-spec deliver"
     return "nothing; the run is over"
+
+
+def _repeat_blocking_file(run: Run) -> list[str]:
+    """Files holding an open blocking finding in each of the last two reviews of different heads."""
+    rounds, seen = [], []
+    for r in reversed(run.state.get("reviews", [])):
+        if r.get("self"):  # a micro self-review has no findings to compare
+            continue
+        if r["sha"] not in seen:
+            seen.append(r["sha"])
+            rounds.append({f["file"] for f in r.get("findings", [])
+                           if f["blocking"] and f["id"] not in r.get("declined", {})})
+        if len(rounds) == 2:
+            return sorted(rounds[0] & rounds[1])
+    return []
 
 
 def _print_tasks(run: Run) -> None:
@@ -524,7 +550,9 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
         passed = passed and (r["exit"] == 0 or r.get("preexisting", False))
         results.append({"name": item["name"], **{k: v for k, v in r.items() if k != "output"}})
     if args.base:
-        out(("passed" if passed else "failed") + " at the base; not recorded, since only the feature head is delivered")
+        run.state["baseVerify"] = {"sha": sha, "passed": passed, "results": results}
+        run.save()
+        out(("passed" if passed else "failed") + f" at the base {short(sha)}; recorded as the base record")
     else:
         run.state["verify"] = {"sha": sha, "passed": passed, "results": results}
         run.save()
@@ -718,7 +746,7 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
         time.sleep(ci.POLL_SECONDS)
     for r in targets:
         record, verdicts, new, _, _ = rounds[r.name]
-        record.update(sha=r.state["delivered"]["sha"], ci=ci_by[r.name][0], verdicts=verdicts,
+        record.update(sha=r.state["delivered"]["sha"], ci=ci_by[r.name][0], verdicts=verdicts, new=len(new),
                       seen=record["seen"] + [i["id"] for i in new],
                       authors=sorted({*record.get("authors", []), *(i["author"] for i in new if i.get("author"))}))
     run.save()
@@ -766,14 +794,101 @@ def _config(project: Path) -> dict:
 def cmd_iterate(args, project: Path, cwd: Path) -> int:
     run = find(project, args.slug, cwd)
     head = run.head()
+    reviews = run.state.setdefault("reviews", [])
+    earlier = _earlier_head(run, head, args.verdict_file)
+    if earlier:  # a review of a commit the branch has moved past: keep it in the record, it cannot pass ITERATE
+        reviews.append({"sha": earlier, "at": legacy.now_iso(), "findings": _read_verdicts(run, earlier, args.verdict_file),
+                        "declined": {}})
+        run.save()
+        out(f"recorded the review of {short(earlier)} as an earlier round; the branch is now at {short(head)}: "
+            "verify it, review it, and run loop-spec iterate with that review")
+        return 1
     if not run.verified_at(head):
         raise LoopSpecError("ITERATE reviews a verified head, and this one is not", "loop-spec verify first")
-    run.state["iterate"] = {"sha": head, "caveats": args.caveats}
+    if not args.verdict_file:
+        if run.state.get("kind") != "micro":
+            raise LoopSpecError("ITERATE records the reviewer's verdict",
+                                "save the reviewer's json block to a file and pass --verdict-file")
+        reviews.append({"sha": head, "at": legacy.now_iso(), "self": True})
+    else:
+        findings = _read_verdicts(run, head, args.verdict_file)
+        declined = {}
+        for d in args.decline:
+            fid, _, why = d.partition("=")
+            if not why.strip():
+                raise LoopSpecError(f"--decline {d}: give a reason, as ID=REASON", "the PR will show it")
+            declined[fid] = why.strip()
+        ids = [f["id"] for f in findings]
+        for fid in declined:
+            if fid not in ids:
+                raise LoopSpecError(f"--decline {fid}: no finding has that id (ids: {', '.join(ids)})", "use an id from the review")
+        reviews.append({"sha": head, "at": legacy.now_iso(), "findings": findings, "declined": declined})
+        open_ = [f["id"] for f in findings if f["blocking"] and f["id"] not in declined]
+        if open_:
+            run.save()
+            out(f"{len(open_)} blocking finding(s) open at {short(head)}: {', '.join(open_)}. Fix them in work, verify, "
+                "review again, and run loop-spec iterate with the new review")
+            return 1
+    run.state["iterate"] = {"sha": head, "caveats": args.caveats, "review": len(reviews) - 1}
     run.save()
     out(f"review of {short(head)} recorded" + (f", with caveats: {args.caveats}" if args.caveats else ""))
     _sync(run)
     out("next: " + _next_step(run, run.phase(head)))
     return 0
+
+
+def _earlier_head(run: Run, head, files: list[str]) -> str | None:
+    """The full sha a single verdict judged when that is an earlier commit of the branch, not its head."""
+    if run.workspace or len(files) != 1 or not isinstance(head, str):
+        return None  # ponytail: single-repository runs only; a workspace's earlier review is still refused
+    try:
+        judged = json.loads(Path(files[0]).read_text()).get("head")
+    except (OSError, ValueError, AttributeError):
+        return None
+    if not isinstance(judged, str) or len(judged) < 7 or head.startswith(judged):
+        return None
+    proc = git.git(run.work, "rev-parse", "--verify", "--quiet", f"{judged}^{{commit}}")
+    sha = proc.stdout.strip()
+    return sha if proc.returncode == 0 and git.is_ancestor(run.work, sha, head) else None
+
+
+def _read_verdicts(run: Run, head, files: list[str]) -> list[dict]:
+    """The findings of the reviewer's json verdicts, one file per repository, each checked to have
+    judged that repository's current head. Finding ids in a workspace run carry the repository name."""
+    if not run.workspace and len(files) > 1:
+        raise LoopSpecError("one --verdict-file for a single-repository run", "pass only the reviewer's verdict")
+    findings = []
+    for f in files:
+        try:
+            verdict = json.loads(Path(f).read_text())
+        except (OSError, ValueError) as e:
+            raise LoopSpecError(f"cannot read the verdict file {f}: {e}", "save the reviewer's json block there") from e
+        items = verdict.get("findings") if isinstance(verdict, dict) else None
+        if not isinstance(items, list):
+            raise LoopSpecError(f"{f}: the verdict is not an object with a findings list", "save the reviewer's json block")
+        for item in items:
+            if not (isinstance(item, dict) and all(isinstance(item.get(k), str) for k in ("id", "file", "summary"))
+                    and isinstance(item.get("blocking"), bool)):
+                raise LoopSpecError(f"{f}: bad finding {item!r}", "each needs a string id, file, summary and a boolean blocking")
+        judged = verdict.get("head")
+        prefix = ""
+        if run.workspace and isinstance(judged, dict):  # one review of every repository: {name: sha}
+            if not judged or any(not (isinstance(s, str) and len(s) >= 7 and (head.get(n) or "").startswith(s))
+                                 for n, s in judged.items()):
+                raise LoopSpecError(f"this review judged {judged}, the heads are "
+                                    f"{', '.join(f'{n} {short(s)}' for n, s in head.items())}", "review the current heads")
+            findings += items
+            continue
+        if run.workspace:
+            names = [n for n, sha in head.items() if isinstance(judged, str) and len(judged) >= 7 and sha.startswith(judged)]
+            if len(names) != 1:
+                raise LoopSpecError(f"this review judged {judged}, which is no repository's head", "review the current head")
+            prefix = names[0] + "/"
+        elif not (isinstance(judged, str) and len(judged) >= 7 and head.startswith(judged)):
+            raise LoopSpecError(f"this review judged {judged}, the head is {short(head)}: review the current head",
+                                "dispatch a reviewer on the current head")
+        findings += [{**item, "id": prefix + item["id"]} for item in items]
+    return findings
 
 
 def cmd_set(args, project: Path, cwd: Path) -> int:
@@ -859,7 +974,23 @@ def cmd_hook_post_bash(args, project: Path, cwd: Path) -> int:
 
 def cmd_finish(args, project: Path, cwd: Path) -> int:
     run = find(project, args.slug, cwd)
+    if args.status == "completed":
+        _require_feedback_clear(run)
     return _finish(run, args.status, args.summary, run.head())
+
+
+def _require_feedback_clear(run: Run) -> None:
+    """A run ends completed only after its delivered head's last feedback round was clear."""
+    for r in run.repos:
+        delivered, fb = r.state.get("delivered"), r.state.get("feedback") or {}
+        if not (r.state.get("pr") and delivered):
+            continue
+        tag = f"[{r.name}] " if run.workspace else ""
+        if fb.get("sha") != delivered["sha"] or fb.get("ci") not in ("passed", "none") or fb.get("new", 0):
+            raise LoopSpecError(f"{tag}the delivered head's last feedback round is not clear "
+                                f"(CI {fb.get('ci', 'not read')}, {fb.get('new', '?')} new item(s))",
+                                "run loop-spec feedback until CI passes and nothing new comes in, or end the "
+                                "run with --status escalated saying what is left")
 
 
 def _finish(run: Run, status: str, summary: str, head) -> int:
@@ -936,7 +1067,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_task_set)
 
     p = sub.add_parser("verify", parents=[common], help="run every check in a clean checkout of the feature head")
-    p.add_argument("--base", action="store_true", help="check the run's start commit instead, to see a bug reproduce; not recorded")
+    p.add_argument("--base", action="store_true", help="check the run's start commit instead, to see a bug reproduce; recorded as the base record")
     # 1200 s per command: a ceiling for a hung check, well above a full test suite or build.
     p.add_argument("--timeout", type=int, default=1200, help="seconds per command (default 1200)")
     p.set_defaults(func=cmd_verify)
@@ -957,6 +1088,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("iterate", parents=[common],
                        help="record that the verified head's whole-change review is done and addressed (ITERATE)")
     p.add_argument("--caveats", help="what the review left open, carried to the result")
+    p.add_argument("--verdict-file", action="append", default=[], metavar="PATH",
+                   help="the reviewer's json verdict, saved by the lead; one per repository in a workspace run")
+    p.add_argument("--decline", action="append", default=[], metavar="ID=REASON",
+                   help="leave a blocking finding unfixed, with the reason the PR will show")
     p.set_defaults(func=cmd_iterate)
 
     p = sub.add_parser("set", parents=[common], help="rename the feature branch (before it is pushed) or set the PR title")

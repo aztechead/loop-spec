@@ -13,7 +13,7 @@ from unittest import mock
 from loop_spec import ci, cli, hook
 from loop_spec.errors import LoopSpecError
 from loop_spec.runs import Run
-from test_flow import Repo, commit, marker, sh
+from test_flow import Repo, commit, marker, sh, verdict
 
 FAKE_GH = """#!/usr/bin/env bash
 # A stand-in for gh: answers the few calls loop-spec makes from files in $FAKE_GH_DIR.
@@ -91,7 +91,7 @@ class LoopTests(unittest.TestCase):
     def test_deliver_refuses_a_moved_base_until_it_is_synced_and_verified(self):
         run = self.ready_run()
         self.assertEqual(self.repo.ls("verify")[0], 0)
-        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))[0], 0)
         self.push_to_origin_main("teammate.py", "x = 1\n")
         code, _, err = self.repo.ls("deliver")
         self.assertEqual(code, 1)
@@ -102,7 +102,7 @@ class LoopTests(unittest.TestCase):
         self.assertTrue(Path(run["work"], "teammate.py").exists())
         self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["phase"], "verify")
         self.assertEqual(self.repo.ls("verify")[0], 0)
-        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))[0], 0)
         self.checks("pass")
         code, out, err = self.repo.ls("deliver")
         self.assertEqual(code, 0, err)
@@ -126,7 +126,7 @@ class LoopTests(unittest.TestCase):
     def test_the_runs_title_and_branch_win_over_the_spec(self):
         run = self.ready_run("--title", "feat(kv): add mul", "--branch", "feature/KV-12")
         self.assertEqual(self.repo.ls("verify")[0], 0)
-        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))[0], 0)
         self.checks("pass")
         self.assertEqual(self.repo.ls("deliver")[0], 0)
         self.assertEqual(run["slug"], "feat-kv-add-mul")  # the slug follows --title when no --slug is given
@@ -216,7 +216,7 @@ class LoopTests(unittest.TestCase):
 
     def deliver(self, run: dict) -> None:
         self.assertEqual(self.repo.ls("verify")[0], 0)
-        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))[0], 0)
         self.assertEqual(self.repo.ls("deliver")[0], 0)
 
     def comments(self, *items: dict) -> None:
@@ -347,7 +347,7 @@ class LoopTests(unittest.TestCase):
         Path(run["runDir"], "pr.md").unlink()
         self.assertIn("pr.md    not written yet; follows ", self.repo.ls("status")[1])
         self.assertEqual(self.repo.ls("verify")[0], 0)
-        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))[0], 0)
         code, _, err = self.repo.ls("deliver")
         self.assertEqual(code, 1)
         self.assertIn("references/visual-pr/pr_description_template.md", err)
@@ -356,7 +356,7 @@ class LoopTests(unittest.TestCase):
         run = self.ready_run()
         Path(run["runDir"], "pr.md").unlink()
         self.repo.ls("verify")
-        out = self.repo.ls("iterate")[1]
+        out = self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))[1]
         self.assertRegex(out, r"next: loop-spec deliver \(read \S+/visual-pr/pr_description_template\.md\)")
         Path(run["runDir"], "pr.md").write_text("## Why the change\n\nmul.\n")
         self.assertNotRegex(self.repo.ls("status")[1], r"next .*pr_description_template")
@@ -367,7 +367,7 @@ class LoopTests(unittest.TestCase):
             "## Why the change\n\nmul.\n\n## Special things to note\n\n- {List 1-3 reviewer-relevant warnings, migrations, "
             "constraints, deliberate omissions, or surprising decisions. Use \"None.\" when there are no special considerations.}\n")
         self.repo.ls("verify")
-        self.repo.ls("iterate")
+        self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))
         code, _, err = self.repo.ls("deliver")
         self.assertEqual(code, 1)
         self.assertIn("pr.md still has 1 line(s) of the template's placeholders, such as: - {List 1-3", err)
@@ -375,7 +375,7 @@ class LoopTests(unittest.TestCase):
     def test_deliver_checks_gh_before_it_pushes(self):
         run = self.ready_run()
         self.repo.ls("verify")
-        self.repo.ls("iterate")
+        self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))
         with mock.patch.dict(os.environ, {"FAKE_GH_NO_AUTH": "1"}):
             code, _, err = self.repo.ls("deliver")
         self.assertEqual(code, 1)
@@ -418,9 +418,9 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(sh(run["work"], "git", "branch", "--show-current"), "feat/add-mul-2")
 
     def test_deliver_refuses_a_branch_origin_has_other_commits_on_when_the_run_has_no_pr(self):
-        self.ready_run()
+        run = self.ready_run()
         self.assertEqual(self.repo.ls("verify")[0], 0)
-        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))[0], 0)
         self.teammate_pushes_branch("feat/add-mul")
         code, _, err = self.repo.ls("deliver")
         self.assertEqual(code, 1)
@@ -481,7 +481,7 @@ class LoopTests(unittest.TestCase):
             {"title": "t", "goal": "g", "assumptions": ["a1"], "decisions": ["d1"],
              "criteria": [{"id": "AC-1", "text": "t", "check": "true"}]}))
         self.assertEqual(self.repo.ls("verify")[0], 0)
-        self.assertEqual(self.repo.ls("iterate", "--caveats", "slow on big inputs")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")), "--caveats", "slow on big inputs")[0], 0)
         result = marker(self.repo.ls("finish", "--status", "escalated", "--summary", "s")[1], "LOOP_SPEC_RESULT")
         self.assertEqual((result["assumptions"], result["decisions"], result["caveats"]),
                          (["a1"], ["d1"], ["slow on big inputs"]))
