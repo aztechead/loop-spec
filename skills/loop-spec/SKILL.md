@@ -349,9 +349,10 @@ Once verify passes:
 1. Dispatch, in one message, a `loop-spec:reviewer` (correctness, adversarially) and a
    `loop-spec:simplifier` (reuse, simplification, efficiency, altitude). Give both
    `work` and the range `<base>..HEAD`; give the reviewer the path of `spec.json` too.
-   The reviewer ends with a json verdict block; save it to a file in the run directory
-   (one per repository in a run across repositories, whose finding ids `iterate` prefixes
-   with the repository name, so decline `web/F-1`).
+   The reviewer ends with a json verdict block; save it to a file in the run directory.
+   In a run across repositories, one review of every repository names each head in
+   `head`; separate reviews per repository go in one file each, and `iterate` prefixes
+   their finding ids with the repository name (decline `web/F-1`).
 2. Fix every blocking finding. Apply each simplifier cleanup that keeps the behavior the
    spec asks for and makes the change smaller or plainer; skip the rest. Commit small
    fixes in `work`, or add a task for a larger one, and list what you skipped in your
