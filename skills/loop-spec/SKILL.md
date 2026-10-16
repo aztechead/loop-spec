@@ -46,7 +46,7 @@ the project's checks take longer.
 | `LS deliver [--draft] [--unverified] [--comment-file F]` | push the verified head and open or update its PR (posting `F` as a comment) |
 | `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review (a PR with no checks after 90 s counts as no CI; review items already posted come back without waiting for CI); ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
 | `LS checkpoint [--push]` | commit work in progress in every worktree and list them; `--push` pushes the branches that hold commits of their own. For a run the host asked to wrap up |
-| `LS finish --status completed\|no-change\|escalated\|failed --summary "..."` | end the run: `completed` after feedback skills find nothing, otherwise a run that delivers nothing |
+| `LS finish --status completed\|no-change\|escalated\|failed --summary "..."` | end the run: `completed` only after the delivered head's last `feedback` showed CI passed and nothing new; otherwise for a run that delivers nothing |
 
 Four kinds of check apply to a run. A criterion's `check` (in `spec.json`), a task's
 `verify`, and the repository's `checks` (both in `plan.json`) all run in `LS verify`. CI
@@ -414,7 +414,8 @@ Run `LS feedback`. It waits for the PR's checks, then shows each failed check's 
 each new review item (reviews, inline comments, conversation comments) once. Then:
 
 - **Checks still running, or a requested review not in yet:** run it again.
-- **CI passed and nothing new:** the run ends.
+- **CI passed and nothing new:** the run ends. `finish --status completed` refuses until
+  the delivered head's last `feedback` showed CI passed and nothing new.
 - **A failed check or a review item this change should address:** fix it in `work`,
   verify, deliver, and run `feedback` again.
 - **A question, or a request you decline with a reason:** answer it in a comment with

@@ -797,7 +797,7 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
         time.sleep(ci.POLL_SECONDS)
     for r in targets:
         record, verdicts, new, _, _ = rounds[r.name]
-        record.update(sha=r.state["delivered"]["sha"], ci=ci_by[r.name][0], verdicts=verdicts,
+        record.update(sha=r.state["delivered"]["sha"], ci=ci_by[r.name][0], verdicts=verdicts, new=len(new),
                       seen=record["seen"] + [i["id"] for i in new],
                       authors=sorted({*record.get("authors", []), *(i["author"] for i in new if i.get("author"))}))
     run.save()
@@ -998,7 +998,23 @@ def cmd_hook_post_bash(args, project: Path, cwd: Path) -> int:
 
 def cmd_finish(args, project: Path, cwd: Path) -> int:
     run = find(project, args.slug, cwd)
+    if args.status == "completed":
+        _require_feedback_clear(run)
     return _finish(run, args.status, args.summary, run.head())
+
+
+def _require_feedback_clear(run: Run) -> None:
+    """A run ends completed only after its delivered head's last feedback round was clear."""
+    for r in run.repos:
+        delivered, fb = r.state.get("delivered"), r.state.get("feedback") or {}
+        if not (r.state.get("pr") and delivered):
+            continue
+        tag = f"[{r.name}] " if run.workspace else ""
+        if fb.get("sha") != delivered["sha"] or fb.get("ci") not in ("passed", "none") or fb.get("new", 0):
+            raise LoopSpecError(f"{tag}the delivered head's last feedback round is not clear "
+                                f"(CI {fb.get('ci', 'not read')}, {fb.get('new', '?')} new item(s))",
+                                "run loop-spec feedback until CI passes and nothing new comes in, or end the "
+                                "run with --status escalated saying what is left")
 
 
 def _finish(run: Run, status: str, summary: str, head) -> int:

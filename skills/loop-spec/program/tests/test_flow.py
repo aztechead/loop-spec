@@ -221,6 +221,19 @@ class FlowTests(unittest.TestCase):
         run.state["reviews"] = [review("a", "x.py"), review("c", "y.py")]
         self.assertEqual(cli._repeat_blocking_file(run), [])
 
+    def test_finish_completed_needs_a_clear_feedback_round(self):
+        run = self.verified()
+        head = self.head(run)
+        state_path = Path(run["runDir"], "state.json")
+        state = json.loads(state_path.read_text())
+        state.update(pr={"number": 7, "url": "u"}, delivered={"sha": head, "verified": True, "title": "t"},
+                     feedback={"sha": head, "ci": "failed", "seen": []})
+        state_path.write_text(json.dumps(state))
+        code, _, err = self.repo.ls("finish", "--status", "completed", "--summary", "s")
+        self.assertEqual(code, 1)
+        self.assertIn("not clear", err)
+        self.assertEqual(self.repo.ls("finish", "--status", "escalated", "--summary", "s")[0], 0)
+
     def test_a_conflicting_task_is_refused_and_left_for_the_lead(self):
         run = self.start()
         self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t"}]}, {"tasks": [{"id": "T-1", "title": "a"}, {"id": "T-2", "title": "b"}]})
