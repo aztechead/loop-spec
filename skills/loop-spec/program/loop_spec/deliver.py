@@ -106,6 +106,14 @@ def fold(body_text: str, section: str) -> str:
     return (text + "\n\n" if text else "") + section + "\n"
 
 
+def _at_base(run: Run, *, failed: bool) -> bool:
+    """Whether the base record holds a criterion check that failed there (failed=True) or passed there."""
+    criteria = {c.get("id") for c in (run.spec or {}).get("criteria", [])}
+    base = run.state.get("baseVerify") or {}
+    return any(r["name"] in criteria and r.get("command") and (r.get("exit") != 0) == failed
+               for r in base.get("results", []))
+
+
 def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | None) -> str:
     """Push each changed repository's feature branch, open or update its PR, and optionally comment
     on each. Returns the delivered head; each PR is recorded in its repository's state["pr"]."""
@@ -122,6 +130,9 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
     if not unverified and (run.state.get("iterate") or {}).get("sha") != head:
         raise LoopSpecError("this head has no recorded review (ITERATE)",
                             "review the whole change, address what it finds, then `loop-spec iterate` and deliver")
+    if not unverified and run.state.get("kind") == "debug" and not _at_base(run, failed=True):
+        raise LoopSpecError("a debug run delivers a fix for a failure shown at the base, and no criterion failed there",
+                            "put the failing command in a criterion's check, run `loop-spec verify --base`, and see it fail")
     todo = changed(run, head)
     if not todo:
         raise LoopSpecError("the feature branch has no commits beyond its base; there is nothing to deliver",

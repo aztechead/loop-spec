@@ -524,7 +524,9 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
         passed = passed and (r["exit"] == 0 or r.get("preexisting", False))
         results.append({"name": item["name"], **{k: v for k, v in r.items() if k != "output"}})
     if args.base:
-        out(("passed" if passed else "failed") + " at the base; not recorded, since only the feature head is delivered")
+        run.state["baseVerify"] = {"sha": sha, "passed": passed, "results": results}
+        run.save()
+        out(("passed" if passed else "failed") + f" at the base {short(sha)}; recorded as the base record")
     else:
         run.state["verify"] = {"sha": sha, "passed": passed, "results": results}
         run.save()
@@ -936,7 +938,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_task_set)
 
     p = sub.add_parser("verify", parents=[common], help="run every check in a clean checkout of the feature head")
-    p.add_argument("--base", action="store_true", help="check the run's start commit instead, to see a bug reproduce; not recorded")
+    p.add_argument("--base", action="store_true", help="check the run's start commit instead, to see a bug reproduce; recorded as the base record")
     # 1200 s per command: a ceiling for a hung check, well above a full test suite or build.
     p.add_argument("--timeout", type=int, default=1200, help="seconds per command (default 1200)")
     p.set_defaults(func=cmd_verify)

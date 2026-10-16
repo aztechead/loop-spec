@@ -121,14 +121,31 @@ class FlowTests(unittest.TestCase):
         self.assertIn("review of", self.repo.ls("iterate")[1])
         self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["phase"], "deliver")
 
-    def test_verify_at_base_shows_a_failure_without_recording_it(self):
+    def test_verify_at_base_records_the_base_and_deliver_needs_a_failure_there(self):
         run = self.start("--kind", "debug")
-        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "mul", "check": "python3 -c 'import calc; calc.mul'"}]},
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "fixed", "check": "test -f fixed"}]},
                    {"tasks": [{"id": "T-1", "title": "fix"}]})
+        state_path = Path(run["runDir"], "state.json")
         code, out, _ = self.repo.ls("verify", "--base")
         self.assertEqual(code, 1)
-        self.assertIn("not recorded", out)
-        self.assertNotIn("verify", json.loads(Path(run["runDir"], "state.json").read_text()))
+        self.assertIn("recorded as the base record", out)
+        state = json.loads(state_path.read_text())
+        self.assertNotEqual(state["baseVerify"]["results"][0]["exit"], 0)
+        self.assertNotIn("verify", state)
+        commit(Path(run["work"]), "fixed", "")
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        state = json.loads(state_path.read_text())
+        base = state.pop("baseVerify")
+        state_path.write_text(json.dumps(state))
+        code, _, err = self.repo.ls("deliver")
+        self.assertEqual(code, 1)
+        self.assertIn("verify --base", err)
+        state["baseVerify"] = base
+        state_path.write_text(json.dumps(state))
+        code, _, err = self.repo.ls("deliver")
+        self.assertEqual(code, 1)
+        self.assertIn("there is no PR description", err)
 
     def test_a_conflicting_task_is_refused_and_left_for_the_lead(self):
         run = self.start()
