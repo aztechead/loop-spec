@@ -17,8 +17,14 @@ All notable changes documented here. Format follows Keep a Changelog.
 - `finish --status completed` refuses until the delivered head's last `feedback` showed
   CI passed and nothing new.
 - Guidance: the reviewer proves one safety fact with a command, implementers give
-  stateful logic an explicit state type, observable choices are settled by a scratch
-  sketch, and a repeated finding becomes a `checks` command.
+  state with several values one state type, and observable choices are settled by a
+  scratch sketch.
+
+### Upgrading
+
+- `iterate` without `--verdict-file` now refuses outside a micro run. A host or script
+  that calls it must pass the reviewer's verdict (the json block `agents/reviewer.md`
+  ends with).
 
 ## [8.2.1] - 2026-10-20
 
