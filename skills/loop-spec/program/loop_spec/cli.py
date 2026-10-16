@@ -75,7 +75,12 @@ def cmd_start(args, project: Path, cwd: Path) -> int:
             pr = {"number": found["number"], "url": found["url"], "adopted": True}
         else:
             kind = args.kind
-            base_branch = (prior.state["branch"] if prior else args.base or config.get("base") or git.default_branch(project))
+            if prior and remote.merged_away(project, prior.state["branch"], prior.state["pr"],
+                                            "start without --after, on the branch this change belongs on"):
+                out(f"{args.after}'s PR merged; starting on its base, {prior.state['base']['branch']}")
+                base_branch, prior = prior.state["base"]["branch"], None
+            else:
+                base_branch = (prior.state["branch"] if prior else args.base or config.get("base") or git.default_branch(project))
             base_sha = git.resolve_base(project, base_branch)
             prefix = config.get("branchPrefix") or PREFIX.get(kind, "feat/")
             branch = first_free(args.branch or config.get("branch") or prefix + run.slug,
