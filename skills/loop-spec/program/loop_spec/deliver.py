@@ -153,6 +153,9 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
     if not unverified and run.state.get("kind") == "debug" and not _at_base(run, failed=True):
         raise LoopSpecError("a debug run delivers a fix for a failure shown at the base, and no criterion failed there",
                             "put the failing command in a criterion's check, run `loop-spec verify --base`, and see it fail")
+    if not unverified and run.state.get("kind") == "refactor" and not _at_base(run, failed=False):
+        raise LoopSpecError("a refactor run keeps behavior that already held, and no criterion passed at the base",
+                            "give a criterion a check that passes before and after, then `loop-spec verify --base`")
     todo = changed(run, head)
     if not todo:
         raise LoopSpecError("the feature branch has no commits beyond its base; there is nothing to deliver",
