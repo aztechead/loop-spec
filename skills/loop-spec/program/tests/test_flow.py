@@ -205,6 +205,25 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("MISSES", out)
 
+    def test_start_after_stacks_on_a_delivered_runs_branch(self):
+        prior = self.start()
+        state_path = Path(prior["runDir"], "state.json")
+        code, _, err = self.repo.ls("start", "--request", "Part two", "--after", prior["slug"])
+        self.assertEqual(code, 1)
+        self.assertIn("has no PR yet", err)
+        commit(Path(prior["work"]), "part1.txt", "1\n")
+        sh(prior["work"], "git", "push", "-q", "origin", "HEAD:refs/heads/feat/add-mul-and-sub")
+        state = json.loads(state_path.read_text())
+        state["pr"] = {"number": 7, "url": "https://github.com/acme/kv/pull/7"}
+        state_path.write_text(json.dumps(state))
+        code, out, err = self.repo.ls("start", "--request", "Part two", "--after", prior["slug"])
+        self.assertEqual(code, 0, err)
+        new = json.loads(Path(marker(out, "LOOP_SPEC_RUN")["runDir"], "state.json").read_text())
+        self.assertEqual(new["base"]["branch"], "feat/add-mul-and-sub")
+        self.assertEqual(new["stackedOn"], {"slug": prior["slug"], "base": "main",
+                                            "pr": {"number": 7, "url": "https://github.com/acme/kv/pull/7"}})
+        self.assertIn("after    " + prior["slug"], out)
+
     def verified(self, *extra: str) -> dict:
         run = self.start(*extra)
         self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "true"}]}, {"tasks": [{"id": "T-1", "title": "a"}]})
