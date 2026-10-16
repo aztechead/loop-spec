@@ -375,9 +375,6 @@ Once verify passes:
 When you break the code on purpose to show a test catches the bug, commit the fix
 first, so `git checkout -- <file>` restores the fix rather than the bug.
 
-A finding the reviewer has raised before in this repository is a missing check: add the
-command that catches it to plan.json's `checks`.
-
 ## 6. Deliver, then see CI and review through
 
 Open the PR for the verified, reviewed head, then answer its CI and its reviewers until
