@@ -11,7 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from loop_spec import cli
+from loop_spec import cli, runs
 from loop_spec.errors import LoopSpecError
 
 # The state home 7.x hosts read (legacy.py) goes to a scratch directory, never ~/.loop-spec.
@@ -173,6 +173,37 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], self.head(run)))[0], 0)
         code, _, err = self.repo.ls("deliver")
         self.assertNotIn("no criterion passed at the base", err)
+
+    def test_measured_criterion_problems_are_named(self):
+        def problems(**more):
+            return runs.spec_problems({"goal": "g", "criteria": [{"id": "AC-1", "text": "t", **more}]})
+        self.assertEqual(problems(better="lower", check="echo 1"), ["AC-1: `better` and `by` go together"])
+        self.assertEqual(problems(better="lower", by="10", check="echo 1"), ['AC-1: `by` must be a percentage like "10%"'])
+        self.assertEqual(problems(better="less", by="10%", check="echo 1"), ['AC-1: `better` must be "lower" or "higher"'])
+        self.assertEqual(problems(better="lower", by="10%"), ["AC-1: a measured criterion needs a `check` that prints the number"])
+        self.assertEqual(problems(better="lower", by="10%", check="echo 1"), [])
+
+    def test_perf_verify_compares_the_head_number_with_the_base_record(self):
+        run = self.start("--kind", "perf")
+        def spec(check):
+            self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "faster", "check": check, "better": "lower", "by": "10%"}]},
+                       {"tasks": [{"id": "T-1", "title": "speed"}]})
+        spec("echo 100")
+        code, out, _ = self.repo.ls("verify")
+        self.assertEqual(code, 1)
+        self.assertIn("no base measurement", out)
+        self.assertEqual(self.repo.ls("verify", "--base")[0], 0)
+        state = json.loads(Path(run["runDir"], "state.json").read_text())
+        self.assertEqual(state["baseVerify"]["results"][0]["value"], 100)
+        spec("echo 80")
+        code, out, _ = self.repo.ls("verify")
+        self.assertEqual(code, 0, out)
+        state = json.loads(Path(run["runDir"], "state.json").read_text())
+        self.assertEqual(state["verify"]["results"][0]["delta"], -20.0)
+        spec("echo 95")
+        code, out, _ = self.repo.ls("verify")
+        self.assertEqual(code, 1)
+        self.assertIn("MISSES", out)
 
     def verified(self, *extra: str) -> dict:
         run = self.start(*extra)

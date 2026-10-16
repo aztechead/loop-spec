@@ -307,7 +307,7 @@ def _rel(run: Run, path: Path) -> Path:
 # The hub skill's references, which only some runs need: a run kind's changes to the
 # workflow, named on the `next` line at the spec, and the PR template, named at deliver.
 REFERENCES = Path(__file__).resolve().parents[2] / "references"
-KIND_GUIDES = ("micro", "debug", "revise", "refactor")
+KIND_GUIDES = ("micro", "debug", "revise", "refactor", "perf")
 
 
 def _next_step(run: Run, phase: str, problem: str | None = None) -> str:
@@ -547,6 +547,8 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
         _report(item["name"], r)
         if r["exit"] != 0 and item.get("repoCheck") and not args.base:
             r.update(_compare_at_base(run, run.repo(item.get("repo")), item, r, where, args.timeout))
+        if item.get("better") and r["exit"] == 0:
+            _measure(run, item, r, args.base)
         passed = passed and (r["exit"] == 0 or r.get("preexisting", False))
         results.append({"name": item["name"], **{k: v for k, v in r.items() if k != "output"}})
     if args.base:
@@ -562,6 +564,33 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
     if passed and not args.base:
         out("next: " + _next_step(run, run.phase(sha)))
     return 0 if passed else 1
+
+
+def _measure(run: Run, item: dict, r: dict, at_base: bool) -> None:
+    """A measured criterion: the number its check prints, kept at the base and compared with the base's at the head."""
+    value, tail = checks.number(r["output"]), ""
+    if value is None:
+        tail = "(no number on the last line)"
+    elif at_base:
+        r["value"] = value
+    else:
+        base = next((b.get("value") for b in (run.state.get("baseVerify") or {}).get("results", [])
+                     if b["name"] == item["name"]), None)
+        if base is None:
+            tail = "(no base measurement: run loop-spec verify --base)"
+        elif base <= 0:
+            tail = "(the base measurement is not positive: the check must print a positive number)"
+        else:
+            delta = round((value - base) / base * 100, 1)
+            r.update(value=value, base=base, delta=delta)
+            r["exit"] = 0 if checks.beats(value, base, item["better"], item["by"]) else 1
+            out(f"  {item['name']}: base {base} -> head {value} ({delta:+}%) {'meets' if r['exit'] == 0 else 'MISSES'} the target")
+            if r["exit"]:
+                tail = f"(base {base} -> head {value}, {delta:+}%, target {item['better']} by {item['by']})"
+    if tail:
+        r["exit"] = 1
+        r["tail"] = (r["tail"] + "\n" + tail).strip()
+        out(_indent(tail))
 
 
 def _prepare(run: Run, sha, timeout: int) -> bool:

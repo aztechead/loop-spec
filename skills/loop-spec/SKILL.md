@@ -1,6 +1,6 @@
 ---
 name: loop-spec
-description: "The loop-spec method for taking a coding request to a verified pull request: a spec with checkable acceptance criteria, a task graph (DAG) built in parallel git worktrees by implementer agents, a clean-checkout verify, an adversarial review, one PR, and its CI and review comments seen through. Use when an entry skill (cycle, micro, debug, revise, refactor) starts or resumes a run, or when an autonomous coding agent is told to follow loop-spec."
+description: "The loop-spec method for taking a coding request to a verified pull request: a spec with checkable acceptance criteria, a task graph (DAG) built in parallel git worktrees by implementer agents, a clean-checkout verify, an adversarial review, one PR, and its CI and review comments seen through. Use when an entry skill (cycle, micro, debug, revise, refactor, perf) starts or resumes a run, or when an autonomous coding agent is told to follow loop-spec."
 ---
 
 # loop-spec
@@ -141,7 +141,8 @@ Every phase ends on a check, and you loop on it until it passes:
 
 A `cycle` run follows this as written. Other kinds change it; read yours before the
 spec: [micro](references/micro.md), [debug](references/debug.md),
-[revise](references/revise.md), or [refactor](references/refactor.md).
+[revise](references/revise.md),
+[refactor](references/refactor.md), or [perf](references/perf.md).
 
 ## A run across repositories
 
@@ -192,6 +193,7 @@ fail on a comment or a wording. Give a criterion no `check` only when no command
 show it; the reviewer then judges it. Record each real choice in `decisions`, and, in
 an autonomous or supervised run, each default you chose in `assumptions`. At least one
 criterion runs the real thing (the command, the endpoint, the script) the way a user would.
+A `perf` run's criterion may add `better` and `by` to its `check`; see [perf](references/perf.md).
 
 Illustrative criteria, for a request to add a `--ttl` option to a CLI:
 
@@ -211,7 +213,7 @@ entry, and sign-off, and follow them for the rest of the run.
 The branch and the PR title come from, in order: the user (the entry passed them as
 `start --branch` and `--title`), then the repository's rules, then the defaults
 (`branch` or `branchPrefix` in `.loop-spec/config.json`, else `feat/<slug>`, or
-`fix/<slug>` for a debug run, `refactor/<slug>` for a refactor run; and the spec's `title`). For the rules, run `LS set
+`fix/<slug>` for a debug run, `refactor/<slug>` for a refactor run, `perf/<slug>` for a perf run; and the spec's `title`). For the rules, run `LS set
 --branch NAME --title "..."` now, before anything is pushed. Do the same when the
 request opens with context rather than the change (a URL, a ticket, a pasted bundle):
 name the branch from the spec's title. With no rule, `title` follows the commit
