@@ -113,6 +113,9 @@ The run's `mode` is in `LOOP_SPEC_RUN`.
   when you cannot go on without an answer or before a step that is hard to undo. If a
   question comes back unanswered, end your turn with a line saying `LOOP_SPEC_ASKING`.
 
+When a choice turns on something you can observe (behavior, output, timing), sketch it
+in a scratch worktree and let the result decide; ask only what no run can settle.
+
 ## The workflow
 
 Copy this checklist into your progress updates and check items off as each phase ends:
@@ -371,6 +374,9 @@ Once verify passes:
 
 When you break the code on purpose to show a test catches the bug, commit the fix
 first, so `git checkout -- <file>` restores the fix rather than the bug.
+
+A finding the reviewer has raised before in this repository is a missing check: add the
+command that catches it to plan.json's `checks`.
 
 ## 6. Deliver, then see CI and review through
 
