@@ -364,6 +364,8 @@ Once verify passes:
    `LS iterate --verdict-file F`. Every round goes in the PR's review record, so the
    rounds that found something count most. It refuses while a blocking finding is open
    and lists them; decline one only with a reason the PR will show (`--decline F-2="..."`).
+   A verdict for a commit the branch has since moved past is still recorded, as an earlier
+   round.
 3. Fix every open blocking finding. Apply each simplifier cleanup that keeps the
    behavior the spec asks for and makes the change smaller or plainer; skip the rest.
    Commit small fixes in `work`, or add a task for a larger one, and list what you

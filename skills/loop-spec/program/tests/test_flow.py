@@ -267,6 +267,18 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("ITERATE records the reviewer's verdict", err)
 
+    def test_a_review_of_an_earlier_commit_is_kept_as_an_earlier_round(self):
+        run = self.verified()
+        old = self.head(run)
+        commit(Path(run["work"]), "fix.txt", "fixed\n")
+        blocking = [{"id": "F-1", "file": "a.txt", "line": 1, "blocking": True, "summary": "unsafe"}]
+        code, out, _ = self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], old, blocking))
+        self.assertEqual(code, 1)
+        self.assertIn("as an earlier round", out)
+        state = json.loads(Path(run["runDir"], "state.json").read_text())
+        self.assertEqual([(r["sha"], len(r["findings"])) for r in state["reviews"]], [(old, 1)])
+        self.assertNotIn("iterate", state)
+
     def test_a_micro_run_may_iterate_without_a_verdict(self):
         run = self.verified("--kind", "micro")
         self.assertEqual(self.repo.ls("iterate")[0], 0)
