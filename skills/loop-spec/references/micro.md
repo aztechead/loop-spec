@@ -8,4 +8,5 @@ stands.
 - **Plan:** one task, which you do yourself in its worktree, then `LS task done`.
 - **Iterate:** look over the verified diff yourself. Dispatch the `loop-spec:reviewer`
   only if the change touches behavior other code relies on, and skip the simplifier.
-  Still run `LS iterate`.
+  Run `LS iterate`, with `--verdict-file` when you dispatched the reviewer;
+  without it the program records that you reviewed it yourself.

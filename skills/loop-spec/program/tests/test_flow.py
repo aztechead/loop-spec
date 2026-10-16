@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from loop_spec import cli
@@ -44,6 +45,13 @@ class Repo:
 def marker(text: str, name: str) -> dict:
     line = next(line for line in text.splitlines() if line.startswith(name + " "))
     return json.loads(line[len(name) + 1:])
+
+
+def verdict(run_dir, head, findings=(), name="verdict.json") -> str:
+    """Save a reviewer's json verdict for `head` in the run directory and return its path."""
+    path = Path(run_dir, name)
+    path.write_text(json.dumps({"head": head, "findings": list(findings)}))
+    return str(path)
 
 
 def commit(worktree: Path, name: str, text: str) -> None:
@@ -118,7 +126,7 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(state["verify"]["sha"], sh(run["work"], "git", "rev-parse", "HEAD"))
         self.assertTrue(state["verify"]["passed"])
         self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["phase"], "iterate")
-        self.assertIn("review of", self.repo.ls("iterate")[1])
+        self.assertIn("review of", self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))[1])
         self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["phase"], "deliver")
 
     def test_verify_at_base_records_the_base_and_deliver_needs_a_failure_there(self):
@@ -134,7 +142,7 @@ class FlowTests(unittest.TestCase):
         self.assertNotIn("verify", state)
         commit(Path(run["work"]), "fixed", "")
         self.assertEqual(self.repo.ls("verify")[0], 0)
-        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))[0], 0)
         state = json.loads(state_path.read_text())
         base = state.pop("baseVerify")
         state_path.write_text(json.dumps(state))
@@ -146,6 +154,64 @@ class FlowTests(unittest.TestCase):
         code, _, err = self.repo.ls("deliver")
         self.assertEqual(code, 1)
         self.assertIn("there is no PR description", err)
+
+    def verified(self, *extra: str) -> dict:
+        run = self.start(*extra)
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "true"}]}, {"tasks": [{"id": "T-1", "title": "a"}]})
+        commit(Path(self.task_start("T-1")["T-1"]["worktree"]), "a.txt", "a\n")
+        self.assertEqual(self.repo.ls("task", "done", "T-1")[0], 0)
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        return run
+
+    def head(self, run: dict) -> str:
+        return sh(run["work"], "git", "rev-parse", "HEAD")
+
+    def test_iterate_refuses_an_open_blocking_finding_and_status_names_it(self):
+        run = self.verified()
+        finding = {"id": "F-1", "file": "a.txt", "line": 1, "blocking": True, "summary": "wrong"}
+        code, out, _ = self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], self.head(run), [finding]))
+        self.assertEqual(code, 1)
+        self.assertIn("1 blocking finding(s) open", out)
+        state = json.loads(Path(run["runDir"], "state.json").read_text())
+        self.assertNotIn("iterate", state)
+        self.assertEqual(len(state["reviews"]), 1)
+        self.assertIn("F-1", self.repo.ls("status")[1])
+
+    def test_iterate_accepts_a_declined_blocking_finding(self):
+        run = self.verified()
+        finding = {"id": "F-1", "file": "a.txt", "blocking": True, "summary": "wrong"}
+        path = verdict(run["runDir"], self.head(run), [finding])
+        code, _, err = self.repo.ls("iterate", "--verdict-file", path, "--decline", "F-1")
+        self.assertEqual(code, 1)
+        self.assertIn("give a reason", err)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", path, "--decline", "F-1=out of scope")[0], 0)
+        state = json.loads(Path(run["runDir"], "state.json").read_text())
+        self.assertEqual(state["iterate"]["sha"], self.head(run))
+        self.assertEqual(state["reviews"][-1]["declined"], {"F-1": "out of scope"})
+
+    def test_iterate_refuses_a_verdict_for_another_head_and_a_missing_verdict(self):
+        run = self.verified()
+        code, _, err = self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], "0" * 40))
+        self.assertEqual(code, 1)
+        self.assertIn("review the current head", err)
+        code, _, err = self.repo.ls("iterate")
+        self.assertEqual(code, 1)
+        self.assertIn("ITERATE records the reviewer's verdict", err)
+
+    def test_a_micro_run_may_iterate_without_a_verdict(self):
+        run = self.verified("--kind", "micro")
+        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        self.assertTrue(json.loads(Path(run["runDir"], "state.json").read_text())["reviews"][-1]["self"])
+
+    def test_repeat_blocking_file_is_the_file_two_reviews_of_different_heads_share(self):
+        def review(sha, *files):
+            return {"sha": sha, "findings": [{"id": f"F-{i}", "file": f, "blocking": True} for i, f in enumerate(files)], "declined": {}}
+        run = SimpleNamespace(state={"reviews": [review("a", "x.py", "y.py"), {"sha": "b", "self": True}, review("c", "y.py")]})
+        self.assertEqual(cli._repeat_blocking_file(run), ["y.py"])
+        run.state["reviews"].append(review("c", "y.py", "z.py"))  # a re-review of the same head
+        self.assertEqual(cli._repeat_blocking_file(run), ["y.py"])
+        run.state["reviews"] = [review("a", "x.py"), review("c", "y.py")]
+        self.assertEqual(cli._repeat_blocking_file(run), [])
 
     def test_a_conflicting_task_is_refused_and_left_for_the_lead(self):
         run = self.start()

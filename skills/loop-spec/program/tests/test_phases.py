@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 import test_loop
-from test_flow import commit
+from test_flow import commit, sh, verdict
 
 START_KEYS = {"attemptId", "event", "phase", "timestamp"}
 END_KEYS = {"attemptId", "elapsedSeconds", "event", "headSha", "next", "phase", "timestamp", "verdict"}
@@ -45,7 +45,10 @@ class PhaseStreamTests(unittest.TestCase):
         out, start_task_err = self.run_all(("task", "start", "T-1"))
         commit(Path(run["runDir"], "tasks", "slot-1"), "mul.py", "x = 1\n")
         self.checks("pass")
-        more_out, err = self.run_all(("task", "done", "T-1"), ("verify",), ("iterate",), ("deliver",), ("feedback",))
+        more_out, err = self.run_all(("task", "done", "T-1"), ("verify",))
+        review = verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD"))
+        rest_out, rest_err = self.run_all(("iterate", "--verdict-file", review), ("deliver",), ("feedback",))
+        more_out, err = more_out + rest_out, err + rest_err
         stream = markers(start_out + out + more_out)
         err = start_err + start_task_err + err
 
@@ -115,7 +118,7 @@ class PhaseStreamTests(unittest.TestCase):
     def test_a_fix_verified_at_once_still_enters_verify(self):
         run = self.ready_run()
         self.repo.ls("verify")
-        self.repo.ls("iterate")
+        self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))
         commit(Path(run["work"]), "fix.py", "x = 2\n")  # a review fix, verified with no status in between
         out = self.repo.ls("verify")[1]
         stream = [(m["phase"], m.get("verdict"), m.get("next")) for _, m in markers(out)]

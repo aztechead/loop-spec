@@ -28,6 +28,17 @@ class BodyTests(unittest.TestCase):
         state, self.run = self.run.state, Run(self.run.project, "lerp")  # a Run reads spec.json once
         self.run.state = state
 
+    def test_the_body_shows_the_review_rounds_and_what_was_declined(self):
+        self.spec()
+        found = [{"id": "F-1", "file": "calc.py", "line": 3, "blocking": True, "summary": "off by one"},
+                 {"id": "F-2", "file": "calc.py", "blocking": True, "summary": "slow"}]
+        self.run.state["reviews"] = [{"sha": "a" * 40, "findings": found, "declined": {"F-2": "not this change"}},
+                                     {"sha": "b" * 40, "findings": [], "declined": {}}]
+        (self.run.dir / "pr.md").write_text("## Why\n\nx.\n")
+        text = deliver.body(self.run, verified=True)
+        self.assertIn("**Review:** 2 round(s); 1 blocking finding(s) fixed, 1 declined", text)
+        self.assertIn("- round 1 F-2 calc.py: slow (declined: not this change)", text)
+
     def test_title_prefers_the_spec_then_the_request_first_line(self):
         self.assertEqual(deliver.title(self.run), "Add lerp")
         self.spec(title="feat: add lerp")
