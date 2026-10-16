@@ -10,8 +10,27 @@ from loop_spec.errors import LoopSpecError
 from loop_spec.runs import Repo, Run
 
 
+def retarget(run: Run, repo: Repo) -> None:
+    """When the branch this run stacks on merged and left origin, move the run onto that branch's own base.
+    The one change on origin a refused deliver may make: the PR's base, which records the same fact."""
+    stacked = repo.state.get("stackedOn") or run.state.get("stackedOn")
+    work, base = repo.work, repo.state["base"]["branch"]
+    if not stacked or not git.has_origin(work) or git.remote_has(work, base):
+        return
+    state = git.gh_json(work, "pr", "view", str(stacked["pr"]["number"]), "--json", "state").get("state")
+    if state != "MERGED":
+        raise LoopSpecError(f"origin/{base} is gone and its PR {stacked['pr']['url']} did not merge",
+                            "end the run with loop-spec finish --status escalated and start it again on the right base")
+    repo.state["base"]["branch"] = stacked["base"]
+    run.state.pop("stackedOn", None)
+    if repo.state.get("pr"):
+        git.pr_set_base(work, repo.state["pr"]["number"], stacked["base"])
+    run.save()
+
+
 def moves(run: Run, repo: Repo) -> list[dict]:
     """Fetch origin's base and feature branches; return each one the feature head does not contain."""
+    retarget(run, repo)
     work, base, branch = repo.work, repo.state["base"]["branch"], repo.state["branch"]
     if not git.has_origin(work):
         return []

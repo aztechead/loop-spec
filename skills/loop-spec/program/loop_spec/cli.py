@@ -53,6 +53,15 @@ def cmd_start(args, project: Path, cwd: Path) -> int:
     mode = "supervised" if args.supervised else "autonomous" if args.autonomous else "interactive"
     entries = workspace_repos(project)
     out(f"loop-spec: root {project}" + (f" (workspace: {', '.join(e['name'] for e in entries)})" if entries is not None else ""))
+    prior = None
+    if args.after:
+        if entries is not None:
+            raise LoopSpecError("--after is for single-repository runs", "start from inside one repository, or drop --after")
+        prior = Run(project, args.after)
+        if not prior.exists() or prior.workspace:
+            raise LoopSpecError(f"--after names a single-repository run, and {args.after} is not one", "run loop-spec status to list the runs")
+        if not prior.state.get("pr"):
+            raise LoopSpecError(f"run {args.after} has no PR yet: deliver it first", f"deliver {args.after}, then start this run again")
     if entries is not None:
         kind, run.state, so_far = _start_workspace(args, run, project, entries, config, request, mode)
     else:
@@ -66,7 +75,7 @@ def cmd_start(args, project: Path, cwd: Path) -> int:
             pr = {"number": found["number"], "url": found["url"], "adopted": True}
         else:
             kind = args.kind
-            base_branch = args.base or config.get("base") or git.default_branch(project)
+            base_branch = (prior.state["branch"] if prior else args.base or config.get("base") or git.default_branch(project))
             base_sha = git.resolve_base(project, base_branch)
             prefix = config.get("branchPrefix") or PREFIX.get(kind, "feat/")
             branch = first_free(args.branch or config.get("branch") or prefix + run.slug,
@@ -86,6 +95,9 @@ def cmd_start(args, project: Path, cwd: Path) -> int:
             "rootChanges": git.dirty(project),
             "tasks": {},
         }
+        if prior:
+            run.state["stackedOn"] = {"slug": args.after, "base": prior.state["base"]["branch"],
+                                      "pr": {"number": prior.state["pr"]["number"], "url": prior.state["pr"]["url"]}}
         so_far = review.read(run.work, pr["number"])[0] if pr else []
         if pr:  # the review so far is the spec's input; feedback reports only what comes after it
             run.state["feedback"] = {"seen": [i["id"] for i in so_far]}
@@ -231,6 +243,8 @@ def show_status(run: Run) -> int:
             out(f"  title    {s['title']}")
         if s.get("pr"):
             out(f"  pr       {s['pr']['url']}")
+        if s.get("stackedOn"):
+            out(f"  after    {s['stackedOn']['slug']} ({s['stackedOn']['pr']['url']})")
         if s.get("instructions"):
             out(f"  rules    {', '.join(s['instructions'])}")
         template = deliver.pr_template(run.work) if run.work.exists() else None
@@ -1124,12 +1138,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--request")
     p.add_argument("--request-file")
     p.add_argument("--kind", choices=[k for k in KINDS if k != "revise"], default="cycle")
-    p.add_argument("--pr", help="revise this open pull request (number, URL, or branch)")
+    where = p.add_mutually_exclusive_group()
+    where.add_argument("--pr", help="revise this open pull request (number, URL, or branch)")
+    where.add_argument("--base", help="branch to start from and target; default: origin's default branch")
+    where.add_argument("--after", metavar="SLUG", help="stack on this delivered run: start from its branch and target it")
     p.add_argument("--autonomous", action="store_true",
                    help="no one will answer questions (LOOP_SPEC_MODE=autonomous in the environment does the same)")
     p.add_argument("--supervised", action="store_true",
                    help="a host relays questions: the lead interviews at the spec, skips the approval step, and may stop to ask (LOOP_SPEC_MODE=supervised does the same)")
-    p.add_argument("--base", help="branch to start from and target; default: origin's default branch")
     p.add_argument("--branch", help="feature branch name; default: feat/<slug> (fix/ debug, refactor/ refactor, perf/ perf)")
     p.add_argument("--title", help="the PR title; default: the spec's title")
     p.set_defaults(func=cmd_start)

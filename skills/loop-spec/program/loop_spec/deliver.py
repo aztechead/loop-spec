@@ -87,6 +87,8 @@ def _verification(run: Run, verified: bool, repo: Repo | None = None, siblings=(
             lines.append(f"| {MARK[ok]} | **{c.get('id', '')}** {_cell(c.get('text', ''))} | {_cell(check)} |")
     links = ", ".join(f"[{n}#{num}]({url})" for n, num, url in siblings)
     side = [f"**Part of one change across repositories:** {links}", ""] if links else []
+    if run.state.get("stackedOn"):
+        side += [f"**Depends on:** {run.state['stackedOn']['pr']['url']}", ""]
     return [VERIFY_OPEN, *side, *lines, *_review_lines(run), "", "_Delivered by loop-spec._", "</details>", VERIFY_CLOSE]
 
 
@@ -163,7 +165,7 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
     if not todo:
         raise LoopSpecError("the feature branch has no commits beyond its base; there is nothing to deliver",
                             "end the run with `loop-spec finish --status no-change --summary ...`")
-    for r in todo:  # every refusal comes before the first push, so a refusal changes nothing on origin
+    for r in todo:  # every refusal comes before the first push, so a refusal changes nothing on origin but the PR's base (remote.retarget)
         tag = f"[{r.name}] " if run.workspace else ""
         git.require_clean(r.work, f"{tag}the feature worktree", f"commit or discard them in {r.work}, then verify again")
         adopted = (r.state.get("pr") or {}).get("adopted")
