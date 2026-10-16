@@ -2,6 +2,24 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [8.3.0] - 2026-10-21
+
+### Changed
+
+- `verify --base` records its result as the base record. `deliver` refuses a debug run
+  whose base record has no failing criterion check.
+- `iterate` takes the reviewer's json verdict (`--verdict-file`, one per repository in a
+  run across repositories) and refuses while a blocking finding is neither fixed nor
+  declined with a reason (`--decline ID=REASON`). The PR description shows the review
+  rounds and each declined finding. A micro run may omit the verdict after reviewing the
+  change itself. When the last two reviews of different heads block on the same file,
+  the next step asks for the premise both fixes assumed.
+- `finish --status completed` refuses until the delivered head's last `feedback` showed
+  CI passed and nothing new.
+- Guidance: the reviewer proves one safety fact with a command, implementers give
+  stateful logic an explicit state type, observable choices are settled by a scratch
+  sketch, and a repeated finding becomes a `checks` command.
+
 ## [8.2.1] - 2026-10-20
 
 ### Changed
