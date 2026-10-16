@@ -4,7 +4,7 @@ For a developer installing loop-spec in Claude Code, or running it as the method
 autonomous coding agent follows on the Claude Agent SDK. Use this guide to install
 it, start a run, and read the result.
 
-Current version: 8.3.0
+Current version: 8.4.0
 
 ## What it is
 
@@ -64,6 +64,8 @@ Coming from 7.x, or staying on it: [docs/migrating-7-to-8.md](docs/migrating-7-t
 | `/loop-spec:cycle` | a request or spec file | the full run, for a feature or change |
 | `/loop-spec:micro` | a small, well-defined change | the same run, short: one task, no interview |
 | `/loop-spec:debug` | an error, stack trace, or failing test | reproduce at the start commit, fix the cause, keep a regression test |
+| `/loop-spec:refactor` | a restructuring that keeps behavior | checks that pass before and after, then the restructuring |
+| `/loop-spec:perf` | a slow or large part of the code, or a metric to improve | record a baseline, improve it against a target, deliver a measured win |
 | `/loop-spec:revise` | a PR number or URL | address its review comments on the PR's own branch |
 | `/loop-spec:status` | nothing, or a run's slug | where runs stand |
 
@@ -160,7 +162,7 @@ Optional, in `<repo>/.loop-spec/config.json` (commit it if your team wants it sh
 |---|---|
 | `base` | the branch runs start from and PRs target; default origin's default branch |
 | `branch` | the feature branch name, for repositories with a naming rule; `-2`, `-3` is added when taken |
-| `branchPrefix` | prefix for the default branch name; default `feat/`, `fix/` for debug |
+| `branchPrefix` | prefix for the default branch name; default `feat/`, `fix/` for debug, `refactor/` for refactor, `perf/` for perf |
 | `reviewers`, `labels` | set on a new PR |
 | `feedback.skills` | skills (`plugin:skill`) the lead runs on the delivered PR, e.g. your own review triage; what they report is handled like review comments |
 | `feedback.wait` | `false` to end runs at delivery without waiting for CI or review |

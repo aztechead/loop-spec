@@ -108,6 +108,55 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertIn("next: loop-spec feedback", out)
 
+    def stacked_run(self):
+        prior = self.ready_run()
+        state_path = Path(prior["runDir"], "state.json")
+        state = json.loads(state_path.read_text())
+        self.prior_branch = state["branch"]
+        sh(prior["work"], "git", "push", "-q", "origin", f"HEAD:refs/heads/{self.prior_branch}")
+        state["pr"] = {"number": 7, "url": "https://github.com/acme/kv/pull/7"}
+        state_path.write_text(json.dumps(state))
+        code, out, err = self.repo.ls("start", "--request", "Part two", "--after", prior["slug"])
+        self.assertEqual(code, 0, err)
+        return marker(out, "LOOP_SPEC_RUN")
+
+    def test_sync_moves_a_stacked_run_onto_the_base_of_a_merged_branch(self):
+        run = self.stacked_run()
+        state_path = Path(run["runDir"], "state.json")
+        state = json.loads(state_path.read_text())
+        state["pr"] = {"number": 8, "url": "https://github.com/acme/kv/pull/8"}
+        state_path.write_text(json.dumps(state))
+        sh(self.repo.path, "git", "push", "-q", "origin", "--delete", self.prior_branch)
+        (self.gh_dir / "view.json").write_text(json.dumps({"state": "MERGED"}))
+        code, _, err = self.repo.ls("sync", "--slug", run["slug"])
+        self.assertEqual(code, 0, err)
+        state = json.loads(Path(run["runDir"], "state.json").read_text())
+        self.assertEqual(state["base"]["branch"], "main")
+        self.assertNotIn("stackedOn", state)
+        self.assertIn("pr edit 8 --base main", (self.gh_dir / "calls").read_text())
+
+    def test_start_after_a_merged_run_starts_on_its_base(self):
+        prior = self.ready_run()
+        state_path = Path(prior["runDir"], "state.json")
+        state = json.loads(state_path.read_text())
+        state["pr"] = {"number": 7, "url": "https://github.com/acme/kv/pull/7"}
+        state_path.write_text(json.dumps(state))
+        (self.gh_dir / "view.json").write_text(json.dumps({"state": "MERGED"}))
+        code, out, err = self.repo.ls("start", "--request", "Part two", "--after", prior["slug"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("PR merged; starting on its base, main", out)
+        state = json.loads(Path(marker(out, "LOOP_SPEC_RUN")["runDir"], "state.json").read_text())
+        self.assertEqual(state["base"]["branch"], "main")
+        self.assertNotIn("stackedOn", state)
+
+    def test_sync_refuses_a_stacked_run_whose_base_branch_left_origin_unmerged(self):
+        run = self.stacked_run()
+        sh(self.repo.path, "git", "push", "-q", "origin", "--delete", self.prior_branch)
+        (self.gh_dir / "view.json").write_text(json.dumps({"state": "OPEN"}))
+        code, _, err = self.repo.ls("sync", "--slug", run["slug"])
+        self.assertEqual(code, 1)
+        self.assertIn("finish --status escalated", err)
+
     def test_a_conflicting_base_is_left_for_the_lead_and_synced_after(self):
         run = self.ready_run()
         commit(Path(run["work"]), "calc.py", "ours\n")
