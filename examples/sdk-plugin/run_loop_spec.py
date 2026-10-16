@@ -20,7 +20,7 @@ Nothing from loop-spec is imported here. Every SDK call follows the Agent SDK do
 
 Usage:
     python3 run_loop_spec.py --project-root DIR "<request>"
-        [--entry cycle|micro|debug|revise] [--autonomous | --supervised] [--model opus]
+        [--entry cycle|micro|debug|revise|refactor|perf] [--autonomous | --supervised] [--model opus]
         [--plugin DIR ...] [--resume SESSION_ID] [--max-budget-usd N]
 
 Exit code: 0 when loop-spec's result has status "completed", 1 for another status,
@@ -332,7 +332,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Run one loop-spec entry in a Claude Agent SDK session.")
     ap.add_argument("request", nargs="?", help="the entry's argument: request text, spec path, error report, or PR")
     ap.add_argument("--project-root", required=True, type=Path)
-    ap.add_argument("--entry", default="cycle", choices=["cycle", "micro", "debug", "revise"])
+    ap.add_argument("--entry", default="cycle", choices=["cycle", "micro", "debug", "revise", "refactor", "perf"])
     modes = ap.add_mutually_exclusive_group()
     modes.add_argument("--autonomous", action="store_true", help="no one answers questions; the run picks defaults")
     modes.add_argument("--supervised", action="store_true",
