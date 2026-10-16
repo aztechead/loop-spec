@@ -794,9 +794,17 @@ def _config(project: Path) -> dict:
 def cmd_iterate(args, project: Path, cwd: Path) -> int:
     run = find(project, args.slug, cwd)
     head = run.head()
+    reviews = run.state.setdefault("reviews", [])
+    earlier = _earlier_head(run, head, args.verdict_file)
+    if earlier:  # a review of a commit the branch has moved past: keep it in the record, it cannot pass ITERATE
+        reviews.append({"sha": earlier, "at": legacy.now_iso(), "findings": _read_verdicts(run, earlier, args.verdict_file),
+                        "declined": {}})
+        run.save()
+        out(f"recorded the review of {short(earlier)} as an earlier round; the branch is now at {short(head)}: "
+            "verify it, review it, and run loop-spec iterate with that review")
+        return 1
     if not run.verified_at(head):
         raise LoopSpecError("ITERATE reviews a verified head, and this one is not", "loop-spec verify first")
-    reviews = run.state.setdefault("reviews", [])
     if not args.verdict_file:
         if run.state.get("kind") != "micro":
             raise LoopSpecError("ITERATE records the reviewer's verdict",
@@ -827,6 +835,21 @@ def cmd_iterate(args, project: Path, cwd: Path) -> int:
     _sync(run)
     out("next: " + _next_step(run, run.phase(head)))
     return 0
+
+
+def _earlier_head(run: Run, head, files: list[str]) -> str | None:
+    """The full sha a single verdict judged when that is an earlier commit of the branch, not its head."""
+    if run.workspace or len(files) != 1 or not isinstance(head, str):
+        return None  # ponytail: single-repository runs only; a workspace's earlier review is still refused
+    try:
+        judged = json.loads(Path(files[0]).read_text()).get("head")
+    except (OSError, ValueError, AttributeError):
+        return None
+    if not isinstance(judged, str) or len(judged) < 7 or head.startswith(judged):
+        return None
+    proc = git.git(run.work, "rev-parse", "--verify", "--quiet", f"{judged}^{{commit}}")
+    sha = proc.stdout.strip()
+    return sha if proc.returncode == 0 and git.is_ancestor(run.work, sha, head) else None
 
 
 def _read_verdicts(run: Run, head, files: list[str]) -> list[dict]:
