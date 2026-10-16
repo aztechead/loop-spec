@@ -27,6 +27,9 @@ Attack the change from separate angles, one at a time:
 - **Root cause:** a fix that hides a symptom (a guard, a retry, a broad except) instead
   of removing its cause.
 
+Before you report, name the one fact the change is safe because of and run a command
+that shows it holds; say what you ran.
+
 Report only what you can point to in the code. For each finding give the file and line,
 what is wrong, why it matters, and the fix you suggest. Mark it **blocking** (the PR
 should not merge with it) or **optional** (a real improvement, safe to skip). If you find

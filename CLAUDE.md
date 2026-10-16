@@ -26,8 +26,10 @@ recognize while working and what to do; a rule with no trigger does not fire.
   reference that covers it in the same diff: they are the lead's only description of
   them.
 - **When you would add a gate** (the program refusing something), check that it
-  guards a fact the program records, not the quality of the model's judgment.
-  Judgment belongs in the skill as guidance; see
+  guards a fact the program records. A judgment counts as a fact only once recorded:
+  the program may require that a review of this exact head was recorded and that each
+  blocking finding in it is fixed or declined with a reason. It never decides whether a
+  finding or a verdict is right; that stays in the skill as guidance. See
   [docs/architecture.md](docs/architecture.md).
 - **When you write or edit an entry skill** (`skills/<entry>/SKILL.md`), keep it a
   thin shell: it runs `loop-spec start` and points at the hub skill. The method lives
