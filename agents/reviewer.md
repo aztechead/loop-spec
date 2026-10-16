@@ -38,4 +38,6 @@ nothing blocking, say so plainly; do not invent findings to have some.
 End your report with one fenced `json` block, the only one in your reply:
 `{"head": "<full sha of HEAD in the worktree>", "findings": [{"id": "F-1", "file": "path", "line": 12,
 "blocking": true, "summary": "one line"}]}`. Number findings F-1, F-2, ... in report order; `findings` is
-`[]` when you found nothing. Get the head with `git -C <worktree> rev-parse HEAD`.
+`[]` when you found nothing. Get the head with `git -C <worktree> rev-parse HEAD`. When you
+review several repositories' worktrees, `head` is an object naming each one's HEAD:
+`{"api": "<sha>", "web": "<sha>"}`.

@@ -118,6 +118,21 @@ class WorkspaceTests(unittest.TestCase):
         return [a for n in names for a in ("--verdict-file", verdict(
             run["runDir"], sh(Path(run["work"]) / n, "git", "rev-parse", "HEAD"), name=f"verdict-{n}.json"))]
 
+    def test_one_review_of_both_repositories_names_each_head(self):
+        run = self.start("--autonomous")
+        self.both_tasks(run)
+        self.assertEqual(self.ls("verify")[0], 0)
+        heads = {n: sh(Path(run["work"]) / n, "git", "rev-parse", "HEAD") for n in ("api", "web")}
+        stale = Path(run["runDir"], "stale.json")
+        stale.write_text(json.dumps({"head": {"api": heads["api"], "web": "0" * 40}, "findings": []}))
+        code, _, err = self.ls("iterate", "--verdict-file", str(stale))
+        self.assertEqual(code, 1)
+        self.assertIn("review the current heads", err)
+        both = Path(run["runDir"], "both.json")
+        both.write_text(json.dumps({"head": heads, "findings": []}))
+        code, _, err = self.ls("iterate", "--verdict-file", str(both))
+        self.assertEqual(code, 0, err)
+
     def verified_run(self) -> dict:
         run = self.start("--autonomous")
         self.both_tasks(run)
