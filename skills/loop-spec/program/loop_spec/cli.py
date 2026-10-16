@@ -21,6 +21,7 @@ from loop_spec.runs import (KINDS, RESULT_STATUSES, Run, all_runs, find, first_f
                             run_root, sha_for, short, slugify, spec_problems, workspace_repos)
 
 PROGRAM = Path(__file__).resolve().parents[1] / "loop-spec"
+PREFIX = {"debug": "fix/", "refactor": "refactor/", "perf": "perf/"}  # default branch prefix by run kind
 
 
 def out(line: str = "") -> None:
@@ -67,7 +68,7 @@ def cmd_start(args, project: Path, cwd: Path) -> int:
             kind = args.kind
             base_branch = args.base or config.get("base") or git.default_branch(project)
             base_sha = git.resolve_base(project, base_branch)
-            prefix = config.get("branchPrefix") or ("fix/" if kind == "debug" else "feat/")
+            prefix = config.get("branchPrefix") or PREFIX.get(kind, "feat/")
             branch = first_free(args.branch or config.get("branch") or prefix + run.slug,
                                 lambda b: git.exists_anywhere(project, b))
             git.add_worktree(project, run.work, base_sha, new_branch=branch)
@@ -107,7 +108,7 @@ def _start_workspace(args, run: Run, project: Path, entries: list[dict], config:
                   {"number": found["number"], "url": found["url"], "adopted": True})]
     else:
         kind = args.kind
-        prefix = config.get("branchPrefix") or ("fix/" if kind == "debug" else "feat/")
+        prefix = config.get("branchPrefix") or PREFIX.get(kind, "feat/")
         picks = []
         for e in entries:  # resolve everything first, so a failure leaves no worktree behind
             base_branch = args.base or config.get("base") or git.default_branch(e["path"])
@@ -309,7 +310,7 @@ def _rel(run: Run, path: Path) -> Path:
 # The hub skill's references, which only some runs need: a run kind's changes to the
 # workflow, named on the `next` line at the spec, and the PR template, named at deliver.
 REFERENCES = Path(__file__).resolve().parents[2] / "references"
-KIND_GUIDES = ("micro", "debug", "revise")
+KIND_GUIDES = ("micro", "debug", "revise", "refactor")
 
 
 def _next_step(run: Run, phase: str, problem: str | None = None) -> str:
@@ -1100,7 +1101,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--supervised", action="store_true",
                    help="a host relays questions: the lead interviews at the spec, skips the approval step, and may stop to ask (LOOP_SPEC_MODE=supervised does the same)")
     p.add_argument("--base", help="branch to start from and target; default: origin's default branch")
-    p.add_argument("--branch", help="feature branch name; default: feat/<slug> (fix/<slug> for debug)")
+    p.add_argument("--branch", help="feature branch name; default: feat/<slug> (fix/ debug, refactor/ refactor, perf/ perf)")
     p.add_argument("--title", help="the PR title; default: the spec's title")
     p.set_defaults(func=cmd_start)
 

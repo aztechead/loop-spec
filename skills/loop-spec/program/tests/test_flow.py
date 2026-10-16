@@ -163,6 +163,25 @@ class FlowTests(unittest.TestCase):
         commit(Path(run["work"]), "mul.py", "x = 1\n")
         self.assertIn("fails with the same output as at", self.repo.ls("verify")[1])
 
+    def test_refactor_deliver_needs_a_criterion_that_passed_at_the_base(self):
+        run = self.start("--kind", "refactor")
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "test -f moved"}]},
+                   {"tasks": [{"id": "T-1", "title": "move"}]})
+        self.assertEqual(self.repo.ls("verify", "--base")[0], 1)
+        commit(Path(run["work"]), "moved", "")
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], self.head(run)))[0], 0)
+        code, _, err = self.repo.ls("deliver")
+        self.assertEqual(code, 1)
+        self.assertIn("no criterion passed at the base", err)
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "test -f calc.py"}]},
+                   {"tasks": [{"id": "T-1", "title": "move"}]})
+        self.assertEqual(self.repo.ls("verify", "--base")[0], 0)
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], self.head(run)))[0], 0)
+        code, _, err = self.repo.ls("deliver")
+        self.assertNotIn("no criterion passed at the base", err)
+
     def verified(self, *extra: str) -> dict:
         run = self.start(*extra)
         self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "true"}]}, {"tasks": [{"id": "T-1", "title": "a"}]})

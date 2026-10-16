@@ -36,7 +36,7 @@ from loop_spec import dag, git
 from loop_spec.errors import LoopSpecError
 
 RUNS_DIR = Path(".loop-spec") / "runs"
-KINDS = ("cycle", "micro", "debug", "revise")
+KINDS = ("cycle", "micro", "debug", "revise", "refactor")
 RESULT_STATUSES = ("completed", "no-change", "escalated", "failed")
 WORKSPACE = Path(".loop-spec") / "workspace.json"
 PENDING_STREAM = "stream.pending"

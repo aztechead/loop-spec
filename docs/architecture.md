@@ -11,7 +11,7 @@ the line between them sits where it does. The method itself is in
 |---|---|---|
 | The lead (the user's session, or an SDK agent) | every judgment: the spec, the plan, dispatching tasks, reading reports, fixing findings | runs the hub skill |
 | The hub skill | the method, as guidance the lead follows: every phase in `SKILL.md`, and what only some runs need (a run kind's changes, the PR template) as references it links, which the program's `next` line names when the run needs them | `skills/loop-spec/SKILL.md`, `skills/loop-spec/references/` |
-| Entry skills | starting a run of one kind, then pointing at the hub | `skills/{cycle,micro,debug,revise,status}/SKILL.md` |
+| Entry skills | starting a run of one kind, then pointing at the hub | `skills/{cycle,micro,debug,revise,refactor,status}/SKILL.md` |
 | Agents | one task's implementation (`implementer`, Sonnet), the whole change's adversarial review (`reviewer`, Opus), and its cleanup review (`simplifier`, Sonnet) | `agents/*.md` |
 | The hooks | the Stop hook keeps an autonomous run going until it has a result; the PostToolUse hook reports the stream markers the lead's pipe cut | `hooks/hooks.json`, `loop_spec/hook.py` |
 | The program | facts the lead should not re-derive: run state, the task graph, worktrees, merges, running checks, the PR | `skills/loop-spec/program/` |
@@ -27,7 +27,7 @@ usable criteria, a plan that is not a DAG or names a criterion the spec lacks, a
 that conflicts, finishing a task with uncommitted work, delivering a head that verify
 did not pass (overridable with `--unverified`, which marks the PR draft and says so),
 a `pr.md` that still holds the template's placeholder lines, and delivering a head
-that lacks commits origin has, a debug run with no failure at the base, an `iterate`
+that lacks commits origin has, a debug run with no failure at the base, a refactor run with no criterion passing at the base, an `iterate`
 with an open blocking finding, and `finish --status completed` before a clear feedback
 round (`deliver --no-feedback` ends a run completed without one, as before, on the
 user's request). It also checks `gh` before pushing, so a delivery that
