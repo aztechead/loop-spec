@@ -333,6 +333,25 @@ class LoopTests(unittest.TestCase):
         outcome, _ = ci.wait(self.repo.path, 7, timeout=30, sleep=sleeps.append, clock=clock)
         self.assertEqual((outcome, len(sleeps)), ("pending", 2))
 
+    def test_ci_with_workflows_but_no_checks_after_90_seconds_is_none(self):
+        (self.repo.path / ".github" / "workflows").mkdir(parents=True)
+        (self.repo.path / ".github" / "workflows" / "ci.yml").write_text("on: pull_request\n")
+        clock = iter([0, 0, 30, 60, 90, 90]).__next__
+        with mock.patch.object(ci, "read", return_value=None):
+            outcome, _ = ci.wait(self.repo.path, 7, timeout=600, sleep=lambda s: None, clock=clock)
+        self.assertEqual(outcome, "none")
+
+    def test_feedback_with_a_new_review_item_does_not_wait_for_pending_ci(self):
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pending")
+        self.review(comments=[{"id": "C1", "author": "ana", "body": "Why int?"}])
+        with mock.patch.object(ci, "wait", wraps=ci.wait) as wait:
+            code, out, _ = self.repo.ls("feedback", "--timeout", "600")
+        self.assertEqual(code, 1)
+        self.assertEqual(wait.call_args.args[2], 0)
+        self.assertIn("CI still running. 1 new review item(s)", out)
+
     def test_ci_read_reports_a_gh_error_and_reads_no_checks_yet_as_none(self):
         with mock.patch.object(ci.git, "gh", return_value=(1, "", "unknown flag: --json")):
             with self.assertRaisesRegex(LoopSpecError, "unknown flag: --json"):

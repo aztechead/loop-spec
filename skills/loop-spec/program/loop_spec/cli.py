@@ -685,9 +685,12 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
         raise LoopSpecError("the current head has not been delivered", "verify, then `loop-spec deliver`")
     tag = {r.name: f"[{r.name}] " if run.workspace else "" for r in targets}
     call_end = time.monotonic() + args.timeout
+    # review items already posted come back at once: CI is read once, not waited on
+    fresh = any(i["id"] not in (r.state.get("feedback") or {}).get("seen", [])
+                for r in targets for i in review.read(r.work, r.state["pr"]["number"])[0])
     ci_by, failed = {}, False
     for n, r in enumerate(targets):  # once one PR's CI failed, the rest are read once and not waited on
-        budget = 0 if failed else args.timeout if n == 0 else max(0, int(call_end - time.monotonic()))
+        budget = 0 if failed or fresh else args.timeout if n == 0 else max(0, int(call_end - time.monotonic()))
         ci_by[r.name] = ci.wait(r.work, r.state["pr"]["number"], budget, stop=lambda: _wrap_up_asked(run))
         failed = failed or ci_by[r.name][0] == "failed"
     if _wrap_up_asked(run):
@@ -696,7 +699,7 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
         for c in ci_by[r.name][1]:
             out(f"{tag[r.name]}  {c.get('bucket', '?'):8} {c.get('name', '')}" + (f"  {c['link']}" if c.get("link") else ""))
     outcome = _combine([o for o, _ in ci_by.values()])
-    if outcome == "pending":
+    if outcome == "pending" and not fresh:
         out(f"checks are still running after {args.timeout}s: run loop-spec feedback again")
         return 0
     feedback_config = _config(project).get("feedback") or {}
@@ -738,7 +741,7 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
         out(f"review requested from {', '.join(waiting_all)} is still not in after {review_wait // 60} min; not waiting longer")
     skills = (_config(project).get("feedback") or {}).get("skills", [])
     if outcome == "failed" or new_all:
-        out(("CI FAILED. " if outcome == "failed" else "") + (f"{len(new_all)} new review item(s). " if new_all else "") +
+        out(("CI FAILED. " if outcome == "failed" else "CI still running. " if outcome == "pending" else "") + (f"{len(new_all)} new review item(s). " if new_all else "") +
             "Fix what this change should fix (then verify, deliver, and feedback again), and answer the rest in a "
             "PR comment. A check that also fails on the base branch is not this change's.")
         return 1

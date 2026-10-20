@@ -44,7 +44,7 @@ the project's checks take longer.
 | `LS iterate [--caveats "..."]` | record that the verified head's whole-change review is done and addressed |
 | `LS set [--repo NAME] --branch NAME --title "..."` | rename the feature branch (until it is pushed) or set the PR title; `--repo` sets them for one repository of a run across repositories |
 | `LS deliver [--draft] [--unverified] [--comment-file F]` | push the verified head and open or update its PR (posting `F` as a comment) |
-| `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review; ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
+| `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review (a PR with no checks after 90 s counts as no CI; review items already posted come back without waiting for CI); ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
 | `LS checkpoint [--push]` | commit work in progress in every worktree and list them; `--push` pushes the branches that hold commits of their own. For a run the host asked to wrap up |
 | `LS finish --status completed\|no-change\|escalated\|failed --summary "..."` | end the run: `completed` after feedback skills find nothing, otherwise a run that delivers nothing |
 
