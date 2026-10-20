@@ -359,6 +359,10 @@ class LoopTests(unittest.TestCase):
         with mock.patch.object(ci, "read", return_value=None):
             outcome, _ = ci.wait(self.repo.path, 7, timeout=600, sleep=lambda s: None, clock=clock)
         self.assertEqual(outcome, "none")
+        clock = iter([100, 100]).__next__  # a later PR of the same feedback call shares the grace that already ran out
+        with mock.patch.object(ci, "read", return_value=None):
+            outcome, _ = ci.wait(self.repo.path, 8, timeout=600, sleep=lambda s: None, clock=clock, since=0)
+        self.assertEqual(outcome, "none")
 
     def test_feedback_with_a_new_review_item_does_not_wait_for_pending_ci(self):
         run = self.ready_run()

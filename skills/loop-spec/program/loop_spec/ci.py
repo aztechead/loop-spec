@@ -65,11 +65,12 @@ def _job_bucket(worktree: Path, check: dict) -> str | None:
 
 
 def wait(worktree: Path, pr: int, timeout: int, sleep=time.sleep, clock=time.monotonic,
-         stop=lambda: False) -> tuple[str, list[dict]]:
+         stop=lambda: False, since: float | None = None) -> tuple[str, list[dict]]:
     """Poll until a check fails, every check passes, `timeout` passes, or `stop()` says to. Returns (outcome, checks),
-    where outcome is `passed`, `failed`, `none` (no CI), or `pending` (still running at the timeout)."""
-    started = clock()
-    deadline = started + timeout
+    where outcome is `passed`, `failed`, `none` (no CI), or `pending` (still running at the timeout).
+    The no-checks grace counts from `since` (a `clock()` reading), so PRs waited on in turn share it."""
+    now = clock()
+    started, deadline = now if since is None else since, now + timeout
     while True:
         checks = read(worktree, pr)
         if checks is None and (not expected(worktree) or clock() - started >= NO_CHECKS_SECONDS):

@@ -738,7 +738,8 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
     ci_by, failed = {}, False
     for n, r in enumerate(targets):  # once one PR's CI failed, the rest are read once and not waited on
         budget = 0 if failed or fresh else args.timeout if n == 0 else max(0, int(call_end - time.monotonic()))
-        ci_by[r.name] = ci.wait(r.work, r.state["pr"]["number"], budget, stop=lambda: _wrap_up_asked(run))
+        ci_by[r.name] = ci.wait(r.work, r.state["pr"]["number"], budget, stop=lambda: _wrap_up_asked(run),
+                                since=call_end - args.timeout)
         failed = failed or ci_by[r.name][0] == "failed"
     if _wrap_up_asked(run):
         return 0  # main prints the wrap-up step
