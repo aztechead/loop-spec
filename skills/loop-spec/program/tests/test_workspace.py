@@ -140,6 +140,16 @@ class WorkspaceTests(unittest.TestCase):
                 runs.workspace_repos(self.root)
             self.assertIn(named, caught.exception.message)
 
+    def test_1_an_unlisted_repository_under_the_workspace_is_its_own_root(self):
+        other = self.root / "other"
+        sh(self.root, "git", "init", "-q", "-b", "main", str(other))
+        (other / "sub").mkdir()
+        for start in (other, other / "sub"):
+            self.assertEqual(runs.run_root(start), other.resolve())
+        self.assertEqual(runs.run_root(self.clones["api"]), self.root.resolve())
+        sh(self.base, "git", "init", "-q", "-b", "main")  # the workspace inside an enclosing repository keeps the workspace
+        self.assertEqual(runs.run_root(self.root), self.root.resolve())
+
     def test_1_clones_without_workspace_json_are_named_with_the_file_to_write(self):
         (self.root / ".loop-spec" / "workspace.json").unlink()
         with self.assertRaises(LoopSpecError) as caught:

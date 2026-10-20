@@ -146,6 +146,8 @@ When `LOOP_SPEC_RUN` has a `repos` object, the run changes several repositories 
 side by side in a workspace (the directory holding `.loop-spec/workspace.json`). The
 phases are the same; these points change:
 
+- A repository the workspace does not list is its own root; pass `--project-root` to
+  choose explicitly.
 - `work` holds one worktree per repository, at `work/<name>/`. Each `repos` entry gives
   that repository's `work`, `base`, `branch`, `prTemplate`, and `prMd`.
 - When a repository's rules name its own branch or PR title format, set them for that

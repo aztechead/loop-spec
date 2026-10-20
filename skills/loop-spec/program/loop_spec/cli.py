@@ -51,6 +51,7 @@ def cmd_start(args, project: Path, cwd: Path) -> int:
     config = read_json(project / ".loop-spec" / "config.json", "config") or {}
     mode = "supervised" if args.supervised else "autonomous" if args.autonomous else "interactive"
     entries = workspace_repos(project)
+    out(f"loop-spec: root {project}" + (f" (workspace: {', '.join(e['name'] for e in entries)})" if entries is not None else ""))
     if entries is not None:
         kind, run.state, so_far = _start_workspace(args, run, project, entries, config, request, mode)
     else:

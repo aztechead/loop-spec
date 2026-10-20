@@ -111,7 +111,7 @@ def run_root(start: Path) -> Path:
     start = start.resolve()
     for d in (start, *start.parents):
         if (d / WORKSPACE).is_file():
-            return d
+            return _repo_outside(d, start) or d
     try:
         return git.project_root(start)
     except LoopSpecError:
@@ -121,6 +121,18 @@ def run_root(start: Path) -> Path:
         listed = ", ".join(f'{{"name": "{n}", "path": "{n}"}}' for n in clones)
         raise LoopSpecError(f"{start} is not a repository; it holds the clones {', '.join(clones)}",
                             f'list the ones this change spans in {start / WORKSPACE}: {{"repos": [{listed}]}}, then start again')
+
+
+def _repo_outside(ws: Path, start: Path) -> Path | None:
+    """The repository holding `start` when the workspace at `ws` does not list it: the user is in that repository."""
+    try:
+        top = git.project_root(start)  # main worktree, also from a linked worktree
+    except LoopSpecError:
+        return None
+    if ws.is_relative_to(top):  # the workspace sits inside this repository (or is it): keep the workspace
+        return None
+    listed = {(ws / e["path"]).resolve() for e in (workspace_repos(ws) or [])}
+    return None if top.resolve() in listed else top
 
 
 def workspace_repos(root: Path) -> list[dict] | None:
