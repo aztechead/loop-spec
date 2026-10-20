@@ -2,6 +2,37 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [8.3.0] - 2026-10-20
+
+### Changed
+
+- A repository the workspace does not list is its own root: `start` from inside it no
+  longer opens the run across the ancestor workspace's repositories. `start` prints the
+  root it chose, and its repositories, before it makes any worktree.
+- `verify` merges what moved on origin first, so the head it verifies is the head
+  `deliver` pushes. A merge of the base that leaves the change's diff the same keeps the
+  recorded review, so `deliver` follows without another `iterate`.
+- `verify` reuses a passing check (and a passing `prepare`) whose repository, commit,
+  `prepare`, and command are all unchanged, shown as `cached at <sha>`. In a run across
+  repositories, a repository the change no longer touches is not checked again.
+- `iterate` keeps the last caveats unless `--caveats` is given (`--caveats ""` clears
+  them); `status` shows them.
+- `verify` says the check itself may be wrong when a criterion fails with the same
+  output it had at the previous head.
+- The skill says implementers cannot run skills (the lead runs skill passes the project
+  asks for), that a check piped before `&& git commit` hides its exit code, to redesign a
+  module that draws blocking findings two rounds in a row, and to commit a fix before
+  breaking the code to prove a test.
+
+### Fixed
+
+- `feedback` counts a PR with no checks after 90 s as having no CI, instead of waiting
+  9 minutes when the repository's workflows run only on pushes to the default branch.
+- `feedback` shows review items already posted at once, reading CI once instead of
+  waiting for it.
+- The warning about two tasks listing the same file no longer fires for files of the
+  same name in different repositories.
+
 ## [8.2.0] - 2026-10-13
 
 ### Changed
