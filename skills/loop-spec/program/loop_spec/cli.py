@@ -517,6 +517,7 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
     for r in run.repos:
         if not args.base and (dirty := git.dirty(r.work)):
             out(f"note: uncommitted changes in {r.work} are not part of this verify: {', '.join(dirty[:5])}")
+    prior = run.state.get("verify") or {}  # read before this verify overwrites it
     out(f"verifying {short(sha)} in a clean checkout ({'the base' if args.base else 'the feature head'})")
     results, passed = [], _prepare(run, sha, args.timeout)
     for item in items if passed else []:
@@ -538,6 +539,8 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
             cache[key] = short(sha_for(sha, repo) if repo else sha)
         if r["exit"] != 0 and item.get("repoCheck") and not args.base:
             r.update(_compare_at_base(run, run.repo(item.get("repo")), item, r, where, args.timeout))
+        if r["exit"] != 0 and not (args.base or item.get("repo") or item.get("repoCheck")):
+            _hint_same_failure(run, item, r, prior, sha)
         passed = passed and (r["exit"] == 0 or r.get("preexisting", False))
         results.append({"name": item["name"], **{k: v for k, v in r.items() if k != "output"}})
     if args.base:
@@ -563,6 +566,16 @@ def _cache_key(run: Run, item: dict, sha) -> str:
         r = run.repo(item.get("repo"))
         parts = [item.get("repo"), sha_for(sha, r), prepare_for(run.plan, r.name)]
     return json.dumps([*parts, item["command"]], sort_keys=True)
+
+
+def _hint_same_failure(run: Run, item: dict, r: dict, prior: dict, sha) -> None:
+    """A criterion failing with the output it had at another head: the check itself may be wrong."""
+    mask = checks._masker(run.verify_dir)
+    for old in prior.get("results", []) if prior.get("sha") != sha else []:
+        if (old.get("name"), old.get("command")) == (item["name"], item["command"]) and old.get("exit") not in (0, None) \
+                and mask(old.get("tail", "")) == mask(r["tail"]):
+            out(f"        fails with the same output as at {short(prior['sha'])}: if this change should have changed it, the check itself may be wrong")
+            return
 
 
 def _prepare(run: Run, sha, timeout: int) -> bool:
