@@ -78,7 +78,8 @@ def shared_files(tasks: list[dict]) -> list[tuple[str, str, list[str]]]:
 
 def _files(task: dict) -> set[str]:
     files = task.get("files")
-    return set(files) if isinstance(files, list) else set()
+    prefix = f"{task['repo']}/" if task.get("repo") else ""  # one name in two repositories is two files
+    return {prefix + f for f in files} if isinstance(files, list) else set()
 
 
 def uncovered(criteria: list[dict], tasks: list[dict]) -> list[str]:

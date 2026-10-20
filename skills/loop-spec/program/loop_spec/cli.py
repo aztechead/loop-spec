@@ -277,6 +277,8 @@ def show_status(run: Run) -> int:
     if verify:
         stale = "" if verify["sha"] == head else f" (the branch has moved to {short(head)} since)"
         out(f"  verify   {'passed' if verify['passed'] else 'FAILED'} at {short(verify['sha'])}{stale}")
+    if (it := s.get("iterate")) and it.get("caveats"):
+        out(f"  caveats  {it['caveats']}")
     for r in run.repos:
         if (r.state.get("feedback") or {}).get("sha"):
             f = r.state["feedback"]
@@ -804,10 +806,12 @@ def cmd_iterate(args, project: Path, cwd: Path) -> int:
     head = run.head()
     if not run.verified_at(head):
         raise LoopSpecError("ITERATE reviews a verified head, and this one is not", "loop-spec verify first")
-    run.state["iterate"] = {"sha": head, "caveats": args.caveats,
+    carried = args.caveats is None and (run.state.get("iterate") or {}).get("caveats")
+    caveats = (carried or args.caveats) or None
+    run.state["iterate"] = {"sha": head, "caveats": caveats,
                             "bases": {r.name: r.state["base"]["sha"] for r in run.repos}}
     run.save()
-    out(f"review of {short(head)} recorded" + (f", with caveats: {args.caveats}" if args.caveats else ""))
+    out(f"review of {short(head)} recorded" + (f", with caveats{' (carried)' if carried else ''}: {caveats}" if caveats else ""))
     _sync(run)
     out("next: " + _next_step(run, run.phase(head)))
     return 0
@@ -993,7 +997,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("iterate", parents=[common],
                        help="record that the verified head's whole-change review is done and addressed (ITERATE)")
-    p.add_argument("--caveats", help="what the review left open, carried to the result")
+    p.add_argument("--caveats", default=None,
+                   help="what the review left open, carried to the result; kept from the last iterate unless given (\"\" clears)")
     p.set_defaults(func=cmd_iterate)
 
     p = sub.add_parser("set", parents=[common], help="rename the feature branch (before it is pushed) or set the PR title")

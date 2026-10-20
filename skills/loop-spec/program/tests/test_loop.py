@@ -526,6 +526,21 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(result["criteria"], [{"id": "AC-1", "passed": True, "checked": True}])
         self.assertEqual(result["criteriaSha"], sh(self.repo.path, "git", "rev-parse", "feat/add-mul"))
 
+    def test_caveats_are_carried_to_the_next_iterate_until_cleared(self):
+        run = self.ready_run()
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.repo.ls("iterate", "--caveats", "slow on big inputs")
+        commit(Path(run["work"]), "mul.py", "def mul(a, b):\n    return b * a\n")
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        out = self.repo.ls("iterate")[1]
+        self.assertIn("with caveats (carried): slow on big inputs", out)
+        self.assertIn("caveats  slow on big inputs", self.repo.ls("status")[1])
+        commit(Path(run["work"]), "mul.py", "def mul(a, b):\n    return a * b\n")
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.repo.ls("iterate", "--caveats", "")
+        state = json.loads(Path(run["runDir"], "state.json").read_text())
+        self.assertIsNone(state["iterate"]["caveats"])
+
     # --- pause, resume, checkpoint ---------------------------------------------------------
 
     def started_task(self) -> dict:

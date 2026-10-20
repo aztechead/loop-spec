@@ -41,7 +41,7 @@ the project's checks take longer.
 | `LS task set T-1 --status todo\|blocked --note "..."` | change a task's status by hand |
 | `LS verify [--base]` | merge what moved on origin first (a merge of the base that leaves the change's diff the same keeps the review), then run every criterion check, task verify command, and repository check in a clean checkout of the feature head (or, with `--base`, of the base); passing checks of a repository that did not change are reused, shown as `cached` |
 | `LS sync` | merge whatever moved on origin (the base branch, or the feature branch itself) into `work` |
-| `LS iterate [--caveats "..."]` | record that the verified head's whole-change review is done and addressed |
+| `LS iterate [--caveats "..."]` | record that the verified head's whole-change review is done and addressed; caveats are kept from the last iterate unless given (`--caveats ""` clears) |
 | `LS set [--repo NAME] --branch NAME --title "..."` | rename the feature branch (until it is pushed) or set the PR title; `--repo` sets them for one repository of a run across repositories |
 | `LS deliver [--draft] [--unverified] [--comment-file F]` | push the verified head and open or update its PR (posting `F` as a comment) |
 | `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review (a PR with no checks after 90 s counts as no CI; review items already posted come back without waiting for CI); ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
