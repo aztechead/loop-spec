@@ -518,8 +518,16 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
             continue
         repo = run.repo(item.get("repo")) if run.workspace and item.get("repo") else None
         where = repo.verify_dir if repo else run.verify_dir
+        key = None if args.base else _cache_key(run, item, sha)
+        cache = run.state.setdefault("checkCache", {})
+        if key in cache:
+            out(f"  pass  {item['name']:8} {item['command']}  (cached at {cache[key]})")
+            results.append({"name": item["name"], "command": item["command"], "exit": 0, "cached": cache[key]})
+            continue
         r = checks.run(item["command"], where, args.timeout)
         _report(item["name"], r)
+        if key and r["exit"] == 0:
+            cache[key] = short(sha_for(sha, repo) if repo else sha)
         if r["exit"] != 0 and item.get("repoCheck") and not args.base:
             r.update(_compare_at_base(run, run.repo(item.get("repo")), item, r, where, args.timeout))
         passed = passed and (r["exit"] == 0 or r.get("preexisting", False))
@@ -537,18 +545,36 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
     return 0 if passed else 1
 
 
+def _cache_key(run: Run, item: dict, sha) -> str:
+    """What a passing check depended on: its repository's sha and prepare, or (a criterion in a
+    workspace) every repository's. # ponytail: keyed by inputs only; a check that reads the network or the
+    clock or another repository's files can go stale. Drop state["checkCache"] to force a rerun."""
+    if run.workspace and not item.get("repo"):
+        parts = [None, sha, json.dumps((run.plan or {}).get("prepare"), sort_keys=True)]
+    else:
+        r = run.repo(item.get("repo"))
+        parts = [item.get("repo"), sha_for(sha, r), prepare_for(run.plan, r.name)]
+    return json.dumps([*parts, item["command"]], sort_keys=True)
+
+
 def _prepare(run: Run, sha, timeout: int) -> bool:
     """Check `sha` out in each repository's verify directory and run the plan's `prepare` there;
-    False when a prepare fails."""
+    False when a prepare fails. A prepare that passed for the same sha is not rerun: the checkout
+    keeps its ignored files."""
     ok = True
+    cache = run.state.setdefault("checkCache", {})
     for r in run.repos:
-        _checkout(r.path, r.verify_dir, sha_for(sha, r))
         prepare = prepare_for(run.plan, r.name)
-        if prepare:
+        key = json.dumps([r.name, sha_for(sha, r), prepare, "<prepare>"])
+        reused = r.verify_dir.exists()
+        _checkout(r.path, r.verify_dir, sha_for(sha, r))
+        if prepare and not (reused and key in cache):
             res = checks.run(prepare, r.verify_dir, timeout)
             if res["exit"] != 0:
                 _report(f"[{r.name}] prepare" if run.workspace else "prepare", res)
                 ok = False
+            else:
+                cache[key] = short(sha_for(sha, r))
     return ok
 
 

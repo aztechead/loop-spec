@@ -213,6 +213,22 @@ class WorkspaceTests(unittest.TestCase):
         self.assertTrue(state["verify"]["passed"])
         self.assertEqual(marker(self.ls("status")[1], "LOOP_SPEC_RUN")["phase"], "iterate")
 
+    def test_5_verify_reuses_passing_checks_of_a_repository_that_did_not_change(self):
+        run = self.start()
+        counts = self.base / "counts"
+        counts.mkdir()
+        self.plan(run, [{"id": "T-A", "title": "api", "repo": "api", "verify": f"echo x >> {counts}/api"},
+                        {"id": "T-W", "title": "web", "repo": "web", "verify": f"echo x >> {counts}/web"}])
+        self.do_task("T-A", "a.py")
+        self.do_task("T-W", "w.py")
+        self.assertEqual(self.ls("verify")[0], 0)
+        commit(Path(run["work"]) / "api", "a2.py", "y = 2\n")
+        code, out, err = self.ls("verify")
+        self.assertEqual(code, 0, out + err)
+        self.assertRegex(out, r"T-W .*\(cached at ")
+        self.assertNotRegex(out, r"T-A .*\(cached at ")
+        self.assertEqual((len((counts / "api").read_text().split()), len((counts / "web").read_text().split())), (2, 1))
+
     def test_6_deliver_opens_a_linked_pr_per_changed_repository(self):
         run = self.verified_run()
         code, out, err = self.ls("deliver")
