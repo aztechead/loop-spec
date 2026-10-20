@@ -106,6 +106,11 @@ def spec_problems(spec) -> list[str]:
     return found
 
 
+def _change(work: Path, base: str, head: str) -> list[str]:
+    """A change's diff against its base, without the `index` lines: their blob ids change with any base edit to the file."""
+    return [l for l in git.run_git(work, "diff", "--no-ext-diff", base, head).splitlines() if not l.startswith("index ")]
+
+
 def run_root(start: Path) -> Path:
     """The nearest of `start` and its parents holding workspace.json, else the repository's root."""
     start = start.resolve()
@@ -343,7 +348,21 @@ class Run:
             return "execute"
         if not self.verified_at(head):
             return "verify"
-        return "deliver" if (self.state.get("iterate") or {}).get("sha") == head else "iterate"
+        return "deliver" if self.reviewed_at(head) else "iterate"
+
+    def reviewed_at(self, head) -> bool:
+        """Whether `head` is the head ITERATE reviewed, or differs only by a merge of the base
+        that leaves the reviewed change's diff the same."""
+        it = self.state.get("iterate") or {}
+        if it.get("sha") == head:
+            return True
+        if not it.get("sha") or not it.get("bases") or head is None:
+            return False
+        for r in self.repos:
+            old, new = sha_for(it["sha"], r), sha_for(head, r)
+            if old != new and _change(r.work, it["bases"][r.name], old) != _change(r.work, r.state["base"]["sha"], new):
+                return False
+        return True
 
     def finish(self, result: dict) -> None:
         """Record the run's result (legacy.record builds it); its presence ends the run."""

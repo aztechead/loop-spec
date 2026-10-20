@@ -501,6 +501,12 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
     if not items:
         raise LoopSpecError("there is nothing to verify: no spec criteria and no task verify commands",
                             f"write {run.spec_path.name} with criteria that name a check")
+    if not args.base:  # what moved on origin comes in first, so the head verified is the head delivered
+        if all(not git.dirty(r.work) for r in run.repos):
+            for move in remote.sync(run):
+                out(f"{'[' + move['repo'] + '] ' if run.workspace else ''}merged {move['ref']} ({move['commits']} commit{'s' if move['commits'] != 1 else ''})")
+        else:
+            out("note: not synced with origin: uncommitted changes in work")
     head = run.head()
     sha = ({r.name: r.state["base"]["sha"] for r in run.repos} if run.workspace else run.state["base"]["sha"]) if args.base else head
     if sha is None:
@@ -798,7 +804,8 @@ def cmd_iterate(args, project: Path, cwd: Path) -> int:
     head = run.head()
     if not run.verified_at(head):
         raise LoopSpecError("ITERATE reviews a verified head, and this one is not", "loop-spec verify first")
-    run.state["iterate"] = {"sha": head, "caveats": args.caveats}
+    run.state["iterate"] = {"sha": head, "caveats": args.caveats,
+                            "bases": {r.name: r.state["base"]["sha"] for r in run.repos}}
     run.save()
     out(f"review of {short(head)} recorded" + (f", with caveats: {args.caveats}" if args.caveats else ""))
     _sync(run)

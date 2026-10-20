@@ -119,7 +119,7 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
             "the last verify failed" if not verify["passed"] else f"verify ran on {short(verify['sha'])}, but the branch is now at {short(head)}")
         raise LoopSpecError(f"refusing to deliver an unverified head: {why}",
                             "run `loop-spec verify`, or pass --unverified to open a draft PR that says it is unverified")
-    if not unverified and (run.state.get("iterate") or {}).get("sha") != head:
+    if not unverified and not run.reviewed_at(head):
         raise LoopSpecError("this head has no recorded review (ITERATE)",
                             "review the whole change, address what it finds, then `loop-spec iterate` and deliver")
     todo = changed(run, head)

@@ -108,6 +108,25 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertIn("next: loop-spec feedback", out)
 
+    def test_a_base_merge_that_leaves_the_reviewed_change_alone_keeps_the_review(self):
+        run = self.ready_run()
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        self.push_to_origin_main("teammate.py", "x = 1\n")
+        code, out, _ = self.repo.ls("verify")  # syncs first
+        self.assertIn("merged origin/main (1 commit)", out)
+        self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["phase"], "deliver")
+        self.checks("pass")
+        self.assertEqual(self.repo.ls("deliver")[0], 0)
+
+    def test_a_commit_to_the_change_after_iterate_needs_a_new_review(self):
+        run = self.ready_run()
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        commit(Path(run["work"]), "mul.py", "def mul(a, b):\n    return b * a\n")
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["phase"], "iterate")
+
     def test_a_conflicting_base_is_left_for_the_lead_and_synced_after(self):
         run = self.ready_run()
         commit(Path(run["work"]), "calc.py", "ours\n")

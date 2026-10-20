@@ -149,7 +149,7 @@ def record(run, status: str, summary: str, head, phase: str, kept: list[str]) ->
         "verification": {"status": "not-run" if not verify else ("passed" if verified else "failed"),
                          "command": None},
         "implementationConverged": result in ("converged", "converged-with-caveats", "no-change") or (
-            phase == "deliver" and (s.get("iterate") or {}).get("sha") == head),
+            phase == "deliver" and run.reviewed_at(head)),
         "eligibleTargets": ([{"repo": r.name, "branch": r.state["branch"], "targetSha": sha_for(head, r)}
                              for r in run.repos if sha_for(head, r) != r.state["base"]["sha"]] if verified else [])
         if run.workspace else ([{"branch": s.get("branch"), "targetSha": verified_sha}] if verified_sha else []),
