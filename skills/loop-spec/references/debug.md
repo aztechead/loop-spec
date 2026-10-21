@@ -6,7 +6,7 @@ everything else stands.
 
 - **Spec:** put the failing command in a criterion's `check`, and confirm it fails
   where the run started: `LS verify --base` runs every check at the base and records
-  nothing.
+  the result; deliver refuses a debug run whose base record has no failing criterion.
 - **Execute:** find the root cause before changing anything, and fix it there, not
   where the symptom shows.
 - **Tests:** keep a regression test that fails without the fix.

@@ -2,6 +2,34 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [8.3.0] - 2026-10-21
+
+### Changed
+
+- `verify --base` records its result as the base record. `deliver` refuses a debug run
+  whose base record has no failing criterion check.
+- `iterate` takes the reviewer's json verdict (`--verdict-file`, one per repository in a
+  run across repositories) and refuses while a blocking finding is neither fixed nor
+  declined with a reason (`--decline ID=REASON`). The PR description shows the review
+  rounds and each declined finding. A micro run may omit the verdict after reviewing the
+  change itself. When the last two reviews of different heads block on the same file,
+  the next step asks for the premise both fixes assumed, and to redesign that code if the
+  premise is wrong (this replaces the skill's two-rounds sentence from 8.2.1). In a run across repositories,
+  one review of every repository names each head (`{"api": "<sha>", "web": "<sha>"}`).
+  A verdict for a commit the branch has since moved past is recorded as an earlier
+  round, so a review that found something stays in the PR's record after its fix.
+- `finish --status completed` refuses until the delivered head's last `feedback` showed
+  CI passed and nothing new.
+- Guidance: the reviewer proves one safety fact with a command, implementers give
+  state with several values one state type, and observable choices are settled by a
+  scratch sketch.
+
+### Upgrading
+
+- `iterate` without `--verdict-file` now refuses outside a micro run. A host or script
+  that calls it must pass the reviewer's verdict (the json block `agents/reviewer.md`
+  ends with).
+
 ## [8.2.1] - 2026-10-20
 
 ### Changed

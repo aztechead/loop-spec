@@ -84,7 +84,27 @@ def _verification(run: Run, verified: bool, repo: Repo | None = None, siblings=(
             lines.append(f"| {MARK[ok]} | **{c.get('id', '')}** {_cell(c.get('text', ''))} | {_cell(check)} |")
     links = ", ".join(f"[{n}#{num}]({url})" for n, num, url in siblings)
     side = [f"**Part of one change across repositories:** {links}", ""] if links else []
-    return [VERIFY_OPEN, *side, *lines, "", "_Delivered by loop-spec._", "</details>", VERIFY_CLOSE]
+    return [VERIFY_OPEN, *side, *lines, *_review_lines(run), "", "_Delivered by loop-spec._", "</details>", VERIFY_CLOSE]
+
+
+def _review_lines(run: Run) -> list[str]:
+    """The decision trail: how many review rounds, what they fixed, and what was declined and why."""
+    reviews = run.state.get("reviews") or []
+    if not reviews:
+        return []
+    fixed = declined = 0
+    bullets = []
+    for n, r in enumerate(reviews, 1):
+        why = r.get("declined", {})
+        blocking = [f for f in r.get("findings", []) if f["blocking"]]
+        if r["sha"] != reviews[-1]["sha"]:
+            fixed += sum(f["id"] not in why for f in blocking)
+        for f in r.get("findings", []):
+            if f["id"] in why:
+                declined += 1
+                where = f"{f['file']}:{f['line']}" if f.get("line") else f["file"]
+                bullets.append(f"- round {n} {f['id']} {where}: {f['summary']} (declined: {why[f['id']]})")
+    return ["", f"**Review:** {len(reviews)} round(s); {fixed} blocking finding(s) fixed, {declined} declined", *bullets]
 
 
 def _cell(text: str) -> str:
@@ -106,6 +126,14 @@ def fold(body_text: str, section: str) -> str:
     return (text + "\n\n" if text else "") + section + "\n"
 
 
+def _at_base(run: Run, *, failed: bool) -> bool:
+    """Whether the base record holds a criterion check that failed there (failed=True) or passed there."""
+    criteria = {c.get("id") for c in (run.spec or {}).get("criteria", [])}
+    base = run.state.get("baseVerify") or {}
+    return any(r["name"] in criteria and r.get("command") and (r.get("exit") != 0) == failed
+               for r in base.get("results", []))
+
+
 def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | None) -> str:
     """Push each changed repository's feature branch, open or update its PR, and optionally comment
     on each. Returns the delivered head; each PR is recorded in its repository's state["pr"]."""
@@ -121,7 +149,10 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
                             "run `loop-spec verify`, or pass --unverified to open a draft PR that says it is unverified")
     if not unverified and not run.reviewed_at(head):
         raise LoopSpecError("this head has no recorded review (ITERATE)",
-                            "review the whole change, address what it finds, then `loop-spec iterate` and deliver")
+                            "review the whole change, record the verdict with `loop-spec iterate --verdict-file F`, fix what it leaves open, and deliver")
+    if not unverified and run.state.get("kind") == "debug" and not _at_base(run, failed=True):
+        raise LoopSpecError("a debug run delivers a fix for a failure shown at the base, and no criterion failed there",
+                            "put the failing command in a criterion's check, run `loop-spec verify --base`, and see it fail")
     todo = changed(run, head)
     if not todo:
         raise LoopSpecError("the feature branch has no commits beyond its base; there is nothing to deliver",

@@ -32,7 +32,9 @@ The task is done when:
 How to get there:
 
 - Read the code before changing it, and settle the data shapes and function signatures
-  before writing logic.
+  before writing logic. When state has more than two values, or several flags must
+  change together, give it one state type with its transitions in one place, so no
+  two flags can disagree.
 - Fix causes, not symptoms: a guard that hides a failure is not a fix.
 - Reuse what the code, the standard library, or an existing dependency already
   provides, and prefer deleting or reshaping code to adding a layer. No abstraction
