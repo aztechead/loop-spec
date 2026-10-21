@@ -130,6 +130,14 @@ class FlowTests(unittest.TestCase):
         self.assertIn("not recorded", out)
         self.assertNotIn("verify", json.loads(Path(run["runDir"], "state.json").read_text()))
 
+    def test_a_criterion_failing_the_same_way_at_two_heads_hints_that_the_check_may_be_wrong(self):
+        run = self.start()
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "echo broken; exit 1"}]},
+                   {"tasks": [{"id": "T-1", "title": "a"}]})
+        self.assertNotIn("the check itself may be wrong", self.repo.ls("verify")[1])
+        commit(Path(run["work"]), "mul.py", "x = 1\n")
+        self.assertIn("fails with the same output as at", self.repo.ls("verify")[1])
+
     def test_a_conflicting_task_is_refused_and_left_for_the_lead(self):
         run = self.start()
         self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t"}]}, {"tasks": [{"id": "T-1", "title": "a"}, {"id": "T-2", "title": "b"}]})

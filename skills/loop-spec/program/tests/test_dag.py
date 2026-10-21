@@ -4,8 +4,8 @@ import unittest
 from loop_spec import dag
 
 
-def task(tid, *deps, criteria=(), files=()):
-    return {"id": tid, "title": tid, "dependsOn": list(deps), "criteria": list(criteria), "files": list(files)}
+def task(tid, *deps, criteria=(), files=(), **extra):
+    return {"id": tid, "title": tid, "dependsOn": list(deps), "criteria": list(criteria), "files": list(files), **extra}
 
 
 class ProblemsTests(unittest.TestCase):
@@ -37,6 +37,11 @@ class CrossCheckTests(unittest.TestCase):
     def test_tasks_that_can_run_at_once_and_share_a_file_are_named(self):
         tasks = [task("T-1", files=["a.py", "b.py"]), task("T-2", files=["b.py"]), task("T-3", "T-1", files=["a.py"])]
         self.assertEqual(dag.shared_files(tasks), [("T-1", "T-2", ["b.py"])])
+
+    def test_the_same_file_name_in_different_repositories_is_not_shared(self):
+        a, b = task("T-1", files=["README.md"], repo="api"), task("T-2", files=["README.md"], repo="web")
+        self.assertEqual(dag.shared_files([a, b]), [])
+        self.assertEqual(dag.shared_files([a, task("T-2", files=["README.md"], repo="api")]), [("T-1", "T-2", ["api/README.md"])])
 
     def test_a_dependency_through_another_task_orders_them(self):
         tasks = [task("T-1", files=["a.py"]), task("T-2", "T-1"), task("T-3", "T-2", files=["a.py"])]

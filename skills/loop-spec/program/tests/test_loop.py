@@ -108,6 +108,25 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertIn("next: loop-spec feedback", out)
 
+    def test_a_base_merge_that_leaves_the_reviewed_change_alone_keeps_the_review(self):
+        run = self.ready_run()
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        self.push_to_origin_main("teammate.py", "x = 1\n")
+        code, out, _ = self.repo.ls("verify")  # syncs first
+        self.assertIn("merged origin/main (1 commit)", out)
+        self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["phase"], "deliver")
+        self.checks("pass")
+        self.assertEqual(self.repo.ls("deliver")[0], 0)
+
+    def test_a_commit_to_the_change_after_iterate_needs_a_new_review(self):
+        run = self.ready_run()
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        commit(Path(run["work"]), "mul.py", "def mul(a, b):\n    return b * a\n")
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["phase"], "iterate")
+
     def test_a_conflicting_base_is_left_for_the_lead_and_synced_after(self):
         run = self.ready_run()
         commit(Path(run["work"]), "calc.py", "ours\n")
@@ -333,6 +352,29 @@ class LoopTests(unittest.TestCase):
         outcome, _ = ci.wait(self.repo.path, 7, timeout=30, sleep=sleeps.append, clock=clock)
         self.assertEqual((outcome, len(sleeps)), ("pending", 2))
 
+    def test_ci_with_workflows_but_no_checks_after_90_seconds_is_none(self):
+        (self.repo.path / ".github" / "workflows").mkdir(parents=True)
+        (self.repo.path / ".github" / "workflows" / "ci.yml").write_text("on: pull_request\n")
+        clock = iter([0, 0, 30, 60, 90, 90]).__next__
+        with mock.patch.object(ci, "read", return_value=None):
+            outcome, _ = ci.wait(self.repo.path, 7, timeout=600, sleep=lambda s: None, clock=clock)
+        self.assertEqual(outcome, "none")
+        clock = iter([100, 100]).__next__  # a later PR of the same feedback call shares the grace that already ran out
+        with mock.patch.object(ci, "read", return_value=None):
+            outcome, _ = ci.wait(self.repo.path, 8, timeout=600, sleep=lambda s: None, clock=clock, since=0)
+        self.assertEqual(outcome, "none")
+
+    def test_feedback_with_a_new_review_item_does_not_wait_for_pending_ci(self):
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pending")
+        self.review(comments=[{"id": "C1", "author": "ana", "body": "Why int?"}])
+        with mock.patch.object(ci, "wait", wraps=ci.wait) as wait:
+            code, out, _ = self.repo.ls("feedback", "--timeout", "600")
+        self.assertEqual(code, 1)
+        self.assertEqual(wait.call_args.args[2], 0)
+        self.assertIn("CI still running. 1 new review item(s)", out)
+
     def test_ci_read_reports_a_gh_error_and_reads_no_checks_yet_as_none(self):
         with mock.patch.object(ci.git, "gh", return_value=(1, "", "unknown flag: --json")):
             with self.assertRaisesRegex(LoopSpecError, "unknown flag: --json"):
@@ -487,6 +529,21 @@ class LoopTests(unittest.TestCase):
                          (["a1"], ["d1"], ["slow on big inputs"]))
         self.assertEqual(result["criteria"], [{"id": "AC-1", "passed": True, "checked": True}])
         self.assertEqual(result["criteriaSha"], sh(self.repo.path, "git", "rev-parse", "feat/add-mul"))
+
+    def test_caveats_are_carried_to_the_next_iterate_until_cleared(self):
+        run = self.ready_run()
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.repo.ls("iterate", "--caveats", "slow on big inputs")
+        commit(Path(run["work"]), "mul.py", "def mul(a, b):\n    return b * a\n")
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        out = self.repo.ls("iterate")[1]
+        self.assertIn("with caveats (carried): slow on big inputs", out)
+        self.assertIn("caveats  slow on big inputs", self.repo.ls("status")[1])
+        commit(Path(run["work"]), "mul.py", "def mul(a, b):\n    return a * b\n")
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.repo.ls("iterate", "--caveats", "")
+        state = json.loads(Path(run["runDir"], "state.json").read_text())
+        self.assertIsNone(state["iterate"]["caveats"])
 
     # --- pause, resume, checkpoint ---------------------------------------------------------
 

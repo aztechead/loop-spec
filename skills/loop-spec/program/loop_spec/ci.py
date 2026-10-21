@@ -2,7 +2,8 @@
 
 `gh pr checks --json` reports each check's `bucket`: pass, fail, pending, skipping, or
 cancel. A repository with workflow files is expected to report checks; one without them
-is treated as having no CI once the PR exists.
+is treated as having no CI once the PR exists, and so is one whose workflows report
+nothing for 90 s.
 """
 import json
 import re
@@ -15,6 +16,7 @@ from loop_spec.errors import LoopSpecError
 
 STUCK_SECONDS = 60  # a check pending this long is cross-checked against its job: GitHub can leave a finished job's check in progress
 POLL_SECONDS = 15  # GitHub updates check status every few seconds; 15 s keeps gh calls well under its rate limit
+NO_CHECKS_SECONDS = 90  # GitHub registers a PR's checks within seconds of the push; none by then means no workflow runs on pull requests
 LOG_LINES = 40  # enough for a stack trace or a failed assertion, small enough to keep the lead's context
 _JOB = re.compile(r"/actions/runs/(\d+)/job/(\d+)")
 _STAMP = re.compile(r"^\d{4}-\d\d-\d\dT[\d:.]+Z ")  # each job log line's timestamp
@@ -63,13 +65,15 @@ def _job_bucket(worktree: Path, check: dict) -> str | None:
 
 
 def wait(worktree: Path, pr: int, timeout: int, sleep=time.sleep, clock=time.monotonic,
-         stop=lambda: False) -> tuple[str, list[dict]]:
+         stop=lambda: False, since: float | None = None) -> tuple[str, list[dict]]:
     """Poll until a check fails, every check passes, `timeout` passes, or `stop()` says to. Returns (outcome, checks),
-    where outcome is `passed`, `failed`, `none` (no CI), or `pending` (still running at the timeout)."""
-    deadline = clock() + timeout
+    where outcome is `passed`, `failed`, `none` (no CI), or `pending` (still running at the timeout).
+    The no-checks grace counts from `since` (a `clock()` reading), so PRs waited on in turn share it."""
+    now = clock()
+    started, deadline = now if since is None else since, now + timeout
     while True:
         checks = read(worktree, pr)
-        if checks is None and not expected(worktree):
+        if checks is None and (not expected(worktree) or clock() - started >= NO_CHECKS_SECONDS):
             return "none", []
         if checks is not None and any(c.get("bucket") in ("fail", "cancel") for c in checks):
             return "failed", checks  # no need to wait for slow checks: the fix's push starts them over

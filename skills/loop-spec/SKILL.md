@@ -39,12 +39,12 @@ the project's checks take longer.
 | `LS task start T-1 T-2 ...` | a checkout per task on its own branch from the feature head, with `prepare` run in it; a finished task's checkout is reused, installs and all. Prints one `LOOP_SPEC_TASK {...}` brief per task, or `<id>: not started, ...` when another checkout would not fit on the disk or git failed; that task stays ready |
 | `LS task done T-1` | merge the task's commits into the feature branch; prints the `next` step |
 | `LS task set T-1 --status todo\|blocked --note "..."` | change a task's status by hand |
-| `LS verify [--base]` | run every criterion check, task verify command, and repository check in a clean checkout of the feature head (or, with `--base`, of the base) |
+| `LS verify [--base]` | merge what moved on origin first (a merge of the base that leaves the change's diff the same keeps the review), then run every criterion check, task verify command, and repository check in a clean checkout of the feature head (or, with `--base`, of the base); passing checks of a repository that did not change are reused, shown as `cached` |
 | `LS sync` | merge whatever moved on origin (the base branch, or the feature branch itself) into `work` |
-| `LS iterate [--caveats "..."]` | record that the verified head's whole-change review is done and addressed |
+| `LS iterate [--caveats "..."]` | record that the verified head's whole-change review is done and addressed; caveats are kept from the last iterate unless given (`--caveats ""` clears) |
 | `LS set [--repo NAME] --branch NAME --title "..."` | rename the feature branch (until it is pushed) or set the PR title; `--repo` sets them for one repository of a run across repositories |
 | `LS deliver [--draft] [--unverified] [--comment-file F]` | push the verified head and open or update its PR (posting `F` as a comment) |
-| `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review; ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
+| `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review (a PR with no checks after 90 s counts as no CI; review items already posted come back without waiting for CI); ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
 | `LS checkpoint [--push]` | commit work in progress in every worktree and list them; `--push` pushes the branches that hold commits of their own. For a run the host asked to wrap up |
 | `LS finish --status completed\|no-change\|escalated\|failed --summary "..."` | end the run: `completed` after feedback skills find nothing, otherwise a run that delivers nothing |
 
@@ -56,7 +56,9 @@ The program derives the phase from the run's files and announces each change wit
 `LOOP_SPEC_PHASE_START`/`_END` lines, which monitoring tools read. Run `LS status`
 after writing `spec.json` and after writing `plan.json`, so each phase is announced
 when it ends. Do not pipe `LS` commands through `tail`, `head`, or `grep`: their output
-is short, and a host reads those lines from it.
+is short, and a host reads those lines from it. Do not pipe a check through `tail` or
+`grep` before `&& git commit` either: the pipe's exit code replaces the check's, so a
+failing check still commits.
 
 ## How to work
 
@@ -146,6 +148,8 @@ When `LOOP_SPEC_RUN` has a `repos` object, the run changes several repositories 
 side by side in a workspace (the directory holding `.loop-spec/workspace.json`). The
 phases are the same; these points change:
 
+- A repository the workspace does not list is its own root; pass `--project-root` to
+  choose explicitly.
 - `work` holds one worktree per repository, at `work/<name>/`. Each `repos` entry gives
   that repository's `work`, `base`, `branch`, `prTemplate`, and `prMd`.
 - When a repository's rules name its own branch or PR title format, set them for that
@@ -318,6 +322,10 @@ Until every task is done:
 `LS task done` refuses uncommitted work and a merge that conflicts; it says which, and
 how to fix it. When every task is done, its `next` line says to verify.
 
+Implementers have no Skill tool. When the project's rules ask for a skill pass (a
+simplify or humanizer pass, say), run it yourself in `work` after `LS task done`, and
+commit.
+
 ## 4 and 5. Verify, then review the whole change
 
 Show every criterion and required check passing in a clean checkout of the feature
@@ -349,11 +357,15 @@ Once verify passes:
 2. Fix every blocking finding. Apply each simplifier cleanup that keeps the behavior the
    spec asks for and makes the change smaller or plainer; skip the rest. Commit small
    fixes in `work`, or add a task for a larger one, and list what you skipped in your
-   report.
+   report. When one module draws blocking findings in two rounds in a row, its design is
+   the problem: redesign it rather than patch it a third time.
 3. Any new commit sends the run back to verify: run `LS verify` again, and repeat until
    the verified head has nothing left to fix.
 4. Run `LS iterate`, with `--caveats "..."` for anything you knowingly leave open,
    which the result carries.
+
+When you break the code on purpose to show a test catches the bug, commit the fix
+first, so `git checkout -- <file>` restores the fix rather than the bug.
 
 ## 6. Deliver, then see CI and review through
 

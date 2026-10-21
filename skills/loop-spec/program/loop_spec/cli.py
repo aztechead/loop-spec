@@ -51,6 +51,7 @@ def cmd_start(args, project: Path, cwd: Path) -> int:
     config = read_json(project / ".loop-spec" / "config.json", "config") or {}
     mode = "supervised" if args.supervised else "autonomous" if args.autonomous else "interactive"
     entries = workspace_repos(project)
+    out(f"loop-spec: root {project}" + (f" (workspace: {', '.join(e['name'] for e in entries)})" if entries is not None else ""))
     if entries is not None:
         kind, run.state, so_far = _start_workspace(args, run, project, entries, config, request, mode)
     else:
@@ -276,6 +277,8 @@ def show_status(run: Run) -> int:
     if verify:
         stale = "" if verify["sha"] == head else f" (the branch has moved to {short(head)} since)"
         out(f"  verify   {'passed' if verify['passed'] else 'FAILED'} at {short(verify['sha'])}{stale}")
+    if (it := s.get("iterate")) and it.get("caveats"):
+        out(f"  caveats  {it['caveats']}")
     for r in run.repos:
         if (r.state.get("feedback") or {}).get("sha"):
             f = r.state["feedback"]
@@ -500,6 +503,12 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
     if not items:
         raise LoopSpecError("there is nothing to verify: no spec criteria and no task verify commands",
                             f"write {run.spec_path.name} with criteria that name a check")
+    if not args.base:  # what moved on origin comes in first, so the head verified is the head delivered
+        if all(not git.dirty(r.work) for r in run.repos):
+            for move in remote.sync(run):
+                out(f"{'[' + move['repo'] + '] ' if run.workspace else ''}merged {move['ref']} ({move['commits']} commit{'s' if move['commits'] != 1 else ''})")
+        else:
+            out("note: not synced with origin: uncommitted changes in work")
     head = run.head()
     sha = ({r.name: r.state["base"]["sha"] for r in run.repos} if run.workspace else run.state["base"]["sha"]) if args.base else head
     if sha is None:
@@ -508,6 +517,7 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
     for r in run.repos:
         if not args.base and (dirty := git.dirty(r.work)):
             out(f"note: uncommitted changes in {r.work} are not part of this verify: {', '.join(dirty[:5])}")
+    prior = run.state.get("verify") or {}  # read before this verify overwrites it
     out(f"verifying {short(sha)} in a clean checkout ({'the base' if args.base else 'the feature head'})")
     results, passed = [], _prepare(run, sha, args.timeout)
     for item in items if passed else []:
@@ -517,10 +527,20 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
             continue
         repo = run.repo(item.get("repo")) if run.workspace and item.get("repo") else None
         where = repo.verify_dir if repo else run.verify_dir
+        key = None if args.base else _cache_key(run, item, sha)
+        cache = run.state.setdefault("checkCache", {})
+        if key in cache:
+            out(f"  pass  {item['name']:8} {item['command']}  (cached at {cache[key]})")
+            results.append({"name": item["name"], "command": item["command"], "exit": 0, "cached": cache[key]})
+            continue
         r = checks.run(item["command"], where, args.timeout)
         _report(item["name"], r)
+        if key and r["exit"] == 0:
+            cache[key] = short(sha_for(sha, repo) if repo else sha)
         if r["exit"] != 0 and item.get("repoCheck") and not args.base:
             r.update(_compare_at_base(run, run.repo(item.get("repo")), item, r, where, args.timeout))
+        if r["exit"] != 0 and not (args.base or item.get("repo") or item.get("repoCheck")):
+            _hint_same_failure(run, item, r, prior, sha)
         passed = passed and (r["exit"] == 0 or r.get("preexisting", False))
         results.append({"name": item["name"], **{k: v for k, v in r.items() if k != "output"}})
     if args.base:
@@ -536,18 +556,46 @@ def cmd_verify(args, project: Path, cwd: Path) -> int:
     return 0 if passed else 1
 
 
+def _cache_key(run: Run, item: dict, sha) -> str:
+    """What a passing check depended on: its repository's sha and prepare, or (a criterion in a
+    workspace) every repository's. # ponytail: keyed by inputs only; a check that reads the network or the
+    clock or another repository's files can go stale. Drop state["checkCache"] to force a rerun."""
+    if run.workspace and not item.get("repo"):
+        parts = [None, sha, json.dumps((run.plan or {}).get("prepare"), sort_keys=True)]
+    else:
+        r = run.repo(item.get("repo"))
+        parts = [item.get("repo"), sha_for(sha, r), prepare_for(run.plan, r.name)]
+    return json.dumps([*parts, item["command"]], sort_keys=True)
+
+
+def _hint_same_failure(run: Run, item: dict, r: dict, prior: dict, sha) -> None:
+    """A criterion failing with the output it had at another head: the check itself may be wrong."""
+    mask = checks._masker(run.verify_dir)
+    for old in prior.get("results", []) if prior.get("sha") != sha else []:
+        if (old.get("name"), old.get("command")) == (item["name"], item["command"]) and old.get("exit") not in (0, None) \
+                and mask(old.get("tail", "")) == mask(r["tail"]):
+            out(f"        fails with the same output as at {short(prior['sha'])}: if this change should have changed it, the check itself may be wrong")
+            return
+
+
 def _prepare(run: Run, sha, timeout: int) -> bool:
     """Check `sha` out in each repository's verify directory and run the plan's `prepare` there;
-    False when a prepare fails."""
+    False when a prepare fails. A prepare that passed for the same sha is not rerun: the checkout
+    keeps its ignored files."""
     ok = True
+    cache = run.state.setdefault("checkCache", {})
     for r in run.repos:
-        _checkout(r.path, r.verify_dir, sha_for(sha, r))
         prepare = prepare_for(run.plan, r.name)
-        if prepare:
+        key = json.dumps([r.name, sha_for(sha, r), prepare, "<prepare>"])
+        reused = r.verify_dir.exists()
+        _checkout(r.path, r.verify_dir, sha_for(sha, r))
+        if prepare and not (reused and key in cache):
             res = checks.run(prepare, r.verify_dir, timeout)
             if res["exit"] != 0:
                 _report(f"[{r.name}] prepare" if run.workspace else "prepare", res)
                 ok = False
+            else:
+                cache[key] = short(sha_for(sha, r))
     return ok
 
 
@@ -684,10 +732,14 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
         raise LoopSpecError("the current head has not been delivered", "verify, then `loop-spec deliver`")
     tag = {r.name: f"[{r.name}] " if run.workspace else "" for r in targets}
     call_end = time.monotonic() + args.timeout
+    # review items already posted come back at once: CI is read once, not waited on
+    fresh = any(i["id"] not in (r.state.get("feedback") or {}).get("seen", [])
+                for r in targets for i in review.read(r.work, r.state["pr"]["number"])[0])
     ci_by, failed = {}, False
     for n, r in enumerate(targets):  # once one PR's CI failed, the rest are read once and not waited on
-        budget = 0 if failed else args.timeout if n == 0 else max(0, int(call_end - time.monotonic()))
-        ci_by[r.name] = ci.wait(r.work, r.state["pr"]["number"], budget, stop=lambda: _wrap_up_asked(run))
+        budget = 0 if failed or fresh else args.timeout if n == 0 else max(0, int(call_end - time.monotonic()))
+        ci_by[r.name] = ci.wait(r.work, r.state["pr"]["number"], budget, stop=lambda: _wrap_up_asked(run),
+                                since=call_end - args.timeout)
         failed = failed or ci_by[r.name][0] == "failed"
     if _wrap_up_asked(run):
         return 0  # main prints the wrap-up step
@@ -695,7 +747,7 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
         for c in ci_by[r.name][1]:
             out(f"{tag[r.name]}  {c.get('bucket', '?'):8} {c.get('name', '')}" + (f"  {c['link']}" if c.get("link") else ""))
     outcome = _combine([o for o, _ in ci_by.values()])
-    if outcome == "pending":
+    if outcome == "pending" and not fresh:
         out(f"checks are still running after {args.timeout}s: run loop-spec feedback again")
         return 0
     feedback_config = _config(project).get("feedback") or {}
@@ -737,7 +789,7 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
         out(f"review requested from {', '.join(waiting_all)} is still not in after {review_wait // 60} min; not waiting longer")
     skills = (_config(project).get("feedback") or {}).get("skills", [])
     if outcome == "failed" or new_all:
-        out(("CI FAILED. " if outcome == "failed" else "") + (f"{len(new_all)} new review item(s). " if new_all else "") +
+        out(("CI FAILED. " if outcome == "failed" else "CI still running. " if outcome == "pending" else "") + (f"{len(new_all)} new review item(s). " if new_all else "") +
             "Fix what this change should fix (then verify, deliver, and feedback again), and answer the rest in a "
             "PR comment. A check that also fails on the base branch is not this change's.")
         return 1
@@ -768,9 +820,12 @@ def cmd_iterate(args, project: Path, cwd: Path) -> int:
     head = run.head()
     if not run.verified_at(head):
         raise LoopSpecError("ITERATE reviews a verified head, and this one is not", "loop-spec verify first")
-    run.state["iterate"] = {"sha": head, "caveats": args.caveats}
+    carried = args.caveats is None and (run.state.get("iterate") or {}).get("caveats")
+    caveats = (carried or args.caveats) or None
+    run.state["iterate"] = {"sha": head, "caveats": caveats,
+                            "bases": {r.name: r.state["base"]["sha"] for r in run.repos}}
     run.save()
-    out(f"review of {short(head)} recorded" + (f", with caveats: {args.caveats}" if args.caveats else ""))
+    out(f"review of {short(head)} recorded" + (f", with caveats{' (carried)' if carried else ''}: {caveats}" if caveats else ""))
     _sync(run)
     out("next: " + _next_step(run, run.phase(head)))
     return 0
@@ -956,7 +1011,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("iterate", parents=[common],
                        help="record that the verified head's whole-change review is done and addressed (ITERATE)")
-    p.add_argument("--caveats", help="what the review left open, carried to the result")
+    p.add_argument("--caveats", default=None,
+                   help="what the review left open, carried to the result; kept from the last iterate unless given (\"\" clears)")
     p.set_defaults(func=cmd_iterate)
 
     p = sub.add_parser("set", parents=[common], help="rename the feature branch (before it is pushed) or set the PR title")

@@ -140,6 +140,16 @@ class WorkspaceTests(unittest.TestCase):
                 runs.workspace_repos(self.root)
             self.assertIn(named, caught.exception.message)
 
+    def test_1_an_unlisted_repository_under_the_workspace_is_its_own_root(self):
+        other = self.root / "other"
+        sh(self.root, "git", "init", "-q", "-b", "main", str(other))
+        (other / "sub").mkdir()
+        for start in (other, other / "sub"):
+            self.assertEqual(runs.run_root(start), other.resolve())
+        self.assertEqual(runs.run_root(self.clones["api"]), self.root.resolve())
+        sh(self.base, "git", "init", "-q", "-b", "main")  # the workspace inside an enclosing repository keeps the workspace
+        self.assertEqual(runs.run_root(self.root), self.root.resolve())
+
     def test_1_clones_without_workspace_json_are_named_with_the_file_to_write(self):
         (self.root / ".loop-spec" / "workspace.json").unlink()
         with self.assertRaises(LoopSpecError) as caught:
@@ -202,6 +212,22 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(state["verify"]["sha"], heads)
         self.assertTrue(state["verify"]["passed"])
         self.assertEqual(marker(self.ls("status")[1], "LOOP_SPEC_RUN")["phase"], "iterate")
+
+    def test_5_verify_reuses_passing_checks_of_a_repository_that_did_not_change(self):
+        run = self.start()
+        counts = self.base / "counts"
+        counts.mkdir()
+        self.plan(run, [{"id": "T-A", "title": "api", "repo": "api", "verify": f"echo x >> {counts}/api"},
+                        {"id": "T-W", "title": "web", "repo": "web", "verify": f"echo x >> {counts}/web"}])
+        self.do_task("T-A", "a.py")
+        self.do_task("T-W", "w.py")
+        self.assertEqual(self.ls("verify")[0], 0)
+        commit(Path(run["work"]) / "api", "a2.py", "y = 2\n")
+        code, out, err = self.ls("verify")
+        self.assertEqual(code, 0, out + err)
+        self.assertRegex(out, r"T-W .*\(cached at ")
+        self.assertNotRegex(out, r"T-A .*\(cached at ")
+        self.assertEqual((len((counts / "api").read_text().split()), len((counts / "web").read_text().split())), (2, 1))
 
     def test_6_deliver_opens_a_linked_pr_per_changed_repository(self):
         run = self.verified_run()
