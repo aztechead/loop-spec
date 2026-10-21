@@ -111,7 +111,7 @@ class LoopTests(unittest.TestCase):
     def test_a_base_merge_that_leaves_the_reviewed_change_alone_keeps_the_review(self):
         run = self.ready_run()
         self.assertEqual(self.repo.ls("verify")[0], 0)
-        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))[0], 0)
         self.push_to_origin_main("teammate.py", "x = 1\n")
         code, out, _ = self.repo.ls("verify")  # syncs first
         self.assertIn("merged origin/main (1 commit)", out)
@@ -122,7 +122,7 @@ class LoopTests(unittest.TestCase):
     def test_a_commit_to_the_change_after_iterate_needs_a_new_review(self):
         run = self.ready_run()
         self.assertEqual(self.repo.ls("verify")[0], 0)
-        self.assertEqual(self.repo.ls("iterate")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))[0], 0)
         commit(Path(run["work"]), "mul.py", "def mul(a, b):\n    return b * a\n")
         self.assertEqual(self.repo.ls("verify")[0], 0)
         self.assertEqual(marker(self.repo.ls("status")[1], "LOOP_SPEC_RUN")["phase"], "iterate")
@@ -533,15 +533,15 @@ class LoopTests(unittest.TestCase):
     def test_caveats_are_carried_to_the_next_iterate_until_cleared(self):
         run = self.ready_run()
         self.assertEqual(self.repo.ls("verify")[0], 0)
-        self.repo.ls("iterate", "--caveats", "slow on big inputs")
+        self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")), "--caveats", "slow on big inputs")
         commit(Path(run["work"]), "mul.py", "def mul(a, b):\n    return b * a\n")
         self.assertEqual(self.repo.ls("verify")[0], 0)
-        out = self.repo.ls("iterate")[1]
+        out = self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")))[1]
         self.assertIn("with caveats (carried): slow on big inputs", out)
         self.assertIn("caveats  slow on big inputs", self.repo.ls("status")[1])
         commit(Path(run["work"]), "mul.py", "def mul(a, b):\n    return a * b\n")
         self.assertEqual(self.repo.ls("verify")[0], 0)
-        self.repo.ls("iterate", "--caveats", "")
+        self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], sh(run["work"], "git", "rev-parse", "HEAD")), "--caveats", "")
         state = json.loads(Path(run["runDir"], "state.json").read_text())
         self.assertIsNone(state["iterate"]["caveats"])
 

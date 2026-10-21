@@ -356,7 +356,8 @@ def _step(run: Run, phase: str, problem: str | None) -> str:
         files = _repeat_blocking_file(run)
         if files:
             return (f"the last two reviews found blocking problems in {', '.join(files)} after a fix: write down the "
-                    "premise both fixes assumed, test it with a command, then fix, verify, and review again")
+                    "premise both fixes assumed and test it with a command; if it is wrong, redesign that code rather than "
+                    "patch it a third time; then verify and review again")
         last = (run.state.get("reviews") or [{}])[-1]
         open_ = [f["id"] for f in last.get("findings", [])
                  if f["blocking"] and f["id"] not in last.get("declined", {})]

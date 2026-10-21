@@ -370,8 +370,7 @@ Once verify passes:
 3. Fix every open blocking finding. Apply each simplifier cleanup that keeps the
    behavior the spec asks for and makes the change smaller or plainer; skip the rest.
    Commit small fixes in `work`, or add a task for a larger one, and list what you
-   skipped in your report. When one module draws blocking findings in two rounds in a
-   row, its design is the problem: redesign it rather than patch it a third time. Any new commit sends the run back to verify: run `LS verify`,
+   skipped in your report. Any new commit sends the run back to verify: run `LS verify`,
    dispatch a fresh reviewer, and record its verdict, until a verified head's review
    leaves nothing open.
 4. Pass `--caveats "..."` to `LS iterate` for anything you knowingly leave open, which

@@ -13,7 +13,8 @@ All notable changes documented here. Format follows Keep a Changelog.
   declined with a reason (`--decline ID=REASON`). The PR description shows the review
   rounds and each declined finding. A micro run may omit the verdict after reviewing the
   change itself. When the last two reviews of different heads block on the same file,
-  the next step asks for the premise both fixes assumed. In a run across repositories,
+  the next step asks for the premise both fixes assumed, and to redesign that code if the
+  premise is wrong (this replaces the skill's two-rounds sentence from 8.2.1). In a run across repositories,
   one review of every repository names each head (`{"api": "<sha>", "web": "<sha>"}`).
   A verdict for a commit the branch has since moved past is recorded as an earlier
   round, so a review that found something stays in the PR's record after its fix.
