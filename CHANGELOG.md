@@ -2,7 +2,7 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
-## [8.3.0] - 2026-10-20
+## [8.2.1] - 2026-10-20
 
 ### Changed
 
