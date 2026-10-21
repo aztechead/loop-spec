@@ -11,7 +11,8 @@ All notable changes documented here. Format follows Keep a Changelog.
 - `perf` run kind (`/loop-spec:perf`): a criterion with a `check` may add `better`
   (`"lower"` or `"higher"`) and `by` (a percentage). `verify --base` records the number
   the check prints last; the head verify fails a criterion that misses its target, and the
-  PR shows base and head. Branches are `perf/<slug>`.
+  PR shows base and head, and the check runs again at every verify (never `cached`).
+  Branches are `perf/<slug>`.
 - `start --after SLUG` stacks a run on a delivered run: it branches from that run's
   branch and its PR names the one it depends on. When that PR merges and its branch
   leaves origin, `sync` and `deliver` move the run onto that branch's own base and
@@ -21,8 +22,6 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 - `start --pr N --base X` is now refused: `--pr`, `--base`, and `--after` are mutually
   exclusive (`--base` was ignored with `--pr`).
-
-## [8.3.0] - 2026-10-21
 
 ## [8.3.0] - 2026-10-21
 
