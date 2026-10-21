@@ -11,7 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from loop_spec import cli
+from loop_spec import cli, runs
 from loop_spec.errors import LoopSpecError
 
 # The state home 7.x hosts read (legacy.py) goes to a scratch directory, never ~/.loop-spec.
@@ -162,6 +162,75 @@ class FlowTests(unittest.TestCase):
         self.assertNotIn("the check itself may be wrong", self.repo.ls("verify")[1])
         commit(Path(run["work"]), "mul.py", "x = 1\n")
         self.assertIn("fails with the same output as at", self.repo.ls("verify")[1])
+
+    def test_refactor_deliver_needs_a_criterion_that_passed_at_the_base(self):
+        run = self.start("--kind", "refactor")
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "test -f moved"}]},
+                   {"tasks": [{"id": "T-1", "title": "move"}]})
+        self.assertEqual(self.repo.ls("verify", "--base")[0], 1)
+        commit(Path(run["work"]), "moved", "")
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], self.head(run)))[0], 0)
+        code, _, err = self.repo.ls("deliver")
+        self.assertEqual(code, 1)
+        self.assertIn("no criterion passed at the base", err)
+        self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "t", "check": "test -f calc.py"}]},
+                   {"tasks": [{"id": "T-1", "title": "move"}]})
+        self.assertEqual(self.repo.ls("verify", "--base")[0], 0)
+        self.assertEqual(self.repo.ls("verify")[0], 0)
+        self.assertEqual(self.repo.ls("iterate", "--verdict-file", verdict(run["runDir"], self.head(run)))[0], 0)
+        code, _, err = self.repo.ls("deliver")
+        self.assertNotIn("no criterion passed at the base", err)
+
+    def test_measured_criterion_problems_are_named(self):
+        def problems(**more):
+            return runs.spec_problems({"goal": "g", "criteria": [{"id": "AC-1", "text": "t", **more}]})
+        self.assertEqual(problems(better="lower", check="echo 1"), ["AC-1: `better` and `by` go together"])
+        self.assertEqual(problems(better="lower", by="10", check="echo 1"), ['AC-1: `by` must be a percentage like "10%"'])
+        self.assertEqual(problems(better="less", by="10%", check="echo 1"), ['AC-1: `better` must be "lower" or "higher"'])
+        self.assertEqual(problems(better="lower", by="10%"), ["AC-1: a measured criterion needs a `check` that prints the number"])
+        self.assertEqual(problems(better="lower", by="10%", check="echo 1"), [])
+
+    def test_perf_verify_compares_the_head_number_with_the_base_record(self):
+        run = self.start("--kind", "perf")
+        def spec(check):
+            self.write(run, {"goal": "g", "criteria": [{"id": "AC-1", "text": "faster", "check": check, "better": "lower", "by": "10%"}]},
+                       {"tasks": [{"id": "T-1", "title": "speed"}]})
+        spec("echo 100")
+        code, out, _ = self.repo.ls("verify")
+        self.assertEqual(code, 1)
+        self.assertIn("no base measurement", out)
+        self.assertEqual(self.repo.ls("verify", "--base")[0], 0)
+        state = json.loads(Path(run["runDir"], "state.json").read_text())
+        self.assertEqual(state["baseVerify"]["results"][0]["value"], 100)
+        spec("echo 80")
+        code, out, _ = self.repo.ls("verify")
+        self.assertEqual(code, 0, out)
+        state = json.loads(Path(run["runDir"], "state.json").read_text())
+        self.assertEqual(state["verify"]["results"][0]["delta"], -20.0)
+        spec("echo 95")
+        code, out, _ = self.repo.ls("verify")
+        self.assertEqual(code, 1)
+        self.assertIn("MISSES", out)
+
+    def test_start_after_stacks_on_a_delivered_runs_branch(self):
+        prior = self.start()
+        state_path = Path(prior["runDir"], "state.json")
+        code, _, err = self.repo.ls("start", "--request", "Part two", "--after", prior["slug"])
+        self.assertEqual(code, 1)
+        self.assertIn("has no PR yet", err)
+        commit(Path(prior["work"]), "part1.txt", "1\n")
+        sh(prior["work"], "git", "push", "-q", "origin", "HEAD:refs/heads/feat/add-mul-and-sub")
+        state = json.loads(state_path.read_text())
+        state["pr"] = {"number": 7, "url": "https://github.com/acme/kv/pull/7"}
+        state_path.write_text(json.dumps(state))
+        code, out, err = self.repo.ls("start", "--request", "Part two", "--after", prior["slug"])
+        self.assertEqual(code, 0, err)
+        new = json.loads(Path(marker(out, "LOOP_SPEC_RUN")["runDir"], "state.json").read_text())
+        self.assertEqual(new["base"]["branch"], "feat/add-mul-and-sub")
+        self.assertEqual(new["stackedOn"], {"slug": prior["slug"], "base": "main",
+                                            "pr": {"number": 7, "url": "https://github.com/acme/kv/pull/7"}})
+        self.assertIn("after    " + prior["slug"], out)
 
     def verified(self, *extra: str) -> dict:
         run = self.start(*extra)

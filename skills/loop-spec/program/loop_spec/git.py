@@ -42,6 +42,17 @@ def project_root(start: Path) -> Path:
     return Path(proc.stdout.strip()).parent
 
 
+def remote_has(repo: Path, branch: str) -> bool:
+    """Whether origin has `branch` now (a stale remote-tracking ref does not count)."""
+    return bool(git(repo, "ls-remote", "--heads", "origin", branch).stdout.strip())
+
+
+def pr_set_base(repo: Path, number: int, base: str) -> None:
+    code, _, err = gh(repo, "pr", "edit", str(number), "--base", base)
+    if code != 0:
+        raise LoopSpecError(f"gh pr edit --base {base} failed: {err.strip()}", "check `gh auth status`, then run loop-spec sync again")
+
+
 def has_origin(repo: Path) -> bool:
     return git(repo, "remote", "get-url", "origin").returncode == 0
 

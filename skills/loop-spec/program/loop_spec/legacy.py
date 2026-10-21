@@ -29,7 +29,7 @@ from loop_spec import VERSION, git
 from loop_spec.deliver import title
 from loop_spec.runs import sha_for, write_json
 
-CYCLE_TYPES = {"cycle": "full", "micro": "micro", "debug": "debug", "revise": "revise"}
+CYCLE_TYPES = {"cycle": "full", "micro": "micro", "debug": "debug", "revise": "revise", "refactor": "refactor", "perf": "perf"}
 STATUS = {"converged": "completed", "converged-with-caveats": "completed", "no-change": "completed",
           "escalated": "escalated", "failed": "failed"}
 OUTCOME = {"converged": "delivered", "converged-with-caveats": "delivered-draft", "no-change": "no-change-needed",

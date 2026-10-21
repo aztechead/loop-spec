@@ -36,7 +36,7 @@ from loop_spec import dag, git
 from loop_spec.errors import LoopSpecError
 
 RUNS_DIR = Path(".loop-spec") / "runs"
-KINDS = ("cycle", "micro", "debug", "revise")
+KINDS = ("cycle", "micro", "debug", "revise", "refactor", "perf")
 RESULT_STATUSES = ("completed", "no-change", "escalated", "failed")
 WORKSPACE = Path(".loop-spec") / "workspace.json"
 PENDING_STREAM = "stream.pending"
@@ -102,6 +102,15 @@ def spec_problems(spec) -> list[str]:
             found.append(f"{name} has no `text`")
         if c.get("check") is not None and not (isinstance(c["check"], str) and c["check"].strip()):
             found.append(f"{name}: `check` must be a command string, or left out when no command can show it")
+        if ("better" in c) != ("by" in c):
+            found.append(f"{name}: `better` and `by` go together")
+        elif "better" in c:
+            if c["better"] not in ("lower", "higher"):
+                found.append(f'{name}: `better` must be "lower" or "higher"')
+            if not (isinstance(c["by"], str) and re.fullmatch(r"\d+(\.\d+)?%", c["by"])):
+                found.append(f'{name}: `by` must be a percentage like "10%"')
+            if not c.get("check"):
+                found.append(f"{name}: a measured criterion needs a `check` that prints the number")
     found += [f"criterion id {cid} is used more than once" for cid, n in ids.items() if n > 1]
     return found
 

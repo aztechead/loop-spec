@@ -69,7 +69,8 @@ def planned(spec: dict | None, plan: dict | None) -> list[dict]:
     task and repository items from their repository's checkout (`repo`, set in a workspace)."""
     items, seen = [], set()
     for c in (spec or {}).get("criteria", []):
-        items.append({"name": c.get("id", "?"), "text": c.get("text", ""), "command": c.get("check") or None})
+        items.append({"name": c.get("id", "?"), "text": c.get("text", ""), "command": c.get("check") or None,
+                      **{k: c[k] for k in ("better", "by") if k in c}})
         seen.add((None, c.get("check")))
     for t in (plan or {}).get("tasks", []):
         cmd = t.get("verify")
@@ -82,6 +83,20 @@ def planned(spec: dict | None, plan: dict | None) -> list[dict]:
                           "repoCheck": True, "repo": check.get("repo")})
             seen.add((check.get("repo"), check["command"]))
     return items
+
+
+def number(output: str) -> float | None:
+    """The number on the last non-empty line of a check's output, or None."""
+    lines = [l for l in output.splitlines() if l.strip()]
+    try:
+        return float(lines[-1].strip()) if lines else None
+    except ValueError:
+        return None
+
+
+def beats(head: float, base: float, better: str, by: str) -> bool:
+    frac = float(by.rstrip("%")) / 100
+    return head <= base * (1 - frac) if better == "lower" else head >= base * (1 + frac)
 
 
 def repo_checks(plan: dict | None) -> list[dict]:
