@@ -184,13 +184,19 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
             edit += ["--title", title(run, r)]
         git.gh(r.work, *edit)
     for r in todo:
-        if before[r.name]:  # a later delivery of a PR this run opened
-            # Ask everyone who left feedback to look again; feedback then waits for them. GitHub refuses
-            # the PR's author and most bots, which is fine: there is no one to wait for.
-            for login in (r.state.get("feedback") or {}).get("authors", []):
-                git.gh(r.work, "pr", "edit", str(r.state["pr"]["number"]), "--add-reviewer", login)
+        prior, feedback = r.state.get("delivered") or {}, r.state.get("feedback") or {}
+        moved = prior.get("sha") != sha_for(head, r)
+        if moved:
+            if before[r.name]:  # a later delivery of a PR this run opened
+                # Ask everyone who left feedback to look again; feedback then waits for them. GitHub refuses
+                # the PR's author and most bots, which is fine: there is no one to wait for.
+                for login in feedback.get("authors", []):
+                    git.gh(r.work, "pr", "edit", str(r.state["pr"]["number"]), "--add-reviewer", login)
+            feedback.pop("open", None)  # a new commit answers what feedback showed
+            feedback.pop("reviewWaitSince", None)  # and asks for review again, so the wait starts over
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         r.state["delivered"] = {"sha": sha_for(head, r), "verified": verified, "title": title(run, r),
-                                "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+                                "at": prior["at"] if not moved and prior.get("at") else now}
     run.save()
     if comment_file:
         reply = f"{comment_file.read_text().rstrip()}\n\n{review.MARK}\n"
@@ -199,6 +205,8 @@ def publish(run: Run, *, draft: bool, unverified: bool, comment_file: Path | Non
             if code != 0:
                 raise LoopSpecError(f"the PR was delivered, but gh pr comment failed: {err.strip()}",
                                     f"run loop-spec deliver --comment-file {comment_file} again")
+            (r.state.get("feedback") or {}).pop("open", None)
+        run.save()
     return head
 
 

@@ -44,9 +44,9 @@ the project's checks take longer.
 | `LS iterate [--caveats "..."]` | record that the verified head's whole-change review is done and addressed; caveats are kept from the last iterate unless given (`--caveats ""` clears) |
 | `LS set [--repo NAME] --branch NAME --title "..."` | rename the feature branch (until it is pushed) or set the PR title; `--repo` sets them for one repository of a run across repositories |
 | `LS deliver [--draft] [--unverified] [--comment-file F]` | push the verified head and open or update its PR (posting `F` as a comment) |
-| `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review (a PR with no checks after 90 s counts as no CI; review items already posted come back without waiting for CI); ends the run when CI passes and reviewers have asked for nothing new, or shows what to address |
+| `LS feedback` | wait for the PR's checks (up to 9 minutes per call), then read its review (a PR with no checks after 90 s counts as no CI; review items already posted come back without waiting for CI); ends the run when CI passes and no review item is open, or shows what to address |
 | `LS checkpoint [--push]` | commit work in progress in every worktree and list them; `--push` pushes the branches that hold commits of their own. For a run the host asked to wrap up |
-| `LS finish --status completed\|no-change\|escalated\|failed --summary "..."` | end the run: `completed` after feedback skills find nothing, otherwise a run that delivers nothing |
+| `LS finish --status completed\|no-change\|escalated\|failed --summary "..."` | end the run: `completed` when what `feedback` shows asks for nothing and feedback skills find nothing, otherwise a run that delivers nothing |
 
 Four kinds of check apply to a run. A criterion's `check` (in `spec.json`), a task's
 `verify`, and the repository's `checks` (both in `plan.json`) all run in `LS verify`. CI
@@ -406,15 +406,24 @@ the user asked not to wait for CI, add `--no-feedback`, which ends the run at th
 ### The feedback loop
 
 Run `LS feedback`. It waits for the PR's checks, then shows each failed check's log and
-each new review item (reviews, inline comments, conversation comments) once. Then:
+each review item (reviews, inline comments, conversation comments) not yet answered. A
+shown item stays open, and comes back on every call, until you deliver a new commit,
+answer with `deliver --comment-file F`, or someone replies in its inline thread. Then:
 
-- **Checks still running, or a requested review not in yet:** run it again.
-- **CI passed and nothing new:** the run ends.
+- **Checks still running, a requested review not in yet, or a bot's comment saying its
+  review is still running:** run it again.
+- **CI passed and nothing open:** the run ends.
 - **A failed check or a review item this change should address:** fix it in `work`,
   verify, deliver, and run `feedback` again.
-- **A question, or a request you decline with a reason:** answer it in a comment with
-  `deliver --comment-file F`, alongside your next fix or on its own; a comment posted
-  with `gh` instead comes back from `feedback` as a new item.
+- **A question, or a request you decline with a reason:** answer it with
+  `deliver --comment-file F`, alongside your next fix or on its own; the comment goes on
+  every PR of the run. To answer one inline thread instead, reply with `gh` and end the
+  reply with `<!-- loop-spec -->`. Any other comment posted with `gh` comes back from
+  `feedback` as a new item.
+- **What is left asks for nothing** (a coverage report, a bot's all-clear), and no review
+  is still awaited: run any feedback skills as below, then
+  `LS finish --status completed --summary "..."`. While a review is awaited, answer what
+  is shown with `deliver --comment-file F`, and `feedback` waits for it.
 - **A check that also fails on the base branch:** fix it in a commit of its own, as in
   Verify; when only a person can, say so in a comment.
 - **Feedback that cannot be satisfied** (it contradicts the spec, or needs a decision

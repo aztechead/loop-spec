@@ -36,6 +36,7 @@ case "$1 $2" in
   "repo view") echo "https://github.com/acme/$name" ;;
   "pr checks") cat "$FAKE_GH_DIR/checks-$name.json" 2>/dev/null || echo '[{"name": "job0", "bucket": "pass", "link": ""}]' ;;
   "pr view") echo '{"reviews": [], "comments": []}' ;;
+  "api repos/{owner}/{repo}/issues/"*) cat "$FAKE_GH_DIR/comments-$name.jsonl" 2>/dev/null ;;
   *) ;;
 esac
 """
@@ -291,6 +292,28 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(sorted(p["repo"] for p in result["prs"]), ["api", "web"])
         self.assertEqual(sorted(t["repo"] for t in result["delivery"]["targets"]), ["api", "web"])
         self.assertIsNone(result["verifiedSha"])
+
+    def test_open_items_on_one_pr_hold_the_run_and_a_new_commit_on_the_other_does_not_answer_them(self):
+        run = self.verified_run()
+        for name in ("api", "web"):
+            self.describe(run, name)
+            (self.gh_dir / f"comments-{name}.jsonl").write_text(json.dumps(
+                {"id": 1, "author": "ana", "body": f"{name} finding", "at": "2026-10-04T10:00:00Z"}) + "\n")
+        self.assertEqual(self.ls("deliver")[0], 0)
+        code, out, _ = self.ls("feedback", "--timeout", "0")
+        self.assertEqual(code, 1)
+        self.assertIn("api finding", out)
+        self.assertIn("web finding", out)
+        commit(Path(run["work"]) / "api", "a2.py", "x = 2\n")
+        self.assertEqual(self.ls("verify")[0], 0)
+        self.assertEqual(self.ls("iterate")[0], 0)
+        self.assertEqual(self.ls("deliver")[0], 0)
+        code, out, _ = self.ls("feedback", "--timeout", "0")
+        self.assertEqual(code, 1)
+        self.assertIn("web finding", out)
+        self.assertNotIn("api finding", out)
+        self.assertIn("1 review item(s) still open", out)
+        self.assertNotIn("LOOP_SPEC_RESULT", out)
 
     def test_8_the_stop_hook_finds_the_run_from_the_root_and_from_a_worktree(self):
         run = self.start("--autonomous")

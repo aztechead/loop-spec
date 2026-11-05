@@ -283,7 +283,7 @@ def show_status(run: Run) -> int:
         if (r.state.get("feedback") or {}).get("sha"):
             f = r.state["feedback"]
             verdicts = ", ".join(f"{who} {state.lower()}" for who, state in f.get("verdicts", {}).items()) or "no reviews"
-            out(f"  feedback {f'[{r.name}] ' if run.workspace else ''}CI {f['ci']} at {f['sha'][:12]}; {verdicts}; {len(f['seen'])} review item(s) seen")
+            out(f"  feedback {f'[{r.name}] ' if run.workspace else ''}CI {f['ci']} at {f['sha'][:12]}; {verdicts}; {len(f['seen'])} review item(s) seen; {len(f.get('open', []))} open")
     result = run.result
     if result:
         out(f"  result   {result.get('outcome', result.get('status'))}: {result['summary']}")
@@ -732,9 +732,11 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
         raise LoopSpecError("the current head has not been delivered", "verify, then `loop-spec deliver`")
     tag = {r.name: f"[{r.name}] " if run.workspace else "" for r in targets}
     call_end = time.monotonic() + args.timeout
-    # review items already posted come back at once: CI is read once, not waited on
-    fresh = any(i["id"] not in (r.state.get("feedback") or {}).get("seen", [])
-                for r in targets for i in review.read(r.work, r.state["pr"]["number"])[0])
+    feedback_config = _config(project).get("feedback") or {}
+    pattern = review.running_pattern(feedback_config.get("runningPattern"))
+    # review items already posted, or shown and not answered, come back at once: CI is read once, not waited on
+    fresh = any(any(review.split(review.read(r.work, r.state["pr"]["number"])[0], r.state.get("feedback") or {}, pattern)[:2])
+                for r in targets)
     ci_by, failed = {}, False
     for n, r in enumerate(targets):  # once one PR's CI failed, the rest are read once and not waited on
         budget = 0 if failed or fresh else args.timeout if n == 0 else max(0, int(call_end - time.monotonic()))
@@ -750,7 +752,6 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
     if outcome == "pending" and not fresh:
         out(f"checks are still running after {args.timeout}s: run loop-spec feedback again")
         return 0
-    feedback_config = _config(project).get("feedback") or {}
     review_wait = 60 * feedback_config.get("reviewWaitMinutes", 30)
     while True:  # with CI settled and nothing new, wait for reviewers who were asked and have not answered
         rounds = {}
@@ -758,19 +759,24 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
             record = r.state.setdefault("feedback", {"seen": []})
             number = r.state["pr"]["number"]
             items, verdicts = review.read(r.work, number)
-            new = [i for i in items if i["id"] not in record["seen"]]
-            waiting = [] if new or outcome == "failed" else [
+            new, unanswered, running = review.split(items, record, pattern)
+            waiting = [] if outcome == "failed" else sorted({
                 *review.pending(r.work, number),
-                *review.silent(items, feedback_config.get("waitFor", []), r.state["delivered"].get("at") or "1970-01-01T00:00:00+00:00")]
-            waited_out = bool(waiting) and time.time() >= record.setdefault("reviewWaitSince", time.time()) + review_wait
-            rounds[r.name] = (record, verdicts, new, waiting, waited_out)
-        if (all(not w or wo for _, _, _, w, wo in rounds.values())
+                *review.silent(items, feedback_config.get("waitFor", []), r.state["delivered"].get("at") or "1970-01-01T00:00:00+00:00"),
+                *(i.get("author") or "?" for i in running)})
+            waited_out = bool(waiting) and record.setdefault("reviewWaitSince", time.time()) + review_wait <= time.time()
+            if waited_out:
+                new = new + running  # the wait is over: show the comment as it stands
+            rounds[r.name] = (record, verdicts, new, unanswered, waiting, waited_out)
+        if (all(not w or wo for _, _, _, _, w, wo in rounds.values())
+                or any(n or u for _, _, n, u, _, _ in rounds.values())  # something to address now: stop waiting
                 or time.monotonic() >= call_end or _wrap_up_asked(run)):
             break
         time.sleep(ci.POLL_SECONDS)
     for r in targets:
-        record, verdicts, new, _, _ = rounds[r.name]
+        record, verdicts, new, unanswered, _, _ = rounds[r.name]
         record.update(sha=r.state["delivered"]["sha"], ci=ci_by[r.name][0], verdicts=verdicts,
+                      open=[i["id"] for i in (*unanswered, *new) if not i["answered"]],
                       seen=record["seen"] + [i["id"] for i in new],
                       authors=sorted({*record.get("authors", []), *(i["author"] for i in new if i.get("author"))}))
     run.save()
@@ -778,28 +784,35 @@ def cmd_feedback(args, project: Path, cwd: Path) -> int:
         for c in ci_by[r.name][1]:
             if c.get("bucket") in ("fail", "cancel") and (log_tail := ci.failure_log(r.work, c)):
                 out(f"{tag[r.name]}--- {c.get('name')} (failed log, last lines)\n{_indent(log_tail)}")
-        _show_items(rounds[r.name][2], tag[r.name])
+        _show_items(rounds[r.name][3] + rounds[r.name][2], tag[r.name])
     new_all = [i for r in targets for i in rounds[r.name][2]]
-    waiting_all = [f"{r.name}:{w}" if run.workspace else w for r in targets for w in rounds[r.name][3]]
-    waited_out_all = bool(waiting_all) and all(rounds[r.name][4] for r in targets if rounds[r.name][3])
-    if waiting_all and not waited_out_all:
+    open_all = [i for r in targets for i in rounds[r.name][3]]
+    waiting_all = [f"{r.name}:{w}" if run.workspace else w for r in targets for w in rounds[r.name][4]]
+    waited_out_all = bool(waiting_all) and all(rounds[r.name][5] for r in targets if rounds[r.name][4])
+    awaited = bool(waiting_all) and not waited_out_all
+    if awaited and not (new_all or open_all):
         out(f"CI {outcome}, and review requested from {', '.join(waiting_all)} is not in yet: run loop-spec feedback again")
         return 0
-    if waiting_all:
+    if waiting_all and waited_out_all:
         out(f"review requested from {', '.join(waiting_all)} is still not in after {review_wait // 60} min; not waiting longer")
-    skills = (_config(project).get("feedback") or {}).get("skills", [])
-    if outcome == "failed" or new_all:
-        out(("CI FAILED. " if outcome == "failed" else "CI still running. " if outcome == "pending" else "") + (f"{len(new_all)} new review item(s). " if new_all else "") +
-            "Fix what this change should fix (then verify, deliver, and feedback again), and answer the rest in a "
-            "PR comment. A check that also fails on the base branch is not this change's.")
+    skills = feedback_config.get("skills", [])
+    urls = ", ".join(r.state["pr"]["url"] for r in targets)
+    closing = ((f"run the project's feedback skills on {urls}: {', '.join(skills)}. Treat what they report like review "
+                "comments; if it is nothing, " if skills else "")
+               + "end the run with loop-spec finish --status completed --summary ...")
+    if outcome == "failed" or new_all or open_all:
+        out(("CI FAILED. " if outcome == "failed" else "CI still running. " if outcome == "pending" else "")
+            + (f"{len(new_all)} new review item(s). " if new_all else "")
+            + (f"{len(open_all)} review item(s) still open: nothing has answered them since feedback showed them. " if open_all else "")
+            + "Fix what this change should fix (then verify, deliver, and feedback again), and answer the rest with "
+              "loop-spec deliver --comment-file F. A check that also fails on the base branch is not this change's."
+            + (f" Review from {', '.join(waiting_all)} is not in yet; feedback waits for it once nothing shown is open." if awaited
+               else f" If what is shown asks for no change and no answer, {closing}" if outcome in ("passed", "none") else ""))
         return 1
     if skills:
-        urls = ", ".join(r.state["pr"]["url"] for r in targets)
-        out(f"CI {outcome}, and nothing new from reviewers. Run the project's feedback skills on {urls}: "
-            f"{', '.join(skills)}. Treat what they report like review comments; if it is nothing, end the run "
-            "with loop-spec finish --status completed.")
+        out(f"CI {outcome}, and no review item is open: {closing}")
         return 0
-    out("CI passed, and nothing new from reviewers" if outcome == "passed" else "no CI checks, and nothing new from reviewers")
+    out("CI passed, and no review item is open" if outcome == "passed" else "no CI checks, and no review item is open")
     return _finish(run, "completed", _summary(run), head)
 
 
