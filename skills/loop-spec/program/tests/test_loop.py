@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from loop_spec import ci, cli, hook
+from loop_spec import ci, cli, hook, review
 from loop_spec.errors import LoopSpecError
 from loop_spec.runs import Run
 from test_flow import Repo, commit, marker, sh
@@ -514,6 +514,165 @@ class LoopTests(unittest.TestCase):
         out = self.repo.ls("feedback", "--timeout", "0")[1]
         self.assertIn("Looks fine.", out)
         self.assertNotIn("is not in yet", out)
+
+    # --- a shown item stays open until something answers it --------------------------------
+
+    def state(self, run: dict) -> dict:
+        return json.loads(Path(run["runDir"], "state.json").read_text())
+
+    def edit_state(self, run: dict, edit) -> None:
+        path = Path(run["runDir"], "state.json")
+        state = json.loads(path.read_text())
+        edit(state)
+        path.write_text(json.dumps(state))
+
+    def config(self, **feedback) -> None:
+        (self.repo.path / ".loop-spec").mkdir(exist_ok=True)
+        (self.repo.path / ".loop-spec" / "config.json").write_text(json.dumps({"feedback": feedback}))
+
+    def test_a_repeat_feedback_shows_open_items_again_and_does_not_end_the_run(self):
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pass")
+        self.review(comments=[{"id": "C1", "author": "ana", "body": "Why int, not float?"}],
+                    inline=[{"id": 11, "author": "coderabbit[bot]", "body": "Missing test for 0.", "path": "mul.py", "line": 2}])
+        code, out, _ = self.repo.ls("feedback")
+        self.assertEqual(code, 1)
+        self.assertIn("2 new review item(s)", out)
+        code, again, _ = self.repo.ls("feedback")
+        self.assertEqual(code, 1)
+        self.assertIn("2 review item(s) still open", again)
+        self.assertIn("Why int, not float?", again)
+        self.assertIn("Missing test for 0.", again)
+        self.assertNotIn("LOOP_SPEC_RESULT", again)
+        commit(Path(run["work"]), "mul.py", "def mul(a, b):\n    return b * a\n")
+        self.deliver(run)
+        code, out, _ = self.repo.ls("feedback")
+        self.assertEqual(marker(out, "LOOP_SPEC_RESULT")["status"], "completed")
+
+    def test_a_comment_from_deliver_answers_what_feedback_showed(self):
+        self.config(waitFor=["coderabbit"])
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pass")
+        self.edit_state(run, lambda s: s["delivered"].update(at="2026-01-01T00:00:00+00:00"))
+        self.comments({"id": 5, "author": "coderabbit[bot]", "body": "Add a test for 0.", "at": "2026-02-01T00:00:00Z"})
+        self.assertEqual(self.repo.ls("feedback", "--timeout", "0")[0], 1)
+        reply = Path(self._tmp.name) / "reply.md"
+        reply.write_text("Declined: 0 is covered elsewhere.")
+        self.assertEqual(self.repo.ls("deliver", "--comment-file", str(reply))[0], 0)
+        self.assertEqual(self.state(run)["delivered"]["at"], "2026-01-01T00:00:00+00:00")
+        self.assertNotIn("--add-reviewer", (self.gh_dir / "calls").read_text())
+        code, out, _ = self.repo.ls("feedback", "--timeout", "0")
+        self.assertNotIn("is not in yet", out)
+        self.assertEqual(marker(out, "LOOP_SPEC_RESULT")["status"], "completed")
+
+    def test_a_reply_in_its_thread_answers_an_inline_item(self):
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pass")
+        root = {"id": 11, "author": "coderabbit[bot]", "body": "Missing test for 0.", "path": "mul.py", "line": 2}
+        reply = {"id": 12, "author": "ana", "body": "Not a test gap.", "path": "mul.py", "line": 2, "reply_to": 11}
+        self.review(inline=[root, reply])
+        code, out, _ = self.repo.ls("feedback")
+        self.assertEqual(code, 1)
+        self.assertIn("Missing test for 0.", out)
+        self.assertIn("Not a test gap.", out)
+        self.assertEqual(self.state(run)["feedback"]["open"], ["inline:12"])
+        mine = {"id": 13, "author": "loop-bot", "body": "Answered in the thread.\n\n<!-- loop-spec -->", "reply_to": 11}
+        self.review(inline=[root, reply, mine])
+        code, out, _ = self.repo.ls("feedback")
+        self.assertNotIn("Answered in the thread.", out)
+        self.assertEqual(marker(out, "LOOP_SPEC_RESULT")["status"], "completed")
+
+    def test_an_approval_with_a_body_is_shown_once_and_stays_closed(self):
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pass")
+        self.review(reviews=[{"id": "R1", "author": {"login": "ana"}, "state": "APPROVED", "body": "nit: rename before merge"}])
+        code, out, _ = self.repo.ls("feedback")
+        self.assertEqual(code, 1)
+        self.assertIn("nit: rename before merge", out)
+        self.assertEqual(marker(self.repo.ls("feedback")[1], "LOOP_SPEC_RESULT")["status"], "completed")
+
+    def test_a_comment_saying_its_review_is_running_holds_the_run_until_it_changes(self):
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pass")
+        self.comments({"id": 5, "author": "reviewer[bot]", "body": "Status: Running"})
+        code, out, _ = self.repo.ls("feedback", "--timeout", "0")
+        self.assertEqual(code, 0)
+        self.assertIn("review requested from reviewer[bot] is not in yet", out)
+        self.assertNotIn("Status: Running", out)
+        self.assertNotIn("LOOP_SPEC_RESULT", out)
+        self.comments({"id": 5, "author": "reviewer[bot]", "body": "Found 2 problems.", "at": "2026-10-04T11:00:00Z"})
+        code, out, _ = self.repo.ls("feedback", "--timeout", "0")
+        self.assertEqual(code, 1)
+        self.assertIn("Found 2 problems.", out)
+        self.comments({"id": 5, "author": "reviewer[bot]", "body": "Found 2 problems.", "at": "2026-10-04T11:00:00Z"},
+                      {"id": 6, "author": "ana", "body": "Status: Running"})
+        code, out, _ = self.repo.ls("feedback", "--timeout", "0")
+        self.assertEqual(code, 1)
+        self.assertIn("comment by ana", out)
+        self.assertIn("Status: Running", out)
+
+    def test_a_running_comment_is_shown_once_the_wait_runs_out(self):
+        self.config(reviewWaitMinutes=0)
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pass")
+        self.comments({"id": 5, "author": "reviewer[bot]", "body": "Status: Running"})
+        code, out, _ = self.repo.ls("feedback", "--timeout", "0")
+        self.assertEqual(code, 1)
+        self.assertIn("Status: Running", out)
+        self.assertIn("1 new review item(s)", out)
+        code, out, _ = self.repo.ls("feedback", "--timeout", "0")
+        self.assertEqual(code, 1)
+        self.assertIn("1 review item(s) still open", out)
+
+    def test_the_running_pattern(self):
+        pattern = review.running_pattern(None)
+        for text in ("Running", "**Status:** Running", "| Review | Running |", "🔄 Review in progress…", "Tests are running"):
+            self.assertTrue(pattern.search(text), text)
+        for text in ("Status: Completed", "Running the migration requires a restart.",
+                     "No longer running on Python 3.9, so we drop it"):
+            self.assertFalse(pattern.search(text), text)
+        self.assertTrue(review.running_pattern(r"^LGTM$").search("lgtm"))
+        self.assertFalse(review.running_pattern("(?!)").search("Running"))
+        with self.assertRaisesRegex(LoopSpecError, "runningPattern is not a regular expression"):
+            review.running_pattern("(")
+
+    def test_a_review_still_running_holds_back_the_hint_to_finish(self):
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pass")
+        self.comments({"id": 5, "author": "codecov[bot]", "body": "Coverage is 90%."},
+                      {"id": 6, "author": "reviewer[bot]", "body": "Status: Running"})
+        code, out, _ = self.repo.ls("feedback", "--timeout", "0")
+        self.assertEqual(code, 1)
+        self.assertIn("Review from reviewer[bot] is not in yet", out)
+        self.assertNotIn("finish --status completed", out)
+        reply = Path(self._tmp.name) / "reply.md"
+        reply.write_text("Coverage is fine.")
+        self.assertEqual(self.repo.ls("deliver", "--comment-file", str(reply))[0], 0)
+        code, out, _ = self.repo.ls("feedback", "--timeout", "0")
+        self.assertEqual(code, 0)
+        self.assertIn("review requested from reviewer[bot] is not in yet", out)
+
+    def test_each_delivery_restarts_the_review_wait(self):
+        self.config(reviewWaitMinutes=1)
+        run = self.ready_run()
+        self.deliver(run)
+        self.checks("pass")
+        (self.gh_dir / "view.json").write_text(json.dumps({"reviews": [], "reviewRequests": [{"login": "ana"}]}))
+        self.assertIn("is not in yet", self.repo.ls("feedback", "--timeout", "0")[1])
+        self.edit_state(run, lambda s: s["feedback"].update(reviewWaitSince=1))  # the first wait began long ago
+        commit(Path(run["work"]), "mul.py", "def mul(a, b):\n    return b * a\n")
+        self.deliver(run)
+        code, out, _ = self.repo.ls("feedback", "--timeout", "0")
+        self.assertEqual(code, 0)
+        self.assertIn("review requested from ana is not in yet", out)
+        self.assertNotIn("LOOP_SPEC_RESULT", out)
 
     # --- the result ------------------------------------------------------------------------
 

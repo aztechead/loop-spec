@@ -24,7 +24,7 @@ loop-spec takes a coding request to a verified pull request:
    HumanLayer's visual-pr format (a one-sentence why, what a reviewer should know, and a
    visual change outline), with the checked criteria folded below. The run then waits
    for the PR's checks, reads its review comments, and fixes what the change should,
-   or answers, until CI passes and reviewers have asked for nothing new. A project can
+   or answers, until CI passes and no review item is left open. A project can
    add its own review skill to this step.
 
 These are 7.x's phases, and a run announces them exactly as 7.x did: a
@@ -166,6 +166,7 @@ Optional, in `<repo>/.loop-spec/config.json` (commit it if your team wants it sh
 | `feedback.wait` | `false` to end runs at delivery without waiting for CI or review |
 | `feedback.waitFor` | logins, such as a review bot's, that must comment or review after each delivery before the run can end; bounded by `reviewWaitMinutes` |
 | `feedback.reviewWaitMinutes` | how long `feedback` waits, once CI is settled, for reviewers asked on the PR to answer (default 30; `0` does not wait) |
+| `feedback.runningPattern` | regular expression for a line in a bot's conversation comment that says its review is still running; `feedback` waits on that comment, bounded by `reviewWaitMinutes`. The default matches a short line ending in "running" or "in progress", such as `Status: Running`; `(?!)` turns the wait off |
 
 Models: the implementer and simplifier agents run on Sonnet and the reviewer on Opus,
 all at medium effort, from their frontmatter in [agents/](agents/). The lead is your session, so run

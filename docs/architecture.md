@@ -91,7 +91,8 @@ ends one it judges cannot finish with `finish --status escalated`:
 - **Verify:** fix and verify again until every check passes at the current head.
 - **Feedback:** after delivery, `feedback` waits for the PR's checks and reads its review;
   what the change should fix is fixed, verified, and delivered again, and the rest is
-  answered, until CI passes and nothing new has come in.
+  answered, until CI passes and no review item is left open. A shown item stays open
+  until a new commit, a `deliver --comment-file` comment, or a reply in its thread answers it.
 - **The run itself (autonomous and supervised only):** the Stop hook works like `/goal`. After each
   turn it checks the run's record: a result means the condition is met and the turn
   ends; an open run gets its next step as the reason for another turn. It lets a turn
