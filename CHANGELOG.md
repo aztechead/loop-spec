@@ -2,6 +2,26 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [8.2.2] - 2026-11-05
+
+### Fixed
+
+- `feedback` no longer ends a run over review items it has shown and nobody has answered.
+  A shown item stays open and comes back on every call. A delivered new commit, a
+  `deliver --comment-file` comment, or a reply in its inline thread answers it. An
+  approval or a dismissal needs no answer. When what is left asks for nothing,
+  `finish --status completed` ends the run.
+- `feedback` waits while a bot's conversation comment says its review is still running,
+  so a CI pass no longer ends the run before the findings arrive. `feedback.reviewWaitMinutes`
+  bounds the wait, and the comment is then shown as it stands. `feedback.runningPattern`
+  sets what counts as running.
+- Each new commit delivered restarts the wait for requested reviewers. A wait that had run
+  out used to stay over for every later delivery.
+- `deliver --comment-file` with no new commit no longer asks reviewers to look again or
+  resets the time `feedback.waitFor` counts from, so declining a finding starts no new wait.
+- With items open on one PR of a workspace, `feedback` reports them at once instead of
+  first waiting for a reviewer on another PR.
+
 ## [8.2.1] - 2026-10-20
 
 ### Changed
